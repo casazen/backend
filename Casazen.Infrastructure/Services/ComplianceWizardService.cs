@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
@@ -55,21 +56,25 @@ public class ComplianceWizardService(
         return (property, check.IncompleteSteps);
     }
 
-    public async Task<ComplianceSummaryResult> GetSummaryAsync(Guid orgId, CancellationToken cancellationToken = default)
+    public async Task<ComplianceSummaryResult> GetSummaryAsync(HostScope scope, CancellationToken cancellationToken = default)
     {
         var today = _clock.TodayInRome();
+        var scopedProperties = db.Properties.AsNoTracking().Where(p => p.OrgId == scope.OrgId);
+        if (!scope.IsOrgWide)
+            scopedProperties = scopedProperties.Where(p => p.OwnerId == scope.OwnerId);
 
-        var pendingProperties = await db.Properties
-            .AsNoTracking()
-            .Where(p => p.OrgId == orgId && p.ComplianceStatus != PropertyComplianceStatus.Active)
+        var scopedBookings = db.Bookings.AsNoTracking().Where(b => b.OrgId == scope.OrgId);
+        if (!scope.IsOrgWide)
+            scopedBookings = scopedBookings.Where(b => b.Property.OwnerId == scope.OwnerId);
+
+        var pendingProperties = await scopedProperties
+            .Where(p => p.ComplianceStatus != PropertyComplianceStatus.Active)
             .OrderBy(p => p.Name)
             .Select(p => new { p.Id, p.Name })
             .ToListAsync(cancellationToken);
 
-        var checkInCandidates = await db.Bookings
-            .AsNoTracking()
+        var checkInCandidates = await scopedBookings
             .Include(b => b.Guest)
-            .Where(b => b.OrgId == orgId)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
             .Where(b => b.CheckInDate.Date <= today.AddDays(1))
             .ToListAsync(cancellationToken);
@@ -90,9 +95,7 @@ public class ComplianceWizardService(
 
         // Departures of today (Europe/Rome), with or without the arrival registered, and checked-in stays not closed
         // (CO-08, A5-08): until then only checked-in stays counted and none could be checked in from the apps.
-        var checkoutDue = (await db.Bookings
-                .AsNoTracking()
-                .Where(b => b.OrgId == orgId)
+        var checkoutDue = (await scopedBookings
                 .Where(StayLifecycleRules.CheckOutDue(today))
                 .OrderBy(b => b.CheckOutDate)
                 .Select(b => new { b.Id, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
@@ -100,8 +103,8 @@ public class ComplianceWizardService(
             .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName))
             .ToList();
 
-        var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(orgId, today, cancellationToken);
-        var turnoversPending = await GetTurnoversPendingAsync(orgId, cancellationToken);
+        var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(scope, today, cancellationToken);
+        var turnoversPending = await GetTurnoversPendingAsync(scope, cancellationToken);
 
         return new ComplianceSummaryResult(
             new ComplianceSummarySection(
@@ -124,17 +127,19 @@ public class ComplianceWizardService(
     /// (a stay closed before CO-17 has none and is not listed). A later stay of the same property whose arrival is
     /// registered closes it: the property was obviously ready for it.
     /// </summary>
-    private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(Guid orgId, CancellationToken cancellationToken)
+    private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(HostScope scope, CancellationToken cancellationToken)
     {
         var pending = db.StayCheckouts
             .AsNoTracking()
-            .Where(c => c.OrgId == orgId && c.CompletedAt != null && c.PropertyReadyAt == null)
+            .Where(c => c.OrgId == scope.OrgId && c.CompletedAt != null && c.PropertyReadyAt == null)
             .Where(c => c.Booking.Status == BookingStatus.CheckedOut)
             .Where(c => !db.Bookings.Any(next =>
                 next.PropertyId == c.Booking.PropertyId
                 && next.Id != c.BookingId
                 && (next.Status == BookingStatus.CheckedIn || next.Status == BookingStatus.CheckedOut)
                 && next.CheckInDate >= c.Booking.CheckOutDate));
+        if (!scope.IsOrgWide)
+            pending = pending.Where(c => c.Booking.Property.OwnerId == scope.OwnerId);
 
         var count = await pending.CountAsync(cancellationToken);
         var items = (await pending
@@ -165,13 +170,17 @@ public class ComplianceWizardService(
     /// the host, with or without a report row: CasaZen does not transmit, so nothing turns "done" on its own.
     /// </summary>
     private async Task<(ComplianceSummarySection Failures, ComplianceSummarySection ManualRequired)> GetAlloggiatiSectionsAsync(
-        Guid orgId,
+        HostScope scope,
         DateTime today,
         CancellationToken cancellationToken)
     {
-        var stays = await db.Bookings
+        var query = db.Bookings
             .AsNoTracking()
-            .Where(b => b.OrgId == orgId)
+            .Where(b => b.OrgId == scope.OrgId);
+        if (!scope.IsOrgWide)
+            query = query.Where(b => b.Property.OwnerId == scope.OwnerId);
+
+        var stays = await query
             .Where(b => b.Status == BookingStatus.Confirmed
                 || b.Status == BookingStatus.CheckedIn
                 || b.Status == BookingStatus.CheckedOut)

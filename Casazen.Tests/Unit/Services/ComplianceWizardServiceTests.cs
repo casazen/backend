@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
@@ -429,7 +430,7 @@ public class ComplianceWizardServiceTests
 
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db).GetSummaryAsync(org.Id);
+        var summary = await CreateService(db).GetSummaryAsync(new HostScope(org.Id, null));
 
         Assert.True(summary.PropertiesPending.Count >= 1);
         Assert.True(summary.CheckoutsDue.Count >= 1);
@@ -475,7 +476,7 @@ public class ComplianceWizardServiceTests
         Stay("Cancelled", today, BookingStatus.Cancelled);
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db, clock).GetSummaryAsync(property.OrgId);
+        var summary = await CreateService(db, clock).GetSummaryAsync(new HostScope(property.OrgId, null));
 
         Assert.Equal(
             new[] { noReport.Id, jobNotRunYet.Id, manual.Id }.OrderBy(id => id),
@@ -525,7 +526,7 @@ public class ComplianceWizardServiceTests
         });
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(org.Id);
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(org.Id, null));
 
         Assert.Equal(new[] { pending.Id, suspended.Id }.Order(), summary.PropertiesPending.Items.Select(i => i.Id).Order());
         Assert.All(summary.PropertiesPending.Items, i => AssertTarget(i, ComplianceCockpitAction.ActivateProperty, propertyId: i.Id));
@@ -584,6 +585,52 @@ public class ComplianceWizardServiceTests
     }
 
     public static TheoryData<ComplianceCockpitAction> CockpitActions() => new(Enum.GetValues<ComplianceCockpitAction>());
+
+    [Fact]
+    public async Task Summary_OwnerScope_DoesNotListOtherOwnersComplianceItems()
+    {
+        await using var db = CreateDb(nameof(Summary_OwnerScope_DoesNotListOtherOwnersComplianceItems));
+        var org = new OrgEntity { Name = "Scoped Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        var myPending = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Pending);
+        var otherPending = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Pending);
+        otherPending.OwnerId = "auth0|other-owner";
+        var myActive = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Active);
+        var otherActive = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Active);
+        otherActive.OwnerId = "auth0|other-owner";
+
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        var myStay = AddStay(myActive, "Visible", todayInRome);
+        var otherStay = AddStay(otherActive, "Hidden", todayInRome);
+        db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = otherStay.Id,
+            GuestId = otherStay.GuestId,
+            OrgId = org.Id,
+            Status = AlloggiatiWebStatus.Rifiutato,
+        });
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(org.Id, "auth0|owner"));
+
+        Assert.Contains(summary.PropertiesPending.Items, i => i.Id == myPending.Id);
+        Assert.DoesNotContain(summary.PropertiesPending.Items, i => i.Id == otherPending.Id);
+        Assert.Contains(summary.GuestCheckInsIncomplete.Items, i => i.Id == myStay.Id);
+        Assert.DoesNotContain(summary.GuestCheckInsIncomplete.Items, i => i.Id == otherStay.Id);
+        Assert.Contains(summary.CheckoutsDue.Items, i => i.Id == myStay.Id);
+        Assert.DoesNotContain(summary.CheckoutsDue.Items, i => i.Id == otherStay.Id);
+        Assert.Contains(summary.AlloggiatiManualRequired.Items, i => i.Id == myStay.Id);
+        Assert.Empty(summary.AlloggiatiFailures.Items);
+
+        Booking AddStay(Property property, string name, DateTime checkout)
+        {
+            var guest = new Guest { FirstName = name, LastName = "Guest", Email = $"{Guid.NewGuid():N}@test.com", OrgId = org.Id };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(property, guest, checkout, BookingStatus.CheckedIn);
+            db.Bookings.Add(booking);
+            return booking;
+        }
+    }
 
     [Fact]
     public async Task StartCheckoutWizard_ConfirmedBookingWithoutArrival_Returns409UntilTheHostRegistersTheArrival()
@@ -826,7 +873,7 @@ public class ComplianceWizardServiceTests
         Stay(property, today, BookingStatus.CheckedIn, declaredReady: false, completed: false);
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(property.OrgId);
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId, null));
 
         var item = Assert.Single(summary.TurnoversPending.Items);
         Assert.Equal(1, summary.TurnoversPending.Count);
@@ -880,7 +927,7 @@ public class ComplianceWizardServiceTests
         Stay(todayInRome, BookingStatus.Cancelled);
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(property.OrgId);
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId, null));
 
         Assert.Equal(3, summary.CheckoutsDue.Count);
         Assert.Equal(
