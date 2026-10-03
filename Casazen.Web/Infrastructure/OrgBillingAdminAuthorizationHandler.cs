@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -25,12 +26,13 @@ public class OrgBillingAdminAuthorizationHandler(
     /// DB context memberships that grant billing administration without relying on JWT roles: the owner of either rental
     /// context (a landlord with only long-term leases pays its plan too, PL-16) and the platform admin.
     /// </summary>
-    private static readonly HashSet<string> AllowedMembershipContexts = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "short-rent",
-        "long-rent",
-        "admin",
-    };
+    private static readonly IReadOnlyDictionary<string, HashSet<string>> AllowedMembershipRoleKeysByContext =
+        new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["short-rent"] = new(StringComparer.OrdinalIgnoreCase) { "property_owner" },
+            ["long-rent"] = new(StringComparer.OrdinalIgnoreCase) { "long_term_landlord" },
+            ["admin"] = new(StringComparer.OrdinalIgnoreCase) { "platform_admin" },
+        };
 
     private static readonly HashSet<string> AllowedRoles = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -89,8 +91,13 @@ public class OrgBillingAdminAuthorizationHandler(
 
         var snapshot = await snapshotStore.GetAsync(userId);
         return snapshot is { Exists: true, IsActive: true } &&
-               snapshot.Memberships.Any(m => AllowedMembershipContexts.Contains(m.ContextKey));
+               snapshot.Role is not (UserRole.Staff or UserRole.Guest) &&
+               snapshot.Memberships.Any(IsAllowedBillingMembership);
     }
+
+    private static bool IsAllowedBillingMembership(ContextAccess membership) =>
+        AllowedMembershipRoleKeysByContext.TryGetValue(membership.ContextKey, out var allowedRoleKeys) &&
+        allowedRoleKeys.Contains(membership.RoleKey);
 
     private static bool HasAllowedRole(ClaimsPrincipal user) =>
         user.Claims.Any(c =>

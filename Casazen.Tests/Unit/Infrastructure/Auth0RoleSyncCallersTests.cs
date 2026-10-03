@@ -235,6 +235,28 @@ public class Auth0RoleSyncCallersTests
     }
 
     [Fact]
+    public async Task OrgBillingAdmin_CustomCollaboratorMembershipWithoutJwtRole_DoesNotSucceed()
+    {
+        const string sub = "auth0|billing-collaborator";
+        var handler = CreateBillingHandler(sub, new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.None,
+            SupplierOrgId: null,
+            Memberships: [new ContextAccess(
+                "short-rent",
+                "Affitti brevi",
+                "bk09_collaborator",
+                ["property.read", "property.write", "payment.read"],
+                "/app/short-rent")]));
+        var context = BillingContext(sub);
+
+        await handler.HandleAsync(context);
+
+        Assert.False(context.HasSucceeded);
+    }
+
+    [Fact]
     public async Task OrgBillingAdmin_OnlySupplierMembership_DoesNotSucceed()
     {
         const string sub = "auth0|billing-supplier";
