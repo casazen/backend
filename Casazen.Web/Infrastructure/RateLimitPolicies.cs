@@ -32,12 +32,18 @@ public static class RateLimitPolicies
     /// <summary>Public tourist tax calculator.</summary>
     public const string PublicTouristTaxCalc = "PublicTouristTaxCalc";
 
+    /// <summary>Events of the SEO funnel (<c>POST api/public/seo/events</c>, SE-04): one per CTA click or signup start.</summary>
+    public const string PublicSeoEvents = "PublicSeoEvents";
+
     /// <summary>Host → tenant resolution for custom domains and subdomains.</summary>
     public const string PublicResolveHost = "PublicResolveHost";
 
     /// <summary>Public iCal export feeds polled by the OTAs.</summary>
     public const string PublicIcal = "PublicIcal";
 
-    /// <summary>Anonymous sign-ups (<c>api/suppliers/register</c>, <c>api/auth/register</c>).</summary>
+    /// <summary>Anonymous sign-ups (<c>api/suppliers/register</c>).</summary>
     public const string PublicRegistration = "PublicRegistration";
+
+    /// <summary>Search of the official comuni list for the pickers (<c>api/comuni</c>, SU-04): one request per pause in typing.</summary>
+    public const string PublicComuni = "PublicComuni";
 }

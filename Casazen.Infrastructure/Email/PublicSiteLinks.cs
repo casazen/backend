@@ -117,6 +117,19 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             $"/book/{Uri.EscapeDataString(orgSlug)}/booking/{bookingId:D}?token={Uri.EscapeDataString(checkoutToken)}");
     }
 
+    /// <summary>
+    /// Public page where a tenant pays a rent installment online (route <c>/rent/pay/:installmentId</c>, LT-06). Only the
+    /// installment id and the random token are in the link, no personal data.
+    /// </summary>
+    public string RentPayment(Guid installmentId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build($"/rent/pay/{installmentId:D}?token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>Host console: detail page of one lease (route <c>/app/long-rent/leases/:id</c>, LT-06).</summary>
+    public string HostLease(Guid leaseId) => Build($"/app/long-rent/leases/{leaseId:D}");
+
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
 
@@ -197,6 +210,20 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             && string.Equals(candidate.IdnHost, baseUri.IdnHost, StringComparison.OrdinalIgnoreCase)
             && candidate.Port == baseUri.Port
             && string.IsNullOrEmpty(candidate.UserInfo);
+    }
+
+    /// <summary>
+    /// True when <paramref name="host"/> (a host name without scheme, port optional) is the host of
+    /// <c>App:PublicSiteBaseUrl</c>: the web app's own domain, as opposed to an org subdomain or custom domain (BK-15).
+    /// False when the public URL is not configured.
+    /// </summary>
+    public bool IsPublicSiteHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host)
+            || !PublicSiteOptions.TryGetBaseUri(options.Value.PublicSiteBaseUrl, out var baseUri))
+            return false;
+
+        return string.Equals(PublicSiteHosts.Normalize(host), PublicSiteHosts.Normalize(baseUri.IdnHost), StringComparison.Ordinal);
     }
 
     private string Build(string pathAndQuery) => BaseUrl() + pathAndQuery;

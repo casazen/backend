@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Validation;
+using Casazen.Web.DTOs.Supplier;
 
 namespace Casazen.Web.DTOs.ServiceRequests;
 
@@ -80,6 +81,12 @@ public class SupplierMatchCandidateDto
     public int MatchScore { get; set; }
     public string MatchReason { get; set; } = string.Empty;
     public string Source { get; set; } = "platform";
+
+    /// <summary>
+    /// The reason was written by an AI model: the client shows the AI Act transparency notice next to it (SE-05, A8-27).
+    /// False for the static reason (flag off, no provider, provider failure).
+    /// </summary>
+    public bool ReasonGeneratedByAi { get; set; }
 }
 
 public class ExternalSupplierSuggestionDto
@@ -127,6 +134,14 @@ public class ServiceRequestDto
     public string? RejectionReason { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    /// <summary>
+    /// The steps of the request, oldest first, each with its date and the party that made it (SU-09, A4-28): requested
+    /// (host), taken, completed or rejected with the reason (supplier), paid (host). The supplier is named by
+    /// <see cref="SupplierName"/>: a member of the supplier's team is never named to the host, so
+    /// <see cref="ServiceRequestHistoryEntryDto.ActorName"/> is always null here.
+    /// </summary>
+    public IEnumerable<ServiceRequestHistoryEntryDto> History { get; set; } = [];
 }
 
 public class ServiceRequestListResponse

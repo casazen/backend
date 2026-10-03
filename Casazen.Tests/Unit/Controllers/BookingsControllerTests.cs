@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -10,6 +11,7 @@ using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -137,7 +139,7 @@ public class BookingsControllerTests
     };
 
     [Fact]
-    public async Task GetAll_ReturnsBookingResponseDtosWithoutCircularRefs()
+    public async Task GetAll_OwnerWithoutOrgWideRole_QueriesOnceWithOwnerScopeAndMapsDtos()
     {
         SetUser(OwnerId);
         var guest = new Guest { Id = Guid.NewGuid(), FirstName = "Mario", LastName = "Rossi", Email = "mario@test.com" };
@@ -160,11 +162,12 @@ public class BookingsControllerTests
             Source = BookingSource.Direct,
         };
 
-        _mockBookingService.Setup(b => b.GetAllBookingsAsync()).ReturnsAsync([booking]);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(true);
+        _mockBookingService
+            .Setup(b => b.GetBookingsAsync(
+                It.Is<HostScope>(s => s.OrgId == OrgId && s.OwnerId == OwnerId), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([booking]);
 
-        var result = await _controller.GetAll(null);
+        var result = await _controller.GetAll(OrgResolver(), HostAuthorization());
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var items = Assert.IsAssignableFrom<IEnumerable<BookingResponseDto>>(ok.Value);
@@ -172,68 +175,68 @@ public class BookingsControllerTests
         Assert.Equal(booking.Id, dto.Id);
         Assert.Equal("Test Villa", dto.PropertyName);
         Assert.Equal("mario@test.com", dto.Guest.Email);
+        // No per-booking authorization lookup any more (A2-17): the scope is applied by the single query.
+        _mockAuthz.VerifyNoOtherCalls();
+        _mockBookingService.Verify(
+            b => b.GetBookingsAsync(It.IsAny<HostScope>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
-    public async Task GetAll_WithPropertyId_WhenUnauthorized_ReturnsNotFound()
+    public async Task GetAll_WithPropertyIdOfAnotherOrg_ReturnsNotFoundWithoutQueryingBookings()
     {
         SetUser(OwnerId);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(false);
+        _mockPropertyService.Setup(s => s.GetPropertyRecordAsync(PropertyId)).ReturnsAsync((Property?)null);
 
-        var result = await _controller.GetAll(PropertyId);
+        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), PropertyId);
 
-        Assert.IsType<NotFoundResult>(result.Result);
-        _mockBookingService.Verify(b => b.GetPropertyBookingsAsync(It.IsAny<Guid>()), Times.Never);
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        _mockBookingService.Verify(
+            b => b.GetBookingsAsync(It.IsAny<HostScope>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
-    public async Task GetAll_WithGuestId_FiltersOutBookingsFromUnauthorizedProperties()
+    public async Task GetAll_WithPropertyIdOwnedByAnotherMember_ReturnsForbidWithoutQueryingBookings()
+    {
+        SetUser(OwnerId);
+        var property = MakeProperty();
+        property.OwnerId = "auth0|other_member";
+        _mockPropertyService.Setup(s => s.GetPropertyRecordAsync(PropertyId)).ReturnsAsync(property);
+
+        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), PropertyId);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockBookingService.Verify(
+            b => b.GetBookingsAsync(It.IsAny<HostScope>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetAll_WithGuestId_PassesTheGuestAndTheCallerScopeToTheQuery()
     {
         SetUser(OwnerId);
         var guestId = Guid.NewGuid();
-        var accessibleBooking = new Booking
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = PropertyId,
-            OrgId = OrgId,
-            GuestId = guestId,
-            Guest = new Guest { Id = guestId, Email = "guest@example.com" },
-            Property = MakeProperty(),
-            CheckInDate = DateTime.UtcNow.AddDays(1),
-            CheckOutDate = DateTime.UtcNow.AddDays(2),
-            NumberOfGuests = 2,
-            Status = BookingStatus.Confirmed,
-            Source = BookingSource.Direct,
-        };
-        var otherPropertyId = Guid.NewGuid();
-        var leakedBooking = new Booking
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = otherPropertyId,
-            OrgId = Guid.NewGuid(),
-            GuestId = guestId,
-            Guest = new Guest { Id = guestId, Email = "guest@example.com" },
-            CheckInDate = DateTime.UtcNow.AddDays(3),
-            CheckOutDate = DateTime.UtcNow.AddDays(4),
-            NumberOfGuests = 2,
-            Status = BookingStatus.Confirmed,
-            Source = BookingSource.Direct,
-        };
+        _mockBookingService
+            .Setup(b => b.GetBookingsAsync(It.IsAny<HostScope>(), null, guestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
-        _mockBookingService.Setup(b => b.GetGuestBookingsAsync(guestId))
-            .ReturnsAsync([accessibleBooking, leakedBooking]);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(true);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, otherPropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(false);
-
-        var result = await _controller.GetAll(null, guestId);
+        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), null, guestId);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var items = Assert.IsAssignableFrom<IEnumerable<BookingResponseDto>>(ok.Value);
-        var dto = Assert.Single(items);
-        Assert.Equal(accessibleBooking.Id, dto.Id);
+        Assert.Empty(Assert.IsAssignableFrom<IEnumerable<BookingResponseDto>>(ok.Value));
+        _mockBookingService.Verify(
+            b => b.GetBookingsAsync(
+                It.Is<HostScope>(s => s.OrgId == OrgId && s.OwnerId == OwnerId), null, guestId, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    private static IOrgContextResolver OrgResolver()
+    {
+        var resolver = new Mock<IOrgContextResolver>();
+        resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgId);
+        return resolver.Object;
     }
 
     [Fact]

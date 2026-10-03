@@ -73,7 +73,8 @@ public class LeaseQuesturaCommunicationIntegrationTests
         // The reminder was sent and recorded (delivery 23/9, 48 hours to 25/9)...
         Assert.Contains(
             await ReminderPayloadsAsync(leaseId),
-            p => p == $"{RliDeadlineReminderJob.QuesturaThresholds.Delivery}:2026-09-25");
+            // One per landlord since LT-14: {threshold}:{deadline}:{partyId}.
+            p => p != null && p.StartsWith($"{RliDeadlineReminderJob.QuesturaThresholds.Delivery}:2026-09-25:", StringComparison.Ordinal));
         Assert.Contains(_factory.Email.Sent, e => e.Subject.Contains("Questura", StringComparison.Ordinal));
         // ...but it is not the communication: the item stays to do.
         var checklist = await GetChecklistAsync(client, leaseId);
@@ -284,8 +285,8 @@ public class LeaseQuesturaCommunicationIntegrationTests
             monthlyRent = 900m,
             parties = new object[]
             {
-                new { role = "Landlord", firstName = "Mario", lastName = "Rossi", fiscalCode = "RSSMRA80A01H501Z", citizenship = "IT", contactEmail = "mario@example.com" },
-                new { role = "Tenant", firstName = "John", lastName = "Smith", fiscalCode = "SMTJHN85B02Z404X", citizenship = tenantCitizenship, contactEmail = "john@example.com" },
+                new { role = "Landlord", firstName = "Mario", lastName = "Rossi", fiscalCode = "RSSMRA80A01H501U", citizenship = "IT", contactEmail = "mario@example.com" },
+                new { role = "Tenant", firstName = "John", lastName = "Smith", fiscalCode = "SMTJHN85B02Z404T", citizenship = tenantCitizenship, contactEmail = "john@example.com" },
             },
         });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);

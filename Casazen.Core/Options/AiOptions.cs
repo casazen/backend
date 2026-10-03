@@ -58,4 +58,13 @@ public class AiSubprocessorOptions
     public string? TransferMechanism { get; set; }
 
     public string? Website { get; set; }
+
+    /// <summary>Legal entity and registered office of the provider. To be completed by the product owner.</summary>
+    public string? Entity { get; set; }
+
+    /// <summary>
+    /// Where the legal details above come from: the official URL(s) and the date they were consulted (PL14-SUBP). Not
+    /// shown to users; a detail without a source must not be committed.
+    /// </summary>
+    public string? Source { get; set; }
 }

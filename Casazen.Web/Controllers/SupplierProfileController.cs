@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
+using Casazen.Web.Authorization;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
@@ -27,6 +29,7 @@ namespace Casazen.Web.Controllers;
 public class SupplierProfileController(
     ISupplierService supplierService,
     ISupplierOrgContextResolver supplierOrgContextResolver,
+    IComuneDirectory comuneDirectory,
     CalendarSyncService calendarSyncService,
     IImageStorageService imageStorageService,
     ILogger<SupplierProfileController> logger) : ControllerBase
@@ -35,59 +38,142 @@ public class SupplierProfileController(
 
     // ─── Activation ──────────────────────────────────────────────────────────
 
-    /// <summary>Returns the 5-step activation wizard status for the caller's supplier org.</summary>
+    /// <summary>
+    /// The 5-step activation wizard (SU-05): the step each requirement belongs to, the step to resume at (saved by the
+    /// server) and the Terms of Service acceptance. The same shape for a pending, active or suspended supplier: an
+    /// active one whose accepted Terms are not the current version sees <c>tos.reacceptanceRequired</c>.
+    /// </summary>
     [HttpGet("profile/activation")]
     [ProducesResponseType(typeof(ActivationStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ActivationStatusDto>> GetActivationStatus(CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
-        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
-
-        var steps = await supplierService.GetActivationStepsAsync(orgId.Value, cancellationToken);
+        var state = await supplierService.GetActivationAsync(orgId.Value, cancellationToken);
+        if (profile is null || state is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         return Ok(new ActivationStatusDto
         {
             Status = profile.Status.ToString(),
-            Steps = steps.Select(s => new ActivationStepDto
+            CurrentStep = state.CurrentStep,
+            Steps = state.Steps.Select(s => new ActivationStepDto
             {
                 Id = s.Id,
-                Label = s.Label,
                 Status = s.Status,
                 Blocker = s.Blocker,
+                Required = s.Required,
             }),
+            Tos = new SupplierTosDto
+            {
+                CurrentVersion = state.Tos.CurrentVersion,
+                AcceptedVersion = state.Tos.AcceptedVersion,
+                AcceptedAt = state.Tos.AcceptedAt,
+                ReacceptanceRequired = state.Tos.ReacceptanceRequired,
+                BlocksActions = state.Tos.BlocksActions,
+            },
         });
     }
 
-    /// <summary>Completes the activation wizard and sets the profile to <c>Active</c>.</summary>
+    /// <summary>Saves the wizard step (1-5) the supplier reached, so the wizard resumes there on any device.</summary>
+    [HttpPut("profile/activation/step")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> SetActivationStep(
+        [FromBody] SetActivationStepRequest request,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        try
+        {
+            await supplierService.SetActivationStepAsync(orgId.Value, request.Step, cancellationToken);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+        }
+    }
+
+    /// <summary>
+    /// Completes the activation wizard and sets the profile to <c>Active</c> (SU-05). 409
+    /// <c>supplier_activation_blocked</c> with <c>blockers</c> (stable codes, e.g. <c>categories_missing</c>) when the stored
+    /// profile does not meet the requirements or the Terms are not accepted; 409 <c>supplier_tos_version_stale</c> when
+    /// <c>tosVersion</c> is not the current version. The acceptance is recorded with version, time and IP.
+    /// </summary>
     [HttpPost("profile/activation/complete")]
     [ProducesResponseType(typeof(CompleteActivationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<CompleteActivationResponse>> CompleteActivation(
         [FromBody] CompleteActivationRequest request,
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        var userId = User.GetUserId();
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+        if (userId is null)
+            return Unauthorized();
 
         try
         {
-            var profile = await supplierService.CompleteActivationAsync(orgId.Value, request.TosAccepted, cancellationToken);
+            var profile = await supplierService.CompleteActivationAsync(
+                orgId.Value, request.TosAccepted, request.TosVersion, userId, ClientIp.GetString(HttpContext), cancellationToken);
             return Ok(new CompleteActivationResponse { Status = profile.Status.ToString() });
         }
-        catch (KeyNotFoundException ex)
+        catch (SupplierActivationBlockedException ex)
         {
-            return NotFound(new { error = ex.Message });
+            var problem = ApiProblemDetails.Create(
+                HttpContext, StatusCodes.Status409Conflict, ex.Code, ex.MessageKey);
+            problem.Extensions["blockers"] = ex.Blockers;
+            return new ObjectResult(problem)
+            {
+                StatusCode = StatusCodes.Status409Conflict,
+                ContentTypes = { ApiProblemDetails.ContentType },
+            };
         }
-        catch (InvalidOperationException ex)
+        catch (KeyNotFoundException)
         {
-            return Conflict(new { error = ex.Message, code = "activation_blockers_remain" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+        }
+    }
+
+    /// <summary>
+    /// Re-acceptance of the current Terms of Service by an active supplier after a new version (SU-05, A4-31). It never
+    /// changes the status. 409 <c>supplier_tos_version_stale</c> when <c>tosVersion</c> is not the current version.
+    /// </summary>
+    [HttpPost("profile/tos/accept")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> AcceptTos([FromBody] AcceptSupplierTosRequest request, CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        var userId = User.GetUserId();
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            await supplierService.AcceptTosAsync(orgId.Value, request.TosVersion, userId, ClientIp.GetString(HttpContext), cancellationToken);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
         }
     }
 
@@ -100,17 +186,19 @@ public class SupplierProfileController(
     public async Task<ActionResult<SupplierProfileDto>> GetProfile(CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
-        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+        if (profile is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
-        return Ok(MapProfile(profile));
+        return Ok(await MapProfileAsync(profile, cancellationToken));
     }
 
     /// <summary>
     /// Updates the caller's supplier profile fields. <c>categories</c> holds codes of <c>GET /api/service-categories</c>;
-    /// any other value is a 422 <c>invalid_service_category</c> and nothing is saved (SU-03).
+    /// any other value is a 422 <c>invalid_service_category</c> and nothing is saved (SU-03). <c>comuneIstatCodes</c> holds the
+    /// ISTAT codes of the comuni chosen from the official list (<c>GET /api/comuni</c>): a code that is not an active comune of
+    /// it is a 422 <c>comune_istat_unknown</c>, any code while the list is not imported <c>comuni_dataset_unavailable</c> (SU-04).
     /// </summary>
     [HttpPut("profile")]
     [ProducesResponseType(typeof(SupplierProfileDto), StatusCodes.Status200OK)]
@@ -121,7 +209,7 @@ public class SupplierProfileController(
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         logger.LogInformation(
             "UpdateProfile: OrgId={OrgId}, Categories={CatCount}, Comuni={ComCount}, Bio={BioLen}",
@@ -134,11 +222,12 @@ public class SupplierProfileController(
             orgId.Value,
             request.LegalName, request.VatNumber, request.Phone,
             request.Categories, request.Comuni, request.Bio, request.PhotoUrls,
-            cancellationToken);
+            cancellationToken,
+            request.ComuneIstatCodes);
 
-        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+        if (profile is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
-        var dto = MapProfile(profile);
+        var dto = await MapProfileAsync(profile, cancellationToken);
         logger.LogInformation(
             "UpdateProfile result: Categories={CatCount}, Comuni={ComCount}, Bio={BioLen}",
             dto.Categories.Count(),
@@ -146,6 +235,50 @@ public class SupplierProfileController(
             dto.Bio?.Length ?? 0);
 
         return Ok(dto);
+    }
+
+    // ─── Public showcase (SU-13) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// The owner's preview of the public showcase (<c>/fornitori/{slug}</c>): the same content the public page shows, built
+    /// from the caller's own profile whatever its status, with where it is published. An active supplier without a slug
+    /// (activated before SU-13) gets one here. <c>published</c> is true only for an active supplier with a slug; a pending or
+    /// suspended supplier previews a page nobody else can open yet (<c>publicUrl</c> null).
+    /// </summary>
+    [HttpGet("showcase")]
+    [ProducesResponseType(typeof(SupplierShowcasePreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierShowcasePreviewDto>> GetShowcasePreview(
+        [FromServices] Casazen.Infrastructure.Email.PublicSiteLinks publicSiteLinks,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        await supplierService.EnsureShowcaseSlugAsync(orgId.Value, cancellationToken);
+        var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
+        if (profile is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var listed = await comuneDirectory.GetByIstatCodesAsync(SupplierComuniView.IstatCodes(profile), cancellationToken);
+        var today = TimeProvider.System.TodayInRomeAsDateOnly();
+        var availability = await supplierService.GetAvailabilityAsync(orgId.Value, today, today.AddDays(13), cancellationToken);
+
+        var path = string.IsNullOrEmpty(profile.ShowcaseSlug)
+            ? null
+            : Casazen.Infrastructure.Email.PublicSitePaths.SupplierShowcase(profile.ShowcaseSlug);
+        return Ok(new SupplierShowcasePreviewDto
+        {
+            Showcase = SupplierShowcaseMapper.ToDto(profile, listed, availability),
+            Status = profile.Status.ToString(),
+            Published = profile.Status == SupplierStatus.Active && path is not null,
+            Slug = profile.ShowcaseSlug,
+            PublicPath = path,
+            // The public base URL is configuration (App__PublicSiteBaseUrl), never written here (decision D3).
+            PublicUrl = path is null ? null : publicSiteLinks.TryPublicPage(path),
+            Indexable = false,
+        });
     }
 
     // ─── Inbox ───────────────────────────────────────────────────────────────
@@ -234,17 +367,17 @@ public class SupplierProfileController(
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var rangeFrom = from ?? TimeProvider.System.TodayInRomeAsDateOnly();
         var rangeTo = to ?? rangeFrom.AddDays(13);
 
         if (rangeTo < rangeFrom)
-            return BadRequest(new { error = "to deve essere maggiore o uguale a from" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierAvailabilityRangeInvalid");
 
         const int maxRangeDays = 90;
         if (rangeTo.DayNumber - rangeFrom.DayNumber > maxRangeDays)
-            return BadRequest(new { error = $"L'intervallo massimo è di {maxRangeDays} giorni" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierAvailabilityRangeTooLong", maxRangeDays);
 
         var entries = await supplierService.GetAvailabilityAsync(orgId.Value, rangeFrom, rangeTo, cancellationToken);
 
@@ -267,7 +400,7 @@ public class SupplierProfileController(
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var entries = request.Dates.Select(d => (d.Date, d.Available));
         var updated = await supplierService.UpdateAvailabilityAsync(orgId.Value, entries, cancellationToken);
@@ -286,10 +419,10 @@ public class SupplierProfileController(
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var stats = await supplierService.GetDashboardStatsAsync(orgId.Value, cancellationToken);
-        if (stats is null) return NotFound(new { error = "Supplier profile not found" });
+        if (stats is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
         var (syncErrorCode, syncErrorMessage) = ICalErrorMessages.Describe(stats.CalendarSyncError, localizer);
 
         return Ok(new SupplierDashboardDto
@@ -359,15 +492,17 @@ public class SupplierProfileController(
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
-        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+        if (profile is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         const int maxPhotos = 10;
         var existingUrls = JsonSerializer.Deserialize<List<string>>(profile.PhotoUrlsJson, JsonOpts) ?? [];
         if (existingUrls.Count + photos.Count > maxPhotos)
-            return BadRequest(new { error = $"Massimo {maxPhotos} foto consentite. Attuali: {existingUrls.Count}, in upload: {photos.Count}" });
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierPhotoLimit",
+                maxPhotos, existingUrls.Count, photos.Count);
 
         var uploadedUrls = new List<string>();
         foreach (var photo in photos)
@@ -375,7 +510,10 @@ public class SupplierProfileController(
             if (!imageStorageService.ValidateImage(photo))
             {
                 logger.LogWarning("Invalid supplier photo rejected: {FileName}", photo.FileName);
-                return BadRequest(new { error = $"File non valido: {photo.FileName}. Formati accettati: JPEG, PNG, WebP. Dimensione max: 10 MB" });
+                // The file name is the caller's own text: shown back to them, never logged beyond the warning above.
+                return this.ApiProblem(
+                    StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierPhotoInvalid",
+                    Path.GetFileName(photo.FileName));
             }
 
             try
@@ -386,7 +524,7 @@ public class SupplierProfileController(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to upload supplier photo for org {OrgId}", orgId.Value);
-                return StatusCode(500, new { error = "Upload foto fallito" });
+                return this.ApiProblem(StatusCodes.Status500InternalServerError, ProblemCodes.ServerError, "SupplierPhotoUploadFailed");
             }
         }
 
@@ -412,10 +550,10 @@ public class SupplierProfileController(
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
-        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+        if (profile is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         return Ok(MapCalendarStatus(profile, localizer));
     }
@@ -436,7 +574,7 @@ public class SupplierProfileController(
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         Casazen.Core.Entities.SupplierProfile? profile;
         try
@@ -454,7 +592,7 @@ public class SupplierProfileController(
             return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey);
         }
 
-        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+        if (profile is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         QueueSupplierSync(orgId.Value, backgroundJobClient);
         return Accepted(MapCalendarStatus(profile, localizer));
@@ -474,10 +612,10 @@ public class SupplierProfileController(
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var (profile, queue) = await calendarSyncService.RequestSyncAsync(orgId.Value, cancellationToken);
-        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+        if (profile is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         if (queue)
             QueueSupplierSync(orgId.Value, backgroundJobClient);
@@ -514,6 +652,18 @@ public class SupplierProfileController(
             CalendarSyncErrorCode = syncErrorCode,
             CalendarSyncError = syncErrorMessage,
         };
+    }
+
+    private async Task<SupplierProfileDto> MapProfileAsync(
+        Casazen.Core.Entities.SupplierProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var codes = SupplierComuniView.IstatCodes(profile);
+        var listed = await comuneDirectory.GetByIstatCodesAsync(codes, cancellationToken);
+        var dto = MapProfile(profile);
+        dto.ComuneIstatCodes = codes;
+        dto.OperatingComuni = codes.Where(listed.ContainsKey).Select(c => ComuneDto.From(listed[c])).ToList();
+        return dto;
     }
 
     private static SupplierProfileDto MapProfile(Casazen.Core.Entities.SupplierProfile profile) => new()

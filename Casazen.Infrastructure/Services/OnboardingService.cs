@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
@@ -21,17 +22,17 @@ public class OnboardingService(
         if (consents is null)
         {
             if (requireConsents)
-                return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "Tutti i consensi obbligatori devono essere accettati."));
+                return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "ConsentsIncomplete"));
 
             return (true, null);
         }
 
         var stale = ValidateVersions(consents);
         if (stale.Length > 0)
-            return (false, new ConsentValidationError(ConsentValidationErrorType.StaleVersion, "Alcuni documenti legali sono stati aggiornati. Accetta le versioni correnti.", stale));
+            return (false, new ConsentValidationError(ConsentValidationErrorType.StaleVersion, "ConsentsStale", stale));
 
         if (!consents.TosAccepted || !consents.PrivacyAccepted || !consents.DpaAccepted || !consents.SubprocessorsAcknowledged)
-            return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "Tutti i consensi obbligatori devono essere accettati."));
+            return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "ConsentsIncomplete"));
 
         return (true, null);
     }
@@ -84,7 +85,7 @@ public class OnboardingService(
     {
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
-            return new OnboardingActivationStatus(false, false, false, false, false, false, false, null);
+            return ActivationChecklist.Build(new ActivationFacts(false, false, false, null, ActivationPropertyFacts.None, false));
 
         var roleChosen = user.RentalType.HasValue;
         var orgProvisioned = user.OrgId.HasValue;
@@ -112,9 +113,6 @@ public class OnboardingService(
                 && userConsents.Any(c => c.Type == ConsentType.SubprocessorsAck && c.Version == subprocessors.Version);
         }
 
-        var propertyCreated = orgId.HasValue && await db.Properties.IgnoreQueryFilters()
-            .AnyAsync(p => p.OrgId == orgId, cancellationToken);
-
         Org? org = null;
         if (orgId.HasValue)
         {
@@ -122,10 +120,9 @@ public class OnboardingService(
                 .FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         }
 
-        var hasActiveProperty = orgId.HasValue && await db.Properties.IgnoreQueryFilters()
-            .AnyAsync(p => p.OrgId == orgId && p.IsActive, cancellationToken);
-
-        var sitePublished = org is { IsActive: true } && hasActiveProperty;
+        var properties = org is null
+            ? ActivationPropertyFacts.None
+            : await LoadPropertyFactsAsync(org.Id, cancellationToken);
 
         var firstBookingTaken = orgId.HasValue && await db.Bookings.IgnoreQueryFilters()
             .AnyAsync(
@@ -134,29 +131,40 @@ public class OnboardingService(
                      && b.Source == BookingSource.Direct,
                 cancellationToken);
 
-        string? publicBookingUrl = null;
-        if (sitePublished && org is not null && !string.IsNullOrWhiteSpace(org.Slug))
-        {
-            // On App:PublicSiteBaseUrl (D3, no fallback domain): null only when it is not configured (Development/Testing).
-            publicBookingUrl = publicSiteLinks.TryPublicPage($"/book/{Uri.EscapeDataString(org.Slug)}");
-        }
+        var status = ActivationChecklist.Build(new ActivationFacts(
+            roleChosen, orgProvisioned, consentsAccepted, org, properties, firstBookingTaken));
 
-        var activated = roleChosen
-                        && orgProvisioned
-                        && consentsAccepted
-                        && propertyCreated
-                        && sitePublished
-                        && firstBookingTaken;
+        // Only a site that is really published has a link to share. On App:PublicSiteBaseUrl (D3, no fallback domain):
+        // null also when it is not configured (Development/Testing).
+        if (status.SitePublished && org is not null && !string.IsNullOrWhiteSpace(org.Slug))
+            return status with { PublicBookingUrl = publicSiteLinks.TryPublicPage($"/book/{Uri.EscapeDataString(org.Slug)}") };
 
-        return new OnboardingActivationStatus(
-            roleChosen,
-            orgProvisioned,
-            consentsAccepted,
-            propertyCreated,
-            sitePublished,
-            firstBookingTaken,
-            activated,
-            publicBookingUrl);
+        return status;
+    }
+
+    /// <summary>
+    /// Counts the org's properties for the checklist. Tenant filter only is lifted (PC-05): a soft-deleted property no
+    /// longer counts as created, published or with a CIN. "Published" is <see cref="PublicListing.IsPublished"/> itself,
+    /// evaluated by the database, so the checklist cannot drift from what the public site shows.
+    /// </summary>
+    private async Task<ActivationPropertyFacts> LoadPropertyFactsAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var ofOrg = db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(p => p.OrgId == orgId);
+
+        var published = await ofOrg.Where(PublicListing.IsPublished).CountAsync(cancellationToken);
+        var rows = await ofOrg
+            .Select(p => new { p.IsActive, p.IsPaused, p.ComplianceStatus, p.CinCode })
+            .ToListAsync(cancellationToken);
+
+        return new ActivationPropertyFacts(
+            rows.Count,
+            // Computed on read, never stored (compliance.md): the same CinFormat as the compliance gate.
+            rows.Count(r => CinFormat.IsValid(r.CinCode)),
+            published,
+            rows.Count(r => r.IsActive && r.IsPaused && r.ComplianceStatus == PropertyComplianceStatus.Active),
+            rows.Count(r => r.IsActive && r.ComplianceStatus != PropertyComplianceStatus.Active));
     }
 
     private string[] ValidateVersions(OnboardingConsentsInput consents)

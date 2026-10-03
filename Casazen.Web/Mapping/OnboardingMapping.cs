@@ -30,15 +30,29 @@ public static class OnboardingMapping
         FirstBookingTaken = status.FirstBookingTaken,
         Activated = status.Activated,
         PublicBookingUrl = status.PublicBookingUrl,
+        Steps = status.Steps
+            .Select(step => new ActivationStepDto
+            {
+                Key = step.Key,
+                State = step.State,
+                Reason = step.Reason,
+                Done = step.Done,
+                Total = step.Total,
+            })
+            .ToList(),
     };
 
-    public static LegalDocumentDto ToDto(this LegalDocumentMeta meta) => new()
+    public static LegalDocumentDto ToDto(this LegalDocumentMeta meta, LegalDocumentKind kind, LegalDocumentText? text) => new()
     {
+        Key = kind.ToString().ToLowerInvariant(),
         Version = meta.Version,
         EffectiveAt = meta.EffectiveAt,
         Title = meta.Title,
         Summary = meta.Summary,
         DocumentUrl = meta.DocumentUrl,
+        Available = text is not null || meta.DocumentUrl is not null,
+        ContentHtml = text?.Html,
+        ContentLanguage = text?.Language,
     };
 
     public static SubprocessorsDocumentDto ToDto(this SubprocessorsDocument doc) => new()
@@ -47,8 +61,11 @@ public static class OnboardingMapping
         EffectiveAt = doc.EffectiveAt,
         Items = doc.Items.Select(i => new SubprocessorItemDto
         {
+            Key = i.Key,
             Name = i.Name,
             Purpose = i.Purpose,
+            PurposeKey = i.PurposeKey,
+            Entity = i.Entity,
             Region = i.Region,
             Website = i.Website,
             TransferMechanism = i.TransferMechanism,

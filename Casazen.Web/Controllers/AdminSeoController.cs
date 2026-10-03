@@ -21,6 +21,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.AdminOnly)]
 public class AdminSeoController(
     ISeoContentService seoContentService,
+    ISeoComuneCatalog comuneCatalog,
     IBackgroundJobClient backgroundJobClient,
     ILogger<AdminSeoController> logger) : ControllerBase
 {
@@ -109,11 +110,12 @@ public class AdminSeoController(
     private string ActorUserId() =>
         User.GetUserId() ?? throw new UnauthorizedAccessException("Admin without subject claim");
 
+    /// <summary>The pilot comuni of the SEO pages, as found in the official ISTAT list (empty until it is imported).</summary>
     [HttpGet("comuni")]
     [ProducesResponseType(typeof(IReadOnlyList<SeoComuneRegistryDto>), StatusCodes.Status200OK)]
-    public ActionResult<IReadOnlyList<SeoComuneRegistryDto>> ListComuni()
+    public async Task<ActionResult<IReadOnlyList<SeoComuneRegistryDto>>> ListComuni(CancellationToken cancellationToken)
     {
-        var items = ItalianComuneRegistry.All
+        var items = (await comuneCatalog.GetPilotsAsync(cancellationToken))
             .Select(c => new SeoComuneRegistryDto(c.Code, c.Name, c.RegionSlug, c.ComuneSlug))
             .ToList();
         return Ok(items);
@@ -128,12 +130,23 @@ public class AdminSeoController(
     [AiRateLimit]
     [ProducesResponseType(typeof(SeoGenerateAcceptedDto), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
-    public ActionResult<SeoGenerateAcceptedDto> Generate([FromBody] SeoGenerateRequestDto request)
+    public async Task<ActionResult<SeoGenerateAcceptedDto>> Generate(
+        [FromBody] SeoGenerateRequestDto request,
+        CancellationToken cancellationToken)
     {
-        var comuneCodes = request.ComuneCodes.Count > 0
+        IReadOnlyList<string> comuneCodes = request.ComuneCodes.Count > 0
             ? request.ComuneCodes
-            : ItalianComuneRegistry.AllCodes;
+            : (await comuneCatalog.GetPilotsAsync(cancellationToken)).Select(c => c.Code).ToList();
+        if (comuneCodes.Count == 0)
+        {
+            // No comune named and none of the pilots found: the official list is not imported (never "0 pages queued").
+            return this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                ComuneErrorCodes.DatasetUnavailable,
+                ComuneErrorCodes.DatasetUnavailableMessageKey);
+        }
 
         var pageTypes = request.PageTypes?.Count > 0
             ? request.PageTypes

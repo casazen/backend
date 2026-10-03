@@ -70,17 +70,46 @@ public class SubscriptionDto
     public int Seats { get; set; } = 1;
     public string? BillingCountry { get; set; }
     public string? VatId { get; set; }
+
+    /// <summary>SDI recipient code ("codice destinatario") for the Italian e-invoice (PL-13).</summary>
+    public string? SdiRecipientCode { get; set; }
+
+    /// <summary>PEC address for the Italian e-invoice (PL-13).</summary>
+    public string? PecEmail { get; set; }
+
+    /// <summary>Codice fiscale of the billed person or company (PL-13).</summary>
+    public string? FiscalCode { get; set; }
 }
 
 public class UpdateBillingProfileRequest
 {
     public string BillingCountry { get; set; } = string.Empty;
+
+    /// <summary>Declared VAT id (letters and digits; spaces, dots and dashes are removed). Verified by Stripe at checkout.</summary>
     public string? VatId { get; set; }
+
+    /// <summary>Optional SDI recipient code ("codice destinatario"): letters and digits, at most 7. Omitted = unchanged, "" = cleared.</summary>
+    public string? SdiRecipientCode { get; set; }
+
+    /// <summary>Optional PEC address for the e-invoice. Omitted = unchanged, "" = cleared.</summary>
+    public string? PecEmail { get; set; }
+
+    /// <summary>Optional codice fiscale of the billed person or company: letters and digits, at most 16. Omitted = unchanged, "" = cleared.</summary>
+    public string? FiscalCode { get; set; }
 }
 
 public class BillingProfileDto
 {
     public string BillingCountry { get; set; } = string.Empty;
     public string? VatId { get; set; }
+
+    /// <summary>
+    /// Always null since PL-13: the VAT id is verified by Stripe (VIES) on the one entered at checkout, not by this API.
+    /// Kept for compatibility with the web app.
+    /// </summary>
     public bool? ViesValidated { get; set; }
+
+    public string? SdiRecipientCode { get; set; }
+    public string? PecEmail { get; set; }
+    public string? FiscalCode { get; set; }
 }

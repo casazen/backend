@@ -316,8 +316,13 @@ public class FieldEncryptionPostgresTests
             // and "AnonymizedAt" do not exist yet, "DataRetentionUntil" still required on Guests): write them by SQL with
             // the columns before CO-15, like the credentials below are written with the columns before CO-14. The guests
             // must exist before the booking and the stay guest, which have a foreign key to them.
-            db.AddRange(org, property);
+            // The org row in SQL: the current Org entity has columns that later migrations add (PL-04).
+            await LegacyOrgRows.InsertAsync(db, org);
+            // Same for the "Properties" columns added after this point (PC-03 pause): created just for the insert.
+            await AddPropertiesColumnsAfterCo14Async(db);
+            db.Add(property);
             await db.SaveChangesAsync();
+            await DropPropertiesColumnsAfterCo14Async(db);
             await InsertGuestBeforeCo15Async(db, guest);
             await InsertGuestBeforeCo15Async(db, empty);
             // CO-21 (unrelated to CO-15) added 4 nullable Bookings columns after this migration point too. They have no
@@ -393,6 +398,34 @@ public class FieldEncryptionPostgresTests
         ALTER TABLE "Bookings" DROP COLUMN "ICalFeedId";
         ALTER TABLE "Bookings" DROP COLUMN "OtaReviewRaisedAt";
         ALTER TABLE "Bookings" DROP COLUMN "OtaReviewReason";
+        """);
+
+    /// <summary>
+    /// Adds the "Properties" columns of the migrations after this point (PC-03 <c>AddPropertyPause</c>, PC-05
+    /// <c>AddPropertySoftDelete</c>, SU-04 <c>AddComuniIstat</c>), so the model-based insert of the property works here
+    /// too. Paired with
+    /// <see cref="DropPropertiesColumnsAfterCo14Async"/>.
+    /// </summary>
+    private static Task AddPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE "Properties" ADD COLUMN "IsPaused" boolean NOT NULL DEFAULT false;
+        ALTER TABLE "Properties" ADD COLUMN "PausedAt" timestamp with time zone;
+        ALTER TABLE "Properties" ADD COLUMN "IsDeleted" boolean NOT NULL DEFAULT false;
+        ALTER TABLE "Properties" ADD COLUMN "DeletedAt" timestamp with time zone;
+        ALTER TABLE "Properties" ADD COLUMN "ComuneIstatCode" character varying(6);
+        ALTER TABLE "Properties" ADD COLUMN "RegionCode" character varying(10);
+        ALTER TABLE "Properties" ADD COLUMN "Unit" character varying(30);
+        ALTER TABLE "Properties" ADD COLUMN "AddressKey" text;
+        """);
+
+    private static Task DropPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE "Properties" DROP COLUMN "IsPaused";
+        ALTER TABLE "Properties" DROP COLUMN "PausedAt";
+        ALTER TABLE "Properties" DROP COLUMN "IsDeleted";
+        ALTER TABLE "Properties" DROP COLUMN "DeletedAt";
+        ALTER TABLE "Properties" DROP COLUMN "ComuneIstatCode";
+        ALTER TABLE "Properties" DROP COLUMN "RegionCode";
+        ALTER TABLE "Properties" DROP COLUMN "Unit";
+        ALTER TABLE "Properties" DROP COLUMN "AddressKey";
         """);
 
     /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>

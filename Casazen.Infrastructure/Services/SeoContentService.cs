@@ -18,16 +18,19 @@ namespace Casazen.Infrastructure.Services;
 public class SeoContentService(
     ISeoContentRepository repository,
     ITouristTaxQuoteService touristTaxQuoteService,
+    ISeoComuneCatalog comuneCatalog,
     IAiProvider aiProvider,
     PublicSiteLinks publicSiteLinks,
     ILogger<SeoContentService> logger,
-    TimeProvider? timeProvider = null) : ISeoContentService
+    TimeProvider? timeProvider = null,
+    IAiResponseCache? aiCache = null) : ISeoContentService
 {
+    /// <summary>Language of the generated pages: the prompt asks for Italian, the regulations are Italian.</summary>
+    public const string ContentLanguage = "it";
+
     public const int CounselRequiredBatchSize = 100;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
-
-    private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
 
     public async Task<SeoPagePublicDto?> GetComplianceGuideAsync(
         string regionSlug,
@@ -55,7 +58,7 @@ public class SeoContentService(
         PublicTouristTaxCalculateRequest request,
         CancellationToken cancellationToken = default)
     {
-        var comune = ItalianComuneRegistry.GetBySlug(request.ComuneSlug);
+        var comune = await comuneCatalog.GetPilotBySlugAsync(request.ComuneSlug, cancellationToken);
         if (comune is null)
             return null;
 
@@ -103,7 +106,8 @@ public class SeoContentService(
             pageSize,
             cancellationToken);
 
-        return (items.Select(i => MapAdminPage(i.Page, i.LatestRevision, i.LastReviewEvent)).ToList(), total);
+        var comuni = await comuneCatalog.GetByCodesAsync(items.Select(i => i.Page.ComuneCode), cancellationToken);
+        return (items.Select(i => MapAdminPage(i.Page, i.LatestRevision, i.LastReviewEvent, comuni)).ToList(), total);
     }
 
     public async Task<SeoPageAdminDetailDto?> GetAdminPageAsync(Guid pageId, CancellationToken cancellationToken = default)
@@ -117,9 +121,10 @@ public class SeoContentService(
             ? latest?.Id == publishedId ? latest : await repository.GetRevisionAsync(publishedId, cancellationToken)
             : null;
         var history = await repository.GetReviewEventsAsync(page.Id, cancellationToken);
+        var comuni = await comuneCatalog.GetByCodesAsync([page.ComuneCode], cancellationToken);
 
         return new SeoPageAdminDetailDto(
-            MapAdminPage(page, latest is null ? null : Summary(latest), history.FirstOrDefault()),
+            MapAdminPage(page, latest is null ? null : Summary(latest), history.FirstOrDefault(), comuni),
             published is null ? null : Preview(published),
             latest is not null && latest.Id != page.PublishedRevisionId ? Preview(latest) : null,
             history.Select(ToDto).ToList());
@@ -221,7 +226,7 @@ public class SeoContentService(
 
         foreach (var comuneCode in comuneCodes)
         {
-            var comune = ItalianComuneRegistry.GetByCode(comuneCode);
+            var comune = await comuneCatalog.GetByCodeAsync(comuneCode, cancellationToken);
             if (comune is null)
             {
                 logger.LogWarning("Unknown comune code {ComuneCode}; skipping SEO generation", comuneCode);
@@ -273,7 +278,7 @@ public class SeoContentService(
 
         foreach (var page in stalePages)
         {
-            var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode);
+            var comune = await comuneCatalog.GetByCodeAsync(page.ComuneCode, cancellationToken);
             if (comune is null)
                 continue;
 
@@ -354,12 +359,12 @@ public class SeoContentService(
     private async Task<IReadOnlyList<IndexablePage>> GetIndexablePagesAsync(CancellationToken cancellationToken)
     {
         var candidates = await repository.GetPublishedPagesForSitemapAsync(cancellationToken);
+        var comuni = await comuneCatalog.GetByCodesAsync(candidates.Select(p => p.ComuneCode), cancellationToken);
         var today = _clock.TodayInRomeAsDateOnly();
         var pages = new List<IndexablePage>(candidates.Count);
         foreach (var page in candidates)
         {
-            var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode);
-            if (comune is null)
+            if (!comuni.TryGetValue(page.ComuneCode, out var comune))
                 continue;
 
             // A8-12 (BK-03): a calculator page of a comune without a rate in force is not worth indexing.
@@ -416,7 +421,7 @@ public class SeoContentService(
         var prompt = SeoContentPrompt.Build(comune, pageType, taxRates);
         // A paid provider is wrapped by the platform budget guard: it checks the cap BEFORE the call and throws
         // AiBudgetExceededException, which stops the batch (A8-07). The prompt holds public regulatory data only.
-        var aiResult = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
+        var aiResult = await GenerateOrReuseAsync(prompt, cacheKey, forceRegenerate, cancellationToken);
         var (contentStatus, bodyHtml) = SeoGeneratedContent.Evaluate(aiResult);
         if (contentStatus != SeoContentStatus.Generated)
         {
@@ -456,9 +461,30 @@ public class SeoContentService(
         return true;
     }
 
+    /// <summary>
+    /// A8-25: an answer for the same data and prompt version is reused (a batch retried after a stop does not pay twice),
+    /// from a cache that is bounded and expires. "Regenerate" (<paramref name="forceRegenerate"/>) never reads it: it asks
+    /// the provider again and replaces the entry. Only a real answer is kept, never a placeholder or an empty text.
+    /// </summary>
+    private async Task<AiGenerationResult> GenerateOrReuseAsync(
+        string prompt,
+        string cacheKey,
+        bool forceRegenerate,
+        CancellationToken cancellationToken)
+    {
+        if (!forceRegenerate && aiCache is not null && aiCache.TryGet<AiGenerationResult>(null, cacheKey, out var cached) && cached is not null)
+            return cached with { FromCache = true };
+
+        var result = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
+        if (aiCache is not null && result.ProviderConfigured && !string.IsNullOrWhiteSpace(result.Content))
+            aiCache.Set(null, cacheKey, result with { FromCache = false });
+
+        return result;
+    }
+
     private async Task<SeoPagePublicDto> MapPublicPageAsync(SeoContentPage page, CancellationToken cancellationToken)
     {
-        var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode)
+        var comune = await comuneCatalog.GetByCodeAsync(page.ComuneCode, cancellationToken)
             ?? throw new InvalidOperationException($"Unknown comune code {page.ComuneCode}");
 
         // SE-01 (A8-05): the approved revision only, never a newer draft. Sanitized again on read (FD-15).
@@ -484,12 +510,13 @@ public class SeoContentService(
             comune.ComuneSlug,
             BuildCanonicalUrl(comune, page.PageType),
             refreshedAt,
-            BuildDisclaimers(refreshedAt),
+            revision?.ContentStatus == SeoContentStatus.Generated,
+            ContentLanguage,
             BuildCta(comune, page.PageType),
             taxRates.Select(ToPublicSummary).ToList());
     }
 
-    /// <summary>The registry gives a trusted ISTAT code: rates carrying one are matched by code, the others by name.</summary>
+    /// <summary>The official list gives a trusted ISTAT code: rates carrying one are matched by code, the others by name.</summary>
     private static TouristTaxComune ToTouristTaxComune(ComuneInfo comune) => new(comune.Code, comune.Name);
 
     private static PublicTouristTaxRateSummaryDto ToPublicSummary(TouristTaxRate rate) =>
@@ -513,9 +540,10 @@ public class SeoContentService(
     private SeoPageAdminDto MapAdminPage(
         SeoContentPage page,
         SeoRevisionSummary? latest,
-        SeoReviewEventSummary? lastReviewEvent)
+        SeoReviewEventSummary? lastReviewEvent,
+        IReadOnlyDictionary<string, ComuneInfo> comuni)
     {
-        var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode);
+        var comune = comuni.GetValueOrDefault(page.ComuneCode);
         var publicPath = comune is null ? null : SeoPagePaths.For(comune, page.PageType);
 
         return new SeoPageAdminDto(
@@ -627,18 +655,6 @@ public class SeoContentService(
     /// <summary>Canonical URL on App:PublicSiteBaseUrl (D3); null only when it is not configured (Development/Testing).</summary>
     private string? BuildCanonicalUrl(ComuneInfo comune, SeoPageType pageType) =>
         publicSiteLinks.TryPublicPage(SeoPagePaths.For(comune, pageType));
-
-    private static SeoDisclaimersDto BuildDisclaimers(DateTime? refreshedAt)
-    {
-        var dateText = refreshedAt.HasValue
-            ? refreshedAt.Value.ToString("d MMMM yyyy", ItalianCulture)
-            : "data non disponibile";
-
-        return new SeoDisclaimersDto(
-            $"Ultimo aggiornamento: {dateText}",
-            "Informazione generale, non consulenza legale. L'host resta responsabile degli adempimenti.",
-            "Contenuto generato con AI — verifica le fonti ufficiali");
-    }
 
     /// <summary>
     /// Signup CTA on App:PublicSiteBaseUrl (D3, SE-03); relative only when it is not configured (Development/Testing).

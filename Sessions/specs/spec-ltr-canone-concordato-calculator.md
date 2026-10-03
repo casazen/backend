@@ -5,12 +5,12 @@ title: Canone concordato eligibility calculator & assisted IMU notification
 phase: 1.5
 type: feature
 priority: —
-status: frozen
+status: partial
 issue:
 depends_on: [spec-ltr-rli-registration, spec-ltr-frontend]
 blocks: []
 exit_contributes_to: LTR GA — a long-rent landlord can determine canone concordato eligibility for a property's comune, feed the result into the existing counsel-reviewed contract template, and export an assisted (non-automatic) comune IMU-reduction notification
-last_reviewed: 2026-08-16
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Canone Concordato Eligibility Calculator & Assisted IMU Notification
@@ -27,7 +27,7 @@ This spec adds the **data and calculation layer** the codebase is missing: a `Te
 
 **Governance note**: the entire "Phase 1.5 — LTR" roadmap phase is marked `frozen` in `Sessions/specs/README.md` (issue #269, "closed — do not resume"). This spec is prepared as ready-to-build documentation for when that freeze lifts; its `status: frozen` frontmatter is intentional, not an oversight, and mirrors the four sibling `spec-ltr-*` files.
 
-**Phase:** 1.5 — LTR Complete + Verify (frozen) · **Type:** feature · **Status:** frozen · **Issue:** none yet
+**Phase:** 1.5 — LTR Complete + Verify (frozen) · **Type:** feature · **Status:** partial (realigned 2026-10-02, see Sessions/specs/README.md) · **Issue:** none yet
 
 Design: not yet started (blocked by phase freeze). ADRs: none.
 

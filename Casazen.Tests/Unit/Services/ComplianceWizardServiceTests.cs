@@ -156,6 +156,8 @@ public class ComplianceWizardServiceTests
     public async Task Activation_PublishedTouristTaxPage_ReturnsPublicPageSlug()
     {
         await using var db = CreateDb(nameof(Activation_PublishedTouristTaxPage_ReturnsPublicPageSlug));
+        // The page of a comune is found through the official list (SU-04): by name for a property without a chosen comune.
+        await ComuneTestData.ImportSampleAsync(db);
         var property = await SeedPropertyAsync(db, city: "Como");
         db.SeoContentPages.Add(new SeoContentPage
         {

@@ -1,6 +1,8 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
+using Casazen.Core.Validation;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
@@ -28,6 +30,7 @@ namespace Casazen.Web.Controllers;
 public class LongRentServiceRequestsController(
     IServiceRequestService serviceRequestService,
     ISupplierService supplierService,
+    IComuneDirectory comuneDirectory,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
     AppDbContext db) : ControllerBase
@@ -51,8 +54,10 @@ public class LongRentServiceRequestsController(
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"): filtering by it
+        // would silently match nothing instead of leaving the filter unapplied like any other unknown value (PL-07).
         ServiceRequestStatus? statusFilter = null;
-        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ServiceRequestStatus>(status, true, out var parsed))
+        if (EnumNames.TryParseDefined<ServiceRequestStatus>(status, out var parsed))
             statusFilter = parsed;
 
         var scope = await GetHostScopeAsync(cancellationToken);
@@ -94,11 +99,13 @@ public class LongRentServiceRequestsController(
         var (property, denied) = await AuthorizePropertyAsync(propertyId, LongRentPropertyOperations.Read, cancellationToken);
         if (denied is not null) return denied;
 
-        var suppliers = await supplierService.GetActiveByComune(property!.City, category, cancellationToken);
+        var suppliers = await supplierService.GetActiveByComuneAsync(new ComuneTarget(property!.ComuneIstatCode, property.City), category, cancellationToken);
 
+        var listed = await comuneDirectory.GetByIstatCodesAsync(
+            suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);
         return Ok(new PagedResultDto<SupplierPickerDto>
         {
-            Items = suppliers.Select(SupplierPickerDto.From).ToList(),
+            Items = suppliers.Select(sp => SupplierPickerDto.From(sp, listed)).ToList(),
             TotalCount = suppliers.Count,
             Page = 1,
             PageSize = suppliers.Count,
@@ -193,7 +200,7 @@ public class LongRentServiceRequestsController(
         var property = await db.Properties
             .AsNoTracking()
             .Where(p => p.Id == propertyId)
-            .Select(p => new PropertyRef(p.OrgId, p.OwnerId, p.City))
+            .Select(p => new PropertyRef(p.OrgId, p.OwnerId, p.City, p.ComuneIstatCode))
             .FirstOrDefaultAsync(cancellationToken);
 
         if (property is null)
@@ -205,5 +212,5 @@ public class LongRentServiceRequestsController(
             : (null, Forbid());
     }
 
-    private sealed record PropertyRef(Guid OrgId, string OwnerId, string City);
+    private sealed record PropertyRef(Guid OrgId, string OwnerId, string City, string? ComuneIstatCode);
 }

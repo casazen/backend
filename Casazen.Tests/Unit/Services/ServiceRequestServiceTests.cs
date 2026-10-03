@@ -101,6 +101,49 @@ public class ServiceRequestServiceTests
     }
 
     [Fact]
+    public async Task TakeAsync_SupplierAcceptedAnOlderTermsVersion_RefusesUntilItAcceptsTheCurrentOne()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        var profile = await db.SupplierProfiles.SingleAsync(sp => sp.OrgId == supplierOrgId);
+        profile.TosAcceptedAt = DateTime.UtcNow;
+        profile.TosVersion = "2025-01-v1";
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => service.TakeAsync(created.Id, supplierOrgId, "auth0|supplier-member"));
+
+        Assert.Equal(SupplierActivation.TosReacceptanceRequiredCode, ex.Code);
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await db.ServiceRequests.AsNoTracking().SingleAsync(r => r.Id == created.Id)).Status);
+
+        profile.TosVersion = LegalTestServices.TosVersion;
+        await db.SaveChangesAsync();
+        var taken = await service.TakeAsync(created.Id, supplierOrgId, "auth0|supplier-member");
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, taken.Status);
+    }
+
+    [Fact]
+    public async Task TakeAsync_SupplierAcceptedBeforeVersionsWereRecorded_IsNotBlocked()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        (await db.SupplierProfiles.SingleAsync(sp => sp.OrgId == supplierOrgId)).TosAcceptedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var taken = await service.TakeAsync(created.Id, supplierOrgId, "auth0|supplier-member");
+
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, taken.Status);
+    }
+
+    [Fact]
     public async Task CreateAsync_ShortRentWithStayOfTheProperty_StoresBookingAndShortRent()
     {
         await using var db = CreateDb();
@@ -364,6 +407,111 @@ public class ServiceRequestServiceTests
 
         Assert.Equal(ServiceRequestStatus.Pagato, paid.Status);
         Assert.NotNull(paid.PaidAt);
+    }
+
+    // ─── SU-09: the supplier is told when the host marks a request as paid ───
+
+    [Fact]
+    public async Task MarkPaidAsync_FromCompletato_QueuesTheEmailAndOnePushToTheSupplier()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var push = new RecordingPushQueue();
+        var service = CreateService(db, queue, push: push);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+        await service.CompleteAsync(created.Id, supplierOrgId, null);
+        queue.Queued.Clear();
+        var pushesBefore = push.Queued.Count;
+
+        await service.MarkPaidAsync(created.Id, hostOrgId);
+
+        var (to, content, template) = Assert.Single(queue.Queued);
+        Assert.Equal("supplier@test.com", to);
+        Assert.Equal(EmailTemplates.Names.ServiceRequestPaid, template);
+        Assert.Equal("Richiesta fornitore segnata come pagata — Test Property", content.Subject);
+        Assert.Contains("Supplier Srl", content.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("<strong>Pulizie</strong>", content.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains($"{EmailTestHelpers.PublicSiteBaseUrl}/app/supplier/inbox", content.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("fuori da CasaZen", content.HtmlBody, StringComparison.Ordinal);
+        var toSupplier = Assert.Single(push.Queued.Skip(pushesBefore));
+        Assert.Equal(PushDeliveryKeys.ServiceRequestStatus(created.Id, ServiceRequestStatus.Pagato), toSupplier.DeliveryKey);
+        Assert.Equal(PushAudience.SupplierOrg(supplierOrgId), toSupplier.Audience);
+        Assert.Equal(PushTypes.ServiceRequestPaid, toSupplier.Payload.Type);
+        Assert.Equal("Richiesta segnata come pagata", toSupplier.Payload.Title);
+        Assert.Equal("Pulizie presso Test Property: l'host ha segnato il servizio come pagato.", toSupplier.Payload.Body);
+        // The stay is the host's: the supplier's push carries no booking and opens a screen the app has.
+        Assert.Null(toSupplier.Payload.BookingId);
+        Assert.Equal(PushRoutes.Properties, toSupplier.Payload.Route);
+        Assert.Equal(created.Id, toSupplier.Payload.ServiceRequestId);
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_SupplierSuspendedAfterCompleting_StillGetsTheNotification()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+        await service.CompleteAsync(created.Id, supplierOrgId, null);
+        (await db.SupplierProfiles.SingleAsync(sp => sp.OrgId == supplierOrgId)).Status = SupplierStatus.Suspended;
+        await db.SaveChangesAsync();
+        queue.Queued.Clear();
+
+        var paid = await service.MarkPaidAsync(created.Id, hostOrgId);
+
+        // Paying is the host's action and a suspended supplier is still owed what it completed (SU-12).
+        Assert.Equal(ServiceRequestStatus.Pagato, paid.Status);
+        Assert.Equal(EmailTemplates.Names.ServiceRequestPaid, Assert.Single(queue.Queued).Template);
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_BeforeCompletion_ThrowsAndNotifiesNobody()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var push = new RecordingPushQueue();
+        var service = CreateService(db, queue, push: push);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        queue.Queued.Clear();
+        var pushesBefore = push.Queued.Count;
+
+        await Assert.ThrowsAsync<DomainRuleException>(() => service.MarkPaidAsync(created.Id, hostOrgId));
+
+        Assert.Empty(queue.Queued);
+        Assert.Equal(pushesBefore, push.Queued.Count);
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_NotificationCannotBeQueued_StillMarksTheRequestPaid()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var push = new Mock<IPushNotificationService>();
+        var service = CreateService(db, push: push.Object);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+        await service.CompleteAsync(created.Id, supplierOrgId, null);
+        push.Setup(p => p.Enqueue(It.IsAny<string>(), It.IsAny<PushAudience>(), It.IsAny<PushNotificationPayload>()))
+            .Throws(new InvalidOperationException("queue down"));
+
+        var paid = await service.MarkPaidAsync(created.Id, hostOrgId);
+
+        // The status is already saved: a notification failure is logged, never an error for the host (A4-20).
+        Assert.Equal(ServiceRequestStatus.Pagato, paid.Status);
+        Assert.Equal(ServiceRequestStatus.Pagato, (await db.ServiceRequests.SingleAsync(r => r.Id == created.Id)).Status);
     }
 
     [Fact]
@@ -888,6 +1036,8 @@ public class ServiceRequestServiceTests
             queue ?? new RecordingEmailQueue(),
             EmailTestHelpers.Links(publicSiteBaseUrl),
             push ?? Mock.Of<IPushNotificationService>(),
+            ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             NullLogger<ServiceRequestService>.Instance);
     }
 

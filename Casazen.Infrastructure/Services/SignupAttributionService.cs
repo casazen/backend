@@ -13,6 +13,7 @@ namespace Casazen.Infrastructure.Services;
 /// <inheritdoc />
 public sealed class SignupAttributionService(
     AppDbContext db,
+    ISeoComuneCatalog comuneCatalog,
     ILogger<SignupAttributionService> logger) : ISignupAttributionService
 {
     public async Task<bool> RecordAsync(
@@ -37,7 +38,7 @@ public sealed class SignupAttributionService(
         }
 
         var comune = SignupAttributionRules.Normalize(input.Comune);
-        var comuneInfo = comune is null ? null : SignupAttributionRules.ResolveComune(comune);
+        var comuneInfo = comune is null ? null : await comuneCatalog.ResolveSlugOrCodeAsync(comune, cancellationToken);
         if (comune is not null && comuneInfo is null)
         {
             // Refused, not dropped: the rule is "invalid values are rejected", the web app then forgets the values.
@@ -113,6 +114,8 @@ public sealed class SignupAttributionService(
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
+        var comuni = await comuneCatalog.GetByCodesAsync(
+            rows.Where(a => a.ComuneCode is not null).Select(a => a.ComuneCode!), cancellationToken);
         var items = rows
             .Select(a => new SignupAttributionRecord(
                 a.OrgId,
@@ -123,7 +126,7 @@ public sealed class SignupAttributionService(
                 a.UtmTerm,
                 a.UtmContent,
                 a.ComuneCode,
-                a.ComuneCode is null ? null : ItalianComuneRegistry.GetByCode(a.ComuneCode)?.Name,
+                a.ComuneCode is null ? null : comuni.GetValueOrDefault(a.ComuneCode)?.Name,
                 a.LandingPath,
                 a.ReferrerHost))
             .ToList();

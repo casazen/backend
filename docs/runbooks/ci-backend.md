@@ -8,16 +8,17 @@ Workflows in `.github/workflows/`. Task FD-02 (audit defects A9-26 and the backe
 | `ci-cd.yml` | `Verify Railway Test (native deploy)` | push `develop` | The test API runs this commit and `/api/health/ready` answers 200, then smoke tests (FD-12) |
 | `ci-cd.yml` | `Verify Railway Production (native deploy)` | push `main` | Same on production (FD-12) |
 | `deploy-preview.yml` | `Post environment links` | PR to `develop` | Comment with the environment links, no gate |
+| `e2e-golden-journey.yml` | `Golden Journey L3` | PR and push to `develop` / `main`, nightly, manual | The Golden Journey from the UI (four actors) against this backend, a throw-away PostgreSQL and mock IdP/mail; Stripe test mode when the secrets exist, otherwise that variant is skipped loudly. [golden-journey-l3.md](golden-journey-l3.md) (FN-03) |
 | `supabase-keepalive.yml` | `Ping Supabase` | weekly (Monday 08:00 UTC), manual | Fails when a configured ping fails; explicit skip when nothing is configured (section 4) |
 
-No backend Golden Journey gate yet. The former `e2e-golden-journey.yml` only ran `echo`, so its check was always green (A9-24): it was removed. The real end-to-end gate (UI → API → DB on an ephemeral stack) arrives with task **FN-03**.
+The former `e2e-golden-journey.yml` only ran `echo`, so its check was always green (A9-24): it was removed (FD-02) and replaced by the real gate of task **FN-03** (same file name, UI → API → DB on an ephemeral stack). It needs the secret `FRONTEND_REPO_TOKEN` (read on `casazen/frontend`) and, for the Stripe variant, `STRIPE_TEST_SECRET_KEY` / `STRIPE_TEST_PUBLISHABLE_KEY`: setup, fail-visible rules and local run in [golden-journey-l3.md](golden-journey-l3.md).
 
 ## 1. Required checks (one-time, repo admin)
 
 GitHub → `casazen/backend` → **Settings → Branches** (or **Rules → Rulesets**), for **both** `develop` and `main`:
 
 1. Enable **Require status checks to pass before merging** and **Require branches to be up to date before merging**.
-2. Add the check **`Build & Test`**.
+2. Add the check **`Build & Test`** and, once it has been green for a few runs, **`Golden Journey L3`** (needs the secrets above, otherwise it fails by design).
 3. If the removed workflow's check **`pointer`** (workflow "E2E Golden Journey") is in the list, **remove it**: nothing reports it any more, so a required `pointer` would block every merge ("Expected — Waiting for status to be reported").
 
 From the CLI, when branch protection already exists:

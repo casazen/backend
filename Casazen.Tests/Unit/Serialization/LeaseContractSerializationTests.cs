@@ -27,7 +27,6 @@ public class LeaseContractSerializationTests
             EndDate = DateTime.UtcNow.AddYears(4),
             MonthlyRent = 1200m,
             RegistrationDeadline = DateTime.UtcNow.AddDays(30),
-            DataRetentionUntil = DateTime.UtcNow.AddYears(10),
             Property = new Property
             {
                 Id = Guid.NewGuid(),
@@ -45,7 +44,7 @@ public class LeaseContractSerializationTests
                     Role = PartyRole.Tenant,
                     FirstName = "Mario",
                     LastName = "Rossi",
-                    FiscalCode = "RSSMRA80A01H501Z",
+                    FiscalCode = "RSSMRA80A01H501U",
                     Citizenship = "IT",
                     ContactEmail = "mario@example.com",
                 },

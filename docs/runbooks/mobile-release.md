@@ -60,11 +60,19 @@ Rules enforced by the app and by the EAS build:
 
 - every variable is required outside `__DEV__`; `EXPO_PUBLIC_AUTH0_CLIENT_ID` is required in `__DEV__` too
   (the login configuration error `AUTH_CONFIG_INVALID` is shown without it);
+- `EXPO_PUBLIC_E2E_BUILD` / `EXPO_PUBLIC_E2E_PUSH_TOKEN` / `APP_VARIANT=e2e` belong to the local Maestro build ([`mobile-e2e.md`](mobile-e2e.md)): never put them in an EAS environment, the build fails if they are there.
 - `EXPO_PUBLIC_E2E_DEMO` is ignored outside `__DEV__`: a preview / production build never shows the demo
   button, and the demo code is not in the release bundle (mobile CI checks it);
 - URLs must be absolute `https://` URLs without query string, and must not point to `localhost`, `127.x`, `10.0.2.2` (Android emulator) or `0.0.0.0`. Android release builds block cleartext http anyway;
 - trailing slashes are removed; `EXPO_PUBLIC_API_URL` has **no** `/api` suffix (the app adds it);
 - `EXPO_PUBLIC_AUTH0_DOMAIN` is a bare host name.
+
+`EXPO_PUBLIC_WEB_URL` opens the host console on the web ("Apri sul sito"). The **booking link shared** from the
+Properties tab (MO-11, A6-09, A3-22) does not use it: the app reads `org.publicSiteUrl` from `GET /api/users/me`, built
+by the backend on `App__PublicSiteBaseUrl` with the org's **current** slug (`{base}/book/{orgSlug}`), and appends
+`/property/{propertySlug or id}`. A link shared before a slug change keeps working (old slugs are aliases, PL-04). When
+the backend has no `App__PublicSiteBaseUrl` (possible only in Development/Testing) or the property is not published
+(inactive, paused or compliance not active), the share button is disabled with the reason, never a broken link.
 
 Visibility: **Plain text** (`plaintext`). `EXPO_PUBLIC_*` values are compiled into the JavaScript bundle and readable by anyone who has the app, so they must never contain a real secret (the Native Auth0 app has no client secret: PKCE). `eas-cli` reads only Plain text and Sensitive variables when it evaluates the config locally.
 

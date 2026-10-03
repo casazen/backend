@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -20,31 +21,32 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .FirstOrDefaultAsync(b => b.Id == id);
     }
 
-    public async Task<IEnumerable<Booking>> GetByPropertyAsync(Guid propertyId)
+    public async Task<IReadOnlyList<Booking>> GetByScopeAsync(
+        HostScope scope,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default)
     {
-        return await context.Bookings
-            .Where(b => b.PropertyId == propertyId)
-            .Include(b => b.Guest)
-            .Include(b => b.Payments)
-            .OrderByDescending(b => b.CheckInDate)
-            .ToListAsync();
-    }
+        ArgumentNullException.ThrowIfNull(scope);
 
-    public async Task<IEnumerable<Booking>> GetByGuestAsync(Guid guestId)
-    {
-        return await context.Bookings
-            .Where(b => b.GuestId == guestId)
-            .Include(b => b.Property)
-            .OrderByDescending(b => b.CheckInDate)
-            .ToListAsync();
-    }
+        // One query whatever the number of bookings (A2-17): org and owner filters in SQL, property and guest joined,
+        // never a lookup per row. Read only, so nothing is tracked.
+        var query = context.Bookings
+            .AsNoTracking()
+            .Where(b => b.OrgId == scope.OrgId);
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(b => b.Property.OwnerId == ownerId);
+        if (propertyId is { } property)
+            query = query.Where(b => b.PropertyId == property);
+        if (guestId is { } guest)
+            query = query.Where(b => b.GuestId == guest);
 
-    public async Task<IEnumerable<Booking>> GetAllAsync()
-    {
-        return await context.Bookings
+        return await query
             .Include(b => b.Property)
             .Include(b => b.Guest)
-            .ToListAsync();
+            .OrderByDescending(b => b.CheckInDate)
+            .ThenBy(b => b.Id)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IEnumerable<Booking>> GetByDateRangeAsync(
@@ -85,7 +87,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         await using var transaction = await BeginPropertyGuardTransactionAsync(booking.PropertyId);
 
         if (booking.Status != BookingStatus.Cancelled &&
-            await HasActiveOverlapAsync(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date))
+            (await HasActiveOverlapAsync(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date) ||
+             await HasBlockingCalendarBlockAsync(booking)))
         {
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
@@ -134,6 +137,42 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             context.Bookings.Remove(booking);
             await context.SaveChangesAsync();
         }
+    }
+
+    public async Task DiscardCheckoutAttemptAsync(Guid bookingId)
+    {
+        var propertyId = await context.Bookings
+            .Where(b => b.Id == bookingId)
+            .Select(b => (Guid?)b.PropertyId)
+            .FirstOrDefaultAsync();
+        if (propertyId is null)
+            return;
+
+        await using var transaction = await BeginPropertyGuardTransactionAsync(propertyId.Value);
+
+        var booking = await context.Bookings
+            .Include(b => b.Payments)
+            .FirstOrDefaultAsync(b => b.Id == bookingId);
+        if (booking is null)
+            return;
+
+        var guestId = booking.GuestId;
+        context.Payments.RemoveRange(booking.Payments);
+        context.Bookings.Remove(booking);
+        await context.SaveChangesAsync();
+
+        // IgnoreQueryFilters: a reference from any org keeps the guest, as the Restrict foreign keys count every row.
+        var guestStillReferenced =
+            await context.Bookings.IgnoreQueryFilters().AnyAsync(b => b.GuestId == guestId) ||
+            await context.AlloggiatiWebReports.IgnoreQueryFilters().AnyAsync(r => r.GuestId == guestId);
+        if (!guestStillReferenced && await context.Guests.FindAsync(guestId) is { } guest)
+        {
+            context.Guests.Remove(guest);
+            await context.SaveChangesAsync();
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync();
     }
 
     public async Task<Booking?> GetByExternalIdAsync(Guid propertyId, string externalId, BookingSource source)
@@ -185,6 +224,18 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
 
         return await query.AnyAsync();
     }
+
+    /// <summary>
+    /// A calendar block takes a night of a new CasaZen booking (PC-09). The callers check the blocks before (with the
+    /// public availability); this check, under the property lock, closes the gap with a manual block created meanwhile:
+    /// manual blocks are written under the same lock (<c>CalendarBlockService</c>), so a booking and a manual block never
+    /// take the same night. A stay of an OTA channel (CO-21: created from its own imported block) is the channel's
+    /// reservation: blocks never refuse it here.
+    /// </summary>
+    private async Task<bool> HasBlockingCalendarBlockAsync(Booking booking) =>
+        !FiscalCopy.IsOtaBookingSource(booking.Source) &&
+        await context.CalendarBlocks.AnyAsync(
+            PropertyOccupancy.BlockTakesNightIn(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date));
 
     private static HoldExpiryCutoff? ExpiredHoldCutoff(int? directPendingTtlMinutes) =>
         directPendingTtlMinutes.HasValue

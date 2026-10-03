@@ -18,6 +18,9 @@ public static class AiProviderRegistration
     {
         var section = configuration.GetSection(AiOptions.SectionName);
         services.Configure<AiOptions>(section);
+        // Bounded, expiring cache of the answers (A8-25): one per process, shared by every AI caller.
+        services.Configure<AiCacheOptions>(section.GetSection("Cache"));
+        services.AddSingleton<IAiResponseCache, AiResponseCache>();
         services.AddScoped<IAiBudgetGuard, PlatformAiBudgetGuard>();
 
         var options = section.Get<AiOptions>() ?? new AiOptions();

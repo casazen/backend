@@ -1,55 +1,12 @@
-﻿using Casazen.Core.Services;
-using Casazen.Core.Utilities;
-using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController(
-    IUserService userService,
-    ILogger<AuthController> logger) : ControllerBase
+public class AuthController(ILogger<AuthController> logger) : ControllerBase
 {
-    [HttpPost("register")]
-    [AllowAnonymous]
-    [EnableRateLimiting(RateLimitPolicies.PublicRegistration)]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
-    {
-        try
-        {
-            var user = await userService.RegisterUserAsync(
-                request.Email,
-                request.FirstName,
-                request.LastName,
-                request.Password);
-
-            logger.LogInformation(
-                "User {UserId} registered: {MaskedEmail}", user.Id, LogRedaction.MaskEmail(user.Email));
-
-            return Ok(new RegisterResponse
-            {
-                UserId = user.Id,
-                Email = user.Email,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                Message = "User registered successfully. Note: In production, this would create user in Auth0."
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogWarning("Registration failed: {Error}", LogRedaction.MaskEmails(ex.Message));
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (ArgumentException ex)
-        {
-            logger.LogWarning("Registration validation failed: {Error}", LogRedaction.MaskEmails(ex.Message));
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
     [HttpGet("profile")]
     [Authorize]
     public IActionResult GetProfile()
@@ -74,19 +31,4 @@ public class AuthController(
         logger.LogInformation("User {UserId} logged out", User.FindFirst("sub")?.Value);
         return Ok(new { message = "Logged out successfully" });
     }
-}
-
-public record RegisterRequest(
-    string Email,
-    string FirstName,
-    string LastName,
-    string Password);
-
-public record RegisterResponse
-{
-    public string UserId { get; init; } = string.Empty;
-    public string Email { get; init; } = string.Empty;
-    public string FirstName { get; init; } = string.Empty;
-    public string LastName { get; init; } = string.Empty;
-    public string Message { get; init; } = string.Empty;
 }

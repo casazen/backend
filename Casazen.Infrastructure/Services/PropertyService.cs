@@ -10,6 +10,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -29,6 +30,12 @@ public class PropertyService(
 
     /// <summary>422: the cancellation policy chosen for a property does not exist.</summary>
     public const string CancellationPolicyNotFoundCode = "cancellation_policy_not_found";
+
+    /// <summary>422: a latitude outside -90..90 or a longitude outside -180..180.</summary>
+    public const string PropertyCoordinatesInvalidCode = "property_coordinates_invalid";
+
+    /// <summary>The unique index of <c>(OrgId, Slug)</c> (see <c>AppDbContext</c>).</summary>
+    private const string SlugUniqueIndexName = "UIX_Properties_OrgId_Slug";
 
     public async Task<Property?> GetPropertyAsync(Guid id)
     {
@@ -69,15 +76,26 @@ public class PropertyService(
     {
         logger.LogInformation("Creating property: {Name}", property.Name);
         property.CinCode = CinFormat.Normalize(property.CinCode);
+        NormalizeLocation(property);
         property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
         await EnsureCancellationPolicyExistsAsync(property);
-        return await repository.AddAsync(property);
+        try
+        {
+            return await repository.AddAsync(property);
+        }
+        catch (DbUpdateException ex) when (ToUniqueConflict(ex) is { } conflict)
+        {
+            // The unique indexes are the guarantee under concurrency (A2-19): no address check before the insert.
+            logger.LogWarning("Property of org {OrgId} refused by a unique index: {Code}", property.OrgId, conflict.Code);
+            throw conflict;
+        }
     }
 
     public async Task<Property> UpdatePropertyAsync(Property property)
     {
         logger.LogInformation("Updating property: {Id}", property.Id);
         property.CinCode = CinFormat.Normalize(property.CinCode);
+        NormalizeLocation(property);
         if (!string.IsNullOrWhiteSpace(property.Slug))
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
@@ -86,9 +104,79 @@ public class PropertyService(
         }
 
         await EnsureCancellationPolicyExistsAsync(property);
-        var updated = await repository.UpdateAsync(property);
+        Property updated;
+        try
+        {
+            updated = await repository.UpdateAsync(property);
+        }
+        catch (DbUpdateException ex) when (ToUniqueConflict(ex) is { } conflict)
+        {
+            // Another property took the address (or the slug) between the read and this save (A2-19).
+            logger.LogWarning("Update of property {Id} refused by a unique index: {Code}", property.Id, conflict.Code);
+            throw conflict;
+        }
+
         await complianceStatus.ReevaluateAsync(updated.Id);
         return updated;
+    }
+
+    /// <summary>
+    /// The unit and the coordinates as stored (trimmed unit, coordinates with the precision of the column), and a
+    /// coordinate outside the earth refused before it reaches the database (422): the API validates the same ranges at its
+    /// boundary, this protects every other caller of the service and the <c>numeric(9,6)</c> columns (PC-06, A2-33).
+    /// </summary>
+    private static void NormalizeLocation(Property property)
+    {
+        if (!PropertyAddress.IsValidLatitude(property.Latitude) || !PropertyAddress.IsValidLongitude(property.Longitude))
+            throw new DomainRuleException(PropertyCoordinatesInvalidCode, "PropertyCoordinatesInvalid");
+
+        property.Unit = PropertyAddress.NormalizeUnit(property.Unit);
+        property.Latitude = PropertyAddress.RoundCoordinate(property.Latitude);
+        property.Longitude = PropertyAddress.RoundCoordinate(property.Longitude);
+    }
+
+    /// <summary>
+    /// 409 for a violation of the unique address index (same org, same address and unit) or of the unique slug index of
+    /// the org, null for any other database error. Neither index spans orgs: the conflict never tells that ANOTHER org
+    /// has a property at this address.
+    /// </summary>
+    private static DomainConflictException? ToUniqueConflict(DbUpdateException ex) =>
+        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } postgres
+            ? postgres.ConstraintName switch
+            {
+                PropertyAddress.UniqueIndexName => new DomainConflictException(PropertyAddress.DuplicateCode, "PropertyAddressTaken"),
+                SlugUniqueIndexName => new DomainConflictException("duplicate_property_slug", "PropertySlugTaken"),
+                _ => null,
+            }
+            : null;
+
+    public async Task<Property> PausePropertyAsync(Property property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        if (!property.IsPaused)
+        {
+            logger.LogInformation("Pausing property: {Id}", property.Id);
+            var now = _clock.GetUtcNow().UtcDateTime;
+            property.IsPaused = true;
+            property.PausedAt = now;
+            property.UpdatedAt = now;
+            await repository.UpdateAsync(property);
+        }
+        return property;
+    }
+
+    public async Task<Property> ActivatePropertyAsync(Property property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        if (property.IsPaused)
+        {
+            logger.LogInformation("Reactivating property: {Id}", property.Id);
+            property.IsPaused = false;
+            property.PausedAt = null;
+            property.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
+            await repository.UpdateAsync(property);
+        }
+        return property;
     }
 
     /// <summary>An unknown policy id would otherwise fail on the foreign key as a 500 (A2-04).</summary>
@@ -98,18 +186,47 @@ public class PropertyService(
             throw new DomainRuleException(CancellationPolicyNotFoundCode, "PropertyCancellationPolicyNotFound");
     }
 
+    /// <summary>
+    /// 409: the property has a pending, confirmed or checked-in stay whose check-out has not passed (PC-05, A2-18): a
+    /// host cannot make a property with a guest already booked disappear.
+    /// </summary>
+    public const string HasUpcomingBookingsCode = "property_has_upcoming_bookings";
+
+    /// <summary>409: the property has a lease in force or in progress that has not ended yet (PC-05, A2-18).</summary>
+    public const string HasActiveLeasesCode = "property_has_active_leases";
+
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): its historical bookings and fiscal data are kept and stay reachable by
+    /// the fiscal reports, never removed. False when there is nothing to delete (unknown or already deleted).
+    /// </summary>
+    /// <exception cref="DomainConflictException">
+    /// <see cref="HasUpcomingBookingsCode"/> or <see cref="HasActiveLeasesCode"/>: nothing changed.
+    /// </exception>
     public async Task<bool> DeletePropertyAsync(Guid id)
     {
         logger.LogInformation("Deleting property: {Id}", id);
-        await repository.DeleteAsync(id);
-        return true;
+        var outcome = await repository.SoftDeleteAsync(id, _clock.GetUtcNow().UtcDateTime, _clock.TodayInRome());
+        switch (outcome)
+        {
+            case PropertySoftDeleteOutcome.HasUpcomingStays:
+                logger.LogWarning("Delete of property {Id} refused: it has a stay that has not checked out yet", id);
+                throw new DomainConflictException(HasUpcomingBookingsCode, "PropertyHasUpcomingBookings");
+            case PropertySoftDeleteOutcome.HasActiveLeases:
+                logger.LogWarning("Delete of property {Id} refused: it has a lease that has not ended yet", id);
+                throw new DomainConflictException(HasActiveLeasesCode, "PropertyHasActiveLeases");
+            default:
+                return outcome == PropertySoftDeleteOutcome.Deleted;
+        }
     }
 
-    public async Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
+    public async Task<IEnumerable<PublicPropertyDto>> SearchAsync(PublicPropertySearchCriteria criteria)
     {
-        logger.LogInformation("Searching properties: city={City}, bedrooms={Bedrooms}, maxPrice={MaxPrice}", city, bedrooms, maxPrice);
+        ArgumentNullException.ThrowIfNull(criteria);
+        logger.LogInformation(
+            "Searching properties: city={City}, price={MinPrice}-{MaxPrice}, minBedrooms={MinBedrooms}, minBathrooms={MinBathrooms}, guests={Guests}",
+            criteria.City, criteria.MinPrice, criteria.MaxPrice, criteria.MinBedrooms, criteria.MinBathrooms, criteria.Guests);
 
-        var rows = await repository.GetSearchQueryable(city, bedrooms, maxPrice)
+        var rows = await repository.GetSearchQueryable(criteria)
             .OrderBy(p => p.City)
             .ThenBy(p => p.NightlyRate)
             .Take(50)
@@ -117,6 +234,7 @@ public class PropertyService(
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -142,7 +260,7 @@ public class PropertyService(
     {
         logger.LogInformation("Searching public properties for org {OrgId}", orgId);
 
-        var rows = await repository.GetSearchQueryable(null, null, null, orgId)
+        var rows = await repository.GetSearchQueryable(PublicPropertySearchCriteria.None, orgId)
             .OrderBy(p => p.City)
             .ThenBy(p => p.NightlyRate)
             .Take(50)
@@ -150,6 +268,7 @@ public class PropertyService(
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -173,12 +292,13 @@ public class PropertyService(
 
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id)
     {
-        var row = await repository.GetSearchQueryable(null, null, null)
+        var row = await repository.GetSearchQueryable(PublicPropertySearchCriteria.None)
             .Where(p => p.Id == id)
             .Select(p => new PublicPropertyDetailRow
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -204,7 +324,7 @@ public class PropertyService(
 
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId)
     {
-        var query = repository.GetSearchQueryable(null, null, null, orgId);
+        var query = repository.GetSearchQueryable(PublicPropertySearchCriteria.None, orgId);
         if (Guid.TryParse(slugOrId, out var id))
             query = query.Where(p => p.Id == id);
         else
@@ -215,6 +335,7 @@ public class PropertyService(
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -238,67 +359,6 @@ public class PropertyService(
         return row is null ? null : MapPublicPropertyDetail(row);
     }
 
-    public async Task<Property> AddImageAsync(Guid propertyId, string imageUrl)
-    {
-        var property = await repository.GetByIdAsync(propertyId);
-        if (property == null)
-        {
-            throw new InvalidOperationException($"Property {propertyId} not found");
-        }
-
-        // Add image URL to the list
-        property.PhotoUrls.Add(imageUrl);
-        property.UpdatedAt = DateTime.UtcNow;
-
-        logger.LogInformation("Adding image to property {PropertyId}: {ImageUrl}", propertyId, imageUrl);
-        return await repository.UpdateAsync(property);
-    }
-
-    public async Task<Property> RemoveImageAsync(Guid propertyId, int imageIndex)
-    {
-        var property = await repository.GetByIdAsync(propertyId);
-        if (property == null)
-        {
-            throw new InvalidOperationException($"Property {propertyId} not found");
-        }
-
-        if (imageIndex < 0 || imageIndex >= property.PhotoUrls.Count)
-        {
-            throw new ArgumentOutOfRangeException(nameof(imageIndex), $"Invalid image index {imageIndex}");
-        }
-
-        // Remove image URL from the list
-        property.PhotoUrls.RemoveAt(imageIndex);
-        property.UpdatedAt = DateTime.UtcNow;
-
-        logger.LogInformation("Removing image at index {Index} from property {PropertyId}", imageIndex, propertyId);
-        return await repository.UpdateAsync(property);
-    }
-
-    public async Task<Property> ReorderImagesAsync(Guid propertyId, List<string> orderedImageUrls)
-    {
-        var property = await repository.GetByIdAsync(propertyId);
-        if (property == null)
-        {
-            throw new InvalidOperationException($"Property {propertyId} not found");
-        }
-
-        // Validate that all URLs in the new order exist in the current list
-        var currentUrls = property.PhotoUrls.ToHashSet();
-        if (!orderedImageUrls.All(url => currentUrls.Contains(url)) ||
-            orderedImageUrls.Count != property.PhotoUrls.Count)
-        {
-            throw new InvalidOperationException("Invalid image URLs provided for reordering");
-        }
-
-        // Update the order
-        property.PhotoUrls = orderedImageUrls;
-        property.UpdatedAt = DateTime.UtcNow;
-
-        logger.LogInformation("Reordering images for property {PropertyId}", propertyId);
-        return await repository.UpdateAsync(property);
-    }
-
     public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
     {
         // 404 through the error middleware (FD-05); any other failure stays a 500, never a "not found" (A2-36).
@@ -312,6 +372,7 @@ public class PropertyService(
             Name = property.Name,
             Description = property.Description,
             Address = property.Address,
+            Unit = property.Unit,
             City = property.City,
             PostalCode = property.PostalCode,
             Bedrooms = property.Bedrooms,
@@ -322,11 +383,16 @@ public class PropertyService(
             DamageDeposit = property.DamageDeposit,
             CinCode = property.CinCode,
             CinStatus = ResolveCinStatus(property.CinCode),
+            CinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode),
+            ComuneIstatCode = property.ComuneIstatCode,
+            RegionCode = property.RegionCode,
             Timezone = property.Timezone,
             Amenities = property.Amenities.Select(a => a.ToString()).ToList(),
             PhotoUrls = property.PhotoUrls,
             HouseRules = property.HouseRules,
             IsActive = property.IsActive,
+            IsPaused = property.IsPaused,
+            PausedAt = property.PausedAt,
             CreatedAt = property.CreatedAt,
             UpdatedAt = property.UpdatedAt,
             Documents = property.PropertyDocuments.Select(MapDocument).ToList(),
@@ -409,16 +475,18 @@ public class PropertyService(
 
     internal static CinStatus ResolveCinStatus(string? cinCode) => CinFormat.GetStatus(cinCode);
 
-    public async Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(
-        string ownerId, string? cinStatus, int page, int pageSize)
+    public async Task<OwnerCinComplianceResult> GetCinComplianceAsync(
+        HostScope scope, string? cinStatus, int page, int pageSize)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         if (!string.IsNullOrWhiteSpace(cinStatus) &&
             cinStatus is not ("valid" or "missing" or "invalid"))
         {
             throw new ArgumentException($"Unknown cinStatus value '{cinStatus}'", nameof(cinStatus));
         }
 
-        var properties = await repository.GetByOwnerForComplianceAsync(ownerId);
+        var properties = await repository.GetByScopeForComplianceAsync(scope);
         var items = properties.Select(p => new OwnerCinComplianceItem(
             PropertyId: p.Id,
             PropertyName: p.Name,
@@ -496,7 +564,7 @@ public class PropertyService(
         {
             var normalized = PropertySlugHelper.NormalizeOptional(requestedSlug);
             if (await repository.SlugExistsInOrgAsync(orgId, normalized, null))
-                throw new InvalidOperationException("Slug already in use within this organization.");
+                throw new DomainConflictException("duplicate_property_slug", "PropertySlugTaken");
             return normalized;
         }
 
@@ -524,6 +592,7 @@ public class PropertyService(
     {
         Id = row.Id,
         Slug = row.Slug,
+        OrgSlug = row.OrgSlug,
         Name = row.Name,
         Description = row.Description,
         City = row.City,
@@ -546,6 +615,7 @@ public class PropertyService(
     {
         Id = row.Id,
         Slug = row.Slug,
+        OrgSlug = row.OrgSlug,
         Name = row.Name,
         Description = row.Description,
         City = row.City,
@@ -572,6 +642,7 @@ public class PropertyService(
     {
         public Guid Id { get; init; }
         public string? Slug { get; init; }
+        public string OrgSlug { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;
         public string City { get; init; } = string.Empty;

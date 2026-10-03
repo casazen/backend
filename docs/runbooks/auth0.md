@@ -14,9 +14,10 @@ The general developer guide (SPA app, API, local setup) stays in [`docs/AUTH0_SE
 | Management API token | OAuth2 **client credentials** with an M2M application, cached until `expires_in − 60 s` (singleton, renewed on HTTP 401) | `Casazen.Infrastructure/Services/Auth0ManagementTokenProvider.cs` |
 | Legacy static token | `Auth0:ManagementApiToken` is still read **only** when no M2M client is configured, with a `deprecated` warning in the logs. Static tokens expire (24 h by default) and cannot be renewed | same file |
 | Role assignment | **Additive only** (`POST /users/{id}/roles`): other roles are never removed. Role ids are cached for 1 h | `Casazen.Infrastructure/Services/Auth0ManagementService.cs` |
-| Role removal | Explicit, only the named roles (`DELETE /users/{id}/roles`): admin role change (previous role only) and onboarding (unselected `PropertyOwner` / `LongTermLandlord` only) | same file, `UserService.ChangeRoleAsync` / `CompleteOnboardingAsync` |
+| Role removal | Explicit, only the named roles (`DELETE /users/{id}/roles`): admin role change (previous role only), admin multi-role update (only the roles unchecked — A1-17) and onboarding (unselected `PropertyOwner` / `LongTermLandlord` only) | same file, `UserService.ChangeRoleAsync` / `UpdateRolesAsync` / `CompleteOnboardingAsync` |
 | Supplier role | Assigned when the account is linked to a supplier profile: signed-in registration or invite (`POST /api/suppliers/register`) and claim of an anonymous registration (`POST /api/suppliers/claim`, SU-02; each call retries it). No Management API call on `/api/supplier/*` requests | `SuppliersController.Register` / `Claim`, `SupplierOrgContextResolver` |
-| Outcome | Never swallowed. Onboarding: `rolesSynced` / `rolesSyncError` in the response (DB already updated). Supplier registration and claim: same fields. Admin role change: **502** `{ code }` and no change applied | `UsersController`, `SuppliersController` |
+| Admin multi-role (A1-17) | `GET/PUT /api/users/{id}/roles` (CasaZen API, distinct from the Auth0 endpoints of the row above): the admin console reads the user's current Auth0 roles and sets its exact role set among `Admin`, `PropertyOwner`, `LongTermLandlord`, `Supplier` (`Guest`/`Staff`/`PropertyManager` have no app context and are not offered). No new Auth0 scope: reuses `read:roles`, `read:role_members`, `create:role_members`, `delete:role_members` (section 2). The DB (primary `Users.Role` + context memberships) is reconciled with the whole requested set, so a retry after a partial Auth0 failure also fixes the DB. Every change logs an audit line (`oldRole`, `newRole`, old/new role sets, granted/revoked, `changedBy`). Refuses to remove `Admin` from the last active administrator (`last_active_admin`, 422; the legacy single-role `PUT /api/users/{id}/role` has the same guard) | `UsersController.GetRoles` / `UpdateRoles`, `UserService.UpdateRolesAsync` |
+| Outcome | Never swallowed. Onboarding: `rolesSynced` / `rolesSyncError` in the response (DB already updated). Supplier registration and claim: same fields. Admin role change and admin multi-role update: **502** `{ code }` and no change applied | `UsersController`, `SuppliersController` |
 | DB memberships | `UserContextMemberships` written for **every** onboarding role and revoked when a role is removed, so backend context authorization does not depend on the JWT | `UserContextMembershipService` |
 | Per-request DB reads | User flags, supplier link and memberships read once per request and cached 60 s per user (`Authorization:UserCacheSeconds`, `0` disables), invalidated on every role/membership/link change of this instance | `UserAuthorizationSnapshotStore` |
 | Deactivated users (PL-03) | Every authenticated request of a user with `Users.IsActive = false` gets **403 `account_inactive`**, before any policy, whatever the roles in the token. The flag is read with the tenant (one query per request, no cache) | `InactiveAccountMiddleware`, `TenantContext` |
@@ -63,7 +64,6 @@ users and their passwords where they are; the test environment then gets a new, 
    | `Auth0__Domain` | login domain of the tenant (or its custom domain) |
    | `Auth0__ManagementApiDomain` | canonical `*.auth0.com` domain of the tenant (only with a custom domain) |
    | `Auth0__ManagementClientId`, `Auth0__ManagementClientSecret` | M2M application of this tenant (section 4) |
-   | `Auth0__ClientId` | SPA client id of this tenant |
    | `Auth0__Audience` | unchanged (`https://casazen-api`), unless the API of the new tenant has another identifier |
 
 4. **Vercel** — Settings → Environment Variables, one value per environment (never "All environments"), then redeploy
@@ -131,7 +131,7 @@ Applications → Applications → **Create Application** → *Machine to Machine
 |---|---|---|
 | `Auth0__Domain` | login domain of the tenant (or its custom domain) | JWT issuer, already set |
 | `Auth0__Audience` | API identifier | already set |
-| `Auth0__ClientId` | SPA client id | used by the supplier registration page |
+| `Auth0__ClientId` | — | **not read by the API** (DEPLOY-CFG): the SPA client id lives in Vercel (`VITE_AUTH0_CLIENT_ID`) and the Native one in EAS; do not set it |
 | `Auth0__ManagementApiDomain` | canonical `*.auth0.com` domain of the tenant (Auth0 Dashboard → Settings → the tenant domain) | **required when `Auth0__Domain` is a custom domain**: the Management API audience is always the canonical domain |
 | `Auth0__ManagementClientId` | M2M client id | secret |
 | `Auth0__ManagementClientSecret` | M2M client secret | secret |

@@ -1,3 +1,4 @@
+using Casazen.Core.Services;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
@@ -14,8 +15,11 @@ public sealed class SupplierRegistrationOptions
 
     /// <summary>
     /// Comuni where a supplier may register without an invite (<c>Suppliers__PilotComuni__0__Code</c>,
-    /// <c>Suppliers__PilotComuni__0__Name</c>, …). The code is compared with the registration's comune code as written
-    /// (trimmed, case-insensitive) and stored on the supplier profile.
+    /// <c>Suppliers__PilotComuni__0__Name</c>, …). The code is the <b>ISTAT code</b> of the comune (6 digits, e.g.
+    /// <c>058091</c>): once the official ISTAT list is imported it is validated against it, the name shown to the supplier is
+    /// the one of the list, and a code that is not an active comune of it is not offered (<see cref="ISupplierPilotComuni"/>,
+    /// SU-04). Until the list is imported the code and name are used as configured. This class only keeps what is written in
+    /// the configuration: the registration reads the validated pilots from <see cref="ISupplierPilotComuni"/>.
     /// </summary>
     public List<SupplierPilotComune> PilotComuni { get; set; } = [];
 

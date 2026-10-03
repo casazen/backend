@@ -2,6 +2,8 @@
 
 > Zero-cost production stack: **Supabase** (PostgreSQL) + **Railway** (.NET API) + **Vercel** (React SPA)
 
+> **Hosting in revisione (2026-10-02):** il PO ha cancellato l'abbonamento Railway e non vuole costi. Il database resta su Supabase; l'hosting gratuito del backend è in analisi (task HOSTING, `docs/runbooks/free-hosting-analysis.md`). Ogni riferimento a Railway in questo file è **storico** finché quell'analisi non è chiusa: non usarlo per configurare nuovi ambienti.
+
 ---
 
 ## Overview
@@ -89,6 +91,7 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 | `ci-cd.yml` | PR, push `develop` / `main` | NuGet vulnerability gate (High/Critical fail, transitive included), build, tests on PostgreSQL, format — `docs/runbooks/ci-backend.md` |
 | `ci-cd.yml` → `verify-test` | Push `develop` | Poll `GET /api/health/ready` until the test API runs **this commit** and answers 200, then smoke (fails if `RAILWAY_TEST_URL` is missing) |
 | `ci-cd.yml` → `verify-prod` | Push `main` | Same on production (`RAILWAY_PROD_URL`), then smoke |
+| `e2e-golden-journey.yml` | PR, push `develop` / `main`, nightly | Golden Journey from the UI on an ephemeral stack (throw-away PostgreSQL, mock IdP and mail, Stripe test mode with secrets) — `docs/runbooks/golden-journey-l3.md` |
 | `deploy-preview.yml` | PR | Comment with BE/FE URLs (no deploy) |
 | `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping: fails when a configured ping fails, skips with a warning when not configured |
 
@@ -163,6 +166,8 @@ You do **not** need: `RAILWAY_TOKEN`, `RAILWAY_SERVICE_TEST`, `RAILWAY_SERVICE_P
 ---
 
 ## PostgreSQL migration (completed in codebase)
+
+> Storico: il passaggio da SQL Server a PostgreSQL è già stato fatto. Il codice usa solo Npgsql e le migrazioni attuali sono PostgreSQL: **non** rieseguire i passi sotto, che restano come documentazione della migrazione.
 
 The backend uses **Npgsql** and PostgreSQL migrations. For a fresh database:
 
@@ -343,6 +348,8 @@ Add a scheduled GitHub Actions ping or use the Supabase dashboard to configure t
 
 ## Railway Setup (Backend API)
 
+> Hosting in revisione: Railway è stato cancellato dal PO (2026-10-02), vedi la nota in cima e `docs/runbooks/free-hosting-analysis.md`. Questa sezione è storica.
+
 ### Create project
 
 1. https://railway.app → New Project → Deploy from GitHub → `casazen/backend`
@@ -395,9 +402,17 @@ Email__FromName=CasaZen
 # Public domain of the web app — REQUIRED, no default in code (D3): email links, SEO canonical URLs, sitemap, CORS
 # (docs/runbooks/seo-domain.md). Seo__PublicBaseUrl is only an alias: leave it unset.
 App__PublicSiteBaseUrl=[public URL of the web app for this environment]
+# Public URL of THIS API: base of the iCal export links hosts paste into Airbnb/Booking. The Railway URL of this
+# environment, different on test and production. No default in code (DEPLOY-CFG); without it health `api-url` is degraded.
+App__ApiBaseUrl=[https://<railway host of this environment>]
 # Optional: base domain of the org booking subdomains ({label}.<domain>), no default in code (D3, SE-03).
 # Unset = the "subdomain" publication mode is off (docs/runbooks/seo-domain.md).
 # PublicHost__BaseDomain=[domain with a wildcard DNS record to the web app]
+# Optional: custom domains of the hosts (Pro) are added to the Vercel project of THIS environment through the Vercel API (BK-17,
+# docs/runbooks/seo-domain.md section 10). Unset = custom domains stay "waiting": ready `vercel: degraded` names what is missing.
+# Vercel__ApiToken=[Vercel access token scoped to the one team that owns the project — secret, Railway only]
+# Vercel__ProjectId=[prj_... or the name of the Vercel project that serves the web app of this environment]
+# Vercel__TeamId=[team_... of the team that owns the project; unset for a personal account]
 Hangfire__DashboardEnabled=false
 # Hangfire schema of THIS environment (production: hangfire_casazen_prod) — never shared, see docs/runbooks/hangfire.md
 Hangfire__Schema=hangfire_casazen_test
@@ -437,6 +452,10 @@ Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__Kno
 
 ### Variables required in Production
 
+The complete list of the three repositories (backend, frontend, mobile), checked against the code, with the ordered pre-deploy
+blockers, the effect of each missing variable and the example files, is [`runbooks/deploy-checklist.md`](runbooks/deploy-checklist.md).
+The table below is the short backend version.
+
 The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the test environment with `ASPNETCORE_ENVIRONMENT=Staging` (see `secrets/railway.test.variables.example.json`; switch described in [`runbooks/stripe.md`](runbooks/stripe.md#switching-the-railway-test-environment-to-staging-one-time-product-owner)). Every check below runs outside Development and Testing, so everything applies to **test and production**, except the rows that name Production. "Startup fails" = the new container stops with the list of problems and Railway keeps the previous deployment; "ready …" = what `GET /api/health/ready` reports ([`runbooks/health-checks.md`](runbooks/health-checks.md)).
 
 | Variable | Required | If missing | Runbook |
@@ -453,9 +472,13 @@ The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the te
 | `DataProtection__CertificatePfxBase64`, `DataProtection__CertificatePassword` | **yes** | startup fails (CO-14): the key ring protects guest documents and Questura credentials | [`storage.md`](runbooks/storage.md) §4, [`encryption.md`](runbooks/encryption.md) |
 | `Stripe__SecretKey`, `Stripe__PublishableKey`, `Stripe__WebhookSecret`, `Stripe__ConnectWebhookSecret` | yes once payments are active | ready `stripe: degraded` (the deploy is not blocked); without the Connect secret no direct booking is ever confirmed, without the publishable key the checkout cannot load Stripe. **Wrong mode stops the startup**: a test key in Production, a live key anywhere else (PL-11) | this file § Stripe, [`stripe.md`](runbooks/stripe.md) § Environments |
 | `Billing__Prices__Starter`, `Billing__Prices__Pro`, `Billing__Prices__Scale` | Production: yes when `Stripe__SecretKey` is set; test: to sell the plans | Production: startup fails (missing, placeholder, not `price_…`, or the same id on two plans). Test: that plan answers 422 `billing_plan_unavailable`, ready `stripe: degraded` | [`stripe.md`](runbooks/stripe.md) § Environments |
+| `Billing__VatNumber`, `Sdi__ManualIssuanceAccepted` | Production: yes to sell the plans with live keys | the plan checkout answers 409 `billing_gate_closed`; ready `einvoicing: degraded` (no SDI provider in this build, PL-13). Stripe Tax must also be active on the Stripe account | [`billing-tax.md`](runbooks/billing-tax.md) |
 | `Cors__AllowedOrigins` | yes unless `App__PublicSiteBaseUrl` is the only web app origin (no origin in code) | startup fails when neither gives an origin; a malformed entry also stops the startup | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
+| `App__ApiBaseUrl` | yes for the iCal export links (https, no default in code) | ready `api-url: degraded`; the export links point to `https://localhost:5001` | [`deploy-checklist.md`](runbooks/deploy-checklist.md), [`ical.md`](runbooks/ical.md) |
 | `PublicHost__BaseDomain` | no (no default in code) | the "subdomain" publication mode answers 422 `subdomains_not_configured`; no host is resolved as an org subdomain | [`seo-domain.md`](runbooks/seo-domain.md) |
-| `Legal__Documents__Privacy__DocumentUrl`, `Legal__Documents__Tos__DocumentUrl` | no | the public footer shows no Privacy / Terms link | [`seo-domain.md`](runbooks/seo-domain.md) |
+| `Vercel__ApiToken`, `Vercel__ProjectId`, `Vercel__TeamId` | no (custom domains are an optional Pro feature; no default in code) | no custom domain can be activated: it stays `Pending` ("activation not available" in the console), ready `vercel: degraded` names the missing variable. `PublicHost__VercelCnameTarget`, `PublicHost__AcceptedCnameSuffixes__0`, `PublicHost__VercelAddresses__0` hold the DNS values Vercel recommends (defaults: the generic ones) | [`seo-domain.md`](runbooks/seo-domain.md) section 10 |
+| `Legal__Documents__{Tos,Privacy,Dpa}__{Version,EffectiveAt,DocumentUrl}`, `Legal__Documents__Subprocessors__*` | no (versions in `appsettings.json`) | pages `/legale/*` say "in preparazione"; subprocessor details shown as "in definizione"; ready `legal: degraded` | [`legal-documents.md`](runbooks/legal-documents.md) |
+| `Legal__Controller__{Name,Address,VatId,Pec,PrivacyEmail}`, `Legal__Terms__GoverningCourt` (and the optional `Legal__Controller__{ReaNumber,DpoEmail}`, the proposed `Legal__Terms__*Days`, `Legal__Terms__LiabilityCapMonths`, `Legal__Dpa__*`) | **to publish the legal drafts `2026-10-v1`** (no default for the company data and the court) | the Terms, Privacy notice and DPA stay "in preparazione" (fail-closed, never a placeholder); ready `legal: degraded` and a startup warning name the missing variables; activating the drafts needs the three `Legal__Documents__*__Version` = `2026-10-v1` and asks every host to accept again | [`legal-documents.md`](runbooks/legal-documents.md) § 5-6 |
 | `Cors__VercelPreviewPattern` | no (test only) | Vercel previews rejected by CORS | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
 | `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit`, `RateLimiting__{Policy}__PermitLimit` | no (safe defaults) | — | [`proxy-ip.md`](runbooks/proxy-ip.md) |
 | `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
@@ -551,6 +574,7 @@ In Vercel dashboard → Settings → Environment Variables:
 | `VITE_AUTH0_CLIENT_ID` | SPA client id of the test tenant | SPA client id of the production tenant |
 | `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | **`https://casazen-api`** (must match Railway `Auth0__Audience` on **both** environments) |
 | `VITE_PUBLIC_SITE_URL` | not needed | **required**: `https://<public domain>`, same value as Railway production `App__PublicSiteBaseUrl`; the build fails without it |
+| `VITE_PLAUSIBLE_DOMAIN` | optional | optional: the domain registered on Plausible; the app then also calls `window.plausible()` for the SEO funnel events (the script is added by the product owner). Unset: nothing goes to a third party. [`runbooks/seo-funnel.md`](runbooks/seo-funnel.md) |
 
 `robots.txt` is generated by the build from `VERCEL_ENV`: only the Production environment allows indexing and declares `Sitemap: {VITE_PUBLIC_SITE_URL}/sitemap.xml`; Preview (PRs and the `develop` test deployment) is always `Disallow: /`. `/sitemap.xml` is served by the Vercel Function `api/sitemap.ts`, which proxies `{VITE_API_BASE_URL}/public/sitemap.xml` at runtime. Keep "Automatically expose System Environment Variables" on. Details and checks: [`runbooks/seo-domain.md`](runbooks/seo-domain.md).
 

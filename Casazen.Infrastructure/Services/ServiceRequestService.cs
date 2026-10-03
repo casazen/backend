@@ -26,6 +26,8 @@ public class ServiceRequestService(
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
     IPushNotificationService pushNotifications,
+    ISupplierComuneMatcher comuneMatcher,
+    ILegalDocumentService legalDocuments,
     ILogger<ServiceRequestService> logger) : IServiceRequestService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -37,10 +39,11 @@ public class ServiceRequestService(
         // Only category codes are stored (SU-03); anything else is a 422 before any lookup.
         var category = ServiceCategories.Require(command.Category);
 
-        // IgnoreQueryFilters: scoped by the explicit OrgId check below. command.OrgId comes from
-        // OrgContextResolver, which may provision the org after the tenant filter cached a null org.
+        // IgnoreQueryFilters (tenant only): scoped by the explicit OrgId check below. command.OrgId comes from
+        // OrgContextResolver, which may provision the org after the tenant filter cached a null org. The soft-delete
+        // filter stays (PC-05): no new request on a deleted property.
         var property = await db.Properties
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Include(p => p.Org)
             .FirstOrDefaultAsync(p => p.Id == command.PropertyId, cancellationToken);
 
@@ -77,8 +80,8 @@ public class ServiceRequestService(
                 ServiceRequestErrorCodes.SupplierInactive, ServiceRequestErrorCodes.SupplierInactiveMessageKey);
         }
 
-        var comuni = JsonSerializer.Deserialize<string[]>(supplier.ComuniJson, JsonOpts) ?? [];
-        if (!comuni.Any(c => ItalianComuneRegistry.Matches(property.City, c)))
+        // By ISTAT code when the property has a chosen comune (SU-04), by the written city otherwise.
+        if (!await comuneMatcher.CoversAsync(supplier, ComuneTarget.ForProperty(property), cancellationToken))
         {
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.SupplierOutsideComune, ServiceRequestErrorCodes.SupplierOutsideComuneMessageKey);
@@ -163,7 +166,7 @@ public class ServiceRequestService(
         string userId,
         CancellationToken cancellationToken = default)
     {
-        var request = await GetSupplierRequestOrThrow(id, supplierOrgId, cancellationToken);
+        var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
         await TransitionAsync(
             request,
@@ -186,7 +189,7 @@ public class ServiceRequestService(
         string? notes,
         CancellationToken cancellationToken = default)
     {
-        var request = await GetSupplierRequestOrThrow(id, supplierOrgId, cancellationToken);
+        var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
         await TransitionAsync(
             request,
@@ -212,7 +215,7 @@ public class ServiceRequestService(
     {
         // The API requires a reason of at most 500 characters (400 validation_error, A4-18): a blank one is a bug here.
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
-        var request = await GetSupplierRequestOrThrow(id, supplierOrgId, cancellationToken);
+        var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
         await TransitionAsync(
             request,
@@ -244,6 +247,8 @@ public class ServiceRequestService(
             r => r.PaidAt = DateTime.UtcNow,
             cancellationToken);
 
+        // SU-09: the supplier learns that the host marked the request as paid (the payment itself is outside CasaZen).
+        await NotifySupplierPaidAsync(request, cancellationToken);
         return request;
     }
 
@@ -351,7 +356,14 @@ public class ServiceRequestService(
         CancellationToken cancellationToken = default) =>
         repository.ListForSupplierAsync(supplierOrgId, openOnly, page, pageSize, cancellationToken);
 
-    private async Task<ServiceRequest> GetSupplierRequestOrThrow(
+    /// <summary>
+    /// The request for a supplier action (take, complete, reject): 404 when it does not exist, 403 when it was sent to
+    /// another supplier, 422 <see cref="ServiceRequestErrorCodes.SupplierNotActive"/> when the acting supplier is not
+    /// <see cref="SupplierStatus.Active"/> (SU-12, A4-29): a suspended supplier performs no action, and the check comes
+    /// before the state machine so it is told why instead of "invalid transition". The host's own action
+    /// (<see cref="MarkPaidAsync"/>) is not a supplier action and does not depend on the supplier's status.
+    /// </summary>
+    private async Task<ServiceRequest> GetRequestForActiveSupplierOrThrow(
         Guid id,
         Guid supplierOrgId,
         CancellationToken cancellationToken)
@@ -361,6 +373,35 @@ public class ServiceRequestService(
         // 403 (FD-05): the request exists but was sent to another supplier.
         if (request.SupplierOrgId != supplierOrgId)
             throw new UnauthorizedAccessException($"Service request {id} belongs to another supplier");
+
+        // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
+        var profile = await db.SupplierProfiles
+            .AsNoTracking()
+            .Where(sp => sp.OrgId == supplierOrgId)
+            .Select(sp => new { sp.Status, sp.TosAcceptedAt, sp.TosVersion })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (profile?.Status != SupplierStatus.Active)
+        {
+            logger.LogInformation(
+                "ServiceRequest {Id}: action refused, supplier {SupplierOrgId} is {SupplierStatus}",
+                id, supplierOrgId, profile?.Status.ToString() ?? "without a profile");
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.SupplierNotActive, ServiceRequestErrorCodes.SupplierNotActiveMessageKey);
+        }
+
+        // SU-05: a new Terms of Service version must be accepted again before the supplier keeps acting on requests.
+        // A supplier that accepted before versions were recorded is only asked to accept (it is not blocked).
+        var tos = SupplierActivationRules.TosState(
+            new SupplierProfile { TosAcceptedAt = profile.TosAcceptedAt, TosVersion = profile.TosVersion },
+            legalDocuments.GetTos().Version);
+        if (tos.BlocksActions)
+        {
+            logger.LogInformation(
+                "ServiceRequest {Id}: action refused, supplier {SupplierOrgId} accepted Terms {AcceptedVersion}, current is {CurrentVersion}",
+                id, supplierOrgId, tos.AcceptedVersion, tos.CurrentVersion);
+            throw new DomainRuleException(
+                SupplierActivation.TosReacceptanceRequiredCode, SupplierActivation.TosReacceptanceRequiredMessageKey);
+        }
 
         return request;
     }
@@ -455,6 +496,58 @@ public class ServiceRequestService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Push notification for new service request {Id} could not be queued", request.Id);
+        }
+    }
+
+    /// <summary>
+    /// Email and push to the supplier after the host marked a request as paid (SU-09): queued on Hangfire, never sent inside
+    /// the host's request. The status is already saved, so a failure here is logged and never turned into an error for the
+    /// host. Called only by the winner of the transition (SU-10), and the push key is the transition, so the supplier gets
+    /// one push. The supplier is notified whatever its status: a suspended supplier is still owed what it completed.
+    /// </summary>
+    private async Task NotifySupplierPaidAsync(ServiceRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the request's supplier org.
+            var supplier = await db.SupplierProfiles
+                .AsNoTracking()
+                .Where(sp => sp.OrgId == request.SupplierOrgId)
+                .Select(sp => new { sp.Email, sp.LegalName })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (supplier is not null)
+            {
+                var email = EmailTemplates.ServiceRequestPaid(
+                    EmailTemplates.DefaultCulture,
+                    supplier.LegalName,
+                    request.Category,
+                    request.Property.Name,
+                    publicSiteLinks.SupplierInbox());
+                emailQueue.Enqueue(supplier.Email, email, EmailTemplates.Names.ServiceRequestPaid);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "ServiceRequest {Id} paid: supplier {SupplierOrgId} has no profile, no email queued",
+                    request.Id, request.SupplierOrgId);
+            }
+
+            var push = EmailTemplates.ServiceRequestPaidPush(EmailTemplates.DefaultCulture, request.Category, request.Property.Name);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.ServiceRequestStatus(request.Id, request.Status),
+                PushAudience.SupplierOrg(request.SupplierOrgId),
+                new PushNotificationPayload(
+                    push.Title,
+                    push.Body,
+                    PushTypes.ServiceRequestPaid,
+                    BookingId: null,
+                    PushRoutes.Properties,
+                    request.Id));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Supplier notification for paid service request {Id} could not be queued", request.Id);
         }
     }
 

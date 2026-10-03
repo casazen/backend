@@ -1,0 +1,31 @@
+FD-19 running: OK utente 2026-10-01
+FD-19 done: rimossi file scarto, gitignore corretto
+PL-08 done: be@0fde4878
+SU-16 done: fe@4cb97c5
+PL-06 done: fe@b5963d1
+BK-19 done: be@70ed46c0
+PL-07 done: be@9490a1ab
+PL-04 done: be@6d89e1ec fe@b6f5d04; A1-22 onboarding step aperto
+BK-18 done: be@617bb0a2
+PL-09 done: be@bb38bf3f fe@4cf646a
+CO-13 blocked: specifiche ufficiali non disponibili
+RS-6 running: dataset ISTAT 21/02/2026 fornito dal PO il 2026-10-01; integrazione in SU-04
+PL-05 done: be@c863a963
+BK-12 done: be@9e276305 fe@f2cd401
+PC-03 done: be@86bfce5e
+PC-05 done: be@6b43e937
+CO-13 partial: file tracciato fatto, WS non implementato; be@c0f81730 fe@ee5e034
+PC-04 done: pubblicato prima del riavvio
+SE-04 partial: comune non ancora su tabella Comune (SU-04)
+SU-04 done: be@6b05662c fe@3d1dcf4
+RS-6 done: dataset ISTAT 21/02/2026 importato
+SE-04 done: be@d6a2e8b3
+CO-22 blocked: specifica Ross1000 non verificabile; runbook ross1000.md
+FN-03 done: parziale: variante Stripe solo in CI; be@9eb860f5 fe@d31d5ee
+FN-04 done: parziale: emulatore/Maestro solo in CI, non provato; mobile@6105efb be@5aa83a79
+SU-06 partial: parte mobile di A4-27 aperta
+CO-22 partial: chiuso documentando il motivo: specifiche Ross1000 non verificabili (runbook ross1000.md)
+FN-02 done: fe@61543d4 be@3d48e2a1
+SU-06 done: parte mobile di A4-27 già risolta (MOBILE-I18N-GAP: GIA_RISOLTO)
+FN-01 done: be@cf395f70
+FN-05 done: registro spec, PLANNING, PIANO-RISANAMENTO, PIANO-ESECUZIONE, documenti tecnici e RIEPILOGO-FINALE allineati allo stato reale (commit docs(FN-05))

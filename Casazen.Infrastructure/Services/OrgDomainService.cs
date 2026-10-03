@@ -23,14 +23,17 @@ public partial class OrgDomainService(
     IDomainVerificationService domainVerificationService,
     IPublicHostResolver publicHostResolver,
     IOptions<PublicHostOptions> options,
-    PublicSiteLinks publicSiteLinks) : IOrgDomainService
+    PublicSiteLinks publicSiteLinks,
+    PublicOrgSiteUrls siteUrls,
+    IVercelDomainsClient vercelClient,
+    TimeProvider timeProvider) : IOrgDomainService
 {
-    private const string DefaultDomainRequiredMessage = "Il dominio personalizzato è obbligatorio per questa modalità.";
-    private const string SubdomainRequiredMessage = "Il sottodominio è obbligatorio per questa modalità.";
-    private const string InvalidCustomDomainMessage = "Il dominio personalizzato non è valido.";
-    private const string InvalidSubdomainMessage = "Il sottodominio non è valido. Usa solo lettere minuscole, numeri e trattini.";
-    private const string ReservedSubdomainMessage = "Questo sottodominio è riservato e non può essere usato.";
-    private const string UnknownHostModeMessage = "Modalità di pubblicazione non valida.";
+    private const string DefaultDomainRequiredMessage = "OrgDomainRequired";
+    private const string SubdomainRequiredMessage = "OrgSubdomainRequired";
+    private const string InvalidCustomDomainMessage = "OrgDomainInvalid";
+    private const string InvalidSubdomainMessage = "OrgSubdomainInvalid";
+    private const string ReservedSubdomainMessage = "OrgSubdomainReserved";
+    private const string UnknownHostModeMessage = "OrgHostModeInvalid";
 
     public async Task<OrgDomainConfig?> GetDomainConfigAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
@@ -55,6 +58,8 @@ public partial class OrgDomainService(
 
         var previousCustomDomain = org.CustomDomain;
         var previousSubdomainHost = SubdomainHost(org.Subdomain);
+        var previousOnVercel = org.DomainVercelAddedAt is not null;
+        var now = timeProvider.GetUtcNow().UtcDateTime;
 
         switch (hostMode)
         {
@@ -82,10 +87,19 @@ public partial class OrgDomainService(
                     org.PublicHostMode = PublicHostMode.CustomDomain;
                     org.CustomDomain = normalizedDomain;
                     org.Subdomain = null;
-                    if (domainChanged || org.DomainVerificationStatus != DomainVerificationStatus.Verified)
+                    if (domainChanged || string.IsNullOrEmpty(org.DomainVerificationToken))
                     {
+                        // A new domain starts from nothing: its own ownership token, no state of the previous one.
                         org.DomainVerificationStatus = DomainVerificationStatus.Pending;
                         org.DomainVerificationToken = GenerateVerificationToken();
+                        ResetDomainCheck(org);
+                        org.DomainConfiguredAt = now;
+                    }
+                    else if (org.DomainVerificationStatus != DomainVerificationStatus.Verified)
+                    {
+                        // The same domain saved again while it is not live keeps the records the host already created
+                        // (the token stays) and restarts the periodic checks, which stop some days after the first save.
+                        org.DomainConfiguredAt = now;
                     }
                     break;
                 }
@@ -132,7 +146,17 @@ public partial class OrgDomainService(
                 return new SetOrgDomainResult(SetOrgDomainOutcome.ValidationError, null, UnknownHostModeMessage);
         }
 
-        org.UpdatedAt = DateTime.UtcNow;
+        org.UpdatedAt = now;
+
+        // A domain that was on the Vercel project and is no longer this org's custom domain leaves the project (BK-17).
+        if (previousOnVercel
+            && previousCustomDomain is not null
+            && !publicSiteLinks.IsPublicSiteHost(previousCustomDomain)
+            && (org.PublicHostMode != PublicHostMode.CustomDomain
+                || !string.Equals(org.CustomDomain, previousCustomDomain, StringComparison.Ordinal)))
+        {
+            await DomainRemovalQueue.EnqueueAsync(dbContext, previousCustomDomain, now, cancellationToken);
+        }
 
         try
         {
@@ -167,18 +191,34 @@ public partial class OrgDomainService(
             string.IsNullOrEmpty(org.DomainVerificationToken))
             return new VerifyOrgDomainResult(VerifyOrgDomainOutcome.NotConfigured, null);
 
-        var result = await domainVerificationService.VerifyAsync(org, cancellationToken);
-        if (result.Status == DomainVerificationStatus.Verified)
-            publicHostResolver.InvalidateCacheForHost(result.CustomDomain);
+        // The effective tier, not the stored one (A3-07): a domain of an org that no longer pays for Pro is not served.
+        if (!await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken))
+            return new VerifyOrgDomainResult(VerifyOrgDomainOutcome.PlanRequired, null);
 
+        // Verified, demoted or unchanged, the check itself drops the cached answers of the host (BK-17).
+        var result = await domainVerificationService.VerifyAsync(org, cancellationToken);
         return new VerifyOrgDomainResult(VerifyOrgDomainOutcome.Success, result);
     }
 
-    private void ClearCustomDomainFields(Org org)
+    private static void ClearCustomDomainFields(Org org)
     {
         org.CustomDomain = null;
         org.DomainVerificationStatus = DomainVerificationStatus.Pending;
         org.DomainVerificationToken = null;
+        ResetDomainCheck(org);
+        org.DomainConfiguredAt = null;
+    }
+
+    /// <summary>What a check found out belongs to one domain: a new domain starts from nothing (BK-17).</summary>
+    private static void ResetDomainCheck(Org org)
+    {
+        org.DomainStatusDetail = null;
+        org.DomainCheckedAt = null;
+        org.DomainVerifiedAt = null;
+        org.DomainVercelAddedAt = null;
+        org.DomainCheckFailures = 0;
+        org.DomainVercelTxtHost = null;
+        org.DomainVercelTxtValue = null;
     }
 
     private OrgDomainConfig BuildConfig(Org org, bool canUseCustomDomain)
@@ -194,7 +234,8 @@ public partial class OrgDomainService(
             org.DomainVerificationStatus,
             canUseCustomDomain,
             dnsInstructions,
-            publicUrls);
+            publicUrls,
+            BuildStatus(org));
     }
 
     private DnsInstructions BuildDnsInstructions(Org org) => new(
@@ -202,7 +243,27 @@ public partial class OrgDomainService(
         CnameTarget: options.Value.VercelCnameTarget,
         TxtHost: $"{options.Value.TxtRecordPrefix}.{org.CustomDomain}",
         TxtValue: org.DomainVerificationToken ?? string.Empty,
-        SslNote: "Il certificato SSL viene generato automaticamente da Vercel dopo la verifica del CNAME.");
+        SslNote: "Il certificato SSL viene generato automaticamente da Vercel dopo la verifica del CNAME.",
+        ARecordValues: options.Value.VercelAddresses,
+        VercelTxtHost: org.DomainVercelTxtHost,
+        VercelTxtValue: org.DomainVercelTxtValue);
+
+    /// <summary>The honest state of the custom domain: why it waits, when it was last checked, whether the platform can activate it at all.</summary>
+    private DomainStatusInfo BuildStatus(Org org)
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var hostOptions = options.Value;
+        var customDomain = org.PublicHostMode == PublicHostMode.CustomDomain && !string.IsNullOrEmpty(org.CustomDomain);
+        var givenUp = org.DomainVerificationStatus != DomainVerificationStatus.Verified
+            && (org.DomainConfiguredAt ?? org.UpdatedAt) < now.AddDays(-Math.Max(1, hostOptions.MaxPendingDays));
+
+        return new DomainStatusInfo(
+            org.DomainStatusDetail,
+            org.DomainCheckedAt,
+            org.DomainVerifiedAt,
+            vercelClient.IsConfigured,
+            customDomain && !givenUp);
+    }
 
     private PublicUrls BuildPublicUrls(Org org)
     {
@@ -212,7 +273,10 @@ public partial class OrgDomainService(
         var pathUrl = publicSiteLinks.TryPublicPage(path) ?? path;
         var subdomainHost = SubdomainHost(org.Subdomain);
         var subdomainUrl = subdomainHost is null ? null : $"https://{subdomainHost}";
-        var customDomainUrl = org.CustomDomain is null ? null : $"https://{org.CustomDomain}";
+        // Only a domain that is served is a link: a pending one is not "your site" yet (BK-17, A3-25).
+        var customDomainUrl = org.CustomDomain is not null && string.Equals(siteUrls.OwnHost(org), org.CustomDomain, StringComparison.Ordinal)
+            ? $"https://{org.CustomDomain}"
+            : null;
         return new PublicUrls(pathUrl, subdomainUrl, customDomainUrl);
     }
 
@@ -258,11 +322,31 @@ public partial class OrgDomainService(
             && (candidate == baseDomain || candidate.EndsWith($".{baseDomain}", StringComparison.Ordinal)))
             return false;
 
+        // The web app's own domain (and anything under it) is the platform's, never an org's: a custom domain is added to and
+        // removed from the Vercel project that serves the app (BK-17). The *.vercel.app names are Vercel's own.
+        if (publicSiteLinks.IsPublicSiteHost(candidate) || IsUnderPublicSiteHost(candidate)
+            || candidate.EndsWith(".vercel.app", StringComparison.Ordinal))
+            return false;
+
         if (!HostnameRegex().IsMatch(candidate) || !candidate.Contains('.'))
             return false;
 
         normalized = candidate;
         return true;
+    }
+
+    private bool IsUnderPublicSiteHost(string candidate)
+    {
+        // "foo.<public host>": checked one label at a time, so no host name has to be rebuilt from the configuration.
+        var parent = candidate;
+        while (parent.IndexOf('.') is var dot and > 0)
+        {
+            parent = parent[(dot + 1)..];
+            if (publicSiteLinks.IsPublicSiteHost(parent))
+                return true;
+        }
+
+        return false;
     }
 
     private bool TryNormalizeSubdomain(string input, out string normalized)

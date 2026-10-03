@@ -112,6 +112,25 @@ internal static class PostgresAdvisoryLocks
         /// now") and the supplier's manual changes never write the same days at once (SU-15).
         /// </summary>
         SupplierCalendarSync = 1_065,
+
+        /// <summary>
+        /// Import of the official ISTAT comuni list (single key): the upload of an admin and the seed file of a starting
+        /// instance never write the table together, and the diff of an import is computed on rows nobody else changes (SU-04).
+        /// </summary>
+        ComuneImport = 1_087,
+
+        /// <summary>
+        /// Rent of one lease (key: lease id): the schedule set-up, the tenant's payment session, an offline payment, the
+        /// payment webhooks and the collection job change its installments one at a time, so an installment never gets
+        /// two payable PaymentIntents or an offline payment while it is paid online (LT-06).
+        /// </summary>
+        RentLease = 1_206,
+
+        /// <summary>
+        /// Photo gallery of one property (key: property id): two uploads, deletions or reorders never read and rewrite the
+        /// photo list at the same time, so no photo is lost (PC-04).
+        /// </summary>
+        PropertyPhotos = 1_074,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -10,22 +9,21 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.External;
 
+/// <summary>
+/// DeepSeek chat completions. No cache of its own (A8-25): a caller that may reuse an answer asks
+/// <see cref="IAiResponseCache"/> first, which is bounded and expires; <c>cacheKey</c> is only the label of the request.
+/// </summary>
 public class DeepSeekAiProvider(
     IHttpClientFactory httpClientFactory,
     IOptions<AiOptions> options,
     ILogger<DeepSeekAiProvider> logger) : IAiProvider
 {
-    private static readonly ConcurrentDictionary<string, AiGenerationResult> Cache = new();
-
     public async Task<AiGenerationResult> GenerateAsync(
         string prompt,
         AiModelTier tier,
         string cacheKey,
         CancellationToken cancellationToken = default)
     {
-        if (Cache.TryGetValue(cacheKey, out var cached))
-            return cached with { FromCache = true };
-
         var config = options.Value;
         if (string.IsNullOrWhiteSpace(config.ApiKey))
         {
@@ -53,9 +51,7 @@ public class DeepSeekAiProvider(
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         var content = ExtractCompletionContent(json);
         var (promptTokens, completionTokens) = ExtractUsage(json);
-        var result = new AiGenerationResult(content, promptTokens, completionTokens, tier, false);
-        Cache[cacheKey] = result;
-        return result;
+        return new AiGenerationResult(content, promptTokens, completionTokens, tier, false);
     }
 
     public static string ExtractCompletionContent(string json)
