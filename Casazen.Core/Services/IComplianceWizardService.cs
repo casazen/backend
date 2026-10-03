@@ -1,4 +1,3 @@
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
@@ -205,7 +204,7 @@ public interface IComplianceWizardService
         bool? tosAccepted,
         CancellationToken cancellationToken = default);
 
-    Task<ComplianceSummaryResult> GetSummaryAsync(HostScope scope, CancellationToken cancellationToken = default);
+    Task<ComplianceSummaryResult> GetSummaryAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Opens the check-out wizard of a booking the caller has already been authorized on (TN-3), with the rules of

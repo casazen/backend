@@ -1,4 +1,3 @@
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -423,19 +422,6 @@ public class AlloggiatiWebServiceTests
         Assert.Empty(db.AlloggiatiWebReports);
     }
 
-    [Fact]
-    public async Task MarkSentManually_IncompleteGuestData_ThrowsAndChangesNothing()
-    {
-        await using var db = CreateDb();
-        var booking = await SeedBookingAsync(db, completeGuest: false);
-
-        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
-            CreateService(db, RomeMidnightOfCheckIn.AddHours(30)).MarkSentManuallyAsync(booking.Id, CheckIn));
-
-        Assert.Equal(AlloggiatiWebService.GuestDataIncompleteCode, ex.Code);
-        Assert.Empty(db.AlloggiatiWebReports);
-    }
-
     [Theory]
     [InlineData(AlloggiatiWebStatus.InviatoManualmente)]
     [InlineData(AlloggiatiWebStatus.Inviato)]
@@ -622,32 +608,9 @@ public class AlloggiatiWebServiceTests
         var mine = await SeedBookingAsync(db);
         await SeedBookingAsync(db);
 
-        var rows = await CreateService(db, CheckIn).GetSummaryAsync(new HostScope(mine.OrgId, null), null);
+        var rows = await CreateService(db, CheckIn).GetSummaryAsync(mine.OrgId, null);
 
         Assert.Equal(mine.Id, Assert.Single(rows).BookingId);
-    }
-
-    [Fact]
-    public async Task GetSummary_OwnerScope_DoesNotListOtherOwnersGuests()
-    {
-        await using var db = CreateDb();
-        var mine = await SeedBookingAsync(db);
-        var other = await SeedBookingAsync(db);
-        other.OrgId = mine.OrgId;
-        var otherGuest = await db.Guests.SingleAsync(g => g.Id == other.GuestId);
-        otherGuest.OrgId = mine.OrgId;
-        otherGuest.FirstName = "Hidden";
-        otherGuest.LastName = "Guest";
-        var otherProperty = await db.Properties.SingleAsync(p => p.Id == other.PropertyId);
-        otherProperty.OrgId = mine.OrgId;
-        otherProperty.OwnerId = "auth0|other-owner";
-        await db.SaveChangesAsync();
-
-        var rows = await CreateService(db, CheckIn).GetSummaryAsync(new HostScope(mine.OrgId, "auth0|owner"), null);
-
-        var row = Assert.Single(rows);
-        Assert.Equal(mine.Id, row.BookingId);
-        Assert.DoesNotContain(rows, r => r.GuestName == "Hidden Guest");
     }
 
     private static DateTime Utc(int year, int month, int day, int hour = 0) =>

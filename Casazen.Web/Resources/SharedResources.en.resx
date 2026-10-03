@@ -463,9 +463,6 @@
   <data name="AlloggiatiAlreadySent" xml:space="preserve">
     <value>The Alloggiati communication of this booking is already recorded as sent.</value>
   </data>
-  <data name="AlloggiatiGuestDataIncomplete" xml:space="preserve">
-    <value>Complete the Alloggiati data for every guest before marking the communication as sent manually.</value>
-  </data>
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen does not transmit to Alloggiati Web yet: send the record on the Questura portal using the data summary, then mark it as sent manually.</value>
   </data>
