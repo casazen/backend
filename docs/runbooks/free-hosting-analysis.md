@@ -1,5 +1,7 @@
 # Analisi: hosting gratuito del backend dopo la chiusura di Railway
 
+> **Aggiornamento 2026-10-04:** il PO ha deciso di riattivare Railway come host del backend. Questa analisi resta come riferimento storico delle alternative gratuite valutate; nessuna è stata adottata.
+
 Task HOSTING. Data dell'analisi: **2026-10-02**. Solo analisi: nessuna modifica a codice, workflow o `.claude/rules/*`.
 
 Contesto: il PO ha cancellato Railway e non vuole pagare nulla. Il database resta su Supabase (piano free), il frontend su Vercel. Il backend (ASP.NET Core .NET 10, Docker, `ASPNETCORE_URLS=http://+:8080`) deve girare su una soluzione gratuita.
