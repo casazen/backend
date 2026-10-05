@@ -12,7 +12,7 @@ namespace Casazen.Web.Controllers;
 /// Rights of the guests on their data, exercised by the host for them (CO-15, docs/runbooks/gdpr.md), and the org's
 /// fiscal data. Guest actions: guest of the caller's org only (another org's guest answers 404, TN-1), then the
 /// <c>guest.read</c> / <c>guest.write</c> permission on that org (TN-3, otherwise 403). The class carries no permission
-/// because the org actions need <c>property.*</c> instead: every action has its own policy.
+/// because the org actions need <c>property.*</c> plus org-wide host reach instead: every action has its own policy.
 /// </summary>
 [ApiController]
 [Route("api/gdpr")]
@@ -117,6 +117,9 @@ public class GdprController(
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
             return NotFound();
+        if (!User.HasOrgWideHostAccess())
+            return Forbid();
+
         var data = await gdprService.ExportOrgFiscalDataAsync(orgId.Value, cancellationToken);
         return Ok(data);
     }
@@ -128,6 +131,9 @@ public class GdprController(
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
             return NotFound();
+        if (!User.HasOrgWideHostAccess())
+            return Forbid();
+
         await gdprService.AnonymizeOrgFiscalDataAsync(orgId.Value, cancellationToken);
         return NoContent();
     }
