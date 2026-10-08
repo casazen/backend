@@ -56,10 +56,14 @@ public class OrgInvitationAcceptanceControllerTests
 
     private static OnboardingConsentsDto Consents() => new()
     {
-        TosAccepted = true, TosVersion = "v1",
-        PrivacyAccepted = true, PrivacyVersion = "v1",
-        DpaAccepted = true, DpaVersion = "v1",
-        SubprocessorsAcknowledged = true, SubprocessorsVersion = "v1",
+        TosAccepted = true,
+        TosVersion = "v1",
+        PrivacyAccepted = true,
+        PrivacyVersion = "v1",
+        DpaAccepted = true,
+        DpaVersion = "v1",
+        SubprocessorsAcknowledged = true,
+        SubprocessorsVersion = "v1",
     };
 
     // ─── Lookup ─────────────────────────────────────────────────────────────────────────────────────────

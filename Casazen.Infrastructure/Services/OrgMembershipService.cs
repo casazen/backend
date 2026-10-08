@@ -250,15 +250,15 @@ public sealed partial class OrgMembershipService(
         OrgRole role,
         string? createdByUserId,
         PropertyScope propertyScope = PropertyScope.All) => new()
-    {
-        OrgId = orgId,
-        UserId = userId,
-        Role = role,
-        Status = OrgMemberStatus.Active,
-        PropertyScope = propertyScope,
-        CreatedAt = _clock.GetUtcNow().UtcDateTime,
-        CreatedByUserId = createdByUserId,
-    };
+        {
+            OrgId = orgId,
+            UserId = userId,
+            Role = role,
+            Status = OrgMemberStatus.Active,
+            PropertyScope = propertyScope,
+            CreatedAt = _clock.GetUtcNow().UtcDateTime,
+            CreatedByUserId = createdByUserId,
+        };
 
     /// <summary>
     /// Finds the member's org, takes that org's lock and reads the member again under it (tracked): what was read before
