@@ -751,6 +751,35 @@ public class OrgInvitationAcceptanceTests
         Assert.Equal(OrgInvitationStatus.Pending, (await _kit.ReadInvitationAsync(invitation.Id)).Status);
     }
 
+    [Theory]
+    [InlineData(OrgMembershipErrors.AlreadyMember)]
+    [InlineData(OrgMembershipErrors.OtherOrg)]
+    public async Task AcceptAsync_AnotherOrgGotThePersonFirst_IsTheConflictOfAPersonWhoHasAnOrg_AndTheInvitationStaysOpen(string raceCode)
+    {
+        // Two orgs invite the same person and it accepts both at once: the unique index of the member row lets one through
+        // and the membership service tells the other that the person is taken (proved on PostgreSQL). The loser gets the
+        // answer of a person who has an org, not a code of the membership service.
+        var (orgId, invitation, token) = await OrgWithInvitationForNewUserAsync();
+        var membership = new Mock<IOrgMembershipService>();
+        membership
+            .Setup(m => m.AddMemberAsync(
+                AnnaId,
+                orgId,
+                It.IsAny<OrgRole>(),
+                It.IsAny<IReadOnlyCollection<string>>(),
+                It.IsAny<string?>(),
+                It.IsAny<PropertyScope>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DomainConflictException(raceCode, "OrgMemberAlreadyMember"));
+
+        await using var db = _kit.NewDb();
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => _kit.Invitations(db, membership.Object).AcceptAsync(
+            new AcceptOrgInvitation(token, AnnaId, AnnaEmail, true, false, OrgInvitationTestKit.Consents(), null)));
+
+        Assert.Equal(OrgInvitationErrors.UserHasOrganization, error.Code);
+        await AssertNothingWrittenAsync(invitation, orgId);
+    }
+
     // ─── Legacy links ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

@@ -40,7 +40,8 @@ public sealed class OrgInvitationMaintenanceService(
     ILogger<OrgInvitationMaintenanceService> logger,
     TimeProvider? timeProvider = null) : IOrgInvitationMaintenanceService
 {
-    private const string RunLockKey = "org-invitation-maintenance";
+    /// <summary>The key of the session lock of a run (<see cref="PostgresAdvisoryLocks.Scope.OrgInvitationMaintenance"/>).</summary>
+    internal const string RunLockKey = "org-invitation-maintenance";
 
     /// <summary>Invitations handled per step and per run: the next run takes the rest.</summary>
     private const int BatchSize = 200;

@@ -73,7 +73,21 @@ public sealed partial class OrgInvitationService
             throw Gone(OrgInvitationErrors.Invalid, "InvitationInvalid");
 
         // What the account is in an org today decides: join, leave an empty org of its own for this one, or refuse.
-        var plan = await PlanAsync(request.UserId, seen.OrgId, cancellationToken);
+        AcceptPlan plan;
+        try
+        {
+            plan = await PlanAsync(request.UserId, seen.OrgId, cancellationToken);
+        }
+        catch (DomainConflictException ex) when (ex.Code == OrgMembershipErrors.AlreadyMember)
+        {
+            // The same person's other request (double click, retry) accepted this very invitation between the read above
+            // and this one: the member it created is what the plan sees. That is a replay, not a conflict.
+            if (await TryReplayAsync(seen.Id, request.UserId, cancellationToken) is { } replay)
+                return replay;
+
+            throw;
+        }
+
         await EnsureOldOrgIsEmptyAsync(plan, request.UserId, cancellationToken);
 
         OrgInvitation invitation;
@@ -95,14 +109,23 @@ public sealed partial class OrgInvitationService
             await LeaveTheOldOrgAsync(user, lockedPlan, now, cancellationToken);
 
             // The member and every membership of its role, in this transaction.
-            await orgMembership.AddMemberAsync(
-                user.Id,
-                invitation.OrgId,
-                invitation.Role,
-                invitation.Areas,
-                invitation.InvitedByUserId,
-                invitation.PropertyScope,
-                cancellationToken);
+            try
+            {
+                await orgMembership.AddMemberAsync(
+                    user.Id,
+                    invitation.OrgId,
+                    invitation.Role,
+                    invitation.Areas,
+                    invitation.InvitedByUserId,
+                    invitation.PropertyScope,
+                    cancellationToken);
+            }
+            catch (DomainConflictException ex) when (ex.Code is OrgMembershipErrors.AlreadyMember or OrgMembershipErrors.OtherOrg)
+            {
+                // Another organisation's invitation got the person first (the unique index of the member row decided):
+                // for the person it is the same answer as having an organisation to begin with. Nothing is saved.
+                throw new DomainConflictException(OrgInvitationErrors.UserHasOrganization, "InvitationUserHasOrganization");
+            }
 
             invitation.Status = OrgInvitationStatus.Accepted;
             invitation.AcceptedAt = now;
@@ -321,6 +344,17 @@ public sealed partial class OrgInvitationService
             .AnyAsync(
                 m => m.UserId == userId && m.OrgId == invitation.OrgId && m.Status == OrgMemberStatus.Active,
                 cancellationToken);
+
+    /// <summary>The answer of the acceptance already done, when the invitation now is the one this account accepted; otherwise <c>null</c>.</summary>
+    private async Task<OrgInvitationAccepted?> TryReplayAsync(Guid invitationId, string userId, CancellationToken cancellationToken)
+    {
+        var current = await db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == invitationId, cancellationToken);
+
+        return current is not null && await IsReplayAsync(current, userId, cancellationToken)
+            ? await ReplayAsync(current, cancellationToken)
+            : null;
+    }
 
     private async Task<OrgInvitationAccepted> ReplayAsync(OrgInvitation invitation, CancellationToken cancellationToken)
     {

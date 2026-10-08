@@ -48,8 +48,15 @@ internal sealed class OrgInvitationTestKit
 
     public string? PublicSiteBaseUrl { get; set; } = EmailTestHelpers.PublicSiteBaseUrl;
 
-    public OrgInvitationTestKit()
+    private readonly Func<AppDbContext>? _contextFactory;
+
+    /// <param name="contextFactory">
+    /// A new context on the database the tests use; omitted, the kit works on its own EF InMemory database. The PostgreSQL
+    /// tests pass a factory over a migrated database and get the same services and the same data helpers.
+    /// </param>
+    public OrgInvitationTestKit(Func<AppDbContext>? contextFactory = null)
     {
+        _contextFactory = contextFactory;
         Auth0
             .Setup(a => a.RemoveRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Auth0SyncResult.Synced);
@@ -57,7 +64,7 @@ internal sealed class OrgInvitationTestKit
 
     public DateTime Now => Clock.GetUtcNow().UtcDateTime;
 
-    public AppDbContext NewDb() => OrgTeamTestData.NewDb(Database);
+    public AppDbContext NewDb() => _contextFactory?.Invoke() ?? OrgTeamTestData.NewDb(Database);
 
     private IConfiguration Config() => new ConfigurationBuilder().AddInMemoryCollection(Settings).Build();
 
@@ -86,10 +93,10 @@ internal sealed class OrgInvitationTestKit
     public OnboardingService Onboarding(AppDbContext db) =>
         new(db, Legal(), Cache.Object, EmailTestHelpers.Links(PublicSiteBaseUrl));
 
-    public OrgInvitationService Invitations(AppDbContext db) => new(
+    public OrgInvitationService Invitations(AppDbContext db, IOrgMembershipService? membership = null) => new(
         db,
         Seats(db),
-        Membership(db),
+        membership ?? Membership(db),
         new OrgEmptinessChecker(db),
         Onboarding(db),
         Auth0.Object,
