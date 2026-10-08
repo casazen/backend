@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -24,7 +25,10 @@ public sealed class OrgBillingAdminRequirement : IAuthorizationRequirement;
 /// (<c>org.billing.manage</c>), which the account context gives to the org owner (<c>org_owner</c>) and administrator
 /// (<c>org_admin</c>): a membership of the account context that holds it passes, as the roles of
 /// <see cref="OrgOwnerRoles"/> do, and the token roles and the owner's rental memberships of AM-00 pass as before (every
-/// existing owner keeps working). A member the org deactivated never passes.
+/// existing owner keeps working) when the caller is not in an org team. When an <see cref="OrgMember"/> row exists it
+/// is the source of truth, the same veto as the host contexts (S3): a leftover <c>PropertyOwner</c>,
+/// <c>LongTermLandlord</c> or <c>Admin</c> claim does not pass for a collaborator, property manager or accountant.
+/// A member the org deactivated never passes.
 /// </remarks>
 public class OrgBillingAdminAuthorizationHandler(
     IOrgContextResolver orgContextResolver,
@@ -71,7 +75,7 @@ public class OrgBillingAdminAuthorizationHandler(
         if (snapshot.IsOrgMemberDeactivated)
             return;
 
-        if (!HasAllowedRole(context.User) && !HasAllowedMembership(snapshot))
+        if (!GrantsBilling(context.User, snapshot))
             return;
 
         if (!(await hostOnboardingGate.GetStatusAsync(userId)).IsComplete)
@@ -85,6 +89,30 @@ public class OrgBillingAdminAuthorizationHandler(
             return;
 
         context.Succeed(requirement);
+    }
+
+    /// <summary>
+    /// An org member is authorized from <see cref="OrgMember.Role"/>, not from the token (AM-01, S3): owner and org
+    /// administrator pass, and so does a platform-admin membership. Everyone else in the team is refused even when the
+    /// JWT still carries <c>PropertyOwner</c>, <c>LongTermLandlord</c> or <c>Admin</c>. With no org member row, the
+    /// token and the DB memberships pass as before so an owner from before the backfill is not locked out.
+    /// </summary>
+    private static bool GrantsBilling(ClaimsPrincipal user, UserAuthorizationSnapshot snapshot)
+    {
+        if (snapshot.OrgMember is not null)
+        {
+            if (snapshot is not { Exists: true, IsActive: true } || snapshot.Role is UserRole.Staff or UserRole.Guest)
+                return false;
+
+            if (snapshot.OrgMember.Role is OrgRole.Owner or OrgRole.Admin)
+                return true;
+
+            return snapshot.Memberships.Any(m =>
+                string.Equals(m.ContextKey, "admin", StringComparison.OrdinalIgnoreCase) &&
+                OrgOwnerRoles.IsOwnerRole(m.ContextKey, m.RoleKey));
+        }
+
+        return HasAllowedRole(user) || HasAllowedMembership(snapshot);
     }
 
     /// <summary>

@@ -530,7 +530,91 @@ public class OrgMembershipServiceTests
         await using var verify = NewDb(_database);
         Assert.Empty(await verify.OrgMembers.ToListAsync());
         Assert.Equal(["admin/platform_admin"], await MembershipsOfAsync(verify, "auth0|member"));
+        // The org link is cleared with the row: onboarding must not reuse it and create a second owner.
+        Assert.Null((await verify.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|member")).OrgId);
         _cache.Verify(c => c.Invalidate("auth0|member"), Times.Once);
+    }
+
+    [Fact]
+    public async Task EnsureOwnerAsync_OrgThatAlreadyHasAnOwner_DoesNotCreateASecondOne()
+    {
+        await using var db = NewDb(_database);
+        var org = AddOrg(db);
+        AddUser(db, "auth0|owner", org.Id, UserRole.PropertyOwner);
+        AddUser(db, "auth0|removed", org.Id);
+        await db.SaveChangesAsync();
+        var service = NewService(db);
+        await service.EnsureOwnerAsync("auth0|owner", org.Id);
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => service.EnsureOwnerAsync("auth0|removed", org.Id));
+
+        Assert.Equal(OrgMembershipErrors.AlreadyMember, error.Code);
+        await using var verify = NewDb(_database);
+        Assert.Equal("auth0|owner", (await verify.OrgMembers.SingleAsync()).UserId);
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_PersonWhoNeverOnboarded_RecordsOnboardingAndCopiesTheOrgConsents()
+    {
+        await using var db = NewDb(_database);
+        var org = AddOrg(db);
+        AddUser(db, "auth0|owner", org.Id, UserRole.PropertyOwner);
+        AddUser(db, "auth0|member", orgId: null);
+        db.ConsentRecords.AddRange(
+            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.Tos, Version = "tos-2026" },
+            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.Privacy, Version = "privacy-2026" },
+            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.Dpa, Version = "dpa-2026" },
+            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.SubprocessorsAck, Version = "sub-2026" },
+            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.Marketing, Version = "tos-2026" });
+        await db.SaveChangesAsync();
+
+        await NewService(db).AddMemberAsync("auth0|member", org.Id, OrgRole.Collaborator, ["short-rent"], "auth0|owner");
+
+        await using var verify = NewDb(_database);
+        var member = await verify.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|member");
+        Assert.Equal(Now.UtcDateTime, member.OnboardingCompletedAt);
+        var consents = await verify.ConsentRecords.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.UserId == "auth0|member")
+            .Select(c => new { c.Type, c.Version })
+            .ToListAsync();
+        Assert.Equal(
+            ["Dpa", "Privacy", "SubprocessorsAck", "Tos"],
+            consents.Select(c => c.Type.ToString()).OrderBy(t => t).ToArray());
+        Assert.DoesNotContain(consents, c => c.Type == ConsentType.Marketing);
+        Assert.Contains(consents, c => c.Type == ConsentType.Tos && c.Version == "tos-2026");
+        Assert.Contains(consents, c => c.Type == ConsentType.Privacy && c.Version == "privacy-2026");
+        Assert.Contains(consents, c => c.Type == ConsentType.Dpa && c.Version == "dpa-2026");
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_PersonAlreadyOnboarded_KeepsTheTimestampAndDoesNotDuplicateConsents()
+    {
+        await using var db = NewDb(_database);
+        var org = AddOrg(db);
+        var existingTimestamp = Now.UtcDateTime.AddDays(-2);
+        var member = AddUser(db, "auth0|member", org.Id);
+        member.OnboardingCompletedAt = existingTimestamp;
+        db.ConsentRecords.Add(new ConsentRecord
+        {
+            UserId = "auth0|member",
+            OrgId = org.Id,
+            Type = ConsentType.Tos,
+            Version = "tos-2026",
+        });
+        db.ConsentRecords.Add(new ConsentRecord
+        {
+            UserId = "auth0|owner",
+            OrgId = org.Id,
+            Type = ConsentType.Tos,
+            Version = "tos-2026",
+        });
+        await db.SaveChangesAsync();
+
+        await NewService(db).AddMemberAsync("auth0|member", org.Id, OrgRole.Collaborator, ["short-rent"], null);
+
+        await using var verify = NewDb(_database);
+        Assert.Equal(existingTimestamp, (await verify.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|member")).OnboardingCompletedAt);
+        Assert.Equal(1, await verify.ConsentRecords.IgnoreQueryFilters().CountAsync(c => c.UserId == "auth0|member" && c.Type == ConsentType.Tos));
     }
 
     [Fact]

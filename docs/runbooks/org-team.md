@@ -75,10 +75,10 @@ lock, `PostgresAdvisoryLocks.Scope.OrgMembership` = 1401; the authorization cach
 | Method | What it does | Refusals |
 |---|---|---|
 | `EnsureOwnerAsync` | member Owner + `account/org_owner`, never touches the owner rental rows. **Called by the onboarding** right after the org is created. | 409 `org_member_other_org`, `org_member_already_member` |
-| `AddMemberAsync` | member + the memberships of the role for the chosen areas, all or nothing; sets `User.OrgId` when empty | 422 `org_owner_not_assignable`, `org_member_area_required`; 409 `org_member_already_member`, `org_member_other_org` |
+| `AddMemberAsync` | member + the memberships of the role for the chosen areas, all or nothing; sets `User.OrgId` when empty; marks the host onboarding done and copies the org's Terms, Privacy, DPA and subprocessors consents when the person has none | 422 `org_owner_not_assignable`, `org_member_area_required`; 409 `org_member_already_member`, `org_member_other_org` |
 | `ChangeRoleAsync` | re-points the account row and the role key of every rental row, keeping the areas | 422 `org_owner_not_assignable`; 409 `org_last_owner` |
 | `DeactivateAsync` / `ReactivateAsync` | status only; idempotent; the account and the memberships stay | 409 `org_last_owner` (deactivating the owner) |
-| `RemoveAsync` | deletes the member and every membership the org gave; leaves the user and its `OrgId` | 409 `org_last_owner` |
+| `RemoveAsync` | deletes the member and every membership the org gave; clears `User.OrgId` when it points at this org | 409 `org_last_owner` |
 | `ReconcileAsync` | section 6 | 409 `org_membership_maintenance_conflict` |
 
 AM-01 exposes no endpoint for these but the reconcile: AM-02 builds the invitation flow on top. Messages are in

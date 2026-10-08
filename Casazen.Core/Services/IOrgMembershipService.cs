@@ -34,8 +34,10 @@ public interface IOrgMembershipService
     /// <summary>
     /// Adds <paramref name="userId"/> to <paramref name="orgId"/> as <paramref name="role"/>, working in
     /// <paramref name="rentalContexts"/> (the areas): the <see cref="OrgMember"/> row and the memberships the role implies,
-    /// all or nothing. The user's <c>OrgId</c> becomes <paramref name="orgId"/> when it has none. The member gets every
-    /// property of the org (the per-property scope is AM-03).
+    /// all or nothing. The user's <c>OrgId</c> becomes <paramref name="orgId"/> when it has none. A person who has not
+    /// finished the host onboarding is marked onboarded and receives a copy of the org's Terms, Privacy, DPA and
+    /// subprocessors consents, so the host contexts are granted and the onboarding stays closed to members. The member
+    /// gets every property of the org (the per-property scope is AM-03).
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// The role is <see cref="OrgRole.Owner"/> (<see cref="OrgMembershipErrors.OwnerNotAssignable"/>: the ownership is not
@@ -80,7 +82,8 @@ public interface IOrgMembershipService
 
     /// <summary>
     /// Takes the member out of the org: the <see cref="OrgMember"/> row and every membership the org gave (account and
-    /// rental contexts). The user's account and its <c>OrgId</c> are not touched here.
+    /// rental contexts). When <c>User.OrgId</c> points at this org it is cleared, so a later onboarding provisions a new
+    /// org instead of making the person a second owner of this one. The user's account is otherwise left as it is.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">The member is the owner (<see cref="OrgMembershipErrors.LastOwner"/>).</exception>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user is not a member of any org.</exception>

@@ -53,6 +53,14 @@ public sealed partial class OrgMembershipService(
         var created = member is null;
         if (member is null)
         {
+            // A removed member no longer has a row, and the org still has its owner (the owner cannot be removed).
+            // Creating another Owner here is how that person would take the org over.
+            if (await db.OrgMembers.IgnoreQueryFilters().AnyAsync(
+                    m => m.OrgId == orgId && m.Role == OrgRole.Owner, cancellationToken))
+            {
+                throw new DomainConflictException(OrgMembershipErrors.AlreadyMember, "OrgMemberAlreadyMember");
+            }
+
             member = NewMember(userId, orgId, OrgRole.Owner, createdByUserId: null);
             db.OrgMembers.Add(member);
         }
@@ -116,6 +124,9 @@ public sealed partial class OrgMembershipService(
         var member = NewMember(userId, orgId, role, createdByUserId);
         db.OrgMembers.Add(member);
         await ProjectAsync(userId, OrgRoleCatalog.ProjectionOf(role, areas), ManagedContexts, cancellationToken);
+        // The host contexts (account included) stay withheld until onboarding and the org's consents exist, and a
+        // member is not allowed to complete the onboarding itself: record both here, or the person never gets in.
+        await AdoptHostOnboardingAsync(user, orgId, cancellationToken);
 
         await SaveAsync(transaction, userId, cancellationToken);
 
@@ -197,11 +208,70 @@ public sealed partial class OrgMembershipService(
         if (member.Role == OrgRole.Owner)
             throw new DomainConflictException(OrgMembershipErrors.LastOwner, "OrgLastOwner");
 
+        // Leave no link the onboarding can reuse: EnsureOrgForUserAsync would otherwise return this org and
+        // EnsureOwnerAsync would insert a second Owner beside the one that cannot be removed.
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user?.OrgId == member.OrgId)
+        {
+            user.OrgId = null;
+            user.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
+        }
+
         db.OrgMembers.Remove(member);
         await ProjectAsync(userId, [], ManagedContexts, cancellationToken);
         await SaveAsync(transaction, userId, cancellationToken);
 
         logger.LogInformation("Org member removed: userId={UserId} orgId={OrgId}", userId, member.OrgId);
+    }
+
+    /// <summary>
+    /// Consents the host gate reads (<see cref="HostOnboarding"/>), plus the subprocessors acknowledgement the
+    /// onboarding records with them. Marketing stays personal and is never copied.
+    /// </summary>
+    private static readonly ConsentType[] OrgConsentTypes =
+    [
+        ConsentType.Tos,
+        ConsentType.Privacy,
+        ConsentType.Dpa,
+        ConsentType.SubprocessorsAck,
+    ];
+
+    /// <summary>
+    /// Gives <paramref name="user"/> the host onboarding of <paramref name="orgId"/>: the completion timestamp, once,
+    /// and a copy of the consents the org already has (the owner's). Same <c>SaveChanges</c> as the member row.
+    /// </summary>
+    private async Task AdoptHostOnboardingAsync(User user, Guid orgId, CancellationToken cancellationToken)
+    {
+        if (user.OnboardingCompletedAt is null)
+            user.OnboardingCompletedAt = _clock.GetUtcNow().UtcDateTime;
+
+        var orgConsents = await db.ConsentRecords.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.OrgId == orgId && c.UserId != user.Id && OrgConsentTypes.Contains(c.Type))
+            .Select(c => new { c.Type, c.Version })
+            .ToListAsync(cancellationToken);
+        if (orgConsents.Count == 0)
+            return;
+
+        var existing = await db.ConsentRecords.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.UserId == user.Id && c.OrgId == orgId && OrgConsentTypes.Contains(c.Type))
+            .Select(c => new { c.Type, c.Version })
+            .ToListAsync(cancellationToken);
+
+        var recordedAt = _clock.GetUtcNow().UtcDateTime;
+        foreach (var consent in orgConsents.Distinct())
+        {
+            if (existing.Any(e => e.Type == consent.Type && e.Version == consent.Version))
+                continue;
+
+            db.ConsentRecords.Add(new ConsentRecord
+            {
+                UserId = user.Id,
+                OrgId = orgId,
+                Type = consent.Type,
+                Version = consent.Version,
+                RecordedAt = recordedAt,
+            });
+        }
     }
 
     private OrgMember NewMember(string userId, Guid orgId, OrgRole role, string? createdByUserId) => new()
