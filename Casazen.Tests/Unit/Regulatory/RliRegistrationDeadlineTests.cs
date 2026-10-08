@@ -107,6 +107,35 @@ public class RliRegistrationDeadlineTests
         Assert.Equal(expected, RliRegistrationDeadline.DaysRemaining(Date(deadline), Date(today)));
     }
 
+    /// <summary>
+    /// LT-04 (PO 2026-10-08): the deadline is a calendar day. No shift to the next working day is applied even when
+    /// the deadline falls on a Saturday, a Sunday or a public holiday.
+    /// 2026-09-05 (Saturday) + 30 days = 2026-10-05 (Monday) — the stipula is a Saturday; deadline must be Monday
+    /// 2026-09-19 (Saturday) + 30 days = 2026-10-19 (Monday) — use a stipula that falls on a Saturday to verify the
+    /// result is also a Monday (a non-working day result stays as-is).
+    ///
+    /// More precisely: stipula 2026-09-06 (Sunday), start 2026-12-01 → deadline 2026-10-06 (Tuesday, not shifted).
+    /// For Saturday-deadline: stipula 2026-08-07 (Friday), start 2026-10-01 → deadline = 2026-09-06 (Sunday, no shift).
+    /// Let's use stipula 2026-09-05 (Saturday), start 2026-11-01 → deadline = 2026-10-05 (Monday). Still no shift,
+    /// the computed day IS Monday so it's trivially correct.
+    ///
+    /// Best case: stipula that produces a Saturday deadline.
+    /// 2026-08-08 (Saturday) + 30 = 2026-09-07 (Monday) — not Saturday.
+    /// 2026-08-10 (Monday)   + 30 = 2026-09-09 (Wednesday).
+    /// 2026-08-13 (Thursday) + 30 = 2026-09-12 (Saturday) ✓ — deadline must remain Saturday (no shift).
+    /// </summary>
+    [Fact]
+    public void Compute_DeadlineFallsOnSaturday_NoShiftToNextWorkingDay()
+    {
+        // Stipula 13 Aug 2026 (Thursday). Start 1 Oct 2026 (after stipula).
+        // min(stipula, start) = 13 Aug. +30 = 12 Sep 2026 (Saturday).
+        // LT-04 / PO 2026-10-08: no shift; deadline stays on Saturday.
+        var deadline = RliRegistrationDeadline.Compute(Date("2026-08-13"), Date("2026-10-01"));
+
+        Assert.Equal(DayOfWeek.Saturday, deadline.DayOfWeek);
+        Assert.Equal(Date("2026-09-12"), deadline);
+    }
+
     [Theory]
     [InlineData(LeaseStatus.Draft, true)]
     [InlineData(LeaseStatus.AwaitingSignature, true)]
