@@ -178,6 +178,9 @@ Check: `curl -s "$RAILWAY_TEST_URL/api/suppliers/registration-options"` returns 
 |---|---|---|
 | `POST /api/suppliers/register` | `PublicRegistration` | 5 / 10 min |
 | `POST /api/suppliers/invites/lookup`, `GET /api/suppliers/registration-options` | `PublicRead` | 120 / min |
+| `GET /api/public/suppliers/{slug}`, `…/services`, `…/services/{serviceSlug}` (SU-13, SP-09) | `PublicRead` | 120 / min |
+| `GET /api/public/suppliers/{slug}/slots` (SP-09) | `PublicSupplierSlots` | 60 / min |
+| `POST /api/public/suppliers/{slug}/quote` (SP-09) | `PublicSupplierQuote` | 30 / min |
 
 The invite page calls `lookup` once per load and `register` once per submit: an invited supplier who logs in and
 submits stays far below the limits. `POST /api/suppliers/claim` requires a signed-in account and a 256-bit token: it has
@@ -904,7 +907,7 @@ Audit A4-16, issue #303 (minimum). Before SU-13 the page `/s/:slug` called the A
 | Address | `{App__PublicSiteBaseUrl}/fornitori/{slug}`, a page of the CasaZen web app in its public shell (`PublicSiteShell`, not an org's booking site). **No domain is written in the code**: the API builds the absolute URL from `App__PublicSiteBaseUrl` (`PublicSiteLinks.TryPublicPage`) and the web app only knows the path. Without that variable the preview says the public address is not configured and shows no link. The old `/s/:slug` redirects to the new path |
 | Slug | `SupplierProfiles.ShowcaseSlug`: lowercase ASCII from the business name (`Pulizie Città Srl` → `pulizie-citta-srl`), `-2`, `-3`, `-4`, then `-<6 hex>` on a collision. Generated when the profile is **activated** and then **never changed** (a link already shared keeps working after a rename). Unique index `UIX_SupplierProfiles_ShowcaseSlug` (where not null), migration `SupplierShowcaseSlugUnique`; the 23505 of a race retries with the next candidate |
 | Suppliers activated before SU-13 | They have no slug. `GET /api/supplier/showcase` (the console's *Vetrina* page) generates it the first time they open it; there is no batch backfill. Before the migration check that no two profiles share a hand-set slug: `SELECT "ShowcaseSlug", count(*) FROM "SupplierProfiles" WHERE "ShowcaseSlug" IS NOT NULL GROUP BY 1 HAVING count(*) > 1;` |
-| Public API | `GET /api/public/suppliers/{slug}` (anonymous, `PublicRead` rate limit): only an **Active** supplier with that slug (looked up lowercase); a pending, suspended or unknown one is 404 `not_found` with the localized message. Content: business name, category codes, comuni by name, description, photos, the availability of the next 14 days. **Never** the phone, email, VAT number or status |
+| Public API | `GET /api/public/suppliers/{slug}` (anonymous, `PublicRead` rate limit): only an **Active** supplier with that slug (looked up lowercase); a pending, suspended or unknown one is 404 `not_found` with the localized message. Content: business name, category codes, comuni by name, description, photos, the availability of the next 14 days. **Never** the phone, email, VAT number or status. Since SP-09, **with the flag `SupplierShowcaseBooking` on**, also the published services and the measured response time, and three more endpoints (services, slots, estimate): section 22 |
 | Preview | `GET /api/supplier/showcase` (supplier policy): the same content from the caller's own profile whatever its status, plus `status`, `published`, `slug`, `publicPath`, `publicUrl`, `indexable: false`. A pending supplier previews a page nobody else can open (no slug, no URL) with the way to the activation; a suspended one is told it is not visible |
 | Web | Sidebar *Vetrina* and the *Anteprima vetrina* button on the profile page (`/app/supplier/showcase`): the preview, the public URL (copy, open in a new tab). Public page: loading skeleton; **404 → "Fornitore non trovato"**; any other failure → an error with a retry (never "not found"); translated categories, only absolute photo URLs |
 
@@ -999,9 +1002,10 @@ get the wrong org. It is in the allow-list of `TenantQueryFilterArchitectureTest
 carries an explicit `OrgId` predicate**: they all go through `SupplierServiceCatalogService.Listings(orgId)`. Guards:
 `SupplierServiceListingTenancyTests` (no other file may use the table; every statement of the two allowed files carries the
 predicate or is an insert), `SupplierServiceCatalogServiceTests` and `SupplierServiceCatalogIntegrationTests` (another
-supplier's service is 404 on every endpoint), and `SupplierServiceCatalogPostgresTests` on PostgreSQL. Whoever adds a reader
-(the public reads of SP-09) must add the file to that allow-list, filter by the supplier org **and** require the supplier to be
-`Active`.
+supplier's service is 404 on every endpoint), and `SupplierServiceCatalogPostgresTests` on PostgreSQL. Whoever adds a reader must
+add the file to that allow-list, filter by the supplier org **and** require the supplier to be `Active`. The anonymous reads of SP-09 added no
+file: they use `ListPublicAsync` / `FindPublicAsync` of the catalog service, one statement with the supplier org, the not-deleted and `Active`
+predicates of the service and the `Active` status of the supplier's profile (section 22.7).
 
 ### 19.5 Concurrency
 
@@ -1247,8 +1251,8 @@ follows; its **settings row moves only when the keeper has none** (the keeper's 
   `ExternalUid`, under the same lock (`CalendarSyncService.AvailabilityLock`), freeing only the windows of the feed; add its own
   unique index on the event and its file to the allow-list of `SupplierAgendaTenancyTests`. `BuildPlanningInputAsync` already
   turns `External` windows into occupancies, and the calendar already lists them.
-- **SP-09** (public slots): `PlanAsync(orgId, from, to, new SupplierSlotQuery(durationMinutes, service.MinNoticeHours, service.WeekdaysMask))`
-  for a published service of an `Active` supplier; show only the slot instants (never a label, a kind or a reason of closure).
+- **SP-09** (public slots) — **done, see section 22**: `PlanAsync(orgId, from, to, new SupplierSlotQuery(durationMinutes, service.MinNoticeHours, service.WeekdaysMask))`
+  for a published service of an `Active` supplier; only the slot instants leave (never a label, a kind or a reason of closure).
 - **SP-10** (holds): add `SupplierOccupancy.Hold(startUtc, endUtc, expiresAtUtc)` and recompute under the lock before creating the hold.
 
 ### 20.10 After a deploy
@@ -1485,6 +1489,193 @@ Section `Suppliers:ServiceRequests` (validated at startup, `appsettings.json` ha
 - [ ] As the host: `cancel` with a reason → 200; `remind` twice → the second is 422 `service_request_remind_too_soon`.
 - [ ] `GET /api/supplier/today` and `GET /api/supplier/checklist` answer for a supplier with and without requests (`paymentsActive: null`).
 - [ ] An old request (created before the deploy) still opens everywhere with no time and no price.
+
+## 22. The public read side of the showcase: services, free slots and price estimate — SP-09
+
+Redesign wave task SP-09 (branch `feature/rd-supplier-public-read`, backend only: the screens are SP-12 and SP-06), stacked on SP-04
+(`feature/rd-supplier-requests`). Gap report 05 §4.1-§4.2 (the reading part), decisions D4, D9, D10, D11, D34 of
+`redesign/docs/wave/WAVE-SPEC.md`. A visitor with no account can see a supplier's **published services with their prices**, the
+**first free times that are real** and **an estimate of the price**, and nothing about any person. Not here (stacked after this):
+the hold, the e-mail check and the creation of the booking (SP-10), the customer's own management of it (SP-11), the screens,
+the payments, search-engine indexing (the showcase stays `noindex`) and the reviews. **No migration**: every read is on tables
+that already exist.
+
+### 22.1 What is public and what never is
+
+| Public (what the supplier published) | Never public |
+|---|---|
+| name of the business, categories, comuni by name, description, photos (the page of SU-13) | phone, e-mail, VAT number, the supplier's status, the reason a page is not there |
+| for each **published** service: name, category, summary, "from" price and unit, `pricesIncludeVat` **as the supplier declared it**, duration, what is included and excluded, photos; in the detail also the description and the structured supplements | drafts, paused and deleted services, ids, positions, versions, dates, the service's own notice and weekdays |
+| the free slots of a service (UTC and Rome time) and whether a day has any | the label of a block, the kind of busy time, the reason a day is closed (rest day, leave, full, inside the notice, beyond the horizon: all just "not available"), any request, hold or calendar event |
+| the typical response time, **only if measured** (22.3) | any value written by hand; any customer, host, property, address, note |
+| the estimate: lines and total computed from the supplier's own price list | any VAT computed by CasaZen |
+
+The guarantee is in the types, not in a filter: the services leave the catalog as `SupplierPublicService`, the slots as
+`PublicSlotDay` (a date and its slots), and none has a field for what is on the right; `PublicSupplierDtosTests` and
+`PublicSupplierShowcaseIntegrationTests` also serialize the answers and search them for the forbidden names and for the private
+text seeded around the supplier (phone, e-mail, VAT number, block and leave labels, a host's guest, notes and address).
+
+### 22.2 Endpoints (anonymous, `noindex`, no cookie)
+
+| Method and path | Rate limit (per IP) | Flag | Answer |
+|---|---|---|---|
+| `GET api/public/suppliers/{slug}` | `PublicRead` 120 / min | **not** gated | the page of SU-13; with the flag on also `services` and `medianResponseMinutes` (22.3) |
+| `GET api/public/suppliers/{slug}/services` | `PublicRead` | `SupplierShowcaseBooking` | `{ items[], total }`: the published services as cards (22.4) |
+| `GET api/public/suppliers/{slug}/services/{serviceSlug}` | `PublicRead` | `SupplierShowcaseBooking` | one service with its description and structured supplements |
+| `GET api/public/suppliers/{slug}/slots?service=&from=&days=` | `PublicSupplierSlots` 60 / min | `SupplierShowcaseBooking` | the free slots (22.5) |
+| `POST api/public/suppliers/{slug}/quote` | `PublicSupplierQuote` 30 / min | `SupplierShowcaseBooking` | the price estimate (22.6); body limit 8 KB |
+
+With the flag **off** (the default) the four new endpoints answer **404 `not_found`**, the answer of a route that does not exist,
+before authentication, rate limiting and model binding (`FeatureGateMiddleware`); the page keeps answering and reads exactly as
+it did before SP-09 (same members, `services` and `medianResponseMinutes` **left out**, not empty; a test compares the member
+names). The limits come from `RateLimiting__PublicSupplierSlots__PermitLimit` / `…__WindowSeconds` (and `…Quote`), see
+[`proxy-ip.md`](proxy-ip.md) § 4.
+
+**One 404.** An unknown slug and a supplier that is `Pending` or `Suspended` answer the same on every endpoint (404 `not_found`,
+"Questa vetrina fornitore non esiste o non è più disponibile"): the same statement, the same body, the same headers. For a service,
+an unknown slug, a draft, a paused or deleted service and a service of another supplier answer the same 404
+`supplier_service_not_found`. A slug longer than the column is a 404 without a lookup. `X-Robots-Tag: noindex` is on every answer
+of the action, errors included (D11); a value the framework cannot bind (a `from` that is not a date) is a plain 400 before the action.
+
+### 22.3 The page, with the flag on
+
+`services`: the published services as in 22.4. `medianResponseMinutes`: the **median** of `TakenAt − CreatedAt` over the requests the
+supplier really took in the last 90 days (the same pairs as the average of `GET api/supplier/today`, SP-04), the latest 500 at most,
+in whole minutes (a half rounds up), **present only with at least 5 of them** (`PublicShowcaseLimits.ResponseTimeMinSamples`), absent
+otherwise: it is measured, never configured. A median, not an average: one request left over a weekend does not make a supplier that
+answers in minutes look slow. The **"pausa" state of the demo does not exist in the backend** (gap report 07: "bozza = vetrina in
+pausa non esiste"): a supplier that is not `Active` is the 404 above, and the pause the supplier chooses itself (a draft and a live
+showcase, and the online-booking switch `SupplierSettings.OnlineBookingEnabled`, which no endpoint writes yet) arrives with SP-13 and
+SP-16; the DTO will then gain a `paused` flag.
+
+### 22.4 Services
+
+`GET …/services` returns cards, `…/services/{serviceSlug}` the detail (the slug is lowercased; the address bar may send capitals).
+
+| Field | |
+|---|---|
+| `slug`, `name`, `category`, `summary` | `slug` is unique inside the supplier; there is **no id** |
+| `priceFromCents`, `priceUnit` (`PerJob`, `PerHour`, `PerSet`, `PerSquareMeter`), `requiresQuote` | `priceFromCents` is `null` for "on quote" |
+| `pricesIncludeVat` | **the supplier's declaration** (D4), false until it says so: false is not "VAT excluded", it is "nothing promised". CasaZen never adds or subtracts VAT, and the page may say "IVA inclusa" only when it is true (the tax wording is `[CONSULENTE FISCALE]`) |
+| `durationMinutes`, `included[]`, `excluded[]`, `photoUrls[]` | |
+| detail only: `description`, `supplements[]` `{ code, label, amountCents, per, max, includedSqm }` | `per` is `flat`, `bathroom`, `sqm30`, `set` or `hour`; `includedSqm` (60) only for `sqm30` |
+
+The services come from `SupplierServiceCatalogService.ListPublicAsync` / `FindPublicAsync`: **one statement** with the supplier org, not
+deleted, service `Active` **and** the profile of that org `Active` (a join), so a draft, a paused or deleted service, another
+supplier's and a pending or suspended supplier's cannot come out, even if a caller passes a wrong org.
+
+### 22.5 Slots
+
+`GET …/slots?service={serviceSlug}&from=YYYY-MM-DD&days=N`: `service` is required (400 `validation_error` otherwise); `from` is a
+Europe/Rome date, default and **never before today**; `days` is 1 to **62** (400 otherwise), default 14. The window is cut at the
+supplier's **horizon**: `bookableUntil` = today + `HorizonDays`; a window that starts after it is an empty `days`, not an error.
+
+```json
+{ "service": "pulizia-profonda", "durationMinutes": 120, "timeZone": "Europe/Rome", "bookableUntil": "2026-11-16",
+  "days": [ { "date": "2026-10-13", "available": true,
+              "slots": [ { "startUtc": "2026-10-13T07:00:00Z", "endUtc": "2026-10-13T09:00:00Z",
+                           "startLocal": "2026-10-13T09:00:00+02:00", "endLocal": "2026-10-13T11:00:00+02:00" } ] },
+            { "date": "2026-10-17", "available": false, "slots": [] } ] }
+```
+
+- The slots are exactly those of `SupplierSlotPlanner` (SP-03) through `ISupplierAgendaService.PlanAsync(orgId, from, to, new
+  SupplierSlotQuery(duration, service.MinNoticeHours, service.WeekdaysMask))`, so they follow the supplier's hours, extra openings,
+  leave, closed days, notice, buffer, daily maximum, step and horizon (section 20.4), **and what is already taken: the requests
+  with hours (`TimedRequest`, also those not accepted yet), the blocks, the calendar engagements, and the holds** that SP-10 puts
+  in the planning input (`BuildPlanningInputAsync`): SP-09 needs no change when they arrive (`PublicSupplierShowcaseHoldsIntegrationTests`
+  stands in for SP-10 with a decorated agenda).
+- `startLocal` carries the Rome offset: on 25 October the repeated hour has two slots that read the same on the wall clock and differ
+  by the offset (`+02:00`, `+01:00`).
+- A day without a slot (`available: false`) says **nothing else**: a rest day, leave, a full day, the notice and the days after the
+  horizon... are not told apart (the planner's `SupplierDayClosure` is dropped when the plan is turned into `PublicSlotDay`).
+- **A slot shown is not a promise.** The plan of a service is cached **30 seconds per replica** (`PublicSupplierSlotCache`, a
+  singleton; key = supplier, service slug, its duration, notice and weekdays, and today in Rome; at most 2,000 plans, a full cache
+  simply does not remember a new one); the query string only slices it, so a client cannot make up keys. A change of the agenda
+  reaches the public within 30 seconds, and **the booking recomputes the slot under the calendar lock** (SP-10) and answers 409
+  `supplier_slot_unavailable` if it went. The cache holds plans, not permissions: the supplier and the service are looked up on
+  **every** request, so a supplier that is suspended or a service that is paused disappears at once.
+
+### 22.6 The estimate
+
+`POST …/quote` with `{ service, quantity?, surfaceSqm?, options?: [{ code, quantity? }], comune?, postalCode? }` (`SupplierQuoteCalculator`,
+a pure function that SP-10 will reuse so that the total the customer saw is the total the request carries). Integer euro cents, **no fraction
+anywhere**: a line is `quantity × unitAmountCents`, the total is the sum of the lines.
+
+| Price unit of the service | `quantity` | Base line |
+|---|---|---|
+| `PerJob` | none (absent or 1) | the "from" price once |
+| `PerHour` | hours; left out: the indicative duration **rounded up** to whole hours (at least 1) | price × hours |
+| `PerSet` | sets; left out: 1 | price × sets |
+| `PerSquareMeter` | square meters, **required** | price × m² |
+
+| Supplement `per` | How it counts | Limit |
+|---|---|---|
+| `flat` | once, if picked | picked or not (a `max` the supplier wrote is not read) |
+| `bathroom` (per extra bathroom), `set`, `hour` (per extra hour) | the `quantity` picked (default 1) | `max` of the supplement; without one, 1,000 |
+| `sqm30` | **not picked**: it follows `surfaceSqm` and counts the blocks of 30 m² **above 60 m²**, **a started block counts whole** (61 m² and 90 m² are one block, 91 m² two) | `max` blocks; more is **on quote**, not an error |
+
+The two roundings are the only ones: whole hours and started 30 m² blocks, both **up**. The 60 m² is a product default taken from the demo
+("oltre 60 m², ogni 30 m²"), published as `includedSqm` and open to the product owner (the catalog has no field for it per service).
+The lines follow the supplier's order of supplements, the base first. Always 200 for a request that fits the service; the answer carries
+`outcome` and `reason`:
+
+| `outcome` | `reason` | Total | When |
+|---|---|---|---|
+| `Estimate` | — | the sum; `isEstimate: true`, `requiresQuote: false` | a priced service; the supplier still confirms the price before starting |
+| `OutsideArea` | `OutsideArea` | none | `comune` is not one of the supplier's zones (checked first): "ask for a quote", the supplier decides |
+| `OnQuote` | `RequiresQuote` / `NoPrice` | none | the service is on quote (also if it shows a "from" price), or has no price |
+| `OnQuote` | `SurfaceOverLimit` / `AmountOverLimit` | none | the surface needs more blocks than the `max`, or the total would pass 100,000 euro (the catalog's highest price) |
+
+`coverage` is `Unknown` (no comune given: nothing is refused), `Covered` or `Outside`. The supplier covers **comuni** (D10: ISTAT code or
+name, checked by `ISupplierComuneMatcher`; a place that cannot be recognized is outside), so `postalCode` (five digits) is validated and
+echoed but **does not decide**. `pricesIncludeVat` is the supplier's declaration; `currency` is `EUR`.
+
+A value that does not fit the service is **422 `supplier_quote_invalid`** with `fields`, collected together: `service` (missing),
+`quantity` (a quantity on a price per job; out of 1 to 1,000; missing for a price per m²), `surfaceSqm` (1 to 10,000),
+`options` (more than 10), `options[i].code` (unknown, repeated, blank, or a `sqm30`), `options[i].quantity` (over `max`, 2 for a flat one),
+`comune`, `postalCode`. The request is checked the same way for a service on quote.
+
+### 22.7 Security and privacy
+
+- **Tenancy.** The tables of the catalog and of the agenda are keyed by the supplier org and not tenant-filtered; SP-09 adds **no file to
+  the allow-lists** of `SupplierServiceListingTenancyTests` and `SupplierAgendaTenancyTests`: the public service reads the catalog only
+  through `ListPublicAsync` / `FindPublicAsync` (explicit `OrgId` predicate plus the `Active` statuses in the same statement) and the
+  agenda only through `PlanAsync`, for a supplier it found `Active` by slug. Both tests also check that the public files never name a
+  table. The one table it reads itself is `SupplierProfiles` (found by slug **and** `Active`).
+- **Anonymous endpoints with a reason.** `EndpointAuthorizationArchitectureTests` lists the five anonymous actions of the controller with the
+  reason each is public, requires a rate limit on each, the flag on the four new ones (not on the page) and the body limit of the estimate.
+- **No cookie, no account, no personal data.** No answer sets a cookie (tested on every endpoint); the estimate stores nothing.
+- **Abuse.** Per-IP limits (22.2); the estimate has an 8 KB body limit and at most 10 options; the cache cannot grow with what a client
+  sends; a slug that cannot exist costs no lookup.
+
+### 22.8 Limits and configuration
+
+`Casazen.Core/Suppliers/PublicShowcaseLimits.cs`: slots default 14 and at most 62 days, cache 30 s and 2,000 plans, response time from 5
+answers (latest 500, 90 days), estimate quantity 1 to 1,000, surface 1 to 10,000 m², 10 options, body 8 KB. Configuration: only the two rate
+limits (`RateLimiting__PublicSupplierSlots__*`, `RateLimiting__PublicSupplierQuote__*`) and the flag `Features__SupplierShowcaseBooking`
+(off by default, `feature-flags.md`).
+
+### 22.9 For the tasks stacked on this one
+
+- **SP-10** (booking): put `SupplierOccupancy.Hold(...)` in `BuildPlanningInputAsync` (the public slots need nothing); recompute under the
+  `SupplierCalendarSync` lock **without** the cache (call `PlanAsync`, not the public service); price the booking with
+  `SupplierQuoteCalculator` (`Validate` + `Calculate`), keep `OptionsJson` from its `Picks`, and refuse a booking when
+  `OnlineBookingEnabled` is false (`SupplierBookingOffline`). Gate its endpoints with the same flag.
+- **SP-12 / SP-06** (screens): the endpoints above are the whole contract; `slots` is the list of "i primi orari", `quote` drives the
+  estimate box and the "chiedi un preventivo" state, `coverage` and `reason` pick the wording; the "IVA" wording follows `pricesIncludeVat`.
+- **SP-13** (showcase editor): when the supplier can pause the showcase, add `paused` to the page and gate the slots and the estimate on it.
+
+### 22.10 After a deploy
+
+- [ ] No migration. `GET /api/public/features` has `supplierShowcaseBooking: false`.
+- [ ] Flag off: `GET /api/public/suppliers/{slug}` is 200 with `X-Robots-Tag: noindex` and **no** `services` member;
+      `GET …/services`, `…/slots?service=x` and `POST …/quote` are 404.
+- [ ] Test environment, flag on (`Features__SupplierShowcaseBooking=true`): for an active supplier with a published service and hours,
+      `…/services` lists it, `…/slots?service={slug}` returns days with slots in UTC and in Rome time (offset `+02:00` or `+01:00`), a day
+      off has `available: false` and nothing else, `…/quote` with `{ "service": "{slug}" }` returns `Estimate`; a pending supplier's slug is 404
+      on every endpoint with the same body as an unknown one.
+- [ ] Block an hour of the supplier's calendar: the slot disappears from `…/slots` within 30 seconds.
+- [ ] No `Set-Cookie` header on any of the five answers; the 31st `POST …/quote` of a minute from one IP is 429 `rate_limited`.
 
 ## Known limits (other tasks)
 
