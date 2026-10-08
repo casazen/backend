@@ -99,16 +99,21 @@ public class BookingCancellationControllerTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// BK-02, PO 2026-10-08: host cancellation always refunds the FULL refundable amount to the guest,
+    /// regardless of the policy or what the host entered in the UI. The host's chosen amount is ignored.
+    /// </summary>
     [Fact]
-    public async Task Cancel_OwnerOfPaidBooking_PassesTheChosenRefund()
+    public async Task Cancel_OwnerOfPaidBooking_AlwaysPassesFullRefundableAmount()
     {
         GivenQuote(refundable: 400m);
 
         var result = await Controller().Cancel(_booking.Id, new CancelBookingRequest { RefundAmount = 250m, Reason = "Guasto" });
 
         Assert.IsType<OkObjectResult>(result.Result);
+        // Host entered 250m but the 100% rule forces the full 400m refundable amount.
         _cancellations.Verify(c => c.CancelAsync(
-            It.Is<BookingCancellationRequest>(r => r.RefundAmount == 250m && r.Reason == "Guasto"),
+            It.Is<BookingCancellationRequest>(r => r.RefundAmount == 400m && r.Reason == "Guasto"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
