@@ -9,17 +9,18 @@ namespace Casazen.Core.TouristTax;
 /// match by code only; otherwise by the normalized name (<see cref="NormalizeName"/>), so "roma", " ROMA " and "Roma"
 /// find the same rates, and "Forlì" / "Forli" or "Reggio nell'Emilia" / "Reggio nell’Emilia" too.
 /// </summary>
-/// <param name="IstatCode">ISTAT code (6 digits) when trusted, e.g. from <c>ItalianComuneRegistry</c>; null otherwise.</param>
+/// <param name="IstatCode">ISTAT code (6 digits) when trusted, i.e. a comune of the official ISTAT list (<c>Comuni</c>, SU-04); null otherwise.</param>
 /// <param name="Name">Name of the comune (for a property: the city typed by the host).</param>
 public sealed record TouristTaxComune(string? IstatCode, string? Name)
 {
     /// <summary>
-    /// Comune of a property. Properties have no ISTAT code yet (only the free-text city), so the match is by name.
+    /// Comune of a property: the ISTAT code the host chose from the official list (SU-04) when there is one, so a rate that
+    /// carries a code is matched by code; the written city otherwise (and for the rates without a code), matched by name.
     /// </summary>
     public static TouristTaxComune ForProperty(Property property)
     {
         ArgumentNullException.ThrowIfNull(property);
-        return new TouristTaxComune(null, property.City);
+        return new TouristTaxComune(property.ComuneIstatCode, property.City);
     }
 
     /// <summary>True when there is nothing to look up (no code and an empty name).</summary>

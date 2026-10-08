@@ -36,36 +36,67 @@ public class Property : ITenantOwned
     [Required, MaxLength(500)]
     public string Address { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Interno / scala of the apartment inside the building (PC-06, A2-19): free text such as <c>int. 5</c> or
+    /// <c>Scala B int. 5</c>, trimmed with inner spaces collapsed (<see cref="PropertyAddress.NormalizeUnit"/>). Null for
+    /// a property that has no unit (a house, the only apartment of the address). Part of the address uniqueness: several
+    /// apartments of the same building are different properties of the org.
+    /// </summary>
+    [MaxLength(PropertyAddress.UnitMaxLength)]
+    public string? Unit { get; set; }
+
     [Required, MaxLength(50)]
     public string City { get; set; } = string.Empty;
 
     [MaxLength(10)]
     public string PostalCode { get; set; } = string.Empty;
 
+    /// <summary>
+    /// ISTAT code (6 digits) of the comune of the property, chosen by the host from the official list (<c>Comuni</c>, SU-04).
+    /// Null until chosen: it is never inferred from the free-text <see cref="City"/>. It is the trusted comune of the
+    /// tourist tax, of the regional rules and of the CIN check (<c>CinFormat.HasIstatComuneMismatch</c>), and it is cleared
+    /// when the city is changed without choosing a comune.
+    /// </summary>
+    [MaxLength(Casazen.Core.Regulatory.ComuneRules.IstatCodeLength)]
+    public string? ComuneIstatCode { get; set; }
+
+    /// <summary>
+    /// CasaZen's code of the region (<c>LOM</c>, <c>LAZ</c>) of <see cref="ComuneIstatCode"/>, set together with it from the
+    /// official list; the key of <c>Compliance:RequiredDocuments</c>. Null while no comune is chosen.
+    /// </summary>
+    [MaxLength(10)]
+    public string? RegionCode { get; set; }
+
+    /// <summary>
+    /// WGS84 latitude in degrees, -90 to 90, stored with <see cref="PropertyAddress.CoordinateScale"/> decimals (about
+    /// 0.1 m, PC-06, A2-33). <c>0</c> together with a longitude of <c>0</c> = not set.
+    /// </summary>
     public decimal Latitude { get; set; }
+
+    /// <summary>WGS84 longitude in degrees, -180 to 180, same precision as <see cref="Latitude"/>.</summary>
     public decimal Longitude { get; set; }
 
-    [Range(0, 100, ErrorMessage = "Bedrooms must be between 0 (studio) and 100")]
+    [Range(0, 100, ErrorMessage = "PropertyBedroomsRange")]
     public int Bedrooms { get; set; }
 
-    [Range(1, 50, ErrorMessage = "Bathrooms must be between 1 and 50")]
+    [Range(1, 50, ErrorMessage = "PropertyBathroomsRange")]
     public int Bathrooms { get; set; }
 
     /// <summary>Short-stay guests; <c>0</c> = not set (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
-    [Range(0, 100, ErrorMessage = "Max guests must be between 0 and 100")]
+    [Range(0, 100, ErrorMessage = "PropertyMaxGuestsRange")]
     public int MaxGuests { get; set; }
 
     /// <summary>Short-stay nightly rate; <c>0</c> = none (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
     [Precision(18, 2)]
-    [Range(0, 100000, ErrorMessage = "Nightly rate must be between €0 and €100,000")]
+    [Range(0, 100000, ErrorMessage = "PropertyNightlyRateRange")]
     public decimal NightlyRate { get; set; }
 
     [Precision(18, 2)]
-    [Range(0, 10000, ErrorMessage = "Cleaning fee must be between €0 and €10,000")]
+    [Range(0, 10000, ErrorMessage = "PropertyCleaningFeeRange")]
     public decimal CleaningFee { get; set; }
 
     [Precision(18, 2)]
-    [Range(0, 50000, ErrorMessage = "Damage deposit must be between €0 and €50,000")]
+    [Range(0, 50000, ErrorMessage = "PropertyDamageDepositRange")]
     public decimal DamageDeposit { get; set; }
 
     public List<PropertyAmenity> Amenities { get; set; } = new();
@@ -121,6 +152,18 @@ public class Property : ITenantOwned
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// Host-set pause (PC-03, A2-05): reversible and temporary — the property stays fully visible and editable to its
+    /// host, keeps its plan slot (the entitlement count ignores it), and its existing bookings are untouched, but it
+    /// is hidden from public search, its public page and new guest bookings (<c>PublicListing.IsPublished</c>) until
+    /// the host reactivates it. Distinct from a soft delete (PC-05, A2-18, <c>IsDeleted</c>/<c>DeletedAt</c>): pausing never
+    /// removes or hides the property from its own host.
+    /// </summary>
+    public bool IsPaused { get; set; }
+
+    /// <summary>UTC instant the host paused the property (<see cref="IsPaused"/>); null when not paused. Cleared on reactivation.</summary>
+    public DateTime? PausedAt { get; set; }
+
     /// <summary>Compliance activation gate for public listing (US-019 / #295).</summary>
     public PropertyComplianceStatus ComplianceStatus { get; set; } = PropertyComplianceStatus.Pending;
 
@@ -157,6 +200,18 @@ public class Property : ITenantOwned
     public string? TaxpayerFiscalCode { get; set; }
 
     // The D.L. 145/2023 safety checklist lives in PropertySafetyChecklists (CO-07): the old JSON column was migrated there.
+
+    /// <summary>
+    /// Soft delete (PC-05, A2-18): set instead of removing the row, so fiscal history tied to the property (tourist
+    /// tax reports, CIN, Alloggiati communications, cedolare secca / <see cref="PropertyFiscalYear"/>) stays intact for
+    /// Italian compliance retention. Excluded from every normal read by the <c>SoftDelete</c> global query filter
+    /// (<c>AppDbContext.SoftDeleteQueryFilter</c>); reporting/compliance code reaches a deleted property explicitly with
+    /// <c>IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])</c>. Never physically deleted.
+    /// </summary>
+    public bool IsDeleted { get; set; }
+
+    /// <summary>UTC instant the property was soft-deleted (PC-05); null while it is not.</summary>
+    public DateTime? DeletedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

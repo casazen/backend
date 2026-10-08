@@ -256,10 +256,13 @@ public partial class SupplierService
         var duplicate = await db.SupplierProfiles.AsNoTracking().FirstAsync(sp => sp.OrgId == duplicateId, cancellationToken);
         var (categoriesJson, categoriesAdded) = AppendMissingStrings(keeper.CategoriesJson, duplicate.CategoriesJson);
         var (comuniJson, comuniAdded) = AppendMissingStrings(keeper.ComuniJson, duplicate.ComuniJson);
-        if (categoriesAdded.Count > 0 || comuniAdded.Count > 0)
+        // The comuni chosen from the official ISTAT list (SU-04) move as well.
+        var (istatCodesJson, istatCodesAdded) = AppendMissingStrings(keeper.ComuneIstatCodesJson, duplicate.ComuneIstatCodesJson);
+        if (categoriesAdded.Count > 0 || comuniAdded.Count > 0 || istatCodesAdded.Count > 0)
         {
             keeper.CategoriesJson = categoriesJson;
             keeper.ComuniJson = comuniJson;
+            keeper.ComuneIstatCodesJson = istatCodesJson;
             keeper.UpdatedAt = now;
             await db.SaveChangesAsync(cancellationToken);
         }
@@ -319,10 +322,12 @@ public partial class SupplierService
         await transaction.CreateSavepointAsync(savepoint, cancellationToken);
         try
         {
+            // Legacy supplier-only accounts (OrgId = the duplicate supplier org) are detached, not moved to the keeper:
+            // User.OrgId is the host org only (PL-05, A1-40), and they reach the keeper through SupplierOrgId (above).
             var orgMembers = await db.Users
                 .Where(u => u.OrgId == duplicateId)
                 .ExecuteUpdateAsync(
-                    set => set.SetProperty(u => u.OrgId, keeperId).SetProperty(u => u.UpdatedAt, now),
+                    set => set.SetProperty(u => u.OrgId, (Guid?)null).SetProperty(u => u.UpdatedAt, now),
                     cancellationToken);
             var devices = await db.DeviceRegistrations
                 .Where(d => d.OrgId == duplicateId)

@@ -55,7 +55,7 @@ HTTPS is NOT used inside the container — Railway handles it externally.
 
 | Where | What |
 |---|---|
-| **Railway** (test + prod) | `ConnectionStrings__DefaultConnection`, Auth0, Stripe, SendGrid, CORS, Hangfire |
+| **Railway** (test + prod) | `ConnectionStrings__DefaultConnection`, Auth0, Stripe, Resend (`Email__ApiKey`), CORS, Hangfire |
 | **Vercel** | All `VITE_*` |
 | **GitHub Variables** | `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL` (public URLs for CI only) |
 | **GitHub Secrets (optional)** | `SUPABASE_ANON_KEY` for keep-alive workflow |

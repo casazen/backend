@@ -60,7 +60,7 @@ All endpoints require a `Bearer` JWT token in the `Authorization` header (issued
 
 Anonymous / public (non-exhaustive highlights):
 - `GET /api/health`, `GET /api/health/live`, `GET /api/health/ready`, `GET /api/properties/search`
-- `POST /api/auth/register`, `GET /api/orgs/plans`
+- `GET /api/orgs/plans`
 - All `/api/public/*` (including the SEO sitemap `/api/public/sitemap.xml` and the guest check-in portal `/api/public/checkin/*`), `/api/legal/*`
 - `POST /api/suppliers/register`, webhook receivers under `/webhooks/*`
 
@@ -102,7 +102,6 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/auth/register` | Anonymous | Register a new user |
 | `GET` | `/api/auth/profile` | JWT | Current auth profile |
 | `POST` | `/api/auth/logout` | JWT | Logout / invalidate session side-effects |
 | `GET` | `/api/users` | Admin | Paginated user list |
@@ -148,16 +147,17 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `GET` | `/api/properties/{id}/documents/{docId}/download` | Authenticated download from the private bucket (FD-07). Short-rent or long-rent |
 | `DELETE` | `/api/properties/{id}` | Delete a property (owner only). Short-rent only |
 | `GET` | `/api/properties/search` | Search properties by city, bedrooms, max price (anonymous) |
-| `POST` | `/api/properties/{id}/images` | Upload photos (max 20, JPEG/PNG/WebP, 10 MB each) |
-| `GET` | `/api/properties/{id}/images` | List photo URLs |
-| `DELETE` | `/api/properties/{id}/images/{imageIndex}` | Delete a photo by index |
-| `PUT` | `/api/properties/{id}/images/order` | Reorder photos |
+| `GET` | `/api/properties/{id}/images` | The photo gallery (PC-04): `photoUrls` in display order (absolute public URLs, the first is the cover) plus the upload rules (`maxPhotos`, `maxFilesPerRequest`, `maxFileSizeBytes`, `allowedContentTypes`). Short-rent only |
+| `POST` | `/api/properties/{id}/images` | Upload photos (multipart field `images`; at most 10 files per request, 10 MB each, 20 per property; JPEG/PNG/WebP checked on their content). All or none. 422 `property_photo_none`/`_too_many_files`/`_invalid_type`/`_invalid_size`/`_limit_reached`. Answers with the gallery |
+| `DELETE` | `/api/properties/{id}/images?url=...` | Delete a photo **by URL** (not by position) from the gallery and its object from the storage. 404 `property_photo_not_found`. Answers with the gallery |
+| `PUT` | `/api/properties/{id}/images/order` | Set the order: body = every photo URL of the gallery, each once. 409 `property_photos_changed` when the list is not the current gallery. Answers with the gallery |
+| `PUT` | `/api/properties/{id}/images/cover` | Make a photo the cover (body `{ "url": ... }`): it moves first. Answers with the gallery |
 
 Property record choices (PC-02):
 - **Update = PUT with PATCH semantics**, not a full PUT: a client that does not know or show a field (the long-term
   form, the pause toggle of the list, an older app build) can never reset the cleaning fee, deposit, house rules,
   timezone or cancellation policy. The web forms still send every field they show (`toPropertyPayload`), never the
-  photos (managed by the image endpoints).
+  photos (managed by the image endpoints; a `photoUrls` sent to create or update is ignored, PC-04).
 - **Bathrooms stay a whole number** (`int` in the model and the database, 1-50): the form accepts whole numbers only,
   no migration. **Bedrooms 0-100**, `0` = studio (monolocale); the activation wizard no longer requires a bedroom.
 - **No country nor currency** on the property: amounts are in euros and the form has no such fields.
@@ -297,9 +297,10 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/alloggiati/summary` | booking.read | Alloggiati queue / summary |
 | `GET` | `/api/alloggiati/{bookingId}/status` | booking.read | Submission status for a booking |
 | `GET` | `/api/alloggiati/{bookingId}/guest-summary` | booking.read | Per-guest data to copy on the Questura portal, in record order |
+| `GET` | `/api/alloggiati/{bookingId}/record-file` | booking.read + guest.read | The record file to upload on the portal (CO-13): one 168-character line per guest, UTF-8, CR+LF; built on request, never stored, `private, no-store`; `422 alloggiati_file_not_ready` / `alloggiati_file_stay_days_invalid` / `alloggiati_file_name_not_representable`. Downloading changes no status (`docs/runbooks/alloggiati.md`) |
 | `POST` | `/api/alloggiati/{bookingId}/mark-sent-manually` | booking.write | Host declares the schedina sent on the portal (`{ sentOn }`) → `InviatoManualmente` |
-| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Always `422 alloggiati_transmission_unavailable` until the web service client (CO-13) |
-| `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors list |
+| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Always `422 alloggiati_transmission_unavailable`: CasaZen has no web service client |
+| `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors actually used by the configuration (GDPR art. 28, `docs/runbooks/legal-documents.md`) |
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
 | `GET` | `/api/legal/privacy` | Anonymous | Privacy policy |
@@ -587,14 +588,14 @@ erDiagram
 | `OtaSyncJob` | Hourly | Full OTA availability and booking sync |
 | `BookingPullJob` | Every 15 minutes | Pull new bookings from all OTA platforms |
 | `DynamicPricingJob` | Daily at 02:00 UTC | Recomputes the seasonal suggestions due by Rome date (daily/weekly), upsert per date |
-| `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (no transmission until CO-13) |
+| `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (CasaZen does not transmit: no web service client) |
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
 | `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment
-- **Containerisation**: `Dockerfile` at repo root (Railway). Local API uses PostgreSQL/Supabase per `docs/INFRA.md`.
-- **CI/CD**: GitHub Actions — build + test on push; deploy on release tag (`.github/workflows/ci-cd.yml`)
+- **Containerisation**: `Dockerfile` at repo root. Local API uses PostgreSQL/Supabase per `docs/INFRA.md`. Hosting in revisione: Railway è stato cancellato dal PO (2026-10-02), vedi `docs/runbooks/free-hosting-analysis.md` (task HOSTING).
+- **CI/CD**: GitHub Actions — build + test on push (`.github/workflows/ci-cd.yml`); deploys are not run by Actions and tags `v*` do not deploy (see `docs/INFRA.md`, deploy model in revision)
 - **Environments**: Development (local), staging, production
 
 ### External service integrations

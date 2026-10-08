@@ -325,9 +325,7 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
             db,
             new FakeStripeBillingService(configuration),
             new EntitlementService(db, configuration),
-            new VatCalculationService(),
-            Mock.Of<IOssRevenueTracker>(),
-            Mock.Of<ISdiEInvoiceService>(),
+            TestPlatformInvoices.Create(db, new FakeStripeBillingService(configuration)),
             Mock.Of<IRentBillingService>(),
             new PaymentRefundService(db, _stripe, Mock.Of<IPaymentRefundRetryScheduler>(), _emails, NullLogger<PaymentRefundService>.Instance),
             TestCheckoutPaymentSettlement.Create(db, stripe: _stripe, emails: _emails, configuration: configuration),
@@ -619,6 +617,16 @@ internal sealed class ScriptedDeferredChargeStripe : IStripeService
 
     public Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
         string connectedAccountId, long amountCents, string currency, Dictionary<string, string> metadata) =>
+        throw new NotSupportedException();
+
+    public Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata,
+        string idempotencyKey,
+        string? description,
+        CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
     public Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId) => throw new NotSupportedException();

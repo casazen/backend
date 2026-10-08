@@ -18,6 +18,7 @@ public static partial class EmailTemplates
     {
         public const string ServiceRequestCreated = "service-request-created";
         public const string ServiceRequestStatusChanged = "service-request-status-changed";
+        public const string ServiceRequestPaid = "service-request-paid";
         public const string SupplierInvite = "supplier-invite";
         public const string GuestCheckInLink = "guest-checkin-link";
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
@@ -89,6 +90,23 @@ public static partial class EmailTemplates
 
         return builder.Build($"{prefix}_Subject", propertyName);
     }
+
+    /// <summary>
+    /// Service request marked as paid by the host, to the supplier (SU-09). Payment happens outside CasaZen (a manual flag
+    /// of the host, no transfer to the supplier), and the email says so.
+    /// </summary>
+    public static EmailContent ServiceRequestPaid(
+        CultureInfo culture,
+        string supplierName,
+        string category,
+        string propertyName,
+        string inboxUrl) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("ServiceRequestPaid_Greeting", supplierName)
+            .Paragraph("ServiceRequestPaid_Body", ServiceCategoryLabel(culture, category), propertyName)
+            .Muted("ServiceRequestPaid_Hint")
+            .Button("ServiceRequestPaid_Cta", inboxUrl)
+            .Build("ServiceRequestPaid_Subject", propertyName);
 
     /// <summary>
     /// Invitation of a prospective supplier by a platform admin. <paramref name="comune"/> is the text shown for the

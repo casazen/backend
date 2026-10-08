@@ -12,8 +12,8 @@ namespace Casazen.Tests.Unit.Leases;
 /// <summary>LT-11 (A7-17): the lease API returns DTOs without clear personal data nor internal fields.</summary>
 public class LeaseDtoMapperTests
 {
-    private const string LandlordCf = "RSSMRA80A01H501Z";
-    private const string TenantCf = "VRDGLI85B02F205X";
+    private const string LandlordCf = "RSSMRA80A01H501U";
+    private const string TenantCf = "VRDGLI85B02F205A";
     private const string LandlordEmail = "mario.rossi@example.com";
     private const string TenantEmail = "giulia.verdi@example.com";
     private static readonly DateTime Today = new(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
@@ -40,7 +40,7 @@ public class LeaseDtoMapperTests
 
         var landlord = detail.Parties.Single(p => p.Role == PartyRole.Landlord);
         Assert.Equal("Mario", landlord.FirstName);
-        Assert.Equal("************501Z", landlord.FiscalCodeMasked);
+        Assert.Equal("************501U", landlord.FiscalCodeMasked);
         Assert.Equal("m***@example.com", landlord.ContactEmailMasked);
         var tenant = detail.Parties.Single(p => p.Role == PartyRole.Tenant);
         Assert.True(tenant.IsExtraEU);
@@ -151,7 +151,7 @@ public class LeaseDtoMapperTests
     }
 
     [Theory]
-    [InlineData("RSSMRA80A01H501Z", "************501Z")]
+    [InlineData("RSSMRA80A01H501U", "************501U")]
     [InlineData(" 12345678901 ", "*******8901")]
     [InlineData("ABC", "****")]
     [InlineData("", "")]
@@ -218,7 +218,6 @@ public class LeaseDtoMapperTests
             StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             EndDate = new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
             MonthlyRent = 1200m,
-            DataRetentionUntil = new DateTime(2036, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             ExternalSigningSessionId = "session-1",
             SignedPdfStoragePath = $"leases/{Guid.Empty}/{leaseId}/signed-contract/signed.pdf",
             StipulaDeclaredByUserId = "auth0|owner",

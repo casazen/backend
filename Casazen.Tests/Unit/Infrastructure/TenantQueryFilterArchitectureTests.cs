@@ -40,18 +40,22 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SeoContentPage)] = "Platform SEO content (public comune pages) managed by admins.",
         [typeof(SeoContentRevision)] = "Revisions of platform SEO content managed by admins.",
         [typeof(SeoContentReviewEvent)] = "Review audit (approve / withdraw) of platform SEO content, written by admins.",
+        [typeof(SeoEvent)] = "Platform analytics of the public SEO pages (SE-04): written by the anonymous events endpoint, read by admins only as totals per comune; no org and no person (no IP, user or visitor id), deleted after Seo:Events:RetentionDays.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
-        [typeof(PlatformBillingMetrics)] = "Platform-wide billing metrics (OSS threshold), not per org.",
+        [typeof(PendingDomainRemoval)] = "Queue of custom domains that must leave the Vercel project (BK-17): keyed by the domain, names no org, written by the owner's domain change and read only by the platform's domain-recheck job; no endpoint lists it.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",
         [typeof(DataProtectionKey)] = "ASP.NET Core Data Protection key ring of the whole application (FD-07), not tenant data.",
         [typeof(AlloggiatiCodeEntry)] = "Platform reference data: official Alloggiati Web code tables (comuni, stati, documents), imported by admins and read by every org and by the anonymous guest portal (CO-12).",
         [typeof(AlloggiatiCodeTableImport)] = "Platform reference data: log of the admin imports of the official Alloggiati code tables, not tenant data (CO-12).",
+        [typeof(Comune)] = "Platform reference data: the official ISTAT list of the comuni (SU-04), the same for every org, loaded only from the official file (seed or admin import) and read by every org, by the public comune search and by the anonymous supplier registration.",
+        [typeof(ComuneImport)] = "Platform reference data: log of the imports of the official ISTAT comuni list (file, SHA-256, source, reference date, counts), written by the import and read by admins, not tenant data (SU-04).",
 
         // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
         [typeof(ServiceRequest)] = "Two parties: host OrgId and supplier SupplierOrgId. A host-org filter would hide the request from the supplier who takes, completes or rejects it, and host matching counts supplier load across orgs. Every query scopes explicitly by OrgId or SupplierOrgId (ServiceRequestService, ServiceRequestRepository).",
         [typeof(SupplierProfile)] = "Keyed by the supplier org: hosts of every org read active profiles to match and create requests, the public showcase reads them anonymously, admins approve them. The owner reaches it as User.SupplierOrgId, which the tenant filter (User.OrgId) does not know.",
         [typeof(SupplierAvailability)] = "Supplier-org data (see SupplierProfile): written and read by the supplier through User.SupplierOrgId, read anonymously by the public showcase; every query filters by the supplier OrgId explicitly.",
         [typeof(SupplierInviteRecord)] = "Admin-issued supplier invitations keyed by e-mail, before any supplier org exists.",
+        [typeof(SupplierAdminAuditEntry)] = "Platform-wide audit log of the admin actions on suppliers and invites (SU-12): suspension, reactivation, invite resend and revoke. Not tenant data: written and read only by SupplierAdminService behind the AdminOnly policy.",
 
         // Rows owned by a user, not by an org.
         [typeof(PushDelivery)] = "Delivery log of the push jobs (MO-04): one row per event key and push token, written and read only by the Hangfire push delivery and receipts jobs, no endpoint; no org, no user, no text, purged after 7 days.",
@@ -159,6 +163,34 @@ public class TenantQueryFilterArchitectureTests
         var sql = db.PropertyDocuments.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).ToQueryString();
 
         Assert.DoesNotMatch("\"OrgId\" = @", sql);
+    }
+
+    /// <summary>
+    /// PC-05: EF Core's per-entity query filters propagate through <c>Include</c> — a filter declared on
+    /// <see cref="Property"/> (the SoftDelete one) also narrows the joined subquery when a related entity
+    /// (<see cref="Booking"/>) is included, turning the join into an <c>INNER JOIN</c> filtered by it. A query that
+    /// must keep reaching a soft-deleted property's history through such a navigation (fiscal reports) needs
+    /// <c>IgnoreQueryFilters([SoftDeleteQueryFilter])</c> on its own root query, not just on <c>Properties</c> reads.
+    /// </summary>
+    [Fact]
+    public void SoftDeleteQueryFilter_PropertyReachedThroughInclude_NarrowsTheJoinedSubquery()
+    {
+        using var db = NewNpgsqlContext(NullTenantContext.Instance);
+
+        var sql = db.Bookings.Include(b => b.Property).ToQueryString();
+
+        Assert.Matches("INNER JOIN", sql);
+        Assert.Matches(@"NOT \([A-Za-z0-9_]+\.""IsDeleted""\)", sql);
+    }
+
+    [Fact]
+    public void SoftDeleteQueryFilter_IgnoreQueryFiltersByKeyOnTheRoot_RemovesItFromTheJoinedSubqueryToo()
+    {
+        using var db = NewNpgsqlContext(NullTenantContext.Instance);
+
+        var sql = db.Bookings.Include(b => b.Property).IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).ToQueryString();
+
+        Assert.DoesNotMatch(@"NOT \([A-Za-z0-9_]+\.""IsDeleted""\)", sql);
     }
 
     private static AppDbContext NewNpgsqlContext(ITenantContext tenant) =>

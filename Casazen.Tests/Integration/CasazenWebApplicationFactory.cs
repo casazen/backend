@@ -5,6 +5,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit;
 using Casazen.Web.Extensions;
 using Hangfire;
 using Hangfire.Common;
@@ -19,6 +20,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Moq;
 using Npgsql;
 
@@ -47,6 +49,12 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     }
 
     public Mock<IBackgroundJobClient> BackgroundJobClientMock { get; } = new();
+
+    /// <summary>
+    /// Loads the 29 official rows of <see cref="ComuneTestData"/> into the test database at startup (SU-04): the comuni the
+    /// tests need, resolved through the real import. A suite that tests the list not being imported returns false.
+    /// </summary>
+    protected virtual bool SeedComuneSample => true;
 
     /// <summary>True when the app runs on a dedicated PostgreSQL database; false only for the local InMemory fallback.</summary>
     public bool UsesPostgreSql { get; }
@@ -86,14 +94,15 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:GuestBookingLookupPerEmail:PermitLimit"] = "1000",
                 ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
                 ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
+                ["RateLimiting:PublicComuni:PermitLimit"] = "1000",
+                // The official comuni list is not loaded into every test database (7,894 rows): tests that need comuni seed the
+                // few they use (ComuneTestData) or import the official file themselves.
+                ["Comuni:SeedOnStartup"] = "false",
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
-                ["Vies:StubMode"] = "true",
                 ["Seo:BootstrapOnStartup"] = "false",
-                ["Billing:Sdi:Enabled"] = "false",
                 ["Billing:PlatformVatNumber"] = "IT12345678901",
-                ["Vies:Enabled"] = "false",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
                 // Base domain of the org subdomains: no default in code (D3, SE-03), the tests configure one.
                 ["PublicHost:BaseDomain"] = "casazen.it",
@@ -104,18 +113,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Legal:Documents:Privacy:Version"] = "2026-06-v1",
                 ["Legal:Documents:Dpa:Version"] = "2026-06-v1",
                 ["Legal:Documents:Subprocessors:Version"] = "2026-06-v1",
-                ["Legal:Documents:Subprocessors:Items:0:Name"] = "Supabase",
-                ["Legal:Documents:Subprocessors:Items:0:Purpose"] = "Database",
-                ["Legal:Documents:Subprocessors:Items:0:Region"] = "EU",
-                ["Legal:Documents:Subprocessors:Items:1:Name"] = "Auth0",
-                ["Legal:Documents:Subprocessors:Items:1:Purpose"] = "Auth",
-                ["Legal:Documents:Subprocessors:Items:1:Region"] = "EU",
-                ["Legal:Documents:Subprocessors:Items:2:Name"] = "Stripe",
-                ["Legal:Documents:Subprocessors:Items:2:Purpose"] = "Payments",
-                ["Legal:Documents:Subprocessors:Items:2:Region"] = "EU",
-                ["Legal:Documents:Subprocessors:Items:3:Name"] = "SendGrid",
-                ["Legal:Documents:Subprocessors:Items:3:Purpose"] = "Email",
-                ["Legal:Documents:Subprocessors:Items:3:Region"] = "EU",
                 ["Compliance:CinGuidanceUrl"] = "https://www.bdsr.it/cin",
                 ["Compliance:CheckoutReminderHourLocal"] = "20",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
@@ -131,6 +128,9 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         {
             if (UsesPostgreSql)
                 UseDedicatedPostgresDatabase(services);
+
+            if (SeedComuneSample)
+                services.AddHostedService(serviceProvider => new ComuneSampleSeeder(serviceProvider));
 
             // One Data Protection provider for every test host of the process (PC-11): the EF model is cached per
             // provider (DataProtectionModelCacheKeyFactory), so the hosts share one model instead of building one each,
@@ -397,4 +397,18 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             services.Remove(descriptor);
     }
 
+}
+
+/// <summary>Imports the official sample of the comuni list when the host starts (see <see cref="CasazenWebApplicationFactory.SeedComuneSample"/>).</summary>
+internal sealed class ComuneSampleSeeder(IServiceProvider serviceProvider) : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        using var scope = serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (!await db.Comuni.AnyAsync(cancellationToken))
+            await ComuneTestData.ImportSampleAsync(db);
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

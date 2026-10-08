@@ -42,6 +42,12 @@ public static class ServiceRequestErrorCodes
     /// <summary>422: the supplier does not operate in the comune of the property.</summary>
     public const string SupplierOutsideComune = "service_request_supplier_outside_comune";
 
+    /// <summary>
+    /// 422: the supplier that tries to take, complete or reject a request is not active (suspended by an admin, or not
+    /// activated): a suspended supplier performs no action (SU-12, A4-29).
+    /// </summary>
+    public const string SupplierNotActive = "service_request_supplier_not_active";
+
     /// <summary>422: <c>chargeToGuest</c> is not available (the backend never charges the guest for a supplier).</summary>
     public const string ChargeToGuestNotAllowed = "service_request_charge_to_guest_not_allowed";
 
@@ -74,6 +80,7 @@ public static class ServiceRequestErrorCodes
     public const string SupplierNotFoundMessageKey = "SupplierProfileNotFound";
     public const string PropertyNotFoundMessageKey = "PropertyNotFound";
     public const string SupplierInactiveMessageKey = "ServiceRequestSupplierInactive";
+    public const string SupplierNotActiveMessageKey = "ServiceRequestSupplierNotActive";
     public const string SupplierOutsideComuneMessageKey = "ServiceRequestSupplierOutsideComune";
     public const string ChargeToGuestNotAllowedMessageKey = "ServiceRequestChargeToGuestNotAllowed";
     public const string CannotTakeMessageKey = "ServiceRequestCannotTake";

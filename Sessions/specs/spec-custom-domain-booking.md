@@ -5,12 +5,12 @@ title: CasaZen subdomain + custom CNAME booking domains
 phase: 1
 type: feature
 priority: P0
-status: specced
+status: partial
 issue:
 depends_on: [public-site-design-system, tenant-boundary, onboarding-plg]
 blocks: [golden-journey-e2e]
 exit_contributes_to: Holidu domain model; Starter subdomain vs Pro custom domain
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Custom Domain Booking (US-024)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 Hosts publish on **`{slug}.casazen.it`**, **`casazen.it/book/{slug}`**, or **`www.customdomain.it`** (CNAME). Edge resolves `Host` → `OrgId`; booking engine remains CasaZen API. Pro plan gates custom domain.
 
-**Phase:** 1 — MVP · **Type:** feature · **Status:** specced
+**Phase:** 1 — MVP · **Type:** feature · **Status:** partial (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

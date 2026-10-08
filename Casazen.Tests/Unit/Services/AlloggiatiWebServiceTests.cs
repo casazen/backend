@@ -1,3 +1,4 @@
+using System.Text;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -611,6 +612,150 @@ public class AlloggiatiWebServiceTests
         var rows = await CreateService(db, CheckIn).GetSummaryAsync(mine.OrgId, null);
 
         Assert.Equal(mine.Id, Assert.Single(rows).BookingId);
+    }
+
+    [Fact]
+    public async Task BuildRecordFile_CompleteStayWithImportedCodes_ReturnsTheLineAndChangesNothing()
+    {
+        // Arrange: CO-13. Synthetic code tables (codes starting with 9, 91-95 for the kinds): not official codes.
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+        await SeedSyntheticCodeTablesAsync(db);
+        var guestLine = await db.StayGuests.SingleAsync();
+        guestLine.DocumentTypeCode = "TSTID";
+        await db.SaveChangesAsync();
+
+        // Act
+        var file = await CreateService(db, CheckIn.AddDays(-1)).BuildRecordFileAsync(booking.Id);
+
+        // Assert: 168 characters at the official positions, a file name without personal data, nothing stored or sent.
+        var text = Encoding.UTF8.GetString(file.Content);
+        Assert.Equal(1, file.LineCount);
+        Assert.Equal(CheckIn, file.ArrivalDate);
+        Assert.Equal(
+            "91" + "10/10/2026" + "03" + "ROSSI".PadRight(50) + "MARIO".PadRight(30) + "1" + "02/04/1980"
+            + "900000001" + "MI" + "900000100" + "900000100" + "TSTID" + "CA12345AB".PadRight(20) + "900000001",
+            text);
+        Assert.Equal($"alloggiati-2026-10-10-{booking.Id.ToString("N")[..8]}.txt", file.FileName);
+        Assert.DoesNotContain("ROSSI", file.FileName, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(db.AlloggiatiWebReports);
+    }
+
+    [Fact]
+    public async Task BuildRecordFile_ExistingReport_IsNotTouchedByTheDownload()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+        await SeedSyntheticCodeTablesAsync(db);
+        var guestLine = await db.StayGuests.SingleAsync();
+        guestLine.DocumentTypeCode = "TSTID";
+        await db.SaveChangesAsync();
+        await AddReportAsync(db, booking, AlloggiatiWebStatus.DaInviareManualmente);
+        var service = CreateService(db, RomeMidnightOfCheckIn.AddHours(2));
+
+        await service.BuildRecordFileAsync(booking.Id);
+
+        // Downloading the file is not sending it: the status stays "to send manually", never sent, no receipt.
+        var report = await db.AlloggiatiWebReports.SingleAsync();
+        Assert.Equal(AlloggiatiWebStatus.DaInviareManualmente, report.Status);
+        Assert.Null(report.ReportedAt);
+        Assert.Null(report.ConfirmationNumber);
+        Assert.False(report.ManuallyCompleted);
+    }
+
+    [Fact]
+    public async Task BuildRecordFile_NoCodeTableImported_IsRefusedAsNotReady()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            CreateService(db, CheckIn.AddDays(-1)).BuildRecordFileAsync(booking.Id));
+
+        Assert.Equal(AlloggiatiWebService.RecordFileNotReadyCode, ex.Code);
+    }
+
+    [Fact]
+    public async Task BuildRecordFile_IncompleteGuestData_IsRefusedAsNotReady()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db, numberOfGuests: 3, completeGuest: false);
+        await SeedSyntheticCodeTablesAsync(db);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            CreateService(db, CheckIn.AddDays(-1)).BuildRecordFileAsync(booking.Id));
+
+        Assert.Equal(AlloggiatiWebService.RecordFileNotReadyCode, ex.Code);
+    }
+
+    [Fact]
+    public async Task BuildRecordFile_StayLongerThan30Days_IsRefusedWithTheStayLength()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db, checkOut: CheckIn.AddDays(31));
+        await SeedSyntheticCodeTablesAsync(db);
+        var guestLine = await db.StayGuests.SingleAsync();
+        guestLine.DocumentTypeCode = "TSTID";
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            CreateService(db, CheckIn.AddDays(-1)).BuildRecordFileAsync(booking.Id));
+
+        Assert.Equal(AlloggiatiWebService.RecordFileStayDaysCode, ex.Code);
+        Assert.Equal(new object[] { 31, 30 }, ex.MessageArgs);
+    }
+
+    [Fact]
+    public async Task BuildRecordFile_NameInAnotherAlphabet_IsRefusedWithTheGuestPosition()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+        await SeedSyntheticCodeTablesAsync(db);
+        var guestLine = await db.StayGuests.SingleAsync();
+        guestLine.DocumentTypeCode = "TSTID";
+        guestLine.LastName = "Иванов";
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            CreateService(db, CheckIn.AddDays(-1)).BuildRecordFileAsync(booking.Id));
+
+        Assert.Equal(AlloggiatiWebService.RecordFileNameCode, ex.Code);
+        Assert.Equal(new object[] { 1 }, ex.MessageArgs);
+    }
+
+    [Fact]
+    public async Task BuildRecordFile_UnknownBooking_ThrowsNotFound()
+    {
+        await using var db = CreateDb();
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            CreateService(db, CheckIn).BuildRecordFileAsync(Guid.NewGuid()));
+    }
+
+    private static async Task SeedSyntheticCodeTablesAsync(AppDbContext db)
+    {
+        var import = new AlloggiatiCodeTableImport { Table = AlloggiatiCodeTable.Comuni, SourceFileName = "TEST", SourceVersion = "TEST", Sha256 = new string('0', 64), ImportedBy = "test" };
+        db.AlloggiatiCodeTableImports.Add(import);
+        void Add(AlloggiatiCodeTable table, string code, string description, string? province = null) =>
+            db.AlloggiatiCodeEntries.Add(new AlloggiatiCodeEntry
+            {
+                Table = table,
+                Code = code,
+                Description = description,
+                NormalizedDescription = Casazen.Core.Regulatory.AlloggiatiRecordRules.NormalizeDescription(description),
+                Province = province,
+                ImportId = import.Id,
+            });
+
+        Add(AlloggiatiCodeTable.Comuni, "900000001", "Milano", "MI");
+        Add(AlloggiatiCodeTable.Stati, "900000100", "Italia");
+        Add(AlloggiatiCodeTable.Documenti, "TSTID", "TEST Carta di identita");
+        Add(AlloggiatiCodeTable.TipiAlloggiato, "91", "Ospite Singolo");
+        Add(AlloggiatiCodeTable.TipiAlloggiato, "92", "Capo Famiglia");
+        Add(AlloggiatiCodeTable.TipiAlloggiato, "93", "Capo Gruppo");
+        Add(AlloggiatiCodeTable.TipiAlloggiato, "94", "Familiare");
+        Add(AlloggiatiCodeTable.TipiAlloggiato, "95", "Membro Gruppo");
+        await db.SaveChangesAsync();
     }
 
     private static DateTime Utc(int year, int month, int day, int hour = 0) =>

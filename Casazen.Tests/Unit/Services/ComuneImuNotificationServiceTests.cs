@@ -126,7 +126,15 @@ public class ComuneImuNotificationServiceTests
 
         var result = await controller.ExportImuNotification(Guid.NewGuid(), CancellationToken.None);
 
-        Assert.IsType<ConflictObjectResult>(result);
+        AssertNotReadyProblem(result);
+    }
+
+    private static void AssertNotReadyProblem(IActionResult result)
+    {
+        // A ProblemDetails with a stable code; the Italian text of the exception is never sent as is.
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, problem.StatusCode);
+        Assert.Equal("imu_notification_not_ready", Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
     }
 
     [Fact]
@@ -225,7 +233,7 @@ public class ComuneImuNotificationServiceTests
 
         var result = await controller.MarkImuNotificationSent(Guid.NewGuid(), CancellationToken.None);
 
-        Assert.IsType<ConflictObjectResult>(result);
+        AssertNotReadyProblem(result);
     }
 
     [Fact]

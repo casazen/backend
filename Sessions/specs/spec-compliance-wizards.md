@@ -5,12 +5,12 @@ title: Contextual compliance wizards + summary cockpit
 phase: 1
 type: compliance
 priority: P0
-status: specced
+status: shipped
 issue:
 depends_on: [tenant-boundary]
 blocks: [guest-check-in-portal, golden-journey-e2e]
 exit_contributes_to: Italian compliance guided UX; GJ steps 3, 11–12
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Compliance Wizards (US-019)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 Replaces dashboard-first compliance with **contextual wizards** triggered when the host or system must act: property activation, check-out/turnover. Includes a **light summary cockpit** that opens wizards on click (not duplicate forms). Guest check-in wizard is specified in `spec-guest-check-in-portal`.
 
-**Phase:** 1 — MVP · **Type:** compliance · **Status:** specced
+**Phase:** 1 — MVP · **Type:** compliance · **Status:** shipped (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

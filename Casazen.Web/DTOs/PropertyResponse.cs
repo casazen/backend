@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Regulatory;
 
 namespace Casazen.Web.DTOs;
 
@@ -19,6 +20,9 @@ public sealed class PropertyResponse
     public string? Slug { get; init; }
     public string Description { get; init; } = string.Empty;
     public string Address { get; init; } = string.Empty;
+
+    /// <summary>Interno / scala (PC-06); null when the property has none.</summary>
+    public string? Unit { get; init; }
     public string City { get; init; } = string.Empty;
     public string PostalCode { get; init; } = string.Empty;
     public decimal Latitude { get; init; }
@@ -33,9 +37,24 @@ public sealed class PropertyResponse
     public IReadOnlyList<string> PhotoUrls { get; init; } = [];
     public string HouseRules { get; init; } = string.Empty;
     public string? CinCode { get; init; }
+
+    /// <summary>ISTAT code of the comune chosen from the official list (SU-04); null until chosen.</summary>
+    public string? ComuneIstatCode { get; init; }
+
+    /// <summary>CasaZen's region code (<c>LOM</c>) that follows <see cref="ComuneIstatCode"/>; null until a comune is chosen.</summary>
+    public string? RegionCode { get; init; }
+
+    /// <summary>The CIN is valid and its ISTAT comune differs from <see cref="ComuneIstatCode"/>: a non-blocking warning.</summary>
+    public bool CinIstatMismatch { get; init; }
     public string Timezone { get; init; } = "Europe/Rome";
     public Guid? CancellationPolicyId { get; init; }
     public bool IsActive { get; init; }
+
+    /// <summary>Host-set pause (PC-03, A2-05): hidden from public bookings until reactivated, own slot and history kept.</summary>
+    public bool IsPaused { get; init; }
+
+    /// <summary>UTC instant the property was paused; null when not paused.</summary>
+    public DateTime? PausedAt { get; init; }
     public PropertyComplianceStatus ComplianceStatus { get; init; }
     public DateTime? ComplianceCompletedAt { get; init; }
 
@@ -60,6 +79,7 @@ public sealed class PropertyResponse
             Slug = property.Slug,
             Description = property.Description,
             Address = property.Address,
+            Unit = property.Unit,
             City = property.City,
             PostalCode = property.PostalCode,
             Latitude = property.Latitude,
@@ -74,9 +94,14 @@ public sealed class PropertyResponse
             PhotoUrls = [.. property.PhotoUrls],
             HouseRules = property.HouseRules,
             CinCode = property.CinCode,
+            ComuneIstatCode = property.ComuneIstatCode,
+            RegionCode = property.RegionCode,
+            CinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode),
             Timezone = property.Timezone,
             CancellationPolicyId = property.CancellationPolicyId,
             IsActive = property.IsActive,
+            IsPaused = property.IsPaused,
+            PausedAt = property.PausedAt,
             ComplianceStatus = property.ComplianceStatus,
             ComplianceCompletedAt = property.ComplianceCompletedAt,
             CadastralSheet = property.CadastralSheet,

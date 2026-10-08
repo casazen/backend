@@ -98,7 +98,7 @@ public class OtaIntegrationsController(
             return Forbid();
 
         if (request.PropertyId != propertyId)
-            return BadRequest("Property ID in URL must match request body");
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "OtaPropertyIdMismatch");
 
         logger.LogInformation("Creating OTA integration for property {PropertyId}, platform {Platform}",
             propertyId, request.Platform);

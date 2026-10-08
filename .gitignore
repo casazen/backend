@@ -39,6 +39,7 @@ secrets/vercel.production.env
 ## Logs
 logs/
 *.log
+!Sessions/risanamento/stato/notes.log
 
 ## Uploaded files
 wwwroot/uploads/
@@ -53,11 +54,13 @@ Thumbs.db
 # .claude/ - Regulatory Intelligence system (committed to repo)
 # CLAUDE.md - Project context (local only, not committed)
 CLAUDE.md
-.claude/settings.local.json  # User-specific settings (permissions, local config)
+# User-specific settings (permissions, local config)
+.claude/settings.local.json
 /get-token.sh
 
 ## OpenCode
-opencode.json  # Contains API keys - never commit
+# Contains API keys - never commit
+opencode.json
 
 ## Windows artifacts
 nul
@@ -72,3 +75,7 @@ Sessions/ops-report-*.md
 Sessions/dev-flow-verification*/
 Sessions/dev-flow-verification-*.md
 Sessions/quality/
+
+## Editor backups
+*.bak
+*.orig

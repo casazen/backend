@@ -8,7 +8,10 @@ namespace Casazen.Web.DTOs;
 
 /// <summary>
 /// Request body for creating a new property. Excludes server-managed fields
-/// (<c>Id</c>, <c>OwnerId</c>, <c>CreatedAt</c>, <c>UpdatedAt</c>).
+/// (<c>Id</c>, <c>OwnerId</c>, <c>CreatedAt</c>, <c>UpdatedAt</c>). A new property is always active and not paused
+/// (PC-03, A2-05): <c>isActive</c> is not accepted, pausing is the dedicated <c>POST /properties/{id}/pause</c>.
+/// A new property has an empty photo gallery (PC-04, A2-26): photos are uploaded afterwards with
+/// <c>POST /api/properties/{id}/images</c>; a <c>photoUrls</c> sent in the body is ignored.
 /// </summary>
 public class CreatePropertyRequest
 {
@@ -26,6 +29,14 @@ public class CreatePropertyRequest
     [MaxLength(500, ErrorMessage = "PropertyAddressTooLong")]
     public string Address { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Interno / scala of the apartment in the building (e.g. <c>int. 5</c>, <c>Scala B int. 5</c>), optional (PC-06,
+    /// A2-19). Several apartments of the same building are different properties of the org if their units differ; the
+    /// same address and unit twice in an org is refused with 409 <c>duplicate_property_address</c>.
+    /// </summary>
+    [MaxLength(PropertyAddress.UnitMaxLength, ErrorMessage = "PropertyUnitTooLong")]
+    public string? Unit { get; set; }
+
     /// <summary>City where the property is located.</summary>
     [Required(ErrorMessage = "PropertyCityRequired")]
     [MaxLength(50, ErrorMessage = "PropertyCityTooLong")]
@@ -35,10 +46,25 @@ public class CreatePropertyRequest
     [MaxLength(10, ErrorMessage = "PropertyPostalCodeTooLong")]
     public string PostalCode { get; set; } = string.Empty;
 
-    /// <summary>Geographic latitude of the property.</summary>
+    /// <summary>
+    /// ISTAT code (6 digits) of the comune, chosen from the official list (<c>GET /api/comuni</c>, SU-04). Optional: without it
+    /// the property has no trusted comune (no regional rules, no CIN check, the tourist tax by the written city). Validated
+    /// against the list: 422 <c>comune_istat_unknown</c> / <c>comuni_dataset_unavailable</c>. The region follows it.
+    /// </summary>
+    [RegularExpression(ComuneRules.IstatCodePattern, ErrorMessage = "ComuneIstatCodeInvalid")]
+    public string? ComuneIstatCode { get; set; }
+
+    /// <summary>
+    /// Geographic latitude in degrees, -90 to 90 (A2-33); more than 6 decimals (about 0.1 m) are rounded. <c>0</c> with a
+    /// longitude of <c>0</c> = not set.
+    /// </summary>
+    [Range(typeof(decimal), "-90", "90", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyLatitudeRange")]
     public decimal Latitude { get; set; }
 
-    /// <summary>Geographic longitude of the property.</summary>
+    /// <summary>Geographic longitude in degrees, -180 to 180 (A2-33); more than 6 decimals are rounded.</summary>
+    [Range(typeof(decimal), "-180", "180", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyLongitudeRange")]
     public decimal Longitude { get; set; }
 
     /// <summary>Number of bedrooms (0–100): <c>0</c> is a studio flat (monolocale, A2-27).</summary>
@@ -74,9 +100,6 @@ public class CreatePropertyRequest
     /// <summary>List of amenities available at the property.</summary>
     public List<PropertyAmenity> Amenities { get; set; } = new();
 
-    /// <summary>Ordered list of photo URLs for the property listing.</summary>
-    public List<string> PhotoUrls { get; set; } = new();
-
     /// <summary>House rules presented to guests before booking.</summary>
     [MaxLength(1000, ErrorMessage = "PropertyHouseRulesTooLong")]
     public string HouseRules { get; set; } = string.Empty;
@@ -102,9 +125,6 @@ public class CreatePropertyRequest
     /// <summary>Optional reference to the cancellation policy applied to new bookings.</summary>
     public Guid? CancellationPolicyId { get; set; }
 
-    /// <summary>Whether the property is visible and bookable. Defaults to <c>true</c>.</summary>
-    public bool IsActive { get; set; } = true;
-
     /// <summary>Optional URL slug for direct booking links (unique within org).</summary>
     [MaxLength(100, ErrorMessage = "PropertySlugTooLong")]
     public string? Slug { get; set; }
@@ -121,10 +141,11 @@ public class CreatePropertyRequest
         Name = Name,
         Description = Description,
         Address = Address,
+        Unit = PropertyAddress.NormalizeUnit(Unit),
         City = City,
         PostalCode = PostalCode,
-        Latitude = Latitude,
-        Longitude = Longitude,
+        Latitude = PropertyAddress.RoundCoordinate(Latitude),
+        Longitude = PropertyAddress.RoundCoordinate(Longitude),
         Bedrooms = Bedrooms,
         Bathrooms = Bathrooms,
         MaxGuests = MaxGuests,
@@ -132,12 +153,10 @@ public class CreatePropertyRequest
         CleaningFee = CleaningFee,
         DamageDeposit = DamageDeposit,
         Amenities = Amenities,
-        PhotoUrls = PhotoUrls,
         HouseRules = HouseRules,
         CinCode = CinCode,
         Timezone = Timezone,
         CancellationPolicyId = CancellationPolicyId,
-        IsActive = IsActive,
         Slug = string.IsNullOrWhiteSpace(Slug) ? null : Slug.Trim().ToLowerInvariant(),
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow,

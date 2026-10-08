@@ -23,6 +23,7 @@ public class RecurringJobsConcurrencyTests
         "booking-pull-all",
         "dynamic-pricing-adaptation",
         "lease-registration-status-poll",
+        "domain-recheck",
     ];
 
     [Fact]
@@ -52,7 +53,7 @@ public class RecurringJobsConcurrencyTests
     {
         var jobs = RegisteredJobs();
 
-        foreach (var id in new[] { "ical-supplier-sync", "property-ical-sync", "booking-pull-all", "lease-sign-status-poll", "lease-registration-status-poll", "checkout-hold-expiry" })
+        foreach (var id in new[] { "ical-supplier-sync", "property-ical-sync", "booking-pull-all", "lease-sign-status-poll", "lease-registration-status-poll", "checkout-hold-expiry", "domain-recheck" })
         {
             var attribute = ConcurrencyAttribute(jobs[id].Method)!;
             Assert.True(attribute.TimeoutSec < 5 * 60, $"{id} waits {attribute.TimeoutSec}s for its previous run");

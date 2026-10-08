@@ -61,7 +61,7 @@ public class OtaController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving OTA integrations for property {PropertyId}", propertyId);
-            return StatusCode(500, "Internal server error");
+            return this.ApiProblem(StatusCodes.Status500InternalServerError, ProblemCodes.InternalError, "InternalServerErrorDetail");
         }
     }
 
@@ -91,7 +91,7 @@ public class OtaController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error queuing OTA sync job");
-            return StatusCode(500, "Internal server error");
+            return this.ApiProblem(StatusCodes.Status500InternalServerError, ProblemCodes.InternalError, "InternalServerErrorDetail");
         }
     }
 
@@ -110,7 +110,7 @@ public class OtaController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Get status error");
-            return StatusCode(500, "Internal server error");
+            return this.ApiProblem(StatusCodes.Status500InternalServerError, ProblemCodes.InternalError, "InternalServerErrorDetail");
         }
     }
 

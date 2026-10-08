@@ -58,35 +58,30 @@ public class AdminController(
         if (!string.IsNullOrWhiteSpace(cinStatus) &&
             cinStatus != "valid" && cinStatus != "missing" && cinStatus != "invalid")
         {
-            return BadRequest(new { error = $"Unknown cinStatus value '{cinStatus}'" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "CinStatusUnknown");
         }
 
-        pageSize = Math.Min(pageSize, 100);
+        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
-        try
+        var (items, total) = await adminService.GetCinComplianceAsync(cinStatus, page, pageSize);
+        return Ok(new PagedResultDto<CinComplianceItemDto>
         {
-            var (items, total) = await adminService.GetCinComplianceAsync(cinStatus, page, pageSize);
-            return Ok(new PagedResultDto<CinComplianceItemDto>
+            Items = items.Select(i => new CinComplianceItemDto
             {
-                Items = items.Select(i => new CinComplianceItemDto
-                {
-                    PropertyId = i.PropertyId,
-                    PropertyName = i.PropertyName,
-                    OwnerId = i.OwnerId,
-                    OwnerEmail = i.OwnerEmail,
-                    CinCode = i.CinCode,
-                    CinStatus = i.CinStatus,
-                    City = i.City
-                }),
-                TotalCount = total,
-                Page = page,
-                PageSize = pageSize
-            });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+                PropertyId = i.PropertyId,
+                PropertyName = i.PropertyName,
+                OwnerId = i.OwnerId,
+                OwnerEmail = i.OwnerEmail,
+                CinCode = i.CinCode,
+                CinStatus = i.CinStatus,
+                City = i.City
+            }),
+            TotalCount = total,
+            Page = page,
+            PageSize = pageSize
+        });
     }
 
     /// <summary>Returns the status of all registered Hangfire recurring jobs. Admin only.</summary>
@@ -121,7 +116,7 @@ public class AdminController(
         CancellationToken cancellationToken)
     {
         if (!PlanCatalog.TryParseTier(dto.PlanTier, out var planTier))
-            return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
         logger.LogInformation("Admin plan change requested for org {OrgId} -> {PlanTier}", orgId, planTier);
 

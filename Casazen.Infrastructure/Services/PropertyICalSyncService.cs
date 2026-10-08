@@ -131,12 +131,13 @@ public partial class PropertyICalSyncService
     }
 
     // IgnoreQueryFilters (here and in BuildPublicExportAsync): the public export is authorized by the
-    // unguessable ExportToken, not by a user, and is scoped to that export's property.
+    // unguessable ExportToken, not by a user, and is scoped to that export's property. A soft-deleted property's link
+    // stops working (PC-05).
     public async Task<PropertyICalExport?> GetExportByTokenAsync(Guid exportToken, CancellationToken ct = default) =>
         await _db.PropertyICalExports
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .FirstOrDefaultAsync(e => e.ExportToken == exportToken, ct);
+            .FirstOrDefaultAsync(e => e.ExportToken == exportToken && !e.Property.IsDeleted, ct);
 
     public string BuildExportUrl(Guid exportToken)
     {
@@ -602,9 +603,16 @@ public partial class PropertyICalSyncService
     /// </summary>
     public async Task SyncAllFeedsAsync(CancellationToken ct = default)
     {
+        // A soft-deleted property (PC-05) is no longer synced. IgnoreQueryFilters([SoftDeleteQueryFilter]): the
+        // deleted ones are exactly what this lookup is for (a background job: no tenant filter in effect).
+        var deletedPropertyIds = await _db.Properties
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(p => p.IsDeleted)
+            .Select(p => p.Id)
+            .ToListAsync(ct);
         var feedIds = await _db.PropertyICalFeeds
             .AsNoTracking()
-            .Where(f => f.ImportUrl != null && f.ImportUrl != "")
+            .Where(f => f.ImportUrl != null && f.ImportUrl != "" && !deletedPropertyIds.Contains(f.PropertyId))
             .OrderBy(f => f.LastImportAt.HasValue)
             .ThenBy(f => f.LastImportAt)
             .Select(f => f.Id)
@@ -748,6 +756,7 @@ public partial class PropertyICalSyncService
                     EndUtc = b.EndUtc,
                     Summary = b.Summary,
                     BookingId = b.BookingId,
+                    ManualReason = b.ManualReason,
                 },
                 Channel = b.Feed != null ? (ICalFeedChannel?)b.Feed.Channel : null,
                 FeedLabel = b.Feed != null ? b.Feed.Label : null,
@@ -777,7 +786,8 @@ public partial class PropertyICalSyncService
                 r.Block.FeedId,
                 r.Stay is { Status: not BookingStatus.Cancelled } ? r.Stay.Id : null,
                 PropertyOccupancy.IsRepresentedByStay(r.Block, r.Stay),
-                r.Channel is not null && OtaStays.IsConvertible(r.Block, r.Stay?.Status, today)))
+                r.Channel is not null && OtaStays.IsConvertible(r.Block, r.Stay?.Status, today),
+                r.Block.ManualReason))
             .ToList();
     }
 

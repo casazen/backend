@@ -41,6 +41,7 @@ Railway → service `casazen/backend` → environment → **Variables**:
 
 Notes:
 
+- `Email__ApiUrl` is a **test-only** override (mail catcher of the E2E stack, `golden-journey-l3.md`): never set it on Railway. Outside Development/Testing the app refuses to start with it.
 - The old variable `Email__ResendApiKey` is still read when `Email__ApiKey` is empty. Rename it to `Email__ApiKey` and delete the old one. If `Email__ApiKey` already exists with a SendGrid key (`SG.…`), replace it with the Resend key: validation rejects keys that do not start with `re_`.
 - `Email__SendGridApiKey`, `Email__Smtp*`, `SendGrid__ApiKey`, `App__SupplierLoginUrl` and `App__FrontendBaseUrl` are no longer read: delete them.
 - **Set the variables before the release reaches `main`.** From this version the production service does not start without `Email__ApiKey`, `Email__FromAddress` and `App__PublicSiteBaseUrl`: the deploy log shows lines such as `Email__FromAddress is missing: set a sender of the domain verified on Resend.`

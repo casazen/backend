@@ -1,3 +1,4 @@
+using Casazen.Core.Branding;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 
@@ -12,7 +13,8 @@ public class ResolveHostBrandingDto
 {
     public string? LogoUrl { get; set; }
     public string? PrimaryColor { get; set; }
-    public string? PublicThemeId { get; set; }
+    /// <summary>The theme the site renders: always one of <c>PublicSiteThemes.All</c> (unset or unsupported → default).</summary>
+    public string PublicThemeId { get; set; } = PublicSiteThemes.Default;
     public string? HeroImageUrl { get; set; }
     public string? Tagline { get; set; }
     public string DisplayName { get; set; } = string.Empty;
@@ -27,7 +29,7 @@ public class ResolveHostBrandingDto
     {
         LogoUrl = org.LogoUrl,
         PrimaryColor = org.ThemeColor,
-        PublicThemeId = org.PublicThemeId,
+        PublicThemeId = PublicSiteThemes.Resolve(org.PublicThemeId),
         HeroImageUrl = org.HeroImageUrl,
         Tagline = org.Tagline,
         DisplayName = org.DisplayName,

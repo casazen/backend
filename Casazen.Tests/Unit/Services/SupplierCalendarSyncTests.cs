@@ -329,7 +329,10 @@ public class SupplierCalendarSyncTests
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
             new FakeExternalHttpClient(null),
-            Options.Create(new SupplierRegistrationOptions()),
+            ComuneTestServices.Pilots(db),
+            ComuneTestServices.Directory(db),
+            ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDb() =>

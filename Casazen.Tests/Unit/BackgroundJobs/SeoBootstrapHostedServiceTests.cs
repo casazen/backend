@@ -1,4 +1,6 @@
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
 using Casazen.Web.HostedServices;
@@ -51,6 +53,19 @@ public class SeoBootstrapHostedServiceTests
     }
 
     [Fact]
+    public async Task StartAsync_OfficialComuniListNotImported_QueuesNothingAndStoresNoMarker()
+    {
+        // SU-04: the pilot comuni come from the ISTAT list. Without it nothing is generated, and with no marker the next start
+        // (after the list is imported) tries again.
+        _repository.Setup(r => r.CountAllPagesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(0);
+
+        await CreateService(pilots: []).StartAsync(CancellationToken.None);
+
+        _jobClient.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
+        Assert.Empty(_marker);
+    }
+
+    [Fact]
     public async Task StartAsync_MarkerAlreadyStored_DoesNotQueueAgainEvenWithZeroPages()
     {
         _connection.Setup(c => c.GetAllEntriesFromHash(SeoBootstrapHostedService.MarkerKey))
@@ -93,7 +108,7 @@ public class SeoBootstrapHostedServiceTests
         _jobClient.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
     }
 
-    private SeoBootstrapHostedService CreateService(bool bootstrapOnStartup = true)
+    private SeoBootstrapHostedService CreateService(bool bootstrapOnStartup = true, ComuneInfo[]? pilots = null)
     {
         var storage = new Mock<JobStorage>();
         storage.Setup(s => s.GetConnection()).Returns(_connection.Object);
@@ -102,6 +117,7 @@ public class SeoBootstrapHostedServiceTests
         services.AddSingleton(storage.Object);
         services.AddSingleton(_jobClient.Object);
         services.AddSingleton(_repository.Object);
+        services.AddSingleton<ISeoComuneCatalog>(new StaticSeoComuneCatalog(pilots ?? [ComuneTestData.ComoInfo, ComuneTestData.BellagioInfo]));
 
         return new SeoBootstrapHostedService(
             services.BuildServiceProvider(),

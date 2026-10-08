@@ -6,7 +6,10 @@ A4-22). The code is in place; the product owner sets the pilot comuni (section 3
 checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment. Section 7: what a
 service request is tied to (task SU-07, decision D2). Section 10: supplier jobs and QR check-in removed, dashboard
 KPIs from the service requests (SU-11, decision D12). Section 11: what the supplier sees of a request (address, date,
-host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15).
+host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15). Section 14:
+the platform admin's supplier list, suspension and invites (SU-12, A4-29).
+Section 15: what the host sees of a request (timeline, rejection reason, "Segna pagato" with confirmation, asking another supplier)
+and the payment notification to the supplier (SU-09, A4-28).
 
 ## 1. How a supplier joins
 
@@ -97,8 +100,8 @@ Error codes (ProblemDetails `code`):
 
 **Decision:** the automatic link "same email → same supplier profile" is **removed**, not merely gated on
 `email_verified`. `SupplierOrgContextResolver` / `SupplierService.GetOrProvisionSupplierOrgIdAsync` (every
-`/api/supplier/*` request) now use only the account's own link (`User.SupplierOrgId`, or `User.OrgId` of a supplier
-org); a Supplier role given by hand without any link still gets a new empty profile, never someone else's. A
+`/api/supplier/*` request) now use only the account's own link (`User.SupplierOrgId`, or the legacy `User.OrgId` of a
+supplier org, section 13); a Supplier role given by hand without any link still gets a new empty profile, never someone else's. A
 pending admin invite is no longer consumed by an account that merely shows the invited email: it is accepted only with
 its token. The only link that uses the email is the explicit claim without token, and only with a verified email.
 
@@ -117,7 +120,8 @@ Auth0 database connection's verification email enabled (default).
 
 ### 2.4 Onboarding
 
-- `GET /api/users/me` returns `supplierOrgId` (also for a supplier-only user whose `orgId` is the supplier org). The
+- `GET /api/users/me` returns `supplierOrgId` (also for a legacy supplier-only user whose `orgId` is the supplier org;
+  since PL-05 a supplier-only user has no `orgId`, section 13). The
   web guard never sends a linked supplier to the host onboarding, even before the `Supplier` role reaches the token;
   its home is the activation wizard (`/app/supplier/activation`, which forwards an active supplier to the dashboard).
 - A host with a supplier profile keeps the host org (`orgId`) and the supplier org (`supplierOrgId`): the context
@@ -140,14 +144,18 @@ by invite (the page says so). Admin invites are not limited to the pilot comuni.
 
 - Code and name are both required and codes must be unique (case-insensitive): otherwise the **startup fails** with
   the list of problems and Railway keeps the previous deployment.
-- The code is compared with the form value trimmed and case-insensitive, and stored on the supplier profile
-  (`SupplierProfiles.ComuniJson`) exactly as configured. Use the **same code format as the admin invites** of that
-  comune. Matching with the hosts' properties still goes through `ItalianComuneRegistry` until SU-04 introduces the
-  ISTAT registry and picker (A4-12): a code that the registry does not know matches only a property whose city is
-  written exactly the same way.
-- Invite emails show "Name (code)" when the invite's comune is a configured pilot comune, otherwise only the code.
-  `ItalianComuneRegistry` is deliberately not used for names: it knows 12 comuni and maps the cadastral code `F205`
-  to Firenze, while `F205` is Milano (A4-12, fixed by SU-04).
+- **The code is the ISTAT code of the comune** (6 digits, e.g. `058091`, SU-04). Once the official ISTAT list is imported
+  ([comuni-istat.md](comuni-istat.md)) it is validated against it: the name shown to the supplier is the one of the
+  list, a cadastral code (`H501`) is turned into the ISTAT code, and a code that is not an active comune is **not
+  offered** (self-serve is off when none remains; `GET /api/admin/comuni` and the health check `comuni` name it). The
+  registration form's code is compared with the pilot's as the same comune, and the supplier profile stores the pilot's
+  ISTAT code in `ComuniJson` and in `ComuneIstatCodesJson`. Without the list the configuration is used as written.
+- Matching with the hosts' properties is **by ISTAT code** (the property's chosen comune, the supplier's chosen comuni);
+  what a supplier wrote as text (`H501`, `Roma`) is resolved against the list and only compared as a name when it cannot be
+  (list not imported, ambiguous name). `ItalianComuneRegistry` is gone: it knew 12 comuni and got four codes wrong
+  (Torino, Bellagio, Menaggio, Varenna) and mapped the cadastral code `F205` to Firenze while it is Milano (A4-12).
+- Admin invites: with the list imported the invite's comune must be an active comune (ISTAT code, cadastral code or a
+  unique name) and is stored as its ISTAT code (422 `comune_istat_unknown`); invite emails show "Name (code)".
 - The staging golden journey (`frontend/e2e/golden-journey-*.spec.ts`) self-registers suppliers with comune
   `058091`: on the test environment either configure that code as a pilot comune or expect `supplier_self_serve_unavailable`.
 
@@ -164,7 +172,7 @@ Check: `curl -s "$RAILWAY_TEST_URL/api/suppliers/registration-options"` returns 
 
 | Endpoint | Policy | Default |
 |---|---|---|
-| `POST /api/suppliers/register` | `PublicRegistration` (bucket shared with `POST /api/auth/register`) | 5 / 10 min |
+| `POST /api/suppliers/register` | `PublicRegistration` | 5 / 10 min |
 | `POST /api/suppliers/invites/lookup`, `GET /api/suppliers/registration-options` | `PublicRead` | 120 / min |
 
 The invite page calls `lookup` once per load and `register` once per submit: an invited supplier who logs in and
@@ -375,7 +383,8 @@ the migration there are no duplicate emails left, so a run normally only does th
      duplicate are not copied: the keeper's profile is the one in use);
    - accounts: `SupplierOrgId` = duplicate → keeper; a supplier-only account (`OrgId` = duplicate, no `SupplierOrgId`)
      gets `SupplierOrgId` = keeper;
-   - the duplicate profile is deleted; its org too, after moving `User.OrgId` and push devices to the keeper, **unless
+   - the duplicate profile is deleted; its org too, after detaching the legacy `User.OrgId` links to it (`OrgId` = null,
+     section 13) and moving push devices to the keeper, **unless
      the org also holds host data** (not a supplier org, consents, signup attribution, or rows such as properties or
      bookings that reference it): then the org stays, without its supplier profile, and its accounts keep it as `orgId`.
    - the duplicate's claim token dies with it: its registrant links the keeper with the verified-email claim.
@@ -567,14 +576,345 @@ request: saving the URL answers 202 `Syncing` and queues the first sync, "Sincro
 of the feed (`SupplierAvailability.Source`), never those the supplier set by hand. API, rules, migration of the
 existing days and checks: [ical.md](ical.md#supplier-calendars-su-15).
 
+## 13. The Supplier org never becomes the host org — PL-05 (A1-40)
+
+Before PL-05 the supplier registration, claim and auto-provisioning also wrote the new supplier org into `User.OrgId`
+when it was empty, and the **host** onboarding then reused that `OrgId` without checking its type: a supplier who
+became a host got properties, bookings, plan, consents and public site on an `OrgType.Supplier` org.
+
+**Rule now: `User.OrgId` is the user's host org only; the supplier link is `User.SupplierOrgId` only.**
+
+- `SupplierService` (register, claim, auto-provisioning) writes only `SupplierOrgId`; `fix-orphaned` detaches legacy
+  supplier-only accounts from a deleted duplicate (`OrgId` = null) instead of moving them to the keeper (section 9.3).
+- The host resolvers accept only an org with `OrgType = Host`, so a legacy or wrong `OrgId` is treated as "no host org
+  yet" (fail-closed, like a brand-new user, PL-02/A1-05):
+  - `TenantContext.ResolveAsync`: the EF tenant filter, read once per request before every controller;
+  - `OrgContextResolver.GetOrProvisionOrgIdAsync` (host controllers);
+  - `UserAuthorizationSnapshotStore` (host onboarding gate: the consents count only for a host org);
+  - `OrgService.EnsureOrgForUserAsync` (`POST`/`PUT /api/users/onboarding`): a non-host `OrgId` is never reused; a
+    **new** Host org is created, and a legacy supplier link in `OrgId` is first copied to `SupplierOrgId`.
+- `POST /api/devices` of a supplier-only account (no host org) registers the device under its linked supplier org, as
+  before, so the supplier keeps receiving the push notifications of its requests.
+- A user who is host and supplier sees the host data through `OrgId` (tenant filter) and the supplier data through
+  `SupplierOrgId` (`/api/supplier/*`, explicit `SupplierOrgId` predicates): two orgs, never one.
+
+### 13.1 Migration `SeparateSupplierOrgFromHostOrgId` (applied at startup, one transaction)
+
+It repairs the existing rows, for every org with `OrgType = 1` (Supplier):
+
+| Case | What happens |
+|---|---|
+| Account with `OrgId` = a supplier org with a profile and no `SupplierOrgId` (pre-SU-08) | `SupplierOrgId` = that org first (count `supplier_links_backfilled`) |
+| Supplier org **without host data** (the common case: a supplier-only account) | Its accounts get `OrgId` = null and keep `SupplierOrgId` (`host_links_cleared`). An account whose `SupplierOrgId` is **another** org keeps the old `OrgId` (it would otherwise leave this profile held by nobody); no host resolver reads it (`supplier_org_links_kept`) |
+| Supplier org **with host data** (A1-40 already happened: a supplier who became a host before PL-05) | The org becomes `OrgType = Host` and keeps everything host: properties, bookings, guests, payments, consents, slug and aliases, plan, Stripe customer and subscription, Connect account, public site and domain, the accounts' `OrgId` (`orgs_reclassified_host`). Its **supplier side moves to a new supplier org** (`supplier_sides_split`): supplier profile (with its public showcase slug, so `/s/<slug>` links keep working), availability days, `ServiceRequests.SupplierOrgId`, `StayCheckouts.CleaningSupplierOrgId`, `Users.SupplierOrgId`. The new org gets the profile's legal name and email, plan Starter, slug `supplier-<random>`. Nothing is deleted |
+
+"Host data" = a Stripe customer or subscription, a subscription status, a paid tier, a Connect account, a custom domain
+or subdomain on the org, or a row of **any** table whose foreign key references `Orgs` (read from the PostgreSQL
+catalog, so a host table added later counts too), except the supplier and identity links (`SupplierProfiles.OrgId`,
+`ServiceRequests.SupplierOrgId`, `Users.OrgId`, `DeviceRegistrations.OrgId`).
+
+The migration takes a write lock on `Users`, `Orgs` and `SupplierProfiles` for its duration (seconds), so an old
+instance still running cannot link accounts meanwhile. It is idempotent (a second run finds nothing to do). Down is a
+no-op: restoring the old links would bring the bug back. Log (no email, no name):
+`SeparateSupplierOrgFromHostOrgId: supplier_links_backfilled=…, host_links_cleared=…, supplier_org_links_kept=…,
+orgs_reclassified_host=…, supplier_sides_split=…, split_without_holder=…`, then the split pairs
+`<host org id> -> <new supplier org id>`.
+
+### 13.2 Before the deploy (read-only, on the environment's schema)
+
+```sql
+-- Accounts whose OrgId is a supplier org, with the host data that decides the case.
+SELECT u."Id" AS user_id, o."Id" AS org_id, u."SupplierOrgId" = o."Id" AS supplier_link_is_this_org,
+       EXISTS (SELECT 1 FROM "SupplierProfiles" sp WHERE sp."OrgId" = o."Id") AS has_profile,
+       (SELECT count(*) FROM "Properties" p WHERE p."OrgId" = o."Id") AS properties,
+       (SELECT count(*) FROM "Bookings" b WHERE b."OrgId" = o."Id") AS bookings,
+       (SELECT count(*) FROM "ConsentRecords" c WHERE c."OrgId" = o."Id") AS host_consents,
+       o."StripeCustomerId" IS NOT NULL AS stripe_customer, o."PlanTier"
+FROM "Users" u JOIN "Orgs" o ON o."Id" = u."OrgId"
+WHERE o."OrgType" = 1;
+```
+
+Rows with properties, bookings, host consents or a Stripe customer are the orgs that will be **split**: note their ids
+and, if a supplier of them has push or web sessions open, nothing to do (the next request reads the new links).
+In-flight Hangfire pushes addressed to the old supplier org id of a split org reach nobody (the supplier is now on the
+new org): at most one notification lost per open request.
+
+### 13.3 After the deploy
+
+- [ ] Deploy log: the `SeparateSupplierOrgFromHostOrgId` NOTICE lines. `split_without_holder` should be 0 (a split
+      supplier profile that no account holds: run `fix-orphaned` in dry run, section 9.3, it lists it in
+      `orphanProfiles`).
+- [ ] Both must be 0:
+      ```sql
+      -- No account has a host data org typed Supplier, no supplier org holds a host row of the main tables.
+      SELECT count(*) FROM "Users" u JOIN "Orgs" o ON o."Id" = u."OrgId"
+       WHERE o."OrgType" = 1 AND u."SupplierOrgId" = o."Id";
+      SELECT count(*) FROM "Orgs" o WHERE o."OrgType" = 1
+         AND (EXISTS (SELECT 1 FROM "Properties" p WHERE p."OrgId" = o."Id")
+              OR EXISTS (SELECT 1 FROM "Bookings" b WHERE b."OrgId" = o."Id")
+              OR EXISTS (SELECT 1 FROM "ConsentRecords" c WHERE c."OrgId" = o."Id"));
+      ```
+- [ ] For each split pair of the log: the host still sees properties and bookings (`/app/...`), and the supplier
+      console (`/app/supplier/inbox`, dashboard, calendar) still shows its requests and availability.
+- [ ] Register as a supplier (self-serve or invite), then complete the host onboarding with the same account:
+      `GET /api/users/me` has an `orgId` different from `supplierOrgId`, a property created then is in the host org,
+      and the supplier console still works.
+
+## 14. Admin: supplier list, suspension and invites — SU-12
+
+Everything here is behind the policy `AdminOnly` (Auth0 role `Admin`); the web page is `/app/admin/suppliers` (menu
+*Fornitori*, permission `admin.users.manage`), with the tabs **Fornitori** and **Inviti** and a button to the existing
+invite form. No manual database work is needed to suspend a supplier or to handle an invite.
+
+### 14.1 API
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/admin/suppliers?search=&status=&page=&pageSize=` | Suppliers, newest first, **paginated in SQL** (`pageSize` 1-100, `page` at least 1; out of range values are clamped). `search` matches the legal name or the email, case-insensitive, LIKE wildcards escaped. `status` is `Pending`, `Active` or `Suspended`. Each item has the status, categories, comuni, the suspension date and note, and `openRequests` (new, taken, in progress). |
+| `POST /api/admin/suppliers/{orgId}/suspend` | Body `{ "reason": "…" }`, required, at most 500 characters (400 `validation_error` otherwise). 404 `supplier_not_found`, 409 `supplier_already_suspended`. |
+| `POST /api/admin/suppliers/{orgId}/reactivate` | 404 `supplier_not_found`, 409 `supplier_not_suspended`. |
+| `GET /api/admin/suppliers/{orgId}/audit` | Audit trail of the supplier, newest first (at most 50 lines): action, admin (name or email, from `Users`), time, reason, status before and after. |
+| `GET /api/admin/suppliers/invites?search=&state=&page=&pageSize=` | Invites, newest first, paginated in SQL. `state` is `Pending`, `Used`, `Expired` or `Revoked`; `search` matches the invited email. The link token is never returned (only its hash is stored, section 1). |
+| `POST /api/admin/suppliers/invites/{id}/resend` | A **new token** (the old link stops working), a new 7-day expiry, the invite email queued on Hangfire. Allowed for a pending or expired invite (also one created before SU-01, which had no token hash). 409 `supplier_invite_not_resendable` (used or revoked), 409 `duplicate_invite` (another invite for the email is pending), 409 `supplier_email_taken` (a profile with the email exists since), 404 `supplier_invite_not_found`. |
+| `DELETE /api/admin/suppliers/invites/{id}` | Revokes a pending invite (204): the row is kept with `RevokedAt`, and the link answers 422 `supplier_invite_revoked` in the lookup and in the registration. 409 `supplier_invite_not_pending` (used, expired or already revoked), 404 `supplier_invite_not_found`. A revoked invite does not block a new invite for the same email. |
+
+The invite state is computed on read: `Used` (accepted), `Revoked`, `Expired` (past its expiry, or no token hash), otherwise
+`Pending`.
+
+### 14.2 What a suspended supplier can and cannot do (A4-29)
+
+| | Suspended supplier |
+|---|---|
+| Receives new requests | No: it is not in the host search (only `Active` suppliers are) and a request addressed to it is refused with 422 `service_request_supplier_inactive` |
+| Take, complete or reject a request | **No**: 422 `service_request_supplier_not_active`, checked before the state machine, after the 404 and the 403 for another supplier's request. Nothing is saved and nobody is notified. The same applies to a supplier that is still `Pending` |
+| Lift the suspension with the activation wizard | No: `POST /api/supplier/profile/activation/complete` answers 422 `supplier_suspended`. Only an admin reactivates it |
+| Sign in, read the inbox, the detail and the history, edit the profile | Yes (read access stays): the console shows a banner *Account fornitore sospeso* and disables the buttons of the requests. The reason of the suspension is an internal note and is **never** sent to the supplier |
+| Be paid for work already done | Yes: *Segna pagato* is the host's action and does not depend on the supplier's status |
+| Open requests (new, taken, in progress) | They stay as they are. The list shows how many each supplier has open, and the suspend dialog warns about them. What to do with them is a product question (see the open questions of SU-12) |
+
+Reactivation sets the status back to `Active` if the supplier had accepted the terms (it was active before),
+otherwise to `Pending`: a reactivation never skips the activation wizard.
+
+### 14.3 Audit trail
+
+Table `SupplierAdminAuditEntries` (migration `SupplierAdminSuspension`): one row per admin action, written in the same
+transaction as the change, never updated: `Suspended`, `Reactivated`, `InviteResent`, `InviteRevoked` with the admin's Auth0
+subject, the time (UTC), the reason (suspension) and the status before and after. The rows of a supplier are shown in
+the page (*Storico*); the invite rows (`InviteId`) can be read in the database. There is no foreign key: the trail
+survives the deletion of an org by `fix-orphaned` (section 9). The logs carry only ids and the masked email, never
+the reason.
+
+### 14.4 After a deploy
+
+- [ ] As admin: `/app/admin/suppliers` lists the suppliers with their status; the filter *Sospeso* and the search by
+      name or email work, 20 per page.
+- [ ] *Sospendi* on an active supplier without a reason is not possible; with a reason the badge becomes *Sospeso*,
+      the row shows the note, *Storico* shows who did it and when.
+- [ ] As that supplier: the console shows the suspension banner, the buttons of the requests are disabled, and the
+      supplier is no longer offered to hosts (marketplace and request creation).
+- [ ] *Riattiva* brings it back (*Attivo* if it had accepted the terms).
+- [ ] *Inviti*: *Reinvia* on an expired invite → the email arrives with a new link that works; the old link does not.
+      *Revoca* on a pending invite → its link shows "Questo invito è stato revocato".
+
+## 15. Host: timeline, rejection reason, "Segna pagato", another supplier — SU-09
+
+### 15.1 The timeline of a request
+
+Every request the host reads (`GET /api/service-requests`, `GET /api/service-requests/{id}`, and the long-rent twins
+under `/api/long-rent/service-requests`) carries `history`: one step per transition of the state machine, oldest
+first, rebuilt from the dates the request keeps (the same builder as the supplier console, section 11.3, so host and
+supplier read the same story and no column was added):
+
+| Step | Party | Date |
+|---|---|---|
+| `Richiesto` | `Host` | `createdAt` |
+| `PresoInCarico` | `Supplier` | `takenAt` |
+| `Completato` | `Supplier` | `completedAt` |
+| `Pagato` | `Host` | `paidAt` |
+| `Rifiutato` | `Supplier` | `updatedAt` (a rejection is final, nothing updates the request afterwards), with the reason in `reason` |
+
+- **Who:** the web shows the host's steps as "Il tuo team" and the supplier's steps with the supplier's business name
+  (`supplierName`). A **member of the supplier's team is never named to the host**: `actorName` is always null in
+  the host answer (the supplier console names the member to the supplier's own team, section 11).
+- **Dates** are UTC instants; the web shows them in Europe/Rome.
+- The web (`ServiceRequestTimeline`, used by the booking, the property, the long-rent property and the marketplace
+  pages) also says what the request is waiting for ("In attesa che il fornitore accetti o rifiuti", ...).
+  Loading, load error with *Riprova* and empty states are in the cards and in the marketplace page.
+
+### 15.2 "Segna pagato" and the payment notification
+
+- Payment of the supplier stays a **manual flag** (DECISIONI.md, undecided points: no Stripe integration towards the
+  supplier): CasaZen does not pay the supplier and there is no transfer to it. The web asks for an explicit confirmation before the call ("Confermi di aver pagato ...?
+  CasaZen non effettua il pagamento: questo segna solo che l'hai già fatto. L'operazione non si può annullare"). The
+  buttons *Segna pagato* and *Richiedi ad altro fornitore* need `property.write` of the context (short-rent or
+  long-rent) and are hidden otherwise; the API checks it anyway. A 409 or 422 (the request changed meanwhile, for
+  example paid from another tab) reloads the list.
+- When the host marks a request as paid the **supplier is notified**, on Hangfire and never inside the host's
+  request: an email to the supplier profile's address (template `service-request-paid`, `EmailTexts.resx` IT/EN, says
+  that the payment is made outside CasaZen and links the supplier console, from `App:PublicSiteBaseUrl`) and one push
+  to the supplier org's devices (`service-request-paid`, delivery key `service-request:{id}:Pagato`, opens the app's
+  property list like the "new request" push). A failure to queue them is logged and never an error for the host.
+  A supplier suspended after completing the work (SU-12) is notified too: it is still owed what it completed.
+- The host is told of a rejection (email with the reason, and push) since A6-08; the reason is never on the lock screen.
+
+### 15.3 Asking another supplier after a rejection
+
+*Richiedi ad altro fornitore* appears on a rejected request (not when a newer, not rejected request for the same job
+already exists: then the row says "Già richiesto a un altro fornitore"). It opens the normal request form for the same
+property (short-rent: the same stay, **D2**; long-rent: the property) with the same category and notes, and without the
+suppliers that already rejected that job (same property, stay and category) in the list. The API does not forbid asking
+a supplier that rejected again: the exclusion is only the default of the form. The result is an ordinary new request
+(`POST /api/service-requests` or `/api/long-rent/service-requests`), linked to the old one only by the stay.
+
+### 15.4 After a deploy
+
+- [ ] Reject a new request as the supplier with a reason → on the booking, the property and the marketplace page the
+      host sees *Rifiutato*, the date and "Motivo del rifiuto: ...", and the button *Richiedi ad altro fornitore*.
+- [ ] The button opens the form with the stay, category and notes filled in, without the supplier that rejected; the
+      new request appears in the supplier's inbox and the old row says "Già richiesto a un altro fornitore".
+- [ ] Take and complete a request → the timeline shows each step with the date in Italian time, then *Segna pagato*
+      asks for confirmation; cancelling calls nothing; confirming marks it *Pagato* and the supplier gets an email and
+      a push ("Richiesta segnata come pagata").
+- [ ] As a user without `property.write` (read-only role): the timeline is readable, with no buttons.
+
+## 16. Activation: real requirements, 5-step wizard saved by the server, versioned Terms — SU-05
+
+Audit A4-09 / A4-31. Before SU-05 the Terms alone activated a profile: a supplier with no category and no comune showed
+as "Active, visible to hosts" and appeared in no search; the step of the wizard lived in the browser; the acceptance
+stored only a date, with no version and no link to the text.
+
+### 16.1 Requirements (checked on the stored profile, never on what the client says)
+
+`POST /api/supplier/profile/activation/complete` `{ tosAccepted, tosVersion }` activates only when the stored profile has:
+
+| Blocker code (`blockers` of the 409) | Requirement | Wizard step |
+|---|---|---|
+| `legal_name_missing` | business name not blank | 1 `identity` |
+| `phone_invalid` | 6 to 15 digits, optional leading `+`, separators ` - . ( )` only (E.164 max 15). It is a format check: no SMS verification exists | 1 |
+| `categories_missing` | at least one **known** category code (`ServiceCategories`) | 2 `services` |
+| `comuni_missing` | at least one comune (ISTAT code or the old text) | 2 |
+| `bio_missing` | description not blank | 4 `profile` |
+| `tos_not_accepted` | `tosAccepted: true` | 5 `terms` |
+
+Otherwise 409 `supplier_activation_blocked` with `blockers: [codes]` and the localized `detail`; nothing is saved. Steps 3
+(`showcase`, photos) and the calendar of step 5 are optional and never block. The VAT number is optional (a supplier
+without one is not refused: product decision to confirm, see the open questions).
+
+`PUT /api/supplier/profile` of an **Active** supplier cannot take a requirement away (empty categories, comuni or
+description, blank name or invalid phone): 422 `supplier_profile_requirements`, nothing saved. Only a requirement the
+edit newly takes away counts: a profile activated before SU-05 that already lacks one (say, the description) can still
+be edited and upload photos. A Pending supplier edits freely. The `profile/photos` upload and the admin repairs are unaffected.
+
+### 16.2 The wizard is saved by the server
+
+- `GET /api/supplier/profile/activation` answers `{ status, currentStep, steps[{ id, status, blocker, required }], tos }`.
+  `status` is the real one: `Pending` (never activated), `Active`, `Suspended` (the wizard only says an admin must
+  reactivate it). Each step derives from the stored profile.
+- `PUT /api/supplier/profile/activation/step` `{ step: 1-5 }` saves the step reached (`SupplierProfiles.ActivationStep`,
+  null until saved: the first incomplete required step is opened). Any device resumes there; a step outside 1-5 is 400.
+- The web wizard saves each step's data with `PUT /api/supplier/profile` and then the step number; the last step lists
+  what is still missing (with a link to its step) and keeps *Attiva profilo* disabled until nothing is.
+
+### 16.3 Versioned Terms of Service and re-acceptance
+
+- The supplier accepts the **Terms of Service** (`Legal:Documents:Tos`, the same document the hosts accept; the drafts
+  `2026-10-v1` already cover the marketplace suppliers, [`legal-documents.md`](legal-documents.md)). The checkbox names
+  the version and links `/legale/termini` in a new tab.
+- `tosVersion` must be the version in force: otherwise 409 `supplier_tos_version_stale` (the page reloads and shows the
+  new one). The server stores `SupplierProfiles.TosVersion` + `TosAcceptedAt` and a `ConsentRecords` row of the supplier
+  org (`Type = Tos`, user, version, IP, time): the history of every acceptance (like the host consents).
+- A new version (`Legal__Documents__Tos__Version`) makes `tos.reacceptanceRequired` true for every active supplier
+  that accepted another one. From then on **take, complete and reject** answer 422
+  `supplier_tos_reacceptance_required` (`tos.blocksActions`) until the supplier accepts: the dashboard shows a banner and
+  `/app/supplier/activation` shows the acceptance (`POST /api/supplier/profile/tos/accept` `{ tosVersion }`, 204,
+  status unchanged). Hosts still see the supplier and can still send requests; the supplier answers once it accepts.
+- **Existing suppliers** (accepted before SU-05): `TosVersion` is null. They are asked to accept (banner,
+  `reacceptanceRequired: true`) but **are not blocked** (`blocksActions: false`): they accepted a text nobody could
+  read, and blocking every working supplier at deploy was judged too harsh without the product owner's say. Decision to
+  confirm; to block them too, treat a null version as stale in `SupplierActivationRules.TosState`.
+- Before changing the version tell the suppliers (it blocks them) and publish the text first (`legal-documents.md` §2).
+
+### 16.4 After a deploy
+
+- [ ] Migration `SupplierActivationTosVersion` is in `__EFMigrationsHistory` (two nullable columns).
+- [ ] New supplier: `GET …/activation` → `currentStep` 2 (or 1), `tos.currentVersion` = the configured version.
+- [ ] `POST …/activation/complete` on a profile without categories → 409 with `blockers: ["categories_missing", …]`.
+- [ ] Complete the 5 steps on the web, reload in the middle: the wizard resumes at the same step on another browser.
+- [ ] After activation: `SupplierProfiles.TosVersion` is set and a `ConsentRecords` row (`Type = 0`, supplier org) exists.
+- [ ] Raise the Terms version on test: an active supplier sees the banner, take/reject answer 422 until it accepts.
+- [ ] Suppliers that are `Active` with no category or no comune (activated before SU-05) are not touched; list them with
+
+  ```sql
+  SELECT "OrgId", "LegalName" FROM "SupplierProfiles"
+  WHERE "Status" = 1 AND ("CategoriesJson" = '[]' OR ("ComuniJson" = '[]' AND "ComuneIstatCodesJson" = '[]'));
+  ```
+
+  and ask them to complete the profile (an active supplier cannot empty these fields any more).
+
+## 17. Error states and localized messages of the supplier pages — SU-06
+
+Audit A4-25 / A4-27 (web and API; the app's own texts are the mobile tasks).
+
+- **Web:** every supplier page that loads data shows an error state when the request fails, never an endless spinner
+  or an empty list: activation (a 403 on `GET /api/supplier/profile` no longer leaves "Caricamento…"), profile,
+  availability (a failed load used to show every day as available), dashboard, inbox, request detail, calendar
+  (these three already had it). The shared component is `components/shared/error-state.tsx` (`role="alert"`, the server's
+  localized message when there is one, *Riprova*). Each page has a test with a forced API error.
+- **API:** the supplier endpoints no longer answer `{ "error": "No supplier org found" }` / `"Supplier profile not found"`,
+  nor inline Italian or English text. They answer the FD-05 problem (`code` + localized `detail`, Italian by default, English
+  with `Accept-Language: en`) with keys of `SharedResources.resx` / `.en.resx`:
+
+  | Endpoint | Status / `code` | Key |
+  |---|---|---|
+  | any `api/supplier/*` without a supplier org or profile | 404 `not_found` | `SupplierProfileNotFound` |
+  | `GET /api/supplier/availability` `to` before `from` / range over 90 days | 400 `validation_error` | `SupplierAvailabilityRangeInvalid` / `SupplierAvailabilityRangeTooLong` |
+  | `POST /api/supplier/profile/photos` over 10 photos / invalid file / storage failure | 400 `validation_error` / 500 `server_error` | `SupplierPhotoLimit` / `SupplierPhotoInvalid` / `SupplierPhotoUploadFailed` |
+  | `GET /api/suppliers` without `comune` or `propertyId`; unknown property | 400 `validation_error`; 404 `not_found` | `SupplierSearchTargetRequired`; `PropertyNotFound` |
+  | `GET /api/public/suppliers/{slug}` unknown or not active | 404 `not_found` | `SupplierShowcaseNotFound` |
+  | `POST /api/admin/suppliers/invite` with a pending invite for the email | 409 `duplicate_invite` | `SupplierInviteDuplicate` |
+
+  The 409 `duplicate_invite` is thrown by the service (`DomainConflictException`); the message no longer echoes the email.
+  `SharedResourcesLocalizationTests` fails when a key misses one of the two languages.
+- No deploy step: no migration, no configuration.
+
+## 18. Public showcase of a supplier (v0) — SU-13
+
+Audit A4-16, issue #303 (minimum). Before SU-13 the page `/s/:slug` called the API with a relative URL (on Vercel it got
+`index.html`), nobody ever generated the slug, and the error said "Supplier not found" in English.
+
+| What | Behaviour |
+|---|---|
+| Address | `{App__PublicSiteBaseUrl}/fornitori/{slug}`, a page of the CasaZen web app in its public shell (`PublicSiteShell`, not an org's booking site). **No domain is written in the code**: the API builds the absolute URL from `App__PublicSiteBaseUrl` (`PublicSiteLinks.TryPublicPage`) and the web app only knows the path. Without that variable the preview says the public address is not configured and shows no link. The old `/s/:slug` redirects to the new path |
+| Slug | `SupplierProfiles.ShowcaseSlug`: lowercase ASCII from the business name (`Pulizie Città Srl` → `pulizie-citta-srl`), `-2`, `-3`, `-4`, then `-<6 hex>` on a collision. Generated when the profile is **activated** and then **never changed** (a link already shared keeps working after a rename). Unique index `UIX_SupplierProfiles_ShowcaseSlug` (where not null), migration `SupplierShowcaseSlugUnique`; the 23505 of a race retries with the next candidate |
+| Suppliers activated before SU-13 | They have no slug. `GET /api/supplier/showcase` (the console's *Vetrina* page) generates it the first time they open it; there is no batch backfill. Before the migration check that no two profiles share a hand-set slug: `SELECT "ShowcaseSlug", count(*) FROM "SupplierProfiles" WHERE "ShowcaseSlug" IS NOT NULL GROUP BY 1 HAVING count(*) > 1;` |
+| Public API | `GET /api/public/suppliers/{slug}` (anonymous, `PublicRead` rate limit): only an **Active** supplier with that slug (looked up lowercase); a pending, suspended or unknown one is 404 `not_found` with the localized message. Content: business name, category codes, comuni by name, description, photos, the availability of the next 14 days. **Never** the phone, email, VAT number or status |
+| Preview | `GET /api/supplier/showcase` (supplier policy): the same content from the caller's own profile whatever its status, plus `status`, `published`, `slug`, `publicPath`, `publicUrl`, `indexable: false`. A pending supplier previews a page nobody else can open (no slug, no URL) with the way to the activation; a suspended one is told it is not visible |
+| Web | Sidebar *Vetrina* and the *Anteprima vetrina* button on the profile page (`/app/supplier/showcase`): the preview, the public URL (copy, open in a new tab). Public page: loading skeleton; **404 → "Fornitore non trovato"**; any other failure → an error with a retry (never "not found"); translated categories, only absolute photo URLs |
+
+### SEO: `noindex` in v0, consistent with BK-15
+
+BK-15 makes the booking sites and the guides indexable (crawler HTML from the Vercel Function, sitemaps) and keeps the
+private pages out. The supplier showcase is **not** indexable in v0: the page sets `<meta name="robots"
+content="noindex,nofollow">` in every state, `/fornitori/` is in `DISALLOWED_PATHS` of `robots.txt` (production), the API
+answer carries `X-Robots-Tag: noindex`, the page is not in any sitemap and no crawler rewrite serves it. Making it
+indexable is a product decision (it publishes the business name and description of every active supplier): it needs the
+crawler page and the sitemap entry of BK-15's pattern and the removal of these three signals.
+
+### After a deploy
+
+- [ ] Migration `SupplierShowcaseSlugUnique` applied (a unique index).
+- [ ] `App__PublicSiteBaseUrl` set: `GET /api/supplier/showcase` of an active supplier returns `publicUrl` on that domain.
+- [ ] Activate a test supplier: `ShowcaseSlug` is set; `GET /api/public/suppliers/{slug}` is 200 with `X-Robots-Tag: noindex`;
+      the same call for a pending supplier's slug (set by hand) is 404.
+- [ ] Open `/fornitori/{slug}` signed out: the page shows the supplier in the public shell; `/fornitori/non-esiste` says
+      "Fornitore non trovato"; with the API down it shows an error with *Riprova*, not "not found".
+- [ ] `https://<domain>/robots.txt` (production build) has `Disallow: /fornitori/`.
+
 ## Known limits (other tasks)
 
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.
-- A supplier-only user who then completes the host onboarding keeps using the supplier org as `User.OrgId`
-  (A1-40, task PL-05).
-- The activation requirements (only the ToS today) are task SU-05.
-- Service requests: host timeline, rejection reason and "paid" confirmation are SU-09 (the history of section 11.3
-  can be reused there); the app's supplier choice (today the first result) is MO-10 and its
-  error states MO-07. `chargeToGuest` is still always refused, also for long-rent (open product point).
+- Service requests: the host timeline, rejection reason and "paid" confirmation are in section 14 (SU-09), but only on
+  the web: the app's supplier choice (today the first result) is MO-10 and its error states MO-07. `chargeToGuest` is
+  still always refused, also for long-rent (open product point).

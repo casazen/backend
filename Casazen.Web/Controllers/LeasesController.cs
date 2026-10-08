@@ -44,6 +44,7 @@ public class LeasesController(
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private const string LeaseNotFoundCode = "lease_not_found";
+    private const string ImuNotificationNotReadyCode = "imu_notification_not_ready";
     private const string PropertyNotFoundCode = "property_not_found";
 
     /// <summary>The receipt (at most <see cref="RliRegistrationLimits.MaxReceiptBytes"/>) plus the other form fields.</summary>
@@ -113,15 +114,29 @@ public class LeasesController(
         }
         catch (ApeComplianceException ex)
         {
-            var error = ex.Code == ApeComplianceException.InvalidContentCode
-                ? localizer["ApeInvalidContent"].Value
-                : ex.Message;
-            return BadRequest(new { error, code = ex.Code });
+            return ApeProblem(ex);
         }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+    }
+
+    /// <summary>
+    /// Erasure request of the parties' data (art. 17 GDPR, LT-12), made by the host for a party who asked. Recorded once
+    /// (<c>ErasureRequested</c> event); the parties are anonymized now if the lease has ended, otherwise from the day after
+    /// its end date (<c>status: Scheduled</c>, <c>anonymizationFrom</c>). A party who is also a party of another lease of
+    /// the org that has not ended keeps its data until that lease ends (<c>PartiallyAnonymized</c>, <c>partiesKept</c>).
+    /// Idempotent. Needs <c>lease.create</c> on the lease (the permission that writes the parties).
+    /// </summary>
+    [HttpPost("{id:guid}/erasure-request")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    [ProducesResponseType(typeof(LeaseErasureResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RequestErasure(
+        Guid id, [FromServices] ILeasePartyPrivacyService partyPrivacy, CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Create);
+        if (denied is not null)
+            return denied;
+
+        var result = await partyPrivacy.RequestErasureAsync(id, cancellationToken);
+        return Ok(result);
     }
 
     /// <summary>
@@ -151,9 +166,9 @@ public class LeasesController(
             // Logged with its cause by the service; the client learns only that the provider failed.
             return this.ApiProblem(StatusCodes.Status502BadGateway, LeaseSigningErrorCodes.ProviderFailed, "ESignProviderFailed");
         }
-        catch (InvalidOperationException ex)
+        catch (ApeComplianceException ex)
         {
-            return SignatureRuleProblem(ex);
+            return ApeProblem(ex);
         }
     }
 
@@ -178,9 +193,9 @@ public class LeasesController(
             Response.Headers.CacheControl = "private, no-store";
             return File(pdf, "application/pdf", $"contratto-{id}.pdf");
         }
-        catch (InvalidOperationException ex)
+        catch (ApeComplianceException ex)
         {
-            return SignatureRuleProblem(ex);
+            return ApeProblem(ex);
         }
     }
 
@@ -215,9 +230,9 @@ public class LeasesController(
                 new OfflineSignatureDeclaration(form.StipulaDate!.Value, signedContract, form.SignedContract.Length),
                 cancellationToken);
         }
-        catch (InvalidOperationException ex)
+        catch (ApeComplianceException ex)
         {
-            return SignatureRuleProblem(ex);
+            return ApeProblem(ex);
         }
 
         return Ok(LeaseDtoMapper.ToDetail((await leaseService.GetLeaseDetailAsync(id))!, _clock.TodayInRome()));
@@ -341,14 +356,7 @@ public class LeasesController(
         }
         catch (ApeComplianceException ex)
         {
-            var error = ex.Code == ApeComplianceException.InvalidContentCode
-                ? localizer["ApeInvalidContent"].Value
-                : ex.Message;
-            return BadRequest(new { error, code = ex.Code });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
+            return ApeProblem(ex);
         }
     }
 
@@ -583,9 +591,9 @@ public class LeasesController(
                 ? NotFound()
                 : File(result.PdfBytes, "application/pdf", result.FileName);
         }
-        catch (ImuNotificationNotReadyException ex)
+        catch (ImuNotificationNotReadyException)
         {
-            return Conflict(new { error = ex.Message });
+            return this.ApiProblem(StatusCodes.Status409Conflict, ImuNotificationNotReadyCode, "ImuNotificationNotReady");
         }
     }
 
@@ -600,9 +608,9 @@ public class LeasesController(
             var result = await imuNotification.MarkSentAsync(id, ownerId, cancellationToken);
             return result is null ? NotFound() : NoContent();
         }
-        catch (ImuNotificationNotReadyException ex)
+        catch (ImuNotificationNotReadyException)
         {
-            return Conflict(new { error = ex.Message });
+            return this.ApiProblem(StatusCodes.Status409Conflict, ImuNotificationNotReadyCode, "ImuNotificationNotReady");
         }
     }
 
@@ -628,17 +636,14 @@ public class LeasesController(
     }
 
     /// <summary>
-    /// Pre-signature checks that still throw <see cref="InvalidOperationException"/> (APE): 400 with the APE code, as for
-    /// the lease creation. The term of the contract type is a domain rule (422, LT-10).
+    /// APE pre-checks (lease creation, signature, RLI registration): 400 with the APE code, as before; the message is
+    /// localized here, never the exception text.
     /// </summary>
-    private BadRequestObjectResult SignatureRuleProblem(InvalidOperationException ex) =>
-        ex is ApeComplianceException ape
-            ? BadRequest(new
-            {
-                error = ape.Code == ApeComplianceException.InvalidContentCode ? localizer["ApeInvalidContent"].Value : ape.Message,
-                code = ape.Code,
-            })
-            : BadRequest(new { error = ex.Message });
+    private ObjectResult ApeProblem(ApeComplianceException ex) =>
+        this.ApiProblem(
+            StatusCodes.Status400BadRequest,
+            ex.Code,
+            ex.Code == ApeComplianceException.InvalidContentCode ? "ApeInvalidContent" : "ApeRequired");
 
     private string ChecklistLabel(string key)
     {

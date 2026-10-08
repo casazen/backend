@@ -34,9 +34,20 @@ public class SupplierProfile
     [Column(TypeName = "jsonb")]
     public string CategoriesJson { get; set; } = "[]";
 
-    /// <summary>JSON array of Italian comune codes where the supplier operates.</summary>
+    /// <summary>
+    /// JSON array of the comuni where the supplier operates as the supplier or an admin wrote them: free text or old codes
+    /// (<c>H501</c>, <c>Roma</c>). Kept for what was typed before the official list (SU-04); the comuni chosen from it are in
+    /// <see cref="ComuneIstatCodesJson"/>. A supplier covers the union of the two.
+    /// </summary>
     [Column(TypeName = "jsonb")]
     public string ComuniJson { get; set; } = "[]";
+
+    /// <summary>
+    /// JSON array of ISTAT codes (6 digits) of the comuni the supplier chose from the official list (<c>Comuni</c>, SU-04),
+    /// each one validated against it. The matching with the property is by code.
+    /// </summary>
+    [Column(TypeName = "jsonb")]
+    public string ComuneIstatCodesJson { get; set; } = "[]";
 
     [MaxLength(2000)]
     public string? Bio { get; set; }
@@ -46,6 +57,31 @@ public class SupplierProfile
     public string PhotoUrlsJson { get; set; } = "[]";
 
     public DateTime? TosAcceptedAt { get; set; }
+
+    /// <summary>
+    /// Version of the Terms of Service (<c>Legal:Documents:Tos:Version</c>) the supplier accepted at <see cref="TosAcceptedAt"/>
+    /// (SU-05, A4-31). Null for a supplier that accepted before the version was recorded: it accepted a text it could not
+    /// read, so the console asks it to accept the current version (without blocking its work, see the runbook). The full
+    /// history is in the <c>ConsentRecords</c> of the supplier org.
+    /// </summary>
+    [MaxLength(100)]
+    public string? TosVersion { get; set; }
+
+    /// <summary>
+    /// Step (1-5) of the activation wizard the supplier reached, saved by the server so that it resumes where it stopped
+    /// on any device (SU-05, A4-09). Null until the wizard saved a step: the first incomplete step is shown.
+    /// </summary>
+    public int? ActivationStep { get; set; }
+
+    /// <summary>UTC moment a platform admin suspended the profile (SU-12); null while it is not suspended.</summary>
+    public DateTime? SuspendedAt { get; set; }
+
+    /// <summary>
+    /// Why the admin suspended the profile (SU-12): an internal note, shown to admins only. Null while it is not
+    /// suspended; the full history is in <see cref="SupplierAdminAuditEntry"/>.
+    /// </summary>
+    [MaxLength(500)]
+    public string? SuspensionReason { get; set; }
 
     // Calendar sync
     public CalendarSyncType CalendarSyncType { get; set; } = CalendarSyncType.None;

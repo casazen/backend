@@ -97,9 +97,10 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 | `GuestCheckIn` | `GET api/public/checkin/{token}`, `GET api/public/checkin/{token}/codes` | 10 / min per IP+token | `RateLimiting__GuestCheckIn__PermitLimit` (`CheckIn__RateLimitPermitLimit`) |
 | `GuestCheckInSubmit` | `POST api/public/checkin/{token}` | 3 / min per IP+token | `RateLimiting__GuestCheckInSubmit__PermitLimit` (`CheckIn__SubmitRateLimitPermitLimit`) |
 | `PublicTouristTaxCalc` | `POST api/public/tourist-tax/calculate` | 30 / min | `RateLimiting__PublicTouristTaxCalc__PermitLimit` (`SeoTouristTax__RateLimitPermitLimit`) |
+| `PublicSeoEvents` | `POST api/public/seo/events` (funnel of the SEO pages, SE-04) | 60 / min | `RateLimiting__PublicSeoEvents__PermitLimit` |
 | `PublicResolveHost` | `GET api/public/resolve-host` | 60 / min | `RateLimiting__PublicResolveHost__PermitLimit` (`PublicHost__RateLimitPermitLimit`) |
 | `PublicIcal` | `GET api/public/ical/{token}` (polled by the OTAs from their servers) | 60 / min | `RateLimiting__PublicIcal__PermitLimit` |
-| `PublicRegistration` | `POST api/suppliers/register`, `POST api/auth/register` (shared bucket) | 5 / 10 min | `RateLimiting__PublicRegistration__PermitLimit` |
+| `PublicRegistration` | `POST api/suppliers/register` | 5 / 10 min | `RateLimiting__PublicRegistration__PermitLimit` |
 
 The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration`).
 
@@ -110,7 +111,9 @@ Notes:
   affected policy rather than removing it. `Retry-After` tells the client when to retry.
 - Deliberately without a limiter: `webhooks/*` (signed; Stripe and the e-sign provider send from shared IPs),
   `api/health`, `api/legal/*`, `api/orgs/plans`, SEO pages, the SEO hub `api/public/content` and `api/public/sitemap.xml` (search engine crawlers; the web app serves
-  the sitemap through a CDN-cached Vercel function, see [`seo-domain.md`](seo-domain.md)).
+  the sitemap through a CDN-cached Vercel function, see [`seo-domain.md`](seo-domain.md)), and the crawler pages and sitemaps of the booking sites
+  (`api/public/seo/*`, `api/public/sitemap-book.xml`, `api/public/orgs/{slug}/sitemap.xml`, BK-15): they are called by the Vercel
+  Functions of the web app, so every request comes from the same few addresses and a per-IP bucket would only let one flood cut crawlers off.
 
 ## 5. Checks after a deploy
 
