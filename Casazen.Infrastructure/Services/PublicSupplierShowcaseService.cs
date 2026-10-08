@@ -97,16 +97,15 @@ public sealed class PublicSupplierShowcaseService(
         var today = clock.TodayInRomeAsDateOnly();
         var plan = await GetPlanAsync(supplier.OrgId, service, today, cancellationToken);
 
-        // The window asked for, never before today and never past the supplier's horizon. A first day beyond the horizon is
-        // an empty window, not an error (and is checked before adding days to it: a made-up date must not overflow).
+        // The window asked for, never before today; the plan itself ends at the supplier's horizon, so the window does too. A
+        // first day beyond the horizon is an empty window, not an error (and is checked before adding days to it: a made-up
+        // date must not overflow).
         var count = Math.Clamp(days ?? PublicShowcaseLimits.SlotsDefaultDays, 1, PublicShowcaseLimits.SlotsMaxDays);
         var first = from is { } requested && requested > today ? requested : today;
         IReadOnlyList<PublicSlotDay> window = [];
         if (first <= plan.BookableUntil)
         {
             var last = first.AddDays(count - 1);
-            if (last > plan.BookableUntil)
-                last = plan.BookableUntil;
             window = plan.Days.Where(day => day.Date >= first && day.Date <= last).ToList();
         }
 
