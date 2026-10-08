@@ -38,6 +38,17 @@ namespace Casazen.Infrastructure.Migrations
                 nullable: false,
                 defaultValue: "");
 
+            // Every existing row is backfilled as "". PostgreSQL treats that as one key, so the unique
+            // index fails as soon as two policies exist. Give each row its own slug, then drop the
+            // shared default so a later insert that omits Slug cannot collide on "" (PC-02).
+            migrationBuilder.Sql("""
+                UPDATE "CancellationPolicies"
+                SET "Slug" = 'p-' || replace("Id"::text, '-', '')
+                WHERE "Slug" = '';
+
+                ALTER TABLE "CancellationPolicies" ALTER COLUMN "Slug" DROP DEFAULT;
+                """);
+
             migrationBuilder.CreateIndex(
                 name: "UIX_CancellationPolicies_Slug",
                 table: "CancellationPolicies",
