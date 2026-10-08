@@ -17,8 +17,8 @@ namespace Casazen.Core.Services;
 /// <item>past either deadline (<see cref="Booking.RequestExpiresAt"/>) the <c>checkout-hold-expiry</c> job cancels it
 /// (<see cref="CheckoutHolds.IsExpired"/>).</item>
 /// </list>
-/// While pending the request holds its dates on the booking site and in the host calendar, but is not exported to the
-/// OTAs through iCal (<see cref="IsExportedToOtas"/>).
+/// While pending the request holds its dates on the booking site and in the host calendar, and is also exported to the
+/// OTAs through iCal (<see cref="IsExportedToOtas"/>) so that those dates are blocked on external channels (BK-06).
 /// </summary>
 public static class OnSiteRequests
 {
@@ -81,14 +81,13 @@ public static class OnSiteRequests
              b.RequestExpiresAt >= nowUtc;
 
     /// <summary>
-    /// Bookings written to the iCal export read by the OTAs: every one except a pending "pay at the property" request. An
-    /// anonymous request must not block Airbnb/Booking before the host has accepted it (A3-06); once accepted it is
-    /// exported like any confirmed booking.
+    /// Bookings written to the iCal export read by the OTAs: all bookings, including pending "pay at the property"
+    /// requests (BK-06). Pending OnSite requests must block the OTAs from the moment they are created so that the
+    /// host's calendar on Airbnb/Booking is kept in sync; if the request is later declined or expires, the block
+    /// is lifted by the cancellation removing it from the export.
     /// </summary>
     public static Expression<Func<Booking, bool>> IsExportedToOtas() =>
-        b => !(b.Status == BookingStatus.Pending &&
-               b.Source == BookingSource.Direct &&
-               b.PaymentOption == PaymentOption.OnSite);
+        b => true;
 
     /// <summary>The reason recorded when an expired request is cancelled.</summary>
     public static BookingCancellationReason ExpiryReason(Booking booking) =>
