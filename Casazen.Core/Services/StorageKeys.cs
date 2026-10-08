@@ -11,6 +11,7 @@ namespace Casazen.Core.Services;
 /// <item><c>properties/{propertyId}/documents/{file}</c> — private bucket</item>
 /// <item><c>guest-documents/{orgId}/{guestId}/{file}</c> — private bucket</item>
 /// <item><c>orgs/{orgId}/branding/{logo|hero}/{file}</c> — public bucket (BK-12)</item>
+/// <item><c>service-requests/{requestId}/photos/{file}</c> — private bucket (photos of a supplier's work, SP-04)</item>
 /// </list>
 /// Private keys are what the database stores for private files (<c>PropertyDocument.StorageUrl</c>,
 /// <c>Guest.DocumentScanUrl</c>); public files are stored as their absolute public URL.
@@ -44,6 +45,13 @@ public static partial class StorageKeys
     /// <summary>Receipt of the Questura communication for an extra-EU tenant (private bucket, LT-07).</summary>
     public static string LeaseQuesturaReceipt(Guid orgId, Guid leaseId, string fileName) =>
         $"leases/{orgId}/{leaseId}/questura/{fileName}";
+
+    /// <summary>
+    /// Photo of the work a supplier did for a service request (private bucket, SP-04): shown to the host and to the supplier
+    /// through an authenticated endpoint, never by a public URL.
+    /// </summary>
+    public static string ServiceRequestPhoto(Guid serviceRequestId, string fileName) =>
+        $"service-requests/{serviceRequestId}/photos/{fileName}";
 
     /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>

@@ -14,12 +14,27 @@ public sealed record SupplierHours(IReadOnlyList<SupplierWeeklyBand> Bands, Date
 public sealed record SupplierClosedDay(DateOnly Date, SupplierAvailabilitySource Source);
 
 /// <summary>
-/// A service request as an item of the agenda: it has a day and nothing more of its own (the time of the work comes with
-/// SP-04). Only what a calendar tile needs, never the property, the address or a contact (those are the request's detail,
-/// and the supplier sees them only after taking it).
+/// A service request as an item of the agenda: its day and, since SP-04, its hours when it has them. Only what a calendar
+/// tile needs, never the property, the address or a contact (those are the request's detail, and the supplier sees them
+/// only after taking it).
 /// </summary>
-/// <param name="Date">The Europe/Rome day of the work: the check-out day of the stay of a short-rent request.</param>
-public sealed record SupplierAgendaRequest(Guid Id, DateOnly Date, ServiceRequestStatus Status, string Category);
+/// <param name="Date">
+/// The Europe/Rome day of the work: the day of <paramref name="StartUtc"/> for a request with a time, else the check-out day
+/// of the stay of a short-rent request.
+/// </param>
+/// <param name="StartUtc">First instant of the work (UTC); <c>null</c> for a request that only has a day.</param>
+/// <param name="EndUtc">Instant the work ends (UTC); <c>null</c> for a request that only has a day.</param>
+public sealed record SupplierAgendaRequest(
+    Guid Id,
+    DateOnly Date,
+    ServiceRequestStatus Status,
+    string Category,
+    DateTime? StartUtc = null,
+    DateTime? EndUtc = null)
+{
+    /// <summary>True when the request has hours of its own (<see cref="StartUtc"/> and <see cref="EndUtc"/>).</summary>
+    public bool HasHours => StartUtc is not null && EndUtc is not null;
+}
 
 /// <summary>
 /// What the supplier's calendar shows for a range of days (<c>GET api/supplier/calendar</c>): the working hours, the days
@@ -118,13 +133,26 @@ public interface ISupplierAgendaService
     /// <summary>
     /// The input of the slot planner for the days from <paramref name="from"/> to <paramref name="to"/>: the rules, the
     /// weekly hours, the time off, the closed days, the extra openings, and everything that takes the supplier's time today
-    /// (manual blocks, engagements of the calendar feed, requests that only have a day). The tasks that add a source of
-    /// occupied time (requests with hours, holds) add their <see cref="SupplierOccupancy"/> here.
+    /// (manual blocks, engagements of the calendar feed, requests with hours as <see cref="SupplierOccupancy.TimedRequest"/>,
+    /// requests that only have a day as <see cref="SupplierOccupancy.DatedRequest"/>). The tasks that add a source of occupied
+    /// time (holds) add their <see cref="SupplierOccupancy"/> here.
     /// </summary>
     Task<SupplierPlanningInput> BuildPlanningInputAsync(
         Guid supplierOrgId,
         DateOnly from,
         DateOnly to,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Like <see cref="BuildPlanningInputAsync(Guid, DateOnly, DateOnly, CancellationToken)"/> without the request
+    /// <paramref name="exceptRequestId"/>: the planning input to move that request, which must not be in its own way (its
+    /// current hours and its place in the day's count are left out).
+    /// </summary>
+    Task<SupplierPlanningInput> BuildPlanningInputAsync(
+        Guid supplierOrgId,
+        DateOnly from,
+        DateOnly to,
+        Guid? exceptRequestId,
         CancellationToken cancellationToken = default);
 
     /// <summary>The plan of every day from <paramref name="from"/> to <paramref name="to"/> for <paramref name="query"/>.</summary>
@@ -133,5 +161,17 @@ public interface ISupplierAgendaService
         DateOnly from,
         DateOnly to,
         SupplierSlotQuery query,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Like <see cref="PlanAsync(Guid, DateOnly, DateOnly, SupplierSlotQuery, CancellationToken)"/> to move the request
+    /// <paramref name="exceptRequestId"/> (see <see cref="BuildPlanningInputAsync(Guid, DateOnly, DateOnly, Guid?, CancellationToken)"/>).
+    /// </summary>
+    Task<IReadOnlyList<SupplierDayPlan>> PlanAsync(
+        Guid supplierOrgId,
+        DateOnly from,
+        DateOnly to,
+        SupplierSlotQuery query,
+        Guid? exceptRequestId,
         CancellationToken cancellationToken = default);
 }

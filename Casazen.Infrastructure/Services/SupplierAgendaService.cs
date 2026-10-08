@@ -288,10 +288,18 @@ public class SupplierAgendaService(
             agendaRequests);
     }
 
+    public Task<SupplierPlanningInput> BuildPlanningInputAsync(
+        Guid supplierOrgId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default) =>
+        BuildPlanningInputAsync(supplierOrgId, from, to, exceptRequestId: null, cancellationToken);
+
     public async Task<SupplierPlanningInput> BuildPlanningInputAsync(
         Guid supplierOrgId,
         DateOnly from,
         DateOnly to,
+        Guid? exceptRequestId,
         CancellationToken cancellationToken = default)
     {
         EnsureRange(from, to, SupplierSlotPlanner.MaxRangeDays);
@@ -327,12 +335,16 @@ public class SupplierAgendaService(
             }
         }
 
-        // The requests that exist today have a day and no hours (SP-04 adds the hours): they count for the day's maximum and
-        // take no hour. The request flow and the showcase booking will add their own occupancies here.
-        var agendaRequests = await requests.ListForAgendaAsync(supplierOrgId, from, to, cancellationToken);
+        // The requests of the supplier (SP-04): one with hours is a TimedRequest, which no slot may overlap (buffer included);
+        // one that only has a day (the check-out day of its stay, the time still to agree) counts for the day's maximum and
+        // takes no hour. A day more on each side, as for the windows. The request being moved is left out: it must not be in
+        // its own way. The showcase booking will add its holds here.
+        var agendaRequests = await requests.ListForAgendaAsync(supplierOrgId, from.AddDays(-1), to.AddDays(1), cancellationToken);
         occupancies.AddRange(agendaRequests
-            .Where(request => JobStatuses.Contains(request.Status))
-            .Select(request => SupplierOccupancy.DatedRequest(request.Date)));
+            .Where(request => request.Id != exceptRequestId && JobStatuses.Contains(request.Status))
+            .Select(request => request is { StartUtc: { } start, EndUtc: { } end }
+                ? SupplierOccupancy.TimedRequest(start, end)
+                : SupplierOccupancy.DatedRequest(request.Date)));
 
         return new SupplierPlanningInput(
             _clock.GetUtcNow().UtcDateTime,
@@ -344,14 +356,23 @@ public class SupplierAgendaService(
             occupancies);
     }
 
+    public Task<IReadOnlyList<SupplierDayPlan>> PlanAsync(
+        Guid supplierOrgId,
+        DateOnly from,
+        DateOnly to,
+        SupplierSlotQuery query,
+        CancellationToken cancellationToken = default) =>
+        PlanAsync(supplierOrgId, from, to, query, exceptRequestId: null, cancellationToken);
+
     public async Task<IReadOnlyList<SupplierDayPlan>> PlanAsync(
         Guid supplierOrgId,
         DateOnly from,
         DateOnly to,
         SupplierSlotQuery query,
+        Guid? exceptRequestId,
         CancellationToken cancellationToken = default)
     {
-        var input = await BuildPlanningInputAsync(supplierOrgId, from, to, cancellationToken);
+        var input = await BuildPlanningInputAsync(supplierOrgId, from, to, exceptRequestId, cancellationToken);
         return SupplierSlotPlanner.PlanRange(from, to, input, query);
     }
 

@@ -1463,7 +1463,7 @@
     <value>La proprietà non è ancora stata dichiarata pronta per il prossimo ospite.</value>
   </data>
   <data name="SupplierInboxStatusInvalid" xml:space="preserve">
-    <value>Stato non valido: usa open, history, all oppure uno stato della richiesta (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato).</value>
+    <value>Stato non valido: usa open, history, all oppure uno stato della richiesta (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato, Annullato).</value>
   </data>
   <data name="SupplierInboxPeriodInvalid" xml:space="preserve">
     <value>Periodo non valido: la data di inizio (from) non può essere successiva alla data di fine (to).</value>
@@ -2181,5 +2181,101 @@
   </data>
   <data name="ActivationIcalRecommended" xml:space="preserve">
     <value>Consigliato: collega un feed iCal delle OTA.</value>
+  </data>
+  <data name="ServiceRequestCannotStart" xml:space="preserve">
+    <value>La richiesta non può essere avviata nello stato attuale: va prima presa in carico e non ancora avviata.</value>
+  </data>
+  <data name="ServiceRequestCannotCancel" xml:space="preserve">
+    <value>La richiesta non può essere annullata nello stato attuale: l'host può annullarla finché il lavoro non è concluso, il fornitore solo prima dell'avvio.</value>
+  </data>
+  <data name="ServiceRequestCannotPropose" xml:space="preserve">
+    <value>Si può proporre un altro orario solo per una richiesta nuova.</value>
+  </data>
+  <data name="ServiceRequestCannotRemind" xml:space="preserve">
+    <value>Si può sollecitare solo una richiesta nuova che aspetta ancora la risposta del fornitore.</value>
+  </data>
+  <data name="ServiceRequestCannotAddPhotos" xml:space="preserve">
+    <value>Le foto del lavoro si aggiungono mentre il lavoro è in corso, prima di completare la richiesta.</value>
+  </data>
+  <data name="SupplierSlotUnavailable" xml:space="preserve">
+    <value>L'orario scelto non è più libero: scegline un altro.</value>
+  </data>
+  <data name="ServiceRequestServiceUnavailable" xml:space="preserve">
+    <value>Il servizio scelto non è disponibile: il fornitore lo ha messo in pausa o non lo ha ancora pubblicato.</value>
+  </data>
+  <data name="ServiceRequestServiceCategoryMismatch" xml:space="preserve">
+    <value>La categoria della richiesta non è quella del servizio scelto.</value>
+  </data>
+  <data name="ServiceRequestTimeNeedsService" xml:space="preserve">
+    <value>Per scegliere un orario serve il servizio del fornitore: la sua durata dà la fine del lavoro.</value>
+  </data>
+  <data name="ServiceRequestTimeInvalid" xml:space="preserve">
+    <value>L'orario non è valido: indica la fine del lavoro, dopo l'inizio e in minuti interi, oppure scegli un servizio che ha una durata.</value>
+  </data>
+  <data name="ServiceRequestTimeAlreadySet" xml:space="preserve">
+    <value>La richiesta ha già un orario: per cambiarlo proponi un altro orario all'host.</value>
+  </data>
+  <data name="ServiceRequestAmountInvalid" xml:space="preserve">
+    <value>Importo non valido: deve essere maggiore di zero e al massimo {0} euro; gli extra sono al massimo {1}, ciascuno con una descrizione di al massimo {2} caratteri.</value>
+  </data>
+  <data name="ServiceRequestFinalAmountInvalid" xml:space="preserve">
+    <value>L'importo finale non può essere inferiore agli extra che comprende.</value>
+  </data>
+  <data name="ServiceRequestRemindTooSoon" xml:space="preserve">
+    <value>Hai già sollecitato questa richiesta da poco: potrai farlo di nuovo dopo {0} ore dall'ultimo sollecito.</value>
+  </data>
+  <data name="ServiceRequestNoProposal" xml:space="preserve">
+    <value>Non c'è nessuna proposta di orario a cui rispondere per questa richiesta.</value>
+  </data>
+  <data name="ServiceRequestPhotoInvalid" xml:space="preserve">
+    <value>Foto non valida: {0}. Formati accettati: JPEG, PNG, WebP. Dimensione massima: 10 MB.</value>
+  </data>
+  <data name="ServiceRequestPhotoLimit" xml:space="preserve">
+    <value>Una richiesta può avere al massimo {0} foto: ne ha già {1} e ne stai caricando {2}.</value>
+  </data>
+  <data name="ServiceRequestPhotoNotFound" xml:space="preserve">
+    <value>Foto non trovata.</value>
+  </data>
+  <data name="ServiceRequestServiceInvalid" xml:space="preserve">
+    <value>Il servizio indicato non è valido.</value>
+  </data>
+  <data name="ServiceRequestAmountOutOfRange" xml:space="preserve">
+    <value>L'importo deve essere compreso tra {1} e {2} centesimi di euro.</value>
+  </data>
+  <data name="ServiceRequestExtraLabelRequired" xml:space="preserve">
+    <value>Indica per cosa è l'extra.</value>
+  </data>
+  <data name="ServiceRequestExtraLabelTooLong" xml:space="preserve">
+    <value>La descrizione dell'extra può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestExtrasTooMany" xml:space="preserve">
+    <value>Puoi aggiungere al massimo {1} extra.</value>
+  </data>
+  <data name="ServiceRequestCancelReasonRequired" xml:space="preserve">
+    <value>Indica il motivo dell'annullamento.</value>
+  </data>
+  <data name="ServiceRequestCancelReasonTooLong" xml:space="preserve">
+    <value>Il motivo dell'annullamento può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestProposalStartRequired" xml:space="preserve">
+    <value>Indica l'inizio dell'orario proposto.</value>
+  </data>
+  <data name="ServiceRequestProposalMessageTooLong" xml:space="preserve">
+    <value>Il messaggio può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestIdsRequired" xml:space="preserve">
+    <value>Indica le richieste da accettare: almeno una.</value>
+  </data>
+  <data name="ServiceRequestIdsTooMany" xml:space="preserve">
+    <value>Puoi accettare al massimo {1} richieste alla volta.</value>
+  </data>
+  <data name="ServiceRequestPhotosRequired" xml:space="preserve">
+    <value>Carica almeno una foto (campo photos).</value>
+  </data>
+  <data name="SupplierInboxTabInvalid" xml:space="preserve">
+    <value>Scheda non valida: usa nuove, programmate, da-incassare oppure archivio.</value>
+  </data>
+  <data name="SupplierInboxWhenInvalid" xml:space="preserve">
+    <value>Periodo non valido: usa oggi, settimana oppure mese.</value>
   </data>
 </root>

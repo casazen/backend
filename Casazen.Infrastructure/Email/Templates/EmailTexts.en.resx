@@ -28,10 +28,7 @@
     <value>Hello {0},</value>
   </data>
   <data name="ServiceRequestCreated_Body" xml:space="preserve">
-    <value>You have received a new &lt;strong&gt;{0}&lt;/strong&gt; request for the property &lt;strong&gt;{1}&lt;/strong&gt;.</value>
-  </data>
-  <data name="ServiceRequestCreated_NotesLabel" xml:space="preserve">
-    <value>Notes:</value>
+    <value>You have received a new &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt;.</value>
   </data>
   <data name="ServiceRequestCreated_Cta" xml:space="preserve">
     <value>Open the supplier console</value>
@@ -544,7 +541,7 @@
     <value>New service request</value>
   </data>
   <data name="Push_ServiceRequestCreated_Body" xml:space="preserve">
-    <value>{0} at {1}: accept or decline the request from your supplier area.</value>
+    <value>{0} in {1}: accept or decline the request from your supplier area.</value>
   </data>
   <data name="Push_ServiceRequestTaken_Title" xml:space="preserve">
     <value>Request taken</value>
@@ -674,5 +671,173 @@
   </data>
   <data name="RentPaymentReceived_Cta" xml:space="preserve">
     <value>Open the lease</value>
+  </data>
+  <data name="ServiceRequestCreated_When" xml:space="preserve">
+    <value>When: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCreated_Price" xml:space="preserve">
+    <value>Amount: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCreated_Hint" xml:space="preserve">
+    <value>The address, the property name and the host's notes are shown once you take the request.</value>
+  </data>
+  <data name="ServiceRequestTaken_When" xml:space="preserve">
+    <value>When: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestStarted_Subject" xml:space="preserve">
+    <value>Work started — {0}</value>
+  </data>
+  <data name="ServiceRequestStarted_Body" xml:space="preserve">
+    <value>The supplier has &lt;strong&gt;started the work&lt;/strong&gt; for the &lt;strong&gt;{0}&lt;/strong&gt; request at &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCompleted_Amount" xml:space="preserve">
+    <value>Final amount: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCompleted_OverQuote" xml:space="preserve">
+    <value>The amount is more than {0}% above the quote.</value>
+  </data>
+  <data name="ServiceRequestCompleted_NotesLabel" xml:space="preserve">
+    <value>Notes from the supplier:</value>
+  </data>
+  <data name="ServiceRequestCancelled_ReasonLabel" xml:space="preserve">
+    <value>Reason:</value>
+  </data>
+  <data name="ServiceRequestCancelledBySupplier_Subject" xml:space="preserve">
+    <value>Supplier request cancelled by the supplier — {0}</value>
+  </data>
+  <data name="ServiceRequestCancelledBySupplier_Body" xml:space="preserve">
+    <value>The &lt;strong&gt;{0}&lt;/strong&gt; request for &lt;strong&gt;{1}&lt;/strong&gt; has been &lt;strong&gt;cancelled&lt;/strong&gt; by the supplier.</value>
+  </data>
+  <data name="ServiceRequestCancelledNoResponse_Subject" xml:space="preserve">
+    <value>Supplier request cancelled: no answer — {0}</value>
+  </data>
+  <data name="ServiceRequestCancelledNoResponse_Body" xml:space="preserve">
+    <value>The &lt;strong&gt;{0}&lt;/strong&gt; request for &lt;strong&gt;{1}&lt;/strong&gt; was &lt;strong&gt;cancelled automatically&lt;/strong&gt;: the supplier did not answer in time.</value>
+  </data>
+  <data name="ServiceRequestCancelledNoResponse_Hint" xml:space="preserve">
+    <value>You can send the request to another supplier.</value>
+  </data>
+  <data name="ServiceRequestCancelledByHost_Subject" xml:space="preserve">
+    <value>Request cancelled by the host — {0}</value>
+  </data>
+  <data name="ServiceRequestCancelledByHost_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="ServiceRequestCancelledByHost_Body" xml:space="preserve">
+    <value>The host has &lt;strong&gt;cancelled&lt;/strong&gt; the &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestExpired_Subject" xml:space="preserve">
+    <value>Request expired — {0}</value>
+  </data>
+  <data name="ServiceRequestExpired_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="ServiceRequestExpired_Body" xml:space="preserve">
+    <value>The &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt; was &lt;strong&gt;cancelled&lt;/strong&gt;: you did not answer in time.</value>
+  </data>
+  <data name="ServiceRequestReminder_Subject" xml:space="preserve">
+    <value>Reminder: request waiting for your answer — {0}</value>
+  </data>
+  <data name="ServiceRequestReminder_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="ServiceRequestReminder_Body" xml:space="preserve">
+    <value>The host is reminding you of the &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt;: it is still waiting for your answer.</value>
+  </data>
+  <data name="ServiceRequestReminder_Cta" xml:space="preserve">
+    <value>Answer from the supplier console</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_Subject" xml:space="preserve">
+    <value>The supplier proposes another time — {0}</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_Body" xml:space="preserve">
+    <value>For the &lt;strong&gt;{0}&lt;/strong&gt; request at &lt;strong&gt;{1}&lt;/strong&gt; the supplier proposes &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_MessageLabel" xml:space="preserve">
+    <value>Message from the supplier:</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_Hint" xml:space="preserve">
+    <value>You can accept or decline the proposal from the request. Until you answer, the request stays pending.</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_Cta" xml:space="preserve">
+    <value>Open the booking</value>
+  </data>
+  <data name="ServiceRequestProposalAccepted_Subject" xml:space="preserve">
+    <value>Proposal accepted — {0}</value>
+  </data>
+  <data name="ServiceRequestProposalAccepted_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="ServiceRequestProposalAccepted_Body" xml:space="preserve">
+    <value>The host has &lt;strong&gt;accepted&lt;/strong&gt; the new time for the &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt;: the request is now taken.</value>
+  </data>
+  <data name="ServiceRequestProposalAccepted_Cta" xml:space="preserve">
+    <value>Open the supplier console</value>
+  </data>
+  <data name="ServiceRequestProposalRejected_Subject" xml:space="preserve">
+    <value>Proposal declined — {0}</value>
+  </data>
+  <data name="ServiceRequestProposalRejected_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="ServiceRequestProposalRejected_Body" xml:space="preserve">
+    <value>The host has &lt;strong&gt;declined&lt;/strong&gt; the new time for the &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt;. The request stays pending: you can take it as it is, propose another time or decline it.</value>
+  </data>
+  <data name="ServiceRequestProposalRejected_Cta" xml:space="preserve">
+    <value>Open the supplier console</value>
+  </data>
+  <data name="Push_ServiceRequestStarted_Title" xml:space="preserve">
+    <value>Work started</value>
+  </data>
+  <data name="Push_ServiceRequestStarted_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier has started the work.</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledBySupplier_Title" xml:space="preserve">
+    <value>Request cancelled by the supplier</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledBySupplier_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier cancelled the request. Choose another supplier.</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledNoResponse_Title" xml:space="preserve">
+    <value>Request cancelled: no answer</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledNoResponse_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier did not answer in time. Choose another supplier.</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledByHost_Title" xml:space="preserve">
+    <value>Request cancelled by the host</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledByHost_Body" xml:space="preserve">
+    <value>{0} in {1}: the host cancelled the request.</value>
+  </data>
+  <data name="Push_ServiceRequestExpired_Title" xml:space="preserve">
+    <value>Request expired</value>
+  </data>
+  <data name="Push_ServiceRequestExpired_Body" xml:space="preserve">
+    <value>{0} in {1}: you did not answer in time and the request was cancelled.</value>
+  </data>
+  <data name="Push_ServiceRequestReminder_Title" xml:space="preserve">
+    <value>Request waiting for your answer</value>
+  </data>
+  <data name="Push_ServiceRequestReminder_Body" xml:space="preserve">
+    <value>{0} in {1}: the host reminds you to answer.</value>
+  </data>
+  <data name="Push_ServiceRequestTimeProposed_Title" xml:space="preserve">
+    <value>New time proposed</value>
+  </data>
+  <data name="Push_ServiceRequestTimeProposed_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier proposes another time. Accept or decline it.</value>
+  </data>
+  <data name="Push_ServiceRequestProposalAccepted_Title" xml:space="preserve">
+    <value>Proposal accepted</value>
+  </data>
+  <data name="Push_ServiceRequestProposalAccepted_Body" xml:space="preserve">
+    <value>{0} in {1}: the host accepted your time.</value>
+  </data>
+  <data name="Push_ServiceRequestProposalRejected_Title" xml:space="preserve">
+    <value>Proposal declined</value>
+  </data>
+  <data name="Push_ServiceRequestProposalRejected_Body" xml:space="preserve">
+    <value>{0} in {1}: the host declined your time, the request stays pending.</value>
   </data>
 </root>
