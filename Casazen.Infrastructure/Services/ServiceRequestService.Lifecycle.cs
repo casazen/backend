@@ -231,9 +231,15 @@ public partial class ServiceRequestService
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
         var (_, _, proposedAt) = RequirePendingProposal(request);
 
-        // The request stays as it was, new and waiting for the supplier's answer.
+        // The request stays new and waits for another answer from the supplier. A pending proposal keeps the
+        // auto-cancel job away; if that deadline already passed while the host was deciding, start the window
+        // again. Leaving the elapsed deadline would cancel the request as if nobody had answered.
+        var now = Now();
+        if (request.ResponseDueAt is { } due && due <= now)
+            request.ResponseDueAt = now.AddMinutes(options.Value.HostResponseMinutes);
+
         ClearProposal(request);
-        request.UpdatedAt = Now();
+        request.UpdatedAt = now;
         await SaveAsync(request, "proposal rejected", cancellationToken);
 
         logger.LogInformation("ServiceRequest {Id}: the host turned the proposed time down", request.Id);

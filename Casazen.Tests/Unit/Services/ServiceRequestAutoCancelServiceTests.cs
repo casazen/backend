@@ -160,7 +160,7 @@ public class ServiceRequestAutoCancelServiceTests
     }
 
     [Fact]
-    public async Task CancelUnansweredAsync_AProposalTurnedDown_PutsTheRequestBackInTheRunWithItsOwnDeadline()
+    public async Task CancelUnansweredAsync_AProposalTurnedDownAfterTheDeadline_GetsANewWindowBeforeItCanBeCancelled()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var request = await s.RequestAsync();
@@ -170,9 +170,20 @@ public class ServiceRequestAutoCancelServiceTests
         Assert.Equal(0, (await AutoCancel(s).CancelUnansweredAsync()).Cancelled);
 
         await s.Service.RejectProposalAsync(request.Id, s.HostOrgId);
+
+        // The supplier did answer (it proposed). Declining that time must not make the next run cancel the request
+        // as if nobody had answered: the supplier gets the response window again, from the moment of the refusal.
+        var saved = await s.ReadAsync(request.Id);
+        Assert.Equal(ServiceRequestStatus.Richiesto, saved.Status);
+        Assert.Null(saved.ProposedStartUtc);
+        Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.Add(HostWindow), saved.ResponseDueAt);
+        Assert.Equal(0, (await AutoCancel(s).CancelUnansweredAsync()).Cancelled);
+
+        s.Clock.Advance(HostWindow);
         var run = await AutoCancel(s).CancelUnansweredAsync();
 
         Assert.Equal(1, run.Cancelled);
+        Assert.Equal(ServiceRequestCancellationReasons.NoResponse, (await s.ReadAsync(request.Id)).CancellationReason);
     }
 
     [Fact]
