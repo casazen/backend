@@ -19,6 +19,13 @@ public sealed class OrgBillingAdminRequirement : IAuthorizationRequirement;
 /// <see cref="HostOnboarding.RequiredCode"/> until then, platform admins included, since billing an org means using it
 /// as a host.
 /// </summary>
+/// <remarks>
+/// AM-01: the policy keeps its name and evaluates <see cref="AccountContext.Permissions.BillingManage"/>
+/// (<c>org.billing.manage</c>), which the account context gives to the org owner (<c>org_owner</c>) and administrator
+/// (<c>org_admin</c>): a membership of the account context that holds it passes, as the roles of
+/// <see cref="OrgOwnerRoles"/> do, and the token roles and the owner's rental memberships of AM-00 pass as before (every
+/// existing owner keeps working). A member the org deactivated never passes.
+/// </remarks>
 public class OrgBillingAdminAuthorizationHandler(
     IOrgContextResolver orgContextResolver,
     IUserAuthorizationSnapshotStore snapshotStore,
@@ -53,11 +60,18 @@ public class OrgBillingAdminAuthorizationHandler(
         if (HasDeniedRole(context.User))
             return;
 
-        if (!HasAllowedRole(context.User) && !await HasAllowedMembershipAsync(context.User))
-            return;
-
         var userId = context.User.FindFirstValue("sub") ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
+            return;
+
+        // Read once per request (shared with every other policy of the request): the JWT roles are not enough to pass
+        // for a member the org deactivated (AM-01); the request itself is refused earlier with member_inactive, this is
+        // the policy's own guard.
+        var snapshot = await snapshotStore.GetAsync(userId);
+        if (snapshot.IsOrgMemberDeactivated)
+            return;
+
+        if (!HasAllowedRole(context.User) && !HasAllowedMembership(snapshot))
             return;
 
         if (!(await hostOnboardingGate.GetStatusAsync(userId)).IsComplete)
@@ -78,21 +92,20 @@ public class OrgBillingAdminAuthorizationHandler(
     /// the Auth0 role sync was failing does not lock the host out of billing (A1-02). Only an owner's role key counts
     /// (<see cref="OrgOwnerRoles"/>): a member of the org with a membership of another role never gets through.
     /// </summary>
-    private async Task<bool> HasAllowedMembershipAsync(ClaimsPrincipal user)
-    {
-        var userId = user.FindFirstValue("sub")
-            ?? user.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(userId))
-            return false;
+    private static bool HasAllowedMembership(UserAuthorizationSnapshot snapshot) =>
+        snapshot is { Exists: true, IsActive: true } &&
+        !snapshot.IsOrgMemberDeactivated &&
+        snapshot.Role is not (UserRole.Staff or UserRole.Guest) &&
+        snapshot.Memberships.Any(IsAllowedBillingMembership);
 
-        var snapshot = await snapshotStore.GetAsync(userId);
-        return snapshot is { Exists: true, IsActive: true } &&
-               snapshot.Role is not (UserRole.Staff or UserRole.Guest) &&
-               snapshot.Memberships.Any(IsAllowedBillingMembership);
-    }
-
+    /// <summary>
+    /// The owner's (or administrator's) role key (<see cref="OrgOwnerRoles"/>), or a membership of the account context
+    /// that holds <c>org.billing.manage</c>: the permission this policy evaluates (AM-01).
+    /// </summary>
     private static bool IsAllowedBillingMembership(ContextAccess membership) =>
-        OrgOwnerRoles.IsOwnerRole(membership.ContextKey, membership.RoleKey);
+        OrgOwnerRoles.IsOwnerRole(membership.ContextKey, membership.RoleKey) ||
+        (AccountContext.IsAccountContext(membership.ContextKey) &&
+         membership.Permissions.Contains(AccountContext.Permissions.BillingManage, StringComparer.OrdinalIgnoreCase));
 
     private static bool HasAllowedRole(ClaimsPrincipal user) =>
         user.Claims.Any(c =>

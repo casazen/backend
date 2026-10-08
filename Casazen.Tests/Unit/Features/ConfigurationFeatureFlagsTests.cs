@@ -52,6 +52,40 @@ public class ConfigurationFeatureFlagsTests
         Assert.Contains(FeatureFlags.OtaPartnerApi, FeatureFlags.All);
     }
 
+    // ─── AM-01: the org team flag ───────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void OrgTeam_IsOffWhenMissing_AndOnlyOnWhenExplicitlyTrue()
+    {
+        Assert.False(Flags(new()).IsEnabled(FeatureFlags.OrgTeam));
+        Assert.False(Flags(new() { ["Features:OrgTeam"] = "false" }).IsEnabled(FeatureFlags.OrgTeam));
+        Assert.False(Flags(new() { ["Features:OrgTeam"] = "1" }).IsEnabled(FeatureFlags.OrgTeam));
+        Assert.True(Flags(new() { ["Features:OrgTeam"] = "true" }).IsEnabled(FeatureFlags.OrgTeam));
+    }
+
+    [Fact]
+    public void OrgTeam_IsExposedToTheFrontendAsACamelCaseKey()
+    {
+        Assert.Contains(FeatureFlags.OrgTeam, FeatureFlags.All);
+        Assert.Equal("orgTeam", System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(FeatureFlags.OrgTeam));
+    }
+
+    [Fact]
+    public void OrgTeam_AppSettingsDefault_IsOff()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "Casazen.sln")))
+            root = root.Parent;
+        Assert.NotNull(root);
+
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(root.FullName, "Casazen.Web", "appsettings.json"))
+            .Build();
+
+        Assert.Equal("False", configuration["Features:OrgTeam"], ignoreCase: true);
+        Assert.False(new ConfigurationFeatureFlags(configuration).IsEnabled(FeatureFlags.OrgTeam));
+    }
+
     private static ConfigurationFeatureFlags Flags(Dictionary<string, string?> values) =>
         new(new ConfigurationBuilder().AddInMemoryCollection(values).Build());
 }
