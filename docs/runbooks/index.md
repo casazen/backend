@@ -1,6 +1,6 @@
 # Indice dei runbook
 
-Un runbook per tema (45 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02) e `org-team.md` (task AM-01 della wave di redesign, 2026-10-08), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
+Un runbook per tema (45 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02) e `org-team.md` (task AM-01 e AM-02 della wave di redesign, 2026-10-08), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
 
 > **Hosting in revisione (2026-10-02):** il PO ha cancellato Railway. Nei runbook "Railway" indica l'host del backend così com'era configurato: va riletto alla luce dell'analisi del task HOSTING ([`free-hosting-analysis.md`](free-hosting-analysis.md); raccomandazione: VM Oracle Cloud Always Free, decisione del PO ancora da prendere). Il database resta su Supabase. Le variabili e le procedure non legate all'host restano valide.
 
@@ -12,7 +12,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 |---|---|---|
 | [`auth0.md`](auth0.md) | Auth0 (tenants, Management API, Action, mobile client) | FD-05, FD-14, FN-04, MO-01, MO-03, MO-05, PL-01, PL-02 |
 | [`onboarding-consents.md`](onboarding-consents.md) | onboarding gate and legal consents | PL-02, PL-03, PL-14 |
-| [`org-team.md`](org-team.md) | org membership (`OrgMember`), org roles, the `account` context, owner backfill and reconcile, `member_inactive`, flag `OrgTeam` | AM-01 |
+| [`org-team.md`](org-team.md) | org membership (`OrgMember`), org roles, the `account` context, owner backfill and reconcile, `member_inactive`, flag `OrgTeam`; invitations, members, seats, change of org, maintenance job (AM-02) | AM-01, AM-02 |
 | [`activation-checklist.md`](activation-checklist.md) | activation checklist and "site published" flag | BK-07, BK-13, BK-16, PC-03, PC-05, PL-04, PL-15 |
 | [`stripe.md`](stripe.md) | Stripe webhooks and platform billing (idempotency, one subscription per org) | BK-02, BK-04, BK-07, BK-08, BK-09, BK-10, BK-19, BK-21 |
 | [`billing-tax.md`](billing-tax.md) | VAT on the CasaZen subscriptions (Stripe Tax) and Italian e-invoices (SDI) | PL-10, PL-11, PL-13, RS-5 |
