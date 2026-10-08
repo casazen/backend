@@ -126,6 +126,9 @@
   <data name="NoOrganizationAssigned" xml:space="preserve">
     <value>No organization assigned to the current user</value>
   </data>
+  <data name="MemberCannotOnboard" xml:space="preserve">
+    <value>You already belong to an organization as a collaborator: you cannot set up a new account or change your own role. If you need a different role, ask the owner of the organization.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
   </data>
