@@ -350,6 +350,25 @@ public class PublicSupplierShowcaseServiceTests
     }
 
     [Fact]
+    public async Task GetSlotsAsync_TheLongestHorizonASupplierCanSet_365Days_IsPlannedAndPagedWithoutError()
+    {
+        using var s = await WorldAsync();
+        await s.Agenda.ReplaceRulesAsync(s.SupplierOrgId, new SupplierRulesInput(30, 3, 0, 365, 60));
+        var showcase = Showcase(s);
+        var supplier = await SupplierAsync(s);
+        var slug = await SlugOfAsync(s, s.ListingId);
+
+        var first = await showcase.GetSlotsAsync(supplier, slug, null, 62);
+        var last = await showcase.GetSlotsAsync(supplier, slug, Today.AddDays(300), 62);
+
+        Assert.Equal(Today.AddDays(365), first!.BookableUntil);
+        Assert.Equal(62, first.Days.Count);
+        Assert.Equal(Today.AddDays(300), last!.Days[0].Date);
+        Assert.Equal(Today.AddDays(361), last.Days[^1].Date);
+        Assert.Contains(last.Days, d => d.Available);
+    }
+
+    [Fact]
     public async Task GetSlotsAsync_AServiceThatIsNotPublished_IsNull()
     {
         using var s = await WorldAsync();
