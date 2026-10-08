@@ -19,6 +19,7 @@ namespace Casazen.Web.Controllers;
 public class OrgsController(
     IOrgContextResolver orgContextResolver,
     IEntitlementService entitlementService,
+    IOrgSeatService seatService,
     IOrgService orgService,
     IPublicHostResolver publicHostResolver,
     IOptions<PublicHostOptions> publicHostOptions) : ControllerBase
@@ -147,18 +148,7 @@ public class OrgsController(
         if (orgId is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
-        var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, cancellationToken);
-        var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId.Value, cancellationToken);
-
-        return Ok(new EntitlementDto
-        {
-            OrgId = entitlement.OrgId,
-            PlanTier = entitlement.PlanTier,
-            Limits = new EntitlementLimitsDto { MaxProperties = entitlement.MaxProperties },
-            Usage = new EntitlementUsageDto { Properties = entitlement.PropertyCount },
-            CanAddProperty = entitlement.CanAddProperty,
-            CanUseCustomDomain = canUseCustomDomain
-        });
+        return Ok(await BuildEntitlementAsync(orgId.Value, cancellationToken));
     }
 
     /// <summary>
@@ -203,16 +193,25 @@ public class OrgsController(
         if (updated is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
-        var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, cancellationToken);
-        var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId.Value, cancellationToken);
-        return Ok(new EntitlementDto
+        return Ok(await BuildEntitlementAsync(orgId.Value, cancellationToken));
+    }
+
+    /// <summary>The entitlement of the org: tier, limits and usage of properties and, since AM-02, of seats (people).</summary>
+    private async Task<EntitlementDto> BuildEntitlementAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var entitlement = await entitlementService.GetEntitlementAsync(orgId, cancellationToken);
+        var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
+        var seats = await seatService.GetUsageAsync(orgId, cancellationToken);
+
+        return new EntitlementDto
         {
             OrgId = entitlement.OrgId,
             PlanTier = entitlement.PlanTier,
-            Limits = new EntitlementLimitsDto { MaxProperties = entitlement.MaxProperties },
-            Usage = new EntitlementUsageDto { Properties = entitlement.PropertyCount },
+            Limits = new EntitlementLimitsDto { MaxProperties = entitlement.MaxProperties, MaxSeats = seats.Max },
+            Usage = new EntitlementUsageDto { Properties = entitlement.PropertyCount, Seats = seats.Used },
             CanAddProperty = entitlement.CanAddProperty,
-            CanUseCustomDomain = canUseCustomDomain
-        });
+            CanUseCustomDomain = canUseCustomDomain,
+            CanInviteMember = seats.CanInvite,
+        };
     }
 }

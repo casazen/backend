@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -44,6 +45,13 @@ public class OrgBillingAdminAuthorizationHandler(
         "Admin",
     };
 
+    /// <summary>The owner's token roles: the ones that must not count for a member who is not the owner (see <see cref="HasAllowedRole"/>).</summary>
+    private static readonly HashSet<string> OwnerTokenRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "PropertyOwner",
+        "LongTermLandlord",
+    };
+
     private static readonly HashSet<string> DeniedRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "Staff",
@@ -71,7 +79,7 @@ public class OrgBillingAdminAuthorizationHandler(
         if (snapshot.IsOrgMemberDeactivated)
             return;
 
-        if (!HasAllowedRole(context.User) && !HasAllowedMembership(snapshot))
+        if (!HasAllowedRole(context.User, snapshot) && !HasAllowedMembership(snapshot))
             return;
 
         if (!(await hostOnboardingGate.GetStatusAsync(userId)).IsComplete)
@@ -107,10 +115,21 @@ public class OrgBillingAdminAuthorizationHandler(
         (AccountContext.IsAccountContext(membership.ContextKey) &&
          membership.Permissions.Contains(AccountContext.Permissions.BillingManage, StringComparer.OrdinalIgnoreCase));
 
-    private static bool HasAllowedRole(ClaimsPrincipal user) =>
-        user.Claims.Any(c =>
+    /// <summary>
+    /// The token roles of the owner (<c>PropertyOwner</c>, <c>LongTermLandlord</c>) and the platform admin, <b>except</b> the
+    /// owner's two for a person who is a member of an org without being its owner (AM-02): a person who left an empty org
+    /// of its own for another one keeps the Auth0 roles of the onboarding until they are removed (they are removed right
+    /// after the acceptance, and if Auth0 fails an operator does it), and a role left in a token must never make a
+    /// collaborator the billing administrator of the org it joined. The platform admin role is not an org role and always counts.
+    /// </summary>
+    private static bool HasAllowedRole(ClaimsPrincipal user, UserAuthorizationSnapshot snapshot)
+    {
+        var isMemberButNotOwner = snapshot.OrgMember is { Role: not OrgRole.Owner };
+        return user.Claims.Any(c =>
             (c.Type == ClaimTypes.Role || c.Type == "https://casazen.app/roles") &&
-            AllowedRoles.Contains(c.Value));
+            AllowedRoles.Contains(c.Value) &&
+            !(isMemberButNotOwner && OwnerTokenRoles.Contains(c.Value)));
+    }
 
     private static bool HasDeniedRole(ClaimsPrincipal user) =>
         user.Claims.Any(c =>

@@ -46,4 +46,11 @@ public static class RateLimitPolicies
 
     /// <summary>Search of the official comuni list for the pickers (<c>api/comuni</c>, SU-04): one request per pause in typing.</summary>
     public const string PublicComuni = "PublicComuni";
+
+    /// <summary>
+    /// What an org invitation link is for (<c>POST api/org-invitations/lookup</c>, AM-02): anonymous, a token in the body.
+    /// Tighter than <see cref="PublicRead"/>: a page asks once, and the token is 256 random bits, so nobody has a reason
+    /// to ask often.
+    /// </summary>
+    public const string PublicInvitationLookup = "PublicInvitationLookup";
 }

@@ -95,6 +95,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
                 ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
                 ["RateLimiting:PublicComuni:PermitLimit"] = "1000",
+                ["RateLimiting:PublicInvitationLookup:PermitLimit"] = "1000",
                 // The official comuni list is not loaded into every test database (7,894 rows): tests that need comuni seed the
                 // few they use (ComuneTestData) or import the official file themselves.
                 ["Comuni:SeedOnStartup"] = "false",

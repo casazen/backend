@@ -12,8 +12,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <remarks>
 /// <para>Every write of an org takes the same advisory lock (one org at a time), so two requests never interleave on the
-/// same people (the last-owner rule, AM-02's seats). Nothing here sends an email or talks to Auth0: the people of an org
-/// have no Auth0 role (their rights are the DB memberships).</para>
+/// same people (the last-owner rule). The seats are decided by the callers that invite or reactivate, under the org's
+/// seats lock, taken before this one (AM-02: <see cref="IOrgInvitationService"/>, <see cref="IOrgTeamService"/>); when a
+/// transaction is already open these methods join it and leave the commit to its owner. Nothing here sends an email or
+/// talks to Auth0: the people of an org have no Auth0 role (their rights are the DB memberships).</para>
 /// <para>The owner's own host memberships (<c>property_owner</c>, <c>long_term_landlord</c>) are written by the onboarding
 /// from the rental type (<see cref="IUserContextMembershipService"/>), not by this service: it adds the owner's account
 /// membership and the <see cref="OrgMember"/> row, and never touches the owner's host rows.</para>
@@ -34,8 +36,9 @@ public interface IOrgMembershipService
     /// <summary>
     /// Adds <paramref name="userId"/> to <paramref name="orgId"/> as <paramref name="role"/>, working in
     /// <paramref name="rentalContexts"/> (the areas): the <see cref="OrgMember"/> row and the memberships the role implies,
-    /// all or nothing. The user's <c>OrgId</c> becomes <paramref name="orgId"/> when it has none. The member gets every
-    /// property of the org (the per-property scope is AM-03).
+    /// all or nothing. The user's <c>OrgId</c> becomes <paramref name="orgId"/> when it has none. The member gets
+    /// <paramref name="propertyScope"/>: every property of the org by default (the list of properties for
+    /// <see cref="PropertyScope.Selected"/> is AM-03, until then only the value is recorded).
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// The role is <see cref="OrgRole.Owner"/> (<see cref="OrgMembershipErrors.OwnerNotAssignable"/>: the ownership is not
@@ -52,6 +55,7 @@ public interface IOrgMembershipService
         OrgRole role,
         IReadOnlyCollection<string> rentalContexts,
         string? createdByUserId,
+        PropertyScope propertyScope = PropertyScope.All,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -79,12 +83,27 @@ public interface IOrgMembershipService
     Task<OrgMember> ReactivateAsync(string userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Takes the member out of the org: the <see cref="OrgMember"/> row and every membership the org gave (account and
-    /// rental contexts). The user's account and its <c>OrgId</c> are not touched here.
+    /// Takes the member out of the org: the <see cref="OrgMember"/> row, every membership the org gave (account and rental
+    /// contexts) and, since AM-02, the link of the account to the org (<c>User.OrgId</c> and the last used context), so the
+    /// person is no longer the tenant of an org it left for the endpoints that only ask for a signed-in user. The CasaZen
+    /// account stays, with its Auth0 login; its consents of that org stay as the record of what was accepted (they apply
+    /// to that org only: another org needs its own). The person can onboard an org of its own, or accept another invitation.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">The member is the owner (<see cref="OrgMembershipErrors.LastOwner"/>).</exception>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user is not a member of any org.</exception>
     Task RemoveAsync(string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Takes the owner out of an org that has nothing in it, so that the person can join another org (AM-02, decision D14):
+    /// the owner's <see cref="OrgMember"/> row, every membership of the account and the rental contexts, and the link of
+    /// the account to the org (<c>User.OrgId</c> is cleared). The org itself and everything recorded for it (consents,
+    /// attribution) stay; deactivating the org is the caller's. <b>The caller has proved, under the org's seats lock, that
+    /// the org is empty and unbilled</b> (<see cref="IOrgEmptinessChecker"/>): this method does not check it.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// The user is not the owner of <paramref name="orgId"/> (<see cref="OrgMembershipErrors.OtherOrg"/>).
+    /// </exception>
+    Task AbandonEmptyOrgAsync(string userId, Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The reconcile command (admin, idempotent): gives an <see cref="OrgMember"/> owner row to the single owner of every

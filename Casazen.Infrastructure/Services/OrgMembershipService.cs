@@ -81,6 +81,7 @@ public sealed partial class OrgMembershipService(
         OrgRole role,
         IReadOnlyCollection<string> rentalContexts,
         string? createdByUserId,
+        PropertyScope propertyScope = PropertyScope.All,
         CancellationToken cancellationToken = default)
     {
         if (role == OrgRole.Owner)
@@ -113,15 +114,15 @@ public sealed partial class OrgMembershipService(
             user.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
         }
 
-        var member = NewMember(userId, orgId, role, createdByUserId);
+        var member = NewMember(userId, orgId, role, createdByUserId, propertyScope);
         db.OrgMembers.Add(member);
         await ProjectAsync(userId, OrgRoleCatalog.ProjectionOf(role, areas), ManagedContexts, cancellationToken);
 
         await SaveAsync(transaction, userId, cancellationToken);
 
         logger.LogInformation(
-            "Org member added: userId={UserId} orgId={OrgId} role={Role} areas=[{Areas}] by={CreatedBy}",
-            userId, orgId, role, string.Join(", ", areas), createdByUserId);
+            "Org member added: userId={UserId} orgId={OrgId} role={Role} areas=[{Areas}] scope={Scope} by={CreatedBy}",
+            userId, orgId, role, string.Join(", ", areas), propertyScope, createdByUserId);
         return member;
     }
 
@@ -199,18 +200,62 @@ public sealed partial class OrgMembershipService(
 
         db.OrgMembers.Remove(member);
         await ProjectAsync(userId, [], ManagedContexts, cancellationToken);
+        await UnlinkOrgAsync(userId, member.OrgId, cancellationToken);
         await SaveAsync(transaction, userId, cancellationToken);
 
         logger.LogInformation("Org member removed: userId={UserId} orgId={OrgId}", userId, member.OrgId);
     }
 
-    private OrgMember NewMember(string userId, Guid orgId, OrgRole role, string? createdByUserId) => new()
+    public async Task AbandonEmptyOrgAsync(string userId, Guid orgId, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, OrgLock(orgId));
+
+        // The owner row, when there is one: a legacy owner that never got it (the backfill leaves an org with several
+        // candidates without a member) has only its memberships, which go the same way.
+        var member = await db.OrgMembers.IgnoreQueryFilters().FirstOrDefaultAsync(m => m.UserId == userId, cancellationToken);
+        if (member is not null && (member.OrgId != orgId || member.Role != OrgRole.Owner))
+            throw new DomainConflictException(OrgMembershipErrors.OtherOrg, "OrgMemberOtherOrg");
+
+        if (member is not null)
+            db.OrgMembers.Remove(member);
+
+        await ProjectAsync(userId, [], ManagedContexts, cancellationToken);
+        await UnlinkOrgAsync(userId, orgId, cancellationToken);
+        await SaveAsync(transaction, userId, cancellationToken);
+
+        logger.LogInformation("Org owner left an empty org: userId={UserId} orgId={OrgId}", userId, orgId);
+    }
+
+    /// <summary>
+    /// Stages the end of the account's link to <paramref name="orgId"/> (AM-02): <c>User.OrgId</c> is cleared, and so is the
+    /// last used context when it belongs to an org (the account and the rental contexts; a supplier or staff context is
+    /// not the org's). A user whose <c>OrgId</c> is another org is left alone. The caller saves.
+    /// </summary>
+    private async Task UnlinkOrgAsync(string userId, Guid orgId, CancellationToken cancellationToken)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null || user.OrgId != orgId)
+            return;
+
+        user.OrgId = null;
+        if (user.LastUsedContextKey is { } last && ManagedContexts.Contains(last, StringComparer.OrdinalIgnoreCase))
+            user.LastUsedContextKey = null;
+        user.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
+    }
+
+    private OrgMember NewMember(
+        string userId,
+        Guid orgId,
+        OrgRole role,
+        string? createdByUserId,
+        PropertyScope propertyScope = PropertyScope.All) => new()
     {
         OrgId = orgId,
         UserId = userId,
         Role = role,
         Status = OrgMemberStatus.Active,
-        PropertyScope = PropertyScope.All,
+        PropertyScope = propertyScope,
         CreatedAt = _clock.GetUtcNow().UtcDateTime,
         CreatedByUserId = createdByUserId,
     };
@@ -274,7 +319,8 @@ public sealed partial class OrgMembershipService(
         authorizationCache.Invalidate(userId);
     }
 
-    private static (PostgresAdvisoryLocks.Scope, string) OrgLock(Guid orgId) =>
+    /// <summary>The lock of the people of an org: taken by every write of this service, and by the callers that decide on rows these writes change.</summary>
+    internal static (PostgresAdvisoryLocks.Scope Scope, string Key) OrgLock(Guid orgId) =>
         (PostgresAdvisoryLocks.Scope.OrgMembership, orgId.ToString("N"));
 
     private sealed record RoleRow(int Id, string ContextKey, string RoleKey);
