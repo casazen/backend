@@ -278,6 +278,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PaymentRefundService>();
         services.AddScoped<IPaymentRefundService>(sp => sp.GetRequiredService<PaymentRefundService>());
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
+        // Guest self-service cancellation via signed link (BK-02, BK-07, PO 2026-10-08).
+        services.AddScoped<IGuestBookingCancellationService, GuestBookingCancellationService>();
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();

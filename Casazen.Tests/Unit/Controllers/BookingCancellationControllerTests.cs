@@ -149,6 +149,7 @@ public class BookingCancellationControllerTests
         var controller = new BookingCancellationController(
             _bookings.Object,
             _cancellations.Object,
+            new Mock<IGuestBookingCancellationService>().Object,
             _hostResources.Object,
             HostAuthorizationTestHarness.Create(OrgId, (c, p) => _permissions?.Invoke(c, p) ?? true),
             NullLogger<BookingCancellationController>.Instance);

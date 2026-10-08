@@ -91,6 +91,19 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string ConnectOnboardingRefresh() => Build(ConnectPaymentsPagePath + "?stripe_refresh=1");
 
     /// <summary>
+    /// Guest self-cancellation page of the booking site (BK-02, BK-07, PO 2026-10-08): the guest confirms the
+    /// cancellation there; the page then calls <c>POST /api/public/bookings/{id}/cancel?token=…</c>.
+    /// Only the booking id and the signed token are in the link, no personal data.
+    /// </summary>
+    public string GuestBookingCancel(string orgSlug, Guid bookingId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(
+            $"/book/{Uri.EscapeDataString(orgSlug)}/bookings/{bookingId:D}/cancel?token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
     /// "Le mie prenotazioni" of the org's booking site (BK-10, BK-11): the guest finds a booking there with its code and
     /// email. The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails
     /// link here. With <paramref name="bookingCode"/> the page opens with the code filled in (<c>?code=</c>) and still asks
