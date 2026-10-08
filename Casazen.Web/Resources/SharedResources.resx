@@ -2278,4 +2278,13 @@
   <data name="SupplierInboxWhenInvalid" xml:space="preserve">
     <value>Periodo non valido: usa oggi, settimana oppure mese.</value>
   </data>
+  <data name="SupplierSlotsServiceRequired" xml:space="preserve">
+    <value>Indica il servizio di cui vuoi vedere gli orari (parametro service).</value>
+  </data>
+  <data name="SupplierSlotsDaysInvalid" xml:space="preserve">
+    <value>Il numero di giorni (parametro days) deve essere compreso tra 1 e {0}.</value>
+  </data>
+  <data name="SupplierQuoteInvalid" xml:space="preserve">
+    <value>Alcuni dati della richiesta di stima non sono validi (campi: {0}). Controllali e riprova.</value>
+  </data>
 </root>

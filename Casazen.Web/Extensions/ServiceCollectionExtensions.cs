@@ -405,6 +405,10 @@ public static class ServiceCollectionExtensions
         // The supplier's agenda (SP-03): hours, time off, blocks, rules, calendar and the input of the slot planner. Rows keyed
         // by the supplier org, not tenant-filtered; every write under the SupplierCalendarSync lock.
         services.AddScoped<ISupplierAgendaService, SupplierAgendaService>();
+        // The anonymous read side of the supplier showcase (SP-09): services, free slots and price estimate, behind the flag
+        // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
+        services.AddSingleton<PublicSupplierSlotCache>();
+        services.AddScoped<IPublicSupplierShowcaseService, PublicSupplierShowcaseService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
 
