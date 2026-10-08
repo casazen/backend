@@ -43,6 +43,18 @@ public static class SeoContentPrompt
             "https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Download/Normativa/109_TULPS.pdf"),
     ];
 
+    /// <summary>
+    /// FD-21 (PO 2026-10-08): this prompt must never include personal data (guest names, emails, phone numbers,
+    /// fiscal codes, booking references, or host personal identifiers). The three parameters carry exclusively
+    /// public-domain geographic and regulatory information:
+    /// <list type="bullet">
+    ///   <item><paramref name="comune"/>: official ISTAT municipality name and code — public register data, not PII.</item>
+    ///   <item><paramref name="pageType"/>: an enum discriminating the page template — no personal data.</item>
+    ///   <item><paramref name="taxRates"/>: officially published municipal tax rates and their source URLs — public data.</item>
+    /// </list>
+    /// If this method signature ever changes to accept guest, booking or host identifiers, <c>PiiScrubber.Scrub</c>
+    /// must be applied before the prompt is passed to <see cref="IAiProvider.GenerateAsync"/>.
+    /// </summary>
     public static string Build(ComuneInfo comune, SeoPageType pageType, IReadOnlyList<TouristTaxRate> taxRates)
     {
         var isGuide = pageType == SeoPageType.ComplianceGuide;
