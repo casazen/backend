@@ -204,6 +204,21 @@ public class CinDeadlineAlertsPostgresTests : IClassFixture<CasazenWebApplicatio
     }
 
     [PostgresFact]
+    public async Task RunAsync_LongRentPropertyWithoutCin_SendsNoCinAlert()
+    {
+        // CO-20 (PO 2026-10-08): CIN alerts apply only to short-rent properties.
+        // A property whose owner has RentalType.LongTerm must be silently skipped.
+        var host = await SeedLongRentHostAsync("long-rent");
+        var property = await SeedPropertyAsync(host, "Appartamento Lungo Periodo", cinCode: null);
+        var alerts = NewHarness(Deadline.AddDays(-10));
+
+        await alerts.RunAsync();
+
+        Assert.Empty(alerts.EmailsTo(host.Email));
+        Assert.False(await HasStateAsync(property));
+    }
+
+    [PostgresFact]
     public async Task RunAsync_TwoRunsAtOnce_AlertTheHostOnce()
     {
         var host = await SeedHostAsync("concurrent");
@@ -233,6 +248,20 @@ public class CinDeadlineAlertsPostgresTests : IClassFixture<CasazenWebApplicatio
         stored.ContactEmail = hostEmail;
         await db.SaveChangesAsync();
         return new SeededHost(hostId, hostEmail, org.Id);
+    }
+
+    /// <summary>
+    /// Seeds a host with <see cref="RentalType.LongTerm"/> (CO-20): its properties must not receive CIN alerts.
+    /// </summary>
+    private async Task<SeededHost> SeedLongRentHostAsync(string label)
+    {
+        var host = await SeedHostAsync(label);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Users.SingleAsync(u => u.Id == host.HostId);
+        user.RentalType = RentalType.LongTerm;
+        await db.SaveChangesAsync();
+        return host;
     }
 
     private async Task<Guid> SeedPropertyAsync(

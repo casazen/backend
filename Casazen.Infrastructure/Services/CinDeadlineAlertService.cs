@@ -66,7 +66,12 @@ public sealed class CinDeadlineAlertService(
                 .AsNoTracking()
                 .Where(p => p.IsActive
                     && (p.ComplianceStatus == PropertyComplianceStatus.Pending
-                        || p.ComplianceStatus == PropertyComplianceStatus.Active))
+                        || p.ComplianceStatus == PropertyComplianceStatus.Active)
+                    // CO-20: CIN obligation applies only to short-rent (STR) properties. Exclude
+                    // properties whose owner registered exclusively as a long-term landlord
+                    // (RentalType.LongTerm). Owners with ShortTerm, Both, or no RentalType on
+                    // record are all eligible for CIN alerts.
+                    && !db.Users.Any(u => u.Id == p.OwnerId && u.RentalType == RentalType.LongTerm))
                 .OrderBy(p => p.Id)
                 .Select(p => new { p.Id, p.OrgId, p.CinCode, p.ComplianceStatus })
                 .ToListAsync(cancellationToken))
