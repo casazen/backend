@@ -48,6 +48,23 @@ public static class FeatureFlags
     /// </summary>
     public const string ESignProvider = "ESignProvider";
 
+    /// <summary>
+    /// SP-02 (redesign wave, decision D34): booking from the public showcase of a supplier (<c>/fornitori/{slug}</c>), off
+    /// until the product owner turns it on. It will gate the public booking endpoints of the showcase (404 when off, SP-09
+    /// and SP-10); nothing consumes it yet, SP-02 only introduces and exposes it. The service catalog
+    /// (<c>api/supplier/services</c>) does not depend on it: every supplier has one.
+    /// </summary>
+    public const string SupplierShowcaseBooking = "SupplierShowcaseBooking";
+
+    /// <summary>
+    /// SP-02 (redesign wave, decision D2): payment of a supplier's work inside CasaZen (direct charge on the supplier's
+    /// Stripe account with the platform commission), off until the product owner turns it on. It will gate the creation of
+    /// the payment requests (SP-15); nothing consumes it yet, SP-02 only introduces and exposes it. Without it the
+    /// existing manual flow ("Segna pagato" by the host) stays the only one.
+    /// </summary>
+    public const string SupplierOnlinePayments = "SupplierOnlinePayments";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
-    public static IReadOnlyList<string> All { get; } = [OtaPartnerApi, AiSupplierDiscovery, RliProvider, ESignProvider];
+    public static IReadOnlyList<string> All { get; } =
+        [OtaPartnerApi, AiSupplierDiscovery, RliProvider, ESignProvider, SupplierShowcaseBooking, SupplierOnlinePayments];
 }

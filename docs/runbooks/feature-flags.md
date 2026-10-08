@@ -4,6 +4,8 @@ Task FD-20 (defects A2-09, A9-17, R-10 webhook part, A8-16 OTA part, A9-15 OTA j
 Task FD-21 adds `AiSupplierDiscovery` (defects A8-01, A8-14, A8-15, A4-26, A8-16 AI part; decision D11).
 Task LT-01 adds `RliProvider` (defects A7-01, A7-21; decision D15; `docs/runbooks/rli.md`).
 Task LT-02 adds `ESignProvider` (defects A7-02, A7-16, A7-20; decision D15; `docs/runbooks/rli.md` § Contract signature).
+Task SP-02 (redesign wave) adds `SupplierShowcaseBooking` and `SupplierOnlinePayments` (decisions D34 and D2;
+`docs/runbooks/suppliers.md` section 19).
 
 ## How it works
 
@@ -23,6 +25,8 @@ Task LT-02 adds `ESignProvider` (defects A7-02, A7-16, A7-20; decision D15; `doc
 | `AiSupplierDiscovery` | `Features__AiSupplierDiscovery` | `false` (D11: AI supplier discovery, US-014 in freeze) | `POST /api/service-requests/match-supplier` (404 when off, before authentication); inside the services, with the flag off: no web search (`IWebSearchClient`), no LLM extraction of "nearby businesses", no AI match reason, so **nothing reaches the AI provider**. Frontend: key `aiSupplierDiscovery` with no consumer: the web AI match flow ("Raccomandazione AI", "più votati su Google") was unreachable and has been removed. **The manual service request** (`POST /api/service-requests` with the supplier chosen in the marketplace) **is not behind this flag.** |
 | `RliProvider` | `Features__RliProvider` | `false` (D15: RLI filing through a provider needs a real provider client, the legal opinion and the cost approval, `docs/integrations/rli-esign.md` §5) | `POST /api/leases/{id}/registration` (404 when off); recurring job `lease-registration-status-poll` (not registered, removed with `RemoveIfExists`); in the service, nothing reaches the provider. **On is not enough**: the provider must also be configured (`ILeaseRegistrationProvider.IsConfigured`), and today the only one registered is `UnconfiguredLeaseRegistrationProvider`, so the path stays unavailable (409 `rli_provider_unavailable`). Frontend: key `rliProvider` with no direct consumer; the lease page reads `providerFilingAvailable` from the RLI checklist. **Manual registration** (`POST /api/leases/{id}/registration/manual`) **is not behind this flag** and is the default. |
 | `ESignProvider` | `Features__ESignProvider` | `false` (D15: a lease signed electronically needs at least the FEA; no provider client is written and the budget and the legal opinion are open, `docs/integrations/rli-esign.md` §3–§5) | `POST /api/leases/{id}/signing` and `POST /webhooks/esign` (404 when off, before anything is read); recurring job `lease-sign-status-poll` (not registered, removed with `RemoveIfExists`); queued webhook events are dropped. **On is not enough**: the provider must also be configured (`ILeaseESignService.IsConfigured`), and today the only one registered is `UnconfiguredLeaseESignService`, so the path stays unavailable (409 `esign_provider_unavailable`). **On requires `ESign__WebhookSecret`** (at least 16 characters, no placeholder): otherwise the service does not start (`ESignOptionsValidator`). Frontend: key `eSignProvider` with no direct consumer; the lease page reads `providerSigningAvailable` from `GET /api/leases/{id}/signers`. **The offline signature** (`GET contract.pdf`, `POST signed-document`, `POST stipula`) **is not behind this flag** and is the default. |
+| `SupplierShowcaseBooking` | `Features__SupplierShowcaseBooking` | `false` (D34: booking from the public showcase of a supplier, `/fornitori/{slug}`; the product owner turns it on when the booking is ready and reviewed) | **Nothing yet**: SP-02 only introduces and exposes the flag. It will gate the public booking endpoints of the showcase (404 when off, SP-09 and SP-10) and the frontend booking steps (key `supplierShowcaseBooking`). **The supplier's service catalog** (`api/supplier/services`, `suppliers.md` section 19) **is not behind this flag**: every supplier has one. |
+| `SupplierOnlinePayments` | `Features__SupplierOnlinePayments` | `false` (D2: payment of a supplier's work inside CasaZen, direct charge on the supplier's Stripe account with the platform commission; the legal texts, D-C, and the tax treatment of the commission, D4, still need review before it goes live) | **Nothing yet**: SP-02 only introduces and exposes the flag. It will gate the creation of the payment requests and the supplier's Stripe onboarding (SP-14, SP-15); the public payment page and the webhook of money already in flight will stay active. Without it the manual flow ("Segna pagato" by the host) is the only one. Frontend key `supplierOnlinePayments`. |
 
 ### Before turning `AiSupplierDiscovery` on
 
@@ -64,8 +68,11 @@ The flag only hides code that is still in freeze; turning it on brings back the 
 
 ## Product owner steps (Railway)
 
-Nothing to do for `OtaPartnerApi`, `AiSupplierDiscovery`, `RliProvider` and `ESignProvider`: the default is off. Do
+Nothing to do for `OtaPartnerApi`, `AiSupplierDiscovery`, `RliProvider`, `ESignProvider`, `SupplierShowcaseBooking` and
+`SupplierOnlinePayments`: the default is off. Do
 **not** set `Features__OtaPartnerApi` (D10) or `Features__AiSupplierDiscovery` (D11) on test or production while the
 decisions are in force, nor `Features__RliProvider` / `Features__ESignProvider` before a real provider client exists
-(`docs/runbooks/rli.md`). After the first deploy with FD-20, the Hangfire dashboard (if enabled) no longer lists
-`ota-sync-all` and `booking-pull-all`.
+(`docs/runbooks/rli.md`). `Features__SupplierShowcaseBooking` and `Features__SupplierOnlinePayments` have no effect until
+their tasks (SP-09/SP-10, SP-15) are deployed; leave them unset (the second one in particular until the legal texts of the
+supplier payments, D-C, are approved and the tax treatment of the commission, D4, is reviewed). After the first deploy with
+FD-20, the Hangfire dashboard (if enabled) no longer lists `ota-sync-all` and `booking-pull-all`.
