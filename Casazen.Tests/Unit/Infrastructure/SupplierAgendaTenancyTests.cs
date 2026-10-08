@@ -209,8 +209,33 @@ public class SupplierAgendaTenancyTests
             offenders.Count == 0,
             "The tables of the supplier's agenda are not tenant-filtered (keyed by the supplier org): any other reader must " +
             "filter by the supplier OrgId itself. Use SupplierAgendaService, or add the file to AllowedFiles with its reason and " +
-            "an explicit OrgId predicate (the public slots of SP-09 read through the planner input and also need the supplier's " +
-            "Active status): " + string.Join(", ", offenders));
+            "an explicit OrgId predicate (the public slots of SP-09 read the agenda only through ISupplierAgendaService.PlanAsync, " +
+            "for a supplier PublicSupplierShowcaseService found Active): " + string.Join(", ", offenders));
+    }
+
+    [Fact]
+    public void ThePublicSlots_ReadTheAgendaOnlyThroughThePlannerOfTheAgendaService()
+    {
+        // SP-09 adds no file to the allow-list: the public service and its cache never name a table of the agenda, and the
+        // planner they call is the one the agenda service feeds with the requests with hours, the blocks, the calendar
+        // engagements and (SP-10) the holds.
+        var root = FindRepositoryRoot();
+        foreach (var relative in new[]
+                 {
+                     "Casazen.Infrastructure/Services/PublicSupplierShowcaseService.cs",
+                     "Casazen.Infrastructure/Services/PublicSupplierSlotCache.cs",
+                     "Casazen.Web/Controllers/PublicSupplierController.cs",
+                 })
+        {
+            var text = CodeWithoutComments(File.ReadAllText(Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar))));
+            Assert.False(AnyTableUse.IsMatch(text), $"{relative} reads a table of the agenda itself");
+            Assert.False(AllowedFiles.ContainsKey(relative), $"{relative} must not be allow-listed");
+        }
+
+        var service = CodeWithoutComments(File.ReadAllText(
+            Path.Combine(root, "Casazen.Infrastructure", "Services", "PublicSupplierShowcaseService.cs")));
+        Assert.Contains("agenda.PlanAsync(", service);
+        Assert.Contains("agenda.GetRulesAsync(", service);
     }
 
     [Theory]
