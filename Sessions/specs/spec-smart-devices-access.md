@@ -58,27 +58,27 @@ As CasaZen, we want one provider port, a free sandbox, and a plan gate, so that 
 - **AC4**: Authenticated host routes, org-scoped:
   - `GET /api/smart-devices/catalog` returns the brand list below plus `disclaimer` and `canUseSmartDevices`.
   - `POST /api/smart-devices/accounts` with `{ provider: "sandbox" }` creates a connected sandbox account and two demo devices (one with `AccessCode|RemoteLock|Battery|OnlineStatus`, one with `KeyHandover` only). `provider: "seam"` returns **503** `smart_devices_provider_unconfigured` when `SmartAccess:Seam:ApiKey` is empty, and never creates an account in that case.
-  - `POST /api/smart-devices/accounts/{id}/sync` refreshes devices.
-  - `PUT /api/smart-devices/{id}/property` body `{ propertyId: guid|null }` maps or unmaps. The property must belong to the same org. Unmapping does not delete historical grants.
+  - `POST /api/smart-devices/accounts/{id}/sync` refreshes devices and enqueues provision for missing or `Failed` grants on mapped devices (AC6, AC7).
+  - `PUT /api/smart-devices/{id}/property` body `{ propertyId: guid|null }` maps or unmaps. The property must belong to the same org. Unmapping does not delete historical grants. Mapping enqueues provision for current `Confirmed` bookings of that property (AC6).
 
 - **AC5**: Brands returned by the catalog, in this order: Yale, Nuki, August, Schlage, Igloohome, Salto, Tedee, SmartThings, KeyNest, plus `moreBrands: true`. The catalog text states that functions vary by provider. A device is usable for automatic codes only when `AccessCode` or `KeyHandover` is set. Remote lock actions exist only when `RemoteLock` is set.
 
-- **AC6**: When a booking enters `Confirmed` and the property has at least one mapped device, enqueue `StayAccessProvisionJob` (Hangfire, not inline HTTP). One grant per mapped device:
+- **AC6**: When a booking is saved with status `Confirmed` and the property has at least one mapped device, enqueue `StayAccessProvisionJob` (Hangfire, not inline HTTP). A row inserted already `Confirmed` is in scope, not only a later status change. One shared enqueue runs after each of these saves: `BookingService.CreateManualBookingAsync`, `OtaStayService.ConvertBlockAsync`, `CheckoutPaymentSettlementService`, `StripeWebhookHandler.HandleSetupIntentSucceededAsync`, `HostBookingService.ConfirmAsync`, and `OnSiteBookingRequestService.AcceptAsync`. The same enqueue runs when a device is mapped to a property and when that account is synced, for every `Confirmed` booking of the property. One grant per mapped device:
   - device has `AccessCode` or `KeyHandover` → status `Scheduled`;
   - otherwise → status `Unsupported` and no provider call.
-  A property with zero mapped devices creates no grant and does not change booking confirmation.
+  The enqueue is idempotent: an existing non-revoked grant other than `Failed` is left as-is. A `Failed` grant is retried in place (AC7), not replaced by a second row. A property with zero mapped devices creates no grant and does not change booking confirmation.
 
-- **AC7**: The job runs when `now >= ValidFromUtc - 24h` (provision lead time). It calls `CreateAccessCode` once. Success sets `Active`, stores the code only in `CodeProtected`, and stores `ProviderGrantId`. A second run for the same `(BookingId, DeviceId)` does not create a second provider code. Provider slot-full or timeout sets `Failed` with `FailureReason` and notifies the host. The code value is unique per grant (sandbox: 6 digits, not reused across active grants of that device).
+- **AC7**: The job runs when `now >= ValidFromUtc - 24h` (provision lead time). It calls `CreateAccessCode` once per attempt. Success sets `Active`, stores the code only in `CodeProtected`, and stores `ProviderGrantId`. A second run for a grant that is already `Active`, or that already has `ProviderGrantId`, does not create a second provider code. The sandbox keys the create call by grant id, so a retry after a lost response returns the same code. Provider slot-full or timeout sets `Failed` with `FailureReason`, notifies the host once for that episode, and re-enqueues the job for a later attempt (not an immediate loop) while `now < ValidUntilUtc`. `Failed` is not terminal: while the row is still `Failed`, the later run retries that same row and calls `CreateAccessCode` only when `ProviderGrantId` is empty. It does not insert a second grant, so the unique index stays one non-revoked row per `(BookingId, DeviceId)`. Success then sets `Active`. Another failure updates `FailureReason` and does not send a second host notification while the grant stays `Failed`. The code value is unique per grant (sandbox: 6 digits, not reused across active grants of that device).
 
 - **AC8**: Validity window uses the property timezone. Default check-in time 15:00 and check-out time 10:00 local when the booking has no explicit times. `ValidFromUtc` = local check-in minus **60 minutes**. `ValidUntilUtc` = local check-out plus **60 minutes**. At `ValidUntilUtc` a sweep job sets still-`Active` grants to `Expired` and calls `RevokeAccessCode`.
 
-- **AC9**: Booking date change on a `Scheduled` or `Active` grant updates the window. If the provider cannot update, the job revokes and creates a new code (still one non-revoked grant per device). Host cancel and guest cancel both revoke every non-terminal grant for that booking (`Revoked`) and call `RevokeAccessCode` when a `ProviderGrantId` exists. Disconnecting an account revokes `Scheduled`, `Provisioning`, and `Active` grants for its devices.
+- **AC9**: Booking date change on a `Scheduled` or `Active` grant updates the window. If the provider cannot update, the job revokes and creates a new code (still one non-revoked grant per device). Host cancel and guest cancel both revoke every non-terminal grant for that booking (`Revoked`) and call `RevokeAccessCode` when a `ProviderGrantId` exists. Disconnecting an account revokes `Scheduled`, `Provisioning`, `Active`, and `Failed` grants for its devices, so a failed stay no longer holds the unique slot.
 
 - **AC10**: `POST /api/smart-devices/{id}/lock` and `.../unlock` require `RemoteLock`. They call the provider, append `SmartAccessEvent` `{ OrgId, PropertyId, DeviceId, BookingId?, ActorUserId, Action (Lock|Unlock|CodeCreated|CodeRevoked|SyncFailed), OccurredAt }`, and return the new lock state. Missing capability returns **409** `smart_devices_capability_unsupported`. Events store no guest name and no access code.
 
 - **AC11**: `POST /api/smart-devices/accounts/{id}/sync` updates `BatteryPercent` and `Online` when those capabilities exist. A transition to offline, or battery falling below **20%**, sends one host notification per transition (email from the CasaZen sender plus `DeviceNotification`). Recovery above 20% or back online clears the alert so the next drop can notify again.
 
-- **AC12**: Guest read: `GET /api/public/check-in/{token}` adds `accessCodes: [{ deviceName, code, validFromLocal, validUntilLocal }]` only for `Active` grants of that booking whose window contains `now`. Expired, revoked, failed, and unsupported grants are omitted. The plaintext code is not written to logs, traces, or ProblemDetails.
+- **AC12**: Guest read: `GET /api/public/check-in/{token}` adds `accessCodes: [{ deviceName, code, validFromLocal, validUntilLocal }]` for every `Active` grant of that booking, from the moment the grant becomes `Active` (the same moment AC13 emails it) until it is no longer `Active`. The validity window is shown and does not hide the code, including before `ValidFromUtc`. Expired, revoked, failed, and unsupported grants are omitted. A session already `Completo` or `AlloggiatiInviato` still returns this field: the body is `{ Completed, Status, accessCodes }` and continues to omit booking data and guest PII (A5-28). The plaintext code is not written to logs, traces, or ProblemDetails.
 
 - **AC13**: On transition to `Active`, send one CasaZen email to the guest when `Booking` has a guest email. Subject and body are Italian and contain property name, code, and local validity window. No email when the guest email is missing (iCal block without an address): the grant still becomes `Active` and the host API returns the code. Sender is the CasaZen platform address, not the host’s personal address and not the lock vendor.
 
@@ -102,7 +102,7 @@ As CasaZen, we want one provider port, a free sandbox, and a plan gate, so that 
 
 ### Frontend — guest
 
-- **AC20**: On `/check-in/:token`, when `accessCodes` is non-empty, a section “Codice di accesso” lists device name, code, and local window in Italian. When the array is empty or absent, the check-in form does not show an empty access card and the existing check-in success screen is unchanged.
+- **AC20**: On `/check-in/:token`, when `accessCodes` is non-empty, a section “Codice di accesso” lists device name, code, and local window in Italian. A guest who already submitted still sees that section on the completed screen, including before local check-in, and the form and guest PII stay hidden. When the array is empty or absent, the check-in form does not show an empty access card and the existing check-in success screen is unchanged.
 
 ### App host
 
@@ -110,7 +110,7 @@ As CasaZen, we want one provider port, a free sandbox, and a plan gate, so that 
 
 ### Regression and prevendita
 
-- **AC22**: Confirming, rescheduling, or cancelling a booking on a property with no smart device keeps today’s booking responses and does not call `ISmartAccessProvider`.
+- **AC22**: Confirming, rescheduling, or cancelling a booking on a property with no smart device keeps today’s booking responses and does not call `ISmartAccessProvider`. A booking inserted or settled already `Confirmed` on a property that has a mapped device is not this no-op: it still enqueues provision (AC6).
 
 - **AC23**: With `SmartAccess:Seam:ApiKey` unset, the sandbox happy path (connect → map → confirm booking → active code → guest read → cancel → revoked) completes with zero outbound calls to Seam or any other lock vendor. No Stripe price id, live key, or euro amount is added for this feature.
 
@@ -125,13 +125,13 @@ As CasaZen, we want one provider port, a free sandbox, and a plan gate, so that 
 | AC3 | L1 | Resolving `ISmartAccessProvider` for Sandbox does not read `SmartAccess:Seam:ApiKey`. With the key empty, the Seam implementation is not registered. A test HTTP spy records zero Seam calls during AC23. | Seam client constructed without a key; sandbox opens a socket |
 | AC4 | L1 | Sandbox connect returns two devices. Sync is idempotent on `ExternalId`. Mapping a property of another org is 404. Unmap sets `PropertyId` null and leaves old grants. | Cross-org map succeeds; sync duplicates devices |
 | AC5 | L1 | Catalog `brands` equals Yale, Nuki, August, Schlage, Igloohome, Salto, Tedee, SmartThings, KeyNest and `moreBrands` is true. A device without `AccessCode` and without `KeyHandover` never receives `CreateAccessCode`. | Brand missing; code created on a remote-only device |
-| AC6 | L1 | Confirmed booking on a mapped property creates one grant per device. Unsupported device → `Unsupported` and zero provider create calls. No device → zero grants and the booking still `Confirmed`. | Grant on an unmapped property; confirmation blocked by a lock error |
-| AC7 | L1 | Before the 24h lead, grant stays `Scheduled` and provider create count is 0. After the lead, status is `Active`, provider create count is 1, and a second job run does not increment it. Forced provider failure sets `Failed` and one host notification. | Code created months ahead; two codes for one stay; failure leaves `Provisioning` forever |
+| AC6 | L1 | A booking saved as `Confirmed` creates one grant per mapped device, including a manual insert, an iCal block conversion, and checkout or setup-intent settlement that never pass through a separate confirm method. Mapping or syncing a device does the same for existing `Confirmed` bookings. Unsupported device → `Unsupported` and zero provider create calls. No device → zero grants and the booking still `Confirmed`. | Grant missing on a Confirmed insert; grant on an unmapped property; confirmation blocked by a lock error |
+| AC7 | L1 | Before the 24h lead, grant stays `Scheduled` and provider create count is 0. After the lead, status is `Active`, provider create count is 1, and a second job run does not increment it. Forced provider failure sets `Failed` and one host notification; a later run after the provider recovers sets the same row `Active` and does not insert a second grant. | Code created months ahead; two codes for one stay; failure leaves `Provisioning` forever; `Failed` never retried |
 | AC8 | L1 | For check-in date D at 15:00 and check-out D+2 at 10:00 in `Europe/Rome`, window is D 14:00 to D+2 11:00 local, stored in UTC. After `ValidUntilUtc`, status is `Expired` and revoke was called. | Window uses UTC as if it were local; expired grant stays `Active` |
-| AC9 | L1 | Moving the booking moves `ValidFromUtc`. Host cancel and guest cancel set `Revoked` and the provider revoke count matches grants that had `ProviderGrantId`. Account disconnect revokes active grants of that account only. | Cancel leaves `Active`; disconnect revokes another org |
+| AC9 | L1 | Moving the booking moves `ValidFromUtc`. Host cancel and guest cancel set `Revoked` and the provider revoke count matches grants that had `ProviderGrantId`. Account disconnect revokes `Scheduled`, `Provisioning`, `Active`, and `Failed` grants of that account only. | Cancel leaves `Active`; disconnect leaves `Failed` holding the slot; disconnect revokes another org |
 | AC10 | L1 | Unlock appends `SmartAccessEvent` with `Action=Unlock`, `ActorUserId`, and no field equal to the access code. Device without `RemoteLock` returns 409 `smart_devices_capability_unsupported`. | Event row contains the PIN; unlock without capability returns 200 |
 | AC11 | L1 | Sync from 40% to 19% sends one notification. A second sync at 18% sends none. Sync to 25% then to 19% sends a second notification. Offline transition behaves the same way. | Notification on every sync; no notification on the first drop |
-| AC12 | L1 | Public check-in DTO includes `code` only for an `Active` grant inside the window. Log sink for that request does not contain the code. | Code present when revoked; code found in the log assertion |
+| AC12 | L1 | Public check-in DTO includes `code` for an `Active` grant, including when the session is `Completo` or `AlloggiatiInviato` and `now` is before `ValidFromUtc`. That body has no guest PII. Log sink for that request does not contain the code. | Completed session omits `accessCodes`; code hidden until `ValidFromUtc`; code present when revoked; code found in the log assertion |
 | AC13 | L1 | Active transition with guest email enqueues one message whose From is the CasaZen sender and whose body contains the code and the property name. Missing email enqueues zero messages and the host access DTO still has the code. | Email sent from the host address; missing email fails the grant |
 | AC14 | L1 | Host in the org gets the code only for `Active`. A host in another org gets 404. JSON has no `codeProtected` property. | Cross-org 200; ciphertext returned to the client |
 | AC15 | L2 + L3 | Page shows the Italian intro, the disclaimer sentence, all nine brands, the “decina di altri marchi” line, and the Beta badge. The learn-more control stays on the same URL. | English intro; brand missing; navigation to an external host |
@@ -139,7 +139,7 @@ As CasaZen, we want one provider port, a free sandbox, and a plan gate, so that 
 | AC17 | L2 + L3 | Empty Pro org shows the empty-state sentence. Collega serratura results in two device cards. A stubbed 500 shows an Italian message and no stack. | Blank page; English empty state; raw exception on screen |
 | AC18 | L2 + L3 | Choosing a property and saving shows that property name on the card after reload. A property of another org is not in the list. | List shows every tenant’s properties; name not saved |
 | AC19 | L2 + L3 | Booking with an `Active` grant shows “Attivo”, the code, and Apri/Chiudi. Clicking Apri shows the unlocked state. An `Unsupported` row has no Apri/Chiudi and shows “Non supportato”. | Code missing while API returned it; buttons on an unsupported device |
-| AC20 | L2 + L3 | Guest page with a non-empty `accessCodes` shows “Codice di accesso” and the code. Guest page with `accessCodes: []` has no such heading and the check-in form still submits. | Empty heading; check-in form removed |
+| AC20 | L2 + L3 | Guest page with a non-empty `accessCodes` shows “Codice di accesso” and the code, including a completed session before local check-in, without the form or guest PII. Guest page with `accessCodes: []` has no such heading and the check-in form still submits. | Completed page hides the code; empty heading; check-in form removed |
 | AC21 | L2 | App booking fixture with an active grant shows the code and Apri. Fixture without `RemoteLock` hides Apri. The app navigation has no “Collega serratura” route. | App requires the web connect step to display a code |
 | AC22 | L1 | Booking service test with no devices: confirm, date change, and cancel perform zero calls on a provider spy. | Provider invoked for a normal booking |
 | AC23 | L1 | Full sandbox path under an empty Seam key: grant ends `Revoked` after cancel, and the HTTP spy’s Seam host count is 0. Diff of billing config and entitlement price map contains no new price id and no amount. | Test skips unless a real API key is present; new `Billing__Prices__SmartDevices` key |
@@ -161,7 +161,7 @@ As CasaZen, we want one provider port, a free sandbox, and a plan gate, so that 
 1. Start at `/app/short-rent/settings/smart-devices` as a Pro host with no account.
 2. Press “Collega serratura”. Two sandbox devices appear.
 3. Assign the access-code device to a property. Open a confirmed booking for that property after the provision lead. The Accesso section shows “Attivo” and a code.
-4. Done when Apri returns a lock state and, after cancel, the same section shows “Revocato” and the guest check-in payload no longer includes the code.
+4. Done when the guest’s completed check-in page shows “Codice di accesso” while the grant is `Active` (including before local check-in), Apri returns a lock state, and, after cancel, the same section shows “Revocato” and the guest check-in payload no longer includes the code.
 
 ---
 
@@ -177,9 +177,10 @@ As CasaZen, we want one provider port, a free sandbox, and a plan gate, so that 
 | `Casazen.Infrastructure/SmartAccess/SandboxSmartAccessProvider.cs` | Create — AC3, AC23 |
 | `Casazen.Infrastructure/SmartAccess/SeamSmartAccessProvider.cs` | Create — registered only when `SmartAccess:Seam:ApiKey` is set |
 | `Casazen.Core/Services/IEntitlementService.cs` | Modify — `CanUseSmartDevicesAsync` |
-| `Casazen.Infrastructure/Services/BookingService` (confirm, reschedule, cancel) | Modify — enqueue or revoke grants; no provider call when unmapped (AC6, AC9, AC22) |
+| `BookingService.CreateManualBookingAsync`, `OtaStayService.ConvertBlockAsync`, `CheckoutPaymentSettlementService`, `StripeWebhookHandler.HandleSetupIntentSucceededAsync`, `HostBookingService.ConfirmAsync`, `OnSiteBookingRequestService.AcceptAsync` | Modify — shared enqueue of `StayAccessProvisionJob` after every save that leaves the booking `Confirmed`, including inserts (AC6, AC22) |
+| `HostBookingService` (reschedule), `BookingCancellationService` (host and guest cancel) | Modify — update or revoke grants; no provider call when unmapped (AC9, AC22) |
 | `Casazen.Web/Controllers/SmartDevicesController.cs` | Create — AC2, AC4, AC10, AC14 |
-| Guest check-in public DTO + mail composer | Modify — AC12, AC13 |
+| Guest check-in public DTO + `PublicGuestCheckInController` + mail composer | Modify — AC12 returns `accessCodes` on a completed session (A5-28 exception, no PII); AC13 |
 | Frontend route `/app/short-rent/settings/smart-devices` | Create — AC15–AC18 |
 | Booking detail “Accesso” | Modify — AC19 |
 | Guest `/check-in/:token` | Modify — AC20 |
@@ -203,7 +204,7 @@ The Seam adapter, when configured later, is the single real vendor used to reach
 |---|---|---|
 | L1 | xUnit on entitlement, lifecycle, redaction, and the HTTP spy for AC23 | “Compiles”; a test that no-ops when the Seam key is missing |
 | L2 | Playwright with `page.route`, titled `test('ACn: …')` for AC15–AC21 | One smoke covering every AC; visibility-only without the Italian strings |
-| L3 | Real local API for the sandbox path in the happy-path script | Calling Seam; mocking the booking confirm path that AC6 claims to hook |
+| L3 | Real local API for the sandbox path in the happy-path script | Calling Seam; covering only one `Confirmed` writer and skipping a Confirmed insert (manual, iCal conversion, checkout settlement) |
 
 ---
 
