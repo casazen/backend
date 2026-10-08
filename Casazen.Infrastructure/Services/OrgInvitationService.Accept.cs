@@ -94,7 +94,13 @@ public sealed partial class OrgInvitationService
         await using (var transaction = await BeginAcceptTransactionAsync(seen.OrgId, plan, cancellationToken))
         {
             // Again, tracked, now that nobody else can change the seats of the org or the org being left.
+            // Resend, copy link and the reminder replace the token under this same lock, and the expiry is a moment the
+            // wait itself can pass. The secret and the clock from before the lock are already stale.
             invitation = await db.OrgInvitations.IgnoreQueryFilters().FirstAsync(i => i.Id == seen.Id, cancellationToken);
+            if (!OrgInvitationTokens.Matches(invitation.TokenHash, token))
+                throw Gone(OrgInvitationErrors.Invalid, "InvitationInvalid");
+            now = Now;
+
             if (await IsReplayAsync(invitation, request.UserId, cancellationToken))
                 return await ReplayAsync(invitation, cancellationToken);
 

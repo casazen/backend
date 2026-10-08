@@ -285,7 +285,8 @@ that receives it (AM-04) must read the token and take it out of the address bar 
 One **pending** invitation per email and org: 409 `org_invitation_already_pending` (the partial unique index decides
 when two requests race; an overdue row of the same email is closed first so it never blocks a new one). The email of a
 person who already is a member (active or deactivated): 409 `org_member_already_member`. Only the **owner** invites an
-administrator: 403 `org_owner_required`.
+administrator, and only the owner sends that invitation again, revokes it or copies its link: 403 `org_owner_required`.
+An administrator does those three for every other role.
 
 **What happens on create.** Validation, then the caller's own member row (must be active, owner or administrator), then
 the public URL (a missing `App__PublicSiteBaseUrl` is a configuration error found **before** anything is saved), then one
@@ -308,9 +309,10 @@ so an old link says why it no longer works and a stranger learns nothing:
 | 6 | The email of the account is verified and **equal to the invited one** (trimmed, case-insensitive). The email and its flag come from the access token (`https://casazen.app/email`, `/email_verified`) or from Auth0, never from the body | 403 `invitation_email_not_verified`, `invitation_email_mismatch` |
 | 7 | The org still exists, is active and is a host org | 410 `invitation_invalid` |
 | 8 | What the account is today (below) | 409 `org_member_already_member`, `invitation_user_has_organization` |
-| 9 | Under the locks, in one transaction: the checks 4, 5 and 8 again, then the writes | the same codes |
+| 9 | Under the locks, in one transaction: the presented token is still the current one (2), then the checks 4, 5 and 8 again (5 on the clock under the lock), then the writes | the same codes |
 
-Checks 4, 5 and 8 first read their data without locks and are made again under the lock: of two requests for the same
+Checks 2, 4, 5 and 8 are made again under the lock. The token is compared with the row as it is now, and the expiry with
+the clock as it is now: a link replaced or expired while the request waited is refused. Of two requests for the same
 token, one writes and the other finds the work done (4), whichever read the row first.
 
 **What the account is today (check 8).**

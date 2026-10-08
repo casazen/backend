@@ -806,6 +806,93 @@ public class OrgInvitationServiceTests
         Assert.Equal(OrgInvitationErrors.NotPending, error.Code);
     }
 
+    // ─── An administrator does not touch an administrator (decision D15) ────────────────────────────────
+
+    [Theory]
+    [InlineData(OrgInvitationStatus.Pending)]
+    [InlineData(OrgInvitationStatus.Expired)]
+    public async Task ResendAsync_AnAdministratorInvitation_IsRefusedToAnAdministrator(OrgInvitationStatus status)
+    {
+        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        await _kit.SeedMemberAsync(org.Id, "auth0|admin", OrgRole.Admin);
+        var closed = status == OrgInvitationStatus.Expired ? _kit.Now : (DateTime?)null;
+        var (invitation, _) = await _kit.SeedInvitationAsync(
+            org.Id, "anna.leone@example.com", OrgRole.Admin, status: status, expiresAt: closed, closedAt: closed);
+        var before = await _kit.ReadInvitationAsync(invitation.Id);
+
+        await using var db = _kit.NewDb();
+        var error = await Assert.ThrowsAsync<DomainForbiddenException>(
+            () => _kit.Invitations(db).ResendAsync(org.Id, invitation.Id, "auth0|admin"));
+
+        Assert.Equal(OrgInvitationErrors.OwnerRequired, error.Code);
+        var after = await _kit.ReadInvitationAsync(invitation.Id);
+        Assert.Equal((before.Status, before.TokenHash, before.ExpiresAt), (after.Status, after.TokenHash, after.ExpiresAt));
+        Assert.Empty(_kit.Emails.Snapshot());
+    }
+
+    [Fact]
+    public async Task ResendAsync_TheOwnerMayResendAnAdministratorInvitation()
+    {
+        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        var (invitation, _) = await _kit.SeedInvitationAsync(org.Id, "anna.leone@example.com", OrgRole.Admin);
+
+        await using var db = _kit.NewDb();
+        var sent = await _kit.Invitations(db).ResendAsync(org.Id, invitation.Id, "auth0|owner");
+
+        Assert.Equal(OrgRole.Admin, sent.Invitation.Role);
+        Assert.NotEqual((await _kit.ReadInvitationAsync(invitation.Id)).TokenHash, invitation.TokenHash);
+    }
+
+    [Fact]
+    public async Task RevokeAsync_AnAdministratorInvitation_IsRefusedToAnAdministrator()
+    {
+        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        await _kit.SeedMemberAsync(org.Id, "auth0|admin", OrgRole.Admin);
+        var (invitation, _) = await _kit.SeedInvitationAsync(org.Id, "anna.leone@example.com", OrgRole.Admin);
+
+        await using var db = _kit.NewDb();
+        var error = await Assert.ThrowsAsync<DomainForbiddenException>(
+            () => _kit.Invitations(db).RevokeAsync(org.Id, invitation.Id, "auth0|admin"));
+
+        Assert.Equal(OrgInvitationErrors.OwnerRequired, error.Code);
+        Assert.Equal(OrgInvitationStatus.Pending, (await _kit.ReadInvitationAsync(invitation.Id)).Status);
+    }
+
+    [Fact]
+    public async Task CopyLinkAsync_AnAdministratorInvitation_IsRefusedToAnAdministrator()
+    {
+        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        await _kit.SeedMemberAsync(org.Id, "auth0|admin", OrgRole.Admin);
+        var (invitation, token) = await _kit.SeedInvitationAsync(org.Id, "anna.leone@example.com", OrgRole.Admin);
+
+        await using var db = _kit.NewDb();
+        var error = await Assert.ThrowsAsync<DomainForbiddenException>(
+            () => _kit.Invitations(db).CopyLinkAsync(org.Id, invitation.Id, "auth0|admin"));
+
+        Assert.Equal(OrgInvitationErrors.OwnerRequired, error.Code);
+        Assert.Equal(OrgInvitationTokens.Hash(token), (await _kit.ReadInvitationAsync(invitation.Id)).TokenHash);
+    }
+
+    [Fact]
+    public async Task AnAdministrator_MayResendRevokeAndCopyACollaboratorInvitation()
+    {
+        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        await _kit.SeedMemberAsync(org.Id, "auth0|admin", OrgRole.Admin);
+        var (toResend, _) = await _kit.SeedInvitationAsync(org.Id, "one@example.com");
+        var (toRevoke, _) = await _kit.SeedInvitationAsync(org.Id, "two@example.com");
+        var (toCopy, _) = await _kit.SeedInvitationAsync(org.Id, "three@example.com");
+
+        await using (var db = _kit.NewDb())
+            Assert.Equal(OrgRole.Collaborator, (await _kit.Invitations(db).ResendAsync(org.Id, toResend.Id, "auth0|admin")).Invitation.Role);
+        await using (var db = _kit.NewDb())
+            await _kit.Invitations(db).RevokeAsync(org.Id, toRevoke.Id, "auth0|admin");
+        await using (var db = _kit.NewDb())
+            Assert.NotNull(await _kit.Invitations(db).CopyLinkAsync(org.Id, toCopy.Id, "auth0|admin"));
+
+        Assert.Equal(OrgInvitationStatus.Revoked, (await _kit.ReadInvitationAsync(toRevoke.Id)).Status);
+        Assert.NotEqual(toCopy.TokenHash, (await _kit.ReadInvitationAsync(toCopy.Id)).TokenHash);
+    }
+
     // ─── Lookup ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

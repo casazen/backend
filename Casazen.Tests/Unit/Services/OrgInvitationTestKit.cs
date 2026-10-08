@@ -93,18 +93,22 @@ internal sealed class OrgInvitationTestKit
     public OnboardingService Onboarding(AppDbContext db) =>
         new(db, Legal(), Cache.Object, EmailTestHelpers.Links(PublicSiteBaseUrl));
 
-    public OrgInvitationService Invitations(AppDbContext db, IOrgMembershipService? membership = null) => new(
+    public OrgInvitationService Invitations(
+        AppDbContext db,
+        IOrgMembershipService? membership = null,
+        IOrgEmptinessChecker? emptiness = null,
+        TimeProvider? clock = null) => new(
         db,
         Seats(db),
         membership ?? Membership(db),
-        new OrgEmptinessChecker(db),
+        emptiness ?? new OrgEmptinessChecker(db),
         Onboarding(db),
         Auth0.Object,
         Cache.Object,
         Queue(),
         EmailTestHelpers.Links(PublicSiteBaseUrl),
         NullLogger<OrgInvitationService>.Instance,
-        Clock);
+        clock ?? Clock);
 
     public OrgTeamService Team(AppDbContext db) => new(
         db,

@@ -129,7 +129,7 @@ public sealed partial class OrgInvitationService(
         string actorUserId,
         CancellationToken cancellationToken = default)
     {
-        await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
+        var actor = await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
         publicSiteLinks.EnsureConfigured();
 
         var now = Now;
@@ -139,6 +139,8 @@ public sealed partial class OrgInvitationService(
         await using (var transaction = await OrgTeamAccess.BeginSeatsTransactionAsync(db, orgId, cancellationToken))
         {
             invitation = await FindAsync(orgId, invitationId, cancellationToken);
+            // Sending again gives the role once more (an expired one is revived): the same rule as creating it.
+            EnsureMayHandle(actor, invitation, assigning: true);
             if (invitation.Status is OrgInvitationStatus.Accepted or OrgInvitationStatus.Revoked)
                 throw new DomainConflictException(OrgInvitationErrors.NotPending, "OrgInvitationNotPending");
 
@@ -180,12 +182,13 @@ public sealed partial class OrgInvitationService(
         string actorUserId,
         CancellationToken cancellationToken = default)
     {
-        await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
+        var actor = await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
 
         var now = Now;
         await using var transaction = await OrgTeamAccess.BeginSeatsTransactionAsync(db, orgId, cancellationToken);
 
         var invitation = await FindAsync(orgId, invitationId, cancellationToken);
+        EnsureMayHandle(actor, invitation, assigning: false);
         switch (invitation.Status)
         {
             case OrgInvitationStatus.Revoked:
@@ -214,7 +217,7 @@ public sealed partial class OrgInvitationService(
         string actorUserId,
         CancellationToken cancellationToken = default)
     {
-        await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
+        var actor = await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
         publicSiteLinks.EnsureConfigured();
 
         var now = Now;
@@ -224,6 +227,7 @@ public sealed partial class OrgInvitationService(
         await using (var transaction = await OrgTeamAccess.BeginSeatsTransactionAsync(db, orgId, cancellationToken))
         {
             invitation = await FindAsync(orgId, invitationId, cancellationToken);
+            EnsureMayHandle(actor, invitation, assigning: false);
             if (!OrgInvitationRules.IsOpen(invitation.Status, invitation.ExpiresAt, now))
                 throw new DomainConflictException(OrgInvitationErrors.NotPending, "OrgInvitationNotPending");
 
@@ -300,6 +304,20 @@ public sealed partial class OrgInvitationService(
             .Select(a => a.ToLowerInvariant())
             .Distinct()
             .ToList();
+
+    /// <summary>
+    /// 403 <see cref="OrgInvitationErrors.OwnerRequired"/> unless <paramref name="actor"/> may give this invitation's role
+    /// (<paramref name="assigning"/>: resend, including the revival of an expired one) or act on it (revoke, copy link).
+    /// Only the owner creates or touches an administrator (decision D15); <see cref="CreateAsync"/> applies the same rule.
+    /// </summary>
+    private static void EnsureMayHandle(OrgMember actor, OrgInvitation invitation, bool assigning)
+    {
+        var allowed = assigning
+            ? OrgTeamRules.CanAssign(actor.Role, invitation.Role)
+            : OrgTeamRules.CanActOn(actor.Role, invitation.Role);
+        if (!allowed)
+            throw new DomainForbiddenException(OrgInvitationErrors.OwnerRequired, "OrgOwnerRequired");
+    }
 
     /// <summary>The invitation of the org, tracked, or 404 <see cref="OrgInvitationErrors.NotFound"/>.</summary>
     private async Task<OrgInvitation> FindAsync(Guid orgId, Guid invitationId, CancellationToken cancellationToken) =>

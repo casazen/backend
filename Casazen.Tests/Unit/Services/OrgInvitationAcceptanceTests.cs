@@ -34,9 +34,17 @@ public class OrgInvitationAcceptanceTests
         OnboardingConsentsInput? consents = null)
     {
         await using var db = _kit.NewDb();
-        return await _kit.Invitations(db).AcceptAsync(new AcceptOrgInvitation(
-            token, userId, email, verified, platformAdmin, consents ?? OrgInvitationTestKit.Consents(), "203.0.113.7"));
+        return await _kit.Invitations(db).AcceptAsync(Accept(token, userId, email, verified, platformAdmin, consents));
     }
+
+    private static AcceptOrgInvitation Accept(
+        string token,
+        string userId = AnnaId,
+        string email = AnnaEmail,
+        bool verified = true,
+        bool platformAdmin = false,
+        OnboardingConsentsInput? consents = null) =>
+        new(token, userId, email, verified, platformAdmin, consents ?? OrgInvitationTestKit.Consents(), "203.0.113.7");
 
     /// <summary>An org with its owner, an invitation for Anna and Anna herself with no org.</summary>
     private async Task<(Guid OrgId, OrgInvitation Invitation, string Token)> OrgWithInvitationForNewUserAsync(
@@ -267,6 +275,40 @@ public class OrgInvitationAcceptanceTests
 
         Assert.Equal(OrgInvitationErrors.Expired, error.Code);
         await AssertNothingWrittenAsync(invitation, orgId);
+    }
+
+    [Fact]
+    public async Task AcceptAsync_ExpiredWhileWaitingForTheLocks_IsExpiredAndWritesNothing()
+    {
+        var (orgId, invitation, token) = await OrgWithInvitationForNewUserAsync();
+        // The service reads the clock once before the locks and once under them. The second read is past the expiry.
+        var clock = new JumpOnLaterReadClock(_kit.Now, TimeSpan.FromDays(8), jumpFromRead: 2);
+
+        await using var db = _kit.NewDb();
+        var error = await Assert.ThrowsAsync<DomainGoneException>(() => _kit.Invitations(db, clock: clock).AcceptAsync(Accept(token)));
+
+        Assert.Equal(OrgInvitationErrors.Expired, error.Code);
+        await AssertNothingWrittenAsync(invitation, orgId);
+    }
+
+    [Fact]
+    public async Task AcceptAsync_ATokenRotatedWhileWaitingForTheLocks_IsInvalidAndWritesNothing()
+    {
+        var (targetId, invitation, token, oldOrgId) = await InvitationForPersonWithEmptyOrgAsync();
+
+        await using var db = _kit.NewDb();
+        var error = await Assert.ThrowsAsync<DomainGoneException>(() =>
+            _kit.Invitations(db, emptiness: new RotateTokenWhenTheOldOrgIsChecked(_kit, invitation.Id)).AcceptAsync(Accept(token)));
+
+        Assert.Equal(OrgInvitationErrors.Invalid, error.Code);
+        await AssertNothingWrittenAsync(invitation, targetId);
+        Assert.Equal(oldOrgId, (await _kit.ReadMemberAsync(AnnaId))!.OrgId);
+        await using var verify = _kit.NewDb();
+        Assert.True((await verify.Orgs.AsNoTracking().SingleAsync(o => o.Id == oldOrgId)).IsActive);
+        var stored = await _kit.ReadInvitationAsync(invitation.Id);
+        Assert.Equal(OrgInvitationStatus.Pending, stored.Status);
+        Assert.NotEqual(invitation.TokenHash, stored.TokenHash);
+        Assert.Null(stored.AcceptedAt);
     }
 
     [Fact]
@@ -870,5 +912,37 @@ public class OrgInvitationAcceptanceTests
         public Guid? OrgId { get; } = orgId;
 
         public bool FilterEnabled { get; } = filterEnabled;
+    }
+
+    /// <summary>
+    /// The first reads return <paramref name="start"/>; from <paramref name="jumpFromRead"/> on, the clock is
+    /// <paramref name="jumpBy"/> later. The acceptance reads it once before the locks and once under them.
+    /// </summary>
+    private sealed class JumpOnLaterReadClock(DateTime start, TimeSpan jumpBy, int jumpFromRead) : TimeProvider
+    {
+        private int _reads;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            var read = Interlocked.Increment(ref _reads);
+            var utc = DateTime.SpecifyKind(start, DateTimeKind.Utc) + (read >= jumpFromRead ? jumpBy : TimeSpan.Zero);
+            return new DateTimeOffset(utc);
+        }
+    }
+
+    /// <summary>
+    /// A resend, copy link or reminder that commits while the acceptance waits for the seats lock: the org being left
+    /// is still empty, and the invitation's token has been replaced.
+    /// </summary>
+    private sealed class RotateTokenWhenTheOldOrgIsChecked(OrgInvitationTestKit kit, Guid invitationId) : IOrgEmptinessChecker
+    {
+        public async Task<OrgEmptiness> CheckAsync(Guid orgId, string userId, CancellationToken cancellationToken = default)
+        {
+            await using var db = kit.NewDb();
+            var invitation = await db.OrgInvitations.IgnoreQueryFilters().SingleAsync(i => i.Id == invitationId, cancellationToken);
+            invitation.TokenHash = OrgInvitationTokens.Hash(OrgInvitationTokens.Generate());
+            await db.SaveChangesAsync(cancellationToken);
+            return OrgEmptiness.Empty;
+        }
     }
 }
