@@ -10,10 +10,12 @@ namespace Casazen.Web.Infrastructure;
 public sealed class OrgBillingAdminRequirement : IAuthorizationRequirement;
 
 /// <summary>
-/// Plan, entitlement, billing and domain of the caller's host org: an org policy, not a context one (PL-16, A1-36). The
-/// owner of the org passes whichever rental context it works in (short-rent <c>PropertyOwner</c> or long-rent
-/// <c>LongTermLandlord</c>), as do a <c>PropertyManager</c> and a platform admin; a <c>Staff</c> collaborator or a guest
-/// never does. Like the host contexts, it waits for the host onboarding and the current consents (PL-02): refused with
+/// Plan, entitlement, billing, branding, domain and site documents of the caller's host org: an org policy, not a
+/// context one (PL-16, A1-36). Only the <b>owner</b> of the org passes, whichever rental context it works in (short-rent
+/// <c>PropertyOwner</c> or long-rent <c>LongTermLandlord</c>), and the platform admin. Everyone else is refused: a
+/// <c>Staff</c> collaborator, a guest, a <c>PropertyManager</c> (it runs the properties, not the plan and the invoices:
+/// wave decision D12) and, with a DB membership only, any holder of a role other than the owner's (<see cref="OrgOwnerRoles"/>).
+/// Like the host contexts, it waits for the host onboarding and the current consents (PL-02): refused with
 /// <see cref="HostOnboarding.RequiredCode"/> until then, platform admins included, since billing an org means using it
 /// as a host.
 /// </summary>
@@ -23,22 +25,15 @@ public class OrgBillingAdminAuthorizationHandler(
     IHostOnboardingGate hostOnboardingGate) : AuthorizationHandler<OrgBillingAdminRequirement>
 {
     /// <summary>
-    /// DB context memberships that grant billing administration without relying on JWT roles: the owner of either rental
-    /// context (a landlord with only long-term leases pays its plan too, PL-16) and the platform admin.
+    /// JWT roles that grant billing administration: the owner of either rental context (a landlord with only long-term
+    /// leases pays its plan too, PL-16) and the platform admin. Not <c>PropertyManager</c> (D12): a property manager
+    /// operates the properties but does not manage plan and invoices. The DB memberships that grant it without relying
+    /// on the JWT are the owner's roles of <see cref="OrgOwnerRoles"/>.
     /// </summary>
-    private static readonly IReadOnlyDictionary<string, HashSet<string>> AllowedMembershipRoleKeysByContext =
-        new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["short-rent"] = new(StringComparer.OrdinalIgnoreCase) { "property_owner" },
-            ["long-rent"] = new(StringComparer.OrdinalIgnoreCase) { "long_term_landlord" },
-            ["admin"] = new(StringComparer.OrdinalIgnoreCase) { "platform_admin" },
-        };
-
     private static readonly HashSet<string> AllowedRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "PropertyOwner",
         "LongTermLandlord",
-        "PropertyManager",
         "Admin",
     };
 
@@ -80,7 +75,8 @@ public class OrgBillingAdminAuthorizationHandler(
 
     /// <summary>
     /// Falls back to the DB memberships written at onboarding / role change, so a JWT issued while
-    /// the Auth0 role sync was failing does not lock the host out of billing (A1-02).
+    /// the Auth0 role sync was failing does not lock the host out of billing (A1-02). Only an owner's role key counts
+    /// (<see cref="OrgOwnerRoles"/>): a member of the org with a membership of another role never gets through.
     /// </summary>
     private async Task<bool> HasAllowedMembershipAsync(ClaimsPrincipal user)
     {
@@ -96,8 +92,7 @@ public class OrgBillingAdminAuthorizationHandler(
     }
 
     private static bool IsAllowedBillingMembership(ContextAccess membership) =>
-        AllowedMembershipRoleKeysByContext.TryGetValue(membership.ContextKey, out var allowedRoleKeys) &&
-        allowedRoleKeys.Contains(membership.RoleKey);
+        OrgOwnerRoles.IsOwnerRole(membership.ContextKey, membership.RoleKey);
 
     private static bool HasAllowedRole(ClaimsPrincipal user) =>
         user.Claims.Any(c =>
