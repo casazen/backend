@@ -407,6 +407,12 @@ public class SupplierDuplicateMergeDto
 
     public int DevicesMoved { get; set; }
 
+    /// <summary>
+    /// Services of the duplicate's price catalog (SP-02) that moved to the keeper, the deleted ones too; a slug the keeper
+    /// already uses got the next free suffix.
+    /// </summary>
+    public int ServiceListingsMoved { get; set; }
+
     /// <summary>False when the duplicate org also holds host data: only its supplier profile was removed.</summary>
     public bool DuplicateOrgDeleted { get; set; }
 }
