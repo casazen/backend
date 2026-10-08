@@ -1459,7 +1459,7 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 | Marked as paid | the supplier | unchanged | `service-request-paid` |
 
 A status that has no message (a new request, a paid one, a request the host cancelled itself, **a status the code does not know**) sends
-**nothing**: before this task `EmailTemplates` built an email for any unknown status.
+**nothing**, and it is not an error: before this task `EmailTemplates.ServiceRequestStatusChanged` threw for any status other than taken, completed and rejected, and the error was only logged.
 
 ### 21.11 Mobile app
 
