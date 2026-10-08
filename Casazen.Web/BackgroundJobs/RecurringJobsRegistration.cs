@@ -127,6 +127,13 @@ public static class RecurringJobsRegistration
             job => job.ExecuteAsync(CancellationToken.None),
             PropertyComplianceCheckJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // CO-18 (PO 2026-10-08): placeholder — runs weekly to check/update official fiscal rates when a source is configured.
+        recurringJobManager.AddOrUpdate<FiscalRatesUpdateJob>(
+            FiscalRatesUpdateJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "0 5 * * 1",  // every Monday at 05:00 UTC
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
     /// <summary>

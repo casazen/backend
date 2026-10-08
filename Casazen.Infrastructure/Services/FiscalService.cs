@@ -574,6 +574,11 @@ public partial class FiscalService(
         public static bool ImpresaAvailable(TaxpayerYear taxpayer, bool orgHasPartitaIva) =>
             !taxpayer.IsOrgTaxProfile || orgHasPartitaIva;
 
+        /// <summary>
+        /// Builds the row for the property. The regime is never applied automatically; the user must confirm it by calling
+        /// AssignRegimeAsync. <c>RegimeConfirmed</c> is set only when an explicit assignment exists in the database.
+        /// CO-18: CasaZen considers a single owner; co-ownership quota is not calculated (PO 2026-10-08).
+        /// </summary>
         public FiscalPropertyRow BuildRow(YearProperty property, bool orgHasPartitaIva)
         {
             var taxpayer = TaxpayerOf(property);
@@ -609,7 +614,8 @@ public partial class FiscalService(
                 taxpayer.Index,
                 cedolareRate,
                 taxNote,
-                available);
+                available,
+                RegimeConfirmed: assignment is not null);
         }
 
         /// <summary>
