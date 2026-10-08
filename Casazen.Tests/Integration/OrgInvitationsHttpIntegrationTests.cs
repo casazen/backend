@@ -10,6 +10,7 @@ using Casazen.Tests.Unit.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Configuration;
@@ -36,12 +37,26 @@ public sealed class OrgInvitationsFactory : CasazenWebApplicationFactory
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
+        var inMemoryStore = $"org-invitations-{Guid.NewGuid():N}";
         builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:OrgTeam"] = "true" }));
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IEmailQueue>();
             services.AddSingleton<IEmailQueue>(_emails);
+
+            // The in-memory fallback of the host is one store for every test host of the process, and other suites write
+            // roles and organisations into it: this host gets a store of its own, where the seed of the tests is all there is.
+            if (!UsesPostgreSql)
+            {
+                RemoveAllOf<DbContextOptions<AppDbContext>>(services);
+                RemoveAllOf<IDbContextOptionsConfiguration<AppDbContext>>(services);
+                services.AddDbContext<AppDbContext>(options =>
+                {
+                    options.UseInMemoryDatabase(inMemoryStore);
+                    options.ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning));
+                });
+            }
         });
     }
 }
@@ -444,6 +459,44 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.False(await db.OrgMembers.IgnoreQueryFilters().AnyAsync(m => m.UserId == eveId));
     }
 
+    // ─── The lookup tells a stranger nothing ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Lookup_EveryLinkThatDoesNotWork_GetsExactlyTheSameAnswer()
+    {
+        var (ownerId, _) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        using var owner = OwnerClient(ownerId);
+        using var anonymous = factory.CreateClient();
+        var usedEmail = NewEmail("used");
+        var (_, used) = await InviteAsync(owner, usedEmail);
+        using (var invitee = InviteeClient(NewUserId("used"), usedEmail))
+            Assert.Equal(HttpStatusCode.OK, (await invitee.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(used))).StatusCode);
+        var (revokedId, revoked) = await InviteAsync(owner, NewEmail("revoked"));
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.PostAsync($"/api/orgs/me/invitations/{revokedId}/revoke", null)).StatusCode);
+        var (expiredId, expired) = await InviteAsync(owner, NewEmail("expired"));
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            (await db.OrgInvitations.IgnoreQueryFilters().SingleAsync(i => i.Id == expiredId)).ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+            await db.SaveChangesAsync();
+        }
+
+        var answers = new List<(int Status, string? Code, string? Title, string? Detail)>();
+        foreach (var token in new[] { used, revoked, expired, new string('a', 64), "not a token", new string('0', 64) })
+        {
+            var response = await anonymous.PostAsJsonAsync("/api/org-invitations/lookup", new { token });
+            var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+            answers.Add((
+                (int)response.StatusCode,
+                problem.GetProperty("code").GetString(),
+                problem.TryGetProperty("title", out var title) ? title.GetString() : null,
+                problem.GetProperty("detail").GetString()));
+        }
+
+        Assert.Single(answers.Distinct());
+        Assert.Equal((410, "invitation_invalid"), (answers[0].Status, answers[0].Code));
+    }
+
     /// <summary>A context on the host's database, for the data a test writes directly (the scope lives as long as the test).</summary>
     private AppDbContext NewHostContext() => factory.Services.CreateScope().ServiceProvider.GetRequiredService<AppDbContext>();
 }
@@ -492,5 +545,41 @@ public class OrgInvitationsFlagOffIntegrationTests(OrgInvitationsFlagOffIntegrat
 
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         }
+    }
+}
+
+/// <summary>
+/// The lookup of an invitation is anonymous and answers every link that does not work the same way, so it is limited per
+/// client: three calls here, the fourth is refused with 429 (the default is 20 a minute, <c>RateLimiting__PublicInvitationLookup__PermitLimit</c>).
+/// </summary>
+public class OrgInvitationsLookupRateLimitIntegrationTests(OrgInvitationsLookupRateLimitIntegrationTests.Factory factory)
+    : IClassFixture<OrgInvitationsLookupRateLimitIntegrationTests.Factory>
+{
+    public sealed class Factory : CasazenWebApplicationFactory
+    {
+        protected override bool SeedComuneSample => false;
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureAppConfiguration((_, config) =>
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Features:OrgTeam"] = "true",
+                    ["RateLimiting:PublicInvitationLookup:PermitLimit"] = "3",
+                }));
+        }
+    }
+
+    [Fact]
+    public async Task Lookup_MoreCallsThanThePolicyAllows_AreRefusedWith429()
+    {
+        using var client = factory.CreateClient();
+        var body = new { token = new string('a', 64) };
+
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(HttpStatusCode.Gone, (await client.PostAsJsonAsync("/api/org-invitations/lookup", body)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await client.PostAsJsonAsync("/api/org-invitations/lookup", body)).StatusCode);
     }
 }
