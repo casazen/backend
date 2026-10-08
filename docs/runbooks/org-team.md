@@ -433,9 +433,11 @@ With `Features__OrgTeam` off it only purges (steps 1 and 2 would write to people
 
 **What Hangfire keeps.** The queued job of the invitation email carries the recipient, the subject and the **HTML with the
 live link**, so the token is readable in the Hangfire job arguments until Hangfire removes the succeeded job (24 hours;
-`docs/runbooks/email.md`, "Data kept in Hangfire"). Whoever can read the Hangfire schema can accept an invitation during
-that time, which is why the dashboard stays off and the schema stays restricted (`docs/runbooks/hangfire.md`). After it the
-token exists nowhere: the database has only its hash.
+`docs/runbooks/email.md`, "Data kept in Hangfire"). The retention of the job arguments is not configured further, and the
+risk is accepted because the link is **single use** and the acceptance needs an account whose **verified email is the
+invited one**: whoever reads the Hangfire schema can read the link but cannot use it with another account. The dashboard
+stays off and the schema restricted all the same (`docs/runbooks/hangfire.md`). After the job is gone the token exists
+nowhere: the database has only its hash.
 
 ## 16. GDPR
 
@@ -448,6 +450,9 @@ token exists nowhere: the database has only its hash.
   of each member of the org. **No names, no emails**: the export is reachable with property permissions until #461 moves it
   under the owner's, and the names are on the people page. The invitations are not exported (temporary, closed ones are deleted).
 - **Logs** never carry the token, and carry the email only masked (`m***@example.com`).
+- **Privacy notice (legal text).** It must say that the name and the email of the invitee are processed to send the
+  invitation and kept until 30 days after it closed, and that the people of an org are visible to its owner and
+  administrators. The wording belongs to the legal owner (`docs/runbooks/legal-documents.md`): **not changed by AM-02**, to do before the flag is turned on.
 - Erasing the account of a member is not part of AM-02 (`docs/runbooks/gdpr.md`): the member row is deleted with the user (cascade).
 
 ## 17. Operating it
