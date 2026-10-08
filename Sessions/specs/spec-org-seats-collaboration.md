@@ -19,7 +19,7 @@
 > Division of the work: **AM-01 (done here)** the model, the roles, the `account` context, the backfill of the owners, the
 > veto of the JWT and the immediate deactivation (`member_inactive`); **AM-02** invitations, seats, acceptance and the
 > change of org; **AM-03** the scope per property and the fine permissions; **AM-04** the screens. No custom roles and no
-> transfer of the ownership in this version (D13, D15): only the owner creates an Admin, nobody assigns Owner, the last
+> transfer of the ownership in this version (D15): only the owner creates an Admin, nobody assigns Owner, the last
 > owner stays (409 `org_last_owner`).
 
 ## Overview
@@ -130,7 +130,7 @@ granted exactly the seat-scoped access I was offered — no more, no less.
 
 - **AC9 (no privilege escalation)**: an inviter **cannot grant a role whose permission set
   exceeds the inviter's own**; the invitation names an `OrgRole` and the service picks the seeded
-  `Role` rows (`HasData`, AM-01) of the areas — there are no custom roles (D13). Only the owner
+  `Role` rows (`HasData`, AM-01) of the areas — there are no custom roles (D15). Only the owner
   creates an Admin and **nobody assigns Owner** (422 `org_owner_not_assignable`, D15: no transfer
   of the ownership in this version). Attempts to over-grant return **403**.
 

@@ -1,8 +1,8 @@
 # Runbook: org membership, org roles and the `account` context
 
-Task AM-01 of the wave spec (org team, step 1: who belongs to which org and as what; decisions D1, D12, D13, D14, D15,
-D35; backend only). Invitations and seats come with AM-02, the per-property scope and the fine permissions with AM-03,
-the screens with AM-04: **nothing here changes what a user sees today**. The flag `OrgTeam` is off by default.
+Task AM-01 of the wave spec (org team, step 1: who belongs to which org and as what; decisions D1, D12, D14, D15;
+backend only). Invitations and seats (D13, D35) come with AM-02, the per-property scope and the fine permissions with
+AM-03, the screens with AM-04: **nothing here changes what a user sees today**. The flag `OrgTeam` is off by default.
 
 ## 1. What exists after AM-01
 
