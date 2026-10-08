@@ -354,6 +354,11 @@ public class AppDbContext(
         // SU-04: the comune chosen from the official list; the region follows it.
         modelBuilder.Entity<Property>().HasIndex(p => p.ComuneIstatCode);
 
+        // PM-01: the lists of the host areas filter the properties of an org by rental mode (GET /api/properties?mode=), and
+        // the jobs and the public site read the short-rent ones; the column is stored as an integer (append only) and the
+        // existing rows keep the default 0 = Short (migration AddPropertyRentalMode, docs/runbooks/property-rental-mode.md).
+        modelBuilder.Entity<Property>().HasIndex(p => new { p.OrgId, p.RentalMode });
+
         // Unique address PER ORG and per unit (PC-06, A2-19). Before, the index was global: a host with two apartments in
         // the same building could not create the second, and a host whose address was already used by ANOTHER org got a
         // 409 that revealed a datum of that tenant. "AddressKey" is a stored generated column (shadow property): street,

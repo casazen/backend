@@ -1,3 +1,4 @@
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 
 namespace Casazen.Core.DTOs;
@@ -45,6 +46,9 @@ public class PropertyDetailResponse
 
     /// <summary>UTC instant the property was paused; null when not paused.</summary>
     public DateTime? PausedAt { get; set; }
+
+    /// <summary>How the property is let (PM-01): <c>Short</c> (short stays) or <c>Long</c> (long-term leases), exclusive.</summary>
+    public RentalMode RentalMode { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
