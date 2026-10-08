@@ -1975,6 +1975,30 @@
   <data name="SupplierServiceCopySuffix" xml:space="preserve">
     <value> (copy)</value>
   </data>
+  <data name="SupplierHoursInvalid" xml:space="preserve">
+    <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>
+  </data>
+  <data name="SupplierTimeOffInvalid" xml:space="preserve">
+    <value>The time off is not valid (fields: {0}). The first and the last day are required, the last day cannot be before the first nor already past, and the period lasts at most 366 days.</value>
+  </data>
+  <data name="SupplierTimeOffLimitReached" xml:space="preserve">
+    <value>You can have at most {0} upcoming time off periods: delete one you no longer need before adding another.</value>
+  </data>
+  <data name="SupplierTimeOffNotFound" xml:space="preserve">
+    <value>Time off not found: it may have been deleted already.</value>
+  </data>
+  <data name="SupplierBlockInvalid" xml:space="preserve">
+    <value>The time block is not valid (fields: {0}). The end must be after the start and not already past, the length at least 15 minutes (at most 31 days for a block), and an extra opening must stay within a single day.</value>
+  </data>
+  <data name="SupplierBlockLimitReached" xml:space="preserve">
+    <value>You can have at most {0} upcoming blocks and extra openings: delete the ones you no longer need before adding more.</value>
+  </data>
+  <data name="SupplierBlockNotFound" xml:space="preserve">
+    <value>Block not found: it may have been deleted already, or it comes from your connected calendar and is removed there.</value>
+  </data>
+  <data name="SupplierRulesInvalid" xml:space="preserve">
+    <value>The rules are not valid (fields: {0}). All five are required: break between jobs (0 to 240 minutes, in steps of 5), jobs per day (1 to 50), notice (0 to 720 hours), horizon (1 to 365 days) and slot step (15 to 240 minutes, in steps of 5).</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Provide the municipality or the property to search for suppliers.</value>
   </data>
