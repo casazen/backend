@@ -15,9 +15,11 @@ public class CancellationPolicy
     /// <summary>
     /// Stable programmatic identifier (e.g. "ampia", "intermedia"). Never shown to guests; used
     /// by application code to look up a policy without relying on translated display names (PC-02).
+    /// Callers that omit it still get a unique value: the column default is not <c>""</c>, and an
+    /// empty string would collide on <c>UIX_CancellationPolicies_Slug</c>.
     /// </summary>
     [Required, MaxLength(50)]
-    public string Slug { get; set; } = string.Empty;
+    public string Slug { get; set; } = $"p-{Guid.NewGuid():N}";
 
     [Required, MaxLength(50)]
     public string Name { get; set; } = string.Empty;

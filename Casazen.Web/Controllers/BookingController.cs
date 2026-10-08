@@ -29,7 +29,11 @@ public class BookingsController(
     ILogger<BookingsController> logger,
     IOptions<BookingsOptions> bookingsOptions) : ControllerBase
 {
+    /// <summary>Upper bound for <c>pageSize</c> on <c>GET /api/bookings</c>, same cap as the other paged lists.</summary>
+    private const int MaxPageSize = 100;
+
     private readonly BookingsOptions _bookingsOptions = bookingsOptions.Value;
+
     /// <summary>
     /// The bookings the caller sees, latest check-in first, as a plain array (web list, dashboard, guest detail):
     /// <c>propertyId</c> and <c>guestId</c> narrow it. TN-3: filtered in SQL by the caller's scope (org, and the owned
@@ -51,11 +55,15 @@ public class BookingsController(
         if (GetUserId() == null)
             return Unauthorized();
 
+        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
+        page = Math.Max(page, 1);
+        var effectivePageSize = Math.Clamp(pageSize ?? _bookingsOptions.DefaultPageSize, 1, MaxPageSize);
+
         var cancellationToken = HttpContext.RequestAborted;
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         // No org yet: nothing of any org is visible (the tenant filter showed nothing either).
         if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
-            return Ok(new PagedResultDto<BookingResponseDto> { Items = [], TotalCount = 0, Page = page, PageSize = pageSize ?? _bookingsOptions.DefaultPageSize });
+            return Ok(new PagedResultDto<BookingResponseDto> { Items = [], TotalCount = 0, Page = page, PageSize = effectivePageSize });
 
         if (propertyId is { } id)
         {
@@ -72,7 +80,6 @@ public class BookingsController(
             }
         }
 
-        var effectivePageSize = pageSize ?? _bookingsOptions.DefaultPageSize;
         var (bookings, totalCount) = await bookingService.GetPagedBookingsAsync(
             scope, page, effectivePageSize, propertyId, guestId, cancellationToken);
 
