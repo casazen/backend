@@ -25,8 +25,13 @@ public class RliExportService(
             return null;
 
         var body = BuildBody(lease, RliRegistrationDeadline.Resolve(lease, _clock.TodayInRome()));
+        // LT-09: This is the complete RLI pre-fill package for manual submission to the Agenzia delle Entrate
+        // (RLI web / Entratel / intermediario abilitato). CasaZen does NOT submit automatically and stores no
+        // Openapi credentials. (PO 2026-10-08)
+        // LT-09: Convert to PDF/A before sending. Library not yet configured; the generated file must be converted
+        // externally (e.g. via Adobe Acrobat, LibreOffice, or a PDF/A conversion service).
         var pdf = pdfRenderer.Render(PdfDocumentContent.FromPlainText(
-            "Precompilazione RLI - anteprima, non depositata",
+            "Pacchetto RLI per invio manuale - non depositato da CasaZen",
             body));
 
         await events.AddAsync(new LeaseEvent
@@ -41,8 +46,9 @@ public class RliExportService(
     private static string BuildBody(LeaseContract lease, DateTime? registrationDeadline)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Dataset RLI precompilato per revisione del locatore / intermediario abilitato.");
-        sb.AppendLine("CasaZen NON deposita questo file. CasaZen non e' intermediario abilitato (DPR 322/1998).");
+        sb.AppendLine("Dataset RLI precompilato per invio manuale - il locatore o il suo intermediario abilitato deposita il file.");
+        sb.AppendLine("CasaZen NON deposita questo file e NON e' intermediario abilitato (DPR 322/1998).");
+        sb.AppendLine("Nessun invio automatico. Nessuna credenziale Openapi utilizzata. (LT-09, PO 2026-10-08)");
         sb.AppendLine("Bozza da confermare con legale.");
         sb.AppendLine($"Riferimento contratto: {lease.Id:N}");
         sb.AppendLine($"Comune immobile: {lease.Property.City}");

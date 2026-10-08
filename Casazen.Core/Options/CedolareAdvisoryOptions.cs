@@ -53,6 +53,11 @@ public sealed class RegistroTaxOptions
 /// Stamp duty of the ordinary regime (fiscale.md L10): <see cref="EurPerUnit"/> every <see cref="PagesPerUnit"/> written
 /// pages, and in any case every <see cref="LinesPerUnit"/> lines, for each copy to register.
 /// </summary>
+/// <remarks>
+/// LT-01 (PO 2026-10-08): <see cref="EurPerUnit"/> (16,00 €) is used ONLY in the tax advisory report shown to the
+/// landlord. CasaZen does NOT collect, charge or settle bollo or imposta di registro via Stripe or any other payment
+/// channel. Any computed amount is visible only in the advisory/reporting UI.
+/// </remarks>
 public sealed class StampDutyOptions
 {
     public decimal EurPerUnit { get; set; }
