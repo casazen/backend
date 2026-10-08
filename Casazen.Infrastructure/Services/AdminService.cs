@@ -54,13 +54,16 @@ public class AdminService(
 
         // CIN compliance: valid/missing counted directly in SQL — Npgsql translates Regex.IsMatch to Postgres' native
         // ~ operator, reusing CinFormat's own pattern constants (single source of truth, A1-27). Invalid is the
-        // remainder, so this needs only two full-table scans instead of loading every row into memory.
-        var cinValid = await propertiesQuery.CountAsync(p =>
+        // remainder, so this needs only two full-table scans instead of loading every row into memory. The CIN is an
+        // obligation of the short stays (D.L. 145/2023): only the short-rent properties are counted (PM-01), so
+        // CinTotal can be lower than TotalProperties when some are in long-term mode.
+        var cinQuery = propertiesQuery.Where(PropertyRentalModeRules.IsShortRent);
+        var cinTotal = await cinQuery.CountAsync();
+        var cinValid = await cinQuery.CountAsync(p =>
             p.CinCode != null && p.CinCode != "" &&
             Regex.IsMatch(p.CinCode, CinFormat.Pattern) && !Regex.IsMatch(p.CinCode, CinFormat.LegacyPattern));
-        var cinMissing = await propertiesQuery.CountAsync(p => p.CinCode == null || p.CinCode == "");
-        var cinInvalid = totalProperties - cinValid - cinMissing;
-        var cinTotal = totalProperties;
+        var cinMissing = await cinQuery.CountAsync(p => p.CinCode == null || p.CinCode == "");
+        var cinInvalid = cinTotal - cinValid - cinMissing;
 
         // Bookings — server-side aggregates to avoid loading full table (filter bypassed — platform-wide)
         var totalBookings = await dbContext.Bookings.IgnoreQueryFilters().CountAsync();
@@ -118,8 +121,12 @@ public class AdminService(
         // every org, so it BYPASSES the global tenant filter with an audit line (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetCinComplianceAsync));
 
-        // Tenant filter only: a soft-deleted property (PC-05) has no CIN obligation left, it stays out of the report.
-        var query = dbContext.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsQueryable();
+        // Tenant filter only: a soft-deleted property (PC-05) has no CIN obligation left, it stays out of the report. So
+        // does a property in long-term mode (PM-01): the CIN is an obligation of the short stays.
+        var query = dbContext.Properties
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(PropertyRentalModeRules.IsShortRent)
+            .AsQueryable();
 
         // Filtered and paginated in SQL (A1-27): this used to load every property into memory. The regex reuses
         // CinFormat's own pattern constants (single source of truth, .claude/rules/compliance.md) — Npgsql
