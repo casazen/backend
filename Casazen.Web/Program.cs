@@ -172,6 +172,8 @@ builder.Services.AddScoped<PropertyComplianceCheckJob>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();
 builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
+builder.Services.Configure<BookingsOptions>(
+    builder.Configuration.GetSection(BookingsOptions.SectionName));
 builder.Services.Configure<SeoEventOptions>(
     builder.Configuration.GetSection(SeoEventOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(

@@ -49,6 +49,41 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<(IReadOnlyList<Booking> Items, int TotalCount)> GetPagedByScopeAsync(
+        HostScope scope,
+        int page,
+        int pageSize,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var query = context.Bookings
+            .AsNoTracking()
+            .Where(b => b.OrgId == scope.OrgId);
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(b => b.Property.OwnerId == ownerId);
+        if (propertyId is { } property)
+            query = query.Where(b => b.PropertyId == property);
+        if (guestId is { } guest)
+            query = query.Where(b => b.GuestId == guest);
+
+        var ordered = query
+            .OrderByDescending(b => b.CheckInDate)
+            .ThenBy(b => b.Id);
+
+        var totalCount = await ordered.CountAsync(cancellationToken);
+        var items = await ordered
+            .Include(b => b.Property)
+            .Include(b => b.Guest)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
+    }
+
     public async Task<IEnumerable<Booking>> GetByDateRangeAsync(
         Guid propertyId,
         DateTime startDate,
