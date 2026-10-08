@@ -18,6 +18,35 @@ public class OrgOwnerRolesTests
         Assert.True(OrgOwnerRoles.IsOwnerRole(contextKey, roleKey));
 
     [Theory]
+    [InlineData("account", "org_owner")]
+    [InlineData("account", "org_admin")]
+    [InlineData("ACCOUNT", "Org_Admin")]
+    public void IsOwnerRole_OwnerAndAdministratorOfTheAccountContext_IsTrue(string contextKey, string roleKey) =>
+        Assert.True(OrgOwnerRoles.IsOwnerRole(contextKey, roleKey));
+
+    [Theory]
+    [InlineData("account", "org_accountant")]
+    [InlineData("account", "property_owner")]
+    [InlineData("account", "staff")]
+    [InlineData("short-rent", "org_owner")]
+    [InlineData("long-rent", "org_admin")]
+    [InlineData("admin", "org_owner")]
+    public void IsOwnerRole_AccountantOrARoleOfAnotherContextAsAccount_IsFalse(string contextKey, string roleKey) =>
+        Assert.False(OrgOwnerRoles.IsOwnerRole(contextKey, roleKey));
+
+    [Theory]
+    [InlineData("account", "org_accountant")]
+    [InlineData("account", "org_clerk")]
+    public void IsHostMemberRole_NonOwnerRoleOfTheAccountContext_IsTrue(string contextKey, string roleKey) =>
+        Assert.True(OrgOwnerRoles.IsHostMemberRole(contextKey, roleKey));
+
+    [Theory]
+    [InlineData("account", "org_owner")]
+    [InlineData("account", "org_admin")]
+    public void IsHostMemberRole_OwnerRoleOfTheAccountContext_IsFalse(string contextKey, string roleKey) =>
+        Assert.False(OrgOwnerRoles.IsHostMemberRole(contextKey, roleKey));
+
+    [Theory]
     [InlineData("short-rent", "property_manager")]
     [InlineData("short-rent", "staff")]
     [InlineData("short-rent", "accountant")]
