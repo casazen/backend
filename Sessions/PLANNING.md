@@ -608,7 +608,7 @@ L’exit criterion è il **[Golden Journey](#golden-journey--percorso-di-riferim
 
 ### Fase 3 — Espansione (post-PMF)
 
-Marketplace pagamenti, scale SEO, temi aggiuntivi, team seats leggeri, OTA se richiesto.
+Marketplace pagamenti, scale SEO, temi aggiuntivi, team seats leggeri, OTA se richiesto, dispositivi smart per l’accesso all’alloggio (`smart-devices-access`).
 
 ---
 
@@ -629,6 +629,7 @@ Marketplace pagamenti, scale SEO, temi aggiuntivi, team seats leggeri, OTA se ri
 | `supplier-public-site` | 1 | Vetrina fornitore pubblica |
 | `native-supplier-app` | 2 | App fornitore (push) |
 | `seo-funnel` | 1 | CTA analytics |
+| `smart-devices-access` | 3 | Codice unico per soggiorno, controllo remoto, batteria; gate piano Pro/Scale |
 
 **Deprecata:** `spec-pwa-host-shell` — sostituita da `native-host-app` (complemento web).
 
@@ -664,6 +665,7 @@ Marketplace pagamenti, scale SEO, temi aggiuntivi, team seats leggeri, OTA se ri
 | Footer “Powered by CasaZen” | Visibile | Rimovibile |
 | App nativa host | ✅ (subset) | ✅ |
 | Console web fornitore | ✅ | ✅ |
+| Dispositivi smart (codice soggiorno, serratura, batteria) | ❌ catalogo e banner piano | ✅ Pro e Scale |
 
 ---
 
@@ -672,7 +674,7 @@ Marketplace pagamenti, scale SEO, temi aggiuntivi, team seats leggeri, OTA se ri
 Questa sezione sostituisce, dove in contrasto, le affermazioni "shipped" e "freeze" del resto del documento. Fonti: `specs/README.md` (stato di ogni spec con evidenza), `PIANO-RISANAMENTO-2026-09.md` § 9 (stato dei 335 difetti), `risanamento/RIEPILOGO-FINALE.md` (cosa è stato fatto, cosa resta e la procedura per portarlo su `develop`).
 
 - **Difetti dell'audit**: 335, di cui 327 chiusi e 8 parziali (nessuno aperto). "Chiuso" significa codice e test sul branch di integrazione, non "in produzione".
-- **Spec**: il registro dichiarava "shipped" 20 funzionalità in base alle issue chiuse. Ora `shipped` richiede codice, test e, dove serve, E2E eseguito. Risultato: **shipped** `public-booking-readmodel`, `branded-booking-site`, `public-site-design-system`, `supplier-console-web`, `compliance-wizards`, `ical-calendar-sync`, `micro-marketplace-v0`, `tenant-boundary`, `role-onboarding`, `admin-backend`, `property-detail`, `pricing-adapter-verification`, `split-layer`; **partial** `connect-onboarding`, `direct-checkout`, `custom-domain-booking`, `native-host-app`, `guest-check-in-portal`, `golden-journey-e2e`, `seo-funnel`, `saas-billing`, `onboarding-plg`, `supplier-public-site` e le cinque spec LTR (D1: LTR è attivo, i provider esterni sono spenti dietro flag); **planned/specced/idea/frozen** invariati per `native-supplier-app`, `org-seats-collaboration`, `supplier-directory` e le spec frozen.
+- **Spec**: il registro dichiarava "shipped" 20 funzionalità in base alle issue chiuse. Ora `shipped` richiede codice, test e, dove serve, E2E eseguito. Risultato: **shipped** `public-booking-readmodel`, `branded-booking-site`, `public-site-design-system`, `supplier-console-web`, `compliance-wizards`, `ical-calendar-sync`, `micro-marketplace-v0`, `tenant-boundary`, `role-onboarding`, `admin-backend`, `property-detail`, `pricing-adapter-verification`, `split-layer`; **partial** `connect-onboarding`, `direct-checkout`, `custom-domain-booking`, `native-host-app`, `guest-check-in-portal`, `golden-journey-e2e`, `seo-funnel`, `saas-billing`, `onboarding-plg`, `supplier-public-site` e le cinque spec LTR (D1: LTR è attivo, i provider esterni sono spenti dietro flag); **planned/specced/idea/frozen** invariati per `native-supplier-app`, `org-seats-collaboration`, `supplier-directory` e le spec frozen. Dal 2026-10-08 è in più `smart-devices-access` (US-029, `planned`, fase 3, #464): requirement soltanto, nessun provider a pagamento.
 - **Golden Journey**: L3 da UI con host, fornitore, ospite e admin distinti, provato in locale 5 volte nella variante "paga in struttura" (FN-03, runbook `golden-journey-l3.md`). Il job GitHub Actions, la variante con carta Stripe di test e la suite Maestro su emulatore (FN-04, `mobile-e2e.md`) sono consegnati ma **mai eseguiti**: non contano come gate finché non sono verdi.
 - **Non fatto**: client del web service Alloggiati (CO-13: il file tracciato c'è, l'invio resta manuale), flussi ISTAT e Ross1000 (CO-22, specifiche non verificabili), tariffe dell'imposta di soggiorno non verificate alla fonte (RS-7), integrazione con gli assistenti AI (AI-01..AI-12, solo pianificata).
 - **Hosting**: il PO ha cancellato Railway; l'analisi delle alternative gratuite per il backend è in corso (task HOSTING, `docs/runbooks/free-hosting-analysis.md`). I riferimenti a Railway in questo documento e in `docs/INFRA.md` sono quelli storici e vanno riletti alla luce di quell'analisi.
