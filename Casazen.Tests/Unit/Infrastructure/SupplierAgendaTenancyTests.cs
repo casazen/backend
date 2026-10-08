@@ -160,6 +160,27 @@ public class SupplierAgendaTenancyTests
     }
 
     [Fact]
+    public void AgendaRequestsQuery_OnTheNpgsqlProvider_IsScopedByTheSupplierAndReadsNothingOfTheGuestOrTheProperty()
+    {
+        using var db = NewNpgsqlContext();
+
+        var sql = SupplierServiceRequestReader
+            .AgendaRowsOf(db, Guid.NewGuid(), new DateTime(2026, 10, 11, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 20, 0, 0, 0, DateTimeKind.Utc))
+            .ToQueryString();
+
+        // ServiceRequest is not tenant-filtered (two parties): the supplier is an explicit predicate, and the stay is read
+        // through the request only for its check-out date.
+        Assert.Matches("\"SupplierOrgId\" = @", sql);
+        Assert.Contains("\"CheckOutDate\"", sql);
+        Assert.Contains("\"Status\"", sql);
+        Assert.DoesNotContain("GuestId", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Address\"", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"FirstName\"", sql, StringComparison.Ordinal);
+        // The global filters of the host (tenant, soft delete) are off: the stay belongs to another tenant.
+        Assert.DoesNotContain("\"OrgId\" = @", sql.Replace("\"SupplierOrgId\" = @", string.Empty, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ManualWindowsQuery_LeavesOutTheEngagementsOfTheCalendarFeed()
     {
         using var db = NewNpgsqlContext();

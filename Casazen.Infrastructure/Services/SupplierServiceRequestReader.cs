@@ -85,20 +85,7 @@ public class SupplierServiceRequestReader(AppDbContext db) : ISupplierServiceReq
         var lowerUtc = from.AddDays(-1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var upperUtc = to.AddDays(2).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
-        // ServiceRequest has two parties and no tenant filter (TN-2 allow-list): the explicit SupplierOrgId predicate is the
-        // scope. IgnoreQueryFilters opens the stay of the host (another tenant) through the request, as Rows does; only its
-        // check-out date is read, never the guest.
-        var rows = await db.ServiceRequests
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(r => r.SupplierOrgId == supplierOrgId
-                        && r.Status != ServiceRequestStatus.Rifiutato
-                        && r.RentalContext == ServiceRequestRentalContext.ShortRent
-                        && r.Booking != null
-                        && r.Booking.CheckOutDate >= lowerUtc
-                        && r.Booking.CheckOutDate < upperUtc)
-            .Select(r => new { r.Id, r.Status, r.Category, CheckOutDate = r.Booking!.CheckOutDate })
-            .ToListAsync(cancellationToken);
+        var rows = await AgendaRowsOf(db, supplierOrgId, lowerUtc, upperUtc).ToListAsync(cancellationToken);
 
         return rows
             .Select(r => new SupplierAgendaRequest(r.Id, RomeCalendar.DateInRome(r.CheckOutDate), r.Status, r.Category))
@@ -107,6 +94,28 @@ public class SupplierServiceRequestReader(AppDbContext db) : ISupplierServiceReq
             .ThenBy(item => item.Id)
             .ToList();
     }
+
+    /// <summary>
+    /// The requests of the supplier whose stay checks out in <c>[lowerUtc, upperUtc)</c>, rejected ones left out: only the id,
+    /// the status, the category and the check-out date, never the guest. ServiceRequest has two parties and no tenant filter
+    /// (TN-2 allow-list): the explicit SupplierOrgId predicate is the scope. IgnoreQueryFilters opens the stay of the host
+    /// (another tenant) through the request, as <see cref="Rows"/> does.
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<AgendaRow> AgendaRowsOf(AppDbContext db, Guid supplierOrgId, DateTime lowerUtc, DateTime upperUtc) =>
+        db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.SupplierOrgId == supplierOrgId
+                        && r.Status != ServiceRequestStatus.Rifiutato
+                        && r.RentalContext == ServiceRequestRentalContext.ShortRent
+                        && r.Booking != null
+                        && r.Booking.CheckOutDate >= lowerUtc
+                        && r.Booking.CheckOutDate < upperUtc)
+            .Select(r => new AgendaRow(r.Id, r.Status, r.Category, r.Booking!.CheckOutDate));
+
+    /// <summary>A request of the agenda as read from the database.</summary>
+    internal sealed record AgendaRow(Guid Id, ServiceRequestStatus Status, string Category, DateTime CheckOutDate);
 
     /// <summary>
     /// The requests sent to <paramref name="supplierOrgId"/>, with the columns the supplier may see. ServiceRequest has two
