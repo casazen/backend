@@ -170,8 +170,10 @@ public sealed class BookingCancellationService(
         var pending = summaries.Sum(s => s.PendingRefundAmount);
         var refundable = summaries.Sum(s => s.RefundableAmount);
 
+        // BK-02, PO 2026-10-08: host cancellation always refunds 100% to the guest, regardless of the policy.
+        // The floor evaluated from the model is kept for reference only (shown as the rule in the response).
         var floor = CancellationRefundPolicy.Evaluate(booking, booking.Property?.CancellationPolicy, _clock.GetUtcNow());
-        var minimum = Math.Min(refundable, CancellationRefundPolicy.MinimumRefund(floor, paid, refunded + pending));
+        var minimum = refundable; // host cancellation: minimum = full refundable amount
 
         var offlinePaid = payments
             .Where(p => PaymentRefundService.PaymentIntentIdOf(p) is null && p.Status == PaymentStatus.Completed)
