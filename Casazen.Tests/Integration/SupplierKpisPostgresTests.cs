@@ -81,7 +81,9 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
             Request(supplierOrg, ServiceRequestStatus.PresoInCarico),
             Request(supplierOrg, ServiceRequestStatus.InCorso),
             Request(supplierOrg, ServiceRequestStatus.Rifiutato, updatedAt: Utc(2026, 9, 9, 9)),
-            Request(supplierOrg, ServiceRequestStatus.Rifiutato, updatedAt: Utc(2026, 8, 10, 9)));
+            Request(supplierOrg, ServiceRequestStatus.Rifiutato, updatedAt: Utc(2026, 8, 10, 9)),
+            // SP-04: a cancelled request is none of completed, rejected, waiting or upcoming, but it was a request.
+            Request(supplierOrg, ServiceRequestStatus.Annullato, updatedAt: Utc(2026, 9, 9, 9)));
         await using var app = WithClock(new FixedTimeProvider(MidSeptember));
         using var client = CreateClient(app, w.SupplierA.UserId, Supplier);
 
@@ -97,7 +99,7 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(1, month.GetProperty("rejected").GetInt32());
         Assert.Equal(1, month.GetProperty("awaitingAcceptance").GetInt32());
         Assert.Equal(2, month.GetProperty("upcoming").GetInt32());
-        Assert.Equal(11, month.GetProperty("totalRequests").GetInt32());
+        Assert.Equal(12, month.GetProperty("totalRequests").GetInt32());
 
         Assert.Equal("2026-08-01", previousMonth.GetProperty("from").GetString());
         Assert.Equal("2026-08-31", previousMonth.GetProperty("to").GetString());

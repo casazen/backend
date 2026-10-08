@@ -58,6 +58,88 @@ public class MigrationSqlTests
         Assert.Contains(keys, k => k.EndsWith("AddGuestCheckInSession", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddCalendarBlocksAndICalFeeds", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddServiceRequest", StringComparison.Ordinal));
+        // SP-04: after the agenda of SP-03 (the schedule of a request points at the catalog of SP-02).
+        Assert.True(
+            keys.FindIndex(k => k.EndsWith("AddServiceRequestSchedule", StringComparison.Ordinal))
+            > keys.FindIndex(k => k.EndsWith("AddSupplierAgenda", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void AddServiceRequestSchedule_AddsTheColumnsOfTheSpecWithJsonDefaultsTheIndexTheChecksAndTheCatalogForeignKey()
+    {
+        using var db = NewNpgsqlContext();
+        var (previous, script, down) = ScriptsOfAddServiceRequestSchedule(db);
+
+        foreach (var column in new[]
+                 {
+                     "ScheduledStartUtc", "ScheduledEndUtc", "ServiceListingId", "ServiceNameSnapshot", "EstimatedAmountCents",
+                     "QuotedAmountCents", "FinalAmountCents", "ResponseDueAt", "StartedAt", "CancelledAt", "CancelledBy",
+                     "CancellationReason", "CompletionNotes", "LastRemindedAt", "ProposedStartUtc", "ProposedEndUtc", "ProposedAt",
+                     "ProposedByUserId", "ProposalMessage",
+                 })
+        {
+            Assert.Contains($"ALTER TABLE \"ServiceRequests\" ADD \"{column}\" ", script);
+        }
+
+        // The three lists are never null and start empty, so the requests that exist need no backfill.
+        foreach (var column in new[] { "OptionsJson", "PriceLinesJson", "WorkPhotosJson" })
+            Assert.Contains($"ADD \"{column}\" jsonb NOT NULL DEFAULT '[]';", script);
+        Assert.Contains("ADD \"FinalAmountNeedsConfirmation\" boolean NOT NULL DEFAULT FALSE;", script);
+
+        // The inbox reads the requests of a supplier by their time; the catalog is kept when a service is deleted.
+        Assert.Contains("CREATE INDEX \"IX_ServiceRequests_SupplierOrgId_ScheduledStartUtc\" ON \"ServiceRequests\" (\"SupplierOrgId\", \"ScheduledStartUtc\");", script);
+        Assert.Contains("CREATE INDEX \"IX_ServiceRequests_ServiceListingId\"", script);
+        Assert.Contains("FOREIGN KEY (\"ServiceListingId\") REFERENCES \"SupplierServiceListings\" (\"Id\") ON DELETE SET NULL", script);
+        foreach (var check in new[] { "CK_ServiceRequests_ScheduledInterval", "CK_ServiceRequests_ProposedInterval", "CK_ServiceRequests_Amounts" })
+            Assert.Contains($"ADD CONSTRAINT \"{check}\" CHECK", script);
+
+        Assert.False(string.IsNullOrEmpty(previous));
+        // Only the columns of SP-04: the old requests stay "to be agreed", nothing is rewritten, nothing is dropped or made nullable.
+        Assert.DoesNotContain("UPDATE ", script);
+        Assert.DoesNotContain("DELETE FROM", script);
+        Assert.DoesNotContain("DROP ", script);
+        Assert.DoesNotContain("DROP NOT NULL", script);
+        Assert.DoesNotContain("SET NOT NULL", script);
+        Assert.DoesNotContain("ALTER COLUMN", script);
+        // The fields of the specs that come after (#466, #467) are not anticipated here.
+        Assert.DoesNotContain("\"OpenedBy\"", script);
+        Assert.DoesNotContain("\"LeaseContractId\"", script);
+
+        // Down: everything the migration added goes away.
+        Assert.Contains("DROP INDEX \"IX_ServiceRequests_SupplierOrgId_ScheduledStartUtc\";", down);
+        Assert.Contains("DROP COLUMN \"WorkPhotosJson\";", down);
+        Assert.Contains("DROP COLUMN \"ScheduledStartUtc\";", down);
+        Assert.Contains("DROP CONSTRAINT \"FK_ServiceRequests_SupplierServiceListings_ServiceListingId\";", down);
+    }
+
+    [Fact]
+    public void AddServiceRequestSchedule_TheChecksMirrorTheRulesOfTheService()
+    {
+        using var db = NewNpgsqlContext();
+        var (_, script, _) = ScriptsOfAddServiceRequestSchedule(db);
+
+        // A time has a start and an end, in that order; a proposal too, with the moment it was made; amounts are positive and bounded.
+        Assert.Matches(
+            "CK_ServiceRequests_ScheduledInterval\" CHECK \\(\\(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL\\) OR",
+            script);
+        Assert.Contains("\"ScheduledEndUtc\" > \"ScheduledStartUtc\"", script);
+        Assert.Contains("\"ProposedEndUtc\" > \"ProposedStartUtc\"", script);
+        Assert.Contains("\"ProposedAt\" IS NOT NULL", script);
+        Assert.Contains("\"FinalAmountCents\" BETWEEN 1 AND 10000000", script);
+        Assert.Contains("\"QuotedAmountCents\" BETWEEN 1 AND 10000000", script);
+        Assert.Contains("\"EstimatedAmountCents\" BETWEEN 1 AND 10000000", script);
+    }
+
+    private static (string Previous, string Up, string Down) ScriptsOfAddServiceRequestSchedule(AppDbContext db)
+    {
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var index = keys.FindIndex(k => k.EndsWith("AddServiceRequestSchedule", StringComparison.Ordinal));
+        Assert.True(index > 0);
+        var migrator = db.GetService<IMigrator>();
+        return (
+            keys[index - 1],
+            migrator.GenerateScript(fromMigration: keys[index - 1], toMigration: keys[index]),
+            migrator.GenerateScript(fromMigration: keys[index], toMigration: keys[index - 1]));
     }
 
     [Fact]
