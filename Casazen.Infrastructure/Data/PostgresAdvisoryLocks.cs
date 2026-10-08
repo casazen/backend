@@ -131,6 +131,21 @@ internal static class PostgresAdvisoryLocks
         /// photo list at the same time, so no photo is lost (PC-04).
         /// </summary>
         PropertyPhotos = 1_074,
+
+        /// <summary>
+        /// The people of one org (key: org id): adding, changing, deactivating or removing a member, and the owner's
+        /// creation, run one at a time, so the owner rule and, with AM-02, the seat count are decided on rows nobody else
+        /// is changing (AM-01).
+        /// </summary>
+        OrgMembership = 1_401,
+
+        /// <summary>
+        /// One run of the org membership reconcile (single key): two admin runs never create the same owners or fix the
+        /// same memberships at once (AM-01). The run does not take the <see cref="OrgMembership"/> lock of every org it
+        /// touches: a member write that races with it is arbitrated by the unique indexes, and the run then answers 409
+        /// and saves nothing (it is idempotent, so it is simply run again).
+        /// </summary>
+        OrgMembershipMaintenance = 1_402,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

@@ -13,6 +13,7 @@ public class UserService(
     IAuth0ManagementService auth0Management,
     IOrgService orgService,
     IUserContextMembershipService membershipService,
+    IOrgMembershipService orgMembershipService,
     IUserAuthorizationCache authorizationCache,
     ILogger<UserService> logger) : IUserService
 {
@@ -462,7 +463,11 @@ public class UserService(
         if (string.IsNullOrWhiteSpace(displayName))
             displayName = email;
 
-        await orgService.EnsureOrgForUserAsync(sub, email, displayName);
+        var org = await orgService.EnsureOrgForUserAsync(sub, email, displayName);
+
+        // AM-01: the one who sets up an org is its owner: the org member row and the account membership, together.
+        // Idempotent, so a repeated onboarding (or the retry of a failed one) finds them in place.
+        await orgMembershipService.EnsureOwnerAsync(sub, org.Id);
 
         user = await repository.GetByIdAsync(sub) ?? user;
 

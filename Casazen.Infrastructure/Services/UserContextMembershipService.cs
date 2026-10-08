@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -137,7 +138,20 @@ public sealed class UserContextMembershipService(
             .Select(m => new { m.ContextKey, m.Role.RoleKey })
             .ToListAsync(cancellationToken);
 
-        return memberships.Any(m => OrgOwnerRoles.IsHostMemberRole(m.ContextKey, m.RoleKey));
+        if (memberships.Any(m => OrgOwnerRoles.IsHostMemberRole(m.ContextKey, m.RoleKey)))
+            return true;
+
+        // AM-01: the org membership is the source of truth, whatever the memberships say (an administrator whose only
+        // rows are in the account context would otherwise look like an owner). IgnoreQueryFilters: the guard runs for a
+        // user whose request may have no tenant yet; the read is scoped to this user explicitly.
+        var orgRole = await db.OrgMembers
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(m => m.UserId == userId)
+            .Select(m => (OrgRole?)m.Role)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return orgRole is not null && orgRole != OrgRole.Owner;
     }
 
     private sealed record RoleRow(int Id, string ContextKey, string RoleKey);

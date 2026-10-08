@@ -104,7 +104,10 @@ public class MemberOnboardingIntegrationTests(CasazenWebApplicationFactory facto
         var check = verify.ServiceProvider.GetRequiredService<AppDbContext>();
         var contexts = await check.UserContextMemberships.AsNoTracking()
             .Where(m => m.UserId == ownerId).Select(m => m.ContextKey).ToListAsync();
-        Assert.Equal(["long-rent"], contexts);
+        // AM-01: the onboarding also makes its caller the owner of the org (org member + account membership).
+        Assert.Equal(["account", "long-rent"], contexts.Order());
+        var member = await check.OrgMembers.IgnoreQueryFilters().AsNoTracking().SingleAsync(m => m.UserId == ownerId);
+        Assert.Equal((org.Id, Casazen.Core.Entities.Enums.OrgRole.Owner), (member.OrgId, member.Role));
     }
 
     [Fact]
