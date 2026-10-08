@@ -392,4 +392,58 @@ public class EntitlementServiceTests
 
         Assert.True(await service.CanUseCustomDomainAsync(org.Id));
     }
+
+    // ─── Seats of the org team (AM-02, D13 and D35) ────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(PlanTier.Starter, 2)]
+    [InlineData(PlanTier.Pro, 10)]
+    [InlineData(PlanTier.Scale, int.MaxValue)]
+    public void ResolveMaxSeats_NoConfiguration_IsTheCatalogDefault(PlanTier tier, int expected)
+    {
+        using var db = NewDb();
+
+        Assert.Equal(expected, new EntitlementService(db, Config()).ResolveMaxSeats(tier));
+    }
+
+    [Fact]
+    public void ResolveMaxSeats_PositiveConfiguredValue_ReplacesTheDefaultOfThatTierOnly()
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config(new Dictionary<string, string?>
+        {
+            ["Entitlement:Tiers:Pro:MaxSeats"] = "25",
+            ["Entitlement:Tiers:Scale:MaxSeats"] = "100",
+        }));
+
+        Assert.Equal(25, service.ResolveMaxSeats(PlanTier.Pro));
+        Assert.Equal(100, service.ResolveMaxSeats(PlanTier.Scale));
+        Assert.Equal(2, service.ResolveMaxSeats(PlanTier.Starter));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-3")]
+    [InlineData("many")]
+    [InlineData("")]
+    public void ResolveMaxSeats_ConfiguredValueNotAPositiveNumber_FallsBackToTheDefault(string configured)
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config(new Dictionary<string, string?> { ["Entitlement:Tiers:Pro:MaxSeats"] = configured }));
+
+        Assert.Equal(10, service.ResolveMaxSeats(PlanTier.Pro));
+    }
+
+    /// <summary>D35: with a subscription not in good standing the effective tier is Starter, and so are the seats.</summary>
+    [Fact]
+    public void ResolveMaxSeats_OfTheEffectiveTierOfAnUnpaidProOrg_IsTheStarterNumber()
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config());
+        var unpaid = OrgWith(PlanTier.Pro, SubscriptionStatus.Unpaid);
+        var active = OrgWith(PlanTier.Pro, SubscriptionStatus.Active);
+
+        Assert.Equal(2, service.ResolveMaxSeats(service.ResolveEffectiveTier(unpaid)));
+        Assert.Equal(10, service.ResolveMaxSeats(service.ResolveEffectiveTier(active)));
+    }
 }

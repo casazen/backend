@@ -131,4 +131,21 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
             ? fallback
             : DefaultMaxProperties[PlanTier.Starter];
     }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The default of a tier is <see cref="PlanCatalog.MaxSeatsFor"/> (Starter 2, Pro 10, Scale unlimited); a positive
+    /// <c>Entitlement:Tiers:{Tier}:MaxSeats</c> replaces it. A value that is missing, not a number or not positive is ignored
+    /// (the default applies): a typo never locks an org out of inviting nor opens the plan to unlimited people.
+    /// </remarks>
+    public int ResolveMaxSeats(PlanTier tier)
+    {
+        var configured = configuration[$"Entitlement:Tiers:{tier}:MaxSeats"];
+        if (int.TryParse(configured, out var value) && value > 0)
+            return value;
+
+        return PlanCatalog.All.Any(e => e.Tier == tier)
+            ? PlanCatalog.MaxSeatsFor(tier)
+            : PlanCatalog.MaxSeatsFor(PlanTier.Starter);
+    }
 }
