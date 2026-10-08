@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -29,11 +30,6 @@ public partial class FiscalService(
 {
     /// <summary>Taxpayer key of the org tax profile when it has no codice fiscale.</summary>
     private const string OrgProfileKey = "";
-
-    private static readonly Regex TaxpayerFiscalCodePattern = new("^[A-Z0-9]{16}$", RegexOptions.Compiled);
-
-    /// <summary>Codice fiscale of the org: 16 characters for a person, 11 digits for an entity.</summary>
-    private static readonly Regex OrgFiscalCodePattern = new("^([A-Z0-9]{16}|[0-9]{11})$", RegexOptions.Compiled);
 
     private static readonly Regex PartitaIvaPattern = new("^[0-9]{11}$", RegexOptions.Compiled);
 
@@ -142,7 +138,7 @@ public partial class FiscalService(
         CancellationToken cancellationToken = default)
     {
         var normalized = NormalizeFiscalCode(fiscalCode);
-        if (normalized is not null && !TaxpayerFiscalCodePattern.IsMatch(normalized))
+        if (normalized is not null && !ItalianFiscalCode.IsValidPersonCode(normalized))
             throw new DomainRuleException("invalid_taxpayer_fiscal_code", "FiscalTaxpayerCodeInvalid");
 
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
@@ -207,7 +203,7 @@ public partial class FiscalService(
         if (update.FiscalCode is not null)
         {
             var cf = NormalizeFiscalCode(update.FiscalCode);
-            if (cf is not null && !OrgFiscalCodePattern.IsMatch(cf))
+            if (cf is not null && !ItalianFiscalCode.IsValid(cf))
                 throw new FiscalValidationException("fiscal_tax_identifier_invalid", "FiscalTaxIdentifierInvalid");
             org.FiscalCode = cf;
         }
