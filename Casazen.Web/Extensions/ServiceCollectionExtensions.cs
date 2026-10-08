@@ -431,6 +431,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.ServiceRequestOptions>, Casazen.Core.Options.ServiceRequestOptionsValidator>();
         services.AddScoped<ServiceRequestNotifier>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
+        services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
         // Supplier dashboard KPIs from the service requests (SU-11, A4-15) and the money of the console home (SP-04).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
         // The home ("Oggi") and the activation checklist of the supplier console (SP-04).
