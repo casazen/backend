@@ -27,21 +27,26 @@ public static class OnSiteRequests
     public const string MaxNightsSetting = "DirectBooking:OnSiteMaxNights";
 
     /// <summary>
-    /// PROVISIONAL technical default (not a product rule, BK-06 DUBBI): how long the host has to answer, so that no request
-    /// holds its dates forever. The product owner decides the real value (<c>docs/runbooks/direct-booking.md</c>).
+    /// Product default (PO 2026-10-08): the host has 24 hours to accept or decline after the guest confirms the email.
+    /// Override with <c>DirectBooking:OnSiteApprovalHours</c>.
     /// </summary>
-    public const int ProvisionalApprovalHours = 24;
+    public const int DefaultApprovalHours = 24;
+
+    /// <summary>Kept name for callers compiled against the previous constant; same value as <see cref="DefaultApprovalHours"/>.</summary>
+    public const int ProvisionalApprovalHours = DefaultApprovalHours;
 
     /// <summary>
-    /// PROVISIONAL technical default (anti-abuse, not a product rule, BK-06 DUBBI): the longest stay a "pay at the property"
-    /// request may ask for. Aligned with the "locazione breve" of art. 4 D.L. 50/2017 (contracts up to 30 days,
-    /// <c>.claude/context/regulations/fiscale.md</c> C1); the product owner decides the real value.
+    /// Product default (PO 2026-10-08): a "pay at the property" request may last at most 30 nights. Longer stays get
+    /// 422 <c>onsite_request_too_many_nights</c>. Override with <c>DirectBooking:OnSiteMaxNights</c>.
     /// </summary>
-    public const int ProvisionalMaxNights = 30;
+    public const int DefaultMaxNights = 30;
+
+    /// <summary>Kept name for callers compiled against the previous constant; same value as <see cref="DefaultMaxNights"/>.</summary>
+    public const int ProvisionalMaxNights = DefaultMaxNights;
 
     /// <summary>Hours the host has to accept or decline a request once the guest confirmed the email (at least 1).</summary>
     public static int GetApprovalHours(IConfiguration configuration) =>
-        Math.Max(1, configuration.GetValue(ApprovalHoursSetting, ProvisionalApprovalHours));
+        Math.Max(1, configuration.GetValue(ApprovalHoursSetting, DefaultApprovalHours));
 
     /// <summary>
     /// Minutes the guest has to confirm the email (at least 1). Default: the checkout TTL
@@ -52,7 +57,7 @@ public static class OnSiteRequests
 
     /// <summary>Longest stay of a request, in nights (at least 1).</summary>
     public static int GetMaxNights(IConfiguration configuration) =>
-        Math.Max(1, configuration.GetValue(MaxNightsSetting, ProvisionalMaxNights));
+        Math.Max(1, configuration.GetValue(MaxNightsSetting, DefaultMaxNights));
 
     /// <summary>A "pay at the property" request still pending (whatever its deadline).</summary>
     public static bool IsOpenRequest(Booking booking) =>
