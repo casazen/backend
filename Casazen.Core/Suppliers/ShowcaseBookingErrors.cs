@@ -103,6 +103,9 @@ public static class ShowcaseBookingFields
     public const string Phone = "phone";
     public const string PrivacyNoticeVersion = "privacyNoticeVersion";
     public const string Token = "token";
+
+    /// <summary>The reason a customer gives when it cancels its booking (SP-11).</summary>
+    public const string Reason = "reason";
 }
 
 /// <summary>

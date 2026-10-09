@@ -186,8 +186,21 @@ public class ServiceRequestExpiryServiceTests
         Assert.Equal(ServiceRequestStatus.Annullato, saved.Status);
         Assert.Equal(ServiceRequestActorParty.System, saved.CancelledBy);
         Assert.Null(saved.ProposedStartUtc);
+
+        // SP-11: it is the customer who did not answer, so the reason says so and nobody is told the supplier stayed silent (D24).
+        Assert.Equal(ServiceRequestCancellationReasons.ProposalNotAnswered, saved.CancellationReason);
         var toCustomer = Assert.Single(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail);
-        Assert.Equal(EmailTemplates.Names.SupplierBookingExpired, toCustomer.Template);
+        Assert.Equal(EmailTemplates.Names.SupplierBookingProposalExpired, toCustomer.Template);
+        Assert.Contains("non hai risposto in tempo", toCustomer.Content.HtmlBody);
+        Assert.DoesNotContain("non ha risposto", toCustomer.Content.HtmlBody);
+        var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com");
+        Assert.Equal(EmailTemplates.Names.SupplierBookingProposalLapsed, toSupplier.Template);
+        Assert.Contains("Il cliente non ha risposto in tempo", toSupplier.Content.HtmlBody);
+        Assert.DoesNotContain("non hai risposto", toSupplier.Content.HtmlBody);
+        var push = Assert.Single(s.Pushes);
+        Assert.Equal(PushTypes.ServiceRequestCancelled, push.Payload.Type);
+        Assert.Equal("Richiesta annullata", push.Payload.Title);
+        Assert.Contains("il cliente non ha risposto", push.Payload.Body);
     }
 
     [Fact]

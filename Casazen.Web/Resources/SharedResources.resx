@@ -2329,4 +2329,25 @@
   <data name="SupplierBookingTokenRequired" xml:space="preserve">
     <value>Apri il link ricevuto via email: il codice di conferma manca o non è valido.</value>
   </data>
+  <data name="SupplierBookingNotFound" xml:space="preserve">
+    <value>Nessuna richiesta corrisponde a questo codice e a questo indirizzo email. Controlla il codice nell'email di conferma e usa l'indirizzo email con cui hai prenotato.</value>
+  </data>
+  <data name="SupplierBookingCannotCancel" xml:space="preserve">
+    <value>Questa richiesta non si può più annullare da qui: il lavoro è già iniziato o concluso, l'orario è passato, oppure la richiesta è già chiusa. Se serve, contatta il fornitore.</value>
+  </data>
+  <data name="SupplierBookingCannotReschedule" xml:space="preserve">
+    <value>Non si può cambiare l'orario di questa richiesta: si può fare solo finché il fornitore non ha risposto, se è attivo e se il servizio è ancora disponibile. Puoi annullarla e prenotare di nuovo.</value>
+  </data>
+  <data name="SupplierBookingNoProposal" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun nuovo orario da accettare o rifiutare.</value>
+  </data>
+  <data name="SupplierBookingProposalExpired" xml:space="preserve">
+    <value>Il tempo per rispondere al nuovo orario è scaduto: la richiesta si annulla da sola. Potrai prenotare di nuovo dal sito del fornitore.</value>
+  </data>
+  <data name="SupplierBookingAccessRequired" xml:space="preserve">
+    <value>Indica il fornitore, il codice della richiesta e l'indirizzo email con cui hai prenotato.</value>
+  </data>
+  <data name="SupplierBookingStartRequired" xml:space="preserve">
+    <value>Indica l'orario scelto (startUtc).</value>
+  </data>
 </root>
