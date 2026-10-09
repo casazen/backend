@@ -117,7 +117,8 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
     public async Task Checks_TheEndOfACommissionPeriodNeedsTheCommissionItEnds()
     {
         var parents = await MigratedWithPaymentAsync();
-        var until = DateTime.UtcNow.AddDays(30);
+        // A fixed instant: PostgreSQL keeps microseconds, .NET 100 ns, so a computed one would not compare equal after the round trip.
+        var until = new DateTime(2031, 6, 30, 12, 0, 0, DateTimeKind.Utc);
 
         await using (var db = _database!.CreateContext())
         {
