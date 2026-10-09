@@ -28,6 +28,124 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
     /// <summary>How many times a PaymentIntent was read.</summary>
     public int GetCount { get; private set; }
 
+    // ─── Refunds (SP-15b) ───
+
+    private readonly Dictionary<string, ServiceChargeRefund> _refunds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ServiceChargeRefund> _refundsByKey = new(StringComparer.Ordinal);
+    private int _refundSequence;
+    private Exception? _failNextRefund;
+    private Exception? _failNextList;
+
+    /// <summary>Every refund request received, in order (also the ones answered with an existing refund by the idempotency key).</summary>
+    public List<ServiceChargeRefundRequest> RefundRequests { get; } = [];
+
+    /// <summary>How many times the refunds of a PaymentIntent were listed.</summary>
+    public int ListRefundsCount { get; private set; }
+
+    /// <summary>The status a new refund starts with (Stripe answers <c>succeeded</c> at once for a card).</summary>
+    public string NewRefundStatus { get; set; } = "succeeded";
+
+    /// <summary>The refunds that exist on this fake Stripe.</summary>
+    public IReadOnlyList<ServiceChargeRefund> Refunds
+    {
+        get
+        {
+            lock (_gate)
+                return _refunds.Values.ToList();
+        }
+    }
+
+    /// <summary>The next refund creation fails with this exception (once): a 4xx is a refusal, a timeout or a 5xx leaves the outcome unknown.</summary>
+    public void FailNextRefund(Exception exception) => _failNextRefund = exception;
+
+    /// <summary>The next listing of refunds fails with this exception (once).</summary>
+    public void FailNextList(Exception exception) => _failNextList = exception;
+
+    /// <summary>
+    /// A refund the creation of which "succeeded" at Stripe although the answer never came back: it exists with its idempotency key
+    /// and its metadata, and the next call finds it. Returns the refund.
+    /// </summary>
+    public ServiceChargeRefund CreateRefundSilently(ServiceChargeRefundRequest request)
+    {
+        lock (_gate)
+            return StoreRefund(request, NewRefundStatus);
+    }
+
+    /// <summary>Moves a refund to <paramref name="status"/> (the bank completed it, it failed afterwards…).</summary>
+    public ServiceChargeRefund SetRefundStatus(string refundId, string status, string? failureReason = null)
+    {
+        lock (_gate)
+        {
+            var updated = _refunds[refundId] with { Status = status, FailureReason = failureReason };
+            _refunds[refundId] = updated;
+            return updated;
+        }
+    }
+
+    /// <summary>A refund made outside CasaZen (the Stripe Dashboard): it has no metadata and no idempotency key of ours.</summary>
+    public ServiceChargeRefund AddExternalRefund(string paymentIntentId, long amountCents, string status = "succeeded")
+    {
+        lock (_gate)
+        {
+            var refund = new ServiceChargeRefund($"re_fake_{++_refundSequence:D4}", paymentIntentId, amountCents, status, null, new Dictionary<string, string>());
+            _refunds[refund.Id] = refund;
+            return refund;
+        }
+    }
+
+    public Task<ServiceChargeRefund> CreateRefundAsync(ServiceChargeRefundRequest request, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            RefundRequests.Add(request);
+            if (_failNextRefund is { } failure)
+            {
+                _failNextRefund = null;
+                throw failure;
+            }
+
+            if (_deletedAccounts.Contains(request.ConnectedAccountId))
+                throw AccountInvalid(request.ConnectedAccountId);
+
+            // The same idempotency key is the same refund (Stripe keeps it for 24 hours).
+            if (_refundsByKey.TryGetValue(request.IdempotencyKey, out var existing))
+                return Task.FromResult(_refunds[existing.Id]);
+
+            // A refund of a PaymentIntent that does not exist on this account is "no such payment_intent".
+            Find(request.PaymentIntentId, request.ConnectedAccountId);
+            return Task.FromResult(StoreRefund(request, NewRefundStatus));
+        }
+    }
+
+    public Task<IReadOnlyList<ServiceChargeRefund>> ListRefundsAsync(
+        string paymentIntentId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            ListRefundsCount++;
+            if (_failNextList is { } failure)
+            {
+                _failNextList = null;
+                throw failure;
+            }
+
+            Find(paymentIntentId, connectedAccountId);
+            IReadOnlyList<ServiceChargeRefund> refunds = _refunds.Values.Where(r => r.PaymentIntentId == paymentIntentId).ToList();
+            return Task.FromResult(refunds);
+        }
+    }
+
+    private ServiceChargeRefund StoreRefund(ServiceChargeRefundRequest request, string status)
+    {
+        var metadata = new Dictionary<string, string>(request.Metadata) { ["kind"] = ServiceCharges.RefundKind };
+        var refund = new ServiceChargeRefund($"re_fake_{++_refundSequence:D4}", request.PaymentIntentId, request.AmountCents, status, null, metadata);
+        _refunds[refund.Id] = refund;
+        _refundsByKey[request.IdempotencyKey] = refund;
+        return refund;
+    }
+
     /// <summary>The PaymentIntents that exist on this fake Stripe.</summary>
     public IReadOnlyList<ServiceChargeIntent> Intents
     {
@@ -76,6 +194,13 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
             _failNextCreate = null;
             _failNextGet = null;
             _deletedAccounts.Clear();
+            _refunds.Clear();
+            _refundsByKey.Clear();
+            RefundRequests.Clear();
+            ListRefundsCount = 0;
+            NewRefundStatus = "succeeded";
+            _failNextRefund = null;
+            _failNextList = null;
         }
     }
 
@@ -160,6 +285,24 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
             _intents[paymentIntentId] = updated;
             return updated;
         }
+    }
+
+    /// <summary>Changes anything of a PaymentIntent (SP-15b): an amount received that is not the price, a fee that was not asked for…</summary>
+    public ServiceChargeIntent UpdateIntent(string paymentIntentId, Func<ServiceChargeIntent, ServiceChargeIntent> change)
+    {
+        lock (_gate)
+        {
+            var updated = change(_intents[paymentIntentId]);
+            _intents[paymentIntentId] = updated;
+            return updated;
+        }
+    }
+
+    /// <summary>The PaymentIntent as it is now (without counting it as a read).</summary>
+    public ServiceChargeIntent Intent(string paymentIntentId)
+    {
+        lock (_gate)
+            return _intents[paymentIntentId];
     }
 
     private static StripeException AccountInvalid(string connectedAccountId) => new(

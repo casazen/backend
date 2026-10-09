@@ -83,6 +83,26 @@ internal sealed class ServiceRequestScenario : IDisposable
     /// <summary>The fake Stripe of the payments: nothing in a scenario reaches the real one.</summary>
     public FakeSupplierPaymentGateway Gateway => _kit.Gateway;
 
+    /// <summary>What would have been queued on Hangfire for the pending payment requests of a supplier (SP-15b).</summary>
+    public RecordingSupplierPaymentJobScheduler JobScheduler => _kit.JobScheduler;
+
+    /// <summary>A platform admin who can receive the alerts about the payments that need them (SP-15b).</summary>
+    public async Task<string> AddAdminAsync(string email = "admin@test.com", bool active = true)
+    {
+        var admin = new User
+        {
+            Id = $"auth0|admin-{Guid.NewGuid():N}",
+            Email = email,
+            FirstName = "Admin",
+            LastName = "CasaZen",
+            Role = UserRole.Admin,
+            IsActive = active,
+        };
+        Db.Users.Add(admin);
+        await Db.SaveChangesAsync();
+        return admin.Id;
+    }
+
     /// <summary>The feature flags of the scenario: all off until a test (or <see cref="EnablePaymentsAsync"/>) switches one on.</summary>
     public TestFeatureFlags Flags => _kit.Flags;
 
@@ -99,10 +119,12 @@ internal sealed class ServiceRequestScenario : IDisposable
     /// <param name="options">The options of the service request flows (the defaults of the wave spec when null).</param>
     /// <param name="saveInterceptor">Put on the context, to make a save fail at the moment the test chooses.</param>
     /// <param name="paymentOptions">The options of the payments (SP-15a): a platform commission of 10 % when null.</param>
+    /// <param name="paymentLogger">Where the payment service logs (SP-15b tests read the errors it writes); nowhere when null.</param>
     public static async Task<ServiceRequestScenario> CreateAsync(
         ServiceRequestOptions? options = null,
         FailingSaveInterceptor? saveInterceptor = null,
-        SupplierPaymentsOptions? paymentOptions = null)
+        SupplierPaymentsOptions? paymentOptions = null,
+        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null)
     {
         var builder = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString());
         if (saveInterceptor is not null)
@@ -112,7 +134,7 @@ internal sealed class ServiceRequestScenario : IDisposable
         var clock = new FakeTimeProvider(Instant);
         var emails = new RecordingEmailQueue();
         var pushes = new ClearablePushQueue();
-        var kit = new ServiceRequestTestKit(db, emails, pushes, clock, options, paymentOptions: paymentOptions);
+        var kit = new ServiceRequestTestKit(db, emails, pushes, clock, options, paymentOptions: paymentOptions, paymentLogger: paymentLogger);
         var scenario = new ServiceRequestScenario(kit, clock, emails, pushes);
         await scenario.SeedWorldAsync();
         return scenario;

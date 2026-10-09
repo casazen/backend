@@ -330,6 +330,7 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
             new PaymentRefundService(db, _stripe, Mock.Of<IPaymentRefundRetryScheduler>(), _emails, NullLogger<PaymentRefundService>.Instance),
             TestCheckoutPaymentSettlement.Create(db, stripe: _stripe, emails: _emails, configuration: configuration),
             TestDeferredCharges.Create(db, _stripe, _emails, configuration, Clock(0)),
+            Mock.Of<ISupplierPaymentWebhookService>(),
             NullLogger<StripeWebhookHandler>.Instance);
         await handler.HandleEventAsync(stripeEvent, source);
     }

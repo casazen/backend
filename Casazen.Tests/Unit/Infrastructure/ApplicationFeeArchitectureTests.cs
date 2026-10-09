@@ -47,6 +47,52 @@ public class ApplicationFeeArchitectureTests
             "rent never carry one (A3-40, StripeServiceApplicationFeeTests). Offending files: " + string.Join(", ", offenders));
     }
 
+    // SP-15b: giving the commission back with a refund (refund_application_fee) is the other half of it. A refund of a guest booking or
+    // of the rent has no commission to give back, and asking Stripe to do so would be either an error or a surprise.
+    private static readonly Regex RefundFeeAssignment = new(@"\bRefundApplicationFee\s*=(?!=)", RegexOptions.Compiled);
+    private static readonly Regex RefundFeeParameterLiteral = new(@"""refund_application_fee""", RegexOptions.Compiled);
+
+    [Fact]
+    public void RefundApplicationFee_IsAskedOnlyByTheGatewayOfTheSupplierPayments()
+    {
+        var root = FindRepositoryRoot();
+        var offenders = new List<string>();
+
+        foreach (var (relative, code) in ReadCode(root))
+        {
+            if (AllowedFiles.ContainsKey(relative))
+                continue;
+
+            if (RefundFeeAssignment.IsMatch(code) || RefundFeeParameterLiteral.IsMatch(code))
+                offenders.Add(relative);
+        }
+
+        Assert.True(
+            offenders.Count == 0,
+            "The commission goes back with a refund (refund_application_fee) only in StripeSupplierPaymentGateway: the refunds of guest " +
+            "bookings and rent have none to give back. Offending files: " + string.Join(", ", offenders));
+    }
+
+    [Fact]
+    public void TheGateway_AsksForTheRefundOfTheFee_OnlyWhenThePaymentCarriedOne()
+    {
+        var code = StripComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Casazen.Infrastructure", "External", "StripeSupplierPaymentGateway.cs")));
+
+        Assert.Matches(RefundFeeAssignment, code);
+        Assert.Contains("if (request.RefundApplicationFee)", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRefundDetector_SeesAnAssignment_AndIgnoresCommentsAndComparisons()
+    {
+        Assert.Matches(RefundFeeAssignment, StripComments("var options = new RefundCreateOptions { RefundApplicationFee = true };"));
+        Assert.Matches(RefundFeeAssignment, StripComments("options.RefundApplicationFee = true;"));
+        Assert.DoesNotMatch(RefundFeeAssignment, StripComments("// RefundApplicationFee = true is only for the supplier payments"));
+        Assert.DoesNotMatch(RefundFeeAssignment, StripComments("if (options.RefundApplicationFee == true) return;"));
+        Assert.DoesNotMatch(RefundFeeAssignment, StripComments("var refund = RefundApplicationFeeOf(charge);"));
+        Assert.Matches(RefundFeeParameterLiteral, "values[\"refund_application_fee\"] = true;");
+    }
+
     [Fact]
     public void TheGateway_SetsTheFee_AndOnlyUnderTheCheckOfSupplierCommission()
     {
