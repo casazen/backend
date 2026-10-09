@@ -172,7 +172,9 @@ public sealed class BookingCancellationService(
 
         // BK-02, PO 2026-10-08: host cancellation always refunds 100% to the guest, regardless of the policy.
         // The floor evaluated from the model is kept for reference only (shown as the rule in the response).
-        var floor = CancellationRefundPolicy.Evaluate(booking, booking.Property?.CancellationPolicy, _clock.GetUtcNow());
+        var nights = (booking.CheckOutDate.Date - booking.CheckInDate.Date).Days;
+        var policy = CancellationRefundPolicy.EffectivePolicy(booking.Property, nights);
+        var floor = CancellationRefundPolicy.Evaluate(booking, policy, _clock.GetUtcNow());
         var minimum = refundable; // host cancellation: minimum = full refundable amount
 
         var offlinePaid = payments
