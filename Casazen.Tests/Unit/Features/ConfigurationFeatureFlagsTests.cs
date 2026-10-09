@@ -57,10 +57,11 @@ public class ConfigurationFeatureFlagsTests
     [Fact]
     public void All_SupplierFlags_AreListedLastInTheOrderExposedToTheFrontend()
     {
+        // The supplier flags keep their order; a flag added after them (AM-01: OrgTeam) is appended at the end.
         Assert.Equal("SupplierShowcaseBooking", FeatureFlags.SupplierShowcaseBooking);
         Assert.Equal("SupplierOnlinePayments", FeatureFlags.SupplierOnlinePayments);
         Assert.Equal("SupplierRequestAutoCancel", FeatureFlags.SupplierRequestAutoCancel);
-        // PM-02: the flag of the scheduled change of rental mode is appended after UiRedesign.
+        // PM-02: the flag of the scheduled change of rental mode is appended after the flags of the other tasks.
         Assert.Equal("PropertyModeChange", FeatureFlags.PropertyModeChange);
         Assert.Equal(
             new[]
@@ -73,6 +74,7 @@ public class ConfigurationFeatureFlagsTests
                 "SupplierOnlinePayments",
                 "SupplierRequestAutoCancel",
                 "UiRedesign",
+                "OrgTeam",
                 "PropertyModeChange",
             },
             FeatureFlags.All);
@@ -123,6 +125,35 @@ public class ConfigurationFeatureFlagsTests
             directory = directory.Parent;
 
         return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
+    }
+
+    // ─── AM-01: the org team flag ───────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void OrgTeam_IsOffWhenMissing_AndOnlyOnWhenExplicitlyTrue()
+    {
+        Assert.False(Flags(new()).IsEnabled(FeatureFlags.OrgTeam));
+        Assert.False(Flags(new() { ["Features:OrgTeam"] = "false" }).IsEnabled(FeatureFlags.OrgTeam));
+        Assert.False(Flags(new() { ["Features:OrgTeam"] = "1" }).IsEnabled(FeatureFlags.OrgTeam));
+        Assert.True(Flags(new() { ["Features:OrgTeam"] = "true" }).IsEnabled(FeatureFlags.OrgTeam));
+    }
+
+    [Fact]
+    public void OrgTeam_IsExposedToTheFrontendAsACamelCaseKey()
+    {
+        Assert.Contains(FeatureFlags.OrgTeam, FeatureFlags.All);
+        Assert.Equal("orgTeam", System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(FeatureFlags.OrgTeam));
+    }
+
+    [Fact]
+    public void OrgTeam_AppSettingsDefault_IsOff()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"))
+            .Build();
+
+        Assert.Equal("False", configuration["Features:OrgTeam"], ignoreCase: true);
+        Assert.False(new ConfigurationFeatureFlags(configuration).IsEnabled(FeatureFlags.OrgTeam));
     }
 
     private static ConfigurationFeatureFlags Flags(Dictionary<string, string?> values) =>

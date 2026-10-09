@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -122,6 +123,98 @@ public class UserContextMembershipHostMemberTests
         await db.SaveChangesAsync();
 
         Assert.True(await service.IsHostMemberAsync(UserId));
+    }
+
+    // ─── AM-01: the org member row is the source of truth ───────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(OrgRole.Admin)]
+    [InlineData(OrgRole.PropertyManager)]
+    [InlineData(OrgRole.Collaborator)]
+    [InlineData(OrgRole.Accountant)]
+    public async Task IsHostMemberAsync_OrgMemberThatIsNotTheOwner_IsTrueWhateverItsMemberships(OrgRole role)
+    {
+        // An administrator whose only row is in the account context (an owner-level key) still is a member.
+        await using var db = await CreateSeededDbAsync();
+        db.OrgMembers.Add(new OrgMember { UserId = UserId, OrgId = Guid.NewGuid(), Role = role });
+        await db.SaveChangesAsync();
+
+        Assert.True(await CreateService(db).IsHostMemberAsync(UserId));
+    }
+
+    [Fact]
+    public async Task IsHostMemberAsync_OwnerOrgMember_IsFalse()
+    {
+        await using var db = await CreateSeededDbAsync();
+        db.OrgMembers.Add(new OrgMember { UserId = UserId, OrgId = Guid.NewGuid(), Role = OrgRole.Owner });
+        db.UserContextMemberships.Add(new UserContextMembership
+        {
+            UserId = UserId,
+            ContextKey = "account",
+            RoleId = db.Roles.Single(r => r.ContextKey == "account" && r.RoleKey == "org_owner").Id,
+        });
+        await db.SaveChangesAsync();
+
+        Assert.False(await CreateService(db).IsHostMemberAsync(UserId));
+    }
+
+    [Fact]
+    public async Task IsHostMemberAsync_OrgMemberOfAnotherUser_DoesNotCount()
+    {
+        await using var db = await CreateSeededDbAsync();
+        db.OrgMembers.Add(new OrgMember { UserId = OtherUserId, OrgId = Guid.NewGuid(), Role = OrgRole.Collaborator });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+
+        Assert.False(await service.IsHostMemberAsync(UserId));
+        Assert.True(await service.IsHostMemberAsync(OtherUserId));
+    }
+
+    [Theory]
+    [InlineData("org_owner", false)]
+    [InlineData("org_admin", false)]
+    [InlineData("org_accountant", true)]
+    public async Task IsHostMemberAsync_AccountMembershipAlone_OnlyTheAccountantIsAMember(string roleKey, bool expected)
+    {
+        // The account is a host context: a role of it other than the owner's or the administrator's makes a member.
+        await using var db = await CreateSeededDbAsync();
+        db.UserContextMemberships.Add(new UserContextMembership
+        {
+            UserId = UserId,
+            ContextKey = "account",
+            RoleId = db.Roles.Single(r => r.ContextKey == "account" && r.RoleKey == roleKey).Id,
+        });
+        await db.SaveChangesAsync();
+
+        Assert.Equal(expected, await CreateService(db).IsHostMemberAsync(UserId));
+    }
+
+    [Fact]
+    public async Task IsHostMemberAsync_OrgIdOfAHostOrgThatAlreadyHasAnOwner_IsTrue()
+    {
+        // Removed before User.OrgId was cleared: the row is gone, but onboarding must not make a second owner.
+        await using var db = await CreateSeededDbAsync();
+        var orgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity { Id = orgId, Name = "Host", DisplayName = "Host", Slug = "host", OrgType = OrgType.Host });
+        db.Users.Single(u => u.Id == UserId).OrgId = orgId;
+        db.OrgMembers.Add(new OrgMember { UserId = OtherUserId, OrgId = orgId, Role = OrgRole.Owner });
+        await db.SaveChangesAsync();
+
+        Assert.True(await CreateService(db).IsHostMemberAsync(UserId));
+    }
+
+    [Fact]
+    public async Task IsHostMemberAsync_OrgIdOfAHostOrgWithNoOwnerYet_IsFalse()
+    {
+        // The caller's own org, provisioned before the onboarding writes the owner row.
+        await using var db = await CreateSeededDbAsync();
+        var orgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity { Id = orgId, Name = "New", DisplayName = "New", Slug = "new", OrgType = OrgType.Host });
+        db.Users.Single(u => u.Id == UserId).OrgId = orgId;
+        await db.SaveChangesAsync();
+
+        Assert.False(await CreateService(db).IsHostMemberAsync(UserId));
     }
 
     private static UserContextMembershipService CreateService(AppDbContext db) =>

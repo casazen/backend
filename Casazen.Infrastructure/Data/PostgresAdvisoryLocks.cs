@@ -166,6 +166,21 @@ internal static class PostgresAdvisoryLocks
         ServiceCustomerRetentionRun = 1_313,
 
         /// <summary>
+        /// The people of one org (key: org id): adding, changing, deactivating or removing a member, and the owner's
+        /// creation, run one at a time, so the owner rule and, with AM-02, the seat count are decided on rows nobody else
+        /// is changing (AM-01).
+        /// </summary>
+        OrgMembership = 1_401,
+
+        /// <summary>
+        /// One run of the org membership reconcile (single key): two admin runs never create the same owners or fix the
+        /// same memberships at once (AM-01). The run does not take the <see cref="OrgMembership"/> lock of every org it
+        /// touches: a member write that races with it is arbitrated by the unique indexes, and the run then answers 409
+        /// and saves nothing (it is idempotent, so it is simply run again).
+        /// </summary>
+        OrgMembershipMaintenance = 1_402,
+
+        /// <summary>
         /// One run of the hourly application of the scheduled changes of rental mode (single key, session lock held for the
         /// whole run): two runs never apply or fail the same change at once, even outside Hangfire's own lock (PM-02). Each
         /// change is then applied under the dates lock of its property, so it also serializes with the bookings.

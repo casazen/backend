@@ -144,6 +144,27 @@
   <data name="MemberCannotOnboard" xml:space="preserve">
     <value>Fai già parte di un'organizzazione come collaboratore: non puoi attivare un nuovo account né cambiare il tuo ruolo. Se ti serve un altro ruolo, chiedilo al titolare dell'organizzazione.</value>
   </data>
+  <data name="MemberInactive" xml:space="preserve">
+    <value>Il tuo accesso all'organizzazione è stato disattivato. Contatta chi la amministra per riattivarlo.</value>
+  </data>
+  <data name="OrgLastOwner" xml:space="preserve">
+    <value>Il titolare dell'organizzazione non può essere disattivato, rimosso né cambiare ruolo: ogni organizzazione ha sempre il suo titolare.</value>
+  </data>
+  <data name="OrgMemberAlreadyMember" xml:space="preserve">
+    <value>Questa persona fa già parte di un'organizzazione.</value>
+  </data>
+  <data name="OrgMemberAreaRequired" xml:space="preserve">
+    <value>Scegli almeno un'area di lavoro per la persona (affitti brevi o affitti lunghi).</value>
+  </data>
+  <data name="OrgMemberOtherOrg" xml:space="preserve">
+    <value>Questa persona appartiene a un'altra organizzazione: per cambiarla serve l'invito dell'organizzazione.</value>
+  </data>
+  <data name="OrgMemberOwnerNotAssignable" xml:space="preserve">
+    <value>Il ruolo di titolare non si assegna: l'organizzazione resta a chi l'ha creata (il trasferimento di titolarità non è ancora disponibile).</value>
+  </data>
+  <data name="OrgMembershipMaintenanceConflict" xml:space="preserve">
+    <value>Un'altra modifica ha interrotto la riconciliazione dei membri: non è stato salvato nulla. Riprova.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
