@@ -121,7 +121,7 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
 
         var body = await host.GetFromJsonAsync<JsonElement>("/api/bookings");
 
-        var items = body.EnumerateArray().ToList();
+        var items = BookingItems(body).ToList();
         Assert.Equal([later.Id, earlier.Id], items.Select(i => i.GetProperty("id").GetGuid()));
         Assert.All(items, i => Assert.Equal(property.Name, i.GetProperty("propertyName").GetString()));
         Assert.Equal("Anna", items[0].GetProperty("guest").GetProperty("firstName").GetString());
@@ -139,8 +139,11 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
         var response = await client.GetAsync(url);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        return body.EnumerateArray().Select(b => b.GetProperty("id").GetGuid()).ToList();
+        return BookingItems(body).Select(b => b.GetProperty("id").GetGuid()).ToList();
     }
+
+    private static IEnumerable<JsonElement> BookingItems(JsonElement body) =>
+        (body.ValueKind == JsonValueKind.Array ? body : body.GetProperty("items")).EnumerateArray();
 
     private async Task<Property> SeedPropertyAsync(Guid orgId, string ownerId)
     {

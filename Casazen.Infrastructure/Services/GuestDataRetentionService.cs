@@ -67,7 +67,9 @@ public sealed class GuestDataRetentionService(
                 GuestDataCategory.DocumentScans => await ApplyDocumentScansAsync(period, today, cancellationToken),
                 GuestDataCategory.AlloggiatiData => await ApplyAlloggiatiDataAsync(period, today, cancellationToken),
                 GuestDataCategory.Marketing => await ApplyMarketingAsync(period, today, cancellationToken),
-                GuestDataCategory.FiscalData => await ApplyFiscalDataAsync(period, today, cancellationToken),
+                // PO 2026-10-08: guest cards are not anonymized automatically. FiscalData still needs a period in
+                // config for the runbook, but the job never erases names or contacts on its own.
+                GuestDataCategory.FiscalData => SkipAutomaticFiscalAnonymization(period),
                 _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
             };
             results.Add(result);
@@ -77,6 +79,14 @@ public sealed class GuestDataRetentionService(
         }
 
         return new GuestRetentionRunResult(results);
+    }
+
+    private GuestRetentionCategoryResult SkipAutomaticFiscalAnonymization(RetentionPeriodOptions period)
+    {
+        logger.LogInformation(
+            "GDPR retention: category {Category} is configured ({Source}) but guest cards are not anonymized automatically (PO 2026-10-08)",
+            GuestDataCategory.FiscalData, period.Source);
+        return new GuestRetentionCategoryResult(GuestDataCategory.FiscalData, true, 0, 0, 0);
     }
 
     private async Task<GuestRetentionCategoryResult> ApplyDocumentScansAsync(
