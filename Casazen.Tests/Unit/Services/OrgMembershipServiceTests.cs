@@ -553,8 +553,13 @@ public class OrgMembershipServiceTests
         Assert.Equal("auth0|owner", (await verify.OrgMembers.SingleAsync()).UserId);
     }
 
+    /// <summary>
+    /// The onboarding and the consents of a person who joins are written by the acceptance of the invitation (AM-02, D14:
+    /// the person accepts the four texts again for the org it joins); the member service never copies the owner's, which
+    /// would record an acceptance the person did not give.
+    /// </summary>
     [Fact]
-    public async Task AddMemberAsync_PersonWhoNeverOnboarded_RecordsOnboardingAndCopiesTheOrgConsents()
+    public async Task AddMemberAsync_DoesNotWriteTheOnboardingOrTheConsentsOfThePerson()
     {
         await using var db = NewDb(_database);
         var org = AddOrg(db);
@@ -562,59 +567,14 @@ public class OrgMembershipServiceTests
         AddUser(db, "auth0|member", orgId: null);
         db.ConsentRecords.AddRange(
             new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.Tos, Version = "tos-2026" },
-            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.Privacy, Version = "privacy-2026" },
-            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.Dpa, Version = "dpa-2026" },
-            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.SubprocessorsAck, Version = "sub-2026" },
-            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.Marketing, Version = "tos-2026" });
+            new ConsentRecord { UserId = "auth0|owner", OrgId = org.Id, Type = ConsentType.Privacy, Version = "privacy-2026" });
         await db.SaveChangesAsync();
 
         await NewService(db).AddMemberAsync("auth0|member", org.Id, OrgRole.Collaborator, ["short-rent"], "auth0|owner");
 
         await using var verify = NewDb(_database);
-        var member = await verify.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|member");
-        Assert.Equal(Now.UtcDateTime, member.OnboardingCompletedAt);
-        var consents = await verify.ConsentRecords.IgnoreQueryFilters().AsNoTracking()
-            .Where(c => c.UserId == "auth0|member")
-            .Select(c => new { c.Type, c.Version })
-            .ToListAsync();
-        Assert.Equal(
-            ["Dpa", "Privacy", "SubprocessorsAck", "Tos"],
-            consents.Select(c => c.Type.ToString()).OrderBy(t => t).ToArray());
-        Assert.DoesNotContain(consents, c => c.Type == ConsentType.Marketing);
-        Assert.Contains(consents, c => c.Type == ConsentType.Tos && c.Version == "tos-2026");
-        Assert.Contains(consents, c => c.Type == ConsentType.Privacy && c.Version == "privacy-2026");
-        Assert.Contains(consents, c => c.Type == ConsentType.Dpa && c.Version == "dpa-2026");
-    }
-
-    [Fact]
-    public async Task AddMemberAsync_PersonAlreadyOnboarded_KeepsTheTimestampAndDoesNotDuplicateConsents()
-    {
-        await using var db = NewDb(_database);
-        var org = AddOrg(db);
-        var existingTimestamp = Now.UtcDateTime.AddDays(-2);
-        var member = AddUser(db, "auth0|member", org.Id);
-        member.OnboardingCompletedAt = existingTimestamp;
-        db.ConsentRecords.Add(new ConsentRecord
-        {
-            UserId = "auth0|member",
-            OrgId = org.Id,
-            Type = ConsentType.Tos,
-            Version = "tos-2026",
-        });
-        db.ConsentRecords.Add(new ConsentRecord
-        {
-            UserId = "auth0|owner",
-            OrgId = org.Id,
-            Type = ConsentType.Tos,
-            Version = "tos-2026",
-        });
-        await db.SaveChangesAsync();
-
-        await NewService(db).AddMemberAsync("auth0|member", org.Id, OrgRole.Collaborator, ["short-rent"], null);
-
-        await using var verify = NewDb(_database);
-        Assert.Equal(existingTimestamp, (await verify.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|member")).OnboardingCompletedAt);
-        Assert.Equal(1, await verify.ConsentRecords.IgnoreQueryFilters().CountAsync(c => c.UserId == "auth0|member" && c.Type == ConsentType.Tos));
+        Assert.Null((await verify.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|member")).OnboardingCompletedAt);
+        Assert.Empty(await verify.ConsentRecords.IgnoreQueryFilters().AsNoTracking().Where(c => c.UserId == "auth0|member").ToListAsync());
     }
 
     [Fact]

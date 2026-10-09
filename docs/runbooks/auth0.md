@@ -39,6 +39,13 @@ whatever the projection says), and the onboarding of an owner now also writes it
 `member_inactive`** (from the next request, same read as `account_inactive`, which wins when both apply): its CasaZen and
 Auth0 accounts stay active, only the access to the org stops.
 
+Invitations to an org (AM-02): a person who accepts one becomes a member **without any Auth0 role** (its rights are the DB
+memberships). When it had an empty org of its own, created by its own onboarding, and leaves it for the other, the backend
+removes the Auth0 roles `PropertyOwner` and `LongTermLandlord` after the commit (Management API, best effort: a failure is
+logged as `Auth0 owner roles of user ... not removed` and an operator removes the two roles by hand, `docs/runbooks/org-team.md`
+section 17). Until then the owner roles of its token open nothing: `OrgBillingAdminAuthorizationHandler` ignores them for a
+member who is not the owner.
+
 ## 1. Tenants: one for test, one for production
 
 Task PL-11 (audit defect A1-32). Until now the web app used **the same tenant** for Vercel Preview and Production
@@ -201,7 +208,8 @@ Deploy it, then Actions → Flows → **Login** → drag it into the flow → **
 
 The backend reads `https://casazen.app/email` and `/email_verified` for supplier invites and claims (SU-01, SU-02:
 [`suppliers.md`](suppliers.md) §2): without `/email_verified` a supplier who lost the claim token of an anonymous
-registration cannot link the profile unless the Management API (§4, `read:users`) is configured. Reading `/name`
+registration cannot link the profile unless the Management API (§4, `read:users`) is configured. AM-02 uses the same two claims to bind an org invitation to the account: the account that accepts must have
+the invited email, verified (`docs/runbooks/org-team.md` section 12). Reading `/name`
 belongs to task PL-04. The claims are copied at login: after verifying the email the client needs a new token
 (`getAccessTokenSilently({ cacheMode: 'off' })`, which the web claim page does on *Riprova*).
 

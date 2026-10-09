@@ -405,6 +405,24 @@ public class GdprService(
             .Where(p => p.OrgId == orgId && p.TaxpayerFiscalCode != null)
             .Select(p => new { PropertyId = p.Id, FiscalCode = p.TaxpayerFiscalCode })
             .ToListAsync(cancellationToken);
+        // The people of the org (AM-02): who has access, with which role and since when. Opaque ids and no names or
+        // emails: the export is reachable with the property permissions today (it moves under the owner's with #461), and
+        // the names are on the people page of the account, where whoever manages them can already see them. Tenant filter
+        // kept, like the rest.
+        var members = await db.OrgMembers.AsNoTracking()
+            .Where(m => m.OrgId == orgId)
+            .OrderBy(m => m.CreatedAt)
+            .Select(m => new
+            {
+                m.UserId,
+                Role = m.Role.ToString(),
+                Status = m.Status.ToString(),
+                PropertyScope = m.PropertyScope.ToString(),
+                m.CreatedAt,
+                m.CreatedByUserId,
+                m.DeactivatedAt,
+            })
+            .ToListAsync(cancellationToken);
         return new Dictionary<string, object>
         {
             ["hasPartitaIva"] = org.HasPartitaIva,
@@ -413,6 +431,7 @@ public class GdprService(
             ["fiscalDataRetentionUntil"] = org.FiscalDataRetentionUntil?.ToString("O") ?? "",
             ["propertyFiscalYears"] = years,
             ["propertyTaxpayers"] = propertyTaxpayers,
+            ["members"] = members,
             ["exportedAt"] = DateTime.UtcNow.ToString("O"),
         };
     }

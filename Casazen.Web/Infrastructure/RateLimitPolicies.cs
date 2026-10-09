@@ -66,4 +66,11 @@ public static class RateLimitPolicies
     /// 3 per hour). The check of the e-mail itself uses <see cref="PublicBookingLookup"/>.
     /// </summary>
     public const string PublicSupplierBookingCreate = "PublicSupplierBookingCreate";
+
+    /// <summary>
+    /// What an org invitation link is for (<c>POST api/org-invitations/lookup</c>, AM-02): anonymous, a token in the body.
+    /// Tighter than <see cref="PublicRead"/>: a page asks once, and the token is 256 random bits, so nobody has a reason
+    /// to ask often.
+    /// </summary>
+    public const string PublicInvitationLookup = "PublicInvitationLookup";
 }

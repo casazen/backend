@@ -200,3 +200,17 @@ Verification after deploy: the Railway log at 03:00 UTC shows `GDPR retention: s
 `GDPR supplier customer retention done`. Database:
 `select "Id", "AnonymizedAt", "CreatedAt" from "ServiceCustomers" where "AnonymizedAt" is not null;` and
 `select count(*) from "ServiceCustomers" where "FullName" not like 'CfDJ8%';` (expected 0: every name is a payload).
+
+## 9. People of an organisation: export and invitations (AM-02)
+
+Full description in [`org-team.md`](org-team.md) §§ 15, 16.
+
+| Concern | Behaviour | Code |
+|---|---|---|
+| Org export (`GET /api/gdpr/org/export`) | The answer gains `members`: for each member of the org its `UserId`, `Role`, `Status`, `PropertyScope`, `CreatedAt` and `DeactivatedAt`. **No name and no email**: the endpoint is reachable with property permissions (until #461 moves it under the owner's), and the names are on the people page of the account, where whoever manages the people already sees them. Members of another org never appear | `GdprService.ExportOrgFiscalDataAsync` |
+| Invitation (personal data) | Name and email of the invitee, kept in `OrgInvitations`. Nothing else of the invitee exists before it accepts. The token is stored only as a SHA-256 hash | `OrgInvitation` |
+| Retention of the invitations | A closed invitation (accepted, revoked, expired) is **deleted with the name and the email** `OrgTeam__InvitationRetentionDays` days after it was closed (default 30, minimum 1). A pending one is not deleted; once expired it is closed, then deleted. Idempotent, one transaction per org. The job runs with the `OrgTeam` flag off too | `OrgInvitationMaintenanceService` (job `org-invitation-maintenance`, [hangfire.md](hangfire.md)) |
+| Consents of a member | The person who accepts records the four consents of the onboarding (Terms, Privacy, DPA, subprocessors) for the org it joins, with version and IP (decision D14). An empty org that it leaves keeps its consents | `OnboardingService.ValidateAndRecordConsentsAsync` |
+| Logs | The token is never logged; the email only masked (`m***@example.com`) | `LogRedaction.MaskEmail` |
+| Privacy notice | The text must mention the processing of the name and email of the invitee (until 30 days after the invitation closed) and the visibility of the people of an org to its owner and administrators. Wording and publication belong to the legal owner ([legal-documents.md](legal-documents.md)); **not changed by AM-02**, to do before `Features__OrgTeam` is turned on | — |
+| Erasure of the account of a member | Not part of AM-02. The member row goes with the user (foreign key `ON DELETE CASCADE`); the invitations the user sent keep its id in `InvitedByUserId` until they are purged | — |

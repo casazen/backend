@@ -168,6 +168,7 @@ public class AppDbContext(
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
     public DbSet<OrgMember> OrgMembers { get; set; } = null!;
+    public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -935,6 +936,36 @@ public class AppDbContext(
             // The tenant filter reads by OrgId; the team page lists an org's people and finds its owner.
             entity.HasIndex(m => new { m.OrgId, m.Role })
                 .HasDatabaseName("IX_OrgMembers_OrgId_Role");
+        });
+
+        // ─── Org invitations (AM-02) ────────────────────────────────────────────
+        modelBuilder.Entity<OrgInvitation>(entity =>
+        {
+            // The invitations of an org go with it.
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(i => i.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The link finds its invitation by the hash of the token; rotating the token swaps the hash, so it is unique.
+            entity.HasIndex(i => i.TokenHash)
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgInvitations_TokenHash");
+
+            // At most one pending invitation per org and email: two parallel invitations of the same person race on this
+            // (the loser gets 23505, answered as 409). Filter on Status = Pending (1), which is explicit and never reused.
+            entity.HasIndex(i => new { i.OrgId, i.Email })
+                .IsUnique()
+                .HasFilter($"\"Status\" = {(int)OrgInvitationStatus.Pending}")
+                .HasDatabaseName("UIX_OrgInvitations_OrgId_Email_Pending");
+
+            // The tenant filter reads by OrgId; the team page lists an org's open invitations and the seat count counts them.
+            entity.HasIndex(i => new { i.OrgId, i.Status })
+                .HasDatabaseName("IX_OrgInvitations_OrgId_Status");
+
+            // The maintenance job scans by state and date: the invitations to remind, expire or delete.
+            entity.HasIndex(i => new { i.Status, i.ExpiresAt })
+                .HasDatabaseName("IX_OrgInvitations_Status_ExpiresAt");
         });
 
         modelBuilder.Entity<ConsentRecord>()
