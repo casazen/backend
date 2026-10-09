@@ -6,7 +6,8 @@ A4-22). The code is in place; the product owner sets the pilot comuni (section 3
 checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment. Section 7: what a
 service request is tied to (task SU-07, decision D2). Section 10: supplier jobs and QR check-in removed, dashboard
 KPIs from the service requests (SU-11, decision D12). Section 11: what the supplier sees of a request (address, date,
-host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15). Section 14:
+host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15), and since SP-05 the
+events by the hour as windows that occupy only their own hours. Section 14:
 the platform admin's supplier list, suspension and invites (SU-12, A4-29).
 Section 15: what the host sees of a request (timeline, rejection reason, "Segna pagato" with confirmation, asking another supplier)
 and the payment notification to the supplier (SU-09, A4-28). Section 19: the supplier's catalog of services with prices
@@ -591,13 +592,31 @@ record no member (the request keeps no user for them): the page shows "Il tuo te
 - [ ] *Storico*: filter *Rifiutato* and a month → only the requests rejected in that month; pages of 20.
 - [ ] Opening `/app/supplier/inbox/<id of another supplier's request>` shows "Incarico non trovato".
 
-## 12. Calendar sync (iCal) — SU-15
+## 12. Calendar sync (iCal) — SU-15, SP-05
 
 The supplier's iCal feed (activation wizard and *Sincronizza calendario*) is synced in Hangfire, never inside the
 request: saving the URL answers 202 `Syncing` and queues the first sync, "Sincronizza ora" queues another one, the
 15-minute job `ical-supplier-sync` also covers suppliers still in activation (`Pending`). The sync frees only the days
 of the feed (`SupplierAvailability.Source`), never those the supplier set by hand. API, rules, migration of the
 existing days and checks: [ical.md](ical.md#supplier-calendars-su-15).
+
+**By the hour (SP-05).** What the sync writes depends on the event:
+
+- an event of **whole days** closes those days, as it always did (`SupplierAvailability`, the override of the day, section 20.1);
+- an event **by the hour** (10:00-11:00) no longer closes the day it falls on: it becomes a **window** in `SupplierBusyWindows`
+  (`Kind = External`, `Source = ICalFeed`, `ExternalUid` the UID of the event, `Label` its title cut to 80 characters) that occupies
+  **only those hours** (plus the supplier's buffer around it). The slot planner (20.4) reads it as a stretch it may not overlap and
+  the console calendar (`GET api/supplier/calendar`, `blocks[]`) lists it; a day is closed only by an all-day event, by time off or
+  by hand. The title is for the supplier's own console and is never public;
+- a timed event with **no length** (no end) has no hour to occupy and keeps closing its day; a series that repeats more than once a
+  day (every hour, several times a day) is not expanded and occupies nothing — the supplier blocks those hours from the agenda.
+
+The windows are written under the **same lock** and in the same transaction as the days (the download stays outside it), keyed by
+supplier, UID and start: a window that stays is updated in place, one the feed no longer lists is removed, **the blocks and extra
+openings the supplier set by hand are never touched**, and the same feed again changes nothing. A supplier cannot delete an
+engagement of its calendar from the console (404): it edits the event in its calendar. Time zones (`Z`, `TZID`; a floating time and
+an unknown `TZID` are Europe/Rome), the two days a year the clock changes, recurrences and their limit, the import window and the
+10 000-window limit, the migration `AddSupplierBusyWindowFeedKey` and the checks after a deploy: [ical.md](ical.md#events-by-the-hour-sp-05).
 
 ## 13. The Supplier org never becomes the host org — PL-05 (A1-40)
 
@@ -1216,8 +1235,9 @@ PL-05, so the global host-org filter would give it zero rows), each is in the al
 with its reason, and **every read and write carries an explicit `OrgId` predicate**: they all go through `HoursOf`,
 `TimeOffOf`, `WindowsOf` and `SettingsOf` of `SupplierAgendaService` (or are inserts of a row that has its `OrgId`).
 `SupplierAgendaTenancyTests` guards the model, the SQL of those queries and that **no other file** reads the tables (the repair,
-`SupplierService.Maintenance.cs`, and the context are the only others, each statement with the predicate): whoever adds a reader
-(SP-05 writes the windows of the iCal feed, SP-09 reads the slots) must add the file to `AllowedFiles` with its reason and the
+`SupplierService.Maintenance.cs`, the iCal sync `CalendarSyncService.cs` since SP-05 — it reads and writes only the windows of the
+feed, through `CalendarSyncService.FeedWindowsOf` — and the context are the only others, each statement with the predicate): whoever
+adds a reader (SP-09 reads the slots) must add the file to `AllowedFiles` with its reason and the
 predicate; a public read also needs the supplier to be `Active` and must never expose a `Label`. The tests
 `SupplierAgendaPostgresTests` prove the isolation between two suppliers on PostgreSQL. The service request of a supplier is read
 through `ISupplierServiceRequestReader.ListForAgendaAsync`, which keeps the guarantee of section 11 (columns of the request only,
@@ -1240,7 +1260,10 @@ writer wins (the console saves the whole section it shows).
 The agenda of a duplicate profile moves to the keeper before the profile is deleted (section 9.3; the foreign keys cascade, so
 what stayed would be deleted with it), under the `SupplierCalendarSync` lock of both suppliers and in the repair's transaction
 (a dry run rolls it back): its **time off, blocks, extra openings and engagements always move** (dropping a closure would offer a
-slot the supplier had closed); its **weekly hours move only when the keeper has none**, and then the keeper's `HoursConfiguredAt`
+slot the supplier had closed) — with one exception since SP-05: an engagement of the calendar feed that the keeper already has with
+the same UID and start stays the keeper's and the duplicate's copy goes with its profile (the engagements are unique per supplier,
+UID and start, so moving it would break the merge; `SupplierService.WindowsThatMove`); its **weekly hours move only when the keeper
+has none**, and then the keeper's `HoursConfiguredAt`
 follows; its **settings row moves only when the keeper has none** (the keeper's rules are the ones in use). The report has
 `agendaRowsMoved` per merge (what moved: time off + windows + the bands and the settings row when they came over).
 
@@ -1250,10 +1273,11 @@ follows; its **settings row moves only when the keeper has none** (the keeper's 
   `ISupplierAgendaService.BuildPlanningInputAsync` for the requests `Richiesto`, `PresoInCarico` and `InCorso` that have hours
   (and keep `DatedRequest(day)` for the ones that do not), and use `PlanAsync` under the lock before taking a slot. The
   planner does not change. `ISupplierServiceRequestReader.ListForAgendaAsync` gets the hours too.
-- **SP-05** (iCal by the hour): write the events as `SupplierBusyWindow` with `Kind = External`, `Source = ICalFeed` and the
-  `ExternalUid`, under the same lock (`CalendarSyncService.AvailabilityLock`), freeing only the windows of the feed; add its own
-  unique index on the event and its file to the allow-list of `SupplierAgendaTenancyTests`. `BuildPlanningInputAsync` already
-  turns `External` windows into occupancies, and the calendar already lists them.
+- **SP-05** (iCal by the hour) — **done, see sections 12 and [ical.md](ical.md#events-by-the-hour-sp-05)**: the events by the hour
+  are `SupplierBusyWindow` with `Kind = External`, `Source = ICalFeed` and the `ExternalUid`, written under the same lock
+  (`CalendarSyncService.AvailabilityLock`), freeing only the windows of the feed, with their own unique index on the event
+  (migration `AddSupplierBusyWindowFeedKey`) and the sync in the allow-list of `SupplierAgendaTenancyTests`. The planner did not
+  change: `BuildPlanningInputAsync` already turned `External` windows into occupancies, and the calendar already listed them.
 - **SP-09** (public slots) — **done, see section 22**: `PlanAsync(orgId, from, to, new SupplierSlotQuery(durationMinutes, service.MinNoticeHours, service.WeekdaysMask))`
   for a published service of an `Active` supplier; only the slot instants leave (never a label, a kind or a reason of closure).
 - **SP-10** (holds): add `SupplierOccupancy.Hold(startUtc, endUtc, expiresAtUtc)` and recompute under the lock before creating the hold.
