@@ -24,6 +24,7 @@ public class OrgTeamControllersTests
 
     private readonly Mock<IOrgInvitationService> _invitations = new();
     private readonly Mock<IOrgTeamService> _team = new();
+    private readonly Mock<IOrgPropertyAccessService> _propertyAccess = new();
     private readonly Mock<IOrgContextResolver> _org = new();
 
     public OrgTeamControllersTests()
@@ -49,7 +50,7 @@ public class OrgTeamControllersTests
         WithContext(new OrgInvitationsController(_invitations.Object, _org.Object), sub is null ? [] : [new Claim("sub", sub)]);
 
     private OrgMembersController Members(string? sub = "auth0|owner") =>
-        WithContext(new OrgMembersController(_team.Object, _org.Object), sub is null ? [] : [new Claim("sub", sub)]);
+        WithContext(new OrgMembersController(_team.Object, _propertyAccess.Object, _org.Object), sub is null ? [] : [new Claim("sub", sub)]);
 
     private static OrgInvitationView View(OrgInvitationStatus status = OrgInvitationStatus.Pending) => new(
         ItemId, "anna.leone@example.com", "Anna Leone", OrgRole.Collaborator, ["short-rent"], PropertyScope.All,
@@ -234,9 +235,99 @@ public class OrgTeamControllersTests
         var reactivate = await controller.Reactivate(ItemId, CancellationToken.None);
         var remove = await controller.Remove(ItemId, CancellationToken.None);
 
-        foreach (var result in new[] { list.Result, change.Result, deactivate.Result, reactivate.Result, remove })
+        var properties = await controller.GetProperties(ItemId, CancellationToken.None);
+        var setProperties = await controller.SetProperties(
+            ItemId, new SetOrgMemberPropertiesRequest { PropertyScope = PropertyScope.All }, CancellationToken.None);
+
+        foreach (var result in new[] { list.Result, change.Result, deactivate.Result, reactivate.Result, remove, properties.Result, setProperties.Result })
             Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>(result).StatusCode);
         _team.VerifyNoOtherCalls();
+        _propertyAccess.VerifyNoOtherCalls();
+    }
+
+    // ─── AM-03: the properties of a member ──────────────────────────────────────────────────────────────
+
+    private static readonly Guid PropertyA = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
+    private static readonly Guid PropertyB = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
+
+    private static OrgMemberPropertyAccessView AccessView() => new(
+        ItemId,
+        OrgRole.Collaborator,
+        PropertyScope.Selected,
+        ScopeSupported: true,
+        [
+            new PropertyAccessItem(PropertyA, "Trullo", "Ostuni", Granted: true, PeopleWithAccess: 3),
+            new PropertyAccessItem(PropertyB, "Casa Bianca", "Lecce", Granted: false, PeopleWithAccess: 2),
+        ]);
+
+    [Fact]
+    public async Task GetMemberProperties_AsksForTheCallersOrgAndReturnsGrantedAndHowManyCanAccess()
+    {
+        _propertyAccess.Setup(p => p.GetAsync(OrgId, ItemId, It.IsAny<CancellationToken>())).ReturnsAsync(AccessView());
+
+        var result = await Members().GetProperties(ItemId, CancellationToken.None);
+
+        var dto = Assert.IsType<OrgMemberPropertiesDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal((ItemId, OrgRole.Collaborator, PropertyScope.Selected, true), (dto.MemberId, dto.Role, dto.PropertyScope, dto.ScopeSupported));
+        Assert.Equal(
+            [(PropertyA, "Trullo", true, 3), (PropertyB, "Casa Bianca", false, 2)],
+            dto.Properties.Select(p => (p.PropertyId, p.Name, p.Granted, p.PeopleWithAccess)).ToArray());
+    }
+
+    [Fact]
+    public async Task SetMemberProperties_PassesTheScopeTheIdsAndTheCallersAccount()
+    {
+        _propertyAccess
+            .Setup(p => p.SetAsync(
+                OrgId, ItemId, "auth0|owner", PropertyScope.Selected,
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { PropertyA })), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AccessView());
+
+        var result = await Members().SetProperties(
+            ItemId,
+            new SetOrgMemberPropertiesRequest { PropertyScope = PropertyScope.Selected, PropertyIds = [PropertyA] },
+            CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        _propertyAccess.VerifyAll();
+    }
+
+    [Fact]
+    public async Task SetMemberProperties_NoIdsMeansAnEmptyList_NotNull()
+    {
+        _propertyAccess
+            .Setup(p => p.SetAsync(
+                OrgId, ItemId, "auth0|owner", PropertyScope.All, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 0), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AccessView() with { PropertyScope = PropertyScope.All });
+
+        var result = await Members().SetProperties(
+            ItemId, new SetOrgMemberPropertiesRequest { PropertyScope = PropertyScope.All }, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        _propertyAccess.VerifyAll();
+    }
+
+    [Fact]
+    public void MemberPropertiesEndpoints_AreRoutedUnderTheMemberAndBehindTheMembersPolicy()
+    {
+        var controller = typeof(OrgMembersController);
+
+        // The class carries the policy of the team (owner and administrators) and the flag: the new actions inherit both.
+        Assert.Equal(
+            Casazen.Web.Authorization.CasazenPolicies.OrgMembersManage,
+            controller.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), inherit: true)
+                .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().Single().Policy);
+        Assert.NotEmpty(controller.GetCustomAttributes(typeof(FeatureGateAttribute), inherit: true));
+        Assert.Equal(
+            "{id:guid}/properties",
+            controller.GetMethod(nameof(OrgMembersController.GetProperties))!
+                .GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpGetAttribute), inherit: true)
+                .Cast<Microsoft.AspNetCore.Mvc.HttpGetAttribute>().Single().Template);
+        Assert.Equal(
+            "{id:guid}/properties",
+            controller.GetMethod(nameof(OrgMembersController.SetProperties))!
+                .GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPutAttribute), inherit: true)
+                .Cast<Microsoft.AspNetCore.Mvc.HttpPutAttribute>().Single().Template);
     }
 
     [Fact]

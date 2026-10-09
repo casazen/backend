@@ -228,6 +228,21 @@
   <data name="OrgOwnerRequired" xml:space="preserve">
     <value>Solo il titolare dell'organizzazione può creare e gestire gli amministratori.</value>
   </data>
+  <data name="OrgMemberScopeNotSupported" xml:space="preserve">
+    <value>Solo i collaboratori possono essere limitati ad alcuni immobili: le altre persone vedono tutti gli immobili dell'organizzazione.</value>
+  </data>
+  <data name="OrgMemberPropertyUnknown" xml:space="preserve">
+    <value>Uno degli immobili scelti non fa parte dell'organizzazione.</value>
+  </data>
+  <data name="OrgMemberPropertyScopeRequired" xml:space="preserve">
+    <value>Scegli se la persona vede tutti gli immobili o solo alcuni.</value>
+  </data>
+  <data name="OrgMemberPropertyIdsTooMany" xml:space="preserve">
+    <value>Hai scelto troppi immobili in una volta (al massimo 500).</value>
+  </data>
+  <data name="PropertyResponsibleInvalid" xml:space="preserve">
+    <value>Il responsabile deve essere una persona attiva dell'organizzazione che può vedere questo immobile.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
