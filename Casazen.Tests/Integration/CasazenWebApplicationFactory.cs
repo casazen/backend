@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -6,6 +7,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
+using Casazen.Tests.Unit.Documents;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
 using Hangfire;
@@ -206,6 +208,11 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             ape.Setup(s => s.EnsureUploadedFileIsOfficialApeAsync(It.IsAny<IFormFile>()))
                 .Returns(Task.CompletedTask);
             services.AddSingleton(ape.Object);
+
+            // PDFsharp/MigraDoc loses words when two documents are rendered at once in one process, and the hosts of a run
+            // render in parallel: the renderer takes its turn, as the unit tests' one does (SerializedPdfRenderer).
+            RemoveService<IPdfDocumentRenderer>(services);
+            services.AddSingleton<IPdfDocumentRenderer>(_ => new SerializedPdfRenderer());
         });
     }
 

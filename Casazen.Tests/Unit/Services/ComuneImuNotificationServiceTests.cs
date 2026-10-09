@@ -4,7 +4,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Documents;
 using Casazen.Web.Controllers;
@@ -425,7 +424,7 @@ public class ComuneImuNotificationServiceTests
             .ReturnsAsync((string city, CancellationToken _) => BuildChannel(city));
         return (
             new ComuneImuNotificationService(
-                leases.Object, events.Object, territorialAgreements.Object, imuChannels.Object, new MigraDocPdfDocumentRenderer(), orgHolder ?? OrgHolder(holders ?? [])),
+                leases.Object, events.Object, territorialAgreements.Object, imuChannels.Object, new SerializedPdfRenderer(), orgHolder ?? OrgHolder(holders ?? [])),
             events);
     }
 
