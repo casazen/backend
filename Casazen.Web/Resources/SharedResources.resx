@@ -129,6 +129,9 @@
   <data name="ConnectReturnUrlNotConfigured" xml:space="preserve">
     <value>L'indirizzo pubblico dell'app non è configurato sul server: il collegamento con Stripe non può essere avviato.</value>
   </data>
+  <data name="SupplierPaymentsNotReady" xml:space="preserve">
+    <value>Il conto per ricevere i pagamenti non è ancora pronto: collega Stripe o completa la configurazione dalle impostazioni, poi riprova.</value>
+  </data>
   <data name="RequestFailed" xml:space="preserve">
     <value>Richiesta non riuscita</value>
   </data>
@@ -143,6 +146,27 @@
   </data>
   <data name="MemberCannotOnboard" xml:space="preserve">
     <value>Fai già parte di un'organizzazione come collaboratore: non puoi attivare un nuovo account né cambiare il tuo ruolo. Se ti serve un altro ruolo, chiedilo al titolare dell'organizzazione.</value>
+  </data>
+  <data name="MemberInactive" xml:space="preserve">
+    <value>Il tuo accesso all'organizzazione è stato disattivato. Contatta chi la amministra per riattivarlo.</value>
+  </data>
+  <data name="OrgLastOwner" xml:space="preserve">
+    <value>Il titolare dell'organizzazione non può essere disattivato, rimosso né cambiare ruolo: ogni organizzazione ha sempre il suo titolare.</value>
+  </data>
+  <data name="OrgMemberAlreadyMember" xml:space="preserve">
+    <value>Questa persona fa già parte di un'organizzazione.</value>
+  </data>
+  <data name="OrgMemberAreaRequired" xml:space="preserve">
+    <value>Scegli almeno un'area di lavoro per la persona (affitti brevi o affitti lunghi).</value>
+  </data>
+  <data name="OrgMemberOtherOrg" xml:space="preserve">
+    <value>Questa persona appartiene a un'altra organizzazione: per cambiarla serve l'invito dell'organizzazione.</value>
+  </data>
+  <data name="OrgMemberOwnerNotAssignable" xml:space="preserve">
+    <value>Il ruolo di titolare non si assegna: l'organizzazione resta a chi l'ha creata (il trasferimento di titolarità non è ancora disponibile).</value>
+  </data>
+  <data name="OrgMembershipMaintenanceConflict" xml:space="preserve">
+    <value>Un'altra modifica ha interrotto la riconciliazione dei membri: non è stato salvato nulla. Riprova.</value>
   </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
@@ -705,6 +729,18 @@
   </data>
   <data name="BookingCancelPaymentPermissionRequired" xml:space="preserve">
     <value>Per cancellare una prenotazione con pagamenti serve il permesso di gestire i pagamenti.</value>
+  </data>
+  <data name="GuestCancelTokenMissing" xml:space="preserve">
+    <value>Manca il token di cancellazione: apri il link ricevuto per email.</value>
+  </data>
+  <data name="GuestCancelTokenInvalid" xml:space="preserve">
+    <value>Il link di cancellazione non è valido o è già stato usato.</value>
+  </data>
+  <data name="GuestCancelTokenExpired" xml:space="preserve">
+    <value>Il link di cancellazione è scaduto. Chiedi all'host un nuovo link.</value>
+  </data>
+  <data name="BookingNotCancellableByGuest" xml:space="preserve">
+    <value>Questa prenotazione non può più essere cancellata in autonomia.</value>
   </data>
   <data name="ServiceCategoryInvalid" xml:space="preserve">
     <value>La categoria di servizio «{0}» non è valida: scegline una dall'elenco delle categorie disponibili.</value>

@@ -100,7 +100,7 @@ public class BookingCancellationControllerTests
     }
 
     [Fact]
-    public async Task Cancel_OwnerOfPaidBooking_PassesTheChosenRefund()
+    public async Task Cancel_OwnerOfPaidBooking_RefundsTheFullRefundableAmount()
     {
         GivenQuote(refundable: 400m);
 
@@ -108,7 +108,7 @@ public class BookingCancellationControllerTests
 
         Assert.IsType<OkObjectResult>(result.Result);
         _cancellations.Verify(c => c.CancelAsync(
-            It.Is<BookingCancellationRequest>(r => r.RefundAmount == 250m && r.Reason == "Guasto"),
+            It.Is<BookingCancellationRequest>(r => r.RefundAmount == 400m && r.Reason == "Guasto"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

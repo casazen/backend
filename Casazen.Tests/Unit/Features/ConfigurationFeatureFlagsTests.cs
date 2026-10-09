@@ -57,6 +57,7 @@ public class ConfigurationFeatureFlagsTests
     [Fact]
     public void All_SupplierFlags_AreListedLastInTheOrderExposedToTheFrontend()
     {
+        // The supplier flags keep their order; a flag added after them (AM-01: OrgTeam) is appended at the end.
         Assert.Equal("SupplierShowcaseBooking", FeatureFlags.SupplierShowcaseBooking);
         Assert.Equal("SupplierOnlinePayments", FeatureFlags.SupplierOnlinePayments);
         Assert.Equal("SupplierRequestAutoCancel", FeatureFlags.SupplierRequestAutoCancel);
@@ -70,6 +71,8 @@ public class ConfigurationFeatureFlagsTests
                 "SupplierShowcaseBooking",
                 "SupplierOnlinePayments",
                 "SupplierRequestAutoCancel",
+                "UiRedesign",
+                "OrgTeam",
             },
             FeatureFlags.All);
     }
@@ -121,6 +124,98 @@ public class ConfigurationFeatureFlagsTests
         return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
     }
 
+    // ─── AM-01: the org team flag ───────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void OrgTeam_IsOffWhenMissing_AndOnlyOnWhenExplicitlyTrue()
+    {
+        Assert.False(Flags(new()).IsEnabled(FeatureFlags.OrgTeam));
+        Assert.False(Flags(new() { ["Features:OrgTeam"] = "false" }).IsEnabled(FeatureFlags.OrgTeam));
+        Assert.False(Flags(new() { ["Features:OrgTeam"] = "1" }).IsEnabled(FeatureFlags.OrgTeam));
+        Assert.True(Flags(new() { ["Features:OrgTeam"] = "true" }).IsEnabled(FeatureFlags.OrgTeam));
+    }
+
+    [Fact]
+    public void OrgTeam_IsExposedToTheFrontendAsACamelCaseKey()
+    {
+        Assert.Contains(FeatureFlags.OrgTeam, FeatureFlags.All);
+        Assert.Equal("orgTeam", System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(FeatureFlags.OrgTeam));
+    }
+
+    [Fact]
+    public void OrgTeam_AppSettingsDefault_IsOff()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"))
+            .Build();
+
+        Assert.Equal("False", configuration["Features:OrgTeam"], ignoreCase: true);
+        Assert.False(new ConfigurationFeatureFlags(configuration).IsEnabled(FeatureFlags.OrgTeam));
+    }
+
     private static ConfigurationFeatureFlags Flags(Dictionary<string, string?> values) =>
         new(new ConfigurationBuilder().AddInMemoryCollection(values).Build());
+
+    // ─── BL-01: the UiRedesign flag (gradual rollout of the new interface) ─────────
+
+    [Fact]
+    public void UiRedesign_IsNamedAsDocumentedAndListedForTheFrontend()
+    {
+        Assert.Equal("UiRedesign", FeatureFlags.UiRedesign);
+        Assert.Contains(FeatureFlags.UiRedesign, FeatureFlags.All);
+        Assert.Equal(FeatureFlags.All.Count, FeatureFlags.All.Distinct().Count());
+    }
+
+    [Fact]
+    public void IsEnabled_UiRedesignNotConfigured_IsOff()
+    {
+        Assert.False(Flags(new Dictionary<string, string?>()).IsEnabled(FeatureFlags.UiRedesign));
+    }
+
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("True", true)]
+    [InlineData("false", false)]
+    [InlineData("", false)]
+    [InlineData("1", false)]
+    [InlineData("yes", false)]
+    public void IsEnabled_UiRedesign_IsOnOnlyWhenExplicitlyTrue(string value, bool expected)
+    {
+        var flags = Flags(new Dictionary<string, string?> { ["Features:UiRedesign"] = value });
+
+        Assert.Equal(expected, flags.IsEnabled(FeatureFlags.UiRedesign));
+    }
+
+    [Fact]
+    public void IsEnabled_UiRedesignOn_DoesNotTurnAnyOtherFlagOn()
+    {
+        var flags = Flags(new Dictionary<string, string?> { ["Features:UiRedesign"] = "true" });
+
+        Assert.True(flags.IsEnabled(FeatureFlags.UiRedesign));
+        Assert.All(
+            FeatureFlags.All.Where(flag => flag != FeatureFlags.UiRedesign),
+            flag => Assert.False(flags.IsEnabled(flag), $"{flag} must stay off"));
+    }
+
+    [Fact]
+    public void IsEnabled_OtherFlagsOn_DoNotTurnUiRedesignOn()
+    {
+        var flags = Flags(FeatureFlags.All
+            .Where(flag => flag != FeatureFlags.UiRedesign)
+            .ToDictionary(flag => $"Features:{flag}", _ => (string?)"true"));
+
+        Assert.False(flags.IsEnabled(FeatureFlags.UiRedesign));
+    }
+
+    [Fact]
+    public void AppSettings_UiRedesignIsListedAndOffByDefault()
+    {
+        // The documented default (a missing value is off anyway): appsettings.json of the web project.
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"), optional: false)
+            .Build();
+
+        Assert.Equal("False", configuration[$"{FeatureFlags.SectionName}:{FeatureFlags.UiRedesign}"]);
+        Assert.False(new ConfigurationFeatureFlags(configuration).IsEnabled(FeatureFlags.UiRedesign));
+    }
 }

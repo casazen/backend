@@ -129,6 +129,9 @@
   <data name="ConnectReturnUrlNotConfigured" xml:space="preserve">
     <value>The public address of the app is not configured on the server: the Stripe connection cannot be started.</value>
   </data>
+  <data name="SupplierPaymentsNotReady" xml:space="preserve">
+    <value>Your account for receiving payments is not ready yet: connect Stripe or finish the setup from the settings, then try again.</value>
+  </data>
   <data name="RequestFailed" xml:space="preserve">
     <value>Request failed</value>
   </data>
@@ -143,6 +146,27 @@
   </data>
   <data name="MemberCannotOnboard" xml:space="preserve">
     <value>You already belong to an organization as a collaborator: you cannot set up a new account or change your own role. If you need a different role, ask the owner of the organization.</value>
+  </data>
+  <data name="MemberInactive" xml:space="preserve">
+    <value>Your access to the organization has been deactivated. Contact whoever administers it to have it reactivated.</value>
+  </data>
+  <data name="OrgLastOwner" xml:space="preserve">
+    <value>The owner of the organization cannot be deactivated, removed or given another role: an organization always keeps its owner.</value>
+  </data>
+  <data name="OrgMemberAlreadyMember" xml:space="preserve">
+    <value>This person already belongs to an organization.</value>
+  </data>
+  <data name="OrgMemberAreaRequired" xml:space="preserve">
+    <value>Choose at least one area for the person to work in (short-term or long-term rentals).</value>
+  </data>
+  <data name="OrgMemberOtherOrg" xml:space="preserve">
+    <value>This person belongs to another organization: changing it takes an invitation from the organization.</value>
+  </data>
+  <data name="OrgMemberOwnerNotAssignable" xml:space="preserve">
+    <value>The owner role cannot be assigned: the organization stays with whoever created it (transferring the ownership is not available yet).</value>
+  </data>
+  <data name="OrgMembershipMaintenanceConflict" xml:space="preserve">
+    <value>Another change interrupted the members reconciliation: nothing was saved. Try again.</value>
   </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
@@ -705,6 +729,18 @@
   </data>
   <data name="BookingCancelPaymentPermissionRequired" xml:space="preserve">
     <value>Cancelling a booking with payments requires the permission to manage payments.</value>
+  </data>
+  <data name="GuestCancelTokenMissing" xml:space="preserve">
+    <value>The cancellation token is missing: open the link you received by email.</value>
+  </data>
+  <data name="GuestCancelTokenInvalid" xml:space="preserve">
+    <value>The cancellation link is not valid or has already been used.</value>
+  </data>
+  <data name="GuestCancelTokenExpired" xml:space="preserve">
+    <value>The cancellation link has expired. Ask the host for a new link.</value>
+  </data>
+  <data name="BookingNotCancellableByGuest" xml:space="preserve">
+    <value>This booking can no longer be cancelled by the guest.</value>
   </data>
   <data name="ServiceCategoryInvalid" xml:space="preserve">
     <value>The service category "{0}" is not valid: choose one from the list of available categories.</value>

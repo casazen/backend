@@ -27,6 +27,15 @@ public interface IRequestTenantContext : ITenantContext
     bool IsCallerInactive { get; }
 
     /// <summary>
+    /// True when the caller is a member of an org whose membership was deactivated (<c>OrgMember.Status</c>, AM-01): the
+    /// request is refused by <see cref="Casazen.Web.Middleware.InactiveAccountMiddleware"/> with 403
+    /// <c>member_inactive</c>. Read from the same query as the active flag, never cached, so the deactivation applies
+    /// from the very next request on every API instance. False for anonymous requests, a first access and a user that
+    /// is in no org team.
+    /// </summary>
+    bool IsCallerOrgMemberDeactivated { get; }
+
+    /// <summary>
     /// Sets the caller's org after it has been provisioned or linked in this request. The org of a request can
     /// only go from none to one: a different org than the one already resolved is refused.
     /// </summary>
@@ -58,6 +67,7 @@ public sealed class TenantContext(
     private bool _resolved;
     private bool _unresolvedReadLogged;
     private bool _callerInactive;
+    private bool _callerOrgMemberDeactivated;
     private Guid? _orgId;
 
     public bool FilterEnabled =>
@@ -81,6 +91,8 @@ public sealed class TenantContext(
 
     public bool IsCallerInactive => _callerInactive;
 
+    public bool IsCallerOrgMemberDeactivated => _callerOrgMemberDeactivated;
+
     public async Task ResolveAsync(CancellationToken cancellationToken = default)
     {
         if (_resolved || !FilterEnabled)
@@ -92,21 +104,13 @@ public sealed class TenantContext(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // One read per request for both the tenant and the active flag (PL-03 reuses it, A1-04).
-            // A1-40: User.OrgId can point at the caller's own Supplier org (linked at supplier registration,
-            // before ever completing the host onboarding). Only a Host-type org scopes the tenant filter — a
-            // supplier account must never read or write host data through it; the join resolves to no org,
-            // exactly like a brand-new user (fail-closed), same as OrgContextResolver/OrgService.
-            var row = await db.Users.AsNoTracking()
-                .Where(u => u.Id == sub)
-                .Select(u => new
-                {
-                    OrgId = u.OrgId != null && u.Org!.OrgType == OrgType.Host ? u.OrgId : null,
-                    u.IsActive,
-                })
-                .FirstOrDefaultAsync(cancellationToken);
+            // One read per request for the tenant, the active flag (PL-03 reuses it, A1-04) and the org membership
+            // status (AM-01): no cache, so a deactivation applies from the next request. The query, and why it ignores
+            // the tenant filter of OrgMembers and only counts a Host org (A1-40), is CallerTenantQuery.
+            var row = await CallerTenantQuery.For(db, sub).FirstOrDefaultAsync(cancellationToken);
             orgId = row?.OrgId;
             _callerInactive = row is { IsActive: false };
+            _callerOrgMemberDeactivated = row is { MemberStatus: OrgMemberStatus.Deactivated };
         }
 
         // SetOrgId may have run while the query was in flight; never overwrite it with an older value.

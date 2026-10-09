@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Infrastructure;
@@ -82,6 +83,142 @@ public class OrgBillingAdminAuthorizationHandlerTests
         yield return Row("both: Guest jwt + owner membership", ["Guest"], UserRole.PropertyOwner, ["short-rent/property_owner"], false);
         yield return Row("both: PropertyOwner jwt + owner membership", ["PropertyOwner"], UserRole.PropertyOwner, ["short-rent/property_owner"], true);
         yield return Row("both: Supplier jwt + staff membership", ["Supplier"], UserRole.None, ["short-rent/staff"], false);
+
+        // ── The account context (AM-01): the owner and the administrator hold org.billing.manage ───────────
+        yield return Row("db: account/org_owner", [], UserRole.None, ["account/org_owner"], true);
+        yield return Row("db: account/org_admin", [], UserRole.None, ["account/org_admin"], true);
+        yield return Row("db: account/org_admin + short-rent/property_manager (the administrator)", [], UserRole.None, ["account/org_admin", "short-rent/property_manager"], true);
+        // The accountant reads the invoices and manages nothing; the other roles have no account membership at all.
+        yield return Row("db: account/org_accountant", [], UserRole.None, ["account/org_accountant"], false);
+        yield return Row("db: account/org_accountant + short-rent/accountant (the accountant)", [], UserRole.None, ["account/org_accountant", "short-rent/accountant"], false);
+        yield return Row("db: an owner key in the account context (account/property_owner)", [], UserRole.None, ["account/property_owner"], false);
+        yield return Row("db: account/org_owner but DB role Staff", [], UserRole.Staff, ["account/org_owner"], false);
+        yield return Row("both: Staff jwt + account/org_admin (a denied role wins)", ["Staff"], UserRole.None, ["account/org_admin"], false);
+        yield return Row("both: PropertyManager jwt + account/org_admin", ["PropertyManager"], UserRole.None, ["account/org_admin"], true);
+        yield return Row("both: PropertyManager jwt + account/org_accountant", ["PropertyManager"], UserRole.None, ["account/org_accountant"], false);
+    }
+
+    [Theory]
+    [InlineData("org.billing.manage", true)]
+    [InlineData("org.billing.read", false)]
+    [InlineData("org.members.manage", false)]
+    public async Task HandleAsync_AccountMembershipOfAnyRole_PassesOnlyWithBillingManage(string permission, bool allowed)
+    {
+        // The policy evaluates org.billing.manage: a role of the account context that holds it passes without being one
+        // of the known role keys (a role added later cannot be forgotten by the policy), one that does not never does.
+        var snapshot = new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.None,
+            SupplierOrgId: null,
+            Memberships: [new ContextAccess("account", "Amministrazione", "org_billing_clerk", [permission], "/app/account")]);
+        var handler = CreateHandler(snapshot);
+        var context = Context([]);
+
+        await handler.HandleAsync(context);
+
+        Assert.Equal(allowed, context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task HandleAsync_BillingManageOutsideTheAccountContext_DoesNotPass()
+    {
+        // org.billing.manage counts in the account context only, like every permission in its own context.
+        var snapshot = new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.None,
+            SupplierOrgId: null,
+            Memberships: [new ContextAccess("short-rent", "Affitti brevi", "bk09_collaborator", ["org.billing.manage"], "/app/short-rent")]);
+        var handler = CreateHandler(snapshot);
+        var context = Context([]);
+
+        await handler.HandleAsync(context);
+
+        Assert.False(context.HasSucceeded);
+    }
+
+    [Theory]
+    [InlineData("account", "org_owner")]
+    [InlineData("account", "org_admin")]
+    [InlineData("short-rent", "property_owner")]
+    public async Task HandleAsync_DeactivatedMember_NeverPasses(string contextKey, string roleKey)
+    {
+        var snapshot = new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.None,
+            SupplierOrgId: null,
+            Memberships: [Access(contextKey, roleKey)],
+            OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), OrgRole.Admin, OrgMemberStatus.Deactivated));
+        var handler = CreateHandler(snapshot);
+        var context = Context([new Claim(ClaimTypes.Role, "PropertyOwner")]);
+
+        await handler.HandleAsync(context);
+
+        Assert.False(context.HasSucceeded);
+    }
+
+    [Theory]
+    [InlineData(OrgRole.Collaborator, "short-rent", "staff")]
+    [InlineData(OrgRole.PropertyManager, "short-rent", "property_manager")]
+    [InlineData(OrgRole.Accountant, "account", "org_accountant")]
+    public async Task HandleAsync_OrgMemberWithLeftoverOwnerClaim_IsRefused(OrgRole role, string contextKey, string roleKey)
+    {
+        var snapshot = new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.PropertyOwner,
+            SupplierOrgId: null,
+            Memberships: [Access(contextKey, roleKey)],
+            OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), role, OrgMemberStatus.Active));
+        var handler = CreateHandler(snapshot);
+        var context = Context(
+        [
+            new Claim(ClaimTypes.Role, "PropertyOwner"),
+            new Claim(ClaimTypes.Role, "PropertyManager"),
+            new Claim(ClaimTypes.Role, "Admin"),
+        ]);
+
+        await handler.HandleAsync(context);
+
+        Assert.False(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task HandleAsync_OrgOwner_PassesFromTheOrgRoleWithoutAToken()
+    {
+        var snapshot = new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.PropertyOwner,
+            SupplierOrgId: null,
+            Memberships: [],
+            OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), OrgRole.Owner, OrgMemberStatus.Active));
+        var handler = CreateHandler(snapshot);
+        var context = Context([]);
+
+        await handler.HandleAsync(context);
+
+        Assert.True(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ActiveMemberOfTheAccount_PassesAsBefore()
+    {
+        var snapshot = new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.None,
+            SupplierOrgId: null,
+            Memberships: [Access("account", "org_admin")],
+            OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), OrgRole.Admin, OrgMemberStatus.Active));
+        var handler = CreateHandler(snapshot);
+        var context = Context([]);
+
+        await handler.HandleAsync(context);
+
+        Assert.True(context.HasSucceeded);
     }
 
     [Theory]

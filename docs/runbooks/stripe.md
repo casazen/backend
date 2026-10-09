@@ -201,8 +201,10 @@ user's rental context, short-rent first; no link when the user has none). A plan
 does not work in (old link, a Stripe return page created before PL-16) redirects to the same page of its context, query
 string included. On the backend `GET /api/orgs/me/entitlement` and every billing endpoint use the org policy
 `OrgBillingAdmin`, which admits the owner as `PropertyOwner` or `LongTermLandlord` (JWT role, or DB membership with the
-owner's role key of the short-rent or long-rent context) and the platform admin; a `Staff` collaborator, a
-`PropertyManager` (it does not manage plan and invoices) and a member of the org with any other DB role get 403.
+owner's role key of the short-rent or long-rent context), the platform admin and, since AM-01, a member whose `account`
+membership holds `org.billing.manage` (`org_owner`, `org_admin`; `docs/runbooks/org-team.md`); a `Staff` collaborator, a
+`PropertyManager` (it does not manage plan and invoices), an accountant (`org.billing.read` only) and a member of the org
+with any other DB role get 403.
 The same policy protects the custom domain and the Stripe Connect account endpoints: a long-term landlord can call
 them too, but the web app shows those pages only in the short-rent shell.
 
@@ -653,6 +655,107 @@ Stripe call.
 2. Test mode: connect a test account, then delete it in the Stripe Dashboard (Connect → Accounts → the account →
    Delete): the next "Collega Stripe" links a new account (log `creating a replacement`). Set an invalid secret key on
    the API and click "Collega Stripe": 503 `stripe_connect_not_configured`, `Orgs.StripeConnectedAccountId` unchanged.
+
+## Connect onboarding of the suppliers (SP-14)
+
+Redesign wave task SP-14 (branch `feature/rd-supplier-payments-account`, backend only: no screen yet, the supplier settings page
+is SP-16). Decision D2: the supplier is paid with a **direct charge on its own Stripe account** (Express, v1: `type=express`,
+`StripeConnectGateway`), with a platform commission (D3) that comes with SP-15. This task is **only the account**: the supplier
+connects it, CasaZen reads its state and opens its Express Dashboard. **No PaymentIntent, commission, payment record, payment
+page, refund or earnings exist yet** (SP-15, SP-16, SP-17); `StripeServiceApplicationFeeTests` is untouched, so the rule "no
+application fee on guest bookings and rent" (A3-40, [Charge model](#charge-model-verified-in-the-code)) still holds.
+
+### Same engine as the host, other org and other routes
+
+The supplier's account is the `Org` of the supplier (`OrgType.Supplier`), and `ConnectOnboardingService` works on any org: the same
+advisory lock (`OrgConnectAccount`, key = org id), the same idempotency key (`connect-account:{orgId}`, `…:replaces:{old}` for a
+replacement), the same rule "only `resource_missing` / `account_invalid` replaces the account" and the same failure table as the
+host's onboarding (BK-09, section above). The host's `ConnectController` and `ConnectOnboardingService` are **not changed**. A
+dual-role account (a host who is also a supplier) has **two accounts**: `api/connect/*` works on its host org, `api/supplier/payments/*`
+on its supplier org (`User.SupplierOrgId`), each with its own return pages.
+
+### Endpoints (`SupplierPaymentsController`, policy `RequireSupplier`, behind `Features__SupplierOnlinePayments`)
+
+The org is the caller's own supplier link (`ISupplierOrgContextResolver.GetLinkedSupplierOrgIdAsync`): it is never provisioned
+(404 `not_found` without one) and an org without a supplier profile never gets an account through these routes.
+
+| Method and path | What it does |
+|---|---|
+| `GET api/supplier/payments/account[?refresh=true]` | The state **from the database** (what `account.updated` stored); with `refresh=true` Stripe is read first (one call, only when an account is linked) and the answer is saved. Without an account every flag is false and Stripe is not called |
+| `POST api/supplier/payments/account` | Creates the Express account when missing (idempotent, one account for parallel requests) and returns the state. The onboarding link does the same; this is for a client that wants the account before the link |
+| `POST api/supplier/payments/onboarding-link` | `{ "url" }`: the Account Link (single use). Creates the account when missing. A request body is ignored |
+| `POST api/supplier/payments/dashboard-link` | `{ "url" }`: the single-use login link to the supplier's **Express Dashboard** (`POST /v1/accounts/{id}/login_links`, new `IStripeConnectGateway.CreateDashboardLoginLinkAsync`). **Needs an existing account**; it never creates one |
+
+Answer of the state: `hasAccount`, `chargesEnabled`, `payoutsEnabled`, `detailsSubmitted`, `requirementsDue` (the **names** of the
+fields Stripe still needs, e.g. `external_account`), `canReceivePayments` (account linked **and** charges **and** payouts enabled:
+what SP-15 will require before a job is payable online), `verified` and `verificationMissing`. There is no bank data, no document
+data and no Stripe account id in it. The responses carry `Cache-Control: private, no-store`: the links are credentials, they are
+never logged and never stored.
+
+Errors (ProblemDetails `code`): the Stripe ones are those of the host's onboarding, with the same texts: 503
+`stripe_connect_unavailable` (+ `Retry-After: 10`), 503 `stripe_connect_not_configured`, 502 `stripe_connect_failed`, 409
+`stripe_connect_account_unavailable` (only the two link routes: the linked account is gone, the next onboarding link replaces it; a
+status read never answers it, it only clears the capabilities), 503 `connect_return_url_not_configured` (onboarding link). New:
+**422 `supplier_payments_not_ready`** (`SupplierPaymentsNotReady`, Italian and English) for a dashboard link without an account,
+**and** when Stripe refuses the login link as a rejected request, which is how an account that has not completed the onboarding is
+expected to answer (the account stays linked: the supplier finishes it with the onboarding link). That last mapping is proved with a
+mocked Stripe only: check it once in test mode (Verification, point 2).
+
+### Return pages (built by the server)
+
+`PublicSiteLinks` (same helper and rule as the host's, D3, no domain in code): `return_url` =
+`{App__PublicSiteBaseUrl}/app/supplier/settings?stripe_return=1`, `refresh_url` = `…?stripe_refresh=1`
+(`SupplierConnectOnboardingReturn()` / `SupplierConnectOnboardingRefresh()`). They are not in `BillingReturnPagePaths` (the pages of
+the Checkout and billing portal of the plans: a supplier has no plan page, and that list is mirrored by the web app's
+`billing-routes.ts`), which is unchanged. What the supplier settings page has to do (SP-16): on `?stripe_return=1` read the state with
+`GET …/account?refresh=true` (Stripe may need a moment: poll once or twice if `detailsSubmitted` is still false); on
+`?stripe_refresh=1` (expired or already used link) ask for a new `onboarding-link` and send the supplier there. Without
+`App__PublicSiteBaseUrl` (Development/Testing only) the onboarding link answers 503 `connect_return_url_not_configured` before any
+Stripe call.
+
+### "Verificato" (decision D11)
+
+`SupplierVerification` (one rule, read-only; the activation is not changed by it): the profile is `Active`, the account
+`canReceivePayments`, and the profile has a VAT number (P.IVA, not blank). `verificationMissing` lists what is not true yet, in this
+order: `profile_not_active`, `payments_not_enabled`, `vat_number_missing`. It is part of the state; the public showcase still does
+not show it (it stays `noindex`, D11).
+
+### Feature flag and webhook
+
+`Features__SupplierOnlinePayments` (default **off**, [feature-flags.md](feature-flags.md)): while it is off the four routes answer **404
+before authentication**, like a missing route. The processing of Stripe's events is **not** behind it: `account.updated` of a
+connected account (Connect endpoint) is applied by `StripeWebhookHandler` to `ConnectOnboardingService.ApplyAccountUpdatedAsync`,
+which finds the org by `StripeConnectedAccountId` and updates **that org only** (a supplier's or a host's alike; an unknown account
+is logged and ignored). The supplier's `GET …/account` reads what it stored.
+
+### Stripe settings to check (product owner)
+
+1. **Connect webhook endpoint** (`/webhooks/stripe/connect`, "Connected accounts"): `account.updated` must be among the events (the
+   hosts already need it, `docs/INFRA.md`). Nothing new to add.
+2. **Express Dashboard**: it is what the login link opens (Express accounts have it by default). Review the platform's name, branding and
+   support details that Stripe shows the supplier there (Dashboard → Settings → Connect); the link itself is created by the API.
+3. **Restricted key** (`rk_…`) only: besides **Accounts: Write** and **Account Links: Write** (BK-09), the key needs the permission that
+   covers `POST /v1/accounts/{id}/login_links` (Connect; check the key's permission list in Developers → API keys). With the standard
+   secret key nothing to do.
+4. The supplier's onboarding collects the identity and the bank account **on Stripe**; CasaZen stores none of it. Which legal texts the
+   supplier accepts before connecting (ToS §1/§6 are written for another charge model and must be aligned to D2, `[CONSULENTE LEGALE]`)
+   is the open point of LG-01: keep the flag off in production until they are approved.
+
+### Verification
+
+1. Automated: `StripeConnectGatewayTests` (login link: path, classified errors, network, missing key, blank account),
+   `SupplierPaymentsAccountServiceTests` (state from the database / from Stripe on request, account created once, links, dashboard
+   link only with an account, Stripe refusal → 422, an org without supplier profile is never reached), `SupplierVerificationTests`,
+   `PublicSiteLinksTests` (supplier return pages, host ones and the billing allow-list unchanged), `SupplierPaymentsIntegrationTests`
+   (HTTP: 401, 403, 404 without link, flag off = 404 also anonymous, state, server-side return URLs ignoring client URLs, one
+   account for repeated and for **parallel** requests on PostgreSQL, Stripe failures, dual-role account, two suppliers isolated),
+   `SupplierAccountUpdatedWebhookTests` (`account.updated` updates the supplier's org and no other), `SupplierPaymentsControllerGuardTests`
+   (policy, flag and the four routes), `StripeServiceApplicationFeeTests` (unchanged).
+2. Test mode (Staging, `Features__SupplierOnlinePayments=true`, test keys): as a supplier `POST …/onboarding-link`, complete the Express
+   onboarding with Stripe's test data, come back to `/app/supplier/settings?stripe_return=1` and `GET …/account?refresh=true`: `hasAccount`,
+   then `chargesEnabled` and `payoutsEnabled` true once Stripe verified it; `POST …/dashboard-link` opens the Express Dashboard;
+   before the onboarding is finished it is 422 `supplier_payments_not_ready`. Stripe sends `account.updated`: the plain `GET …/account`
+   follows without `refresh`.
 
 ## Operations
 

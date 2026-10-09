@@ -156,6 +156,49 @@ public class OrgBillingAdminPolicyCoverageTests
         }
     }
 
+    [Theory]
+    [MemberData(nameof(Actions))]
+    public async Task Policy_OrgAdministratorOfTheAccountContext_Passes(string action)
+    {
+        // AM-01: the owner and the administrator of the account context hold org.billing.manage, which this policy
+        // evaluates. The administrator is no owner of a rental context, only a property manager of it.
+        var handler = OrgBillingAdminAuthorizationHandlerTests.CreateHandler(
+            OrgBillingAdminAuthorizationHandlerTests.Snapshot(UserRole.None, ["account/org_admin", "short-rent/property_manager"]));
+
+        foreach (var policy in await OrgPoliciesOfAsync(action))
+        {
+            var context = new AuthorizationHandlerContext(policy.Requirements, Principal(), resource: null);
+
+            await handler.HandleAsync(context);
+
+            Assert.True(context.HasSucceeded, $"{action}: the administrator of the org does not pass the policy.");
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Actions))]
+    public async Task Policy_AccountantAndPropertyManagerOfTheOrgTeam_AreRefused(string action)
+    {
+        // The accountant reads the invoices (org.billing.read) and manages nothing; the property manager has no account
+        // membership: neither passes any of the billing, Connect, org, domain, branding or site document endpoints.
+        var accountant = OrgBillingAdminAuthorizationHandlerTests.CreateHandler(
+            OrgBillingAdminAuthorizationHandlerTests.Snapshot(UserRole.None, ["account/org_accountant", "short-rent/accountant"]));
+        var manager = OrgBillingAdminAuthorizationHandlerTests.CreateHandler(
+            OrgBillingAdminAuthorizationHandlerTests.Snapshot(UserRole.None, ["short-rent/property_manager", "long-rent/property_manager"]));
+
+        foreach (var policy in await OrgPoliciesOfAsync(action))
+        {
+            var asAccountant = new AuthorizationHandlerContext(policy.Requirements, Principal(), resource: null);
+            var asManager = new AuthorizationHandlerContext(policy.Requirements, Principal(), resource: null);
+
+            await accountant.HandleAsync(asAccountant);
+            await manager.HandleAsync(asManager);
+
+            Assert.False(asAccountant.HasSucceeded, $"{action}: the accountant passed the policy.");
+            Assert.False(asManager.HasSucceeded, $"{action}: the property manager passed the policy (D12).");
+        }
+    }
+
     /// <summary>The registered <c>OrgBillingAdmin</c> policy (the real <c>AddCasazenAuthorization</c> set) of an action.</summary>
     private static async Task<List<AuthorizationPolicy>> OrgPoliciesOfAsync(string action)
     {

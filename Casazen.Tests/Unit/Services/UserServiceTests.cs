@@ -16,6 +16,7 @@ public class UserServiceTests
     private readonly Mock<IAuth0ManagementService> _auth0Mock;
     private readonly Mock<IOrgService> _orgMock;
     private readonly Mock<IUserContextMembershipService> _membershipMock;
+    private readonly Mock<IOrgMembershipService> _orgMembershipMock;
     private readonly Mock<IUserAuthorizationCache> _cacheMock;
     private readonly Mock<ILogger<UserService>> _loggerMock;
     private readonly UserService _service;
@@ -27,6 +28,7 @@ public class UserServiceTests
         _auth0Mock = new Mock<IAuth0ManagementService>();
         _orgMock = new Mock<IOrgService>();
         _membershipMock = new Mock<IUserContextMembershipService>();
+        _orgMembershipMock = new Mock<IOrgMembershipService>();
         _cacheMock = new Mock<IUserAuthorizationCache>();
 
         _auth0Mock.Setup(a => a.AssignRoleAsync(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<CancellationToken>()))
@@ -43,6 +45,7 @@ public class UserServiceTests
             _auth0Mock.Object,
             _orgMock.Object,
             _membershipMock.Object,
+            _orgMembershipMock.Object,
             _cacheMock.Object,
             _loggerMock.Object);
     }
@@ -653,6 +656,59 @@ public class UserServiceTests
             It.IsAny<CancellationToken>()),
             Times.Once);
         _auth0Mock.Verify(a => a.RemoveRoleAsync(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CompleteOnboardingAsync_NewOrg_MakesTheCallerItsOwnerRightAfterTheOrgAndBeforeTheRoleMemberships()
+    {
+        // AM-01: the one who sets up an org is its owner (org member + account membership), written by the one service
+        // that owns that, once the org exists and before the owner's rental memberships.
+        var sub = "auth0|onboard-owner";
+        var orgId = Guid.NewGuid();
+        var calls = new List<string>();
+        var user = new User { Id = sub, Email = "owner@b.com", FirstName = "Ow", LastName = "Ner" };
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+        _orgMock.Setup(o => o.EnsureOrgForUserAsync(sub, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("org"))
+            .ReturnsAsync(new OrgEntity { Id = orgId, PlanTier = PlanTier.Starter, Name = "Ow Ner" });
+        _orgMembershipMock.Setup(m => m.EnsureOwnerAsync(sub, orgId, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("owner"))
+            .ReturnsAsync(new OrgMember { UserId = sub, OrgId = orgId, Role = OrgRole.Owner });
+        _membershipMock.Setup(m => m.GrantAsync(sub, It.IsAny<IEnumerable<UserRole>>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("grant"))
+            .Returns(Task.CompletedTask);
+
+        await _service.CompleteOnboardingAsync(sub, RentalType.ShortTerm, "owner@b.com", "Ow", "Ner");
+
+        Assert.Equal(["org", "owner", "grant"], calls);
+        _orgMembershipMock.Verify(m => m.EnsureOwnerAsync(sub, orgId, It.IsAny<CancellationToken>()), Times.Once);
+        _orgMembershipMock.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task CompleteOnboardingAsync_OwnerRowCannotBeWritten_DoesNotGrantTheRoleMemberships()
+    {
+        // A refusal of the org membership (e.g. the user already belongs to another org) stops the onboarding before the
+        // owner's rental memberships and the Auth0 roles are written.
+        var sub = "auth0|onboard-owner-refused";
+        var orgId = Guid.NewGuid();
+        var user = new User { Id = sub, Email = "refused@b.com", FirstName = "Re", LastName = "Fused" };
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+        _orgMock.Setup(o => o.EnsureOrgForUserAsync(sub, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrgEntity { Id = orgId, PlanTier = PlanTier.Starter, Name = "Re Fused" });
+        _orgMembershipMock.Setup(m => m.EnsureOwnerAsync(sub, orgId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DomainConflictException(OrgMembershipErrors.AlreadyMember, "OrgMemberAlreadyMember"));
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(
+            () => _service.CompleteOnboardingAsync(sub, RentalType.ShortTerm, "refused@b.com", "Re", "Fused"));
+
+        Assert.Equal(OrgMembershipErrors.AlreadyMember, error.Code);
+        _membershipMock.Verify(m => m.GrantAsync(It.IsAny<string>(), It.IsAny<IEnumerable<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auth0Mock.Verify(a => a.AssignRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

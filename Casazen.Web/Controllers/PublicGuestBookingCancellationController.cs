@@ -28,7 +28,7 @@ public class PublicGuestBookingCancellationController(
     public async Task<IActionResult> Cancel(Guid id, [FromQuery] string? token)
     {
         if (string.IsNullOrWhiteSpace(token))
-            return BadRequest(new { code = "guest_cancel_token_missing", message = "Cancel token is required." });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "guest_cancel_token_missing", "GuestCancelTokenMissing");
 
         var result = await guestCancellationService.CancelByGuestLinkAsync(id, token, HttpContext.RequestAborted);
 

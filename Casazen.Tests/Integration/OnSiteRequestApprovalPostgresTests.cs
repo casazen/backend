@@ -87,9 +87,11 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.Equal(4, listed.GetProperty("nights").GetInt32());
         Assert.Equal(JsonValueKind.String, listed.GetProperty("respondBy").ValueKind);
         var bookings = await host.GetFromJsonAsync<JsonElement>($"/api/bookings?propertyId={property.Id}");
+        var bookingRows = (bookings.ValueKind == JsonValueKind.Array ? bookings : bookings.GetProperty("items"))
+            .EnumerateArray();
         Assert.Equal(
             "AwaitingHostApproval",
-            Assert.Single(bookings.EnumerateArray(), b => b.GetProperty("id").GetGuid() == bookingId)
+            Assert.Single(bookingRows, b => b.GetProperty("id").GetGuid() == bookingId)
                 .GetProperty("onSiteRequestState").GetString());
 
         var response = await host.PostAsync($"/api/bookings/{bookingId}/approve", null);

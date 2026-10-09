@@ -104,6 +104,25 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// Settings page of the supplier console (route <c>/app/supplier/settings</c> of the web app), where the supplier's Stripe
+    /// Connect onboarding starts and ends (SP-14). The supplier has no plan or billing page, so it is not one of
+    /// <see cref="BillingReturnPagePaths"/> (those are the pages of the Stripe Checkout and billing portal of the plans).
+    /// </summary>
+    public const string SupplierSettingsPagePath = "/app/supplier/settings";
+
+    /// <summary>
+    /// <c>return_url</c> of the supplier's Connect Account Link: the settings page with <c>?stripe_return=1</c> (SP-14), where
+    /// the web app reads the account state again. Built by the server, like the host's, never taken from the client.
+    /// </summary>
+    public string SupplierConnectOnboardingReturn() => Build(SupplierSettingsPagePath + "?stripe_return=1");
+
+    /// <summary>
+    /// <c>refresh_url</c> of the supplier's Connect Account Link (expired or already used link): the settings page with
+    /// <c>?stripe_refresh=1</c>, from which the supplier starts a new link (SP-14).
+    /// </summary>
+    public string SupplierConnectOnboardingRefresh() => Build(SupplierSettingsPagePath + "?stripe_refresh=1");
+
+    /// <summary>
     /// "Le mie prenotazioni" of the org's booking site (BK-10, BK-11): the guest finds a booking there with its code and
     /// email. The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails
     /// link here. With <paramref name="bookingCode"/> the page opens with the code filled in (<c>?code=</c>) and still asks
