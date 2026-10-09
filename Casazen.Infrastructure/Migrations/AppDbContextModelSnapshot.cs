@@ -1232,6 +1232,57 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("HighTensionAreaComuni");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.InAppNotification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeliveryKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_InAppNotifications_CreatedAt");
+
+                    b.HasIndex("OrgId")
+                        .HasDatabaseName("IX_InAppNotifications_OrgId");
+
+                    b.HasIndex("DeliveryKey", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_InAppNotifications_DeliveryKey_UserId");
+
+                    b.HasIndex("UserId", "ReadAt", "CreatedAt")
+                        .HasDatabaseName("IX_InAppNotifications_UserId_ReadAt_CreatedAt");
+
+                    b.ToTable("InAppNotifications");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.LeaseContract", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1610,6 +1661,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
 
+                    b.Property<string>("HostName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -1638,6 +1693,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("PublicHostMode")
                         .HasColumnType("integer");
 
+                    b.Property<string>("PublicPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("PublicThemeId")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -1665,6 +1724,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("SubscriptionStatus")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Subtitle")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Tagline")
                         .HasMaxLength(500)
@@ -2696,6 +2759,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("MaxGuests")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("MinNights")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -2756,6 +2822,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal>("WeekendSurchargePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CancellationPolicyId");
@@ -2781,7 +2851,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("UIX_Properties_OrgId_Slug")
                         .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false");
 
-                    b.ToTable("Properties");
+                    b.ToTable("Properties", t =>
+                        {
+                            t.HasCheckConstraint("CK_Properties_MinNights", "\"MinNights\" IS NULL OR \"MinNights\" BETWEEN 1 AND 30");
+
+                            t.HasCheckConstraint("CK_Properties_WeekendSurchargePercent", "\"WeekendSurchargePercent\" BETWEEN 0 AND 100");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyDocument", b =>
@@ -3350,6 +3425,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("LastFailedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LastReminderAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("LeaseContractId")
                         .HasColumnType("uuid");
 
@@ -3393,6 +3471,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<int>("ReminderCount")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("RentScheduleId")
                         .HasColumnType("uuid");
 
@@ -3418,6 +3499,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("LeaseContractId", "PeriodStart")
                         .IsUnique();
+
+                    b.HasIndex("OrgId", "DueDate");
 
                     b.ToTable("RentLedgerEntries");
                 });
@@ -6217,6 +6300,21 @@ namespace Casazen.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.InAppNotification", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

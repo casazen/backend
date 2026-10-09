@@ -1,5 +1,6 @@
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Push;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 
 namespace Casazen.Web.Extensions;
@@ -20,10 +21,20 @@ public static class PushServiceCollectionExtensions
             client.Timeout = TimeSpan.FromSeconds(30);
         });
 
-        services.AddScoped<IPushNotificationService, HangfirePushQueue>();
+        // The services ask for IPushNotificationService and get the queue wrapped by the decorator that gives every push an in-app
+        // notification (UI-12a); with Features:InAppNotifications off the decorator only forwards.
+        services.AddScoped<HangfirePushQueue>();
+        services.AddScoped<IPushNotificationService>(provider =>
+            ActivatorUtilities.CreateInstance<InAppNotificationPushDecorator>(provider, provider.GetRequiredService<HangfirePushQueue>()));
         services.AddScoped<PushDeliveryJob>();
         services.AddScoped<PushReceiptService>();
         services.AddScoped<PushReceiptsJob>();
+
+        // The bell of the shell (UI-12a): the job queued next to every push, the service behind api/me/notifications and the
+        // daily retention job (runbook docs/runbooks/in-app-notifications.md).
+        services.AddScoped<InAppNotificationJob>();
+        services.AddScoped<IInAppNotificationService, InAppNotificationService>();
+        services.AddScoped<InAppNotificationRetentionJob>();
         return services;
     }
 }

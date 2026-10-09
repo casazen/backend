@@ -23,6 +23,11 @@ public class OrgBrandingService(
         var themeId = OrgBrandingRules.NormalizeThemeId(update.PublicThemeId);
         var tagline = OrgBrandingRules.NormalizeTagline(update.Tagline);
 
+        // DB-03: the public profile fields are validated only when the caller sends them; the others keep their value.
+        var subtitle = update.Subtitle.IsSent ? OrgBrandingRules.NormalizeSubtitle(update.Subtitle.Value) : null;
+        var hostName = update.HostName.IsSent ? OrgBrandingRules.NormalizeHostName(update.HostName.Value) : null;
+        var publicPhone = update.PublicPhone.IsSent ? OrgBrandingRules.NormalizePublicPhone(update.PublicPhone.Value) : null;
+
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         if (org is null)
             return null;
@@ -30,6 +35,12 @@ public class OrgBrandingService(
         org.ThemeColor = primaryColor;
         org.PublicThemeId = themeId;
         org.Tagline = tagline;
+        if (update.Subtitle.IsSent)
+            org.Subtitle = subtitle;
+        if (update.HostName.IsSent)
+            org.HostName = hostName;
+        if (update.PublicPhone.IsSent)
+            org.PublicPhone = publicPhone;
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return org;

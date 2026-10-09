@@ -156,7 +156,7 @@ public class GdprController(
     }
 
     [HttpPost("org/anonymize")]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     public async Task<IActionResult> AnonymizeOrgFiscal(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);

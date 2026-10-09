@@ -279,6 +279,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
         // Host dashboard KPIs per period and iCal feeds widget (PC-16).
         services.AddScoped<IHostDashboardService, HostDashboardService>();
+        // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
+        services.AddScoped<IHostTodayService, HostTodayService>();
+        services.AddScoped<IComplianceMissingService, ComplianceMissingService>();
+        // Lists that hold up with many rows: bookings by days, status and text, a page at a time; payments by booking and period (SR-03).
+        services.AddScoped<IBookingSearchService, BookingSearchService>();
+        services.AddScoped<IPaymentListService, PaymentListService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
         // Refunds and cancellations on Stripe Connect (BK-02, docs/runbooks/stripe.md "Refunds").
@@ -370,6 +376,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IRentBillingService, RentBillingService>();
+        // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
+        services.AddScoped<IRentRegisterService, RentRegisterService>();
+        services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();

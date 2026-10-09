@@ -39,6 +39,11 @@ public enum TouristTaxQuoteStatus
 /// </param>
 /// <param name="AccommodationCategory">Category of the accommodation, for comuni whose rates depend on it.</param>
 /// <param name="NightlyPrice">Price of one night of the accommodation (cleaning and other services excluded), for percentage rates.</param>
+/// <param name="NightlyPrices">
+/// The price of each night, in order (one per night), when it is not the same every night, e.g. with a weekend surcharge
+/// (DB-03): a percentage rate then reads the price of its own night. Used instead of <paramref name="NightlyPrice"/>; a list
+/// whose length is not the number of nights is refused.
+/// </param>
 public sealed record TouristTaxStay(
     DateOnly CheckIn,
     DateOnly CheckOut,
@@ -46,7 +51,8 @@ public sealed record TouristTaxStay(
     int Children,
     IReadOnlyList<int>? ChildrenAges = null,
     string? AccommodationCategory = null,
-    decimal? NightlyPrice = null)
+    decimal? NightlyPrice = null,
+    IReadOnlyList<decimal>? NightlyPrices = null)
 {
     public int Nights => CheckOut.DayNumber - CheckIn.DayNumber;
 
@@ -117,6 +123,8 @@ public static class TouristTaxCalculator
             throw new ArgumentException($"A stay longer than {MaxNights} nights is not quoted.", nameof(stay));
         if (stay.Adults < 0 || stay.Children < 0 || stay.Guests == 0)
             throw new ArgumentException("A stay needs at least one guest and no negative counts.", nameof(stay));
+        if (stay.NightlyPrices is { } prices && prices.Count != stay.Nights)
+            throw new ArgumentException("The night prices must be one per night of the stay.", nameof(stay));
 
         var active = rates.Where(r => r.IsActive).ToList();
         var category = NormalizeCategory(stay.AccommodationCategory);
@@ -161,7 +169,7 @@ public static class TouristTaxCalculator
             return NotCalculated(TouristTaxQuoteStatus.ChildAgesRequired, stay, ageRulesApply, [], applied);
 
         if (applied.Any(r => r.CalculationMethod == TouristTaxCalculationMethod.PercentOfNightlyPrice)
-            && stay.NightlyPrice is not >= 0m)
+            && !HasNightPrices(stay))
         {
             return NotCalculated(TouristTaxQuoteStatus.NightlyPriceRequired, stay, ageRulesApply, [], applied);
         }
@@ -175,7 +183,7 @@ public static class TouristTaxCalculator
                 continue;
 
             taxableNights++;
-            var full = FullAmountPerPerson(rate, stay);
+            var full = FullAmountPerPerson(rate, stay, PriceOfNight(stay, night));
             foreach (var age in guestAges)
                 total += AmountForGuest(rate, full, age);
         }
@@ -282,12 +290,20 @@ public static class TouristTaxCalculator
         return ages;
     }
 
-    private static decimal FullAmountPerPerson(TouristTaxRate rate, TouristTaxStay stay)
+    /// <summary>True when the price of every night is known and not negative: the one price of the stay, or one per night.</summary>
+    private static bool HasNightPrices(TouristTaxStay stay) =>
+        stay.NightlyPrices is { } prices ? prices.All(price => price >= 0m) : stay.NightlyPrice is >= 0m;
+
+    /// <summary>The price of night <paramref name="night"/> (0-based from check-in): its own, or the one price of the stay.</summary>
+    private static decimal PriceOfNight(TouristTaxStay stay, int night) =>
+        stay.NightlyPrices is { } prices ? prices[night] : stay.NightlyPrice ?? 0m;
+
+    private static decimal FullAmountPerPerson(TouristTaxRate rate, TouristTaxStay stay, decimal nightPrice)
     {
         if (rate.CalculationMethod != TouristTaxCalculationMethod.PercentOfNightlyPrice)
             return RoundToCent(rate.RatePerPersonPerNight);
 
-        var perPerson = stay.NightlyPrice!.Value * (rate.PercentOfNightlyPrice ?? 0m) / 100m / stay.Guests;
+        var perPerson = nightPrice * (rate.PercentOfNightlyPrice ?? 0m) / 100m / stay.Guests;
         if (rate.CapPerPersonPerNight is { } cap)
             perPerson = Math.Min(perPerson, cap);
 

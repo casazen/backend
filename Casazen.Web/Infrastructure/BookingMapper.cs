@@ -22,6 +22,7 @@ public static class BookingMapper
         ArgumentNullException.ThrowIfNull(booking);
 
         response.Id = booking.Id;
+        response.BookingCode = BookingCodes.Format(booking.BookingCode);
         response.PropertyId = booking.PropertyId;
         response.PropertyName = booking.Property?.Name;
         response.CheckInDate = booking.CheckInDate;

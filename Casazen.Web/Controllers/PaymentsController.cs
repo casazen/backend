@@ -21,6 +21,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.PaymentRead)]
 public class PaymentsController(
     IPaymentService paymentService,
+    IPaymentListService paymentList,
     IBookingService bookingService,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
@@ -30,17 +31,42 @@ public class PaymentsController(
     IPaymentRefundService refundService,
     ILogger<PaymentsController> logger) : ControllerBase
 {
+    /// <summary>Code of a <c>from</c> after <c>to</c>.</summary>
+    public const string InvalidRangeCode = "payment_list_invalid_range";
+
+    /// <summary>
+    /// The payments the caller sees, newest first, as list rows (SR-03): with the guest and the property of the booking, the
+    /// amounts in euros as before and in cents, the method and the status by name. All optional: <c>propertyId</c> and
+    /// <c>bookingId</c> narrow it (404 when the property or the booking is not one the caller may read payments of),
+    /// <c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, Europe/Rome days, both included) keep the payments settled in the period
+    /// (<see cref="PaymentListCriteria"/>). Filtered in SQL by the caller's scope whatever the criteria: a caller who reaches some
+    /// properties only never sees the payments of the others. 400 <c>payment_list_invalid_range</c>.
+    /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Payment>>> GetAll([FromQuery] Guid? propertyId)
+    [ProducesResponseType(typeof(IEnumerable<PaymentListItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<PaymentListItemDto>>> GetAll(
+        [FromQuery] Guid? propertyId,
+        [FromQuery] Guid? bookingId = null,
+        [FromQuery(Name = "from")] DateOnly? fromDay = null,
+        [FromQuery(Name = "to")] DateOnly? toDay = null)
     {
-        logger.LogInformation("Getting payments (property filter: {HasProperty})", propertyId.HasValue);
+        logger.LogInformation(
+            "Getting payments (filters: property {HasProperty}, booking {HasBooking}, period {HasPeriod})",
+            propertyId.HasValue, bookingId.HasValue, fromDay.HasValue || toDay.HasValue);
 
-        if (propertyId.HasValue)
+        if (fromDay is { } first && toDay is { } last && first > last)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidRangeCode, "PaymentListInvalidRange");
+
+        if (propertyId.HasValue && !await CanOnPropertyAsync(propertyId.Value, PaymentOperations.Read))
+            return NotFound();
+
+        if (bookingId.HasValue)
         {
-            if (!await CanOnPropertyAsync(propertyId.Value, PaymentOperations.Read))
+            var booking = await hostResources.ForBookingAsync(bookingId.Value, HttpContext.RequestAborted);
+            if (booking is null || !await authorizationService.IsAuthorizedAsync(User, booking, PaymentOperations.Read))
                 return NotFound();
-
-            return Ok(await paymentService.GetPropertyPaymentsAsync(propertyId.Value));
         }
 
         // Org (and ownership) filter applied in SQL: never the whole platform filtered in memory (A3-38).
@@ -49,7 +75,9 @@ public class PaymentsController(
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
             return Unauthorized();
 
-        return Ok(await paymentService.GetPaymentsAsync(scope));
+        var payments = await paymentList.ListAsync(
+            scope, new PaymentListCriteria(propertyId, bookingId, fromDay, toDay), HttpContext.RequestAborted);
+        return Ok(payments.Select(PaymentListItemDto.From).ToList());
     }
 
     [HttpGet("{id}")]

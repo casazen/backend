@@ -15,6 +15,13 @@ public record PropertyAvailabilityResponse
     /// <summary>The taken nights as <c>yyyy-MM-dd</c>, in order. A taken night can still be the check-out day of a stay.</summary>
     public List<string> BookedDates { get; init; } = [];
 
+    /// <summary>
+    /// The minimum stay of the property (DB-03), or null for none. A free night can be booked as part of a stay of at least
+    /// this many nights: the quote and the checkout answer 422 <c>direct_booking_min_nights_not_met</c> to a shorter one, so
+    /// the calendar can keep a too-short selection from being made.
+    /// </summary>
+    public int? MinNights { get; init; }
+
     public static PropertyAvailabilityResponse From(PublicAvailability availability) => new()
     {
         PropertyId = availability.PropertyId,
@@ -23,5 +30,6 @@ public record PropertyAvailabilityResponse
         BookedDates = availability.BookedNights
             .Select(night => night.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))
             .ToList(),
+        MinNights = availability.MinNights,
     };
 }
