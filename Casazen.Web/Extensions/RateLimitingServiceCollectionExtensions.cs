@@ -61,6 +61,10 @@ public static class RateLimitingServiceCollectionExtensions
         // its per-IP policy.
         services.AddSingleton<SupplierBookingEmailRateLimiter>();
 
+        // Per email and supplier limit of the customer's own area of a booking ([SupplierBookingManageRateLimit], SP-11), next to the
+        // per-IP policy PublicGuestBookingLookup.
+        services.AddSingleton<SupplierBookingManageEmailRateLimiter>();
+
         // Read from the final configuration (IConfiguration from DI), not while Program.cs is still building it.
         services.AddOptions<RateLimiterOptions>()
             .Configure<IConfiguration>((options, configuration) =>
@@ -141,6 +145,10 @@ public static class RateLimitingServiceCollectionExtensions
 
         httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         httpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+
+        // The endpoints that answer privately (a customer's own area, SP-11) answer so when they are limited too.
+        if (httpContext.GetEndpoint()?.Metadata.GetMetadata<PrivateAnswerAttribute>() is not null)
+            PrivateAnswerAttribute.Apply(httpContext.Response);
 
         var problem = ApiProblemDetails.Create(
             httpContext,

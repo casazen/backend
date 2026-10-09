@@ -69,6 +69,13 @@ public static class ShowcaseBookingLimits
     /// <summary>Largest body of the e-mail check: the token and nothing else.</summary>
     public const int ConfirmMaxBodyBytes = 1024;
 
+    /// <summary>
+    /// Largest body of a call of the customer's own area of a booking (SP-11): the slug, the code, the address and, at most, a reason
+    /// of 500 characters or a start. A character of a reason is up to four bytes in UTF-8 and up to six once JSON escapes it, so
+    /// the 8 KB leave room for the longest honest body and stop anything larger before it is read.
+    /// </summary>
+    public const int ManageMaxBodyBytes = 8 * 1024;
+
     /// <summary>Longest token accepted from a link (the real one is 43 characters).</summary>
     public const int TokenMaxLength = 128;
 

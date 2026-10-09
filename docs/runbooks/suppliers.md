@@ -18,6 +18,8 @@ automatic cancellation of the requests nobody answers, and what the supplier see
 Section 22: the public read side of the showcase, the services, the free slots and the price estimate (SP-09, redesign wave).
 Section 23: the booking a customer without an account makes from the showcase, with the hold of the slot, the check of its e-mail
 address, the request the supplier answers, the reminders, the upkeep and the retention of the customers (SP-10, redesign wave).
+Section 24: the customer's own area of that booking, to find it again with its code and e-mail address, cancel it, move it and answer a
+time the supplier proposed (SP-11, redesign wave).
 
 ## 1. How a supplier joins
 
@@ -1489,6 +1491,9 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 | Proposal accepted / turned down | the supplier | answer | `service-request-proposal-accepted` / `-rejected` |
 | Marked as paid | the supplier | unchanged | `service-request-paid` |
 
+The requests born from a supplier's showcase (SP-10) have the customer as their other party: its e-mails are listed in sections 23.8 and
+24.7, and the push `type` `service-request-rescheduled` (SP-11) is the one new `type` of the customer's own area.
+
 A status that has no message (a new request, a paid one, a request the host cancelled itself, **a status the code does not know**) sends
 **nothing**, and it is not an error: before this task `EmailTemplates.ServiceRequestStatusChanged` threw for any status other than taken, completed and rejected, and the error was only logged.
 
@@ -1714,9 +1719,9 @@ Redesign wave task SP-10 (branch `feature/rd-supplier-public-booking`, backend o
 (`feature/rd-supplier-public-read`). Gap report 05 §4.3, decisions D8, D9, D10, D24, D34 (revised) of `redesign/docs/wave/WAVE-SPEC.md`.
 A customer **with no account** picks a service and a free slot on a supplier's showcase, leaves its data, **checks its e-mail address**,
 and only then the supplier receives a request (`Richiesto`, rental context `Showcase`) that it takes, refuses or answers with another
-time. Not here (stacked after this): the customer's own area (find the request by code and e-mail, cancel, move it, answer a proposed
-time: SP-11), the payments (SP-15), the screens (SP-12), the supplier's switch of `OnlineBookingEnabled` (SP-13 / SP-16), reviews. All
-behind the flag `Features__SupplierShowcaseBooking` (off by default, `feature-flags.md`).
+time. The customer's own area (find the request by code and e-mail, cancel it, move it, answer a proposed time) is section 24 (SP-11).
+Not here (stacked after this): the payments (SP-15), the screens (SP-12), the supplier's switch of `OnlineBookingEnabled` (SP-13 / SP-16),
+reviews. All behind the flag `Features__SupplierShowcaseBooking` (off by default, `feature-flags.md`).
 
 ### 23.1 The journey
 
@@ -1730,9 +1735,11 @@ behind the flag `Features__SupplierShowcaseBooking` (off by default, `feature-fl
    the supplier the new request (e-mail and push, comune and "Nome C." only, D9).
 4. The supplier has `SupplierSettings.RespondWithinMinutes` (180, D8) to answer. It takes the request (the customer is told, with the
    reminder promised only if it will be sent), refuses it (reason), cancels it, or proposes another time (the customer has
-   `Suppliers__Showcase__ProposalResponseMinutes`, a day, to answer: the answer arrives with SP-11). Nobody answers in time: the job
+   `Suppliers__Showcase__ProposalResponseMinutes`, a day, to answer it: section 24). Nobody answers in time: the job
    `service-request-expiry` cancels it (`Annullato`, by `System`) and tells the customer.
 5. At 18:00 (Europe/Rome) of the day before the work the job `service-request-reminders` e-mails the customer a reminder, once.
+6. With the code of the request and its e-mail address the customer finds the request again, cancels it, moves it while the supplier has
+   not answered, and answers a proposed time (section 24, SP-11).
 
 ### 23.2 Endpoints (anonymous, `noindex`, `Cache-Control: no-store`, no cookie)
 
@@ -1890,14 +1897,14 @@ undoes the change. The customer's e-mails are in the language it chose (`it` / `
 
 **Only what is true** (D24): the deadlines named are the ones the jobs enforce, nothing says the supplier answers "in an hour" or that
 the price is "guaranteed", and nothing is said about payment (nothing is paid with this request). A test searches every template in both
-languages for the phrases that must never appear. The proposal e-mail points to the request page; the answer to a proposal is SP-11:
+languages for the phrases that must never appear. The proposal e-mail points to the request page, where the customer answers the proposal (section 24, SP-11):
 **do not turn the flag on in an environment that has SP-10 and not SP-11**.
 
 ### 23.9 Jobs (`hangfire.md` § 13)
 
 | Job | Cron (UTC) | Always registered | What |
 |---|---|---|---|
-| `service-request-expiry` | `*/5 * * * *` | yes | deletes the holds past their expiry (the checked ones are kept until then for the replay of the link), cancels the showcase requests past `ResponseDueAt` (also a proposal the customer did not answer) and tells the customer |
+| `service-request-expiry` | `*/5 * * * *` | yes | deletes the holds past their expiry (the checked ones are kept until then for the replay of the link), cancels the showcase requests past `ResponseDueAt` (also a proposal the customer did not answer: reason `ProposalNotAnswered`, SP-11) and tells the customer (and, for a lapsed proposal, the supplier) |
 | `service-request-reminders` | hourly | yes | the reminder of the day before 18:00 Rome, once (`ReminderSentAt`), only for a request taken before that time |
 | `gdpr-data-retention` | 03:00 | yes | + the customers of the suppliers (23.7), off until configured |
 
@@ -1949,10 +1956,8 @@ working while the migration is applied (the new columns have defaults, `Property
 
 ### 23.14 For the tasks stacked on this one
 
-- **SP-11** (the customer's own area): find a request by `publicCode` + e-mail with `IServiceCustomerIndex.HashEmail` and
-  `ServiceRequest.CustomerId`/`PublicCode` (unique per supplier); cancel (actor `Customer`: `ShowcaseBookingNotifier` does not tell a
-  customer its own cancellation back) and move the time under the same calendar lock; answer a proposed time (the request keeps
-  `ProposedStartUtc` and `ResponseDueAt`, the deadline the e-mail names). Add the rate limit of a lookup.
+- **SP-11** (the customer's own area): done, section 24. It finds the request by the supplier's slug and the code, and compares the
+  address after the decryption (not through the HMAC index); the actions are the supplier's own, with the party `Customer`.
 - **SP-15** (payments): the request has an estimate and the supplier's own price (`QuotedAmountCents`); nothing is paid today.
 - **SP-12** (screens): the contract is the two endpoints above plus the inbox; the page that follows the e-mail link reads `hold` and
   `token` from the query and posts the token; `409 supplier_slot_unavailable` sends the customer back to the slots.
@@ -1972,11 +1977,261 @@ working while the migration is applied (the new columns have defaults, `Property
 - [ ] `select count(*) from "ShowcaseBookingHolds" where "ExpiresAt" < now() - interval '1 hour';` is 0 (the upkeep runs).
 - [ ] `select "FullName" from "ServiceCustomers" limit 1;` shows a payload starting with `CfDJ8`, never a name.
 
+## 24. The customer's own area: find, cancel, move and answer a proposed time — SP-11
+
+Redesign wave task SP-11 (branch `feature/rd-supplier-booking-manage`, backend only: the screens are SP-12), stacked on SP-10
+(`feature/rd-supplier-public-booking`). Gap report 05 §4.3, decisions D6, D8, D9, D24, D34 (revised) of `redesign/docs/wave/WAVE-SPEC.md`.
+The customer who booked from a supplier's showcase **with no account** finds the booking again with **the code and the e-mail address** it
+was made with, and can cancel it, move it to another time while the supplier has not answered, and answer a time the supplier proposed.
+Behind the same flag as the rest, `Features__SupplierShowcaseBooking`: **SP-10 and SP-11 must both be deployed before it is turned on**
+(`feature-flags.md`). Not here (stacked after this): the payments (SP-15), the screens (SP-12), reviews.
+
+### 24.1 What the customer can do
+
+| Status of the booking | Cancel | Move to another time | Answer a proposed time |
+|---|---|---|---|
+| `Richiesto`, no proposal | **yes, any time** | **yes** | — |
+| `Richiesto`, a time proposed, within its deadline | yes | yes (the proposal is dropped) | **accept** or **turn down** |
+| `Richiesto`, a time proposed, past its deadline (the job has not run yet) | yes | yes | no: 422 `supplier_booking_proposal_expired` |
+| `PresoInCarico` | yes, **until its time** | no: 422 `supplier_booking_cannot_reschedule` | no: 422 `supplier_booking_no_proposal` |
+| `InCorso`, `Completato`, `Pagato`, `Rifiutato`, `Annullato` | no: 422 `supplier_booking_cannot_cancel` (a booking the customer itself cancelled: 200, nothing happens again) | no | no |
+
+Moving the time and answering a proposal also need the supplier to be **active** (accepting takes the request on its behalf, and a
+suspended supplier cannot take work; the customer can still cancel and still sees the booking), and moving needs the service to be
+**published** still (the planner needs its duration and rules, the page its free slots). The lookup tells the page what is allowed
+(`actions.canCancel`, `canReschedule`, `canRespondToProposal`) with the same pure functions the actions enforce
+(`ShowcaseBookingManagementRules`, table-tested), so the page and the API cannot disagree.
+
+### 24.2 Endpoints (anonymous, `noindex`, `Cache-Control: no-store`, no cookie)
+
+All `POST`, JSON body (`camelCase`), body limit 8 KB, flag `SupplierShowcaseBooking`. **The code and the address are in the body, never in
+the URL**, so neither is in an access log. Besides `slug` (the showcase of the supplier, as in the link of the e-mail), `code`
+(`XXXXX-XXXXX`; separators and case are ignored) and `email`:
+
+| Path under `api/public/supplier-bookings/` | More in the body | What it does | Refusals besides the common ones |
+|---|---|---|---|
+| `lookup` | — | the booking as it is now | — |
+| `cancel` | `reason`? (at most 500 characters) | `Annullato` by the customer; the time is free again | 422 `supplier_booking_cannot_cancel`; 422 `supplier_booking_invalid` (`fields: ["reason"]`); 409 `service_request_state_changed` |
+| `reschedule` | `startUtc`, exactly as `GET …/slots` gave it | the request moves to the new time; the old one is free again; the supplier has its whole time to answer again | 422 `supplier_booking_cannot_reschedule`; 422 `supplier_booking_supplier_unavailable`; 422 `supplier_booking_invalid` (`fields: ["startUtc"]`: not a whole minute); 409 `supplier_slot_unavailable`; 409 `service_request_state_changed` |
+| `proposal/accept` | — | takes the request **on the supplier's behalf** at the proposed time | 422 `supplier_booking_no_proposal`, `supplier_booking_proposal_expired`, `supplier_booking_supplier_unavailable`; 409 `supplier_slot_unavailable` (the proposal stays); 409 `service_request_state_changed` |
+| `proposal/reject` | — | drops the proposal; the request stays `Richiesto` at its time | 422 as above; 409 `service_request_state_changed` |
+
+Common to all: **404 `supplier_booking_not_found`** and **429 `rate_limited`** (24.4); **400 `validation_error`** for a body that is not
+JSON or has no slug, code or address (it says nothing about any booking); with the flag **off** all five answer **404 `not_found`**, the
+answer of a route that does not exist, before authentication, rate limiting and model binding. They are in the allow-list of
+`EndpointAuthorizationArchitectureTests` (anonymous, with the reason, flag, rate limit and body limit required). Every call that finds the
+booking answers **200** with the booking **as it is after the call**, read again from the database, so the page needs no second request.
+
+```json
+{ "publicCode": "7K2XM-9QD4T", "status": "Richiesto",
+  "service": { "name": "Pulizia profonda", "slug": "pulizia-profonda" },
+  "supplier": { "name": "Rossi Servizi", "slug": "rossi-servizi" },
+  "startUtc": "2026-10-13T07:00:00Z", "endUtc": "2026-10-13T09:00:00Z",
+  "startLocal": "2026-10-13T09:00:00+02:00", "endLocal": "2026-10-13T11:00:00+02:00",
+  "place": { "city": "Monza", "postalCode": "20900", "address": null, "floor": null, "accessNotes": null },
+  "price": { "currency": "EUR", "estimatedAmountCents": 9000, "quotedAmountCents": null, "finalAmountCents": null,
+             "amountCents": 9000, "basis": "estimate",
+             "lines": [ { "kind": "service", "label": "Pulizia profonda", "quantity": 1, "unitAmountCents": 9000, "amountCents": 9000 } ] },
+  "respondBy": "2026-10-12T09:45:00Z",
+  "proposal": null, "cancellation": null, "rejectionReason": null,
+  "cancellationTerms": { "freeUntilUtc": "2026-10-12T07:00:00Z", "freeUntilLocal": "2026-10-12T09:00:00+02:00", "isFree": true },
+  "actions": { "canCancel": true, "canReschedule": true, "canRespondToProposal": false } }
+```
+
+`proposal` is `{ startUtc, endUtc, startLocal, endLocal, proposedAt, answerBy, message }` while a time is waiting (and `respondBy` is
+then `null`: the deadline is the customer's, `proposal.answerBy`); `cancellation` is `{ at, by: "customer" | "supplier" | "system",
+reason }` once cancelled (`reason` is the text a person wrote, never a code); `price.basis` says which of the three amounts
+`amountCents` is (`final`, `quote`, `estimate`; `null` is "to agree with the supplier"); the `lines` of an estimate add up to it (a flat
+price shows its base as the line of the service) and, once the work is done, they are the lines of the final amount. Times are UTC
+instants with the offset of Rome
+next to them: the two passes of the hour that happens twice when the clocks go back are told apart by the offset.
+
+### 24.3 The rules
+
+- **Cancel.** A new request at any time; a taken one until its start, never after (the work may have been done, and a customer
+  cancelling then would take away what the supplier is owed). `reason` is optional, trimmed, at most 500 characters, no control
+  characters except line breaks and tabs. **Free until `Suppliers__Showcase__FreeCancellationHours` before the work** (24 by default;
+  **elapsed hours**, not wall-clock hours: on the Sunday the clocks go back, 25 October 2026, 24 hours before 08:00 is 09:00 of the
+  Saturday) **and allowed afterwards without any charge** (D6: no exit cost in v1). `cancellationTerms.isFree` only tells the page which
+  sentence to show; the e-mail to the supplier of a **taken** job cancelled inside the notice says that the notice was short. The request
+  becomes `Annullato`, `CancelledBy = Customer`, `CancellationReason` = the text or the code `CancelledByCustomer`, with the deadline and
+  the proposal cleared; the slot is free for the planner at once. A second call of a booking the customer already cancelled answers
+  **200** with the same booking and does nothing (a retry after a lost answer, a double click).
+- **Move.** Only a new request with a time, of an active supplier, for a published service. The new start has to be **a slot the planner
+  offers** for the service and for the length of the work the request already has (hours, time off, blocks, notice and weekdays of the
+  service, daily maximum, buffer, what is booked — never the public cache), **with the request itself out of its own way**: the lock is
+  taken first and the planner judges after it. A start that is not free, that is in the past, beyond the horizon or at the ends of the
+  calendar: 409 `supplier_slot_unavailable`, **nothing changes**. The time the request already has changes nothing and tells nobody.
+  On success: the old time is free, `ResponseDueAt` becomes now + `SupplierSettings.RespondWithinMinutes` (the supplier has its whole
+  time again, D8), a pending proposal is dropped (and the supplier is told it is), and the supplier is told. There is **no limit** to
+  the moves of one request yet (24.12).
+- **Accept the proposed time.** The customer takes the request **on the supplier's behalf**: the proposed time becomes the time of the
+  request, the status `PresoInCarico` (`TakenAt` now, `TakenByUserId` the member who proposed), the deadline and the proposal are
+  cleared. The slot is **checked again under the lock** (the supplier may have given it to someone else, or closed that day, since): then
+  409 `supplier_slot_unavailable` and **the proposal stays**, so the customer can still turn it down or cancel. After it the supplier
+  sees the exact address, as for any taken request (D9).
+- **Turn the proposal down.** The proposal is dropped, the request stays `Richiesto` **at the time the customer asked for**,
+  `ResponseDueAt` becomes now + `RespondWithinMinutes` (the deadline that stood on the request was the customer's) and the supplier is
+  told. Nothing is held or freed, so no lock: the check of the row version is enough.
+- **The day to answer a proposal** is `Suppliers__Showcase__ProposalResponseMinutes` (1440, SP-10). Past it the job
+  `service-request-expiry` (every 5 minutes, always registered) cancels the request: `Annullato` by `System` with the reason
+  **`ProposalNotAnswered`** (not `NoResponse`: it is the customer who did not answer, and the e-mails say so, D24); the customer is told
+  and the supplier too. Until the job runs, answering is 422 `supplier_booking_proposal_expired` and the lookup shows
+  `canRespondToProposal: false`.
+- **Another door on the same request.** The supplier acting at the same moment (take, refuse, cancel, propose) or the job: **one
+  wins**, the other gets 409 `service_request_state_changed`, nothing of it is saved, and only the winner tells anybody (24.6).
+
+### 24.4 One 404, one 429, the same cost
+
+- **`supplier_booking_not_found` is the only answer** — same status, same body — for a supplier that does not exist, a code that does not
+  exist or is not a code, **the code of another supplier's booking**, an address that is not the one of the booking, and a customer the
+  retention anonymized. The booking is looked for by the supplier org **and** the code, and only then is the address compared: the stored
+  one is decrypted by the column and compared with the one typed **in constant time** (`ServiceCustomerEmails.SameAddress`,
+  `CryptographicOperations.FixedTimeEquals`). **The same statements run for every attempt**, with values that match nothing when the
+  credentials cannot be valid, and the failure is decided once, at the end: a wrong slug, a wrong code, another supplier's code and a
+  wrong address run the same statements and fail the same way
+  (`ShowcaseBookingManagerLookupTests.Lookup_EverythingThatDoesNotIdentifyABooking_…`). The one difference left is the decryption of the
+  stored address, which only happens once a code exists: some microseconds, behind a limit of 10 attempts per address and 10 per IP per
+  five minutes, against a code of 50 bits. The supplier is found whatever its status.
+- **Two limits, one 429** (`rate_limited`, `Retry-After`, the body of every other 429 of the product, and the `noindex` and `no-store`
+  headers of every answer of the area): **per IP**, the policy
+  `PublicGuestBookingLookup` (10 per 5 minutes; the budget of "Le mie prenotazioni" of the hosts' guests, per IP, shared); and **per
+  address and supplier**, `SupplierBookingManagePerEmail` (**10 per 15 minutes**, in memory per replica, keyed by a hash of the slug and
+  the address, **every attempt counts**, a hit or a miss; another address, or the same address at another supplier, has a budget of its
+  own). The per-address limit **always names the whole window** in `Retry-After` and `retryAfterSeconds` (900), never the time that is
+  left: that would tell when somebody last looked for a booking with this address. It is the generalization of the guest's limiter
+  (`PerEmailRateLimiter`; `GuestBookingEmailRateLimiter` is a subclass of it now, with the behavior it had) and runs after the model
+  validation, so a body that is refused costs no attempt. `proxy-ip.md`.
+- **Nothing a customer typed is written to a log** (ids and counts only) and no answer sets a cookie:
+  `PublicSupplierBookingManagementIntegrationTests` captures every log line of a whole journey and searches it, and
+  `ShowcaseBookingManagementArchitectureTests` forbids the credentials in a logging call.
+
+### 24.5 What is in the view, and what never is
+
+`ShowcaseBookingView` is built **only** from the fields it lists: status, service name and slug, supplier name and slug, the time, the
+place (**comune and postal code always; street address, floor and access notes only once the supplier took the request**, from their own
+statement), the price with its lines, the proposal, the cancellation (when, by whom, the text a person wrote), the reason the supplier
+gave when it refused, the terms and the actions. **Never**: another customer's data, what the supplier noted for itself and the
+completion notes, the photos, the member who took the request, the customer's own name, e-mail address and phone, any other column of
+the request. `ShowcaseBookingManagerSqlTests` reads the SQL: the projection of the booking selects none of them and no encrypted column,
+the three encrypted columns of the place (street, floor, notes) have a statement of their own that runs only for a taken request, and
+every statement carries the supplier org and the rental context.
+
+### 24.6 Concurrency
+
+- **Cancel, move and accept** take the supplier's calendar lock (`SupplierCalendarSync`, the one of the booking and of the supplier's own
+  time changes), **read the request after taking it**, and save with the `xmin` check; **turning the proposal down** takes no lock and
+  saves with the `xmin` check. A conflict the lock could not prevent — a changed row version, a serialization failure, a deadlock — is
+  **409 `service_request_state_changed`**, never a 500.
+- The customer against the supplier (take, refuse, cancel) or against the upkeep job: of two saves of the same request exactly one lands.
+  `ShowcaseBookingManagementPostgresTests` holds both saves until both have read the request (`SaveRendezvous`) and asserts one 200 and
+  one 409, the state of the winner, and that only the winner sent anything. Two customers moving to the same slot: one 200, the other 409
+  `supplier_slot_unavailable`. Two moves of one request or two cancellations of one booking are put in a row by the lock.
+- Those tests are `[PostgresFact]`: they need PostgreSQL and run in CI only.
+
+### 24.7 E-mails and pushes
+
+All through `IEmailQueue` (Hangfire) and `IPushNotificationService`, **after the change is saved, by the winner of the transition only**;
+a failure is logged and never undoes the change. The customer's e-mails are in its language (`it` or `en`), the supplier's in Italian,
+and the supplier reads **comune and "Nome C."** only (D9). `email.md` § SP-11.
+
+| Template | To | When |
+|---|---|---|
+| `supplier-booking-cancellation-receipt` | customer | it cancelled: what was cancelled, that nothing is owed, the reason it gave, the link to the supplier's showcase |
+| `supplier-booking-cancelled-by-customer` + push `service-request-cancelled` | supplier | the customer cancelled: service, comune, "Nome C.", time, its reason, and — for a taken job cancelled inside the free notice — that the notice was short |
+| `supplier-booking-rescheduled-by-customer` + push `service-request-rescheduled` (new) | supplier | the customer moved a new request: both times, the time to answer by, and that its proposal no longer applies when it had one |
+| `supplier-booking-proposal-answered-by-customer` + push `service-request-proposal-accepted` / `-rejected` | supplier | the customer accepted (the request is taken at the proposed time) or turned the proposal down (the request waits again at its time) |
+| `supplier-booking-accepted` | customer | it accepted the proposed time: the e-mail of a request taken, with the new time |
+| `supplier-booking-proposal-expired` | customer | the day to answer passed and the request was cancelled, nothing agreed |
+| `supplier-booking-proposal-lapsed` + push `service-request-cancelled` | supplier | the same event: the customer did not answer the time it proposed |
+
+**Only what is true** (D24): no refund or fee is promised (none exists in v1), no deadline the jobs do not enforce, nothing about payment.
+The banned-phrase test now covers the six new templates, every variant of them, in both languages. **The management link** is the one of SP-10:
+`PublicSiteLinks.SupplierBookingRequest(slug, code)`, `…/fornitori/{slug}/richiesta?code=XXXXX-XXXXX`, in the e-mails that send the
+customer to its request (receipt, taken, time proposed, reminder; the others link to the supplier's showcase); it carries the code
+only, never the address — the page asks for it.
+
+### 24.8 Privacy
+
+- No answer carries the customer's own name, e-mail address or phone (it knows them); the street address, the floor and the notes for the
+  access of the work come back only for a request the supplier took. No log line carries a code or an address.
+- The reason the customer typed is stored in `ServiceRequests.CancellationReason` (at most 500 characters) like the supplier's, and shown
+  back to the customer and to the supplier. **It is outside `Gdpr__Retention__SupplierCustomers`** (which anonymizes the customer, not the
+  free text of its requests): follow-up `BE-SP11-3` (24.12).
+- The exact address and the notes for the access reach the customer's view only for a request the supplier took, and while the retention
+  has not removed them. The retention is unchanged.
+- The key of the per-address limit is a hash of the slug and the address, in memory; no readable address is kept.
+
+### 24.9 Tenancy
+
+The code that changes a request on behalf of its customer (`ServiceRequestService.Customer.cs`) is reachable only through
+`IShowcaseRequestCustomerActions`, which `ShowcaseBookingManager` calls after it has proved the credentials
+(`ShowcaseBookingManagementArchitectureTests` names who may). Every read carries the supplier org **and** the rental context `Showcase`:
+a host's request, or another supplier's, is the same 404. `ShowcaseBookingTenancyTests` still covers the tables (no new table).
+
+### 24.10 Configuration
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `Suppliers__Showcase__FreeCancellationHours` | elapsed hours before the work until which a cancellation is "free" (a later one is allowed too, D6) | 24 (0 to 720; out of range: **startup fails**) |
+| `RateLimiting__SupplierBookingManagePerEmail__PermitLimit` / `__WindowSeconds` | attempts per address and supplier | 10 / 900 |
+| `RateLimiting__PublicGuestBookingLookup__PermitLimit` / `__WindowSeconds` | attempts per IP, shared with "Le mie prenotazioni" | 10 / 300 |
+| `Suppliers__Showcase__ProposalResponseMinutes` | the day the customer has to answer a proposed time (SP-10) | 1440 |
+
+**No migration**: SP-11 adds no table, no column and no index.
+
+### 24.11 For the tasks stacked on this one
+
+- **SP-12 (screens)**: the contract is 24.2. The page `…/fornitori/{slug}/richiesta?code=…` reads `code` from the query, asks for the
+  address and posts `{ slug, code, email }`; it shows `actions`, `cancellationTerms` and `proposal.answerBy`; to move a booking it asks
+  `GET …/slots?service={service.slug}` and posts the chosen `startUtc`; `409 supplier_slot_unavailable` sends the customer back to the
+  slots; 429 shows the wait. The supplier's console receives `cancelledBy: "Customer"` and, in `cancellationReason`, the codes
+  `CancelledByCustomer` and `ProposalNotAnswered` when nobody wrote a text (a code is not a sentence: translate it).
+- **Mobile**: the push type `service-request-rescheduled` is new and the app does not know it yet (follow-up): it should route it like
+  `service-request-time-proposed`. The other types the area sends already exist.
+- **SP-15 (payments)**: a cancellation costs nothing today; if a fee ever exists, `cancellationTerms` and `FreeCancellationHours` are
+  the place for it.
+
+### 24.12 Known limits and follow-ups
+
+- **No limit to the moves of one request**: the per-address limit bounds the attempts, not the moves (`BE-SP11-1`).
+- **The per-address limit lives in memory, per replica**, like `SupplierBookingCreatePerEmail`: with N replicas a client gets up to N times
+  the limit; a durable one needs a shared store (`BE-SP11-2`).
+- The free text of a cancellation reason is outside the retention job (`BE-SP11-3`).
+- The customer changes the time only: not the service, the quantity or the place of a booking. A booking whose service the supplier
+  unpublished can be cancelled and not moved.
+- **A supplier suspended while a time it proposed waits**: the customer can still cancel, but cannot accept or turn the proposal down
+  (422 `supplier_booking_supplier_unavailable`); if the day passes, the job cancels the request as the customer's silence
+  (`ProposalNotAnswered`) and the e-mail says it did not answer in time, although it could only cancel. Rare (a suspension with live
+  proposals); a neutral wording, or a cancellation at the moment of the suspension, is `BE-SP11-5`.
+- **A supplier that switches `OnlineBookingEnabled` off** does not stop a customer from moving a booking it already has: the task is
+  silent, a product question (`PO-SP11-1`).
+- **Locking an address out**: somebody who knows a supplier's slug and the e-mail address of a customer can use up the 10 attempts of that
+  address in 15 minutes, which keeps the customer's own page from answering for as long (the per-IP limit bounds the third party). It is
+  inherent to a limit per address, which the task asks for.
+
+### 24.13 After a deploy
+
+- [ ] No migration to apply; `dotnet ef migrations has-pending-model-changes` is clean.
+- [ ] Flag off: the five `POST api/public/supplier-bookings/*` answer **404 `not_found`**, the body of a route that does not exist.
+- [ ] Test environment, flag on: book a slot and check the e-mail; with the code and the address `lookup` answers the booking with
+      `canCancel` and `canReschedule` true; a wrong code, a wrong address and another supplier's slug answer **the same 404**; the 11th
+      attempt in 15 minutes with the same address, made from different IPs (from one IP the limit per IP, 10 per 5 minutes, fires first),
+      answers 429 with `Retry-After: 900`.
+- [ ] `reschedule` to a free slot: the supplier gets the e-mail and the push, the old time is offered again by `GET …/slots`; to a taken
+      one: 409 and nothing changes.
+- [ ] The supplier proposes another time: `lookup` shows `proposal` and `canRespondToProposal`; `proposal/accept` takes the request
+      (customer and supplier are told); `proposal/reject` leaves it new; a proposal left for a day is cancelled by the job within five
+      minutes and the supplier is told it was the customer.
+- [ ] `cancel`: the customer gets the receipt, the supplier the e-mail and the push, the slot is offered again; a second `cancel` answers
+      200 and sends nothing.
+- [ ] A search of the logs for the code and the e-mail address used above finds nothing.
+
 ## Known limits (other tasks)
 
-- Booking from the showcase (SP-10): the customer cannot yet find, cancel, move or answer a proposed time of its request
-  (SP-11); until then the flag `SupplierShowcaseBooking` must stay off (section 23.8). Nobody is paid through a showcase request
-  (SP-15). `SupplierSettings.OnlineBookingEnabled` has no endpoint that writes it yet (SP-13 / SP-16).
+- Booking from the showcase (SP-10, SP-11): the customer finds, cancels, moves and answers a proposed time of its request (section 24).
+  Nobody is paid through a showcase request (SP-15). `SupplierSettings.OnlineBookingEnabled` has no endpoint that writes it yet
+  (SP-13 / SP-16).
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.

@@ -51,7 +51,10 @@ public static class FeatureFlags
     /// <summary>
     /// SP-02 (redesign wave, decision D34): booking from the public showcase of a supplier (<c>/fornitori/{slug}</c>), off
     /// until the product owner turns it on. It gates the public reads of the showcase (services, slots, estimate: SP-09) and
-    /// the booking endpoints (hold and e-mail check: SP-10), 404 when off. <b>On, the application needs
+    /// the booking endpoints (hold and e-mail check: SP-10) and the customer's own area of a booking (find it again, cancel it,
+    /// move it, answer a proposed time: SP-11, <c>api/public/supplier-bookings/*</c>), 404 when off. <b>SP-10 and SP-11 both have
+    /// to be deployed before it is turned on</b>: a customer who can book and cannot manage the booking is a promise the e-mails
+    /// make and the product does not keep. <b>On, the application needs
     /// <c>Suppliers:Showcase:PrivacyNoticeVersion</c> and, outside Development and Testing, <c>Suppliers:CustomerIndexKey</c></b>
     /// or it does not start (<see cref="Casazen.Core.Options.ShowcaseBookingOptionsValidator"/>). The upkeep jobs of the
     /// bookings are registered whatever the flag says. The service catalog (<c>api/supplier/services</c>) does not depend on
@@ -77,6 +80,14 @@ public static class FeatureFlags
     /// </summary>
     public const string SupplierRequestAutoCancel = "SupplierRequestAutoCancel";
 
+    /// <summary>
+    /// BL-01 (redesign wave, decision 01-D8): gradual rollout of the new interface (UI v2: design tokens, single shell, navigation
+    /// by area, in-app guide). Off by default, the product owner turns it on. The backend only introduces and exposes it: no
+    /// endpoint, service or job reads it. The frontend reads <c>uiRedesign</c> from <c>GET /api/public/features</c> and switches
+    /// the new look on or off (<c>html[data-ui='v2']</c>, UI-01).
+    /// </summary>
+    public const string UiRedesign = "UiRedesign";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -87,5 +98,6 @@ public static class FeatureFlags
         SupplierShowcaseBooking,
         SupplierOnlinePayments,
         SupplierRequestAutoCancel,
+        UiRedesign,
     ];
 }

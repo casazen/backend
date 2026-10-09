@@ -99,10 +99,14 @@ public class ShowcaseDisclosureAndHistoryTests
     }
 
     [Fact]
-    public void StateMachine_TheCustomerAsAnActorCancelsNothingYet_ItsOwnCancellationArrivesWithSp11()
+    public void StateMachine_TheCustomerCancelsANewOrATakenRequest_NeverOneInProgressOrClosed()
     {
+        // SP-11: the customer is an actor of its own cancellation, like the supplier: before the work starts, never after.
         Assert.All(
-            new[] { ServiceRequestStatus.Richiesto, ServiceRequestStatus.PresoInCarico, ServiceRequestStatus.InCorso },
+            new[] { ServiceRequestStatus.Richiesto, ServiceRequestStatus.PresoInCarico },
+            status => Assert.True(ServiceRequestStateMachine.CanCancel(status, ServiceRequestActorParty.Customer)));
+        Assert.All(
+            Enum.GetValues<ServiceRequestStatus>().Except([ServiceRequestStatus.Richiesto, ServiceRequestStatus.PresoInCarico]),
             status => Assert.False(ServiceRequestStateMachine.CanCancel(status, ServiceRequestActorParty.Customer)));
     }
 }

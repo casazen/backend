@@ -62,7 +62,14 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Mock.Of<IHostEnvironment>(environment => environment.EnvironmentName == "Testing"),
             NullLogger<ServiceCustomerIndex>.Instance);
         var links = EmailTestHelpers.Links(publicSiteBaseUrl);
-        ShowcaseNotifier = new ShowcaseBookingNotifier(db, Customers, Emails, links, Push, NullLogger<ShowcaseBookingNotifier>.Instance);
+        ShowcaseNotifier = new ShowcaseBookingNotifier(
+            db,
+            Customers,
+            Emails,
+            links,
+            Push,
+            Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
+            NullLogger<ShowcaseBookingNotifier>.Instance);
         Notifier = new ServiceRequestNotifier(
             db,
             Emails,
@@ -96,6 +103,13 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             NullLogger<ShowcaseBookingService>.Instance,
+            Clock);
+        Manager = new ShowcaseBookingManager(
+            db,
+            Customers,
+            Catalog,
+            Service,
+            Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             Clock);
     }
 
@@ -136,6 +150,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public ServiceRequestService Service { get; }
 
     public ShowcaseBookingService Booking { get; }
+
+    /// <summary>The customer's own area of a booking (SP-11), on the real service request actions.</summary>
+    public ShowcaseBookingManager Manager { get; }
 
     public void Dispose()
     {
