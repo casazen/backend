@@ -303,6 +303,7 @@ public sealed class BookingNotifier(
                 OrgDisplayName = b.Org.DisplayName,
                 OrgContactEmail = b.Org.ContactEmail,
                 b.OrgId,
+                b.PropertyId,
                 PropertyCreatorId = b.Property.OwnerId,
                 b.Property.ResponsibleUserId,
                 b.CheckInDate,
@@ -332,7 +333,7 @@ public sealed class BookingNotifier(
 
         // AM-03: the org's contact address, as ever, plus the member in charge of the property and the org's administrators.
         var tellEmails = await HostNotificationAudience
-            .UsersToTell(db, row.OrgId, row.ResponsibleUserId, row.PropertyCreatorId)
+            .UsersToTell(db, row.OrgId, row.PropertyId, row.ResponsibleUserId, row.PropertyCreatorId)
             .Select(u => u.Email)
             .ToListAsync(cancellationToken);
         var hostEmails = new List<string>();
