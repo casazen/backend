@@ -251,7 +251,7 @@ public class FieldEncryptionPostgresTests
 
     /// <summary>
     /// Org, property, a guest with a document and one without, a booking with its stay guest, and the Questura
-    /// credentials of the property: through the model, or by SQL with the columns before CO-14.
+    /// credentials of the property: through the model, or by SQL with the columns that exist before CO-14.
     /// </summary>
     private static async Task<Seed> SeedAsync(AppDbContext db, bool credentialsBySql)
     {
@@ -312,26 +312,19 @@ public class FieldEncryptionPostgresTests
         };
         if (credentialsBySql)
         {
-            // CO-15: the model's "Guests" and "StayGuests" no longer match the table at this point ("AlloggiatiDataErasedAt"
-            // and "AnonymizedAt" do not exist yet, "DataRetentionUntil" still required on Guests): write them by SQL with
-            // the columns before CO-15, like the credentials below are written with the columns before CO-14. The guests
-            // must exist before the booking and the stay guest, which have a foreign key to them.
-            // The org row in SQL: the current Org entity has columns that later migrations add (PL-04).
+            // Every row is written by SQL naming only the columns that exist at this migration point, never through the
+            // model: the model has the columns of all the later migrations (PC-03 pause, PC-05 soft delete, SU-04 comune, PC-06
+            // unit, CO-21 iCal stays, PM-01 rental mode, and the next one), which do not exist yet. The Legacy*Rows helpers
+            // (Org, Property, Booking) are checked against the schema of this point by LegacyRowsSchemaTests; the guests and the
+            // stay guest need their own statements: the model's "Guests" and "StayGuests" no longer match the table at this
+            // point ("AlloggiatiDataErasedAt" and "AnonymizedAt" do not exist yet, "DataRetentionUntil" is still required on
+            // Guests), like the credentials below are written with the columns before CO-14. The guests must exist before the
+            // booking and the stay guest, which have a foreign key to them.
             await LegacyOrgRows.InsertAsync(db, org);
-            // Same for the "Properties" columns added after this point (PC-03 pause): created just for the insert.
-            await AddPropertiesColumnsAfterCo14Async(db);
-            db.Add(property);
-            await db.SaveChangesAsync();
-            await DropPropertiesColumnsAfterCo14Async(db);
+            await LegacyPropertyRows.InsertAsync(db, property);
             await InsertGuestBeforeCo15Async(db, guest);
             await InsertGuestBeforeCo15Async(db, empty);
-            // CO-21 (unrelated to CO-15) added 4 nullable Bookings columns after this migration point too. They have no
-            // constraint of their own, so it is simplest to create them here just for the insert below and drop them
-            // again right after: the real migration (already ahead in the migrations list) recreates them properly.
-            await AddBookingsColumnsBeforeCo21Async(db);
-            db.Add(booking);
-            await db.SaveChangesAsync();
-            await DropBookingsColumnsBeforeCo21Async(db);
+            await LegacyBookingRows.InsertAsync(db, booking);
             await InsertStayGuestBeforeCo15Async(db, stay);
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO "PropertyQuesturaCredentials" ("Id", "PropertyId", "Username", "PasswordEncrypted", "WsKey", "CreatedAt")
@@ -380,53 +373,6 @@ public class FieldEncryptionPostgresTests
                 {guest.MarketingConsentDate}, {guest.CreatedAt.AddYears(7)}, {guest.DataProcessingPurpose}, {guest.IsDeleted},
                 {guest.DeletedAt}, {guest.DeletionReason}, {guest.CreatedAt}, {guest.UpdatedAt})
             """);
-
-    /// <summary>
-    /// Adds the 4 nullable "Bookings" columns of the CO-21 migration (<c>AddOtaStayFromICalBlock</c>), so the
-    /// model-based insert of a booking works at this "before CO-15" migration point too. Paired with
-    /// <see cref="DropBookingsColumnsBeforeCo21Async"/>.
-    /// </summary>
-    private static Task AddBookingsColumnsBeforeCo21Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
-        ALTER TABLE "Bookings" ADD COLUMN "ChannelLabel" character varying(60);
-        ALTER TABLE "Bookings" ADD COLUMN "ICalFeedId" uuid;
-        ALTER TABLE "Bookings" ADD COLUMN "OtaReviewRaisedAt" timestamp with time zone;
-        ALTER TABLE "Bookings" ADD COLUMN "OtaReviewReason" integer;
-        """);
-
-    private static Task DropBookingsColumnsBeforeCo21Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
-        ALTER TABLE "Bookings" DROP COLUMN "ChannelLabel";
-        ALTER TABLE "Bookings" DROP COLUMN "ICalFeedId";
-        ALTER TABLE "Bookings" DROP COLUMN "OtaReviewRaisedAt";
-        ALTER TABLE "Bookings" DROP COLUMN "OtaReviewReason";
-        """);
-
-    /// <summary>
-    /// Adds the "Properties" columns of the migrations after this point (PC-03 <c>AddPropertyPause</c>, PC-05
-    /// <c>AddPropertySoftDelete</c>, SU-04 <c>AddComuniIstat</c>), so the model-based insert of the property works here
-    /// too. Paired with
-    /// <see cref="DropPropertiesColumnsAfterCo14Async"/>.
-    /// </summary>
-    private static Task AddPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
-        ALTER TABLE "Properties" ADD COLUMN "IsPaused" boolean NOT NULL DEFAULT false;
-        ALTER TABLE "Properties" ADD COLUMN "PausedAt" timestamp with time zone;
-        ALTER TABLE "Properties" ADD COLUMN "IsDeleted" boolean NOT NULL DEFAULT false;
-        ALTER TABLE "Properties" ADD COLUMN "DeletedAt" timestamp with time zone;
-        ALTER TABLE "Properties" ADD COLUMN "ComuneIstatCode" character varying(6);
-        ALTER TABLE "Properties" ADD COLUMN "RegionCode" character varying(10);
-        ALTER TABLE "Properties" ADD COLUMN "Unit" character varying(30);
-        ALTER TABLE "Properties" ADD COLUMN "AddressKey" text;
-        """);
-
-    private static Task DropPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
-        ALTER TABLE "Properties" DROP COLUMN "IsPaused";
-        ALTER TABLE "Properties" DROP COLUMN "PausedAt";
-        ALTER TABLE "Properties" DROP COLUMN "IsDeleted";
-        ALTER TABLE "Properties" DROP COLUMN "DeletedAt";
-        ALTER TABLE "Properties" DROP COLUMN "ComuneIstatCode";
-        ALTER TABLE "Properties" DROP COLUMN "RegionCode";
-        ALTER TABLE "Properties" DROP COLUMN "Unit";
-        ALTER TABLE "Properties" DROP COLUMN "AddressKey";
-        """);
 
     /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>
     private static Task InsertStayGuestBeforeCo15Async(AppDbContext db, StayGuest stay) =>
