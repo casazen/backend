@@ -118,5 +118,5 @@ public class SupplierServiceForRequestTests
         int? duration = 120,
         int? minNoticeHours = null,
         int weekdaysMask = SupplierServiceWeekdays.AllMask) =>
-        new(Guid.NewGuid(), "Pulizia", ServiceCategories.Cleaning, status, duration, minNoticeHours, weekdaysMask, price, unit, requiresQuote);
+        new(Guid.NewGuid(), "Pulizia", ServiceCategories.Cleaning, status, duration, minNoticeHours, weekdaysMask, price, unit, requiresQuote, "pulizia");
 }

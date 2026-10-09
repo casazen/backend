@@ -50,6 +50,21 @@ public static class RomeCalendar
     }
 
     /// <summary>
+    /// The instant <paramref name="utc"/> on the clock of Europe/Rome, with its offset (<c>+01:00</c> or <c>+02:00</c>): the two
+    /// passes of the hour that happens twice when the clocks go back are told apart by the offset. <see cref="DateTimeKind.Unspecified"/>
+    /// counts as UTC.
+    /// </summary>
+    public static DateTimeOffset ToRome(DateTime utc)
+    {
+        var instant = utc.Kind switch
+        {
+            DateTimeKind.Local => utc.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(utc, DateTimeKind.Utc),
+        };
+        return TimeZoneInfo.ConvertTime(new DateTimeOffset(instant), TimeZone);
+    }
+
+    /// <summary>
     /// The UTC instant at which the calendar date of <paramref name="calendarDate"/> (a date-only value, e.g. a
     /// check-in date) starts in Europe/Rome: 22:00 or 23:00 UTC of the day before, depending on daylight saving.
     /// </summary>

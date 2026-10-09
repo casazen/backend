@@ -167,6 +167,7 @@ for it). What is kept, where and how long (the flow is in [`suppliers.md`](suppl
 | comune and postal code | `ServiceRequests` | not encrypted; the supplier sees them before the take |
 | consent: version of the privacy notice, time, client address | `ServiceCustomers` | the booking is refused without it, or with a version that is not the current one (`Suppliers__Showcase__PrivacyNoticeVersion`); the text of the notice is a decision of the product owner and legal (D14) |
 | language | `ServiceCustomers` | `it` or `en`, the language of every e-mail to the customer |
+| reason the customer gave when it cancelled (SP-11) | `ServiceRequests.CancellationReason` | free text, at most 500 characters, shown to the supplier and back to the customer; **not encrypted and not removed by the retention** (which anonymizes the customer, not the text of its requests): a decision for the DPO |
 
 An unchecked booking is **deleted by the upkeep job** when its 30 minutes have passed (the data go with it); a checked one is deleted
 when it would have expired, and the request and the customer remain. The logs carry ids and codes only.
@@ -183,9 +184,10 @@ times, price, the supplier's accounts) and the customer row with its `Anonymized
 period and its source are **not decided here**: the product owner, the DPO and the accountant decide (the supplier may need the
 request for its own accounts).
 
-**Not done in SP-10** (decisions for later): an erasure request of the customer (art. 17), the export of its data (art. 15, 20) and the
-withdrawal of the consent. They need the customer's own area (SP-11) or an operator procedure; until then a request goes to the supplier
-(the controller) or to CasaZen support, who can anonymize the customer with `ServiceCustomerPrivacyService.Anonymize` (code change, no endpoint).
+**Not done in SP-10 and SP-11** (decisions for later): an erasure request of the customer (art. 17), the export of its data (art. 15, 20)
+and the withdrawal of the consent. The customer's own area of SP-11 ([`suppliers.md`](suppliers.md) § 24) lets it find, cancel and move a
+booking, not exercise these rights: they need an operator procedure; until then a request goes to the supplier (the controller) or to
+CasaZen support, who can anonymize the customer with `ServiceCustomerPrivacyService.Anonymize` (code change, no endpoint).
 
 Configuration (Railway, per environment), only after the decision of the product owner and the DPO/accountant:
 

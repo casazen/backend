@@ -26,16 +26,17 @@ public static class ServiceRequestStateMachine
 
     /// <summary>
     /// True when <paramref name="actor"/> may cancel a request in <paramref name="from"/>: the host up to and including the
-    /// work in progress, the supplier only before it started (<c>Richiesto</c>, <c>PresoInCarico</c>), and CasaZen itself only
-    /// a request nobody answered (<c>Richiesto</c>, decision D8). Rejecting is another transition: it is the supplier's
-    /// answer to a <c>Richiesto</c> request, with its own reason and its own status.
+    /// work in progress, the supplier only before it started (<c>Richiesto</c>, <c>PresoInCarico</c>), the customer of the public
+    /// showcase the same as the supplier (SP-11: never once the work is in progress or over), and CasaZen itself only a request
+    /// nobody answered (<c>Richiesto</c>, decision D8). Rejecting is another transition: it is the supplier's answer to a
+    /// <c>Richiesto</c> request, with its own reason and its own status.
     /// </summary>
     public static bool CanCancel(ServiceRequestStatus from, ServiceRequestActorParty actor) =>
         CanTransition(from, ServiceRequestStatus.Annullato)
         && actor switch
         {
             ServiceRequestActorParty.Host => true,
-            ServiceRequestActorParty.Supplier => from != ServiceRequestStatus.InCorso,
+            ServiceRequestActorParty.Supplier or ServiceRequestActorParty.Customer => from != ServiceRequestStatus.InCorso,
             ServiceRequestActorParty.System => from == ServiceRequestStatus.Richiesto,
             _ => false,
         };
