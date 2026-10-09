@@ -57,6 +57,8 @@ public interface ICalendarBlockService
     /// <exception cref="Exceptions.NotFoundException"><see cref="ManualBlockErrorCodes.NotFound"/>.</exception>
     /// <exception cref="Exceptions.DomainRuleException">
     /// <see cref="ManualBlockErrorCodes.NotManual"/>: an imported block goes away with its feed, never by hand.
+    /// <see cref="ManualBlockErrorCodes.HeldByModeChange"/>: the block of a property that went long-term goes away with the
+    /// return to short stays (PM-02), never by hand.
     /// </exception>
     Task DeleteAsync(Guid blockId, CancellationToken cancellationToken = default);
 }
@@ -86,7 +88,11 @@ public static class ManualBlockErrorCodes
     /// <summary>422: more than <see cref="ManualBlocks.MaxNights"/> nights.</summary>
     public const string TooLong = "calendar_block_too_long";
 
-    /// <summary>422: reason not one of <see cref="CalendarBlockReason"/>.</summary>
+    /// <summary>
+    /// 422: reason not one of the three the host chooses (<see cref="CalendarBlockReason.Owner"/>,
+    /// <see cref="CalendarBlockReason.Maintenance"/>, <see cref="CalendarBlockReason.Other"/>): not defined, or
+    /// <see cref="CalendarBlockReason.ModeChange"/>, which only CasaZen writes.
+    /// </summary>
     public const string InvalidReason = "calendar_block_invalid_reason";
 
     /// <summary>422: note longer than <see cref="CalendarBlock.ManualNoteMaxLength"/> characters.</summary>
@@ -101,6 +107,12 @@ public static class ManualBlockErrorCodes
     /// <summary>422: the block was imported from an iCal feed: it is removed with its feed or by the channel.</summary>
     public const string NotManual = "calendar_block_not_manual";
 
+    /// <summary>
+    /// 422: the block is the one CasaZen holds for a property that went long-term (<see cref="CalendarBlockReason.ModeChange"/>,
+    /// PM-02): it is removed when the property goes back to short stays, never by hand.
+    /// </summary>
+    public const string HeldByModeChange = "calendar_block_held_by_mode_change";
+
     public const string PropertyNotFoundMessageKey = "PropertyNotFound";
     public const string NotFoundMessageKey = "CalendarBlockNotFound";
     public const string InvalidRangeMessageKey = "CalendarBlockInvalidRange";
@@ -111,4 +123,5 @@ public static class ManualBlockErrorCodes
     public const string OverlapsBookingMessageKey = "CalendarBlockOverlapsBooking";
     public const string OverlapsBlockMessageKey = "CalendarBlockOverlapsBlock";
     public const string NotManualMessageKey = "CalendarBlockNotManual";
+    public const string HeldByModeChangeMessageKey = "CalendarBlockHeldByModeChange";
 }

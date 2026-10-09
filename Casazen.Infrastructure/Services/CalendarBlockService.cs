@@ -139,6 +139,11 @@ public sealed class CalendarBlockService(
         if (block.Source != CalendarBlockSource.Manual)
             throw new DomainRuleException(ManualBlockErrorCodes.NotManual, ManualBlockErrorCodes.NotManualMessageKey);
 
+        // PM-02: the block of a property that went long-term keeps the portals from selling it. Only the return to short
+        // stays removes it (PropertyModeService, in the same transaction as the mode); by hand it would reopen the dates.
+        if (block.ManualReason == CalendarBlockReason.ModeChange)
+            throw new DomainRuleException(ManualBlockErrorCodes.HeldByModeChange, ManualBlockErrorCodes.HeldByModeChangeMessageKey);
+
         db.CalendarBlocks.Remove(block);
         try
         {
@@ -164,7 +169,8 @@ public sealed class CalendarBlockService(
             throw new DomainRuleException(
                 ManualBlockErrorCodes.TooLong, ManualBlockErrorCodes.TooLongMessageKey, ManualBlocks.MaxNights);
         }
-        if (!Enum.IsDefined(reason))
+        // ModeChange (PM-02) is written by the mode change service, never chosen by the host.
+        if (!Enum.IsDefined(reason) || reason == CalendarBlockReason.ModeChange)
             throw new DomainRuleException(ManualBlockErrorCodes.InvalidReason, ManualBlockErrorCodes.InvalidReasonMessageKey);
         if (note is { Length: > CalendarBlock.ManualNoteMaxLength })
             throw new DomainRuleException(ManualBlockErrorCodes.NoteTooLong, ManualBlockErrorCodes.NoteTooLongMessageKey);
