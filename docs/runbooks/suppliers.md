@@ -14,6 +14,8 @@ and the category `electrical` (SP-02, redesign wave). Section 20: the supplier's
 rules, the calendar) and the slot planner (SP-03, redesign wave). Section 21: the service request with a time and a price (start,
 cancel, propose another time, reminder, final amount, photos), the inbox filters, the batch accept, `today` and `checklist`, the
 automatic cancellation of the requests nobody answers, and what the supplier sees before the take (SP-04, redesign wave).
+Section 25: the supplier's Stripe Connect account (SP-14). Section 26: paying the supplier inside CasaZen with the CasaZen commission (payment mode of a
+request, the payer's link, the host's confirmation of an amount above the quote, the supplier's payment request and offline record; SP-15a, redesign wave).
 
 ## 1. How a supplier joins
 
@@ -772,6 +774,11 @@ supplier read the same story and no column was added):
   to the supplier org's devices (`service-request-paid`, delivery key `service-request:{id}:Pagato`, opens the app's
   property list like the "new request" push). A failure to queue them is logged and never an error for the host.
   A supplier suspended after completing the work (SU-12) is notified too: it is still owed what it completed.
+- **SP-15a:** a request paid inside CasaZen (`paymentMode: Online`, section 26) cannot be marked paid by hand: `mark-paid` answers 422
+  `service_request_online_payment` (the payer pays with the emailed link, or the supplier records the exception). "Segna pagato" stays the way for every
+  `Manual` request: the ones that exist since before SP-15a, the ones taken while the flag `SupplierOnlinePayments` is off, and the ones taken
+  online but completed with the flag off or with an amount that cannot be charged online (they fall back to `Manual` at the completion).
+  A request completed as `Online` stays `Online` if the flag is switched off afterwards.
 - The host is told of a rejection (email with the reason, and push) since A6-08; the reason is never on the lock screen.
 
 ### 15.3 Asking another supplier after a rejection
@@ -1298,7 +1305,7 @@ the migration is applied still gets valid values. The status **`Annullato` is `6
 | `Richiesto` | `Rifiutato` | the supplier | `POST …/{id}/reject` (reason required) |
 | `PresoInCarico` | `InCorso` | the supplier | `POST …/{id}/start` |
 | `PresoInCarico`, `InCorso` | `Completato` | the supplier | `POST …/{id}/complete` (optional body: notes, final amount, extras) |
-| `Completato` | `Pagato` | the host | `POST …/{id}/mark-paid` (unchanged) |
+| `Completato` | `Pagato` | the host for a `Manual` request (refused with 422 `service_request_online_payment` for an `Online` one); the supplier for a payment received outside CasaZen (section 26) | `POST …/{id}/mark-paid`; `POST api/supplier/requests/{id}/payment/offline` |
 | `Richiesto`, `PresoInCarico`, `InCorso` | `Annullato` | see below | `POST …/{id}/cancel` (reason required, ≤ 500) |
 
 `Rifiutato`, `Pagato` and `Annullato` are final. **Who may cancel** (`ServiceRequestStateMachine.CanCancel`): the **host** up to and
@@ -1359,8 +1366,9 @@ host's two answers `…/proposal/accept` and `…/proposal/reject` (section 21.5
   the total. `price.amountCents` is the final amount, else the quote, else the estimate, and `price.basis` says which (`final`,
   `quoted`, `estimated`).
 - **Decision D7: a final amount more than the tolerance (20 %, `Suppliers__ServiceRequests__FinalAmountTolerancePercent`) above the reference
-  is flagged** (`price.needsCustomerConfirmation`, `FinalAmountNeedsConfirmation`), and the request is `Completato` all the same. **Only the
-  data and the flag are in this task**: the customer's confirmation flow arrives with SP-15. Exactly 20 % is not over the tolerance.
+  is flagged** (`price.needsCustomerConfirmation`, `FinalAmountNeedsConfirmation`), and the request is `Completato` all the same. **SP-04 gave the
+  data and the flag; the host's confirmation is SP-15a** (`POST api/service-requests/{id}/final-amount/confirm`, section 26), which clears the flag and, for a request
+  paid inside CasaZen, creates the payment. Exactly 20 % is not over the tolerance.
 - **The supplier's closing notes are `CompletionNotes`**, a field of their own (≤ 1000). They no longer replace `Notes`, the host's words.
   The host reads both.
 
@@ -1501,8 +1509,9 @@ SP-15) and D11 ("Verificato"). The flow, the endpoints, the Stripe settings and 
 | See the state | `GET api/supplier/payments/account` (database) or `…?refresh=true` (Stripe first): `hasAccount`, `chargesEnabled`, `payoutsEnabled`, `detailsSubmitted`, `requirementsDue`, `canReceivePayments`, `verified`, `verificationMissing` |
 | Open its Express Dashboard | `POST api/supplier/payments/dashboard-link`: balance, payouts and bank details on Stripe. Needs an existing account (422 `supplier_payments_not_ready` otherwise) |
 
-Nothing is paid through CasaZen yet: no PaymentIntent, commission, payment page or refund (SP-15, SP-17). "Segna pagato" by the host
-(`mark-paid`, section 15) is still the only way a request becomes paid.
+This section is the account only. The payment, the commission and the payer's page of a completed request are SP-15a (section 26); the webhook that
+records the money as received, the refunds and the earnings pages are SP-15b, SP-16 and SP-17. "Segna pagato" by the host (`mark-paid`, section 15)
+stays the way a `Manual` request becomes paid.
 
 ### 25.2 Rules
 
@@ -1527,6 +1536,102 @@ Nothing is paid through CasaZen yet: no PaymentIntent, commission, payment page 
 - [ ] Test environment with `Features__SupplierOnlinePayments=true` and Stripe test keys: the checks of `stripe.md` § "Connect onboarding
       of the suppliers (SP-14)" → Verification, point 2.
 - [ ] With the flag off, `GET /api/supplier/payments/account` answers 404 `not_found` also with a valid supplier token.
+
+## 26. Paying the supplier inside CasaZen, with the CasaZen commission — SP-15a
+
+Redesign wave task SP-15a (branch `feature/rd-supplier-payments`, backend only: the payer's page and the console screens are frontend
+tasks), stacked on SP-14 and SP-04. Gap report 05 §4.3, decisions D2 (a direct charge on the supplier's own Stripe account, CasaZen holds
+no funds), D3 (the commission), D5 (the manual flow stays, as an exception), D7 (an amount above the quote) and D24 (the emails). The
+charge model, the endpoints, the statuses and the Stripe checks are in [`stripe.md`](stripe.md) § "Services of the suppliers (SP-15)";
+this section is what is specific to the suppliers' requests. **SP-15b** (the webhook that records a payment as paid, the reminder and sync
+jobs, refunds, the admin tools and the monthly export of the commission) is another pull request stacked after this one:
+**until it is deployed, keep `Features__SupplierOnlinePayments` off in production.**
+
+### 26.1 What changes for a request
+
+| Moment | What happens |
+|---|---|
+| The supplier takes the request (`take`, or the host accepts the time it proposed) | `PaymentMode` is fixed (`ServiceRequests.PaymentMode`, `paymentMode` in the answers of the host and of the supplier): `Online` if the flag is on **and** the supplier's Stripe account is linked with charges and payouts enabled, else `Manual`. A request that exists before SP-15a is `Manual` |
+| The supplier completes it | An `Online` request with a final amount of at least `SupplierPayments__MinAmountCents` gets its payment (`ServiceRequestPayments`, status `Requested`, with the commission snapshot) in the same save, and the contact address of the host org gets the email with the link. With no final amount (or one below the minimum), or if the flag was switched off since, the request is completed as `Manual`: nothing is stuck and the host marks it paid as before |
+| The final amount is above the quote by more than the tolerance (D7, section 21.4) | The host confirms first: `POST api/service-requests/{id}/final-amount/confirm` (long-rent twin under `api/long-rent/service-requests`); it clears `price.needsCustomerConfirmation`, keeps `FinalAmountConfirmedAt`, creates the payment and sends the link. Until then there is no payment and no link, and `payment-request` is 422 `service_payment_amount_unconfirmed`. Confirming twice is not an error |
+| The supplier cannot be paid yet, or the host org has no email | The payment exists but is **pending** (no link, nothing sent). The supplier asks again when it can |
+| The payer pays | With the emailed link (`/service/pay/{paymentId}?token=…`, which calls `api/public/service-payments/*`) or, signed in, from the host console (`POST api/service-requests/{id}/payment-session`): a direct charge on the supplier's account with the commission as the application fee. The payment becomes `Paid` (and the request `Pagato`) with the webhook of SP-15b |
+| The payer did not pay | `POST api/supplier/requests/{id}/payment-request` sends a reminder with a new link (the old one stops working), at most once a day (422 `service_payment_request_too_soon`), and only while the flag is on |
+| The supplier was paid outside CasaZen | `POST api/supplier/requests/{id}/payment/offline` (D5): the request becomes `Pagato`, a payment still waiting is withdrawn (its PaymentIntent canceled) and a payment **without commission** is kept (`PaidVia = Offline`); the history of the request credits it to the supplier
+(`ServiceRequests.PaidBy`); the host is emailed (with the reason). For an `Online` request the `reason` is mandatory (422 `service_payment_offline_reason_required`) and a warning log marks the exception. A payment already paid, or being processed by Stripe, makes it a 409 |
+
+### 26.2 Rules
+
+- **The commission is configuration, never code** (D3): `SupplierPayments__CommissionPercent` (provisional 10, `deploy-checklist.md` § 2.8) and,
+  per supplier, `SupplierProfiles.CommissionPercentOverride` (an admin sets it in SP-15b). It is computed once, when the payment is
+  created, and kept on the payment (`CommissionPercent`, `ApplicationFeeCents`, `NetCents`); the payer never sees it, the supplier sees
+  "prezzo, commissione CasaZen, netto per te, prima delle commissioni di Stripe" and no text promises a payout time. **Never a commission on
+  the guests' bookings or on the rent** (`StripeServiceApplicationFeeTests`, `ApplicationFeeArchitectureTests`).
+- **The host cannot mark an `Online` request as paid**: `mark-paid` (section 15.2) is 422 `service_request_online_payment`. The supplier
+  declares a payment received outside CasaZen, with a reason. Every `Manual` request works as before (section 15.2).
+- **The flag stops only the creation** of payments (a request is taken as `Manual`; `payment-request` is a 404 before authentication). The
+  payer's page and sessions, the host's session and the supplier's offline record are **not** behind it: money in flight, and the way out
+  when online payments are not available.
+- **A suspended supplier, or one that has not accepted the current Terms, performs no action**, `payment-request` and `payment/offline`
+  included (SU-12, SU-05); the payer can still pay a payment that exists.
+- **One live payment per request** (unique partial index: every status but `Canceled`). Whatever creates, reuses or drops a PaymentIntent,
+  re-issues a link (the supplier's request or reminder) or records an offline payment runs under the advisory lock `ServiceRequestPayment`
+  (key: the request id), with Stripe idempotency keys; the first link, issued with the completion or the host's confirmation, takes no lock:
+  the `xmin` check of the request and the unique index decide, and the loser gets a 409 (`service_request_state_changed`,
+  `service_payment_state_changed`), never a 500.
+- **The link** is a 256-bit token whose SHA-256 is stored, valid `SupplierPayments__PaymentLinkValidityDays` (30) from the email that carries it;
+  a wrong id, a wrong token, a payment with no link and an expired link answer the same 404 `service_payment_link_invalid`.
+- **Tenancy.** `ServiceRequestPayments` is not `ITenantOwned` (two parties and an anonymous payer, like the request itself): every read has an
+  explicit predicate (the payment id with its token on the public routes, the caller's supplier org or host org elsewhere), it is in the
+  allow-list of `TenantQueryFilterArchitectureTests` and `ServiceRequestPaymentTenancyTests` guards it.
+- **A request with no quote and no estimate** has nothing to compare the final amount with (SP-04), so decision D7 never asks the host to
+  confirm it: the link goes out at once with the amount the supplier declared. The payer chooses to pay or not. **To be confirmed by the PO**
+  (require the confirmation for any amount of an online request that had no reference?).
+- **Open points, not decided by the code**: the VAT on the commission and DAC7 (`[CONSULENTE FISCALE]`, D4: `FeeVatMode` and `FeeVatCents`
+  exist and stay empty) and the drafts of the legal texts `fornitori` and `servizi` (LG-01), written for another model: align them with D2
+  before the flag goes on.
+
+### 26.3 Endpoints at a glance
+
+| Endpoint | Who | Behind `SupplierOnlinePayments` |
+|---|---|---|
+| `POST api/public/service-payments/{id}`, `…/{id}/payment-session` | the payer, with the token of the link in the body (rate limited per IP) | no |
+| `POST api/service-requests/{id}/payment-session`, `POST api/long-rent/service-requests/{id}/payment-session` | the host (`property.write`) | no |
+| `POST api/service-requests/{id}/final-amount/confirm`, `POST api/long-rent/service-requests/{id}/final-amount/confirm` | the host (`property.write`) | no |
+| `POST api/supplier/requests/{id}/payment-request` | the supplier | **yes** |
+| `POST api/supplier/requests/{id}/payment/offline` | the supplier | no |
+
+The request answers carry `paymentMode`; the payment itself (status, split) is returned only by the two supplier routes. The earnings page
+and the payments list come with SP-15b and SP-16.
+
+### 26.4 Configuration
+
+Section `SupplierPayments` (validated at startup, `appsettings.json` has the defaults): `SupplierPayments__CommissionPercent` (**required**,
+0 to 50, provisional 10), `…__LateAfterDays` (7) and `…__ReminderDays__0`, `__1` (2 and 7; both used by the jobs of SP-15b), `…__PaymentLinkValidityDays`
+(30), `…__MinAmountCents` (50). Settings: `deploy-checklist.md` § 2.8. Flag: `Features__SupplierOnlinePayments` (`feature-flags.md`, `deploy-checklist.md` § 2.11). Emails:
+`EmailTexts.resx` (`ServicePaymentRequest`, `ServicePaymentReminder`, `ServicePaymentReceived`, `ServicePaymentOfflineRecorded`), see `email.md`.
+
+### 26.5 For the tasks stacked on this one
+
+- **SP-15b**: the webhook `kind=service-charge` (before the generic `payment_intent.succeeded`, comparing account, amount, currency and
+  fee with the payment), `SendPendingPaymentRequestsJob` (also from `account.updated`, BE-SP14-2), the reminders, the refunds, the admin tools
+  and the export. `ServicePaymentReceived` and the statuses `Failed`, `NeedsReview`, `PartiallyRefunded` and `Refunded` are ready for it.
+- **Frontend**: the page `/service/pay/:paymentId` (it only needs the two public routes), the host's "Paga ora" and the "Conferma importo"
+  button, the supplier's "Richiedi pagamento" / "Pagato fuori da CasaZen" and the split of the amounts.
+- **Checklist** (SP-04): `paymentsActive` is still always `null` (BE-SP14-3).
+
+### 26.6 After a deploy
+
+- [ ] Migration `AddSupplierPayments` applied (columns `ServiceRequests.PaymentMode` default 0 = `Manual`, `FinalAmountConfirmedAt` and `PaidBy`,
+      `SupplierProfiles.CommissionPercentOverride`; table `ServiceRequestPayments` with its checks and the two unique partial indexes).
+- [ ] `SupplierPayments__CommissionPercent` is the figure the product owner decided (the committed 10 is provisional).
+- [ ] `GET /api/public/features` has `supplierOnlinePayments: false` in production until SP-15b is deployed and the legal texts and the tax
+      treatment of the commission are approved.
+- [ ] Test environment with `Features__SupplierOnlinePayments=true`, Stripe test keys and a supplier with a ready test account: take a
+      request (`paymentMode: Online`), complete it with an amount, open the link of the email and `POST …/payment-session` (a client secret;
+      the PaymentIntent on the supplier's account carries the application fee), pay it with the test card
+      (`stripe.md` § "Services of the suppliers (SP-15)" → Verification, point 2). With the flag off a new request is `Manual`.
+- [ ] An old request (created before the deploy) still opens everywhere, with `paymentMode: Manual`, and "Segna pagato" still works.
 
 ## Known limits (other tasks)
 

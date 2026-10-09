@@ -659,7 +659,7 @@ Redesign wave task SP-14 (branch `feature/rd-supplier-payments-account`, backend
 is SP-16). Decision D2: the supplier is paid with a **direct charge on its own Stripe account** (Express, v1: `type=express`,
 `StripeConnectGateway`), with a platform commission (D3) that comes with SP-15. This task is **only the account**: the supplier
 connects it, CasaZen reads its state and opens its Express Dashboard. **No PaymentIntent, commission, payment record, payment
-page, refund or earnings exist yet** (SP-15, SP-16, SP-17); `StripeServiceApplicationFeeTests` is untouched, so the rule "no
+page, refund or earnings existed in SP-14** (SP-15 added the payment and the commission, see [Services of the suppliers](#services-of-the-suppliers-sp-15); the earnings pages of SP-16 and SP-17 are still to come); `StripeServiceApplicationFeeTests` is untouched, so the rule "no
 application fee on guest bookings and rent" (A3-40, [Charge model](#charge-model-verified-in-the-code)) still holds.
 
 ### Same engine as the host, other org and other routes
@@ -685,7 +685,7 @@ The org is the caller's own supplier link (`ISupplierOrgContextResolver.GetLinke
 
 Answer of the state: `hasAccount`, `chargesEnabled`, `payoutsEnabled`, `detailsSubmitted`, `requirementsDue` (the **names** of the
 fields Stripe still needs, e.g. `external_account`), `canReceivePayments` (account linked **and** charges **and** payouts enabled:
-what SP-15 will require before a job is payable online), `verified` and `verificationMissing`. There is no bank data, no document
+what SP-15a requires before a job is taken as payable online), `verified` and `verificationMissing`. There is no bank data, no document
 data and no Stripe account id in it. The responses carry `Cache-Control: private, no-store`: the links are credentials, they are
 never logged and never stored.
 
@@ -753,6 +753,103 @@ is logged and ignored). The supplier's `GET …/account` reads what it stored.
    then `chargesEnabled` and `payoutsEnabled` true once Stripe verified it; `POST …/dashboard-link` opens the Express Dashboard;
    before the onboarding is finished it is 422 `supplier_payments_not_ready`. Stripe sends `account.updated`: the plain `GET …/account`
    follows without `refresh`.
+
+## Services of the suppliers (SP-15)
+
+Redesign wave task SP-15 (decisions D2, D3, D5, D7 and D24; gap report 05 §4.3), in two stacked pull requests. **SP-15a** (branch `feature/rd-supplier-payments`, backend only, stacked on SP-14 and SP-04) is what this section describes: the model, the configuration, the gateway with the commission, the payment session, the payer's page, the supplier's request and offline record, and the emails. **SP-15b** (branch `feature/rd-supplier-payments-webhook`) adds the Stripe webhook that makes a payment *paid*, the reminder and sync jobs, refunds, the admin tools and the monthly commission export. No screen exists yet: the public page `/service/pay/:paymentId` and the supplier console are frontend tasks.
+
+**Keep `Features__SupplierOnlinePayments` off in production until SP-15b is deployed.** SP-15a can create a payment and open a Stripe session, but only the webhook of SP-15b records the money as received: a payment made online before it would stay `Requested` (or `Processing`) in CasaZen.
+
+### Charge model (decision D2): a direct charge, CasaZen holds no funds
+
+The payer pays the **supplier's own Stripe Express account** (the one of SP-14); CasaZen takes its commission as the `application_fee_amount` of the same charge. Same family as the guest bookings and the rent ([Charge model](#charge-model-verified-in-the-code)), with one difference: **this is the only PaymentIntent of the application that carries an application fee**.
+
+| Parameter | Value | Why |
+|---|---|---|
+| `Stripe-Account` header | the supplier's `acct_…` (`Orgs.StripeConnectedAccountId` when the PaymentIntent is created; saved on the payment as `ConnectedAccountId`) | direct charge: the PaymentIntent exists only on the supplier's account |
+| `application_fee_amount` | the commission snapshot of the payment, **only if strictly between 0 and the amount**; otherwise the parameter is **left out** | Stripe wants `0 < fee < amount`; an explicit `0` is never sent (A3-40). Set in `StripeSupplierPaymentGateway` and nowhere else (`ApplicationFeeArchitectureTests`) |
+| `automatic_payment_methods` | enabled | like the checkout and the rent: the Payment Element offers what the supplier's account supports |
+| `metadata` | `kind = service-charge`, `serviceRequestPaymentId`, `serviceRequestId`, `supplierOrgId` | ids only, no name, no email, no address. The webhook of SP-15b routes on `kind` **before** the generic `payment_intent.succeeded` case (as for the rent) |
+| `Idempotency-Key` (creation) | `service-charge:{paymentId:N}:{n}`, `n` = `PaymentIntentCount` after the increment | a retry whose answer was lost (timeout, a failed save) sends the same key and gets the same PaymentIntent (Stripe keeps a key for 24 hours) |
+| `Idempotency-Key` (cancellation) | `service-charge-cancel:{paymentId:N}:{pi}` | one cancellation per PaymentIntent |
+| `description` | `Service request {requestId}` | no personal data |
+
+The supplier receives the price **minus CasaZen's commission and minus Stripe's own fees** (decision D3: Stripe's fees stay on the supplier's account); the payout to its bank follows the payout settings of its Stripe account, which CasaZen neither anticipates nor holds back. No text of CasaZen promises a payout time (D24). `StripeServiceApplicationFeeTests` (guest bookings and deferred charges carry **no** fee) is untouched; the architecture test `ApplicationFeeArchitectureTests` makes the rule "the fee is set in the supplier payments gateway only" fail the build if any other code sets one.
+
+### The commission (decision D3)
+
+`SupplierPayments:CommissionPercent` (Railway: `SupplierPayments__CommissionPercent`, committed value **10, provisional**: the product owner's hypothesis). **It is configuration, never code:** the options class has no default of the percentage and the application does not start without a value from 0 to 50 with at most two decimals. A supplier can have its own percentage (`SupplierProfiles.CommissionPercentOverride`, e.g. 0 for a free period; an admin sets it in SP-15b). The commission is `amount × percent / 100` rounded to the cent **away from zero**; if it is 0 or not strictly below the amount it is not charged and not sent.
+
+| Price | Percentage | Commission | Net to the supplier (before Stripe's fees) |
+|---|---|---|---|
+| 60,00 € | 10 | 6,00 € | 54,00 € |
+| 60,55 € | 10 | 6,06 € (6,055 rounded up) | 54,49 € |
+| 0,50 € | 10 | 0,05 € | 0,45 € |
+| 60,00 € | 0 | none, `application_fee_amount` not sent | 60,00 € |
+
+**Snapshot.** The percentage, the commission and the net are computed **once, when the payment is created**, and kept on the row (`CommissionPercent`, `ApplicationFeeCents`, `NetCents`): changing the configuration later never rewrites a payment, and the PaymentIntent is created with the snapshot (a PaymentIntent whose amount or fee no longer matches the payment is canceled and made again). The webhook of SP-15b compares what Stripe reports with the snapshot. The VAT on the commission and DAC7 are **open** (`[CONSULENTE FISCALE]`, decision D4): `FeeVatMode` and `FeeVatCents` exist on the row and stay empty, no rate is configured, and nothing is sent to the tax authority.
+
+### The flow
+
+| Moment | What happens |
+|---|---|
+| The supplier **takes** the request (`take`, or the host accepting the time the supplier proposed) | `PaymentMode` is fixed: `Online` only if the flag is on **and** the supplier's Stripe account is linked with charges **and** payouts enabled (`SupplierVerification.CanReceivePayments`: no payment before the KYC), else `Manual`. It never changes afterwards, except the fall-back below |
+| The supplier **completes** it (`complete`) | `Online` with a final amount of at least `MinAmountCents` (50, Stripe's minimum for euro) and the flag still on: a `ServiceRequestPayment` is created `Requested`, in the same save as the completion, with the snapshot, and the **link** is emailed to the host org's address. If the final amount is missing or below the minimum, or the flag was switched off meanwhile, the request **falls back to `Manual`** (no payment; the host marks it paid as before) so nothing is stuck |
+| The final amount is **above the quote by more than the tolerance** (decision D7: 20 % by default, `Suppliers__ServiceRequests__FinalAmountTolerancePercent`) | no payment yet: the host confirms with `POST api/service-requests/{id}/final-amount/confirm` (and the long-rent twin), which clears `price.needsCustomerConfirmation`, keeps the trace in `FinalAmountConfirmedAt`, creates the payment and sends the link. Confirming twice is not an error |
+| The supplier cannot be paid at that moment, or the host org has no email | the payment exists but is **pending**: no token, nothing sent. The supplier asks again when it can (`payment-request`); SP-15b also sends the pending ones when `account.updated` makes a supplier ready |
+| The payer opens the **link** `/service/pay/{paymentId}?token=…` | `POST api/public/service-payments/{id}` (the page) and `…/payment-session` (the PaymentIntent for the Payment Element) |
+| The payment is **paid** | SP-15b: the webhook, only if account, amount, currency and fee match the snapshot, else `NeedsReview` and no "Pagato" |
+| The host tries `mark-paid` on an `Online` request | 422 `service_request_online_payment` (decision D5): it is paid with the link |
+| The supplier **records a payment received outside CasaZen** (`payment/offline`) | the traced exception (D5): required `reason` for an `Online` request, the waiting payment is withdrawn and its PaymentIntent canceled, an offline payment **without commission** is kept, the request becomes `Pagato` (its history credits the payment to the supplier, `ServiceRequests.PaidBy`), the host is told with the reason |
+
+### The link and the payment session
+
+- **Token.** 256 random bits, URL-safe; only its **SHA-256** is stored (`PaymentTokenHash`), compared in constant time (the same `CheckoutOutcomes` as the rent and the checkout). It goes in the **body** of the API calls, never in their URL. Each email replaces the previous token (the old link stops working). A link is valid **30 days** (`PaymentLinkValidityDays`) from the email that carries it, for a payment still to be made; a paid payment keeps showing its state.
+- **One answer for everything.** A wrong payment id, a wrong token, a payment that has no link yet (pending) and an expired link all give the same `404 service_payment_link_invalid` with the same text: nothing tells whether a payment exists. A token that is missing or longer than 128 characters is a 400 `validation_error`. Rate limit `PublicBookingLookup` per client IP. The answers carry `Cache-Control: private, no-store`.
+- **What the page shows.** The supplier, the service, the payer's own property, the date, the price and its lines, the state (`Payable`, `Processing`, `Paid`, `Unavailable`), whether the last attempt failed (`lastAttemptFailed`) and, for a payment still to be made, until when the link works. **Never** the commission or the net, the address or a contact of anyone, the token or the Stripe account (the names it shows are the supplier's business name, the service and the payer's own property).
+- **The session** runs under the advisory lock `ServiceRequestPayment` (scope **1_320**, key = the request id) in a READ COMMITTED transaction held for the Stripe calls, and reads the payment again after the lock. It creates the PaymentIntent on the supplier's account **or reuses the current one** while it is payable (`requires_payment_method`, `requires_confirmation`, `requires_action`) **and** its amount, currency, fee and account are still the payment's. If any of them changed, or the supplier replaced its Stripe account, the old PaymentIntent is canceled (when it is still payable) and a new one is created with the next key; one that Stripe says no longer exists (`resource_missing` / `account_invalid`: the account it lived on was deleted) is dropped without waiting for it, while any other Stripe failure is a 503 and keeps the payment as it is. One that Stripe reports as paid or in progress (`succeeded`, `processing`, `requires_capture`) is **never created again**: the payment is shown as `Processing` (409 `service_payment_in_flight`) until the webhook of SP-15b settles it. A supplier whose account cannot take charges and payouts any more gives 409 `service_payment_supplier_not_ready` without calling Stripe. The signed-in host has the same session without the link: `POST api/service-requests/{id}/payment-session` (`PropertyWrite` + `HostResource`; long-rent twin under `api/long-rent/service-requests`).
+- **Concurrency.** Two sessions of the same payment (the link and the console, two tabs) create **one** PaymentIntent: the second waits for the lock and finds the first. The unique partial index `UIX_ServiceRequestPayments_ServiceRequestId_Live` allows one payment per request that is not `Canceled`, and `UIX_ServiceRequestPayments_StripePaymentIntentId` one payment per PaymentIntent; a violation or a request changed under the `xmin` token is a **409**, never a 500.
+
+### Endpoints
+
+| Endpoint | Who | Notes |
+|---|---|---|
+| `POST api/public/service-payments/{id}` | anyone with the link | the page; 404 `service_payment_link_invalid`; **not behind the flag** |
+| `POST api/public/service-payments/{id}/payment-session` | anyone with the link | `{ paymentId, clientSecret, publishableKey, stripeAccountId, amountCents, currency }` for Stripe.js; 409 `service_payment_not_payable` / `service_payment_in_flight` / `service_payment_supplier_not_ready`; 503 `payment_provider_error` if Stripe fails; **not behind the flag** |
+| `POST api/service-requests/{id}/payment-session`, `POST api/long-rent/service-requests/{id}/payment-session` | the host (`PropertyWrite` / long-rent `property.write` on the request's property) | the same session without the link; 404 `service_payment_not_found` when the request has no payment; **not behind the flag** |
+| `POST api/service-requests/{id}/final-amount/confirm`, `POST api/long-rent/service-requests/{id}/final-amount/confirm` | the host | decision D7; 422 `service_request_no_confirmation_needed` |
+| `POST api/supplier/requests/{id}/payment-request` | the supplier | **behind the flag** (404 before authentication while off): sends the request or, if one went already, a reminder with a new link; at most one a day (422 `service_payment_request_too_soon`); 422 `supplier_payments_not_ready`, `service_payment_not_online`, `service_payment_not_requestable`, `service_payment_amount_unconfirmed`, `service_payment_amount_required`, `service_payment_no_recipient`, `service_payment_request_not_sent`; 409 `service_payment_not_payable` / `service_payment_in_flight` when the payment is paid or being processed; 403 for a request of another supplier; the answer carries the split (gross, commission, net) |
+| `POST api/supplier/requests/{id}/payment/offline` | the supplier | **not behind the flag**; body `{ reason? }` (≤ 500 characters, else 400 `validation_error`; required for an `Online` request); 409 if the payment is paid or in progress on Stripe |
+
+The payment of a request is not yet in the `GET` answers of the consoles (they carry `paymentMode`); the earnings page and the payments list come with SP-15b and SP-16.
+
+### Statuses of a payment
+
+`Requested` → `Processing` → `Paid` (`PartiallyRefunded`, `Refunded`), `Failed` (the payer can try again with the same link), `Canceled` (dropped: the only status that frees the request for a new payment), `NeedsReview` (SP-15b). SP-15a creates `Requested`, sets `Processing` when a session finds a PaymentIntent paid or in progress, `Canceled` when the supplier records an offline payment, and `Paid` with `PaidVia = Offline` for that record. The values are stored as integers (0 to 7) and serialized by name: append only.
+
+### Emails (decision D24)
+
+`ServicePaymentRequest` and `ServicePaymentReminder` to the host org's contact address (the payer), `ServicePaymentReceived` to the supplier (used by SP-15b), `ServicePaymentOfflineRecorded` to the host; texts in `EmailTexts.resx` / `EmailTexts.en.resx`. They are true and short: the payer sees the price, who asks and the link's validity (never the commission); the supplier's receipt shows "prezzo al lordo, commissione CasaZen, netto per te, prima delle commissioni di Stripe"; **no text promises when the supplier is paid out** (`ServicePaymentEmailTemplatesTests` fails if one does). Queued on Hangfire after the save; a link that cannot be queued (provider not configured) is taken back and the payment stays pending.
+
+### Stripe settings to check (product owner)
+
+1. **Connect webhook endpoint**: nothing new for SP-15a. SP-15b needs `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`, `refund.*` and `charge.dispute.created` on `/webhooks/stripe/connect`.
+2. **Restricted key** (`rk_…`) only: **PaymentIntents: Write** on connected accounts (create, read, cancel). A PaymentIntent with `application_fee_amount` made by a restricted key was **not verified here**: try it in test mode (Verification, point 2); if Stripe asks for the Connect application-fee permission, add it. With the standard secret key nothing to do.
+3. The supplier's account must have completed the onboarding of SP-14 (charges **and** payouts enabled): without it a request is taken as `Manual` and no payment is created.
+4. Stripe's minimum charge in euro is 0,50 € (hence `MinAmountCents` 50): a completed job below it is paid by hand.
+
+### Risks and open points (declared in the pull request)
+
+- **Model A (direct charge):** the payout times depend on the supplier's own Stripe payout schedule; CasaZen cannot suspend a single payout and does not hold the funds. The drafts of the supplier and service legal texts (`fornitori`, `servizi`, LG-01) are written for another model and **must be aligned to D2** before the flag goes on; accepting them is not asked when a supplier connects Stripe.
+- **VAT on the commission and DAC7** are `[CONSULENTE FISCALE]` open points (D4): fields ready, nothing decided or sent; commissions are invoiced by hand from the monthly export of SP-15b.
+- **Mobile** (`paymentMode`, no new push type) was not verified; the Golden Journey L3 keeps using "Segna pagato", which stays valid for `Manual` requests (the flag is off in CI).
+- **A request with no quote and no estimate** has nothing to compare the final amount with (SP-04), so decision D7 never asks the host to confirm it: the link goes out at once with whatever amount the supplier declared (up to the 100.000 € bound of every request). The payer chooses to pay or not, and the supplier can only record an exception: **to be confirmed by the PO** (require the confirmation for any amount of an online request that had no reference?).
+- **Dispute flow** for an amount the host does not want to confirm (D7) is not built: the request stays completed until the host confirms, the supplier can record the exception, and an admin decides (follow-up).
+
+### Verification
+
+1. Automated: `SupplierCommissionTests` (rounding, thresholds), `SupplierPaymentsOptionsTests` (the commission required and 0 to 50), `StripeSupplierPaymentGatewayTests` (header, fee only when real, metadata, keys), `ApplicationFeeArchitectureTests` and `StripeServiceApplicationFeeTests` (the fee in one place), `SupplierPaymentModeTests`, `SupplierPaymentCompletionTests`, `SupplierPaymentRequestTests`, `SupplierPaymentOfflineTests`, `SupplierPaymentSessionTests`, `ServiceRequestPaymentTenancyTests`, `ServicePaymentEmailTemplatesTests`, `ServicePaymentsIntegrationTests` / `ServicePaymentsFlagOffTests` (HTTP) and, on PostgreSQL in CI, `ServicePaymentsPostgresTests` (parallel sessions create one PaymentIntent, the lock is held, two asks send one email, the offline record against a session, two confirmations) and `AddSupplierPaymentsPostgresTests` (migration up and down, checks, the unique indexes).
+2. Test mode (Staging, `Features__SupplierOnlinePayments=true`, a supplier with a ready test account): the supplier takes a request (`paymentMode: Online`), completes it with an amount; the host's address gets the email; `POST api/public/service-payments/{id}/payment-session` with the token returns a client secret; in the Stripe Dashboard (connected account → Payments) the PaymentIntent shows the application fee of the snapshot; pay it with `4242 4242 4242 4242` from a test page and check the fee in the Dashboard (the payment becomes *paid* in CasaZen only with SP-15b). Try the restricted key too. Complete a request above the quote by more than 20 % and confirm it as the host.
 
 ## Operations
 
