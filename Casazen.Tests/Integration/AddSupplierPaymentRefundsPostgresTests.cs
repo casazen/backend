@@ -303,8 +303,11 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
             RentalContext = ServiceRequestRentalContext.LongRent,
             Category = ServiceCategories.Cleaning,
         };
-        db.AddRange(hostOrg, supplierOrg, property);
+        db.AddRange(hostOrg, supplierOrg);
         await db.SaveChangesAsync();
+        // The first test of this class seeds at the schema before AddSupplierPaymentRefunds, which also precedes Wave 3's
+        // CancellationFullRefundHours: saving a Property through the model would write that column (42703).
+        await LegacyPropertyRows.InsertAsync(db, property);
         db.ServiceRequests.Add(request);
         await db.SaveChangesAsync();
 

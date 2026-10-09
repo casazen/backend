@@ -60,9 +60,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
 
         var query = context.Bookings
             .AsNoTracking()
-            .Where(b => b.OrgId == scope.OrgId);
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(b => b.Property.OwnerId == ownerId);
+            .Where(b => b.OrgId == scope.OrgId)
+            .InScope(scope);
         if (propertyId is { } property)
             query = query.Where(b => b.PropertyId == property);
         if (guestId is { } guest)
