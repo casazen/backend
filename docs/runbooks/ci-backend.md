@@ -126,3 +126,42 @@ When the run fails:
    `dotnet restore && bash scripts/check-vulnerable-packages.sh && dotnet build -c Release --no-restore && dotnet test -c Release --no-build && dotnet format --verify-no-changes`.
 3. Keep-alive: **Actions → Supabase Keep-Alive → Run workflow**. With the variables set, the log shows "Supabase REST ping OK"; without them, a warning annotation and no ping.
 4. Optional workflow syntax check: `actionlint .github/workflows/*.yml`.
+
+## 6. Running the tests without PostgreSQL (QA-INFRA-01)
+
+CI runs every test on PostgreSQL. On a machine with neither a server nor Docker (most laptops and agent sandboxes) the suite still runs, with one rule per kind of test, and it must end with **0 failed**:
+
+| Kind of test | Without PostgreSQL |
+|---|---|
+| `[PostgresFact]` / `[PostgresTheory]`: concurrency, tenant isolation on real foreign keys, `CHECK`s, unique indexes, `xmin`, advisory locks, migrations | **Skipped**, with the reason. On CI a missing server is an error, so a skip cannot hide anything there. |
+| HTTP tests on `CasazenWebApplicationFactory` | Run on the **EF InMemory fallback**, with a warning on stderr. |
+| Unit tests | Run as usual. |
+
+```bash
+dotnet build Casazen.sln -c Release
+dotnet test Casazen.Tests -c Release --no-build                                            # whole suite
+dotnet test Casazen.Tests -c Release --no-build --filter "FullyQualifiedName~HostAuthorization"   # a class
+# with a server (or Docker for Testcontainers) the PostgreSQL tests run too:
+export TEST_POSTGRES_CONNECTION="Host=localhost;Port=5432;Username=postgres;Password=dev"
+```
+
+On 2026-10-09 the whole suite without PostgreSQL gives 0 failed, about 9,500 passed and about 1,070 skipped. The `Skipped` lines are the tests of the first row: they are **CI-only**, together with the Golden Journey L3 and the `Verify Railway` jobs. Do not count them as run.
+
+### What the InMemory fallback does
+
+It is made to behave like the PostgreSQL path wherever EF InMemory can (`CasazenWebApplicationFactory`):
+
+- **One store per factory instance**, like the `it_<guid>` database of PostgreSQL. Before QA-INFRA-01 every host of the process shared one store (`CasazenTest`): hosts that started together imported the comuni sample into the same rows (`An item with the same key has already been added. Key: 001235`) and a class saw what the others had written (`PublicSeo…`, `ComplianceSeo…`, `OrgSettings…`), so the failures changed from run to run.
+- **The reference data the migrations seed** (contexts, roles and their permissions) is written when the host starts, from the `HasData` of the model: the same source the migrations are generated from (`InMemoryReferenceDataSeeder`). A test that needs a membership or a role finds them, as on PostgreSQL; the collaborator tests of `HostAuthorizationIntegrationTests` and `ConnectOnboardingIntegrationTests` need it.
+- **The comuni sample** (`ComuneTestData`, 29 rows) is imported at startup unless the factory sets `SeedComuneSample` to `false`.
+
+InMemory does **not** enforce foreign keys, unique indexes, `CHECK`s, `timestamptz` or transactions, and has no `xmin`, advisory lock or raw SQL: whatever depends on them has a `[PostgresFact]` and is CI-only.
+
+### Rules for a test that must give the same result on every machine
+
+- **UI culture.** A test that reads a localized string pins the culture (the product's language is Italian): without a request, `CultureInfo.CurrentUICulture` is the one of the machine, English on many Windows PCs. See `UploadDocument_ApeNotOfficial…`.
+- **Time zone.** `TZ` changes the process time zone on Linux and macOS only; on Windows `TimeZoneInfo.Local` is the system setting. A test that needs another zone says so with `[ProcessTimeZoneFact]` (skipped on Windows, always run on CI). The clock of the code under test is a `TimeProvider` (`FixedTimeProvider`); "today" is `Europe/Rome` (`RomeCalendar`).
+- **No database in a class that does not need one.** Theories of pure logic do not belong to a class whose `InitializeAsync` creates a PostgreSQL database for every test (`RliDeadlineThresholdsTests`).
+- **PDFs.** PDFsharp/MigraDoc loses words when two documents are rendered at once in one process and the renderer has no lock (follow-up BE-PDF-01). Tests build `SerializedPdfRenderer`, never `new MigraDocPdfDocumentRenderer()`, and the test hosts get it through `CasazenWebApplicationFactory`.
+- **EF model cache.** It holds about forty models per process (one per `IDataProtectionProvider` instance); beyond that a model is not cached at all. A test that asserts `Assert.Same(context.Model, …)` gives its contexts an own cache (`UseMemoryCache`), as `ICalFeedUrlProtectionTests` does.
+- **Machine load.** Several agents on one PC saturate the CPU: run a class with `--filter` instead of the whole suite, and never raise a global timeout to hide a slow test.
