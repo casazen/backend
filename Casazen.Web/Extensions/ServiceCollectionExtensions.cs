@@ -190,6 +190,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserAuthorizationSnapshotStore>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserAuthorizationCache>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
+        // AM-01: the org's people (OrgMember) and, in the same transaction, the memberships that project their role.
+        services.AddScoped<IOrgMembershipService, OrgMembershipService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
         // PL-02: host contexts only after the onboarding and the current consents; refusals answer 403 onboarding_required.
         services.AddScoped<IHostOnboardingGate, HostOnboardingGate>();

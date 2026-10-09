@@ -24,6 +24,7 @@ public class UserServiceOnboardingMemberTests
     private readonly Mock<IAuth0ManagementService> _auth0 = new(MockBehavior.Strict);
     private readonly Mock<IOrgService> _orgs = new();
     private readonly Mock<IUserContextMembershipService> _memberships = new();
+    private readonly Mock<IOrgMembershipService> _orgMembership = new();
     private readonly Mock<IUserAuthorizationCache> _cache = new();
     private readonly List<string> _calls = [];
     private readonly UserService _service;
@@ -39,6 +40,9 @@ public class UserServiceOnboardingMemberTests
         _orgs.Setup(o => o.EnsureOrgForUserAsync(Sub, Email, "Mem Bro", It.IsAny<CancellationToken>()))
             .Callback(() => _calls.Add("org-ensured"))
             .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "Mem Bro" });
+        _orgMembership.Setup(m => m.EnsureOwnerAsync(Sub, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Callback(() => _calls.Add("owner-ensured"))
+            .ReturnsAsync(new OrgMember { UserId = Sub, Role = OrgRole.Owner });
         _memberships.Setup(m => m.GrantAsync(Sub, It.IsAny<IEnumerable<UserRole>>(), It.IsAny<CancellationToken>()))
             .Callback(() => _calls.Add("membership-granted"))
             .Returns(Task.CompletedTask);
@@ -57,6 +61,7 @@ public class UserServiceOnboardingMemberTests
             _auth0.Object,
             _orgs.Object,
             _memberships.Object,
+            _orgMembership.Object,
             _cache.Object,
             NullLogger<UserService>.Instance);
     }
@@ -82,6 +87,7 @@ public class UserServiceOnboardingMemberTests
         _repository.Verify(r => r.AddIfAbsentAsync(It.IsAny<User>()), Times.Never);
         _repository.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
         _orgs.VerifyNoOtherCalls();
+        _orgMembership.VerifyNoOtherCalls();
         _memberships.Verify(m => m.GrantAsync(It.IsAny<string>(), It.IsAny<IEnumerable<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
         _memberships.Verify(m => m.RevokeAsync(It.IsAny<string>(), It.IsAny<IEnumerable<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
         _auth0.VerifyNoOtherCalls();
@@ -105,6 +111,9 @@ public class UserServiceOnboardingMemberTests
         Assert.Equal(expectedRoles.Split(','), roles);
         Assert.True(roleSync.Succeeded);
         Assert.Equal("member-checked", _calls[0]);
+        // The owner row follows the org and comes before the owner's rental memberships (AM-01).
+        Assert.True(_calls.IndexOf("org-ensured") < _calls.IndexOf("owner-ensured"));
+        Assert.True(_calls.IndexOf("owner-ensured") < _calls.IndexOf("membership-granted"));
         Assert.Contains("membership-granted", _calls);
         Assert.Contains("auth0-roles-assigned", _calls);
         _memberships.Verify(m => m.IsHostMemberAsync(Sub, It.IsAny<CancellationToken>()), Times.Once);

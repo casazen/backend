@@ -1,4 +1,5 @@
 using System.Reflection;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
@@ -159,6 +160,7 @@ public class AppDbContext(
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
+    public DbSet<OrgMember> OrgMembers { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -905,6 +907,29 @@ public class AppDbContext(
             .HasForeignKey(m => m.RoleId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // ─── Org membership (AM-01) ─────────────────────────────────────────────
+        modelBuilder.Entity<OrgMember>(entity =>
+        {
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(m => m.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(m => m.User)
+                .WithMany()
+                .HasForeignKey(m => m.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One org per user. It is also what two parallel onboardings of the same user race on: the loser gets 23505.
+            entity.HasIndex(m => m.UserId)
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgMembers_UserId");
+
+            // The tenant filter reads by OrgId; the team page lists an org's people and finds its owner.
+            entity.HasIndex(m => new { m.OrgId, m.Role })
+                .HasDatabaseName("IX_OrgMembers_OrgId_Role");
+        });
+
         modelBuilder.Entity<ConsentRecord>()
             .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
 
@@ -1388,6 +1413,18 @@ public class AppDbContext(
             new RolePermission { RoleId = 3, PermissionKey = "admin.jobs.read" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.tax.manage" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.seo.read" });
+
+        // AM-01: the account context and the roles of the org team. OrgRoleCatalog is the source (ids 4 to 12); the tests
+        // compare this seed with it and with OrgOwnerRoles.
+        modelBuilder.Entity<AppContextEntity>().HasData(
+            new AppContextEntity { Key = AccountContext.Key, DisplayName = AccountContext.DisplayName });
+
+        modelBuilder.Entity<Role>().HasData(
+            OrgRoleCatalog.SeededRoles.Select(r => new Role { Id = r.Id, ContextKey = r.ContextKey, RoleKey = r.RoleKey }));
+
+        modelBuilder.Entity<RolePermission>().HasData(
+            OrgRoleCatalog.SeededRoles.SelectMany(r =>
+                r.Permissions.Select(p => new RolePermission { RoleId = r.Id, PermissionKey = p })));
 
         // Guest check-in session (US-020 / #296)
         modelBuilder.Entity<GuestCheckInSession>(entity =>

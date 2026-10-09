@@ -75,7 +75,7 @@ registered, registered but unused, or an action with neither).
 | `Authenticated` | any signed-in user, suppliers included: only user-scoped endpoints, each listed with its reason in the test allow-list |
 | `AdminOnly` | JWT role `Admin` |
 | `Supplier` (`RequireSupplier`) | JWT role `Supplier` (backfilled from the DB supplier link) |
-| `OrgBillingAdmin` (`RequireOrgBillingAdmin`) | org administrator in either rental context (PL-16): owner `PropertyOwner` or `LongTermLandlord` (JWT role, or DB membership with the owner's role key: `property_owner` of short-rent, `long_term_landlord` of long-rent, `OrgOwnerRoles`), platform `Admin`; never `Staff`/`Guest`, never a `PropertyManager` (D12) nor any other member role. Plan, entitlement, billing, Stripe Connect account, branding, domain, site documents |
+| `OrgBillingAdmin` (`RequireOrgBillingAdmin`) | org administrator in either rental context (PL-16): owner `PropertyOwner` or `LongTermLandlord` (JWT role, or DB membership with the owner's role key: `property_owner` of short-rent, `long_term_landlord` of long-rent, `OrgOwnerRoles`), platform `Admin`, or (AM-01) an `account` membership holding `org.billing.manage` (`org_owner`, `org_admin`); never `Staff`/`Guest`, never a `PropertyManager` (D12) nor any other member role. Plan, entitlement, billing, Stripe Connect account, branding, domain, site documents |
 | `SharedPropertyRead` / `SharedPropertyWrite` | `property.*` in short-rent **or** long-rent: only the property core a long-term landlord needs (list, record, create/update, documents/APE) — A7-06 |
 | `PropertyRead` / `PropertyWrite` | short-rent `property.*`: the short-stay side of a property (photos, CIN, iCal, activation, detail with bookings/OTA, pricing, fiscal, service requests) |
 | `BookingRead/Write`, `PaymentRead/Write`, `GuestRead/Write`, `OtaRead/Write` | short-rent context permission |
@@ -85,6 +85,15 @@ Context permissions come from the DB memberships (`UserContextMemberships` → `
 roles as fallback (`ContextAuthorizationService`). A permission counts only in the context that grants it: the long-rent
 `property.*` never satisfies a short-rent policy (`RequireContext:short-rent|long-rent:…` lists both contexts where an
 endpoint serves both). The class carries the read permission, writing actions add the write one.
+
+**Org membership (AM-01, `docs/runbooks/org-team.md`).** `OrgMember` (table `OrgMembers`, one org per user, role Owner / Admin /
+PropertyManager / Collaborator / Accountant) is the source of truth of who belongs to which org; the `UserContextMemberships` rows
+are the projection of its role into permissions, written in the same transaction by `IOrgMembershipService` only. The roles
+`org_owner`, `org_admin`, `org_accountant` live in the new context `account` ("Amministrazione" of the customer, permissions
+`org.members.manage`, `org.billing.manage/read`, `org.settings.manage`, `org.suppliers.manage`, `org.activity.read`; the staff
+console stays `admin`); `GET /api/me/contexts` lists `account` only with the flag `OrgTeam` on. For a user with an org member row
+and a rental membership the host contexts come from the DB only (a token never adds one: veto of PR #455 limited to org
+members); a deactivated member gets 403 `member_inactive` from the next request.
 
 The policy says what kind of operation a user may do; the row itself is checked with
 `IAuthorizationService.AuthorizeAsync(User, HostResource, operation)` (`PropertyOperations`, `SharedPropertyOperations`,
@@ -119,7 +128,7 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships` |
+| `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships`; the `account` context (AM-01) only with `Features:OrgTeam` on |
 | `GET` | `/api/orgs/plans` | Anonymous | Plan catalogue and property limits |
 | `GET` | `/api/orgs/me/entitlement` | OrgBillingAdmin (org policy, any rental context, PL-16) | Org plan tier (the effective one), limits, usage, `canAddProperty`, `canUseCustomDomain`; BL-01: `openAccess` (`true` when the tier shown is raised by `Entitlement:OpenAccess`, [`open-access.md`](runbooks/open-access.md)) |
 | `PUT` | `/api/orgs/me/plan` | Org billing admin | Downgrade / back to Starter only; upgrade without an active subscription → 403 `subscription_required`, Stripe-managed plan → 409 `managed_by_stripe` (#274) |
@@ -470,6 +479,7 @@ never a link to the dashboard.
 | `POST` | `/api/admin/seo/generate` | Admin | Generate SEO content as drafts (never approved automatically) |
 | `GET` | `/api/admin/seo/budget` | Admin | SEO generation budget |
 | `POST` | `/api/admin/suppliers/invite` | Admin | See Supplier marketplace |
+| `POST` | `/api/admin/org-members/reconcile` | Admin | AM-01: gives an Owner `OrgMember` to the host orgs that have none and re-aligns the memberships with the org roles; `dryRun` defaults to `true`; reports ids and codes only, never guesses an ambiguous org (`docs/runbooks/org-team.md` § 6) |
 
 #### Webhooks & health
 
@@ -612,6 +622,18 @@ erDiagram
 | `RefundedAmount` | `decimal(18,2)` | Default 0 | Cumulative refunded total |
 | `Status` | `PaymentStatus` | Required | Pending / Processing / Completed / Failed / Refunded / PartiallyRefunded |
 | `StripePaymentIntentId` | `string?` | Max 255 | Stripe reference |
+
+#### `OrgMember` (AM-01)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (RESTRICT), tenant key (`ITenantOwned`) | The org the person belongs to |
+| `UserId` | `string` | FK `Users` (CASCADE), **unique** | One org per user |
+| `Role` | `OrgRole` | Required | Owner 1 / Admin 2 / PropertyManager 3 / Collaborator 4 / Accountant 5 |
+| `Status` | `OrgMemberStatus` | Default Active | Active 1 / Deactivated 2 (403 `member_inactive` from the next request) |
+| `PropertyScope` | `PropertyScope` | Default All | All 1 / Selected 2 (`Selected` arrives with AM-03) |
+| `CreatedAt`, `CreatedByUserId`, `DeactivatedAt` | `DateTime`, `string?`, `DateTime?` | — | Audit of the membership |
 
 ---
 

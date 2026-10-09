@@ -22,6 +22,10 @@ namespace Casazen.Infrastructure.Services;
 /// Consents recorded by the user for <paramref name="OrgId"/>, as <see cref="ConsentKey"/> values (type and version):
 /// the gate compares them with the current versions when it evaluates, so a new document version applies at once.
 /// </param>
+/// <param name="OrgMember">
+/// The user's org membership (AM-01): what the user is in its org and whether it may still use it; <c>null</c> for a
+/// user that is in no org team (a supplier, a user who never onboarded, an owner of before the backfill).
+/// </param>
 public sealed record UserAuthorizationSnapshot(
     bool Exists,
     bool IsActive,
@@ -30,10 +34,14 @@ public sealed record UserAuthorizationSnapshot(
     IReadOnlyList<ContextAccess> Memberships,
     Guid? OrgId = null,
     DateTime? OnboardingCompletedAt = null,
-    IReadOnlySet<string>? AcceptedConsents = null)
+    IReadOnlySet<string>? AcceptedConsents = null,
+    OrgMemberSnapshot? OrgMember = null)
 {
     public static UserAuthorizationSnapshot Missing { get; } =
         new(Exists: false, IsActive: true, Role: UserRole.None, SupplierOrgId: null, Memberships: []);
+
+    /// <summary>True when the user is a member of an org that was deactivated (<see cref="OrgMemberStatus.Deactivated"/>).</summary>
+    public bool IsOrgMemberDeactivated => OrgMember is { Status: OrgMemberStatus.Deactivated };
 
     /// <summary>Key of an accepted consent in <see cref="AcceptedConsents"/>.</summary>
     public static string ConsentKey(ConsentType type, string version) => $"{type}:{version}";
@@ -42,6 +50,9 @@ public sealed record UserAuthorizationSnapshot(
     public bool HasAccepted(ConsentType type, string version) =>
         AcceptedConsents?.Contains(ConsentKey(type, version)) == true;
 }
+
+/// <summary>What a user is in its org (<see cref="OrgMember"/>), as the authorization reads it.</summary>
+public sealed record OrgMemberSnapshot(Guid OrgId, OrgRole Role, OrgMemberStatus Status);
 
 public interface IUserAuthorizationSnapshotStore : IUserAuthorizationCache
 {
@@ -133,14 +144,27 @@ public sealed class UserAuthorizationSnapshotStore(
             .OrderBy(m => m.ContextKey)
             .ToListAsync(cancellationToken);
 
-        var access = memberships
-            .Select(m => new ContextAccess(
-                m.ContextKey,
-                m.Context.DisplayName,
-                m.Role.RoleKey,
-                m.Role.Permissions.Select(p => p.PermissionKey).OrderBy(p => p).ToList(),
-                ContextAuthorizationService.GetDefaultRoute(m.ContextKey)))
-            .ToList();
+        // AM-01: what the user is in its org. IgnoreQueryFilters for the same reason as the consents below (the snapshot
+        // is read while the JWT is validated, before the request tenant exists); scoped to this user explicitly.
+        var orgMember = await db.OrgMembers
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(m => m.UserId == userId)
+            .Select(m => new OrgMemberSnapshot(m.OrgId, m.Role, m.Status))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // A deactivated member reaches nothing, whatever its memberships say: this closes the cached read while the
+        // request tenant (member_inactive) already refuses the call itself.
+        var access = orgMember is { Status: OrgMemberStatus.Deactivated }
+            ? []
+            : memberships
+                .Select(m => new ContextAccess(
+                    m.ContextKey,
+                    m.Context.DisplayName,
+                    m.Role.RoleKey,
+                    m.Role.Permissions.Select(p => p.PermissionKey).OrderBy(p => p).ToList(),
+                    ContextAuthorizationService.GetDefaultRoute(m.ContextKey)))
+                .ToList();
 
         // Consents of the user's current org only (PL-02). IgnoreQueryFilters: the snapshot is read while the JWT is
         // validated, before the request tenant is resolved (the tenant filter would match nothing); the query is
@@ -167,6 +191,7 @@ public sealed class UserAuthorizationSnapshotStore(
             access,
             user.OrgId,
             user.OnboardingCompletedAt,
-            acceptedConsents);
+            acceptedConsents,
+            orgMember);
     }
 }

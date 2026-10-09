@@ -155,6 +155,111 @@ public class TenantContextTests
         Assert.Null(tenant.OrgId);
     }
 
+    // ─── AM-01: the status of the org membership, from the same read ────────────────────────────────────
+
+    [Theory]
+    [InlineData(OrgMemberStatus.Active, false)]
+    [InlineData(OrgMemberStatus.Deactivated, true)]
+    public async Task ResolveAsync_OrgMember_LoadsItsStatusWithTheOrgAndTheActiveFlag(OrgMemberStatus status, bool expectedDeactivated)
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId);
+        await SeedOrgMemberAsync(services, orgId, status);
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.Equal(expectedDeactivated, tenant.IsCallerOrgMemberDeactivated);
+        Assert.False(tenant.IsCallerInactive);
+        // The org of the request is still the user's org: a deactivated member is refused by the middleware, not unscoped.
+        Assert.Equal(orgId, tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_UserInNoOrgTeam_IsNotAMemberDeactivated()
+    {
+        var services = BuildServices();
+        await SeedUserAsync(services, Guid.NewGuid());
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.False(tenant.IsCallerOrgMemberDeactivated);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_MemberRowOfAnotherUser_DoesNotCount()
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId);
+        await SeedOrgMemberAsync(services, orgId, OrgMemberStatus.Deactivated, userId: "auth0|someone-else");
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.False(tenant.IsCallerOrgMemberDeactivated);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ActiveAccountOfADeactivatedMember_IsNotAnInactiveAccount()
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId, isActive: true);
+        await SeedOrgMemberAsync(services, orgId, OrgMemberStatus.Deactivated);
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.False(tenant.IsCallerInactive);
+        Assert.True(tenant.IsCallerOrgMemberDeactivated);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DeactivationAfterTheFirstRequest_IsSeenByTheNextRequestWithoutAnyCache()
+    {
+        // One tenant context per request, and no cache between requests: the next request reads the new status.
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId);
+        await SeedOrgMemberAsync(services, orgId, OrgMemberStatus.Active);
+        var firstRequest = NewTenantContext(services, authenticated: true);
+        await firstRequest.ResolveAsync();
+        Assert.False(firstRequest.IsCallerOrgMemberDeactivated);
+
+        await SetOrgMemberStatusAsync(services, OrgMemberStatus.Deactivated);
+
+        var nextRequest = NewTenantContext(services, authenticated: true);
+        await nextRequest.ResolveAsync();
+        Assert.True(nextRequest.IsCallerOrgMemberDeactivated);
+    }
+
+    private static async Task SeedOrgMemberAsync(
+        ServiceProvider services, Guid orgId, OrgMemberStatus status, string userId = Sub)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.OrgMembers.Add(new OrgMember
+        {
+            UserId = userId,
+            OrgId = orgId,
+            Role = OrgRole.Collaborator,
+            Status = status,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SetOrgMemberStatusAsync(ServiceProvider services, OrgMemberStatus status)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var member = await db.OrgMembers.SingleAsync(m => m.UserId == Sub);
+        member.Status = status;
+        await db.SaveChangesAsync();
+    }
+
     private ServiceProvider BuildServices()
     {
         var services = new ServiceCollection();
