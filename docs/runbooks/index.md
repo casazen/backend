@@ -1,6 +1,6 @@
 # Indice dei runbook
 
-Un runbook per tema (45 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
+Un runbook per tema (46 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02) e `open-access.md` (task BL-01 della wave di redesign, 2026-10-09), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
 
 > **Hosting in revisione (2026-10-02):** il PO ha cancellato Railway. Nei runbook "Railway" indica l'host del backend così com'era configurato: va riletto alla luce dell'analisi del task HOSTING ([`free-hosting-analysis.md`](free-hosting-analysis.md); raccomandazione: VM Oracle Cloud Always Free, decisione del PO ancora da prendere). Il database resta su Supabase. Le variabili e le procedure non legate all'host restano valide.
 
@@ -17,7 +17,8 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | [`billing-tax.md`](billing-tax.md) | VAT on the CasaZen subscriptions (Stripe Tax) and Italian e-invoices (SDI) | PL-10, PL-11, PL-13, RS-5 |
 | [`legal-documents.md`](legal-documents.md) | legal documents and subprocessors | BK-14, CO-13, CO-16, PL-02, PL-13, PL-14 |
 | [`demo-mode.md`](demo-mode.md) | web demo mode (no login) | PL-01 |
-| [`feature-flags.md`](feature-flags.md) | feature flags | FD-20, FD-21, LT-01, LT-02 |
+| [`feature-flags.md`](feature-flags.md) | feature flags (including `UiRedesign`, the rollout of the new interface) | BL-01, FD-20, FD-21, LT-01, LT-02 |
+| [`open-access.md`](open-access.md) | "accesso aperto": every org served as a chosen plan at least, from configuration (`Entitlement__OpenAccess__*`), what changes and how to go back to the paid plans | BL-01 |
 
 ## Fondamenta tecniche e CI
 

@@ -60,7 +60,7 @@ public class ConfigurationFeatureFlagsTests
         Assert.Equal("SupplierShowcaseBooking", FeatureFlags.SupplierShowcaseBooking);
         Assert.Equal("SupplierOnlinePayments", FeatureFlags.SupplierOnlinePayments);
         Assert.Equal("SupplierRequestAutoCancel", FeatureFlags.SupplierRequestAutoCancel);
-        // PM-02: the flag of the scheduled change of rental mode follows the supplier ones.
+        // PM-02: the flag of the scheduled change of rental mode is appended after UiRedesign.
         Assert.Equal("PropertyModeChange", FeatureFlags.PropertyModeChange);
         Assert.Equal(
             new[]
@@ -72,6 +72,7 @@ public class ConfigurationFeatureFlagsTests
                 "SupplierShowcaseBooking",
                 "SupplierOnlinePayments",
                 "SupplierRequestAutoCancel",
+                "UiRedesign",
                 "PropertyModeChange",
             },
             FeatureFlags.All);
@@ -126,4 +127,67 @@ public class ConfigurationFeatureFlagsTests
 
     private static ConfigurationFeatureFlags Flags(Dictionary<string, string?> values) =>
         new(new ConfigurationBuilder().AddInMemoryCollection(values).Build());
+
+    // ─── BL-01: the UiRedesign flag (gradual rollout of the new interface) ─────────
+
+    [Fact]
+    public void UiRedesign_IsNamedAsDocumentedAndListedForTheFrontend()
+    {
+        Assert.Equal("UiRedesign", FeatureFlags.UiRedesign);
+        Assert.Contains(FeatureFlags.UiRedesign, FeatureFlags.All);
+        Assert.Equal(FeatureFlags.All.Count, FeatureFlags.All.Distinct().Count());
+    }
+
+    [Fact]
+    public void IsEnabled_UiRedesignNotConfigured_IsOff()
+    {
+        Assert.False(Flags(new Dictionary<string, string?>()).IsEnabled(FeatureFlags.UiRedesign));
+    }
+
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("True", true)]
+    [InlineData("false", false)]
+    [InlineData("", false)]
+    [InlineData("1", false)]
+    [InlineData("yes", false)]
+    public void IsEnabled_UiRedesign_IsOnOnlyWhenExplicitlyTrue(string value, bool expected)
+    {
+        var flags = Flags(new Dictionary<string, string?> { ["Features:UiRedesign"] = value });
+
+        Assert.Equal(expected, flags.IsEnabled(FeatureFlags.UiRedesign));
+    }
+
+    [Fact]
+    public void IsEnabled_UiRedesignOn_DoesNotTurnAnyOtherFlagOn()
+    {
+        var flags = Flags(new Dictionary<string, string?> { ["Features:UiRedesign"] = "true" });
+
+        Assert.True(flags.IsEnabled(FeatureFlags.UiRedesign));
+        Assert.All(
+            FeatureFlags.All.Where(flag => flag != FeatureFlags.UiRedesign),
+            flag => Assert.False(flags.IsEnabled(flag), $"{flag} must stay off"));
+    }
+
+    [Fact]
+    public void IsEnabled_OtherFlagsOn_DoNotTurnUiRedesignOn()
+    {
+        var flags = Flags(FeatureFlags.All
+            .Where(flag => flag != FeatureFlags.UiRedesign)
+            .ToDictionary(flag => $"Features:{flag}", _ => (string?)"true"));
+
+        Assert.False(flags.IsEnabled(FeatureFlags.UiRedesign));
+    }
+
+    [Fact]
+    public void AppSettings_UiRedesignIsListedAndOffByDefault()
+    {
+        // The documented default (a missing value is off anyway): appsettings.json of the web project.
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"), optional: false)
+            .Build();
+
+        Assert.Equal("False", configuration[$"{FeatureFlags.SectionName}:{FeatureFlags.UiRedesign}"]);
+        Assert.False(new ConfigurationFeatureFlags(configuration).IsEnabled(FeatureFlags.UiRedesign));
+    }
 }
