@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -276,7 +277,11 @@ public class ShowcaseBookingUpkeepRacePostgresTests(PublicBookingFactory factory
     }
 }
 
-/// <summary>The default integration host (real clock) with the flag <c>SupplierShowcaseBooking</c> on.</summary>
+/// <summary>
+/// The default integration host (real clock) with the flag <c>SupplierShowcaseBooking</c> on. The booking answers 500 — and gives
+/// the slot back — when its verification e-mail cannot be queued, and the default host has no e-mail provider configured, so the
+/// queue is one that accepts everything (as the other hosts of the booking have).
+/// </summary>
 public sealed class ShowcaseRealClockFactory : CasazenWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -284,6 +289,16 @@ public sealed class ShowcaseRealClockFactory : CasazenWebApplicationFactory
         base.ConfigureWebHost(builder);
         builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:SupplierShowcaseBooking"] = "true" }));
+        builder.ConfigureTestServices(services =>
+        {
+            RemoveService<IEmailQueue>(services);
+            services.AddSingleton<IEmailQueue, AcceptingEmailQueue>();
+        });
+    }
+
+    private sealed class AcceptingEmailQueue : IEmailQueue
+    {
+        public bool Enqueue(string? to, EmailContent content, string template) => true;
     }
 }
 
