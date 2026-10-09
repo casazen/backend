@@ -25,6 +25,7 @@ public class PaymentsController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     IFiscalRegimeService fiscalRegimeService,
     IPaymentRefundService refundService,
     ILogger<PaymentsController> logger) : ControllerBase
@@ -44,7 +45,8 @@ public class PaymentsController(
 
         // Org (and ownership) filter applied in SQL: never the whole platform filtered in memory (A3-38).
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
             return Unauthorized();
 
         return Ok(await paymentService.GetPaymentsAsync(scope));

@@ -29,13 +29,12 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // One query whatever the number of bookings (A2-17): org and owner filters in SQL, property and guest joined,
+        // One query whatever the number of bookings (A2-17): org and scope filters in SQL, property and guest joined,
         // never a lookup per row. Read only, so nothing is tracked.
         var query = context.Bookings
             .AsNoTracking()
-            .Where(b => b.OrgId == scope.OrgId);
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(b => b.Property.OwnerId == ownerId);
+            .Where(b => b.OrgId == scope.OrgId)
+            .InScope(scope);
         if (propertyId is { } property)
             query = query.Where(b => b.PropertyId == property);
         if (guestId is { } guest)

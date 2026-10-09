@@ -30,10 +30,8 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
 
         var query = context.LeaseContracts
             .AsNoTracking()
-            .Where(l => l.OrgId == scope.OrgId);
-
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(l => l.Property.OwnerId == ownerId);
+            .Where(l => l.OrgId == scope.OrgId)
+            .InScope(scope);
 
         if (propertyId.HasValue)
             query = query.Where(l => l.PropertyId == propertyId.Value);

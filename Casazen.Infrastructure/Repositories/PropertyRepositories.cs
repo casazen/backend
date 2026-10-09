@@ -54,9 +54,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
 
     private IQueryable<Property> ActivePropertiesInScope(HostScope scope)
     {
-        var query = context.Properties.Where(p => p.OrgId == scope.OrgId && p.IsActive);
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(p => p.OwnerId == ownerId);
+        var query = context.Properties.Where(p => p.OrgId == scope.OrgId && p.IsActive).InScope(scope);
 
         return query;
     }
@@ -210,9 +208,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         ArgumentNullException.ThrowIfNull(scope);
 
         // Short-rent properties only (PM-01): a long-term property has no CIN obligation (D.L. 145/2023 is about short stays).
-        var query = context.Properties.Where(PropertyRentalModeRules.IsShortRent).Where(p => p.OrgId == scope.OrgId);
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(p => p.OwnerId == ownerId);
+        var query = context.Properties.Where(PropertyRentalModeRules.IsShortRent).Where(p => p.OrgId == scope.OrgId).InScope(scope);
 
         return await query.OrderBy(p => p.Name).ToListAsync();
     }

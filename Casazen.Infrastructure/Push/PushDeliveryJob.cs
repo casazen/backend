@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -39,8 +40,6 @@ public sealed class PushDeliveryJob(
     /// <c>mobile/src/notifications/push-registration.ts</c>). Ignored on iOS.
     /// </summary>
     public const string AndroidChannelId = "default";
-
-    private static readonly UserRole[] OrgWideHostRoles = [UserRole.Admin, UserRole.PropertyManager];
 
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     [DisableConcurrentExecution("PushDeliveryJob.SendAsync:{0}", 60)]
@@ -254,7 +253,7 @@ public sealed class PushDeliveryJob(
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(b => b.Id == bookingId)
-            .Select(b => new { b.OrgId, b.Property.OwnerId })
+            .Select(b => new { b.OrgId, b.Property.OwnerId, b.Property.ResponsibleUserId })
             .FirstOrDefaultAsync(cancellationToken);
         if (booking is null)
         {
@@ -262,7 +261,7 @@ public sealed class PushDeliveryJob(
             return [];
         }
 
-        return await HostDevicesAsync(booking.OrgId, booking.OwnerId, cancellationToken);
+        return await HostDevicesAsync(booking.OrgId, booking.ResponsibleUserId, booking.OwnerId, cancellationToken);
     }
 
     private async Task<List<DeviceRegistration>> PropertyHostDevicesAsync(Guid propertyId, CancellationToken cancellationToken)
@@ -272,7 +271,7 @@ public sealed class PushDeliveryJob(
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(p => p.Id == propertyId)
-            .Select(p => new { p.OrgId, p.OwnerId })
+            .Select(p => new { p.OrgId, p.OwnerId, p.ResponsibleUserId })
             .FirstOrDefaultAsync(cancellationToken);
         if (property is null)
         {
@@ -280,27 +279,27 @@ public sealed class PushDeliveryJob(
             return [];
         }
 
-        return await HostDevicesAsync(property.OrgId, property.OwnerId, cancellationToken);
+        return await HostDevicesAsync(property.OrgId, property.ResponsibleUserId, property.OwnerId, cancellationToken);
     }
 
     /// <summary>
-    /// Hosts of a property: its owner and the org-wide roles (Admin, PropertyManager) of its org, active, with devices
-    /// registered in that org (a phone registered under another org does not get this org's pushes).
+    /// Hosts of a property (AM-03): the member in charge of it (its creator while nobody is named) and the org's administrators
+    /// (<see cref="HostNotificationAudience"/>), active, with devices registered in that org (a phone registered under another
+    /// org does not get this org's pushes). No longer the users whose <c>User.Role</c> is Admin or PropertyManager.
     /// </summary>
-    private Task<List<DeviceRegistration>> HostDevicesAsync(Guid orgId, string ownerId, CancellationToken cancellationToken) =>
+    private Task<List<DeviceRegistration>> HostDevicesAsync(
+        Guid orgId,
+        string? responsibleUserId,
+        string ownerId,
+        CancellationToken cancellationToken) =>
         db.DeviceRegistrations
             .AsNoTracking()
             .Join(
-                db.Users.AsNoTracking(),
+                HostNotificationAudience.UsersToTell(db, orgId, responsibleUserId, ownerId),
                 device => device.UserId,
                 user => user.Id,
-                (device, user) => new { Device = device, User = user })
-            .Where(x =>
-                x.Device.OrgId == orgId &&
-                x.User.OrgId == orgId &&
-                x.User.IsActive &&
-                (x.User.Id == ownerId || OrgWideHostRoles.Contains(x.User.Role)))
-            .Select(x => x.Device)
+                (device, user) => device)
+            .Where(device => device.OrgId == orgId)
             .OrderBy(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
 

@@ -50,6 +50,8 @@ and production never block each other.
 | `service-request-expiry` (SP-10: deletes the booking holds past their expiry, cancels the showcase requests nobody answered and tells the customer; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | `*/5` | `ServiceRequestExpiryJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 60 s |
 | `service-request-reminders` (SP-10: the reminder to the customer of a showcase request, 18:00 Rome of the day before; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | hourly | `ServiceRequestReminderJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 300 s |
 | `service-request-auto-cancel` (SP-04, D8: cancels the new service requests nobody answered; only with `Features:SupplierRequestAutoCancel=true`, otherwise removed at startup, see [suppliers.md](suppliers.md) § 21.8) | `*/10` | `ServiceRequestAutoCancelJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 requests per run) | 60 s |
+| `service-payment-sync` (SP-15b: reads again the payments Stripe is processing and the refunds it has not completed; always scheduled, see [§14](#14-service-payments-sp-15b)) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
+| `service-payment-reminders` (SP-15b: flags the late payments, sends the pending requests and the reminders at +2 and +7 days with `Features:SupplierOnlinePayments` on; always scheduled, see [§14](#14-service-payments-sp-15b)) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (plus the payment lock of each request) | 300 s |
 | `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15); SP-05: the events by the hour become windows of hours, see [ical.md](ical.md#events-by-the-hour-sp-05)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days and windows are written) | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` (CO-09: expires stale links, queues `GuestCheckInLinkEmailJob`, see [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
@@ -62,7 +64,8 @@ On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…Repo
 submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
 delivery key (`PushDeliveryJob.SendAsync:<key>`, 60 s), so two runs of the same push event never overlap.
 `IcalSupplierSyncJob.SyncSupplierAsync` (first sync of a supplier's iCal URL and "sync now", SU-15) locks per
-supplier (`…SyncSupplierAsync:<orgId>`, 60 s).
+supplier (`…SyncSupplierAsync:<orgId>`, 60 s). `SendPendingPaymentRequestsJob.ExecuteAsync` (SP-15b, queued when `account.updated` makes a
+supplier ready, see [§14](#14-service-payments-sp-15b)) holds its lock for 300 s.
 
 The test `RecurringJobsConcurrencyTests` fails if a recurring job is added without `[DisableConcurrentExecution]`.
 
@@ -595,3 +598,24 @@ SELECT count(*) FROM casazen_prod."ServiceRequests" WHERE "ReminderSentAt" > now
 The nightly `gdpr-data-retention` also applies `Gdpr:Retention:SupplierCustomers` to the customers of the suppliers
 ([gdpr.md § 8](gdpr.md#8-private-customers-of-the-suppliers-sp-10)). `RecurringJobsConcurrencyTests` requires `[DisableConcurrentExecution]`
 on both jobs; `RecurringJobsFeatureFlagTests` that they are registered with every flag off.
+
+## 14. Service payments (SP-15b)
+
+Task SP-15b. Three jobs follow the money of the services paid inside CasaZen ([stripe.md](stripe.md#services-of-the-suppliers-sp-15)). The two recurring ones are **always registered**, whatever the state of `Features__SupplierOnlinePayments`: they follow money that is already in flight, and the reminders only flag the late payments while the flag is off. Each payment (and each refund) is handled on its own, under the payment lock of its request (advisory lock `ServiceRequestPayment`, key = the request id), in its own transaction and read again after the lock; an error on one is logged and counted and the others go on, so a retry, a manual trigger or a webhook arriving at the same moment never records a payment or sends an email twice.
+
+| Job | When | Lock (wait) | What |
+|---|---|---|---|
+| `service-payment-sync` (`ServicePaymentSyncJob`) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (60 s) | reads again on Stripe the payments `Processing` and applies them as the webhook would (a PaymentIntent that no longer exists: `NeedsReview`); looks for the refunds that never got Stripe's answer (`Pending`, no Stripe id, older than 2 minutes) and sends them again with the same idempotency key; reads again the refunds Stripe has not completed. At most 100 of each per run |
+| `service-payment-reminders` (`ServicePaymentRemindersJob`) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (300 s, 3 retries) | flags the late payments (`SupplierPayments__LateAfterDays`, 7); with the flag **on** sends the requests that waited and the reminders at +2 and +7 days (`SupplierPayments__ReminderDays__0/1`), at most three emails with a link in all and never two in 24 hours. At most 500 payments per step |
+| `SendPendingPaymentRequestsJob(orgId)` | on demand: queued after the commit of an `account.updated` that makes a supplier able to take charges and payouts | `SendPendingPaymentRequestsJob.ExecuteAsync` (300 s, 3 retries) | sends the first request of the payments of that supplier that were pending (no link yet). With the flag off it sends nothing. A job that fails or is never queued is made up for by the daily job |
+
+**Logs.** `Service payment sync: N payment(s) read (M changed), … refund(s) read (… changed), E error(s)` (only when something was read); `Service payment reminders: … flagged late, … pending request(s) sent, … reminder(s) sent, … skipped, … error(s) (emails on|off)` every day; `Service payment {id} is late since …`; per item `could not be read from Stripe; the next run retries it` / `could not be flagged as late` / `could not be sent`. Errors that need a person are `LogError`: `Service payment {id} NOT recorded as paid: PaymentIntent … differs from what was asked for (review:…)`, `… was withdrawn but PaymentIntent … succeeded` and `… is already paid … refund one of the two charges`.
+
+```sql
+-- Payments waiting for something, by status (0 Requested, 1 Processing, 2 Paid, 3 Failed, 4 Canceled, 5 PartiallyRefunded, 6 Refunded, 7 NeedsReview)
+SELECT "Status", count(*) FROM casazen_prod."ServiceRequestPayments" GROUP BY 1 ORDER BY 1;
+-- Refunds that Stripe has not completed (0 Pending, 4 RequiresAction)
+SELECT "Status", count(*), min("CreatedAt") FROM casazen_prod."ServiceRequestPaymentRefunds" WHERE "Status" IN (0, 4) GROUP BY 1;
+```
+
+If `Processing` payments or `Pending` refunds pile up, check that the Connect webhook endpoint sends the events listed in [stripe.md](stripe.md#stripe-settings-to-check-product-owner) and that `service-payment-sync` runs (Hangfire dashboard). `RecurringJobsConcurrencyTests` and `ServicePaymentJobsRegistrationTests` fail if one of them loses its lock or its schedule.

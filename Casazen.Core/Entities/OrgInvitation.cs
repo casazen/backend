@@ -45,8 +45,9 @@ public class OrgInvitation : ITenantOwned
     public List<string> Areas { get; set; } = [];
 
     /// <summary>
-    /// Which properties the person will reach. The list of properties for <see cref="PropertyScope.Selected"/> arrives with
-    /// AM-03; here the value is only recorded and copied to the member.
+    /// Which properties the person will reach. It is recorded and copied to the member on acceptance; <see cref="PropertyScope.Selected"/>
+    /// is for a collaborator only (refused at the creation for another role, AM-03), and the properties themselves are given to the
+    /// member afterwards (<c>PUT /api/orgs/me/members/{id}/properties</c>): until then it reaches none.
     /// </summary>
     public PropertyScope PropertyScope { get; set; } = PropertyScope.All;
 

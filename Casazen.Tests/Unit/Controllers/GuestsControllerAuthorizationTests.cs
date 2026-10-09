@@ -21,10 +21,11 @@ public class GuestsControllerAuthorizationTests
     }
 
     [Theory]
-    [InlineData(nameof(GuestsController.Create))]
-    [InlineData(nameof(GuestsController.Update))]
-    [InlineData(nameof(GuestsController.Delete))]
-    public void GuestsController_WriteEndpointsRequireGuestWriteContext(string actionName)
+    [InlineData(nameof(GuestsController.Create), "RequireContext:short-rent:guest.write")]
+    [InlineData(nameof(GuestsController.Update), "RequireContext:short-rent:guest.write")]
+    // AM-03: deleting a guest is guest.manage (the collaborator registers and corrects guests, it does not erase them).
+    [InlineData(nameof(GuestsController.Delete), "RequireContext:short-rent:guest.manage")]
+    public void GuestsController_WriteEndpointsRequireTheirContextPermission(string actionName, string expectedPolicy)
     {
         var methodPolicies = typeof(GuestsController)
             .GetMethods()
@@ -34,6 +35,8 @@ public class GuestsControllerAuthorizationTests
             .Select(a => a.Policy)
             .ToArray();
 
-        Assert.Contains("RequireContext:short-rent:guest.write", methodPolicies);
+        Assert.Contains(expectedPolicy, methodPolicies);
+        if (actionName == nameof(GuestsController.Delete))
+            Assert.DoesNotContain("RequireContext:short-rent:guest.write", methodPolicies);
     }
 }

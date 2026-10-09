@@ -125,6 +125,9 @@ public class AppDbContext(
     // Payment of the service requests inside CasaZen (SP-15a): two parties, not tenant-filtered.
     public DbSet<ServiceRequestPayment> ServiceRequestPayments { get; set; } = null!;
 
+    // The refunds of a service payment (SP-15b): they belong to the payment, so they are not tenant-filtered either.
+    public DbSet<ServiceRequestPaymentRefund> ServiceRequestPaymentRefunds { get; set; } = null!;
+
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
@@ -169,6 +172,7 @@ public class AppDbContext(
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
     public DbSet<OrgMember> OrgMembers { get; set; } = null!;
     public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
+    public DbSet<PropertyMemberAccess> PropertyMemberAccesses { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -968,6 +972,50 @@ public class AppDbContext(
                 .HasDatabaseName("IX_OrgInvitations_Status_ExpiresAt");
         });
 
+        // ─── Property scope of the org members (AM-03) ──────────────────────────
+        modelBuilder.Entity<PropertyMemberAccess>(entity =>
+        {
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(a => a.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // The grants of a property go with it (it is soft-deleted, so in practice never) and the grants of a person go
+            // with the account.
+            entity.HasOne(a => a.Property)
+                .WithMany(p => p.MemberAccesses)
+                .HasForeignKey(a => a.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A member reaches a property once: the second grant of the same pair loses the race on this index (23505).
+            // It also serves the EXISTS of every list (UserId first) and the reads of the member's own grants.
+            entity.HasIndex(a => new { a.UserId, a.PropertyId })
+                .IsUnique()
+                .HasDatabaseName("UIX_PropertyMemberAccesses_UserId_PropertyId");
+
+            // «Chi può accedere» per property, and the tenant filter (OrgId) of every read.
+            entity.HasIndex(a => new { a.PropertyId })
+                .HasDatabaseName("IX_PropertyMemberAccesses_PropertyId");
+            entity.HasIndex(a => new { a.OrgId, a.UserId })
+                .HasDatabaseName("IX_PropertyMemberAccesses_OrgId_UserId");
+        });
+
+        // The member in charge of a property (AM-03): notified together with the org's administrators. The account can go;
+        // the property keeps its history and is simply left without a named person.
+        modelBuilder.Entity<Property>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(p => p.ResponsibleUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Property>()
+            .HasIndex(p => p.ResponsibleUserId)
+            .HasDatabaseName("IX_Properties_ResponsibleUserId");
+
         modelBuilder.Entity<ConsentRecord>()
             .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
 
@@ -1415,6 +1463,49 @@ public class AppDbContext(
             });
         });
 
+        // ─── Refunds of the service payments and the commission period (SP-15b) ─────────────
+        // The end of a commission period only makes sense with the percentage it ends.
+        modelBuilder.Entity<SupplierProfile>().ToTable(t =>
+            t.HasCheckConstraint(
+                "CK_SupplierProfiles_CommissionOverrideUntil",
+                "\"CommissionOverrideUntil\" IS NULL OR \"CommissionPercentOverride\" IS NOT NULL"));
+
+        // A refund belongs to its payment: restrict, so a payment with refunds is never deleted. The sequence is the n of the
+        // idempotency key and is unique within the payment; a Stripe refund and a key belong to one refund each.
+        modelBuilder.Entity<ServiceRequestPaymentRefund>(entity =>
+        {
+            entity.HasOne(r => r.ServiceRequestPayment)
+                .WithMany()
+                .HasForeignKey(r => r.ServiceRequestPaymentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(r => new { r.ServiceRequestPaymentId, r.Sequence })
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_Payment_Sequence");
+            entity.HasIndex(r => r.StripeRefundId)
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_StripeRefundId")
+                .HasFilter("\"StripeRefundId\" IS NOT NULL");
+            entity.HasIndex(r => r.IdempotencyKey)
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_IdempotencyKey")
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+            // The sync job looks for the refunds that wait for Stripe, by status.
+            entity.HasIndex(r => r.Status);
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPaymentRefunds_Amounts",
+                    $"\"AmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents} AND \"Sequence\" >= 1 "
+                    + "AND (\"ApplicationFeeRefundedCents\" IS NULL OR \"ApplicationFeeRefundedCents\" >= 0)");
+                // A refund that succeeded says when.
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPaymentRefunds_Succeeded",
+                    $"\"Status\" <> {(int)ServicePaymentRefundStatus.Succeeded} OR \"CompletedAt\" IS NOT NULL");
+            });
+        });
+
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         modelBuilder.Entity<CalendarBlock>()
             .HasOne(b => b.Property)
@@ -1539,6 +1630,10 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = "ota.write" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.read" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.write" },
+            // AM-03: carved out of property.write, guest.write and booking.write; the owner keeps doing all of it.
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ServiceRequestWrite },
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestManage },
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.AlloggiatiSubmit },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },
             new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },

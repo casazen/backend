@@ -24,6 +24,8 @@ public static class ContextAccessBootstrap
                 "ota.write",
                 "guest.read",
                 "guest.write",
+                // AM-03: carved out of property.write, guest.write and booking.write; the owner holds them all.
+                .. HostPermissions.ShortRentFine,
             ]),
         new(
             JwtRole: "LongTermLandlord",

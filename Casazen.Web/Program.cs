@@ -179,6 +179,10 @@ builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
 // before; both are scheduled whatever the feature flags say.
 builder.Services.AddScoped<ServiceRequestExpiryJob>();
 builder.Services.AddScoped<ServiceRequestReminderJob>();
+// SP-15b: the supplier service payments in flight, their reminders and the requests that waited for a supplier (always scheduled).
+builder.Services.AddScoped<ServicePaymentSyncJob>();
+builder.Services.AddScoped<ServicePaymentRemindersJob>();
+builder.Services.AddScoped<SendPendingPaymentRequestsJob>();
 builder.Services.AddScoped<DomainRecheckJob>();
 builder.Services.AddScoped<PropertyComplianceCheckJob>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();

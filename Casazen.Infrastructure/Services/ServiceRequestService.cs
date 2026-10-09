@@ -778,15 +778,9 @@ public partial class ServiceRequestService(
     private static DomainRuleException TimeInvalid() =>
         new(ServiceRequestErrorCodes.TimeInvalid, ServiceRequestErrorCodes.TimeInvalidMessageKey);
 
-    /// <summary>The host's org and, for a scope bound to an owner, only the requests on that owner's properties.</summary>
-    private static IQueryable<ServiceRequest> ApplyHostScope(IQueryable<ServiceRequest> query, HostScope scope)
-    {
-        query = query.Where(r => r.OrgId == scope.OrgId);
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(r => r.Property != null && r.Property.OwnerId == ownerId);
-
-        return query;
-    }
+    /// <summary>The host's org and, for a restricted scope (AM-03), only the requests on the properties the caller reaches.</summary>
+    private static IQueryable<ServiceRequest> ApplyHostScope(IQueryable<ServiceRequest> query, HostScope scope) =>
+        query.Where(r => r.OrgId == scope.OrgId).InScope(scope);
 
     private static async Task<(IReadOnlyList<ServiceRequest> Items, int Total)> MaterializeServiceRequestPageAsync(
         IQueryable<ServiceRequest> query,

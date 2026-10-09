@@ -16,8 +16,21 @@ public class Property : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// The user who created the property (the JWT <c>sub</c> of the caller). With a team it is no longer who may see it:
+    /// the reach of a member comes from its org role and its <see cref="PropertyMemberAccess"/> rows (AM-03). It stays the
+    /// reach of an account that is in no org team (a legacy owner), and the person notified while nobody is responsible.
+    /// </summary>
     [Required, MaxLength(255)]
     public string OwnerId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The member of the org in charge of the property (AM-03): the one who receives its notifications (new booking,
+    /// supplier updates) together with the org's owner and administrators. <c>null</c> = nobody was named, and the creator
+    /// (<see cref="OwnerId"/>) is notified instead. Always a user of the same org (checked when it is set).
+    /// </summary>
+    [MaxLength(255)]
+    public string? ResponsibleUserId { get; set; }
 
     /// <summary>Tenant key (AC2). Server-set from the caller's org; never client-supplied.</summary>
     public Guid OrgId { get; set; }
@@ -250,6 +263,12 @@ public class Property : ITenantOwned
     public virtual ICollection<OtaIntegration> OtaIntegrations { get; set; } = new List<OtaIntegration>();
     public virtual ICollection<PropertyDocument> PropertyDocuments { get; set; } = new List<PropertyDocument>();
     public virtual PricingAdapterConfig? PricingAdapterConfig { get; set; }
+
+    /// <summary>
+    /// The members «Solo alcuni» who reach this property (AM-03). Never loaded with the property: it exists so that the list
+    /// filters can say <c>EXISTS</c> in SQL (<c>HostScopeQueryExtensions.InScope</c>).
+    /// </summary>
+    public virtual ICollection<PropertyMemberAccess> MemberAccesses { get; set; } = new List<PropertyMemberAccess>();
 }
 
 /// <summary>Lengths of the cadastral fields of <see cref="Property"/> (LT-10).</summary>

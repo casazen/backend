@@ -178,7 +178,7 @@ public sealed class BookingNotifier(
                 refundStartedEur: 0m,
                 data.HostContact,
                 BookingCancellationEmailCause.DeferredPaymentNotCompleted));
-        Queue(bookingId, EmailTemplates.Names.HostDeferredChargeCancelled, data.HostEmail, () =>
+        QueueToHost(data, EmailTemplates.Names.HostDeferredChargeCancelled, () =>
             EmailTemplates.HostDeferredChargeCancelled(
                 EmailTemplates.DefaultCulture,
                 $"{data.GuestFirstName} {data.GuestLastName}".Trim(),
@@ -187,7 +187,7 @@ public sealed class BookingNotifier(
     }
 
     private void AlertHostOfFailedDeferredCharge(BookingEmailData data, bool guestAsked, DateTime? cancelOnDay) =>
-        Queue(data.BookingId, EmailTemplates.Names.HostDeferredChargeFailed, data.HostEmail, () =>
+        QueueToHost(data, EmailTemplates.Names.HostDeferredChargeFailed, () =>
             EmailTemplates.HostDeferredChargeFailed(
                 EmailTemplates.DefaultCulture,
                 $"{data.GuestFirstName} {data.GuestLastName}".Trim(),
@@ -219,7 +219,7 @@ public sealed class BookingNotifier(
     /// </summary>
     private void AlertHostOfNewBooking(BookingEmailData data, BookingConfirmationKind kind)
     {
-        Queue(data.BookingId, EmailTemplates.Names.HostBookingConfirmed, data.HostEmail, () =>
+        QueueToHost(data, EmailTemplates.Names.HostBookingConfirmed, () =>
             EmailTemplates.HostBookingConfirmed(
                 EmailTemplates.DefaultCulture,
                 $"{data.GuestFirstName} {data.GuestLastName}".Trim(),
@@ -248,6 +248,23 @@ public sealed class BookingNotifier(
         {
             logger.LogError(ex, "New booking push for booking {BookingId} could not be prepared", data.BookingId);
         }
+    }
+
+    /// <summary>
+    /// The email to the host side (AM-03): the org's contact address and, if they are other people, the member in charge of
+    /// the property and the org's administrators (<see cref="HostNotificationAudience"/>), one message each. Nobody to tell is
+    /// the same as before: a warning that it was not queued.
+    /// </summary>
+    private void QueueToHost(BookingEmailData data, string template, Func<EmailContent> render)
+    {
+        if (data.HostEmails.Count == 0)
+        {
+            Queue(data.BookingId, template, to: null, render);
+            return;
+        }
+
+        foreach (var to in data.HostEmails)
+            Queue(data.BookingId, template, to, render);
     }
 
     private void Queue(Guid bookingId, string template, string? to, Func<EmailContent> render)
@@ -285,6 +302,9 @@ public sealed class BookingNotifier(
                 OrgSlug = b.Org.Slug,
                 OrgDisplayName = b.Org.DisplayName,
                 OrgContactEmail = b.Org.ContactEmail,
+                b.OrgId,
+                PropertyCreatorId = b.Property.OwnerId,
+                b.Property.ResponsibleUserId,
                 b.CheckInDate,
                 b.CheckOutDate,
                 b.NumberOfGuests,
@@ -309,6 +329,19 @@ public sealed class BookingNotifier(
             row.CleaningFee,
             row.TouristTax,
             row.TotalPrice);
+
+        // AM-03: the org's contact address, as ever, plus the member in charge of the property and the org's administrators.
+        var tellEmails = await HostNotificationAudience
+            .UsersToTell(db, row.OrgId, row.ResponsibleUserId, row.PropertyCreatorId)
+            .Select(u => u.Email)
+            .ToListAsync(cancellationToken);
+        var hostEmails = new List<string>();
+        foreach (var email in tellEmails.Prepend(row.OrgContactEmail))
+        {
+            if (!string.IsNullOrWhiteSpace(email) && !hostEmails.Contains(email.Trim(), StringComparer.OrdinalIgnoreCase))
+                hostEmails.Add(email.Trim());
+        }
+
         return new BookingEmailData(
             row.Id,
             row.Status,
@@ -316,7 +349,7 @@ public sealed class BookingNotifier(
             row.GuestLastName,
             row.GuestEmail,
             row.OrgSlug,
-            row.OrgContactEmail,
+            hostEmails,
             new BookingHostContact(row.OrgDisplayName, row.OrgContactEmail),
             summary,
             row.PaidAmount,
@@ -330,7 +363,7 @@ public sealed class BookingNotifier(
         string GuestLastName,
         string GuestEmail,
         string OrgSlug,
-        string HostEmail,
+        IReadOnlyList<string> HostEmails,
         BookingHostContact HostContact,
         BookingEmailSummary Summary,
         decimal PaidAmount,

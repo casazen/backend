@@ -1350,4 +1350,64 @@
   <data name="ServicePaymentOfflineRecorded_Hint" xml:space="preserve">
     <value>Se non è corretto, contatta il fornitore.</value>
   </data>
+  <data name="ServicePaymentFailed_Subject" xml:space="preserve">
+    <value>Pagamento non riuscito: {0}</value>
+  </data>
+  <data name="ServicePaymentFailed_Body" xml:space="preserve">
+    <value>Il pagamento del lavoro &lt;strong&gt;{1}&lt;/strong&gt; di {0} per l'immobile &lt;strong&gt;{2}&lt;/strong&gt; non è andato a buon fine. Puoi riprovare con il nuovo link qui sotto.</value>
+  </data>
+  <data name="ServicePaymentRefundedPayer_Subject" xml:space="preserve">
+    <value>Rimborso emesso: {0}</value>
+  </data>
+  <data name="ServicePaymentRefundedPayer_Body" xml:space="preserve">
+    <value>È stato emesso un rimborso di &lt;strong&gt;{3}&lt;/strong&gt; per il pagamento del lavoro &lt;strong&gt;{1}&lt;/strong&gt; di {0} per l'immobile &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServicePaymentRefundedPayer_Hint" xml:space="preserve">
+    <value>Il rimborso torna sul metodo di pagamento usato. I tempi di accredito dipendono dalla tua banca o dal circuito di pagamento.</value>
+  </data>
+  <data name="ServicePaymentRefundedSupplier_Subject" xml:space="preserve">
+    <value>Rimborso al cliente: {0}</value>
+  </data>
+  <data name="ServicePaymentRefundedSupplier_Body" xml:space="preserve">
+    <value>Il pagamento del lavoro &lt;strong&gt;{0}&lt;/strong&gt; per l'immobile &lt;strong&gt;{1}&lt;/strong&gt; è stato rimborsato al cliente per &lt;strong&gt;{2}&lt;/strong&gt;. L'importo torna al cliente dal saldo del tuo account Stripe.</value>
+  </data>
+  <data name="ServicePaymentRefundedSupplier_Commission" xml:space="preserve">
+    <value>Insieme al rimborso ti torna la parte corrispondente della commissione CasaZen: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServicePaymentRefundedSupplier_Hint" xml:space="preserve">
+    <value>Il dettaglio dei movimenti è nella dashboard del tuo account Stripe.</value>
+  </data>
+  <data name="ServicePaymentAlertReview_Subject" xml:space="preserve">
+    <value>Pagamento servizio da verificare: {0}</value>
+  </data>
+  <data name="ServicePaymentAlertReview_Body" xml:space="preserve">
+    <value>Un pagamento di un servizio non è stato registrato come pagato: i dati ricevuti da Stripe non corrispondono a quanto era stato richiesto, oppure riguardano un pagamento che era stato ritirato. La richiesta non è stata segnata come pagata.</value>
+  </data>
+  <data name="ServicePaymentAlertReview_Action" xml:space="preserve">
+    <value>Controlla l'incasso sulla Dashboard di Stripe e decidi se rimborsarlo o se il pagamento è corretto.</value>
+  </data>
+  <data name="ServicePaymentAlertDispute_Subject" xml:space="preserve">
+    <value>Contestazione su un pagamento servizio: {0}</value>
+  </data>
+  <data name="ServicePaymentAlertDispute_Body" xml:space="preserve">
+    <value>Il pagatore ha contestato un pagamento di un servizio. Su CasaZen il pagamento resta com'è.</value>
+  </data>
+  <data name="ServicePaymentAlertDispute_Action" xml:space="preserve">
+    <value>Rispondi alla contestazione dalla Dashboard di Stripe entro la scadenza indicata da Stripe.</value>
+  </data>
+  <data name="ServicePaymentAlert_Supplier" xml:space="preserve">
+    <value>Fornitore: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentAlert_Amount" xml:space="preserve">
+    <value>Importo: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentAlert_Payment" xml:space="preserve">
+    <value>Pagamento: {0}</value>
+  </data>
+  <data name="ServicePaymentAlert_Request" xml:space="preserve">
+    <value>Richiesta: {0}</value>
+  </data>
+  <data name="ServicePaymentAlert_Detail" xml:space="preserve">
+    <value>Dettaglio: {0}</value>
+  </data>
 </root>

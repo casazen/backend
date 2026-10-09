@@ -47,6 +47,7 @@ public class BookingsController(
     public async Task<ActionResult<PagedResultDto<BookingResponseDto>>> GetAll(
         [FromServices] IOrgContextResolver orgContextResolver,
         [FromServices] IAuthorizationService hostAuthorization,
+        [FromServices] IHostScopeResolver hostScopeResolver,
         [FromQuery] Guid? propertyId = null,
         [FromQuery] Guid? guestId = null,
         [FromQuery] int page = 1,
@@ -61,8 +62,9 @@ public class BookingsController(
 
         var cancellationToken = HttpContext.RequestAborted;
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        // No org yet: nothing of any org is visible (the tenant filter showed nothing either).
-        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+        // No org yet, or no reach on it: nothing of any org is visible (the tenant filter showed nothing either).
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return Ok(new PagedResultDto<BookingResponseDto> { Items = [], TotalCount = 0, Page = page, PageSize = effectivePageSize });
 
         if (propertyId is { } id)
