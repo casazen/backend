@@ -30,17 +30,24 @@ public class GlobalSearchEnabledFactory : CasazenWebApplicationFactory
     /// <summary>The limit of the search per user and window: large, so that a test is never limited by the suites around it.</summary>
     protected virtual string SearchPermitLimit => "1000";
 
+    /// <summary>The value of <c>Features:GlobalSearch</c>; null leaves the configuration as the application ships it (off).</summary>
+    protected virtual string? SearchFlag => "true";
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         var inMemoryStore = $"global-search-{Guid.NewGuid():N}";
         builder.ConfigureAppConfiguration((_, config) =>
-            config.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            var settings = new Dictionary<string, string?>
             {
-                ["Features:GlobalSearch"] = "true",
                 ["Features:OrgTeam"] = "true",
                 ["RateLimiting:GlobalSearch:PermitLimit"] = SearchPermitLimit,
-            }));
+            };
+            if (SearchFlag is not null)
+                settings["Features:GlobalSearch"] = SearchFlag;
+            config.AddInMemoryCollection(settings);
+        });
         builder.ConfigureTestServices(services =>
         {
             if (!UsesPostgreSql)
@@ -55,6 +62,12 @@ public class GlobalSearchEnabledFactory : CasazenWebApplicationFactory
             }
         });
     }
+}
+
+/// <summary>The same host with the configuration as the application ships it: the search flag is not set, so it is off.</summary>
+public sealed class GlobalSearchDefaultFactory : GlobalSearchEnabledFactory
+{
+    protected override string? SearchFlag => null;
 }
 
 /// <summary>The same host with a limit of three searches per user and window, to see the limiter answer 429.</summary>
@@ -519,7 +532,7 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
 }
 
 /// <summary>UI-13a with the default configuration (<c>Features:GlobalSearch</c> off): the search does not exist, the last area still works.</summary>
-public class GlobalSearchFlagOffIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
+public class GlobalSearchFlagOffIntegrationTests(GlobalSearchDefaultFactory factory) : IClassFixture<GlobalSearchDefaultFactory>
 {
     [Fact]
     public async Task Search_WithTheFlagOff_IsA404_LikeARouteThatDoesNotExist_BeforeAuthentication()
