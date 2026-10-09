@@ -211,6 +211,29 @@ public class PricingAdapterController(
     }
 
     /// <summary>
+    /// Confirms seasonal proposals so quotes use them. The host may send an edited price per date; omitted prices use
+    /// the suggestion. An empty list confirms every current suggestion of the property.
+    /// </summary>
+    [HttpPost("suggestions/{propertyId:guid}/apply")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(SeasonalApplyResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SeasonalApplyResponse>> ApplySuggestions(
+        Guid propertyId, [FromBody] ApplySeasonalPricesRequest? request, CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizePropertyAsync(propertyId, PropertyOperations.Write);
+        if (denied is not null) return denied;
+
+        var items = (request?.Items ?? [])
+            .Select(i => new SeasonalPriceApplyItem(i.Date, i.Price))
+            .ToList();
+        var applied = await pricingService.ApplySuggestionsAsync(propertyId, items, cancellationToken);
+        return Ok(new SeasonalApplyResponse { Applied = applied });
+    }
+
+    /// <summary>
     /// Loads the property (tenant-filtered: another org's property is 404) and authorizes <paramref name="operation"/>
     /// on it; a visible property the caller may not use is 403.
     /// </summary>

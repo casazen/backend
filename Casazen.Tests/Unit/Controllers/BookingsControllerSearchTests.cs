@@ -5,6 +5,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Authorization;
+using Casazen.Web.Configuration;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
@@ -14,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -33,7 +35,7 @@ public class BookingsControllerSearchTests
     private readonly Mock<IBookingSearchService> _search = new();
     private readonly Mock<IPropertyService> _propertyService = new();
 
-    private BookingsController CreateController()
+    private BookingsController CreateController(int defaultPageSize = 10)
     {
         var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var configuration = new ConfigurationBuilder()
@@ -46,7 +48,8 @@ public class BookingsControllerSearchTests
             Mock.Of<IPropertyAuthorizationService>(),
             ICalTestServices.PropertySync(db, Mock.Of<ISafeExternalHttpClient>(), configuration),
             Mock.Of<IOtaStayService>(),
-            Mock.Of<ILogger<BookingsController>>())
+            Mock.Of<ILogger<BookingsController>>(),
+            Options.Create(new BookingsOptions { DefaultPageSize = defaultPageSize }))
         {
             ControllerContext = new ControllerContext
             {
@@ -77,7 +80,7 @@ public class BookingsControllerSearchTests
         Guid? propertyId = null,
         Guid? guestId = null,
         int page = 1,
-        int pageSize = 20,
+        int? pageSize = null,
         IOrgContextResolver? orgResolver = null) =>
         controller.Search(
             _search.Object,
@@ -228,6 +231,30 @@ public class BookingsControllerSearchTests
         Assert.Equal((0, 2, 5), (page.TotalCount, page.Page, page.PageSize));
         _search.Verify(s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task Search_WithoutAPageSize_TakesTheOneOfThePlainList_AndASizeOfTheCallerWins()
+    {
+        _search
+            .Setup(s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HostScope _, BookingSearchCriteria criteria, CancellationToken _) => new BookingSearchPage([], 0, criteria.Page, criteria.PageSize));
+        var noOrg = new Mock<IOrgContextResolver>();
+        noOrg.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
+
+        var byDefault = await CallAsync(CreateController(defaultPageSize: 7));
+        var chosen = await CallAsync(CreateController(defaultPageSize: 7), pageSize: 25);
+        var withoutAnOrg = await CallAsync(CreateController(defaultPageSize: 7), orgResolver: noOrg.Object);
+
+        Assert.Equal(7, PageOf(byDefault).PageSize);
+        Assert.Equal(25, PageOf(chosen).PageSize);
+        Assert.Equal(7, PageOf(withoutAnOrg).PageSize);
+        _search.Verify(
+            s => s.SearchAsync(It.IsAny<HostScope>(), It.Is<BookingSearchCriteria>(c => c.PageSize == 7), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    private static PagedResultDto<BookingResponseDto> PageOf(ActionResult<PagedResultDto<BookingResponseDto>> result) =>
+        Assert.IsType<PagedResultDto<BookingResponseDto>>(Assert.IsType<OkObjectResult>(result.Result).Value);
 
     // --- The property the caller asks about ---------------------------------------------------------------
 

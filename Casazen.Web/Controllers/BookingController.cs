@@ -6,11 +6,13 @@ using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.Configuration;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
@@ -24,7 +26,8 @@ public class BookingsController(
     IPropertyAuthorizationService authorizationService,
     PropertyICalSyncService propertyICalSyncService,
     IOtaStayService otaStays,
-    ILogger<BookingsController> logger) : ControllerBase
+    ILogger<BookingsController> logger,
+    IOptions<BookingsOptions> bookingsOptions) : ControllerBase
 {
     /// <summary>Code of a <c>status</c> query value of the search that is not the name of a booking status (SR-03).</summary>
     public const string InvalidStatusCode = "booking_list_invalid_status";
@@ -32,52 +35,72 @@ public class BookingsController(
     /// <summary>Code of a <c>from</c> after <c>to</c> in the search (SR-03).</summary>
     public const string InvalidRangeCode = "booking_list_invalid_range";
 
+    /// <summary>Upper bound for <c>pageSize</c> on <c>GET /api/bookings</c>, same cap as the other paged lists.</summary>
+    private const int MaxPageSize = 100;
+
+    private readonly BookingsOptions _bookingsOptions = bookingsOptions.Value;
+
     /// <summary>
-    /// The bookings the caller sees, latest check-in first, as a plain array (web list, dashboard, guest detail):
-    /// <c>propertyId</c> and <c>guestId</c> narrow it. TN-3: filtered in SQL by the caller's scope (org, and the owned
-    /// properties for a non org-wide role) in one query whatever the number of bookings (PC-14, A2-17). With
-    /// <c>propertyId</c>: 404 when the property is not in the caller's org, 403 without <c>booking.read</c> on it.
+    /// The bookings the caller sees, latest check-in first, a page at a time (PC-14: <c>{ items, totalCount, page, pageSize }</c>,
+    /// <c>Bookings:DefaultPageSize</c> when <c>pageSize</c> is missing): <c>propertyId</c> and <c>guestId</c> narrow it.
+    /// TN-3: filtered in SQL by the caller's scope (org, and the owned properties for a non org-wide role) in one query whatever
+    /// the number of bookings (A2-17). With <c>propertyId</c>: 404 when the property is not in the caller's org, 403 without
+    /// <c>booking.read</c> on it. <c>GET /api/bookings/search</c> adds days, status and text.
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(typeof(IEnumerable<BookingResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResultDto<BookingResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll(
+    public async Task<ActionResult<PagedResultDto<BookingResponseDto>>> GetAll(
         [FromServices] IOrgContextResolver orgContextResolver,
         [FromServices] IAuthorizationService hostAuthorization,
         [FromServices] IHostScopeResolver hostScopeResolver,
         [FromQuery] Guid? propertyId = null,
-        [FromQuery] Guid? guestId = null)
+        [FromQuery] Guid? guestId = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int? pageSize = null)
     {
         if (GetUserId() == null)
             return Unauthorized();
+
+        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
+        page = Math.Max(page, 1);
+        var effectivePageSize = Math.Clamp(pageSize ?? _bookingsOptions.DefaultPageSize, 1, MaxPageSize);
 
         var cancellationToken = HttpContext.RequestAborted;
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         // No org yet, or no reach on it: nothing of any org is visible (the tenant filter showed nothing either).
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
-            return Ok(Array.Empty<BookingResponseDto>());
+            return Ok(new PagedResultDto<BookingResponseDto> { Items = [], TotalCount = 0, Page = page, PageSize = effectivePageSize });
 
         if (await DenyPropertyFilterAsync(propertyId, hostAuthorization) is { } denied)
             return denied;
 
-        var bookings = await bookingService.GetBookingsAsync(scope, propertyId, guestId, cancellationToken);
+        var (bookings, totalCount) = await bookingService.GetPagedBookingsAsync(
+            scope, page, effectivePageSize, propertyId, guestId, cancellationToken);
+
         var nowUtc = DateTime.UtcNow;
-        return Ok(bookings.Select(b => BookingMapper.ToResponse(b, nowUtc)).ToList());
+        return Ok(new PagedResultDto<BookingResponseDto>
+        {
+            Items = bookings.Select(b => BookingMapper.ToResponse(b, nowUtc)).ToList(),
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = effectivePageSize,
+        });
     }
 
     /// <summary>
-    /// The bookings the caller sees as a list that holds up with many of them (SR-03), a page at a time: the same bookings as
-    /// <c>GET /api/bookings</c> (which stays the whole list, as it was), narrowed by days, status and text. <c>from</c> and
-    /// <c>to</c> (<c>yyyy-MM-dd</c>, stay dates, both included): the stays that have a day in the range, arrival day to
-    /// departure day. <c>status</c>: one or more names (<c>Pending</c>, <c>Confirmed</c>, <c>CheckedIn</c>, <c>CheckedOut</c>,
-    /// <c>Cancelled</c>), repeated or separated by commas. <c>q</c>: the name or email of the guest, the name of the property or
-    /// the booking code, any case. <c>propertyId</c> and <c>guestId</c> as in the plain list. <c>page</c> (from 1) and
-    /// <c>pageSize</c> (default 20, at most 100). Latest check-in first, the id as the tie-break: a total order, so a page never
-    /// repeats or skips a booking. The answer is <c>{ items, totalCount, page, pageSize }</c>. TN-3: filtered in SQL by the
-    /// caller's scope; with <c>propertyId</c>: 404 when the property is not in the caller's org, 403 without <c>booking.read</c> on
-    /// it. 400 <c>booking_list_invalid_status</c> and <c>booking_list_invalid_range</c>.
+    /// The paged list of <c>GET /api/bookings</c> (PC-14: the same bookings, the same order, the same
+    /// <c>{ items, totalCount, page, pageSize }</c> answer) narrowed by days, status and text, for the screens that look for a
+    /// booking (SR-03). <c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, stay dates, both included): the stays that have a day in
+    /// the range, arrival day to departure day. <c>status</c>: one or more names (<c>Pending</c>, <c>Confirmed</c>,
+    /// <c>CheckedIn</c>, <c>CheckedOut</c>, <c>Cancelled</c>), repeated or separated by commas. <c>q</c>: the name or email of the
+    /// guest, the name of the property or the booking code, any case. <c>propertyId</c> and <c>guestId</c> as in the plain list.
+    /// <c>page</c> (from 1) and <c>pageSize</c> (the <c>Bookings:DefaultPageSize</c> of the plain list when missing, at most
+    /// 100). Latest check-in first, the id as the tie-break: a total order, so a page never repeats or skips a booking.
+    /// TN-3: filtered in SQL by the caller's scope; with <c>propertyId</c>: 404 when the property is not in the caller's org,
+    /// 403 without <c>booking.read</c> on it. 400 <c>booking_list_invalid_status</c> and <c>booking_list_invalid_range</c>.
     /// </summary>
     [HttpGet("search")]
     [ProducesResponseType(typeof(PagedResultDto<BookingResponseDto>), StatusCodes.Status200OK)]
@@ -96,10 +119,13 @@ public class BookingsController(
         [FromQuery] Guid? propertyId = null,
         [FromQuery] Guid? guestId = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = BookingSearchCriteria.DefaultPageSize)
+        [FromQuery] int? pageSize = null)
     {
         if (GetUserId() == null)
             return Unauthorized();
+
+        // The size of a page of the plain list when the caller does not say (PC-14: Bookings:DefaultPageSize).
+        var requestedPageSize = pageSize ?? _bookingsOptions.DefaultPageSize;
 
         if (!TryParseStatuses(status, out var statuses))
             return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidStatusCode, "BookingListInvalidStatus");
@@ -118,7 +144,7 @@ public class BookingsController(
                 Items = [],
                 TotalCount = 0,
                 Page = Math.Clamp(page, 1, BookingSearchCriteria.MaxPage),
-                PageSize = Math.Clamp(pageSize, 1, BookingSearchCriteria.MaxPageSize),
+                PageSize = Math.Clamp(requestedPageSize, 1, BookingSearchCriteria.MaxPageSize),
             });
         }
 
@@ -127,7 +153,7 @@ public class BookingsController(
 
         var result = await searchService.SearchAsync(
             scope,
-            new BookingSearchCriteria(fromDay, toDay, statuses, q, propertyId, guestId, page, pageSize),
+            new BookingSearchCriteria(fromDay, toDay, statuses, q, propertyId, guestId, page, requestedPageSize),
             cancellationToken);
 
         var nowUtc = DateTime.UtcNow;

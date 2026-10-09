@@ -222,8 +222,8 @@ Property record choices (PC-02):
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/bookings` | List bookings (filter by `?propertyId=`), the whole list as a plain array |
-| `GET` | `/api/bookings/search` | The same bookings as a list that holds up with many of them (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, answered as `{ items, totalCount, page, pageSize }` |
+| `GET` | `/api/bookings` | List bookings a page at a time (PC-14: `?propertyId&guestId&page&pageSize`, `Bookings:DefaultPageSize` = 10 when `pageSize` is missing, at most 100), answered as `{ items, totalCount, page, pageSize }` |
+| `GET` | `/api/bookings/search` | The same list with days, status and text (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, same order, same answer, same default page size |
 | `GET` | `/api/bookings/{id}` | Get a single booking |
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
 | `PUT` | `/api/bookings/{id}` | Update a booking |
@@ -235,9 +235,9 @@ Property record choices (PC-02):
 
 **Booking code and the searchable list (SR-03).** Every booking answer carries `bookingCode`, the code the guest knows,
 as `XXXXX-XXXXX` (`BookingCodes.Format`; stored without the dash, unique per org). `GET /api/bookings/search` is the list
-the screens of the Prenotazioni area read (`IBookingSearchService`); `GET /api/bookings` is unchanged. It is filtered in
-SQL by the caller's `HostScope` like the plain list (`propertyId` of another org: 404, without `booking.read` on it: 403),
-and by:
+the screens of the Prenotazioni area read (`IBookingSearchService`); `GET /api/bookings` (PC-14) is unchanged and keeps the
+order and the answer the search has (latest check-in first, then the id). It is filtered in SQL by the caller's `HostScope`
+like the plain list (`propertyId` of another org: 404, without `booking.read` on it: 403), and by:
 - `from`, `to` (`yyyy-MM-dd`, both optional, both included): the stays that have a day in the range, from the arrival day to
   the departure day, compared as stay dates (midnight UTC of the day, never moved to a time zone: `HostCalendarRange`). A
   `from` after `to` is 400 `booking_list_invalid_range`.
@@ -247,9 +247,10 @@ and by:
   property and, when what was typed can be a piece of a code (`BookingSearchRules.CodeFragment`: no dashes or spaces, `O`
   read as `0`, `I` and `L` as `1`, at least 3 characters), the booking code. `%` and `_` are ordinary characters. At most
   100 characters are read.
-- `page` (from 1) and `pageSize` (default 20, at most 100; out of range is brought within it). The order is the latest
-  check-in first and the booking id as the tie-break, a total order: the same booking is never on two pages nor on none. One
-  query for the page, and a second for `totalCount` only when the page is full or past the end.
+- `page` (from 1) and `pageSize` (`Bookings:DefaultPageSize` of the plain list when missing, at most 100; out of range is
+  brought within it). The order is the latest check-in first and the booking id as the tie-break, a total order: the same
+  booking is never on two pages nor on none. One query for the page, and a second for `totalCount` only when the page is full
+  or past the end.
 
 #### Host dashboard (PC-16)
 

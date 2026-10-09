@@ -829,6 +829,18 @@
   <data name="BookingCancelPaymentPermissionRequired" xml:space="preserve">
     <value>Cancelling a booking with payments requires the permission to manage payments.</value>
   </data>
+  <data name="GuestCancelTokenMissing" xml:space="preserve">
+    <value>The cancellation token is missing: open the link you received by email.</value>
+  </data>
+  <data name="GuestCancelTokenInvalid" xml:space="preserve">
+    <value>The cancellation link is not valid or has already been used.</value>
+  </data>
+  <data name="GuestCancelTokenExpired" xml:space="preserve">
+    <value>The cancellation link has expired. Ask the host for a new link.</value>
+  </data>
+  <data name="BookingNotCancellableByGuest" xml:space="preserve">
+    <value>This booking can no longer be cancelled by the guest.</value>
+  </data>
   <data name="ServiceCategoryInvalid" xml:space="preserve">
     <value>The service category "{0}" is not valid: choose one from the list of available categories.</value>
   </data>
@@ -1248,6 +1260,12 @@
   </data>
   <data name="PropertyCancellationPolicyNotFound" xml:space="preserve">
     <value>The selected cancellation policy does not exist: reload the page and choose another one.</value>
+  </data>
+  <data name="PropertyCancellationHoursRange" xml:space="preserve">
+    <value>Refund notice hours must be a whole number between {1} and {2}.</value>
+  </data>
+  <data name="PropertyCancellationPercentRange" xml:space="preserve">
+    <value>The partial refund percent must be between {1} and {2}.</value>
   </data>
   <data name="PropertyActivationBlocked" xml:space="preserve">
     <value>The property cannot be activated yet: complete the required points listed.</value>

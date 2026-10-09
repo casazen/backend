@@ -6,7 +6,8 @@ namespace Casazen.Core.Services;
 /// <summary>
 /// The bookings of the host as a list that holds up with many of them (SR-03, <c>GET /api/bookings/search</c>): by days, status
 /// and text, a page at a time in a fixed order, with the total. Limited to the caller's <see cref="HostScope"/> in SQL, like
-/// <see cref="IBookingService.GetBookingsAsync"/>, which stays the whole list as it was.
+/// <see cref="IBookingService.GetPagedBookingsAsync"/> (<c>GET /api/bookings</c>, PC-14), whose order it keeps and to which it
+/// adds the filters.
 /// </summary>
 public interface IBookingSearchService
 {

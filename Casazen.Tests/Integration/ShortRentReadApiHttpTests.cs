@@ -392,8 +392,11 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var list = await JsonAsync(await owner.GetAsync("/api/bookings"));
         var one = await JsonAsync(await owner.GetAsync($"/api/bookings/{world.GrantedBookingId}"));
 
-        Assert.Equal(JsonValueKind.Array, list.ValueKind);
-        Assert.All(list.EnumerateArray(), b => Assert.Matches(BookingCodeShape, b.GetProperty("bookingCode").GetString()));
+        // The plain list is paged since PC-14: { items, totalCount, page, pageSize }.
+        Assert.Equal(JsonValueKind.Object, list.ValueKind);
+        var items = list.GetProperty("items").EnumerateArray().ToList();
+        Assert.NotEmpty(items);
+        Assert.All(items, b => Assert.Matches(BookingCodeShape, b.GetProperty("bookingCode").GetString()));
         Assert.Matches(BookingCodeShape, one.GetProperty("bookingCode").GetString());
     }
 

@@ -52,6 +52,10 @@ public sealed class PropertyResponse
     public bool CinIstatMismatch { get; init; }
     public string Timezone { get; init; } = "Europe/Rome";
     public Guid? CancellationPolicyId { get; init; }
+    public int? CancellationFullRefundHours { get; init; }
+    public int? CancellationPartialRefundHours { get; init; }
+    public decimal? CancellationPartialRefundPercent { get; init; }
+    public HostCancellationRefundType CancellationRefundType { get; init; }
     public bool IsActive { get; init; }
 
     /// <summary>Host-set pause (PC-03, A2-05): hidden from public bookings until reactivated, own slot and history kept.</summary>
@@ -107,6 +111,10 @@ public sealed class PropertyResponse
             CinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode),
             Timezone = property.Timezone,
             CancellationPolicyId = property.CancellationPolicyId,
+            CancellationFullRefundHours = property.CancellationFullRefundHours,
+            CancellationPartialRefundHours = property.CancellationPartialRefundHours,
+            CancellationPartialRefundPercent = property.CancellationPartialRefundPercent,
+            CancellationRefundType = property.CancellationRefundType,
             IsActive = property.IsActive,
             IsPaused = property.IsPaused,
             PausedAt = property.PausedAt,
