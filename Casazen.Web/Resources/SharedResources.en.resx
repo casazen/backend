@@ -2290,4 +2290,13 @@
   <data name="SupplierInboxWhenInvalid" xml:space="preserve">
     <value>Invalid period: use oggi, settimana or mese.</value>
   </data>
+  <data name="SupplierSlotsServiceRequired" xml:space="preserve">
+    <value>Specify the service whose times you want to see (service parameter).</value>
+  </data>
+  <data name="SupplierSlotsDaysInvalid" xml:space="preserve">
+    <value>The number of days (days parameter) must be between 1 and {0}.</value>
+  </data>
+  <data name="SupplierQuoteInvalid" xml:space="preserve">
+    <value>Some details of the estimate request are not valid (fields: {0}). Check them and try again.</value>
+  </data>
 </root>

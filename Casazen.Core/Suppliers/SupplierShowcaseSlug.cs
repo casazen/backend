@@ -55,4 +55,13 @@ public static class SupplierShowcaseSlug
 
     /// <summary>The form a slug from the address bar is looked up in: trimmed and lowercase.</summary>
     public static string Normalize(string? slug) => (slug ?? string.Empty).Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// True when a <see cref="Normalize"/>d slug is worth a lookup (SP-09, the anonymous reads): not empty, not longer than
+    /// <paramref name="maxLength"/> (the column) and without control characters. Anything else is a slug nobody has, and the
+    /// answer is "not found" <b>without</b> asking the database: a NUL character, for one, cannot even be sent to PostgreSQL
+    /// (error 22021, a 500 for a visitor who typed <c>%00</c>).
+    /// </summary>
+    public static bool IsLookupable(string normalized, int maxLength) =>
+        normalized.Length > 0 && normalized.Length <= maxLength && !normalized.Any(char.IsControl);
 }

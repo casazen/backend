@@ -424,7 +424,11 @@ never a link to the dashboard.
 | `GET` | `/api/public/orgs/{slug}` | Anonymous | Public org landing by slug |
 | `GET` | `/api/public/orgs/{slug}/properties` | Anonymous | Public property list for org |
 | `GET` | `/api/public/orgs/{slug}/properties/{propertySlugOrId}` | Anonymous | Public property detail |
-| `GET` | `/api/public/suppliers/{slug}` | Anonymous | Public supplier profile |
+| `GET` | `/api/public/suppliers/{slug}` | Anonymous | Public supplier profile (with the published services and the measured response time when `SupplierShowcaseBooking` is on) |
+| `GET` | `/api/public/suppliers/{slug}/services` | Anonymous | Published services of a supplier (flag `SupplierShowcaseBooking`) |
+| `GET` | `/api/public/suppliers/{slug}/services/{serviceSlug}` | Anonymous | One published service with its supplements (flag `SupplierShowcaseBooking`) |
+| `GET` | `/api/public/suppliers/{slug}/slots` | Anonymous | Free slots of a service, from the supplier's planner (flag `SupplierShowcaseBooking`, rate-limited) |
+| `POST` | `/api/public/suppliers/{slug}/quote` | Anonymous | Price estimate of a service (flag `SupplierShowcaseBooking`, rate-limited) |
 | `GET` | `/api/public/bookings/property/{propertyId}/availability` | Anonymous | Booked dates for public calendar |
 | `GET` | `/api/public/bookings/{bookingId}/status` | Anonymous | Booking status (payment option) |
 | `POST` | `/api/public/bookings/lookup` | Anonymous | Guest booking lookup by id + email (rate-limited) |

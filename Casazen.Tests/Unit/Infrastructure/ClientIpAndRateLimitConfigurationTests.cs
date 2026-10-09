@@ -113,6 +113,40 @@ public class ClientIpAndRateLimitConfigurationTests
     }
 
     [Fact]
+    public void Policies_TheSlotsAndTheEstimateOfTheSupplierShowcase_HaveTheirOwnTighterLimits()
+    {
+        // SP-09: each slots read runs the planner (cached 30 s) and each estimate may look up a comune, so neither shares the
+        // 120 per minute of the plain reads.
+        var slots = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicSupplierSlots), Configuration());
+        var quote = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicSupplierQuote), Configuration());
+        var read = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicRead), Configuration());
+
+        Assert.Equal(("PublicSupplierSlots", 60, TimeSpan.FromMinutes(1)), (RateLimitPolicies.PublicSupplierSlots, slots.PermitLimit, slots.Window));
+        Assert.Equal(("PublicSupplierQuote", 30, TimeSpan.FromMinutes(1)), (RateLimitPolicies.PublicSupplierQuote, quote.PermitLimit, quote.Window));
+        Assert.True(slots.PermitLimit < read.PermitLimit);
+        Assert.True(quote.PermitLimit < slots.PermitLimit);
+        Assert.Equal(0, slots.QueueLimit);
+        Assert.Equal(0, quote.QueueLimit);
+    }
+
+    [Fact]
+    public void Policies_TheSupplierShowcasePolicies_AreSetByTheirOwnConfigurationKeys()
+    {
+        var configuration = Configuration(
+            ("RateLimiting:PublicSupplierSlots:PermitLimit", "7"),
+            ("RateLimiting:PublicSupplierSlots:WindowSeconds", "20"),
+            ("RateLimiting:PublicSupplierQuote:PermitLimit", "3"));
+
+        var slots = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicSupplierSlots), configuration);
+        var quote = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicSupplierQuote), configuration);
+        var read = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicRead), configuration);
+
+        Assert.Equal((7, TimeSpan.FromSeconds(20)), (slots.PermitLimit, slots.Window));
+        Assert.Equal(3, quote.PermitLimit);
+        Assert.Equal(120, read.PermitLimit); // the plain reads are not touched
+    }
+
+    [Fact]
     public void ConfigureForwardedHeaders_NothingConfigured_TrustsOneHopFromAnyPeer()
     {
         var options = new ForwardedHeadersOptions();
