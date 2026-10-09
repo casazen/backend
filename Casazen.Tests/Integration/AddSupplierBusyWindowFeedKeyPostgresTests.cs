@@ -128,11 +128,10 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
             OrgType = OrgType.Supplier,
             PlanTier = PlanTier.Starter,
         };
-        db.Orgs.Add(org);
-        await db.SaveChangesAsync();
-
         // Plain SQL: the first test seeds on the schema of the migration before this one, which lacks the columns that later
-        // migrations add to the profile (the current model would write them).
+        // migrations add to the org (DB-03: HostName, PublicPhone, Subtitle) and to the profile (the current model would write them).
+        await LegacyOrgRows.InsertAsync(db, org);
+        await db.Database.ExecuteSqlAsync($"""UPDATE "Orgs" SET "OrgType" = {(int)org.OrgType} WHERE "Id" = {org.Id}""");
         await SupplierProfileSql.InsertAsync(db, new SupplierProfile
         {
             OrgId = org.Id,

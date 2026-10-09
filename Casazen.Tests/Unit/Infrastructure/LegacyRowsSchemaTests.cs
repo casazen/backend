@@ -25,7 +25,10 @@ public class LegacyRowsSchemaTests
     private const string Co14 = "EncryptGuestDocumentAndQuesturaCredentials";
     private const string Lt14 = "LeaseMultipleParties";
     private const string Pm01 = "AddPropertyRentalMode";
+    private const string Am01 = "AddOrgMembership";
     private const string Sp10 = "AddShowcaseBooking";
+    private const string Sp05 = "AddSupplierBusyWindowFeedKey";
+    private const string Sp15b = "AddSupplierPaymentRefunds";
     private const string Db03 = "AddDirectBookingPublicData";
     private const string Latest = "*";
 
@@ -62,11 +65,17 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyOrgRows), Co14 },
         { nameof(LegacyOrgRows), Lt14 },
         { nameof(LegacyOrgRows), Pm01 },
+        { nameof(LegacyOrgRows), Am01 },
+        { nameof(LegacyOrgRows), Sp10 },
+        { nameof(LegacyOrgRows), Sp05 },
+        { nameof(LegacyOrgRows), Sp15b },
         { nameof(LegacyOrgRows), Db03 },
+        { nameof(LegacyOrgRows), Latest },
         { nameof(LegacyPropertyRows), Co14 },
         { nameof(LegacyPropertyRows), Lt14 },
         { nameof(LegacyPropertyRows), Pm01 },
         { nameof(LegacyPropertyRows), Sp10 },
+        { nameof(LegacyPropertyRows), Sp15b },
         { nameof(LegacyPropertyRows), Db03 },
         { nameof(LegacyPropertyRows), Latest },
         { nameof(LegacyLeaseRows), Lt14 },
