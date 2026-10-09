@@ -1,4 +1,6 @@
+using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Admin;
 using Casazen.Web.DTOs.Orgs;
@@ -135,7 +137,9 @@ public class AdminController(
                 : this.ApiProblem(StatusCodes.Status409Conflict, PlanProblemCodes.SubscriptionRequired, "SubscriptionRequired");
         }
 
-        var updated = await orgService.UpdatePlanTierAsync(orgId, planTier, cancellationToken);
+        // The org's activity log says that CasaZen staff changed the plan (the actor is the staff account, an id).
+        var updated = await orgService.UpdatePlanTierAsync(
+            orgId, planTier, User.GetUserId(), PlanChangeSource.Staff, cancellationToken);
         if (updated is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
