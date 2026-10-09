@@ -163,6 +163,19 @@ internal static class PostgresAdvisoryLocks
         /// (AM-02).
         /// </summary>
         OrgInvitationMaintenance = 1_404,
+
+        /// <summary>
+        /// One run of the retention of the activity log (single key, session lock held for the whole run): two runs never
+        /// delete the same lines at once, even outside Hangfire's own lock (AM-02b).
+        /// </summary>
+        OrgActivityRetention = 1_405,
+
+        /// <summary>
+        /// The access requests of one person of one org (key: org id and user id, AM-02b): the count of the requests of the last
+        /// 24 hours, read from the activity log, and the line that records the next one run one at a time, so the daily limit
+        /// holds across requests and API instances.
+        /// </summary>
+        OrgAccessRequest = 1_406,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
