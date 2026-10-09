@@ -2,6 +2,7 @@
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -163,11 +164,9 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         if (hasUpcomingStay)
             return PropertySoftDeleteOutcome.HasUpcomingStays;
 
+        // The same rule as the change of mode to short stays (PM-02), which asks it for the day chosen: LeaseOccupancy.
         var hasActiveLease = await context.LeaseContracts.AnyAsync(
-            l => l.PropertyId == id
-                && l.Status != LeaseStatus.Draft
-                && l.Status != LeaseStatus.Rejected
-                && l.EndDate >= todayStart,
+            LeaseOccupancy.RunsOnOrAfter(id, todayStart),
             cancellationToken);
         if (hasActiveLease)
             return PropertySoftDeleteOutcome.HasActiveLeases;

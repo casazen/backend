@@ -284,6 +284,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();
         services.AddScoped<ICalendarBlockService, CalendarBlockService>();
+        // Scheduled change of rental mode of a property: preview, creation, the hourly application (PM-02).
+        services.AddScoped<IPropertyModeService, PropertyModeService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
