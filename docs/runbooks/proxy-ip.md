@@ -104,6 +104,7 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 | `PublicSupplierSlots` | `GET api/public/suppliers/{slug}/slots` (free slots of a supplier's service, each read runs the planner, cached 30 s, SP-09) | 60 / min | `RateLimiting__PublicSupplierSlots__PermitLimit` |
 | `PublicSupplierQuote` | `POST api/public/suppliers/{slug}/quote` (price estimate, SP-09) | 30 / min | `RateLimiting__PublicSupplierQuote__PermitLimit` |
 | `PublicSupplierBookingCreate` | `POST api/public/suppliers/{slug}/bookings` (holds a slot of the supplier's agenda for the minutes of the e-mail check, SP-10); plus a per-address-and-supplier limit `SupplierBookingCreatePerEmail` (3 / h, a hash of slug and address, `RateLimiting__SupplierBookingCreatePerEmail__PermitLimit`) and the cap of three unchecked bookings of one address (database, no variable). The three answer the same 429. The check of the e-mail (`…/bookings/{id}/confirm-email`) uses `PublicBookingLookup` | 5 / 10 min | `RateLimiting__PublicSupplierBookingCreate__PermitLimit` |
+| `PublicInvitationLookup` | `POST api/org-invitations/lookup` (what an invitation link is for, AM-02; every link that does not work gets the same 410) | 20 / min | `RateLimiting__PublicInvitationLookup__PermitLimit` |
 
 The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration` and `PublicSupplierBookingCreate`, 3600 for `SupplierBookingCreatePerEmail`, 900 for `SupplierBookingManagePerEmail`).
 

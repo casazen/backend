@@ -56,6 +56,7 @@ and production never block each other.
 | `property-compliance-check` (CO-06, see [§10](#10-property-compliance-check-co-06)) | 04:00 | `PropertyComplianceCheckJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `push-receipts` (MO-04, see [§11](#11-push-notifications-mo-04)) | `*/15` | `PushReceiptsJob.ExecuteAsync` | 60 s |
 | `domain-recheck` (BK-17: custom domains activate by themselves, a removed DNS record is noticed, dropped domains leave the Vercel project; see [seo-domain.md](seo-domain.md#10-custom-domains-on-vercel-bk-17)) | `*/15` | `DomainRecheckJob.ExecuteAsync` (what is due is decided per domain) | 60 s |
+| `org-invitation-maintenance` (AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days; it runs with `Features:OrgTeam` off too, and then it only deletes; see [org-team.md](org-team.md#15-emails-and-the-maintenance-job)) | hourly at :10 | `OrgInvitationMaintenanceJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run and the org's seats lock per invitation) | 300 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
@@ -250,10 +251,11 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 24 recurring jobs in each schema with every flag on; 18 with the defaults
+  -- 25 recurring jobs in each schema with every flag on; 19 with the defaults
   -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider, Features:SupplierRequestAutoCancel and
-  -- Features:PropertyModeChange off; service-request-expiry and service-request-reminders are in both counts: they ignore
-  -- the flags; property-mode-change (PM-02) is the one that appears with Features:PropertyModeChange on)
+  -- Features:PropertyModeChange off; service-request-expiry, service-request-reminders and org-invitation-maintenance are
+  -- in both counts: they ignore the flags; property-mode-change (PM-02) is the one that appears with
+  -- Features:PropertyModeChange on)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';

@@ -35,6 +35,21 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// Page of the web app where a person accepts an invitation to an org (AM-02, route <c>/invite/accept</c>, built by
+    /// AM-04). The link carries the secret token of the invitation and nothing else (no email, no names): the page reads
+    /// what it shows from <c>POST /api/org-invitations/lookup</c>, which takes the token in its body, and keeps the token
+    /// out of the address bar as soon as it has read it.
+    /// </summary>
+    public string OrgInvitationAccept(string inviteToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inviteToken);
+        return Build($"/invite/accept?token={Uri.EscapeDataString(inviteToken)}");
+    }
+
+    /// <summary>The people page of the account (AM-02, route <c>/app/account/people</c>, built by AM-04): who works in the org and its invitations.</summary>
+    public string AccountPeople() => Build("/app/account/people");
+
+    /// <summary>
     /// Absolute URL of a public page of the web app (<paramref name="path"/> starts with <c>/</c>), e.g. a sitemap
     /// entry. Throws <see cref="EmailConfigurationException"/> when the public URL is not configured.
     /// </summary>

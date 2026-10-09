@@ -168,6 +168,69 @@
   <data name="OrgMembershipMaintenanceConflict" xml:space="preserve">
     <value>Un'altra modifica ha interrotto la riconciliazione dei membri: non è stato salvato nulla. Riprova.</value>
   </data>
+  <data name="OrgInvitationEmailRequired" xml:space="preserve">
+    <value>Scrivi l'email della persona da invitare.</value>
+  </data>
+  <data name="OrgInvitationEmailTooLong" xml:space="preserve">
+    <value>L'email è troppo lunga (al massimo 255 caratteri).</value>
+  </data>
+  <data name="OrgInvitationNameRequired" xml:space="preserve">
+    <value>Scrivi nome e cognome della persona da invitare.</value>
+  </data>
+  <data name="OrgInvitationNameTooLong" xml:space="preserve">
+    <value>Il nome è troppo lungo (al massimo 200 caratteri).</value>
+  </data>
+  <data name="OrgInvitationNameInvalid" xml:space="preserve">
+    <value>Il nome non può contenere indirizzi, link o simboli come &lt; &gt; @ /.</value>
+  </data>
+  <data name="OrgInvitationLanguageInvalid" xml:space="preserve">
+    <value>Lingua non supportata: scegli italiano (it) o inglese (en).</value>
+  </data>
+  <data name="InvitationTokenRequired" xml:space="preserve">
+    <value>Manca il codice dell'invito.</value>
+  </data>
+  <data name="InvitationInvalid" xml:space="preserve">
+    <value>Questo invito non è valido, è scaduto o è già stato usato. Chiedi a chi ti ha invitato di mandartene uno nuovo.</value>
+  </data>
+  <data name="InvitationExpired" xml:space="preserve">
+    <value>L'invito è scaduto. Chiedi a chi ti ha invitato di mandartene uno nuovo.</value>
+  </data>
+  <data name="InvitationUsed" xml:space="preserve">
+    <value>Questo invito è già stato accettato.</value>
+  </data>
+  <data name="InvitationRevoked" xml:space="preserve">
+    <value>Questo invito è stato annullato da chi lo aveva mandato.</value>
+  </data>
+  <data name="InvitationEmailMismatch" xml:space="preserve">
+    <value>L'invito è per un altro indirizzo email. Accedi con l'email a cui è arrivato l'invito.</value>
+  </data>
+  <data name="InvitationEmailNotVerified" xml:space="preserve">
+    <value>Prima conferma il tuo indirizzo email (ti abbiamo mandato un messaggio), poi accetta l'invito.</value>
+  </data>
+  <data name="InvitationPlatformAdmin" xml:space="preserve">
+    <value>Un account dello staff CasaZen non può entrare in un'organizzazione cliente: usa un altro account.</value>
+  </data>
+  <data name="InvitationUserHasOrganization" xml:space="preserve">
+    <value>Con questo account hai già un'organizzazione in uso: non possiamo unirla a quella che ti ha invitato. Per entrare, accedi con un altro account e accetta l'invito.</value>
+  </data>
+  <data name="OrgInvitationAlreadyPending" xml:space="preserve">
+    <value>C'è già un invito in attesa per questa email: puoi mandarlo di nuovo dall'elenco degli inviti.</value>
+  </data>
+  <data name="OrgInvitationNotPending" xml:space="preserve">
+    <value>L'invito non è più in attesa: è già stato accettato o annullato.</value>
+  </data>
+  <data name="OrgInvitationNotFound" xml:space="preserve">
+    <value>Invito non trovato.</value>
+  </data>
+  <data name="OrgMemberNotFound" xml:space="preserve">
+    <value>Persona non trovata nell'organizzazione.</value>
+  </data>
+  <data name="OrgSeatLimitReached" xml:space="preserve">
+    <value>Hai usato tutti i posti del tuo piano. Disattiva o rimuovi qualcuno, annulla un invito in attesa o passa a un piano più grande.</value>
+  </data>
+  <data name="OrgOwnerRequired" xml:space="preserve">
+    <value>Solo il titolare dell'organizzazione può creare e gestire gli amministratori.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
