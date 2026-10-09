@@ -535,12 +535,13 @@ The sync reads each event of the feed and writes it according to its kind:
 | **Timed, with no length** (no `DTEND`, or equal to `DTSTART`) | has no hour to occupy: it keeps closing its **day**, as before SP-05 (the cautious reading: dropping it would offer a slot the supplier had closed) |
 | `STATUS:CANCELLED`, `TRANSP:TRANSPARENT` | nothing, as for the days |
 
-**Time zones.** `…Z` is read as written. A `TZID` the server's time zone database knows (IANA names such as `Europe/Rome`, and
-Windows names such as `W. Europe Standard Time` where ICU is installed, as in the production image) is the wall clock of that
-zone, summer time included, so 10:00 `Europe/Rome` is 08:00 UTC in summer and 09:00 in winter. A **floating** time (no `Z`, no
-`TZID`) and an **unknown** `TZID` are read as **Europe/Rome wall clock**: the suppliers are in Italy, and a floating time means
-"the time on the clock wherever you are". The time zone of the server never plays a part (a test runs it on a server in
-Europe/Rome, in Pacific/Kiritimati and in America/Los_Angeles). The two days a year the clock changes:
+**Time zones.** `…Z` is read as written. A `TZID` that .NET finds in the server's time zone database (IANA names such as
+`Europe/Rome`; Windows names such as `W. Europe Standard Time` only where .NET can map them, which needs ICU) is the wall clock
+of that zone, summer time included, so 10:00 `Europe/Rome` is 08:00 UTC in summer and 09:00 in winter. A **floating** time (no
+`Z`, no `TZID`) and an **unknown** `TZID` (including a name .NET cannot map; the `VTIMEZONE` blocks of the file are not read) are
+read as **Europe/Rome wall clock**: the suppliers are in Italy, and a floating time means "the time on the clock wherever you
+are". The time zone of the server never plays a part (a test runs it on a server in Europe/Rome, in Pacific/Kiritimati and in
+America/Los_Angeles). The two days a year the clock changes:
 
 | Case (2026) | Reading |
 |---|---|
@@ -602,6 +603,15 @@ before SU-15, see below) are never freed. Down drops the index.
 **Merge of duplicate profiles** (`POST /api/admin/suppliers/fix-orphaned`): the windows of the duplicate move to the keeper,
 except an engagement the keeper already has with the same UID and start (both profiles read the same calendar): the keeper's row
 stays and the duplicate's copy goes with its profile; the keeper's next sync rewrites its engagements anyway.
+
+**Rollback.** There is no flag: the sync writes the windows as soon as the code is deployed. Reverting the code is safe for the
+schema (Down drops the index and nothing else), but the windows already written stay, and the previous sync neither reads nor
+frees them: they would keep occupying their hours in the planner. Remove them in the same step and the previous sync closes the
+days again at its next run (15 minutes, or "Sincronizza ora"); the supplier's own blocks are `Source` 0 and stay:
+
+```sql
+DELETE FROM "SupplierBusyWindows" WHERE "Source" = 1;
+```
 
 Support, the engagements of a supplier (`Source` 1 is `ICalFeed`):
 
