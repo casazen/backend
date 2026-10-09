@@ -1,4 +1,5 @@
 using System.Globalization;
+using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
@@ -20,7 +21,8 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.BookingRead)]
 public class DashboardController(
     IHostDashboardService dashboardService,
-    IOrgContextResolver orgContextResolver) : ControllerBase
+    IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver) : ControllerBase
 {
     /// <summary>Code of a <c>period</c> or <c>month</c> query value that is not accepted.</summary>
     public const string InvalidPeriodCode = "dashboard_invalid_period";
@@ -92,7 +94,7 @@ public class DashboardController(
     private async Task<Casazen.Core.Authorization.HostScope?> GetScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        return orgId is null ? null : User.GetHostScope(orgId.Value);
+        return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
     /// <summary>

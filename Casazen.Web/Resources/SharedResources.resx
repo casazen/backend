@@ -231,6 +231,21 @@
   <data name="OrgOwnerRequired" xml:space="preserve">
     <value>Solo il titolare dell'organizzazione può creare e gestire gli amministratori.</value>
   </data>
+  <data name="OrgMemberScopeNotSupported" xml:space="preserve">
+    <value>Solo i collaboratori possono essere limitati ad alcuni immobili: le altre persone vedono tutti gli immobili dell'organizzazione.</value>
+  </data>
+  <data name="OrgMemberPropertyUnknown" xml:space="preserve">
+    <value>Uno degli immobili scelti non fa parte dell'organizzazione.</value>
+  </data>
+  <data name="OrgMemberPropertyScopeRequired" xml:space="preserve">
+    <value>Scegli se la persona vede tutti gli immobili o solo alcuni.</value>
+  </data>
+  <data name="OrgMemberPropertyIdsTooMany" xml:space="preserve">
+    <value>Hai scelto troppi immobili in una volta (al massimo 500).</value>
+  </data>
+  <data name="PropertyResponsibleInvalid" xml:space="preserve">
+    <value>Il responsabile deve essere una persona attiva dell'organizzazione che può vedere questo immobile.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
@@ -2505,5 +2520,89 @@
   </data>
   <data name="SupplierBookingStartRequired" xml:space="preserve">
     <value>Indica l'orario scelto (startUtc).</value>
+  </data>
+  <data name="ServicePaymentLinkInvalid" xml:space="preserve">
+    <value>Il link di pagamento non è valido o è scaduto. Chiedi al fornitore di inviartene uno nuovo.</value>
+  </data>
+  <data name="ServicePaymentNotFound" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun pagamento da effettuare.</value>
+  </data>
+  <data name="ServicePaymentNotPayable" xml:space="preserve">
+    <value>Questo pagamento non si può più effettuare online. Contatta il fornitore.</value>
+  </data>
+  <data name="ServicePaymentAlreadyPaid" xml:space="preserve">
+    <value>Questo servizio risulta già pagato.</value>
+  </data>
+  <data name="ServicePaymentInFlight" xml:space="preserve">
+    <value>Un pagamento di questo servizio è già in elaborazione: non pagare di nuovo e ricontrolla tra poco.</value>
+  </data>
+  <data name="ServicePaymentSupplierNotReady" xml:space="preserve">
+    <value>Il fornitore non può ricevere pagamenti online in questo momento. Riprova più tardi o contattalo.</value>
+  </data>
+  <data name="ServicePaymentNotOnline" xml:space="preserve">
+    <value>Questa richiesta non si paga in CasaZen: non c'è nessun pagamento da richiedere.</value>
+  </data>
+  <data name="ServicePaymentNotRequestable" xml:space="preserve">
+    <value>Puoi chiedere il pagamento solo per un lavoro completato e non ancora pagato.</value>
+  </data>
+  <data name="ServicePaymentAmountUnconfirmed" xml:space="preserve">
+    <value>L'importo finale supera il preventivo: l'host deve prima confermarlo. Potrai chiedere il pagamento dopo la conferma.</value>
+  </data>
+  <data name="ServicePaymentAmountRequired" xml:space="preserve">
+    <value>Manca un importo finale valido per il pagamento di questo lavoro.</value>
+  </data>
+  <data name="ServicePaymentRequestTooSoon" xml:space="preserve">
+    <value>Hai già inviato la richiesta di pagamento da poco: potrai inviarla di nuovo dopo {0} ore dall'ultimo invio.</value>
+  </data>
+  <data name="ServicePaymentNoRecipient" xml:space="preserve">
+    <value>Non c'è un indirizzo email a cui inviare la richiesta di pagamento.</value>
+  </data>
+  <data name="ServicePaymentRequestNotSent" xml:space="preserve">
+    <value>Non è stato possibile inviare l'email di richiesta di pagamento: non è cambiato nulla, riprova tra poco.</value>
+  </data>
+  <data name="ServicePaymentOfflineReasonRequired" xml:space="preserve">
+    <value>Questa richiesta si paga in CasaZen: per registrare un pagamento ricevuto fuori da CasaZen indica il motivo.</value>
+  </data>
+  <data name="ServicePaymentOfflineReasonTooLong" xml:space="preserve">
+    <value>Il motivo può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServicePaymentStateChanged" xml:space="preserve">
+    <value>Il pagamento è stato appena modificato da un'altra operazione: ricarica la pagina e verifica lo stato attuale.</value>
+  </data>
+  <data name="ServiceRequestNoConfirmationNeeded" xml:space="preserve">
+    <value>Non c'è nessun importo da confermare per questa richiesta.</value>
+  </data>
+  <data name="ServiceRequestOnlinePayment" xml:space="preserve">
+    <value>Questa richiesta si paga in CasaZen con il link inviato per email: non puoi segnarla come pagata a mano.</value>
+  </data>
+  <data name="ServicePaymentNotRefundable" xml:space="preserve">
+    <value>Questo pagamento non si può rimborsare da qui: non risulta pagato online con successo.</value>
+  </data>
+  <data name="ServicePaymentRefundOffline" xml:space="preserve">
+    <value>Questo pagamento è stato registrato come ricevuto fuori da CasaZen: nessun importo è passato da CasaZen, quindi non c'è nulla da rimborsare da qui.</value>
+  </data>
+  <data name="ServicePaymentNothingToRefund" xml:space="preserve">
+    <value>Non c'è più nulla da rimborsare su questo pagamento.</value>
+  </data>
+  <data name="ServicePaymentRefundAmountInvalid" xml:space="preserve">
+    <value>L'importo da rimborsare deve essere un numero positivo di centesimi.</value>
+  </data>
+  <data name="ServicePaymentRefundAmountExceeds" xml:space="preserve">
+    <value>L'importo supera quanto si può ancora rimborsare ({0:N2} €).</value>
+  </data>
+  <data name="ServicePaymentRefundReasonTooLong" xml:space="preserve">
+    <value>La nota può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="SupplierCommissionInvalid" xml:space="preserve">
+    <value>La commissione deve essere una percentuale da 0 a {0}, con al massimo due decimali.</value>
+  </data>
+  <data name="SupplierCommissionUntilInvalid" xml:space="preserve">
+    <value>La fine del periodo richiede una percentuale e deve essere una data futura.</value>
+  </data>
+  <data name="SupplierCommissionReasonInvalid" xml:space="preserve">
+    <value>Indica il motivo della modifica (al massimo 500 caratteri).</value>
+  </data>
+  <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
+    <value>Indica un mese passato o in corso nel formato aaaa-mm (ad esempio 2026-10).</value>
   </data>
 </root>

@@ -15,6 +15,10 @@ public sealed class PropertyResponse
 {
     public Guid Id { get; init; }
     public string OwnerId { get; init; } = string.Empty;
+
+    /// <summary>The member in charge of the property (AM-03): the one who is told, with the org's administrators, when something happens on it; <c>null</c> while nobody is named (the creator is told).</summary>
+    public string? ResponsibleUserId { get; init; }
+
     public Guid OrgId { get; init; }
     public string Name { get; init; } = string.Empty;
     public string? Slug { get; init; }
@@ -83,6 +87,7 @@ public sealed class PropertyResponse
         {
             Id = property.Id,
             OwnerId = property.OwnerId,
+            ResponsibleUserId = property.ResponsibleUserId,
             OrgId = property.OrgId,
             Name = property.Name,
             Slug = property.Slug,

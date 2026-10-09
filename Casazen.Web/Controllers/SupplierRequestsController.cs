@@ -1,5 +1,8 @@
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.DTOs.ServiceRequests;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -9,7 +12,9 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The supplier console's work on its requests (SP-04): take several new requests at once, the home of the console ("Oggi"), and
-/// its activation checklist. Every route is scoped to the caller's own supplier org (its supplier link, never a value of the
+/// its activation checklist; and (SP-15a) the payment of a completed request: ask for it or remind the payer
+/// (<c>requests/{id}/payment-request</c>, behind the flag <c>SupplierOnlinePayments</c>) and record a payment received outside
+/// CasaZen (<c>requests/{id}/payment/offline</c>, not behind it). Every route is scoped to the caller's own supplier org (its supplier link, never a value of the
 /// request). Not behind a feature flag. The inbox (<c>GET api/supplier/inbox</c>) and the single transitions
 /// (<c>api/service-requests/{id}/take|start|complete|reject|cancel|propose-time</c>) are in <see cref="SupplierProfileController"/>
 /// and <see cref="ServiceRequestsController"/>. Runbook <c>docs/runbooks/suppliers.md</c> section 21.
@@ -101,5 +106,62 @@ public class SupplierRequestsController(
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         return Ok(SupplierServiceRequestMapper.ToChecklistDto(checklist));
+    }
+
+    /// <summary>
+    /// The supplier asks for the payment of a completed request that is paid inside CasaZen (SP-15a, decision D2), or reminds the
+    /// payer: the payment is created when it does not exist yet, a new personal link is emailed to the host (it replaces the
+    /// previous one) and at most one request or reminder is sent a day. <b>Behind the flag <c>SupplierOnlinePayments</c></b> (404
+    /// before authentication while it is off). 422 <c>supplier_payments_not_ready</c> (the supplier's Stripe account cannot take
+    /// charges and payouts), <c>service_payment_not_online</c> (a manual request), <c>service_payment_not_requestable</c> (not
+    /// completed), <c>service_payment_amount_unconfirmed</c> (the host has to confirm the amount first),
+    /// <c>service_payment_amount_required</c>, <c>service_payment_request_too_soon</c>, <c>service_payment_no_recipient</c>,
+    /// <c>service_payment_request_not_sent</c>; 409 when the payment is paid or being processed; 403 for a request that is not the
+    /// supplier's (as for the other supplier actions).
+    /// </summary>
+    [HttpPost("requests/{id:guid}/payment-request")]
+    [FeatureGate(FeatureFlags.SupplierOnlinePayments)]
+    [ProducesResponseType(typeof(ServicePaymentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServicePaymentDto>> RequestPayment(Guid id, CancellationToken cancellationToken)
+    {
+        // A write: the org comes only from the caller's own supplier link, like take and reject.
+        var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var payment = await serviceRequests.RequestPaymentAsync(id, orgId.Value, cancellationToken);
+
+        // The request stays completed: asking for the payment does not move it.
+        return Ok(ServicePaymentDto.From(payment, ServiceRequestStatus.Completato));
+    }
+
+    /// <summary>
+    /// The supplier records that it was paid outside CasaZen (SP-15a, decision D5): the request becomes <c>Pagato</c>, a payment that
+    /// was still waiting is withdrawn (its PaymentIntent canceled), and an offline payment <b>without commission</b> is kept; the
+    /// host is told. For a request paid inside CasaZen the <c>reason</c> is required (422
+    /// <c>service_payment_offline_reason_required</c>): it is the trace of the exception. A payment already paid or being processed
+    /// on Stripe makes it a 409. <b>Not behind the flag</b>: it is what a supplier needs when online payments are not available.
+    /// </summary>
+    [HttpPost("requests/{id:guid}/payment/offline")]
+    [ProducesResponseType(typeof(ServicePaymentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServicePaymentDto>> RecordOfflinePayment(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] RecordOfflinePaymentRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        var userId = User.GetUserId();
+        if (orgId is null || userId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var payment = await serviceRequests.RecordOfflinePaymentAsync(id, orgId.Value, userId, request?.Reason, cancellationToken);
+        return Ok(ServicePaymentDto.From(payment, ServiceRequestStatus.Pagato));
     }
 }

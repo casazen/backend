@@ -124,7 +124,7 @@ public class OtaController : ControllerBase
         if (property is null)
             return NotFound();
 
-        if (!_authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await _authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         return null;

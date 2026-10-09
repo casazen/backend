@@ -199,6 +199,16 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/rent/pay/{installmentId:D}?token={Uri.EscapeDataString(token)}");
     }
 
+    /// <summary>
+    /// Public page where the payer pays a service a supplier completed (route <c>/service/pay/:paymentId</c>, SP-15a). Only the
+    /// payment id and the random token are in the link, no personal data. The page itself is a frontend task (SP-15b).
+    /// </summary>
+    public string ServicePayment(Guid paymentId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build($"/service/pay/{paymentId:D}?token={Uri.EscapeDataString(token)}");
+    }
+
     /// <summary>Host console: detail page of one lease (route <c>/app/long-rent/leases/:id</c>, LT-06).</summary>
     public string HostLease(Guid leaseId) => Build($"/app/long-rent/leases/{leaseId:D}");
 

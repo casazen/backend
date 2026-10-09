@@ -116,6 +116,23 @@ public class SupplierProfile
     /// <summary>UTC expiry of <see cref="ClaimTokenHash"/>.</summary>
     public DateTime? ClaimTokenExpiresAt { get; set; }
 
+    /// <summary>
+    /// The commission CasaZen keeps on this supplier's services paid inside CasaZen, as a percentage (0 to 50), instead of the
+    /// platform's <c>SupplierPayments:CommissionPercent</c> (SP-15a, decision D3): e.g. 0 for a free period. Null = the platform
+    /// percentage. Read when a payment is created and snapshotted on it; set by an admin
+    /// (<c>PUT api/admin/suppliers/{orgId}/commission</c>, SP-15b), with <see cref="CommissionOverrideUntil"/> when it is a period.
+    /// </summary>
+    [Column(TypeName = "numeric(5,2)")]
+    public decimal? CommissionPercentOverride { get; set; }
+
+    /// <summary>
+    /// When the override stops (SP-15b, the "periodo gratuito" of decision D3): the override applies to the payments created
+    /// before this instant, and from then on the platform percentage applies again without anybody having to remember to take it
+    /// off. Null = no end (the override stays until an admin removes it). Only meaningful together with
+    /// <see cref="CommissionPercentOverride"/>.
+    /// </summary>
+    public DateTime? CommissionOverrideUntil { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

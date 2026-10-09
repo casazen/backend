@@ -190,6 +190,7 @@ public class PaymentsControllerTests
             _hostResources.Object,
             HostAuthorizationTestHarness.Create(OrgId, (c, p) => _permissions?.Invoke(c, p) ?? true),
             _orgResolver.Object,
+            HostAuthorizationTestHarness.ScopeResolver(),
             _fiscal.Object,
             _refundService.Object,
             Mock.Of<ILogger<PaymentsController>>());

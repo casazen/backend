@@ -83,7 +83,7 @@ public class SupplierAdminAuditDto
 {
     public Guid Id { get; set; }
 
-    /// <summary><c>Suspended</c>, <c>Reactivated</c>, <c>InviteResent</c> or <c>InviteRevoked</c>.</summary>
+    /// <summary><c>Suspended</c>, <c>Reactivated</c>, <c>InviteResent</c>, <c>InviteRevoked</c> or <c>CommissionChanged</c>.</summary>
     public string Action { get; set; } = string.Empty;
 
     public string ActorUserId { get; set; } = string.Empty;

@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
@@ -39,7 +40,7 @@ public class ComplianceWizardServiceTests
             })
             .Build();
 
-    private static ComplianceWizardService CreateService(
+    internal static ComplianceWizardService CreateService(
         AppDbContext db,
         TimeProvider? timeProvider = null,
         IConfiguration? configuration = null)
@@ -431,7 +432,7 @@ public class ComplianceWizardServiceTests
 
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db).GetSummaryAsync(org.Id);
+        var summary = await CreateService(db).GetSummaryAsync(new HostScope(org.Id));
 
         Assert.True(summary.PropertiesPending.Count >= 1);
         Assert.True(summary.CheckoutsDue.Count >= 1);
@@ -477,7 +478,7 @@ public class ComplianceWizardServiceTests
         Stay("Cancelled", today, BookingStatus.Cancelled);
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db, clock).GetSummaryAsync(property.OrgId);
+        var summary = await CreateService(db, clock).GetSummaryAsync(new HostScope(property.OrgId));
 
         Assert.Equal(
             new[] { noReport.Id, jobNotRunYet.Id, manual.Id }.OrderBy(id => id),
@@ -527,7 +528,7 @@ public class ComplianceWizardServiceTests
         });
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(org.Id);
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(org.Id));
 
         Assert.Equal(new[] { pending.Id, suspended.Id }.Order(), summary.PropertiesPending.Items.Select(i => i.Id).Order());
         Assert.All(summary.PropertiesPending.Items, i => AssertTarget(i, ComplianceCockpitAction.ActivateProperty, propertyId: i.Id));
@@ -564,6 +565,93 @@ public class ComplianceWizardServiceTests
             Assert.Equal(action, item.Action);
             Assert.Equal(propertyId, item.PropertyId);
             Assert.Equal(bookingId, item.BookingId);
+        }
+    }
+
+    /// <summary>
+    /// AM-03: the cockpit of a collaborator "Solo alcuni" holds the items of the properties it was given and no others, in every
+    /// section (properties to activate, check-ins, departures, Alloggiati, turnovers). The owner org-wide scope holds both.
+    /// </summary>
+    [Fact]
+    public async Task Summary_ACollaboratorSoloAlcuni_SeesTheItemsOfItsPropertiesOnly()
+    {
+        await using var db = CreateDb(nameof(Summary_ACollaboratorSoloAlcuni_SeesTheItemsOfItsPropertiesOnly));
+        var org = new OrgEntity { Name = "Cockpit Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        var granted = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Active);
+        var hidden = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Active);
+        var grantedPending = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Pending);
+        var hiddenPending = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Suspended);
+        db.PropertyMemberAccesses.AddRange(
+            new PropertyMemberAccess { OrgId = org.Id, UserId = "auth0|collab", PropertyId = granted.Id },
+            new PropertyMemberAccess { OrgId = org.Id, UserId = "auth0|collab", PropertyId = grantedPending.Id });
+
+        // Rome 24/09, on each active property: a stay departing today (departure and Alloggiati to do) and one with a refused
+        // communication. On each pending property: a stay checked out yesterday, the property not declared ready.
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        var departing = new Dictionary<Guid, Booking>();
+        var rejected = new Dictionary<Guid, Booking>();
+        var turnover = new Dictionary<Guid, Booking>();
+        foreach (var property in new[] { granted, hidden })
+        {
+            departing[property.Id] = AddStay(property, "Partenza", todayInRome, BookingStatus.CheckedIn);
+            rejected[property.Id] = AddStay(property, "Rifiutata", todayInRome.AddDays(1), BookingStatus.CheckedIn);
+            db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+            {
+                BookingId = rejected[property.Id].Id,
+                GuestId = rejected[property.Id].GuestId,
+                OrgId = org.Id,
+                Status = AlloggiatiWebStatus.Rifiutato,
+            });
+        }
+
+        foreach (var property in new[] { grantedPending, hiddenPending })
+        {
+            turnover[property.Id] = AddStay(property, "Turnover", todayInRome.AddDays(-1), BookingStatus.CheckedOut);
+            db.StayCheckouts.Add(new StayCheckout
+            {
+                BookingId = turnover[property.Id].Id,
+                OrgId = org.Id,
+                CompletedAt = todayInRome.AddDays(-1).AddHours(9),
+            });
+            db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+            {
+                BookingId = turnover[property.Id].Id,
+                GuestId = turnover[property.Id].GuestId,
+                OrgId = org.Id,
+                Status = AlloggiatiWebStatus.InviatoManualmente,
+            });
+        }
+
+        await db.SaveChangesAsync();
+        var service = CreateService(db, RomeJustAfterMidnight);
+
+        var restricted = await service.GetSummaryAsync(new HostScope(org.Id, GrantedToUserId: "auth0|collab"));
+        var orgWide = await service.GetSummaryAsync(new HostScope(org.Id));
+
+        // Only the properties it was given, in every section the cockpit has; the counts follow the items.
+        Assert.Equal([grantedPending.Id], restricted.PropertiesPending.Items.Select(i => i.Id));
+        Assert.Equal(1, restricted.PropertiesPending.Count);
+        Assert.Equal([departing[granted.Id].Id], restricted.CheckoutsDue.Items.Select(i => i.Id));
+        Assert.Equal([rejected[granted.Id].Id], restricted.AlloggiatiFailures.Items.Select(i => i.Id));
+        Assert.Equal([turnover[grantedPending.Id].Id], restricted.TurnoversPending.Items.Select(i => i.Id));
+        Assert.DoesNotContain(departing[hidden.Id].Id, restricted.AlloggiatiManualRequired.Items.Select(i => i.Id));
+        Assert.DoesNotContain(departing[hidden.Id].Id, restricted.GuestCheckInsIncomplete.Items.Select(i => i.Id));
+        Assert.Contains(departing[granted.Id].Id, restricted.AlloggiatiManualRequired.Items.Select(i => i.Id));
+
+        // The whole org sees both properties.
+        Assert.Equal(new[] { grantedPending.Id, hiddenPending.Id }.Order(), orgWide.PropertiesPending.Items.Select(i => i.Id).Order());
+        Assert.Equal(2, orgWide.CheckoutsDue.Count);
+        Assert.Equal(2, orgWide.AlloggiatiFailures.Count);
+        Assert.Equal(2, orgWide.TurnoversPending.Count);
+
+        Booking AddStay(Property property, string name, DateTime checkout, BookingStatus status)
+        {
+            var guest = new Guest { FirstName = name, LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = org.Id };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(property, guest, checkout, status);
+            db.Bookings.Add(booking);
+            return booking;
         }
     }
 
@@ -828,7 +916,7 @@ public class ComplianceWizardServiceTests
         Stay(property, today, BookingStatus.CheckedIn, declaredReady: false, completed: false);
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(property.OrgId);
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId));
 
         var item = Assert.Single(summary.TurnoversPending.Items);
         Assert.Equal(1, summary.TurnoversPending.Count);
@@ -882,7 +970,7 @@ public class ComplianceWizardServiceTests
         Stay(todayInRome, BookingStatus.Cancelled);
         await db.SaveChangesAsync();
 
-        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(property.OrgId);
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId));
 
         Assert.Equal(3, summary.CheckoutsDue.Count);
         Assert.Equal(

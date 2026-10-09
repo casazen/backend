@@ -1,6 +1,7 @@
 // File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
@@ -192,6 +193,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
         // AM-01: the org's people (OrgMember) and, in the same transaction, the memberships that project their role.
         services.AddScoped<IOrgMembershipService, OrgMembershipService>();
+        // AM-03: which properties a caller reaches (from the org membership, in the authorization snapshot), and who is the
+        // holder of the org for the acts the law ties to the landlord (RLI delega, IMU communication).
+        services.AddScoped<IHostScopeResolver, HostScopeResolver>();
+        services.AddScoped<IOrgHolderService, OrgHolderService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
         // PL-02: host contexts only after the onboarding and the current consents; refusals answer 403 onboarding_required.
         services.AddScoped<IHostOnboardingGate, HostOnboardingGate>();
@@ -405,6 +410,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
         services.AddScoped<IOrgInvitationService, OrgInvitationService>();
         services.AddScoped<IOrgTeamService, OrgTeamService>();
+        // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
+        services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();
         services.AddScoped<IOrgInvitationMaintenanceService, OrgInvitationMaintenanceService>();
         services.AddScoped<IAccountEmailResolver, AccountEmailResolver>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
@@ -446,6 +453,23 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.ServiceRequestOptions>, Casazen.Core.Options.ServiceRequestOptionsValidator>();
         services.AddScoped<ServiceRequestNotifier>();
+        // Payment of the service requests inside CasaZen (SP-15a, decision D2): direct charge on the supplier's Stripe account with
+        // the platform commission. The commission and the times are configuration (SupplierPayments), validated at startup: the
+        // percentage has no default in code. The gateway is the only place that sets the application fee.
+        services.AddOptions<Casazen.Core.Options.SupplierPaymentsOptions>()
+            .BindConfiguration(Casazen.Core.Options.SupplierPaymentsOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierPaymentsOptions>, Casazen.Core.Options.SupplierPaymentsOptionsValidator>();
+        services.AddSingleton<ISupplierPaymentGateway, StripeSupplierPaymentGateway>();
+        // The payment service holds the payer's side (SP-15a) and, in its own interfaces, the Stripe webhook, the jobs and the admin
+        // refunds (SP-15b): one instance per scope, so they share the payment lock and the way a link is issued.
+        services.AddScoped<SupplierPaymentService>();
+        services.AddScoped<ISupplierPaymentService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentWebhookService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentJobService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentRefundService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentAdminService, SupplierPaymentAdminService>();
+        services.AddScoped<ISupplierPaymentJobScheduler, SupplierPaymentJobScheduler>();
         // One instance per request for both doors (SP-11): the hosts' and the suppliers' operations, and the narrow set of what the
         // customer of a public showcase does to its own request, which only the customer's area (IShowcaseBookingManager) uses.
         services.AddScoped<ServiceRequestService>();

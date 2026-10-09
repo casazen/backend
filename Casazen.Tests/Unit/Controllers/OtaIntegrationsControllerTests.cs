@@ -52,8 +52,8 @@ public class OtaIntegrationsControllerTests
     }
 
     private void AllowAuthorization() =>
-        _mockAuthz.Setup(x => x.CanAccess(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>()))
-            .Returns(true);
+        _mockAuthz.Setup(x => x.CanAccessAsync(It.IsAny<string>(), It.IsAny<Property>(), It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
 
     private Property MakeProperty(Guid id) => new() { Id = id, OwnerId = OwnerId };
 

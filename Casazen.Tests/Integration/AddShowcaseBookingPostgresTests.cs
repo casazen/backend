@@ -445,12 +445,17 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
             Bathrooms = 1,
             MaxGuests = 2,
             NightlyRate = 80m,
-            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
         };
-        db.AddRange(hostOrg, supplierOrg, property);
-        db.SupplierProfiles.Add(NewSupplierProfile(supplierOrg.Id));
+        db.AddRange(hostOrg, supplierOrg);
         await db.SaveChangesAsync();
+
+        // Plain SQL for the rows that have columns added by later migrations: the first test runs at the schema before this
+        // migration, and saving the entities through the model would write the columns that do not exist there yet (42703). The
+        // property uses LegacyPropertyRows (AM-03: ResponsibleUserId, and the next ones); the profile, its own statement
+        // (SP-15a: the supplier payments columns). The parents need no CIN.
+        await LegacyPropertyRows.InsertAsync(db, property);
+        await SupplierProfileSql.InsertAsync(db, NewSupplierProfile(supplierOrg.Id));
         return (hostOrg.Id, property.Id, supplierOrg.Id);
     }
 
