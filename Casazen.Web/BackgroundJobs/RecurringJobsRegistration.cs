@@ -64,6 +64,15 @@ public static class RecurringJobsRegistration
             CinDeadlineAlertJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // AM-02: reminder of the third day, expiry and deletion of the closed org invitations. Always registered: the
+        // retention of the personal data of an invitation does not depend on the OrgTeam flag; the service itself sends
+        // no email while the flag is off.
+        recurringJobManager.AddOrUpdate<OrgInvitationMaintenanceJob>(
+            OrgInvitationMaintenanceJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            OrgInvitationMaintenanceJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         ConfigureESignProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.ESignProvider));
 
         ConfigureRliProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.RliProvider));

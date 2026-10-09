@@ -70,6 +70,9 @@ On the **test** environment first, then on production after the release:
 ## Data kept in Hangfire
 
 The queued job carries recipient, subject and HTML. The check-in link job carries only the session id and the raw token (the email is built when it is sent). Hangfire removes succeeded jobs after 24 hours; failed deliveries are deleted after the last retry (each failure is logged without the recipient address).
+The `org-invitation` and `org-invitation-reminder` jobs (AM-02) carry the HTML with the **live link and its secret token**: it
+is readable in the job arguments until Hangfire removes the succeeded job (24 hours), so the Hangfire schema and dashboard
+stay restricted; after that only the SHA-256 of the token exists (`docs/runbooks/org-team.md` section 15).
 
 ## Complete list of emails
 
@@ -106,6 +109,9 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `supplier-booking-reminder` | customer | 18:00 (Rome) of the day before the work, once, if the supplier took the request before that time | `service-request-reminders` job → `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-cancellation-receipt`, `-proposal-expired` | customer | it cancelled its request (receipt); the day to answer the time the supplier proposed passed and the request was cancelled (SP-11) | `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-cancelled-by-customer`, `-rescheduled-by-customer`, `-proposal-answered-by-customer`, `-proposal-lapsed` | supplier | the customer cancelled, moved, accepted or turned down the proposed time, or let it lapse; comune and "Nome C." only, plus a push (SP-11) | `ShowcaseBookingNotifier`, queued |
+| `org-invitation` | invitee | an owner or administrator invites a person to the org team, or sends the invitation again (AM-02): the link carries the secret token and works for 7 days; a newer link replaces it | `OrgInvitationService`, queued after the commit; language chosen by the inviter |
+| `org-invitation-reminder` | invitee | the third day after the invitation, while it is pending, with a **new link** (AM-02) | `org-invitation-maintenance` job, queued, once per invitation; only with `Features__OrgTeam` on |
+| `org-invitation-expired` | inviter (the owner when the inviter no longer manages the org) | nobody accepted within 7 days: the seat is free again (AM-02) | same job, queued, once per invitation; only with the flag on; Italian |
 | `rli-deadline-reminder`, `rli-deadline-overdue`, `rli-extra-eu-notice` | landlord | RLI registration deadline / extra-EU tenant (long rents) | `RliDeadlineReminderJob` (job) |
 
 Not sent by design: bookings entered by the host (`Manual`, PC-01) and the host's own confirmations or cancellations get no email to the host; manual bookings get no confirmation to the guest (the host can send the check-in link). There is no guest self-service cancellation yet, so no "cancelled by the guest" email to the host. No email for the CIN deadline alert (CO-20: only logged as not delivered).
@@ -130,7 +136,8 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 
 ### Language
 
-The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done.
+The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done. The exception is the org team (AM-02): the invitation and its reminder go out
+in the language the inviter chose (`it`, the default, or `en`, stored on the invitation); the note to the inviter is in Italian.
 
 ## Showcase booking emails (SP-10)
 

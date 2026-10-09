@@ -80,6 +80,7 @@ registered, registered but unused, or an action with neither).
 | `PropertyRead` / `PropertyWrite` | short-rent `property.*`: the short-stay side of a property (photos, CIN, iCal, activation, detail with bookings/OTA, pricing, fiscal, service requests) |
 | `BookingRead/Write`, `PaymentRead/Write`, `GuestRead/Write`, `OtaRead/Write` | short-rent context permission |
 | `LeaseRead/Create/Sign/Register` | long-rent context permission |
+| `OrgMembersManage` (`RequireContext:account:org.members.manage`) | AM-02: the owner and the administrators of the org (permission of the `account` context); the invitations and the members endpoints, behind the flag `OrgTeam` |
 
 Context permissions come from the DB memberships (`UserContextMemberships` → `Roles` → `RolePermissions`) with the JWT
 roles as fallback (`ContextAuthorizationService`). A permission counts only in the context that grants it: the long-rent
@@ -94,6 +95,17 @@ are the projection of its role into permissions, written in the same transaction
 console stays `admin`); `GET /api/me/contexts` lists `account` only with the flag `OrgTeam` on. For a user with an org member row
 and a rental membership the host contexts come from the DB only (a token never adds one: veto of PR #455 limited to org
 members); a deactivated member gets 403 `member_inactive` from the next request.
+
+**Org invitations, members and seats (AM-02, `docs/runbooks/org-team.md`, behind the flag `OrgTeam`).** The owner and the
+administrators (permission `org.members.manage` of the `account` context) invite a person with a role and the areas it works
+in. The invitation (`OrgInvitation`, table `OrgInvitations`) holds a seat for seven days; its link carries a 256-bit secret of
+which only the SHA-256 is stored, a new link replaces the old one, and the token only travels in the body of the two public
+calls. The invited account accepts (verified email equal to the invited one, never a platform admin, the four consents again
+for the new org) and becomes a member; a person whose own org is still empty and unbilled leaves it, anyone else with an org
+is refused (409 `invitation_user_has_organization`). Seats per plan (Starter 2, Pro 10, Scale unlimited) count active members
+plus pending invitations and are decided under one advisory lock per org. Only the owner creates or touches an
+administrator; the owner is never touched. The hourly job `org-invitation-maintenance` reminds on the third day, expires
+and deletes the closed invitations 30 days after they closed.
 
 The policy says what kind of operation a user may do; the row itself is checked with
 `IAuthorizationService.AuthorizeAsync(User, HostResource, operation)` (`PropertyOperations`, `SharedPropertyOperations`,
@@ -130,8 +142,17 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 |---|---|---|---|
 | `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships`; the `account` context (AM-01) only with `Features:OrgTeam` on |
 | `GET` | `/api/orgs/plans` | Anonymous | Plan catalogue and property limits |
-| `GET` | `/api/orgs/me/entitlement` | OrgBillingAdmin (org policy, any rental context, PL-16) | Org plan tier (the effective one), limits, usage, `canAddProperty`, `canUseCustomDomain`; BL-01: `openAccess` (`true` when the tier shown is raised by `Entitlement:OpenAccess`, [`open-access.md`](runbooks/open-access.md)) |
+| `GET` | `/api/orgs/me/entitlement` | OrgBillingAdmin (org policy, any rental context, PL-16) | Org plan tier (the effective one), limits, usage, `canAddProperty`, `canUseCustomDomain`; BL-01: `openAccess` (`true` when the tier shown is raised by `Entitlement:OpenAccess`, [`open-access.md`](runbooks/open-access.md)); AM-02: `limits.maxSeats`, `usage.seats`, `canInviteMember` |
 | `PUT` | `/api/orgs/me/plan` | Org billing admin | Downgrade / back to Starter only; upgrade without an active subscription → 403 `subscription_required`, Stripe-managed plan → 409 `managed_by_stripe` (#274) |
+| `POST` | `/api/orgs/me/invitations` | Policy `RequireContext:account:org.members.manage`, flag `OrgTeam` | AM-02: invite a person (email, name, role, areas): 201 `{ invitation, emailQueued }`; 403 `org_owner_required`, 409 `org_seat_limit_reached`, `org_invitation_already_pending`, `org_member_already_member`, 422 `org_owner_not_assignable`, `org_member_area_required` |
+| `GET` | `/api/orgs/me/invitations` | same | Invitations open or expired, never the token |
+| `POST` | `/api/orgs/me/invitations/{id}/resend`, `/revoke`, `/link` | same | Send again with a new link (7 more days) / withdraw (204, idempotent) / a fresh link to hand out (`no-store`) |
+| `GET` | `/api/orgs/me/members` | same | `{ items, seats }`: the people, owner first, and the seats of the plan |
+| `PUT` | `/api/orgs/me/members/{id}` | same | Change the role (never to Owner; Admin only by the owner) |
+| `POST` | `/api/orgs/me/members/{id}/deactivate`, `/reactivate` | same | Switch the access off / on (reactivating takes a seat); 409 `org_last_owner` for the owner |
+| `DELETE` | `/api/orgs/me/members/{id}` | same | The person leaves the org; its account stays |
+| `POST` | `/api/org-invitations/lookup` | Anonymous, rate limited (`PublicInvitationLookup`), flag `OrgTeam` | What a link is for; every link that does not work answers the same 410 `invitation_invalid` |
+| `POST` | `/api/org-invitations/accept` | JWT (any signed-in account), flag `OrgTeam` | Accept with the four consents: 200 `{ orgId, orgName, role, areas, leftEmptyOrg }`; 403 `invitation_email_mismatch`, `invitation_email_not_verified`, `invitation_platform_admin`; 409 `invitation_user_has_organization`; 410 `invitation_expired`, `invitation_used`, `invitation_revoked`, `invitation_invalid` |
 | `GET` | `/api/orgs/{orgId}/domain` | JWT | Custom domain config for org |
 | `POST` | `/api/orgs/{orgId}/domain` | JWT | Set custom domain |
 | `POST` | `/api/orgs/{orgId}/domain/verify` | JWT | Verify DNS / domain ownership |
@@ -637,6 +658,24 @@ erDiagram
 | `PropertyScope` | `PropertyScope` | Default All | All 1 / Selected 2 (`Selected` arrives with AM-03) |
 | `CreatedAt`, `CreatedByUserId`, `DeactivatedAt` | `DateTime`, `string?`, `DateTime?` | — | Audit of the membership |
 
+#### `OrgInvitation` (AM-02)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (CASCADE), tenant key (`ITenantOwned`) | The org that invites |
+| `Email` | `string` | Max 255, trimmed, lowercase | The address the invitation is for (personal data, deleted with the row) |
+| `Name` | `string` | Max 200 | The invitee's name as the inviter wrote it (personal data) |
+| `Role` | `OrgRole` | Never Owner | The role the person gets |
+| `Areas` | `List<string>` | `text[]` | `short-rent`, `long-rent` |
+| `PropertyScope` | `PropertyScope` | Default All | As `OrgMember` |
+| `TokenHash` | `string` | 64 hex characters, **unique** (`UIX_OrgInvitations_TokenHash`) | SHA-256 of the secret of the link; the token is never stored |
+| `Status` | `OrgInvitationStatus` | Pending 1 / Accepted 2 / Revoked 3 / Expired 4 | One Pending per `(OrgId, Email)`: partial unique index `UIX_OrgInvitations_OrgId_Email_Pending` (`"Status" = 1`) |
+| `ExpiresAt`, `ReminderSentAt` | `DateTime`, `DateTime?` | — | Seven days from sending; the reminder of the third day |
+| `InvitedByUserId`, `Language` | `string`, `string` | Language `it` / `en` | Who invited; language of the emails |
+| `AcceptedAt`, `AcceptedByUserId`, `ClosedAt` | `DateTime?`, `string?`, `DateTime?` | — | How it ended; the purge counts 30 days from `ClosedAt` |
+| `CreatedAt`, `UpdatedAt` | `DateTime` | — | Audit |
+
 ---
 
 ## Design Patterns
@@ -675,6 +714,7 @@ erDiagram
 | `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (CasaZen does not transmit: no web service client) |
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
 | `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
+| `OrgInvitationMaintenanceJob` | Hourly at :10 UTC | AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days (`docs/runbooks/org-team.md` § 15) |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment

@@ -167,8 +167,8 @@ internal static class PostgresAdvisoryLocks
 
         /// <summary>
         /// The people of one org (key: org id): adding, changing, deactivating or removing a member, and the owner's
-        /// creation, run one at a time, so the owner rule and, with AM-02, the seat count are decided on rows nobody else
-        /// is changing (AM-01).
+        /// creation, run one at a time, so the owner rule is decided on rows nobody else is changing (AM-01). The seat
+        /// count is decided under <see cref="OrgSeats"/>, which the callers take <b>before</b> this one (AM-02).
         /// </summary>
         OrgMembership = 1_401,
 
@@ -179,6 +179,23 @@ internal static class PostgresAdvisoryLocks
         /// and saves nothing (it is idempotent, so it is simply run again).
         /// </summary>
         OrgMembershipMaintenance = 1_402,
+
+        /// <summary>
+        /// The seats of one org (key: org id, AM-02, decisions D13 and D35): the count of active members plus pending
+        /// invitations and what depends on it run one at a time, like <c>CreatePropertyWithinLimitAsync</c> does for the
+        /// properties. Taken to create an invitation, to send it again, to accept it, to reactivate a member and by the
+        /// reminders and expiries of the maintenance job, so the last seat is given to one request only. Always taken
+        /// <b>before</b> <see cref="OrgMembership"/> (and before the org's property slot when a person leaves an empty org),
+        /// and for two orgs in the order of their ids: no cycle between two requests.
+        /// </summary>
+        OrgSeats = 1_403,
+
+        /// <summary>
+        /// One run of the org invitation maintenance (single key, session lock held for the whole run): reminders on the
+        /// third day, expiry and deletion of the closed ones never run twice at once, even outside Hangfire's own lock
+        /// (AM-02).
+        /// </summary>
+        OrgInvitationMaintenance = 1_404,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

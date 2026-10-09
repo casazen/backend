@@ -1,3 +1,5 @@
+using Casazen.Core.Authorization;
+
 namespace Casazen.Web.Authorization;
 
 /// <summary>
@@ -91,6 +93,14 @@ public static class CasazenPolicies
     public const string LeaseSign = LongRent + "lease.sign";
     public const string LeaseRegister = LongRent + "lease.register";
 
+    /// <summary>
+    /// Invite, change, deactivate, reactivate and remove the people of the caller's org (AM-02): the permission
+    /// <c>org.members.manage</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody
+    /// else. Like the host contexts it waits for the onboarding and the consents. What each of them may do to whom
+    /// (only the owner creates and manages administrators) is decided by the services (<c>OrgTeamRules</c>).
+    /// </summary>
+    public const string OrgMembersManage = ContextPolicyPrefix + AccountContext.Key + ":" + AccountContext.Permissions.MembersManage;
+
     /// <summary>Prefix of the context policies; the rest is <c>{context}:{permission}</c>.</summary>
     public const string ContextPolicyPrefix = "RequireContext:";
 
@@ -105,6 +115,7 @@ public static class CasazenPolicies
         OtaRead, OtaWrite,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
+        OrgMembersManage,
     ];
 
     /// <summary>

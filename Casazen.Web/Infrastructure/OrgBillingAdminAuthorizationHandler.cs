@@ -26,9 +26,10 @@ public sealed class OrgBillingAdminRequirement : IAuthorizationRequirement;
 /// (<c>org_admin</c>): a membership of the account context that holds it passes, as the roles of
 /// <see cref="OrgOwnerRoles"/> do, and the token roles and the owner's rental memberships of AM-00 pass as before (every
 /// existing owner keeps working) when the caller is not in an org team. When an <see cref="OrgMember"/> row exists it
-/// is the source of truth, the same veto as the host contexts (S3): a leftover <c>PropertyOwner</c>,
-/// <c>LongTermLandlord</c> or <c>Admin</c> claim does not pass for a collaborator, property manager or accountant.
-/// A member the org deactivated never passes.
+/// is the source of truth, the same veto as the host contexts (S3): a leftover <c>PropertyOwner</c> or
+/// <c>LongTermLandlord</c> claim does not pass for a collaborator, property manager or accountant (AM-02: a person who
+/// moved to another org keeps its onboarding roles in the token for a while), while the platform admin role is not an
+/// org role and always counts. A member the org deactivated never passes.
 /// </remarks>
 public class OrgBillingAdminAuthorizationHandler(
     IOrgContextResolver orgContextResolver,
@@ -46,6 +47,13 @@ public class OrgBillingAdminAuthorizationHandler(
         "PropertyOwner",
         "LongTermLandlord",
         "Admin",
+    };
+
+    /// <summary>The owner's token roles: the ones that must not count for a member who is not the owner (see <see cref="HasAllowedRole"/>).</summary>
+    private static readonly HashSet<string> OwnerTokenRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "PropertyOwner",
+        "LongTermLandlord",
     };
 
     private static readonly HashSet<string> DeniedRoles = new(StringComparer.OrdinalIgnoreCase)
@@ -92,27 +100,29 @@ public class OrgBillingAdminAuthorizationHandler(
     }
 
     /// <summary>
-    /// An org member is authorized from <see cref="OrgMember.Role"/>, not from the token (AM-01, S3): owner and org
-    /// administrator pass, and so does a platform-admin membership. Everyone else in the team is refused even when the
-    /// JWT still carries <c>PropertyOwner</c>, <c>LongTermLandlord</c> or <c>Admin</c>. With no org member row, the
-    /// token and the DB memberships pass as before so an owner from before the backfill is not locked out.
+    /// An org member is authorized from <see cref="OrgMember.Role"/>, not from the token (AM-01, S3): the owner and the
+    /// org administrator pass, and so does the platform admin (token role or membership of the <c>admin</c> context: not
+    /// an org role). Everyone else in the team is refused even when the JWT still carries <c>PropertyOwner</c> or
+    /// <c>LongTermLandlord</c> (<see cref="HasAllowedRole"/>). With no org member row, the token and the DB memberships
+    /// pass as before so an owner from before the backfill is not locked out.
     /// </summary>
     private static bool GrantsBilling(ClaimsPrincipal user, UserAuthorizationSnapshot snapshot)
     {
-        if (snapshot.OrgMember is not null)
-        {
-            if (snapshot is not { Exists: true, IsActive: true } || snapshot.Role is UserRole.Staff or UserRole.Guest)
-                return false;
+        if (snapshot.OrgMember is null)
+            return HasAllowedRole(user, snapshot) || HasAllowedMembership(snapshot);
 
-            if (snapshot.OrgMember.Role is OrgRole.Owner or OrgRole.Admin)
-                return true;
+        if (snapshot is not { Exists: true, IsActive: true } || snapshot.Role is UserRole.Staff or UserRole.Guest)
+            return false;
 
-            return snapshot.Memberships.Any(m =>
-                string.Equals(m.ContextKey, "admin", StringComparison.OrdinalIgnoreCase) &&
-                OrgOwnerRoles.IsOwnerRole(m.ContextKey, m.RoleKey));
-        }
+        if (snapshot.OrgMember.Role is OrgRole.Owner or OrgRole.Admin)
+            return true;
 
-        return HasAllowedRole(user) || HasAllowedMembership(snapshot);
+        // Collaborator, property manager, accountant: only as the platform admin (HasAllowedRole leaves the owner's
+        // token roles out for a member who is not the owner).
+        return HasAllowedRole(user, snapshot) ||
+               snapshot.Memberships.Any(m =>
+                   string.Equals(m.ContextKey, "admin", StringComparison.OrdinalIgnoreCase) &&
+                   OrgOwnerRoles.IsOwnerRole(m.ContextKey, m.RoleKey));
     }
 
     /// <summary>
@@ -135,10 +145,21 @@ public class OrgBillingAdminAuthorizationHandler(
         (AccountContext.IsAccountContext(membership.ContextKey) &&
          membership.Permissions.Contains(AccountContext.Permissions.BillingManage, StringComparer.OrdinalIgnoreCase));
 
-    private static bool HasAllowedRole(ClaimsPrincipal user) =>
-        user.Claims.Any(c =>
+    /// <summary>
+    /// The token roles of the owner (<c>PropertyOwner</c>, <c>LongTermLandlord</c>) and the platform admin, <b>except</b> the
+    /// owner's two for a person who is a member of an org without being its owner (AM-02): a person who left an empty org
+    /// of its own for another one keeps the Auth0 roles of the onboarding until they are removed (they are removed right
+    /// after the acceptance, and if Auth0 fails an operator does it), and a role left in a token must never make a
+    /// collaborator the billing administrator of the org it joined. The platform admin role is not an org role and always counts.
+    /// </summary>
+    private static bool HasAllowedRole(ClaimsPrincipal user, UserAuthorizationSnapshot snapshot)
+    {
+        var isMemberButNotOwner = snapshot.OrgMember is { Role: not OrgRole.Owner };
+        return user.Claims.Any(c =>
             (c.Type == ClaimTypes.Role || c.Type == "https://casazen.app/roles") &&
-            AllowedRoles.Contains(c.Value));
+            AllowedRoles.Contains(c.Value) &&
+            !(isMemberButNotOwner && OwnerTokenRoles.Contains(c.Value)));
+    }
 
     private static bool HasDeniedRole(ClaimsPrincipal user) =>
         user.Claims.Any(c =>
