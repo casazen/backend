@@ -106,12 +106,17 @@ public class RecurringJobsFeatureFlagTests
         manager.Verify(m => m.RemoveIfExists(LeaseSignStatusPollingJob.RecurringJobId), Times.Never);
     }
 
-    internal static IFeatureFlags Flags(bool otaPartnerApi, bool rliProvider = false, bool eSignProvider = false)
+    internal static IFeatureFlags Flags(
+        bool otaPartnerApi,
+        bool rliProvider = false,
+        bool eSignProvider = false,
+        bool propertyModeChange = false)
     {
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.OtaPartnerApi)).Returns(otaPartnerApi);
         flags.Setup(f => f.IsEnabled(FeatureFlags.RliProvider)).Returns(rliProvider);
         flags.Setup(f => f.IsEnabled(FeatureFlags.ESignProvider)).Returns(eSignProvider);
+        flags.Setup(f => f.IsEnabled(FeatureFlags.PropertyModeChange)).Returns(propertyModeChange);
         return flags.Object;
     }
 

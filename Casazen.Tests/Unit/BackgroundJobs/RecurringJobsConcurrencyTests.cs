@@ -24,6 +24,7 @@ public class RecurringJobsConcurrencyTests
         "dynamic-pricing-adaptation",
         "lease-registration-status-poll",
         "domain-recheck",
+        "property-mode-change",
     ];
 
     [Fact]
@@ -104,7 +105,8 @@ public class RecurringJobsConcurrencyTests
 
         // Every flag on: the jobs behind a feature flag must be lock-protected too (FD-20).
         RecurringJobsRegistration.Configure(
-            manager.Object, RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true));
+            manager.Object,
+            RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true, propertyModeChange: true));
 
         return jobs;
     }

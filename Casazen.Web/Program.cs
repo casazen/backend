@@ -156,6 +156,7 @@ builder.Services.AddScoped<StripeWebhookJob>();
 builder.Services.AddScoped<AlloggiatiWebReportJob>();
 builder.Services.AddScoped<StayAlertsJob>();
 builder.Services.AddScoped<CinDeadlineAlertJob>();
+builder.Services.AddScoped<PropertyModeChangeJob>();
 builder.Services.AddScoped<GdprDataRetentionJob>();
 // Lease background jobs
 builder.Services.AddScoped<ESignWebhookJob>();
