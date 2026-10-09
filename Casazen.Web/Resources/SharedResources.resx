@@ -2611,4 +2611,16 @@
   <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
     <value>Indica un mese passato o in corso nel formato aaaa-mm (ad esempio 2026-10).</value>
   </data>
+  <data name="SearchQueryTooShort" xml:space="preserve">
+    <value>Scrivi almeno {0} caratteri per cercare.</value>
+  </data>
+  <data name="SearchQueryTooLong" xml:space="preserve">
+    <value>La ricerca può avere al massimo {0} caratteri.</value>
+  </data>
+  <data name="ContextNotAccessible" xml:space="preserve">
+    <value>Non hai accesso a quest'area.</value>
+  </data>
+  <data name="ContextKeyRequired" xml:space="preserve">
+    <value>Indica l'area.</value>
+  </data>
 </root>

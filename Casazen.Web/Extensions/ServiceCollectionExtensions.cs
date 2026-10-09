@@ -293,6 +293,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICalendarBlockService, CalendarBlockService>();
         // Scheduled change of rental mode of a property: preview, creation, the hourly application (PM-02).
         services.AddScoped<IPropertyModeService, PropertyModeService>();
+        // Global search of the palette: the groups the caller may read (policies) and the SQL (UI-13a, docs/runbooks/global-search.md).
+        services.AddScoped<ISearchAccessResolver, SearchAccessResolver>();
+        services.AddScoped<Casazen.Core.Search.IGlobalSearchService, Casazen.Infrastructure.Search.GlobalSearchService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();

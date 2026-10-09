@@ -6,6 +6,7 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
+using Casazen.Infrastructure.Search;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -1786,6 +1787,9 @@ public class AppDbContext(
         // admin cross-org reads) still excludes deleted properties, and IgnoreQueryFilters([SoftDeleteQueryFilter])
         // (fiscal/compliance reporting) still respects tenant isolation.
         modelBuilder.Entity<Property>().HasQueryFilter(SoftDeleteQueryFilter, p => !p.IsDeleted);
+
+        // UI-13a: the stored search keys and their indexes (global search, docs/runbooks/global-search.md).
+        SearchKeyModel.Configure(modelBuilder);
 
         ApplyTenantQueryFilters(modelBuilder);
     }

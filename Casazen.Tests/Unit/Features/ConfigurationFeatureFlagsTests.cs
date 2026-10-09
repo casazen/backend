@@ -63,6 +63,8 @@ public class ConfigurationFeatureFlagsTests
         Assert.Equal("SupplierRequestAutoCancel", FeatureFlags.SupplierRequestAutoCancel);
         // PM-02: the flag of the scheduled change of rental mode is appended after the flags of the other tasks.
         Assert.Equal("PropertyModeChange", FeatureFlags.PropertyModeChange);
+        // UI-13a: the flag of the global search comes after the others.
+        Assert.Equal("GlobalSearch", FeatureFlags.GlobalSearch);
         Assert.Equal(
             new[]
             {
@@ -78,6 +80,7 @@ public class ConfigurationFeatureFlagsTests
                 "PropertyModeChange",
                 // UI-12a: the flag of the in-app notifications is appended after the ones of the other tasks.
                 "InAppNotifications",
+                "GlobalSearch",
             },
             FeatureFlags.All);
     }

@@ -501,6 +501,25 @@ public class UserService(
         return (user, assigned, roleSync);
     }
 
+    /// <inheritdoc />
+    public async Task<User> SetLastUsedContextAsync(string userId, string contextKey, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(contextKey);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await repository.GetByIdAsync(userId) ?? throw new NotFoundException($"User {userId} not found");
+
+        // The client tells it at every change of area, often to the same value as before: nothing to write then.
+        if (string.Equals(user.LastUsedContextKey, contextKey, StringComparison.Ordinal))
+            return user;
+
+        // The tracked user saves the columns that changed (this one and UpdatedAt), nothing a parallel request wrote meanwhile.
+        user.LastUsedContextKey = contextKey;
+        await repository.UpdateAsync(user);
+        return user;
+    }
+
     private static IReadOnlyList<UserRole> MapRentalTypeToRoles(RentalType rentalType) =>
         rentalType switch
         {
