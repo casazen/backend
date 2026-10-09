@@ -17,6 +17,8 @@ automatic cancellation of the requests nobody answers, and what the supplier see
 Section 22: the public read side of the showcase, the services, the free slots and the price estimate (SP-09, redesign wave).
 Section 23: the booking a customer without an account makes from the showcase, with the hold of the slot, the check of its e-mail
 address, the request the supplier answers, the reminders, the upkeep and the retention of the customers (SP-10, redesign wave).
+Section 24: the customer's own area of that booking, to find it again with its code and e-mail address, cancel it, move it and answer a
+time the supplier proposed (SP-11, redesign wave).
 
 ## 1. How a supplier joins
 
@@ -1465,6 +1467,9 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 | Proposal accepted / turned down | the supplier | answer | `service-request-proposal-accepted` / `-rejected` |
 | Marked as paid | the supplier | unchanged | `service-request-paid` |
 
+The requests born from a supplier's showcase (SP-10) have the customer as their other party: its e-mails are listed in sections 23.8 and
+24.7, and the push `type` `service-request-rescheduled` (SP-11) is the one new `type` of the customer's own area.
+
 A status that has no message (a new request, a paid one, a request the host cancelled itself, **a status the code does not know**) sends
 **nothing**, and it is not an error: before this task `EmailTemplates.ServiceRequestStatusChanged` threw for any status other than taken, completed and rejected, and the error was only logged.
 
@@ -2012,7 +2017,9 @@ booking answers **200** with the booking **as it is after the call**, read again
 `proposal` is `{ startUtc, endUtc, startLocal, endLocal, proposedAt, answerBy, message }` while a time is waiting (and `respondBy` is
 then `null`: the deadline is the customer's, `proposal.answerBy`); `cancellation` is `{ at, by: "customer" | "supplier" | "system",
 reason }` once cancelled (`reason` is the text a person wrote, never a code); `price.basis` says which of the three amounts
-`amountCents` is (`final`, `quote`, `estimate`; `null` is "to agree with the supplier"). Times are UTC instants with the offset of Rome
+`amountCents` is (`final`, `quote`, `estimate`; `null` is "to agree with the supplier"); the `lines` of an estimate add up to it (a flat
+price shows its base as the line of the service) and, once the work is done, they are the lines of the final amount. Times are UTC
+instants with the offset of Rome
 next to them: the two passes of the hour that happens twice when the clocks go back are told apart by the offset.
 
 ### 24.3 The rules
@@ -2058,9 +2065,12 @@ next to them: the two passes of the hour that happens twice when the clocks go b
   one is decrypted by the column and compared with the one typed **in constant time** (`ServiceCustomerEmails.SameAddress`,
   `CryptographicOperations.FixedTimeEquals`). **The same statements run for every attempt**, with values that match nothing when the
   credentials cannot be valid, and the failure is decided once, at the end: a wrong slug, a wrong code, another supplier's code and a
-  wrong address cost the same, so the time of the answer tells nothing either
-  (`ShowcaseBookingManagerLookupTests.Lookup_EverythingThatDoesNotIdentifyABooking_…`). The supplier is found whatever its status.
-- **Two limits, one 429** (`rate_limited`, `Retry-After`, the body of every other 429 of the product): **per IP**, the policy
+  wrong address run the same statements and fail the same way
+  (`ShowcaseBookingManagerLookupTests.Lookup_EverythingThatDoesNotIdentifyABooking_…`). The one difference left is the decryption of the
+  stored address, which only happens once a code exists: some microseconds, behind a limit of 10 attempts per address and 10 per IP per
+  five minutes, against a code of 50 bits. The supplier is found whatever its status.
+- **Two limits, one 429** (`rate_limited`, `Retry-After`, the body of every other 429 of the product, and the `noindex` and `no-store`
+  headers of every answer of the area): **per IP**, the policy
   `PublicGuestBookingLookup` (10 per 5 minutes; the budget of "Le mie prenotazioni" of the hosts' guests, per IP, shared); and **per
   address and supplier**, `SupplierBookingManagePerEmail` (**10 per 15 minutes**, in memory per replica, keyed by a hash of the slug and
   the address, **every attempt counts**, a hit or a miss; another address, or the same address at another supplier, has a budget of its
@@ -2078,10 +2088,10 @@ next to them: the two passes of the hour that happens twice when the clocks go b
 place (**comune and postal code always; street address, floor and access notes only once the supplier took the request**, from their own
 statement), the price with its lines, the proposal, the cancellation (when, by whom, the text a person wrote), the reason the supplier
 gave when it refused, the terms and the actions. **Never**: another customer's data, what the supplier noted for itself and the
-completion notes, the photos, the member who took the request, the customer's own name, phone or address, any column that is encrypted
-or internal. `ShowcaseBookingManagerSqlTests` reads the SQL: the projection of the booking selects none of them, the three encrypted
-columns of the place have a statement of their own that runs only for a taken request, and every statement carries the supplier org and
-the rental context.
+completion notes, the photos, the member who took the request, the customer's own name, e-mail address and phone, any other column of
+the request. `ShowcaseBookingManagerSqlTests` reads the SQL: the projection of the booking selects none of them and no encrypted column,
+the three encrypted columns of the place (street, floor, notes) have a statement of their own that runs only for a taken request, and
+every statement carries the supplier org and the rental context.
 
 ### 24.6 Concurrency
 
@@ -2119,7 +2129,8 @@ only, never the address — the page asks for it.
 
 ### 24.8 Privacy
 
-- No answer carries the customer's name, phone or address; no log line carries a code or an address.
+- No answer carries the customer's own name, e-mail address or phone (it knows them); the street address, the floor and the notes for the
+  access of the work come back only for a request the supplier took. No log line carries a code or an address.
 - The reason the customer typed is stored in `ServiceRequests.CancellationReason` (at most 500 characters) like the supplier's, and shown
   back to the customer and to the supplier. **It is outside `Gdpr__Retention__SupplierCustomers`** (which anonymizes the customer, not the
   free text of its requests): follow-up `BE-SP11-3` (24.12).
@@ -2165,6 +2176,15 @@ a host's request, or another supplier's, is the same 404. `ShowcaseBookingTenanc
 - The free text of a cancellation reason is outside the retention job (`BE-SP11-3`).
 - The customer changes the time only: not the service, the quantity or the place of a booking. A booking whose service the supplier
   unpublished can be cancelled and not moved.
+- **A supplier suspended while a time it proposed waits**: the customer can still cancel, but cannot accept or turn the proposal down
+  (422 `supplier_booking_supplier_unavailable`); if the day passes, the job cancels the request as the customer's silence
+  (`ProposalNotAnswered`) and the e-mail says it did not answer in time, although it could only cancel. Rare (a suspension with live
+  proposals); a neutral wording, or a cancellation at the moment of the suspension, is `BE-SP11-5`.
+- **A supplier that switches `OnlineBookingEnabled` off** does not stop a customer from moving a booking it already has: the task is
+  silent, a product question (`PO-SP11-1`).
+- **Locking an address out**: somebody who knows a supplier's slug and the e-mail address of a customer can use up the 10 attempts of that
+  address in 15 minutes, which keeps the customer's own page from answering for as long (the per-IP limit bounds the third party). It is
+  inherent to a limit per address, which the task asks for.
 
 ### 24.13 After a deploy
 
@@ -2172,7 +2192,8 @@ a host's request, or another supplier's, is the same 404. `ShowcaseBookingTenanc
 - [ ] Flag off: the five `POST api/public/supplier-bookings/*` answer **404 `not_found`**, the body of a route that does not exist.
 - [ ] Test environment, flag on: book a slot and check the e-mail; with the code and the address `lookup` answers the booking with
       `canCancel` and `canReschedule` true; a wrong code, a wrong address and another supplier's slug answer **the same 404**; the 11th
-      attempt in 15 minutes with the same address answers 429 with `Retry-After: 900`.
+      attempt in 15 minutes with the same address, made from different IPs (from one IP the limit per IP, 10 per 5 minutes, fires first),
+      answers 429 with `Retry-After: 900`.
 - [ ] `reschedule` to a free slot: the supplier gets the e-mail and the push, the old time is offered again by `GET …/slots`; to a taken
       one: 409 and nothing changes.
 - [ ] The supplier proposes another time: `lookup` shows `proposal` and `canRespondToProposal`; `proposal/accept` takes the request
