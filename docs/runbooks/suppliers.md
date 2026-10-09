@@ -1534,7 +1534,7 @@ names). The limits come from `RateLimiting__PublicSupplierSlots__PermitLimit` / 
 **One 404.** An unknown slug and a supplier that is `Pending` or `Suspended` answer the same on every endpoint (404 `not_found`,
 "Questa vetrina fornitore non esiste o non è più disponibile"): the same statement, the same body, the same headers. For a service,
 an unknown slug, a draft, a paused or deleted service and a service of another supplier answer the same 404
-`supplier_service_not_found`. A slug longer than the column is a 404 without a lookup. `X-Robots-Tag: noindex` is on every answer
+`supplier_service_not_found`. A slug (of the supplier or of a service) that is empty, longer than the column or has a control character is a 404 without a lookup: a NUL cannot even be sent to PostgreSQL (error 22021), so asking would be a 500 for a visitor who typed `%00`. `X-Robots-Tag: noindex` is on every answer
 of the action, errors included (D11); a value the framework cannot bind (a `from` that is not a date) is a plain 400 before the action.
 
 ### 22.3 The page, with the flag on
@@ -1606,7 +1606,7 @@ anywhere**: a line is `quantity × unitAmountCents`, the total is the sum of the
 | `PerJob` | none (absent or 1) | the "from" price once |
 | `PerHour` | hours; left out: the indicative duration **rounded up** to whole hours (at least 1) | price × hours |
 | `PerSet` | sets; left out: 1 | price × sets |
-| `PerSquareMeter` | square meters, **required** | price × m² |
+| `PerSquareMeter` | square meters, **required**, up to 10,000 | price × m² |
 
 | Supplement `per` | How it counts | Limit |
 |---|---|---|
@@ -1631,9 +1631,12 @@ name, checked by `ISupplierComuneMatcher`; a place that cannot be recognized is 
 echoed but **does not decide**. `pricesIncludeVat` is the supplier's declaration; `currency` is `EUR`.
 
 A value that does not fit the service is **422 `supplier_quote_invalid`** with `fields`, collected together: `service` (missing),
-`quantity` (a quantity on a price per job; out of 1 to 1,000; missing for a price per m²), `surfaceSqm` (1 to 10,000),
-`options` (more than 10), `options[i].code` (unknown, repeated, blank, or a `sqm30`), `options[i].quantity` (over `max`, 2 for a flat one),
-`comune`, `postalCode`. The request is checked the same way for a service on quote.
+`quantity` (a quantity on a price per job; out of 1 to 1,000, or 1 to 10,000 for a price per m²; missing for a price per m²), `surfaceSqm` (1 to 10,000),
+`options[i].code` (unknown, repeated, blank, or a `sqm30`), `options[i].quantity` (over `max`, 2 for a flat one), `comune` (a control character),
+`postalCode` (not five digits). The request is checked the same way for a service on quote. What the request model stops first is a **400
+`validation_error`**, not a 422: a body that is not JSON or a number that does not fit an integer, and a text or list over its size (a service
+over 80 characters, more than 10 options, an option code over 40, a comune over 100, a postal code over 10); the pure function refuses the same
+excess too (`options`, `comune`, `postalCode`) for a caller that does not go through that model.
 
 ### 22.7 Security and privacy
 
@@ -1651,7 +1654,7 @@ A value that does not fit the service is **422 `supplier_quote_invalid`** with `
 ### 22.8 Limits and configuration
 
 `Casazen.Core/Suppliers/PublicShowcaseLimits.cs`: slots default 14 and at most 62 days, cache 30 s and 2,000 plans, response time from 5
-answers (latest 500, 90 days), estimate quantity 1 to 1,000, surface 1 to 10,000 m², 10 options, body 8 KB. Configuration: only the two rate
+answers (latest 500, 90 days), estimate quantity 1 to 1,000 (up to 10,000 m² for a price per m²), surface 1 to 10,000 m², 10 options, body 8 KB. Configuration: only the two rate
 limits (`RateLimiting__PublicSupplierSlots__*`, `RateLimiting__PublicSupplierQuote__*`) and the flag `Features__SupplierShowcaseBooking`
 (off by default, `feature-flags.md`).
 
