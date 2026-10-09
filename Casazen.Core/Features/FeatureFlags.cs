@@ -91,6 +91,16 @@ public static class FeatureFlags
     /// </summary>
     public const string UiRedesign = "UiRedesign";
 
+    /// <summary>
+    /// AM-01 (wave decision "team members behind a flag"): the org team, i.e. several people in one org with a role each
+    /// (owner, administrator, property manager, collaborator, accountant). Off by default. The model, the roles, the
+    /// backfill and the authorization guards of AM-01 work whatever its value; what it controls is what the clients can
+    /// see and use of it: with it off <c>GET /api/me/contexts</c> does not list the <c>account</c> context (the web app of
+    /// today does not know it and its workspace switcher fails on an unknown context), and the invitation endpoints of
+    /// AM-02 are gated by it (404 while off). Turn it on only together with the account screens of AM-04.
+    /// </summary>
+    public const string OrgTeam = "OrgTeam";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -102,5 +112,6 @@ public static class FeatureFlags
         SupplierOnlinePayments,
         SupplierRequestAutoCancel,
         UiRedesign,
+        OrgTeam,
     ];
 }

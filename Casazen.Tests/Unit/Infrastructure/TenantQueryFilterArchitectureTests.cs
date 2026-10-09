@@ -153,6 +153,7 @@ public class TenantQueryFilterArchitectureTests
     [InlineData(typeof(GuestCheckInSession))]
     [InlineData(typeof(ConsentRecord))]
     [InlineData(typeof(PlatformInvoice))]
+    [InlineData(typeof(OrgMember))]
     public void TenantQueryFilter_AuthenticatedCaller_AddsOrgIdPredicateToSql(Type entityType)
     {
         Assert.True(typeof(ITenantOwned).IsAssignableFrom(entityType));

@@ -8,13 +8,15 @@ namespace Casazen.Core.Entities;
 /// <summary>
 /// A stretch of hours that changes the supplier's agenda (SP-03): hours the supplier <b>blocks</b> by hand, an <b>extra
 /// opening</b> on top of the weekly hours, or an <b>external</b> engagement of the supplier's own calendar (the iCal feed
-/// writes those from SP-05). Instants in UTC; the table is read as a list of intervals by the planner.
+/// writes those since SP-05). Instants in UTC; the table is read as a list of intervals by the planner.
 /// </summary>
 /// <remarks>
 /// <para><b>Who writes what.</b> The console API (<c>api/supplier/availability/blocks</c>) creates and deletes only
 /// <see cref="SupplierBusyWindowSource.Manual"/> windows of kind <see cref="SupplierBusyWindowKind.Block"/> or
 /// <see cref="SupplierBusyWindowKind.ExtraOpening"/>; <see cref="SupplierBusyWindowKind.External"/> windows come from the
-/// sync of the iCal feed (SP-05), under the same lock, and the supplier cannot delete them.</para>
+/// sync of the iCal feed (<c>CalendarSyncService</c>, SP-05), under the same lock, one per occurrence of a timed event (the
+/// supplier, the UID and the start are unique, index <c>UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc</c>), and the supplier
+/// cannot delete them.</para>
 /// <para>Keyed by the supplier org and not tenant-filtered, like <see cref="SupplierWorkingHours"/> (same reasons, same
 /// guard). The <see cref="Label"/> is shown only in the supplier's console, <b>never public</b>: a public read (SP-09)
 /// must not expose it (nor the kind of a window: a customer only sees that the hours are not free).</para>
@@ -39,11 +41,17 @@ public class SupplierBusyWindow
 
     public SupplierBusyWindowSource Source { get; set; } = SupplierBusyWindowSource.Manual;
 
-    /// <summary>What the supplier calls it ("Dentista"); optional, at most 80 characters, shown only in the supplier's console.</summary>
+    /// <summary>
+    /// What the supplier calls it ("Dentista"), or, for a window of the calendar feed, the title of the event cut to the limit;
+    /// optional, at most 80 characters, shown only in the supplier's console.
+    /// </summary>
     [MaxLength(SupplierAgendaLimits.LabelMaxLength)]
     public string? Label { get; set; }
 
-    /// <summary>The UID of the iCal event an <see cref="SupplierBusyWindowKind.External"/> window comes from (SP-05); null for the others.</summary>
+    /// <summary>
+    /// The UID of the iCal event an <see cref="SupplierBusyWindowKind.External"/> window comes from (a stable hash for an event
+    /// without one, SP-05); null for the others.
+    /// </summary>
     [MaxLength(SupplierAgendaLimits.ExternalUidMaxLength)]
     public string? ExternalUid { get; set; }
 

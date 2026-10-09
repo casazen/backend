@@ -147,6 +147,27 @@
   <data name="MemberCannotOnboard" xml:space="preserve">
     <value>You already belong to an organization as a collaborator: you cannot set up a new account or change your own role. If you need a different role, ask the owner of the organization.</value>
   </data>
+  <data name="MemberInactive" xml:space="preserve">
+    <value>Your access to the organization has been deactivated. Contact whoever administers it to have it reactivated.</value>
+  </data>
+  <data name="OrgLastOwner" xml:space="preserve">
+    <value>The owner of the organization cannot be deactivated, removed or given another role: an organization always keeps its owner.</value>
+  </data>
+  <data name="OrgMemberAlreadyMember" xml:space="preserve">
+    <value>This person already belongs to an organization.</value>
+  </data>
+  <data name="OrgMemberAreaRequired" xml:space="preserve">
+    <value>Choose at least one area for the person to work in (short-term or long-term rentals).</value>
+  </data>
+  <data name="OrgMemberOtherOrg" xml:space="preserve">
+    <value>This person belongs to another organization: changing it takes an invitation from the organization.</value>
+  </data>
+  <data name="OrgMemberOwnerNotAssignable" xml:space="preserve">
+    <value>The owner role cannot be assigned: the organization stays with whoever created it (transferring the ownership is not available yet).</value>
+  </data>
+  <data name="OrgMembershipMaintenanceConflict" xml:space="preserve">
+    <value>Another change interrupted the members reconciliation: nothing was saved. Try again.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
   </data>

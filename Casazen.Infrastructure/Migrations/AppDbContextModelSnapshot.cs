@@ -201,6 +201,11 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             Key = "admin",
                             DisplayName = "Amministrazione"
+                        },
+                        new
+                        {
+                            Key = "account",
+                            DisplayName = "Amministrazione"
                         });
                 });
 
@@ -1674,6 +1679,51 @@ namespace Casazen.Infrastructure.Migrations
                         .HasFilter("\"Subdomain\" IS NOT NULL");
 
                     b.ToTable("Orgs");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OrgMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PropertyScope")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OrgMembers_UserId");
+
+                    b.HasIndex("OrgId", "Role")
+                        .HasDatabaseName("IX_OrgMembers_OrgId_Role");
+
+                    b.ToTable("OrgMembers");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OrgSiteDocument", b =>
@@ -3189,6 +3239,60 @@ namespace Casazen.Infrastructure.Migrations
                             Id = 3,
                             ContextKey = "admin",
                             RoleKey = "platform_admin"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            ContextKey = "account",
+                            RoleKey = "org_owner"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            ContextKey = "account",
+                            RoleKey = "org_admin"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            ContextKey = "account",
+                            RoleKey = "org_accountant"
+                        },
+                        new
+                        {
+                            Id = 7,
+                            ContextKey = "short-rent",
+                            RoleKey = "property_manager"
+                        },
+                        new
+                        {
+                            Id = 8,
+                            ContextKey = "long-rent",
+                            RoleKey = "property_manager"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            ContextKey = "short-rent",
+                            RoleKey = "staff"
+                        },
+                        new
+                        {
+                            Id = 10,
+                            ContextKey = "long-rent",
+                            RoleKey = "staff"
+                        },
+                        new
+                        {
+                            Id = 11,
+                            ContextKey = "short-rent",
+                            RoleKey = "accountant"
+                        },
+                        new
+                        {
+                            Id = 12,
+                            ContextKey = "long-rent",
+                            RoleKey = "accountant"
                         });
                 });
 
@@ -3330,6 +3434,221 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 3,
                             PermissionKey = "admin.seo.read"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.members.manage"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.billing.manage"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.billing.read"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.settings.manage"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.suppliers.manage"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.activity.read"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.members.manage"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.billing.manage"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.billing.read"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.settings.manage"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.suppliers.manage"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.activity.read"
+                        },
+                        new
+                        {
+                            RoleId = 6,
+                            PermissionKey = "org.billing.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "property.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "booking.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "booking.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "payment.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "payment.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "ota.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "ota.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "guest.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "guest.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "org.suppliers.manage"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "property.write"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "lease.read"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "lease.create"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "lease.sign"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "lease.register"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "rent.read"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "rent.manage"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "org.suppliers.manage"
+                        },
+                        new
+                        {
+                            RoleId = 9,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 9,
+                            PermissionKey = "booking.read"
+                        },
+                        new
+                        {
+                            RoleId = 9,
+                            PermissionKey = "guest.read"
+                        },
+                        new
+                        {
+                            RoleId = 9,
+                            PermissionKey = "guest.write"
+                        },
+                        new
+                        {
+                            RoleId = 10,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 11,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 11,
+                            PermissionKey = "booking.read"
+                        },
+                        new
+                        {
+                            RoleId = 11,
+                            PermissionKey = "payment.read"
+                        },
+                        new
+                        {
+                            RoleId = 12,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 12,
+                            PermissionKey = "lease.read"
                         });
                 });
 
@@ -4468,6 +4787,11 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OrgId", "StartUtc")
                         .HasDatabaseName("IX_SupplierBusyWindows_OrgId_StartUtc");
+
+                    b.HasIndex("OrgId", "ExternalUid", "StartUtc")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc")
+                        .HasFilter("\"ExternalUid\" IS NOT NULL");
 
                     b.ToTable("SupplierBusyWindows", t =>
                         {
@@ -5679,6 +6003,23 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
 
                     b.Navigation("Party");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OrgMember", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OrgSiteDocument", b =>
