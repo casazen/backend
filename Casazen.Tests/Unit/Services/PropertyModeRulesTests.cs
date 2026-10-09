@@ -63,10 +63,19 @@ public class PropertyModeRulesTests
     }
 
     [Fact]
-    public void CalendarBlockEnd_IsTwoYearsAfterTheDayOfTheChange()
+    public void CalendarBlock_StartsTheNightBeforeTheDayAndEndsTwoYearsAfterIt()
     {
+        var day = new DateTime(2026, 12, 1);
+        var start = PropertyModeRules.CalendarBlockStart(day);
+        var end = PropertyModeRules.CalendarBlockEnd(day);
         Assert.Equal(2, PropertyModeRules.CalendarBlockYears);
-        Assert.Equal(new DateTime(2028, 12, 1, 0, 0, 0, DateTimeKind.Utc), PropertyModeRules.CalendarBlockEnd(new DateTime(2026, 12, 1)));
+        // The night a stay checking out on the day of the change would take. Occupancy is half-open, so that night
+        // overlaps a block that starts the day before and not one that starts on the day.
+        Assert.Equal(day.AddDays(-1), start);
+        Assert.NotEmpty(PropertyOccupancy.NightsIn(start, end, day.AddDays(-1), day));
+        Assert.Empty(PropertyOccupancy.NightsIn(start, end, day.AddDays(-2), day.AddDays(-1)));
+        Assert.Equal(new DateTime(2028, 2, 28), PropertyModeRules.CalendarBlockStart(new DateTime(2028, 2, 29)));
+        Assert.Equal(new DateTime(2028, 12, 1, 0, 0, 0, DateTimeKind.Utc), end);
         // From a 29 February the block ends on the 28th (AddYears), never on a day that does not exist.
         Assert.Equal(new DateTime(2030, 2, 28, 0, 0, 0, DateTimeKind.Utc), PropertyModeRules.CalendarBlockEnd(new DateTime(2028, 2, 29)));
     }

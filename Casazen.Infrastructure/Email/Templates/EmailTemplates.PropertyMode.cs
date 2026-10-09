@@ -20,8 +20,8 @@ public static partial class EmailTemplates
 
     /// <summary>
     /// A change of mode was programmed, to the host: from when, what stays as it is until then, what closes (to long-term the
-    /// calendar, from the day), how to withdraw it. <paramref name="propertyUrl"/> is the property page of the area the
-    /// property is in now.
+    /// calendar, from the night before the day), how to withdraw it. <paramref name="propertyUrl"/> is the property page of
+    /// the area the property is in now.
     /// </summary>
     public static EmailContent PropertyModeChangeScheduled(
         CultureInfo culture,

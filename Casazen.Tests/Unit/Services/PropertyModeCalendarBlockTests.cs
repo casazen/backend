@@ -13,8 +13,8 @@ namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
 /// PM-02: the calendar block of a property that goes long-term (<see cref="CalendarBlockReason.ModeChange"/>). The portals
-/// read it through the iCal export (a neutral all-day event from the day of the change, a stable UID), the single occupancy
-/// rule takes its nights, and the host can neither create it nor remove it by hand: it goes away with the return to short
+/// read it through the iCal export (a neutral all-day event from the night before the change, a stable UID), the single
+/// occupancy rule takes its nights, and the host can neither create it nor remove it by hand: it goes away with the return to short
 /// stays. Its other life (written at the programming, kept when applied, removed on cancel or failure) is in
 /// <see cref="PropertyModeScheduleTests"/> and <see cref="PropertyModeApplyTests"/>.
 /// </summary>
@@ -37,7 +37,7 @@ public class PropertyModeCalendarBlockTests : IDisposable
         var lines = new ICalExportService().BuildPropertyFeed([], exported, "Occupato").Split("\r\n");
 
         Assert.Contains($"UID:block-{block.Id}", lines);
-        Assert.Contains("DTSTART;VALUE=DATE:20261020", lines);
+        Assert.Contains("DTSTART;VALUE=DATE:20261019", lines);
         Assert.Contains("DTEND;VALUE=DATE:20281020", lines);
         Assert.Contains("SUMMARY:Occupato", lines);
         // Never the reason nor the word "mode".
@@ -78,9 +78,9 @@ public class PropertyModeCalendarBlockTests : IDisposable
         _h.Db.ChangeTracker.Clear();
 
         // The booking checks and the public availability read the blocks through PropertyOccupancy: a stay on the closed
-        // nights is refused, the nights before the day of the change are free.
-        Assert.True(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(21), Day(23))));
-        Assert.False(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(17), Day(20))));
+        // nights is refused, including the night that checks out on the day of the change. The night before that is free.
+        Assert.True(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(19), Day(21))));
+        Assert.False(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(17), Day(19))));
     }
 
     // ─── The host cannot touch it ───────────────────────────────────────────────────────────────────

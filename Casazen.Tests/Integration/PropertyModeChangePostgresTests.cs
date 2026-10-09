@@ -197,7 +197,11 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => bookings.AddAsync(NewBooking(property, Today.AddDays(12), Today.AddDays(14), BookingSource.Manual)));
         Assert.Contains("Property not available", error.Message);
-        // The nights before the day of the change stay bookable.
+        // A stay that checks out on the day of the change takes the night before it, which the change treats as not free yet.
+        var checkoutNight = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => bookings.AddAsync(NewBooking(property, Today.AddDays(9), Today.AddDays(10), BookingSource.Manual)));
+        Assert.Contains("Property not available", checkoutNight.Message);
+        // A stay that has already left by the morning before the change stays bookable.
         await bookings.AddAsync(NewBooking(property, Today.AddDays(5), Today.AddDays(9), BookingSource.Manual));
     }
 

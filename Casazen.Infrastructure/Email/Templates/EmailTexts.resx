@@ -688,7 +688,7 @@
     <value>Fino a quel giorno l'immobile resta in affitto breve: le prenotazioni che hai già restano valide.</value>
   </data>
   <data name="PropertyModeScheduled_ToLong_CalendarClosed" xml:space="preserve">
-    <value>Da quel giorno le sue date sono chiuse nel calendario: il sito di prenotazione e i portali che leggono il calendario iCal di CasaZen non accettano più prenotazioni.</value>
+    <value>Dalla notte prima di quel giorno le date sono chiuse nel calendario: il sito di prenotazione e i portali che leggono il calendario iCal di CasaZen non accettano più prenotazioni.</value>
   </data>
   <data name="PropertyModeScheduled_ToShort_Subject" xml:space="preserve">
     <value>Passaggio ad affitto breve programmato - {0}</value>

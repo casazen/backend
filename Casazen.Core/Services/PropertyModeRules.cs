@@ -48,7 +48,21 @@ public static class PropertyModeRules
     /// <summary>The last day a change can be programmed for (<see cref="MaxYearsAhead"/> years from today).</summary>
     public static DateTime LastPossibleDay(DateTime todayInRome) => todayInRome.Date.AddYears(MaxYearsAhead);
 
-    /// <summary>The first free day after the calendar block of a change that starts on <paramref name="effectiveDate"/>.</summary>
+    /// <summary>
+    /// First night the calendar block of a change to long-term closes. A stay takes the nights from its check-in up to,
+    /// and not including, its departure (<see cref="PropertyOccupancy"/>), and it stands in the way of
+    /// <paramref name="effectiveDate"/> when that departure is on the day or later (<see cref="BlockersFor"/>: free from
+    /// the day after the departure). A block that started on the day would leave the night before open, so a booking for
+    /// that night — a checkout on the morning of the change — is accepted and then fails the change. The block therefore
+    /// starts the night before. A stay the rules already allow (it departs on or before the day before) does not overlap
+    /// it.
+    /// </summary>
+    public static DateTime CalendarBlockStart(DateTime effectiveDate) => effectiveDate.Date.AddDays(-1);
+
+    /// <summary>
+    /// The first free day after the calendar block: <see cref="CalendarBlockYears"/> years after
+    /// <paramref name="effectiveDate"/>. The block itself begins the night before (<see cref="CalendarBlockStart"/>).
+    /// </summary>
     public static DateTime CalendarBlockEnd(DateTime effectiveDate) => effectiveDate.Date.AddYears(CalendarBlockYears);
 
     /// <summary>

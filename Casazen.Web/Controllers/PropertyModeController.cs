@@ -100,7 +100,7 @@ public class PropertyModeController(
 
     /// <summary>
     /// Programs the change: 201 with the change (<c>Scheduled</c>). The host gets an e-mail. To long-term the calendar closes
-    /// from the day. 404 <c>property_not_found</c>; 409 <c>property_mode_change_exists</c>,
+    /// from the night before the day. 404 <c>property_not_found</c>; 409 <c>property_mode_change_exists</c>,
     /// <c>property_mode_blocked_by_bookings</c>, <c>property_mode_blocked_by_lease</c>, <c>property_mode_blocked_by_draft_lease</c>;
     /// 422 <c>property_mode_unchanged</c>, <c>property_mode_date_too_early</c>, <c>property_mode_date_too_far</c>.
     /// </summary>

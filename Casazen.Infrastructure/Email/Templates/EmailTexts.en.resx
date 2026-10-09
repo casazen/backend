@@ -688,7 +688,7 @@
     <value>Until then the property stays in short-stay mode: the bookings you already have remain valid.</value>
   </data>
   <data name="PropertyModeScheduled_ToLong_CalendarClosed" xml:space="preserve">
-    <value>From that day its dates are closed in the calendar: the booking site and the portals that read the CasaZen iCal calendar stop taking bookings.</value>
+    <value>From the night before that day its dates are closed in the calendar: the booking site and the portals that read the CasaZen iCal calendar stop taking bookings.</value>
   </data>
   <data name="PropertyModeScheduled_ToShort_Subject" xml:space="preserve">
     <value>Switch to short-stay rental scheduled - {0}</value>

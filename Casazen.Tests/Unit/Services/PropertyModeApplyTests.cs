@@ -40,7 +40,7 @@ public class PropertyModeApplyTests : IDisposable
         Assert.Equal(Now.UtcDateTime, applied.AppliedAt);
         Assert.Null(applied.FailureReason);
         var block = Assert.Single(await _h.ModeChangeBlocksAsync(property.Id));
-        Assert.Equal((Today, new DateTime(2028, 10, 10, 0, 0, 0, DateTimeKind.Utc)), (block.StartUtc, block.EndUtc));
+        Assert.Equal((Today.AddDays(-1), new DateTime(2028, 10, 10, 0, 0, 0, DateTimeKind.Utc)), (block.StartUtc, block.EndUtc));
         Assert.Equal(CalendarBlockSource.Manual, block.Source);
         _h.Notifications.Verify(
             n => n.SendPropertyModeChangeAsync(
@@ -110,7 +110,7 @@ public class PropertyModeApplyTests : IDisposable
         var heldAfter = Assert.Single(await _h.ModeChangeBlocksAsync(property.Id));
         // The same block, the same event for the portals that already read it.
         Assert.Equal(heldBefore.Id, heldAfter.Id);
-        Assert.Equal((Day(11), new DateTime(2028, 10, 11, 0, 0, 0, DateTimeKind.Utc)), (heldAfter.StartUtc, heldAfter.EndUtc));
+        Assert.Equal((Day(10), new DateTime(2028, 10, 11, 0, 0, 0, DateTimeKind.Utc)), (heldAfter.StartUtc, heldAfter.EndUtc));
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class PropertyModeApplyTests : IDisposable
         await _h.Service.ApplyDueAsync();
 
         var block = Assert.Single(await _h.ModeChangeBlocksAsync(property.Id));
-        Assert.Equal(Today, block.StartUtc);
+        Assert.Equal(Today.AddDays(-1), block.StartUtc);
     }
 
     // ─── When ───────────────────────────────────────────────────────────────────────────────────────
@@ -183,8 +183,8 @@ public class PropertyModeApplyTests : IDisposable
         var result = await _h.Service.ApplyDueAsync();
 
         Assert.Equal(1, result.Applied);
-        // The block is the one of the day of the change, not of the day of the run.
-        Assert.Equal(Day(3), Assert.Single(await _h.ModeChangeBlocksAsync(property.Id)).StartUtc);
+        // The block is the one of the change (the night before its day), not of the day of the run.
+        Assert.Equal(Day(2), Assert.Single(await _h.ModeChangeBlocksAsync(property.Id)).StartUtc);
     }
 
     [Fact]

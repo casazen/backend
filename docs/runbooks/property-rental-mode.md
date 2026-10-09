@@ -271,7 +271,7 @@ state. Dates are plain days (`2026-12-01`); a full date-time is a `400`. Enums a
 |---|---|
 | `GET /api/properties/{id}/mode` | 200 `{ propertyId, rentalMode, scheduledChange, lastChange }`: the change waiting for its day (or `null`) and the last one that is over (applied, cancelled or failed) |
 | `GET /api/properties/{id}/mode/preview?to=short\|long&date=2026-12-01` | 200 `{ propertyId, currentMode, targetMode, today, earliestDate, date, canSchedule, issues, blockers, calendarClosedUntil, scheduledChange }`. `date` optional (the first possible day); `issues` are the error codes the creation would answer, `[]` when it can be scheduled; `blockers` are what stands in the way of `date` (`kind` `Stay`, `ImportedBlock`, `Lease`, `DraftLease`; `id`, `start`, `end`, `freeFrom`, `status`, `source`: **ids, dates and a status, never a name, an e-mail or the text of a portal**). 200 even when the change is not possible: the answer says why. `400 property_mode_target_invalid` for a `to` that is not a mode; `422 property_mode_unchanged` |
-| `POST /api/properties/{id}/mode/change` `{ to, effectiveDate }` | 201 with the change (`Scheduled`). The same checks as the preview, made again under the property lock. The host gets an e-mail. To long-term the calendar closes from the day (section 8.4) |
+| `POST /api/properties/{id}/mode/change` `{ to, effectiveDate }` | 201 with the change (`Scheduled`). The same checks as the preview, made again under the property lock. The host gets an e-mail. To long-term the calendar closes from the night before the day (section 8.4) |
 | `DELETE /api/properties/{id}/mode/change/{changeId}` | 204: the change is `Cancelled`; to long-term the calendar opens again. `404 property_mode_change_not_found` (also a change of another property), `409 property_mode_change_not_scheduled` when it is already applied, cancelled or failed |
 
 Errors are ProblemDetails (FD-05) with a stable `code` and a message in the language of the request (`SharedResources`, IT
@@ -300,16 +300,20 @@ the deletion of the block of a mode change.
 ### 8.4 The calendar block (`CalendarBlockReason.ModeChange` = 3)
 
 A change **to long-term** closes the dates of the property with a **manual** calendar block (`Source = Manual`, no feed,
-`ManualReason = ModeChange`, no note) from the day of the change for two years (`PropertyModeRules.CalendarBlockYears`;
-iCal has no event without an end, so the closure is long, not endless). It is the only thing that makes the portals, which
-read the iCal export (`ICalExportService.ExportsBlock`: an all-day event `block-{id}` with the neutral summary, never the
-reason), stop selling the property, and it is taken by the single occupancy rule (`PropertyOccupancy`) like any block.
+`ManualReason = ModeChange`, no note) from the night before the day of the change
+(`PropertyModeRules.CalendarBlockStart`) and runs for two years (`PropertyModeRules.CalendarBlockYears`;
+`CalendarBlockEnd` is that many years after the day; iCal has no event without an end, so the closure is long, not
+endless). It is the only thing that makes the portals, which read the iCal export (`ICalExportService.ExportsBlock`:
+an all-day event `block-{id}` with the neutral summary, never the reason), stop selling the property, and it is taken
+by the single occupancy rule (`PropertyOccupancy`) like any block.
 
 * **Written when the change is programmed**, not only when it is applied: from then on the booking site, the host's own
-  bookings and the portals refuse the nights from the day, so a stay cannot arrive between the programming and the day
-  (the risk named by `gap/06` §4.4). At the application the block is ensured again (an identical one is kept, so the portals
-  keep the same event; a stale one of an earlier round is replaced). **Removed** if the change is cancelled or fails, and when
-  the property goes back to short stays.
+  bookings and the portals refuse the night before the day and the nights from the day. A stay that checks out on the day
+  of the change takes that previous night (occupancy is half-open, `[check-in, check-out)`) and the change treats that
+  checkout as still in the way (`FreeFrom` is the departure plus one day), so the night has to be closed or a booking for
+  it — always possible, the first schedulable day is tomorrow — fails the change at midnight. At the application the
+  block is ensured again (an identical one is kept, so the portals keep the same event; a stale one of an earlier round
+  is replaced). **Removed** if the change is cancelled or fails, and when the property goes back to short stays.
 * The **host cannot create it** (`422 calendar_block_invalid_reason`) **nor delete it** (`422
   calendar_block_held_by_mode_change`): it would reopen the dates. It is listed with the other manual blocks
   (`GET /api/properties/{id}/blocks`, reason `ModeChange`) and shown by the calendar as a manual block (the current screens

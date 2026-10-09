@@ -83,8 +83,8 @@ public sealed record PropertyModeBlockerDto(
 /// would meet today. <see cref="CanSchedule"/> is true when <see cref="Issues"/> is empty. <see cref="Issues"/> are the
 /// stable error codes the creation would answer (<c>property_mode_date_too_early</c>, <c>property_mode_blocked_by_bookings</c>,
 /// <c>property_mode_blocked_by_lease</c>, <c>property_mode_blocked_by_draft_lease</c>, <c>property_mode_change_exists</c>…).
-/// <see cref="CalendarClosedUntil"/>, for a change to long-term, is the first free day after the dates the change closes in
-/// the calendar from <see cref="Date"/>.
+/// <see cref="CalendarClosedUntil"/>, for a change to long-term, is the first free day after the dates the change closes
+/// (two years after <see cref="Date"/>; the block itself starts the night before, so a checkout on that day cannot be booked).
 /// </summary>
 public sealed record PropertyModePreviewResponse(
     Guid PropertyId,

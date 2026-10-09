@@ -385,17 +385,18 @@ public class PropertyModeIntegrationTests : IClassFixture<PropertyModeIntegratio
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var changeId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
 
-        // The booking site: the nights from the day are taken, the ones before it are free.
+        // The booking site: the night that checks out on the day of the change is taken, and the nights from the day on.
+        // A stay that leaves the morning before stays free.
         var booked = (await anonymous.GetFromJsonAsync<JsonElement>(
                 PublicAvailabilityPostgresTests.AvailabilityPath(property.Id, from.AddDays(-2), from.AddDays(3))))
             .GetProperty("bookedDates").EnumerateArray().Select(d => d.GetString()).ToList();
-        Assert.Equal(new[] { 0, 1, 2 }.Select(d => from.AddDays(d).ToString("yyyy-MM-dd")), booked);
+        Assert.Equal(new[] { -1, 0, 1, 2 }.Select(d => from.AddDays(d).ToString("yyyy-MM-dd")), booked);
 
-        // The export read by the portals: an all-day event from the day, for two years, neutral.
+        // The export read by the portals: an all-day event from the night before the day, for two years, neutral.
         var block = await ModeChangeBlockAsync(property.Id);
         var ics = await ExportAsync(host, property.Id);
         Assert.Contains($"UID:block-{block.Id}", ics);
-        Assert.Contains($"DTSTART;VALUE=DATE:{from:yyyyMMdd}", ics);
+        Assert.Contains($"DTSTART;VALUE=DATE:{from.AddDays(-1):yyyyMMdd}", ics);
         Assert.Contains($"DTEND;VALUE=DATE:{from.AddYears(2):yyyyMMdd}", ics);
         Assert.DoesNotContain("ModeChange", ics);
 

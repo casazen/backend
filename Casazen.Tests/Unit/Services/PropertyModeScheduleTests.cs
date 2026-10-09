@@ -11,8 +11,9 @@ namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
 /// PM-02: programming and withdrawing a change of rental mode. One change waiting per property; the same checks as the
-/// preview, made again at the creation; to long-term the calendar closes from the day, at once, for two years (the booking
-/// site, the host and the portals that read the export stop taking those nights); the host is told after the commit.
+/// preview, made again at the creation; to long-term the calendar closes from the night before the day, at once, for two
+/// years (the booking site, the host and the portals that read the export stop taking those nights); the host is told
+/// after the commit.
 /// "Today" is 10 October 2026.
 /// </summary>
 public class PropertyModeScheduleTests : IDisposable
@@ -50,7 +51,7 @@ public class PropertyModeScheduleTests : IDisposable
     }
 
     [Fact]
-    public async Task Schedule_ToLong_ClosesTheCalendarFromTheDayForTwoYears()
+    public async Task Schedule_ToLong_ClosesTheCalendarFromTheNightBeforeTheDayForTwoYears()
     {
         var property = await _h.SeedPropertyAsync();
 
@@ -60,24 +61,27 @@ public class PropertyModeScheduleTests : IDisposable
         Assert.Equal(CalendarBlockSource.Manual, block.Source);
         Assert.Null(block.FeedId);
         Assert.Equal(property.OrgId, block.OrgId);
-        Assert.Equal(Day(20), block.StartUtc);
+        // The night of the 19th checks out on the morning of the 20th, which the change treats as not free yet.
+        Assert.Equal(Day(19), block.StartUtc);
         Assert.Equal(new DateTime(2028, 10, 20, 0, 0, 0, DateTimeKind.Utc), block.EndUtc);
         Assert.Null(block.Summary);
     }
 
     [Fact]
-    public async Task Schedule_ToLong_TheNightsBeforeTheDayStayFree()
+    public async Task Schedule_ToLong_AnEarlierStayStaysFree_TheCheckoutNightOfTheChangeIsClosed()
     {
-        // The stay of the 12th to the 15th is the host's: the block starts after it, from the day of the change.
+        // The stay of the 12th to the 15th leaves on the morning of the 15th: free from the 16th, so it does not stand
+        // in the way. The block starts the night before the change and does not cover that stay.
         var property = await _h.SeedPropertyAsync();
         await _h.SeedStayAsync(property, Day(12), Day(15));
 
         await _h.Service.ScheduleAsync(property.Id, RentalMode.Long, Day(16), UserId);
 
         var block = Assert.Single(await _h.ModeChangeBlocksAsync(property.Id));
-        Assert.Equal(Day(16), block.StartUtc);
+        Assert.Equal(Day(15), block.StartUtc);
         _h.Db.ChangeTracker.Clear();
-        Assert.False(await _h.Db.CalendarBlocks.AnyAsync(b => b.StartUtc <= Day(15) && b.EndUtc > Day(12)));
+        Assert.False(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(12), Day(15))));
+        Assert.True(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(15), Day(16))));
     }
 
     [Fact]
@@ -146,7 +150,7 @@ public class PropertyModeScheduleTests : IDisposable
         var state = await _h.Service.GetStateAsync(property.Id);
         Assert.Equal(second.Id, state.Scheduled!.Id);
         Assert.Equal(first.Id, state.Last!.Id);
-        Assert.Equal(Day(25), Assert.Single(await _h.ModeChangeBlocksAsync(property.Id)).StartUtc);
+        Assert.Equal(Day(24), Assert.Single(await _h.ModeChangeBlocksAsync(property.Id)).StartUtc);
     }
 
     [Fact]
@@ -426,12 +430,13 @@ public class PropertyModeScheduleTests : IDisposable
         var property = await _h.SeedPropertyAsync();
         await _h.Service.ScheduleAsync(property.Id, RentalMode.Long, Day(20), UserId);
 
-        // The rule the public availability, the booking checks and the export use (BK-05): the nights from the day on are
-        // taken, the night before is not (the check-out day stays free).
+        // The rule the public availability, the booking checks and the export use (BK-05). The night before the day is
+        // taken too: a stay on it checks out on the morning of the change. The night before that stays free.
         _h.Db.ChangeTracker.Clear();
+        Assert.True(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(19), Day(20))));
         Assert.True(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(20), Day(21))));
         Assert.True(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(400), Day(401))));
-        Assert.False(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(19), Day(20))));
+        Assert.False(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(18), Day(19))));
         Assert.False(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(900), Day(901))));
     }
 }

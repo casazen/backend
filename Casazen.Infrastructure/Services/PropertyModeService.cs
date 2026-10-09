@@ -34,10 +34,12 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>The only writer of the mode.</b> <c>PropertyRepository.UpdateAsync</c> never writes <c>Properties.RentalMode</c>
 /// (PM-01); after the creation of the property this service is the only code that does.</item>
 /// <item><b>The calendar block.</b> A change <b>to long-term</b> closes the dates with a manual <see cref="CalendarBlock"/>
-/// of reason <see cref="CalendarBlockReason.ModeChange"/>, from its day for <see cref="PropertyModeRules.CalendarBlockYears"/>
-/// years: written when the change is programmed (from then on the booking site, the host and the portals that read the iCal
-/// export stop taking those nights, so a stay cannot arrive between the programming and the day), confirmed when it is
-/// applied, removed if the change is cancelled or fails. A change <b>to short stays</b> removes the block when it is applied.
+/// of reason <see cref="CalendarBlockReason.ModeChange"/>, from the night before its day
+/// (<see cref="PropertyModeRules.CalendarBlockStart"/>) for <see cref="PropertyModeRules.CalendarBlockYears"/> years:
+/// written when the change is programmed (from then on the booking site, the host and the portals that read the iCal
+/// export stop taking those nights, including the night a new stay would take and still check out on the day of the
+/// change, so a stay cannot arrive between the programming and the day), confirmed when it is applied, removed if the
+/// change is cancelled or fails. A change <b>to short stays</b> removes the block when it is applied.
 /// Written in the transaction of the change, not through <see cref="ICalendarBlockService"/> (its checks are the host's: a
 /// year at most, not in the past, no overlap).</item>
 /// <item><b>Compliance.</b> A property back in short-stay mode is evaluated again by
@@ -123,8 +125,9 @@ public sealed class PropertyModeService(
             };
             db.PropertyModeChanges.Add(change);
 
-            // To long-term the calendar closes from the day of the change right now, so nothing new can take those nights
-            // (the site and the host are refused, the portals read the export). Back to short stays nothing closes.
+            // To long-term the calendar closes from the night before the change right now, so nothing new can take a night
+            // that would still be in the way on the day (a checkout that morning). The site and the host are refused, the
+            // portals read the export. Back to short stays nothing closes.
             if (to == RentalMode.Long)
                 await CloseCalendarAsync(property.Id, property.OrgId, day, cancellationToken);
 
@@ -372,15 +375,20 @@ public sealed class PropertyModeService(
                                      && b.ManualReason == CalendarBlockReason.ModeChange);
 
     /// <summary>
-    /// Closes the dates of the property from <paramref name="effectiveDay"/> for <see cref="PropertyModeRules.CalendarBlockYears"/>
-    /// years: one block of reason <see cref="CalendarBlockReason.ModeChange"/>, so the booking site, the host and the export to
-    /// the portals take those nights as taken. Idempotent: an identical block is kept (the portals keep its event), any other
-    /// block of that reason (a stale one) is removed. Saved by the caller, in its transaction.
+    /// Closes the nights of the property from the night before <paramref name="effectiveDay"/>
+    /// (<see cref="PropertyModeRules.CalendarBlockStart"/>) until <see cref="PropertyModeRules.CalendarBlockEnd"/>
+    /// (two years after the day): one block of reason <see cref="CalendarBlockReason.ModeChange"/>, so the booking site,
+    /// the host and the export to the portals take those nights as taken. The night before is the one a new stay would
+    /// take and still check out on the day of the change, which <see cref="PropertyModeRules.BlockersFor"/> treats as not
+    /// free yet; occupancy is half-open, so a block that started on the day would leave that night open. Idempotent: an
+    /// identical block is kept (the portals keep its event), any other block of that reason (a stale one) is removed.
+    /// Saved by the caller, in its transaction.
     /// </summary>
     private async Task CloseCalendarAsync(Guid propertyId, Guid orgId, DateTime effectiveDay, CancellationToken cancellationToken)
     {
-        var start = AsDay(effectiveDay);
-        var end = AsDay(PropertyModeRules.CalendarBlockEnd(start));
+        var day = AsDay(effectiveDay);
+        var start = AsDay(PropertyModeRules.CalendarBlockStart(day));
+        var end = AsDay(PropertyModeRules.CalendarBlockEnd(day));
         var held = await HeldBlocks(propertyId).ToListAsync(cancellationToken);
         var keep = held.FirstOrDefault(b => b.StartUtc.Date == start && b.EndUtc.Date == end);
         db.CalendarBlocks.RemoveRange(held.Where(b => !ReferenceEquals(b, keep)));

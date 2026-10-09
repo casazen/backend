@@ -18,7 +18,8 @@ public enum CalendarBlockReason
 
     /// <summary>
     /// Held by CasaZen, not chosen by the host (PM-02): the property went from short stays to long-term leases and its
-    /// dates are closed from the day of the change for about two years, so the portals that read the iCal export stop
+    /// dates are closed from the night before the day of the change for about two years, so the portals that read the iCal
+    /// export stop
     /// selling them. The host can neither create it (<c>calendar_block_invalid_reason</c>) nor remove it by hand
     /// (<c>calendar_block_held_by_mode_change</c>): it goes away when the property goes back to short stays. Stored as 3;
     /// append only, like every value of this enum.

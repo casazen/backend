@@ -379,8 +379,8 @@ A night already closed by an **imported** block may be closed by hand too: when 
   no channel sent them. Removing the block removes the event at the next read of the export.
 - **Guests** never see the reason: the booking site only shows the night as taken.
 - **The block of a mode change** (PM-02): a property that goes from short stays to long-term has a manual block of reason
-  `ModeChange` (3), written by CasaZen when the change is programmed and kept two years from its day, so the portals that read
-  this export stop selling the property. The host cannot choose that reason (`422 calendar_block_invalid_reason`) nor delete
+  `ModeChange` (3), written by CasaZen when the change is programmed and kept two years from the night before its day, so
+  the portals that read this export stop selling the property. The host cannot choose that reason (`422 calendar_block_invalid_reason`) nor delete
   the block (`422 calendar_block_held_by_mode_change`); it goes away when the change is cancelled or fails and when the
   property goes back to short stays. Everything else on this page (occupancy, export, neutral summary) applies to it as to
   any manual block: [property-rental-mode.md §8.4](property-rental-mode.md#84-the-calendar-block-calendarblockreasonmodechange--3).
