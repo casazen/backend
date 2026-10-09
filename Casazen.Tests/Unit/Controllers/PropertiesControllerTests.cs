@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using Casazen.Core.Authorization;
@@ -1659,12 +1660,30 @@ public class PropertiesControllerTests
         _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.Ape, userId))
             .ThrowsAsync(ApeComplianceException.InvalidContent());
 
-        var result = await _controller.UploadDocument(propertyId, mockFile, "Ape");
+        // Without a request there is no localization middleware: the detail is localized with the UI culture of the thread, which
+        // is the one of the machine (English on a developer's Windows, where the resource text also contains the English
+        // message of the exception, and the check below failed). The product's own language is pinned.
+        var result = await WithUiCultureAsync("it", () => _controller.UploadDocument(propertyId, mockFile, "Ape"));
 
         var problem = AssertProblem(result.Result, StatusCodes.Status400BadRequest);
         Assert.Equal(ApeComplianceException.InvalidContentCode, problem.Extensions["code"]);
-        // The English text of the exception never reaches the client.
+        // The localized text of the resource reaches the client, the English text of the exception never does.
+        Assert.Contains("non è un APE valido", problem.Detail);
         Assert.DoesNotContain("not a valid APE", problem.Detail ?? string.Empty);
+    }
+
+    private static async Task<T> WithUiCultureAsync<T>(string culture, Func<Task<T>> action)
+    {
+        var previous = CultureInfo.CurrentUICulture;
+        CultureInfo.CurrentUICulture = new CultureInfo(culture);
+        try
+        {
+            return await action();
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previous;
+        }
     }
 
     private static ProblemDetails AssertProblem(IActionResult? result, int status)

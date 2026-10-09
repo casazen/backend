@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.DTOs;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.SiteDocuments;
 using Casazen.Web.DTOs.Orgs;
@@ -8,6 +9,7 @@ using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
@@ -20,7 +22,8 @@ public class PublicOrgController(
     IPropertyService propertyService,
     IEntitlementService entitlementService,
     PublicOrgSiteUrls siteUrls,
-    IOrgSiteDocumentService siteDocumentService) : ControllerBase
+    IOrgSiteDocumentService siteDocumentService,
+    IOptions<GdprOptions> gdprOptions) : ControllerBase
 {
     [HttpGet("{slug}")]
     [ProducesResponseType(typeof(PublicOrgDto), StatusCodes.Status200OK)]
@@ -35,6 +38,8 @@ public class PublicOrgController(
 
         var dto = PublicOrgDto.FromOrg(org, entitlementService.ResolveEffectiveTier(org));
         dto.CanonicalUrl = siteUrls.TryLandingUrl(org);
+        // DB-03: the checkout offers the "send me offers" box only when its text has a version (CO-15), like the check-in portal.
+        dto.MarketingConsentVersion = GdprOptions.Normalize(gdprOptions.Value.MarketingConsentVersion);
         return Ok(dto);
     }
 

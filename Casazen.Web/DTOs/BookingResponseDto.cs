@@ -3,6 +3,13 @@ namespace Casazen.Web.DTOs;
 public class BookingResponseDto
 {
     public Guid Id { get; set; }
+
+    /// <summary>
+    /// The code the guest knows, as shown to people (<c>XXXXX-XXXXX</c>): in the confirmation email, on the checkout outcome page
+    /// and in "Le mie prenotazioni". What the host reads out on the phone and searches by (SR-03); never the booking id.
+    /// </summary>
+    public string BookingCode { get; set; } = string.Empty;
+
     public Guid PropertyId { get; set; }
     public string? PropertyName { get; set; }
     public DateTime CheckInDate { get; set; }

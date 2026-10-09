@@ -59,6 +59,8 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(LeasesController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(CanoneConcordatoController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(LongRentServiceRequestsController), CasazenPolicies.LongRentPropertyRead)]
+    [InlineData(typeof(LongRentRentsController), CasazenPolicies.LeaseRead)]
+    [InlineData(typeof(LongRentAgendaController), CasazenPolicies.LeaseRead)]
     public void HostController_ClassPolicyIsAContextReadPermission(Type controllerType, string expectedPolicy)
     {
         var classPolicies = controllerType
@@ -101,6 +103,8 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(SuppliersController), nameof(SuppliersController.GetSuppliers), "RequireContext:short-rent:property.read")]
     [InlineData(typeof(LongRentServiceRequestsController), nameof(LongRentServiceRequestsController.Create), "RequireContext:long-rent:property.write")]
     [InlineData(typeof(LongRentServiceRequestsController), nameof(LongRentServiceRequestsController.MarkPaid), "RequireContext:long-rent:property.write")]
+    [InlineData(typeof(LongRentRentsController), nameof(LongRentRentsController.SendReminder), "RequireContext:long-rent:lease.create")]
+    [InlineData(typeof(LongRentRentsController), nameof(LongRentRentsController.SendReminders), "RequireContext:long-rent:lease.create")]
     [InlineData(typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), "RequireContext:short-rent:ota.write")]
     [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Preview), "RequireContext:short-rent|long-rent:property.write")]
     [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Schedule), "RequireContext:short-rent|long-rent:property.write")]

@@ -317,34 +317,8 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
         Assert.Empty(_sent);
     }
 
-    [Theory]
-    [InlineData(6, null)]
-    [InlineData(5, Questura.BeforeDelivery)]
-    [InlineData(3, Questura.BeforeDelivery)]
-    [InlineData(2, Questura.Delivery)]
-    [InlineData(1, Questura.Delivery)]
-    [InlineData(0, Questura.Deadline)]
-    [InlineData(-1, Questura.Overdue)]
-    [InlineData(-90, Questura.Overdue)]
-    public void QuesturaThresholds_Reached_MostUrgentThresholdOfTheDay(int daysToDeadline, string? expected)
-    {
-        Assert.Equal(expected, Questura.Reached(daysToDeadline));
-    }
-
-    [Theory]
-    [InlineData(16, null)]
-    [InlineData(15, RliDeadlineReminderJob.Thresholds.Days15)]
-    [InlineData(8, RliDeadlineReminderJob.Thresholds.Days15)]
-    [InlineData(7, RliDeadlineReminderJob.Thresholds.Days7)]
-    [InlineData(2, RliDeadlineReminderJob.Thresholds.Days7)]
-    [InlineData(1, RliDeadlineReminderJob.Thresholds.Days1)]
-    [InlineData(0, RliDeadlineReminderJob.Thresholds.Days1)]
-    [InlineData(-1, RliDeadlineReminderJob.Thresholds.Overdue)]
-    [InlineData(-40, RliDeadlineReminderJob.Thresholds.Overdue)]
-    public void Thresholds_Reached_MostUrgentThresholdOfTheDay(int daysRemaining, string? expected)
-    {
-        Assert.Equal(expected, RliDeadlineReminderJob.Thresholds.Reached(daysRemaining));
-    }
+    // The pure threshold theories (QuesturaThresholds.Reached, Thresholds.Reached) are in RliDeadlineThresholdsTests: this class
+    // creates a PostgreSQL database for every test, which they do not need.
 
     [PostgresFact]
     public async Task ExecuteAsync_TwoLandlords_RemindsEachLandlordOnce()

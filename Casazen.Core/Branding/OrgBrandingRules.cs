@@ -13,6 +13,9 @@ public static partial class OrgBrandingRules
     public const string ColorInvalidCode = "org_branding_color_invalid";
     public const string ThemeInvalidCode = "org_branding_theme_invalid";
     public const string TaglineTooLongCode = "org_branding_tagline_too_long";
+    public const string SubtitleTooLongCode = "org_branding_subtitle_too_long";
+    public const string HostNameTooLongCode = "org_branding_host_name_too_long";
+    public const string PhoneInvalidCode = "org_branding_phone_invalid";
     public const string ImageEmptyCode = "org_branding_image_empty";
     public const string ImageTooLargeCode = "org_branding_image_too_large";
     public const string ImageTypeInvalidCode = "org_branding_image_type_invalid";
@@ -20,6 +23,21 @@ public static partial class OrgBrandingRules
 
     /// <summary>Longest tagline, after whitespace is collapsed: one line under the site name in the hero.</summary>
     public const int TaglineMaxLength = 160;
+
+    /// <summary>
+    /// Longest subtitle, after whitespace is collapsed (DB-03): the sentence under the slogan in the cover, a couple of lines
+    /// on a phone.
+    /// </summary>
+    public const int SubtitleMaxLength = 300;
+
+    /// <summary>Longest name of the host as the site shows it (DB-03), after whitespace is collapsed.</summary>
+    public const int HostNameMaxLength = 100;
+
+    /// <summary>Fewest digits of a public phone number (the same bounds as every phone of CasaZen: E.164 has at most 15).</summary>
+    public const int PhoneMinDigits = 6;
+
+    /// <inheritdoc cref="PhoneMinDigits"/>
+    public const int PhoneMaxDigits = 15;
 
     /// <summary>Logo: shown in the site header (about 40 px tall), small file.</summary>
     public static BrandingImageSpec Logo { get; } = new(
@@ -97,6 +115,59 @@ public static partial class OrgBrandingRules
         return collapsed.Length <= TaglineMaxLength
             ? collapsed
             : throw new DomainRuleException(TaglineTooLongCode, "OrgBrandingTaglineTooLong", TaglineMaxLength);
+    }
+
+    /// <summary>
+    /// The subtitle as stored (DB-03), by the same rule as the tagline: trimmed, whitespace collapsed, <c>null</c> when
+    /// empty, plain text. Throws <see cref="DomainRuleException"/> (<see cref="SubtitleTooLongCode"/>) above
+    /// <see cref="SubtitleMaxLength"/> characters.
+    /// </summary>
+    public static string? NormalizeSubtitle(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var collapsed = Whitespace().Replace(value.Trim(), " ");
+        return collapsed.Length <= SubtitleMaxLength
+            ? collapsed
+            : throw new DomainRuleException(SubtitleTooLongCode, "OrgBrandingSubtitleTooLong", SubtitleMaxLength);
+    }
+
+    /// <summary>
+    /// The name of the host as stored (DB-03): trimmed, whitespace collapsed, <c>null</c> when empty. Throws
+    /// <see cref="DomainRuleException"/> (<see cref="HostNameTooLongCode"/>) above <see cref="HostNameMaxLength"/> characters.
+    /// </summary>
+    public static string? NormalizeHostName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var collapsed = Whitespace().Replace(value.Trim(), " ");
+        return collapsed.Length <= HostNameMaxLength
+            ? collapsed
+            : throw new DomainRuleException(HostNameTooLongCode, "OrgBrandingHostNameTooLong", HostNameMaxLength);
+    }
+
+    /// <summary>
+    /// The public phone as stored (DB-03): digits with an optional leading <c>+</c> and nothing else (<c>+39 333 123 4567</c>
+    /// is stored <c>+393331234567</c>), <c>null</c> when empty. Spaces, dots, dashes, brackets and slashes are only how
+    /// people write a number and are dropped; any other character, a <c>+</c> that is not the first, or fewer than
+    /// <see cref="PhoneMinDigits"/> / more than <see cref="PhoneMaxDigits"/> digits is not a phone: throws
+    /// <see cref="DomainRuleException"/> (<see cref="PhoneInvalidCode"/>). It proves nothing about the number being reachable.
+    /// </summary>
+    public static string? NormalizePublicPhone(string? value)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrEmpty(text))
+            return null;
+
+        var onlyPhoneCharacters = text.All(c => char.IsAsciiDigit(c) || c is ' ' or '.' or '-' or '(' or ')' or '/' or '+');
+        var plusOnlyFirst = text.LastIndexOf('+') <= 0;
+        var digits = new string(text.Where(char.IsAsciiDigit).ToArray());
+        if (!onlyPhoneCharacters || !plusOnlyFirst || digits.Length < PhoneMinDigits || digits.Length > PhoneMaxDigits)
+            throw new DomainRuleException(PhoneInvalidCode, "OrgBrandingPhoneInvalid");
+
+        return text.StartsWith('+') ? "+" + digits : digits;
     }
 
     /// <summary>

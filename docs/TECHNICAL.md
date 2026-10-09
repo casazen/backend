@@ -151,6 +151,10 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `DELETE` | `/api/users/{id}` | Admin | Delete user |
 | `POST` | `/api/devices` | JWT | Register iOS/Android push device |
 | `DELETE` | `/api/devices/{deviceId}` | JWT | Unregister device |
+| `GET` | `/api/me/notifications?unread=&page=&pageSize=` | JWT, flag `InAppNotifications` | UI-12a: the caller's in-app notifications (the bell), newest first, paged (`pageSize` 1–50, default 20): `{ items: [{ id, type, entityId, createdAt, readAt }], totalCount, page, pageSize }`. No text: the client writes it from `type` |
+| `GET` | `/api/me/notifications/unread-count` | same | `{ count }` |
+| `POST` | `/api/me/notifications/{id}/read` | same | 204, idempotent; 404 for a notification that is not the caller's (another user's, another org's, deleted, unknown), never 403 |
+| `POST` | `/api/me/notifications/read-all` | same | 204 |
 
 #### Multi-tenancy (orgs & workspace)
 
@@ -222,7 +226,8 @@ Property record choices (PC-02):
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/bookings` | List bookings (filter by `?propertyId=`) |
+| `GET` | `/api/bookings` | List bookings a page at a time (PC-14: `?propertyId&guestId&page&pageSize`, `Bookings:DefaultPageSize` = 10 when `pageSize` is missing, at most 100), answered as `{ items, totalCount, page, pageSize }` |
+| `GET` | `/api/bookings/search` | The same list with days, status and text (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, same order, same answer, same default page size |
 | `GET` | `/api/bookings/{id}` | Get a single booking |
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
 | `PUT` | `/api/bookings/{id}` | Update a booking |
@@ -232,18 +237,40 @@ Property record choices (PC-02):
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
 | `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
 
+**Booking code and the searchable list (SR-03).** Every booking answer carries `bookingCode`, the code the guest knows,
+as `XXXXX-XXXXX` (`BookingCodes.Format`; stored without the dash, unique per org). `GET /api/bookings/search` is the list
+the screens of the Prenotazioni area read (`IBookingSearchService`); `GET /api/bookings` (PC-14) is unchanged and keeps the
+order and the answer the search has (latest check-in first, then the id). It is filtered in SQL by the caller's `HostScope`
+like the plain list (`propertyId` of another org: 404, without `booking.read` on it: 403), and by:
+- `from`, `to` (`yyyy-MM-dd`, both optional, both included): the stays that have a day in the range, from the arrival day to
+  the departure day, compared as stay dates (midnight UTC of the day, never moved to a time zone: `HostCalendarRange`). A
+  `from` after `to` is 400 `booking_list_invalid_range`.
+- `status`: one or more of `Pending`, `Confirmed`, `CheckedIn`, `CheckedOut`, `Cancelled`, repeated or separated by commas,
+  by name and any case (400 `booking_list_invalid_status` for anything else, numbers included); none = every status.
+- `q`: any case, in the name of the guest (first and last, in either order), the email of the guest, the name of the
+  property and, when what was typed can be a piece of a code (`BookingSearchRules.CodeFragment`: no dashes or spaces, `O`
+  read as `0`, `I` and `L` as `1`, at least 3 characters), the booking code. `%` and `_` are ordinary characters. At most
+  100 characters are read.
+- `page` (from 1) and `pageSize` (`Bookings:DefaultPageSize` of the plain list when missing, at most 100; out of range is
+  brought within it). The order is the latest check-in first and the booking id as the tie-break, a total order: the same
+  booking is never on two pages nor on none. One query for the page, and a second for `totalCount` only when the page is full
+  or past the end.
+
 #### Host dashboard (PC-16)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/dashboard/kpis?period=Month&month=yyyy-MM` \| `?period=Last30Days` | short-rent booking.read | KPIs of the period computed on the server (default: current Europe/Rome month); 400 `dashboard_invalid_period` |
+| `GET` | `/api/dashboard/kpis?period=Month&month=yyyy-MM` \| `?period=Last30Days` \| `?period=Next30Days` | short-rent booking.read | KPIs of the period computed on the server (default: current Europe/Rome month); 400 `dashboard_invalid_period`. SR-03, all optional: `&propertyId=` (one property of the caller's reach, else 404), `&compare=true` (adds `previous`) |
+| `GET` | `/api/dashboard/today` | short-rent booking.read | SR-03: the host's day in one read (below): arrivals and departures of today with their online check-in, the check-ins to come, the requests waiting, the things to do in order of priority |
 | `GET` | `/api/dashboard/ical-feeds` | short-rent booking.read + property.read | iCal import feeds of the caller's properties: last sync, status, error code and localized message, feeds with an error first; never the URL |
 
-Both are limited to the caller's `HostScope` (org, and the owned properties unless the role is org-wide), in SQL.
+All are limited to the caller's `HostScope` (org, and the properties the caller reaches unless the role is org-wide: AM-03),
+in SQL.
 Definitions (`IHostDashboardService`, `StayKpiRules`; days are Europe/Rome calendar dates, `RomeCalendar`):
-- **Period**: a calendar month, or the 30 nights ending with tonight (`Last30Days`). A night belongs to the date it
-  starts on.
-- **Occupancy** = occupied property-nights / available property-nights, over the active properties of the scope. A
+- **Period**: a calendar month, the 30 nights ending with tonight (`Last30Days`) or the 30 nights starting tonight
+  (`Next30Days`, SR-03). A night belongs to the date it starts on.
+- **Occupancy** = occupied property-nights / available property-nights, over the active properties of the scope (the ones
+  in long-term mode are not counted: SR-03). A
   night is occupied as in `PropertyOccupancy` (the nights the booking site shows as taken): a booking that occupies
   its dates (`CheckoutHolds.OccupiesDates`: not cancelled, not an expired checkout hold; a valid hold or a pending "pay
   at the property" request counts) or a block imported by an iCal feed. A night closed only by a manual block (owner
@@ -258,6 +285,56 @@ Definitions (`IHostDashboardService`, `StayKpiRules`; days are Europe/Rome calen
   on its Rome date.
 - **Upcoming check-ins**: `Confirmed` bookings from today on (today's arrivals until the host registers them), soonest
   first; never a cancelled booking. **Recent bookings**: the last five created, any status.
+- **Collected** (`collected`, SR-03): the money that came in during the period, by cash, next to the revenue of the stays,
+  which is by accrual (`PaymentCashRules`). A payment counts when it is `Completed` or `PartiallyRefunded` (not a failed,
+  canceled, open or fully refunded one) on the Europe/Rome day of `ProcessedAt` (else of `CreatedAt`, as the fiscal
+  reports do); the amount is the payment minus what was refunded, before any OTA withholding. Payment data: `null` for a
+  caller without `payment.read` (the collaborator), and then in `previous` too. Euros in `amount`, cents in `amountCents`
+  (also on `revenue`).
+- **Direct share** (`directShare`, SR-03): of the confirmed stays of the revenue, how many have source `Direct` (the public
+  checkout of the booking site; a stay the host entered is `Manual`): `{ directStays, stays, rate }`, `rate` `null` without
+  stays.
+- **Previous period** (`previous`, with `compare=true`, SR-03): occupancy, revenue, collected and direct share of the period
+  with **the same number of nights that ends where this one starts** (`HostDashboardPeriod.Previous`), whatever the kind: the
+  30 days before `Last30Days` or `Next30Days`, and for a month the days just before it, not the previous calendar month,
+  which may be a day shorter or longer. The dates are in `previous.period`.
+
+**The host's day (`GET /api/dashboard/today`, SR-03; `IHostTodayService`).** One read, no rule of its own: the lists of
+the day come from `IHostDashboardService.GetTodayStaysAsync` (`StayKpiRules`), the requests from
+`IOnSiteBookingRequestService.GetAwaitingHostApprovalAsync`, the duties from the compliance cockpit described by
+`IComplianceMissingService`.
+`{ today, arrivals, departures, upcoming, approvals, todo }`, each list `{ count, items }` (the count covers all of them;
+`items` carries the first 10, 10, 5, 10 and 20). `arrivals` and `upcoming` rows carry `checkIn { state, dataComplete }`:
+`state` is `NotSent` (no usable link, or its email failed), `Sent`, `InProgress`, `Completed` or `Expired`; `dataComplete`
+says every guest has every field of the Alloggiati record, whoever entered them. No money in the rows. `approvals` are the
+"pay at the property" requests waiting for the host with `respondBy` (UTC): then they are cancelled.
+
+`todo` is in order of priority (`HostTodoPriority`; inside the same priority the nearest `dueAt` first, then the label):
+
+| `priority` | `action` | What | `dueAt` |
+|---|---|---|---|
+| 1 | `RespondToRequest` | a request to accept or decline | `respondBy` |
+| 2 | `ResolveAlloggiatiFailure` | communication in error or rejected | 24 h (6 h for a stay of one night or less) from the arrival |
+| 3 | `SendAlloggiati` | communication to send on the portal | same |
+| 4 | `CompleteGuestCheckIn` | data of the guests incomplete (cockpit: arrivals up to tomorrow) | start of the arrival day |
+| 5 | `ReviewFailedPayment` | confirmed stay whose payment failed and nothing else paid it; only for a caller with `payment.read` | — |
+| 6 | `CheckOut` | departure to close | start of the departure day |
+| 7 | `ConfirmPropertyReady` | property not declared ready after the check-out | — |
+| 8 | `ActivateProperty` | property to activate | — |
+
+Each item is `{ action, priority, dueAt, label, propertyId, propertyName, bookingId, paymentId, missing }`: `action` is the
+destination as a key (the first six repeat `ComplianceCockpitAction` by name; never a path: each client builds the route from
+its own table, as for the cockpit links below) with the ids of its target, `missing` what it still lacks.
+
+**What an item lacks (`missing`, SR-03).** Every item of the cockpit (`GET /api/compliance/summary`) and of `todo` carries
+`missing`, a list of `{ code, field, count }` with stable snake_case codes the client translates (`IComplianceMissingService`;
+never empty). For a property to activate, the blockers of its activation wizard (`activation_cin_missing`,
+`activation_documents_missing`, `safety_*`, ...) with the step as `field` (`base-data`, `cin`, `documents`, `safety`), worked out for
+the first 10 properties of the cockpit (the others: `activation_incomplete`) and `activation_not_confirmed` when only the
+confirmation is left; for the guests of a stay, one `guest_field_missing` per field of the Alloggiati record the guests lack
+(`field` camelCase as `AlloggiatiRecordRules` names it, `count` the guests that lack it) and `guest_composition_invalid` when
+the order of the guests is not accepted; for the others, the single thing left (`checkout_not_closed`, `alloggiati_not_sent`,
+`alloggiati_failed`, `property_ready_not_confirmed`, `approval_not_answered`, `payment_failed`).
 
 The bookings summary of `GET /api/properties/{id}/detail` (A2-36) uses the same rules: `totalBookings` = confirmed
 stays, `upcomingBookings` = upcoming check-ins, `activeBookings` = stays in progress today (checked in, or confirmed
@@ -278,7 +355,7 @@ property is not found; any other failure is a 500.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/leases` | lease.read | List leases (own properties; whole org for org-wide roles) |
+| `GET` | `/api/leases` | lease.read | List leases (the properties the caller reaches, AM-03; whole org for org-wide roles), newest first. LR-01: `?view=All\|Active\|InPreparation\|Expiring\|Ended` (derived from status and end date; 400 `validation_error` otherwise), `?q=` (property or tenant name), `?propertyId=`; each row carries the first tenant by name only (null once anonymized), `nextRentDueDate`, `overdueRentCount`, `overdueRentAmount`, `overdueDays` from the rent ledger, all in one SQL statement. The legacy `status` parameter is still ignored ([`long-rent-aggregates.md`](runbooks/long-rent-aggregates.md)) |
 | `GET` | `/api/leases/{id}` | lease.read | Get lease (property owner or org-wide role of its org) |
 | `POST` | `/api/leases` | lease.create | Create lease (property owner or org-wide role of its org, e.g. PropertyManager) |
 | `GET` | `/api/leases/{id}/contract.pdf` | lease.sign | Final contract to sign offline (approved template only, LT-02/LT-03) |
@@ -294,12 +371,17 @@ property is not found; any other failure is a 500.
 | `PUT` | `/api/leases/{id}/rli/questura/delivery-date` | lease.register | Delivery date of the property (48 hours of the Questura communication count from it; null = start date, LT-07) |
 | `POST` | `/api/leases/{id}/rli/questura/mark-done` | lease.register | Landlord declares the Questura communication for an extra-EU tenant: date + optional receipt PDF (LT-07) |
 | `GET` | `/api/leases/{id}/rli/questura/receipt` | lease.read | Receipt of the Questura communication (private bucket) |
+| `GET` | `/api/long-rent/rents?month=&status=&page=&pageSize=` | lease.read | LR-01. Rent register of the area: the installments due in `month` (`yyyy-MM`, default the current one in Rome) of the leases the caller reaches, `status` `All\|Paid\|Pending\|Overdue`, ordered by due date then id; `counters` = expected, collected, pending and overdue of the whole month. 400 `rent_register_month_invalid` / `rent_register_status_unknown` |
+| `POST` | `/api/long-rent/rents/{id}/reminder` | lease.create | LR-01. Email reminder of an unpaid installment with an optional note (300 characters), with the payment link when the org has Stripe Connect. One per installment every `RentBilling__ReminderIntervalHours` (default 24): 422 `rent_reminder_too_soon`; 422 `rent_no_tenant_email`, `rent_reminder_not_sent`; 409 `rent_installment_not_payable`, `rent_installment_in_flight` |
+| `POST` | `/api/long-rent/rents/reminders` | lease.create | LR-01. The reminder of 1 to 50 installments with one note: 200 with `sent` and `skipped` (each with its error code); 400 `rent_reminder_batch_invalid` |
+| `GET` | `/api/long-rent/deadlines?from=&to=&type=` | lease.read | LR-01. Agenda in date order: RLI registration, Questura, end of the lease, last day of notice (end − 6 months, 4+4 and 3+2 only) and unpaid installments; what is past and still open comes first when the window contains today. Default today + 90 days, at most 366 days; 400 `long_rent_deadlines_range_invalid` / `long_rent_deadlines_type_unknown` |
+| `GET` | `/api/long-rent/overview` | lease.read | LR-01. Numbers of the area (leases by view, rent of the current month), checklist (overdue rent, leases to register, Questura, leases to sign) and the next deadline |
 
 #### Payments & Stripe Connect
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/payments` | JWT | List all payments |
+| `GET` | `/api/payments` | short-rent payment.read | List the payments of the caller's scope, newest first, as list rows (SR-03, below): `?propertyId&bookingId&from&to` |
 | `GET` | `/api/payments/{id}` | JWT | Get a single payment |
 | `POST` | `/api/payments` | JWT | Create a payment record |
 | `POST` | `/api/payments/{id}/process` | JWT | Charge the guest via Stripe |
@@ -308,6 +390,20 @@ property is not found; any other failure is a 500.
 | `POST` | `/api/connect/account` | short-rent property.write | Ensure Stripe Express connected account |
 | `POST` | `/api/connect/onboarding-link` | short-rent property.write | Create Connect onboarding link |
 | `GET` | `/api/connect/status` | short-rent property.write | Connect account status |
+
+**The payment list (`GET /api/payments`, SR-03; `IPaymentListService`).** The answer is an array of rows, no longer the
+`Payment` entity (which came with its whole booking, the Stripe account of the host and the org): `{ id, bookingId,
+bookingCode, propertyId, propertyName, guestName, amount, amountCents, refundedAmount, refundedAmountCents, currency,
+status, method, transactionId, description, stripePaymentIntentId, processedAt, otaWithholdingTax, otaWithholdingTaxCents,
+withholdingTaxApplied, withholdingSource, netAmountAfterWithholding, netAmountAfterWithholdingCents, createdAt, updatedAt }`.
+The fields the web app read before keep their names, types and euros (`amount`, `refundedAmount`, `status` and `method` by
+name, ...): the `*Cents` fields (exact integers) and the names of the guest and of the property are the additions of the new
+screens. Newest first (by creation, the id as the tie-break). `bookingId` and `propertyId` narrow it (404 when the booking or
+the property is not one the caller may read payments of, like a missing one); `from` and `to` (`yyyy-MM-dd`, Europe/Rome days,
+both included, 400 `payment_list_invalid_range` when `from` is after `to`) keep the payments settled in the period: the day of
+`ProcessedAt`, else of `CreatedAt`. The list is limited to the caller's `HostScope` in SQL whatever the criteria say, and the
+payments of a property deleted since are still listed (the fiscal reports' rule). `GET /api/payments/{id}` still answers the
+entity.
 
 #### SaaS billing
 
@@ -349,7 +445,7 @@ property is not found; any other failure is a 500.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/compliance/summary` | short-rent booking.read | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually); items carry an action and its target, never a path (see below) |
+| `GET` | `/api/compliance/summary` | short-rent booking.read | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually); items carry an action and its target, never a path (see below), and `missing`, what they still lack (SR-03, above) |
 | `GET` | `/api/alloggiati/summary` | booking.read | Alloggiati queue / summary |
 | `GET` | `/api/alloggiati/{bookingId}/status` | booking.read | Submission status for a booking |
 | `GET` | `/api/alloggiati/{bookingId}/guest-summary` | booking.read | Per-guest data to copy on the Questura portal, in record order |
@@ -514,10 +610,11 @@ never a link to the dashboard.
 | `POST` | `/api/public/supplier-bookings/reschedule` | Anonymous | The customer moves a new request to another free slot (`startUtc`); 409 `supplier_slot_unavailable` if it is not free (SP-11) |
 | `POST` | `/api/public/supplier-bookings/proposal/accept` | Anonymous | The customer accepts the time the supplier proposed: the request is taken on the supplier's behalf, the slot checked again (SP-11) |
 | `POST` | `/api/public/supplier-bookings/proposal/reject` | Anonymous | The customer turns the proposed time down: the request stays new at its time (SP-11) |
-| `GET` | `/api/public/bookings/property/{propertyId}/availability` | Anonymous | Booked dates for public calendar |
+| `GET` | `/api/public/bookings/property/{propertyId}/availability` | Anonymous | Booked dates for public calendar, and the `minNights` of the property (DB-03) |
 | `GET` | `/api/public/bookings/{bookingId}/status` | Anonymous | Booking status (payment option) |
+| `POST` | `/api/public/bookings/quote` | Anonymous | Price of a stay with its breakdown in cents (`lines`: nights, weekend nights, cleaning, tourist tax, total); 422 `direct_booking_min_nights_not_met` below the minimum stay (DB-03, [direct-booking.md](runbooks/direct-booking.md) § 11) |
 | `POST` | `/api/public/bookings/lookup` | Anonymous | Guest booking lookup by id + email (rate-limited) |
-| `POST` | `/api/public/bookings` | Anonymous | Create direct booking (rate-limited) |
+| `POST` | `/api/public/bookings` | Anonymous | Create direct booking (rate-limited); optional `marketingConsent` (DB-03) |
 | `POST` | `/api/public/service-payments/{id}` | Anonymous (link token in the body) | The payment page of a service a supplier completed: who asks, the lines, the state; 404 `service_payment_link_invalid` for anything wrong; no commission shown (SP-15a, rate-limited) |
 | `POST` | `/api/public/service-payments/{id}/payment-session` | Anonymous (link token in the body) | The PaymentIntent on the supplier's connected account to confirm with Stripe.js (SP-15a, rate-limited) |
 | `GET` | `/api/public/ical/{exportToken}` | Anonymous | Property iCal export feed |
@@ -733,6 +830,19 @@ erDiagram
 `Property.ResponsibleUserId` (`string?`, max 255, FK `Users` SET NULL, indexed): the member in charge of the property, told about it with the
 administrators (`docs/runbooks/org-team.md` § 24).
 
+#### `InAppNotification` (UI-12a)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (CASCADE), tenant key (`ITenantOwned`) | The org the event belongs to: the host org, or the supplier org for the supplier's inbox |
+| `UserId` | `string` (255) | FK `Users` (CASCADE) | The user who is told |
+| `Type` | `string` (64) | — | A value of `PushTypes`; the client writes the text from it. No guest or property name, no free text |
+| `EntityId` | `Guid?` | not a key | The service request (`service-request-*` types) or the booking the event is about |
+| `DeliveryKey` | `string` (200) | — | The key of the push of the same event |
+| | | **unique** `(DeliveryKey, UserId)` (`UIX_InAppNotifications_DeliveryKey_UserId`), indexes on `(UserId, ReadAt, CreatedAt)`, `CreatedAt`, `OrgId` | Once per event and user |
+| `CreatedAt`, `ReadAt` | `DateTime`, `DateTime?` | — | The instant of the event (UTC, microseconds); `null` while unread. Deleted 90 days after `CreatedAt` (`docs/runbooks/in-app-notifications.md`) |
+
 ---
 
 ## Design Patterns
@@ -772,6 +882,8 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
 | `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
 | `OrgInvitationMaintenanceJob` | Hourly at :10 UTC | AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days (`docs/runbooks/org-team.md` § 15) |
+| `InAppNotificationJob` | On push queued (`IPushNotificationService`), flag `InAppNotifications` on | UI-12a: writes one in-app notification per user of the push's audience, once per event and user (`docs/runbooks/in-app-notifications.md`) |
+| `InAppNotificationRetentionJob` | Daily at 03:45 UTC | UI-12a: deletes the in-app notifications older than 90 days; registered whatever the flag says |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment

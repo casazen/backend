@@ -25,7 +25,14 @@ public class LegacyRowsSchemaTests
     private const string Co14 = "EncryptGuestDocumentAndQuesturaCredentials";
     private const string Lt14 = "LeaseMultipleParties";
     private const string Pm01 = "AddPropertyRentalMode";
+    private const string Lr01 = "AddRentRegisterAndReminders";
+    private const string RentScheduleRows = nameof(LegacyRentRows) + ".Schedule";
+    private const string RentInstallmentRows = nameof(LegacyRentRows) + ".Installment";
+    private const string Am01 = "AddOrgMembership";
     private const string Sp10 = "AddShowcaseBooking";
+    private const string Sp05 = "AddSupplierBusyWindowFeedKey";
+    private const string Sp15b = "AddSupplierPaymentRefunds";
+    private const string Db03 = "AddDirectBookingPublicData";
     private const string Latest = "*";
 
     private static readonly Regex InsertShape = new(
@@ -46,6 +53,8 @@ public class LegacyRowsSchemaTests
         [nameof(LegacyLeaseRows)] = LegacyLeaseRows.Statement(new LeaseContract()),
         [nameof(LegacyBookingRows)] = LegacyBookingRows.Statement(new Booking()),
         [nameof(LegacyGuestRows)] = LegacyGuestRows.Statement(new Guest()),
+        [RentScheduleRows] = LegacyRentRows.ScheduleStatement(new Casazen.Core.Entities.RentSchedule()),
+        [RentInstallmentRows] = LegacyRentRows.InstallmentStatement(new RentLedgerEntry()),
     };
 
     private static IReadOnlyList<SchemaStep> Steps => LazySteps.Value;
@@ -61,16 +70,29 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyOrgRows), Co14 },
         { nameof(LegacyOrgRows), Lt14 },
         { nameof(LegacyOrgRows), Pm01 },
+        { nameof(LegacyOrgRows), Am01 },
+        { nameof(LegacyOrgRows), Sp10 },
+        { nameof(LegacyOrgRows), Sp05 },
+        { nameof(LegacyOrgRows), Sp15b },
+        { nameof(LegacyOrgRows), Db03 },
+        { nameof(LegacyOrgRows), Latest },
         { nameof(LegacyPropertyRows), Co14 },
         { nameof(LegacyPropertyRows), Lt14 },
         { nameof(LegacyPropertyRows), Pm01 },
         { nameof(LegacyPropertyRows), Sp10 },
+        { nameof(LegacyPropertyRows), Sp15b },
+        { nameof(LegacyPropertyRows), Db03 },
         { nameof(LegacyPropertyRows), Latest },
         { nameof(LegacyLeaseRows), Lt14 },
         { nameof(LegacyLeaseRows), Pm01 },
         { nameof(LegacyBookingRows), Co14 },
         { nameof(LegacyBookingRows), Pm01 },
         { nameof(LegacyGuestRows), Pm01 },
+        { nameof(LegacyOrgRows), Lr01 },
+        { nameof(LegacyPropertyRows), Lr01 },
+        { nameof(LegacyLeaseRows), Lr01 },
+        { RentScheduleRows, Lr01 },
+        { RentInstallmentRows, Lr01 },
     };
 
     /// <summary>The first migration after which each helper is valid (see the summary of each helper).</summary>
@@ -80,6 +102,7 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyLeaseRows), "LeasePartyRetention" },
         { nameof(LegacyBookingRows), "AddBookingCode" },
         { nameof(LegacyGuestRows), "GuestPrivacyConsentsAndRetention" },
+        { RentInstallmentRows, "AddRentCollection" },
     };
 
     [Theory]
