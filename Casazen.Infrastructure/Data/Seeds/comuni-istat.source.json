@@ -1,6 +1,10 @@
 {
-  "source": "ISTAT, Elenco dei comuni italiani (pagina Classificazioni e strumenti, Codici dei comuni, delle province e delle regioni)",
-  "sourceVersion": "ISTAT, Elenco dei comuni italiani, aggiornato al 21/02/2026 (Elenco-comuni-italiani.xlsx, foglio CODICI al 21_02_2026, consegnato dal product owner il 2026-10-01)",
+  "source": "ISTAT, Elenco dei comuni italiani (permalink CSV of the classification page Codici dei comuni, delle province e delle regioni)",
+  "sourceVersion": "ISTAT, Elenco dei comuni italiani, aggiornato al 21/02/2026",
   "referenceDate": "2026-02-21",
-  "originalFileSha256": "83842076860450f7e482daecea6b7a769f5f93d0bf5b0d48802b44896d7a26d5"
+  "sourceUrl": "https://www.istat.it/storage/codici-unita-amministrative/Elenco-comuni-italiani.csv",
+  "catalogUrl": "https://www.istat.it/classificazione/codici-dei-comuni-delle-province-e-delle-regioni/",
+  "authority": "ISTAT",
+  "retrievedAt": "2026-10-09",
+  "originalFileSha256": "57eaf945182fc64fa05f80f1a5fb2a84cff55ebde2af6e3947a731776e7809e0"
 }

@@ -156,6 +156,9 @@ public class ComuneImportService(
             IsPartial = request.IsPartial,
             ImportedAt = now,
             ImportedBy = Truncate(string.IsNullOrWhiteSpace(request.ImportedBy) ? SystemUser : request.ImportedBy, 200),
+            SourceUrl = TruncateOrNull(request.SourceUrl, 500),
+            Authority = TruncateOrNull(request.Authority, 200),
+            RetrievedAt = request.RetrievedAt,
         };
 
         var toInsert = new List<Comune>();
@@ -266,7 +269,15 @@ public class ComuneImportService(
         }
 
         var result = await ImportAsync(
-            new ComuneImportRequest(SeedFileName, metadata.SourceVersion, metadata.ReferenceDate, SystemUser, ComuneImportOrigin.StartupSeed),
+            new ComuneImportRequest(
+                SeedFileName,
+                metadata.SourceVersion,
+                metadata.ReferenceDate,
+                SystemUser,
+                ComuneImportOrigin.StartupSeed,
+                SourceUrl: metadata.SourceUrl,
+                Authority: metadata.Authority,
+                RetrievedAt: metadata.RetrievedAt),
             csv,
             cancellationToken);
         if (result.Success)
@@ -278,7 +289,12 @@ public class ComuneImportService(
         return ComuneSeedOutcome.Rejected;
     }
 
-    private sealed record SeedMetadata(string SourceVersion, DateOnly ReferenceDate);
+    private sealed record SeedMetadata(
+        string SourceVersion,
+        DateOnly ReferenceDate,
+        string? SourceUrl,
+        string? Authority,
+        DateTime? RetrievedAt);
 
     private static async Task<SeedMetadata?> ReadSeedMetadataAsync(Stream stream, CancellationToken cancellationToken)
     {
@@ -292,7 +308,14 @@ public class ComuneImportService(
                 || !DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var referenceDate))
                 return null;
 
-            return new SeedMetadata(version.Trim(), referenceDate);
+            var sourceUrl = root.TryGetProperty("sourceUrl", out var url) && url.ValueKind == JsonValueKind.String ? url.GetString() : null;
+            var authority = root.TryGetProperty("authority", out var auth) && auth.ValueKind == JsonValueKind.String ? auth.GetString() : null;
+            DateTime? retrievedAt = null;
+            if (root.TryGetProperty("retrievedAt", out var retrieved) && retrieved.ValueKind == JsonValueKind.String
+                && DateOnly.TryParseExact(retrieved.GetString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var retrievedDate))
+                retrievedAt = DateTime.SpecifyKind(retrievedDate.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+
+            return new SeedMetadata(version.Trim(), referenceDate, sourceUrl?.Trim(), authority?.Trim(), retrievedAt);
         }
         catch (JsonException)
         {
@@ -410,28 +433,23 @@ public class ComuneImportService(
     {
         var rows = new List<ParsedComune>();
         var errors = new List<ComuneImportLineError>();
-        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-
-        var headerIndex = Array.FindIndex(lines, line => !string.IsNullOrWhiteSpace(line));
-        if (headerIndex < 0)
+        var records = QuotedCsv.ReadRecords(text, Delimiters);
+        if (records.Count == 0)
             return (rows, [new(0, ComuneImportErrors.EmptyFile)]);
 
-        // The most frequent separator of the header; a tie goes to ';', the one of the official file.
-        var delimiter = Delimiters.MaxBy(d => lines[headerIndex].Count(c => c == d));
-        var header = SplitLine(lines[headerIndex], delimiter).Select(HeaderKey).ToList();
-        var columns = FindColumns(header, headerIndex + 1, errors);
+        var headerRecord = records[0];
+        var header = headerRecord.Cells.Select(HeaderKey).ToList();
+        var columns = FindColumns(header, headerRecord.StartLine, errors);
         if (columns is null)
             return (rows, errors);
 
         var seenIstat = new HashSet<string>(StringComparer.Ordinal);
         var seenCadastral = new HashSet<string>(StringComparer.Ordinal);
-        for (var i = headerIndex + 1; i < lines.Length; i++)
+        for (var i = 1; i < records.Count; i++)
         {
-            if (string.IsNullOrWhiteSpace(lines[i]))
-                continue;
-
-            var lineNumber = i + 1;
-            var cells = SplitLine(lines[i], delimiter);
+            var record = records[i];
+            var lineNumber = record.StartLine;
+            var cells = record.Cells.ToList();
             var (row, error) = ParseRow(lineNumber, cells, columns, referenceDate);
             if (error is null && !seenIstat.Add(row!.IstatCode))
                 error = ComuneImportErrors.DuplicateIstatCode;
@@ -637,51 +655,6 @@ public class ComuneImportService(
         return builder.ToString();
     }
 
-    /// <summary>Splits a delimited line; double quotes enclose a cell and <c>""</c> is a literal quote.</summary>
-    private static List<string> SplitLine(string line, char delimiter)
-    {
-        var cells = new List<string>();
-        var current = new StringBuilder();
-        var quoted = false;
-        for (var i = 0; i < line.Length; i++)
-        {
-            var c = line[i];
-            if (quoted)
-            {
-                if (c == '"' && i + 1 < line.Length && line[i + 1] == '"')
-                {
-                    current.Append('"');
-                    i++;
-                }
-                else if (c == '"')
-                {
-                    quoted = false;
-                }
-                else
-                {
-                    current.Append(c);
-                }
-            }
-            else if (c == '"' && current.ToString().Trim().Length == 0)
-            {
-                current.Clear();
-                quoted = true;
-            }
-            else if (c == delimiter)
-            {
-                cells.Add(current.ToString());
-                current.Clear();
-            }
-            else
-            {
-                current.Append(c);
-            }
-        }
-
-        cells.Add(current.ToString());
-        return cells;
-    }
-
     /// <summary>UTF-8 (with or without BOM) when valid, otherwise Windows-1252; null when neither applies.</summary>
     private static string? Decode(byte[] bytes)
     {
@@ -723,4 +696,12 @@ public class ComuneImportService(
     private static ComuneImportResult Reject(string error) => ComuneImportResult.Rejected(new ComuneImportLineError(0, error));
 
     private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
+
+    private static string? TruncateOrNull(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
 }

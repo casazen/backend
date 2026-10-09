@@ -225,16 +225,31 @@ public class TouristTaxRatesIntegrationTests : IClassFixture<CasazenWebApplicati
 
         Assert.All(seeded, r => Assert.Equal(TouristTaxRateSeed.IstatCodes[r.GetProperty("city").GetString()!], r.GetProperty("istatCode").GetString()));
 
-        // BK-03: Roma by category and Venezia by cadastral group and season, exactly the official rows.
-        var categoryIds = TouristTaxRateSeed.BuildCategoryAndSeasonRates().Select(r => r.Id).Order().ToArray();
+        // BK-03 rows plus the later official extracts (Roma locazione breve, Venezia Gruppo 3 alta).
+        var categoryIds = TouristTaxRateSeed.BuildCategoryAndSeasonRates()
+            .Select(r => r.Id)
+            .Concat(TouristTaxOfficialExtractSeed.NewRates().Where(r => r.City is "Roma" or "Venezia").Select(r => r.Id))
+            .Order()
+            .ToArray();
         var storedCategoryRates = await WithDbAsync(db => db.TouristTaxRates
             .Where(r => r.City == "Roma" || r.City == "Venezia")
             .Select(r => r.Id)
             .ToListAsync());
         Assert.Equal(categoryIds, storedCategoryRates.Order().ToArray());
 
-        // Still not loaded: percentage per person from third parties (Bologna), third-party amount (Torino), no rate.
-        var notLoaded = new[] { "Bologna", "Torino", "Seveso", "Cesano Maderno" };
+        var laterIds = TouristTaxOfficialExtractSeed.NewRates()
+            .Where(r => r.City is "Bologna" or "Torino")
+            .Select(r => r.Id)
+            .Order()
+            .ToArray();
+        var storedLater = await WithDbAsync(db => db.TouristTaxRates
+            .Where(r => r.City == "Bologna" || r.City == "Torino")
+            .Select(r => r.Id)
+            .ToListAsync());
+        Assert.Equal(laterIds, storedLater.Order().ToArray());
+
+        // The municipal pages still publish no tariff.
+        var notLoaded = new[] { "Seveso", "Cesano Maderno" };
         Assert.False(await WithDbAsync(db => db.TouristTaxRates.AnyAsync(r => notLoaded.Contains(r.City))));
     }
 

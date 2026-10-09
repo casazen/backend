@@ -14,6 +14,8 @@ using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
+using Casazen.Core.Options;
+using Casazen.Infrastructure.OfficialData;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Services.ICal;
@@ -384,6 +386,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
         // Guests of a stay and official Alloggiati code tables (CO-12).
         services.AddScoped<IAlloggiatiCodeTableService, AlloggiatiCodeTableService>();
+        services.AddHttpClient<OfficialSourceDownloader>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-official-reference-data/1.0");
+        });
+        services.AddScoped<IOfficialReferenceDataRefreshService, OfficialReferenceDataRefreshService>();
+        services.AddScoped<IComuneOfficialProfileService, ComuneOfficialProfileService>();
+        services.AddOptions<OfficialReferenceDataOptions>()
+            .BindConfiguration(OfficialReferenceDataOptions.SectionName);
         services.AddScoped<IStayGuestService, StayGuestService>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         // D.L. 145/2023 safety checklist of a short-stay property (CO-07).

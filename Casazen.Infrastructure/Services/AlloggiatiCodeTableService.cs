@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -10,8 +11,9 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Official Alloggiati code tables (CO-12). The files are downloaded by an admin from the "Area Download Tabelle" of the
-/// Alloggiati portal (RS-1) and uploaded here; CasaZen never ships nor invents a code. File format (documented in
+/// Official Alloggiati code tables (CO-12). The files come from the public "Area Download Tabelle" of the Alloggiati
+/// portal (no login): the seed of the deploy, the scheduled job, or an admin upload. CasaZen never invents a code.
+/// File format (documented in
 /// <c>docs/runbooks/alloggiati.md</c>): delimited text (<c>;</c>, tab, <c>|</c> or <c>,</c>, detected from the header),
 /// UTF-8 or Windows-1252, a header row naming the columns <c>Codice</c> and <c>Descrizione</c> (also <c>Code</c>,
 /// <c>Description</c>) and, for comuni, optionally <c>Provincia</c> (<c>Province</c>, <c>SiglaProvincia</c>). Other
@@ -116,13 +118,29 @@ public class AlloggiatiCodeTableService(
         return new AlloggiatiCodeBook(counts, entries);
     }
 
+    public const string PoliziaDiStatoAuthority = "Polizia di Stato, Centro Elettronico Nazionale";
+
+    public const string SeedResourcePrefix = "Casazen.Infrastructure.Data.Seeds.alloggiati.";
+
+    public static string SeedResourceName(AlloggiatiCodeTable table) => table switch
+    {
+        AlloggiatiCodeTable.Comuni => SeedResourcePrefix + "comuni.csv",
+        AlloggiatiCodeTable.Stati => SeedResourcePrefix + "stati.csv",
+        AlloggiatiCodeTable.Documenti => SeedResourcePrefix + "documenti.csv",
+        AlloggiatiCodeTable.TipiAlloggiato => SeedResourcePrefix + "tipo_alloggiato.csv",
+        _ => SeedResourcePrefix + table + ".csv",
+    };
+
     public async Task<AlloggiatiCodeImportResult> ImportAsync(
         AlloggiatiCodeTable table,
         Stream content,
         string fileName,
         string sourceVersion,
         string importedBy,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? sourceUrl = null,
+        string? authority = null,
+        bool skipIfUnchanged = false)
     {
         if (string.IsNullOrWhiteSpace(sourceVersion))
             return Rejected(table, AlloggiatiCodeImportErrors.SourceVersionMissing);
@@ -146,19 +164,38 @@ public class AlloggiatiCodeTableService(
             return new AlloggiatiCodeImportResult(table, 0, null, errors);
         }
 
+        var sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        if (skipIfUnchanged)
+        {
+            var lastSha = await db.AlloggiatiCodeTableImports.AsNoTracking()
+                .Where(i => i.Table == table)
+                .OrderByDescending(i => i.ImportedAt)
+                .Select(i => new { i.Sha256, i.Id, i.RowCount })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (lastSha is not null && lastSha.Sha256 == sha256)
+                return new AlloggiatiCodeImportResult(table, lastSha.RowCount, lastSha.Id, [], Unchanged: true);
+        }
+
         var import = new AlloggiatiCodeTableImport
         {
             Table = table,
             SourceFileName = Truncate(Path.GetFileName(fileName ?? string.Empty), 255) is { Length: > 0 } name ? name : "upload",
             SourceVersion = Truncate(sourceVersion.Trim(), 100),
-            Sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+            Sha256 = sha256,
             RowCount = rows.Count,
             ImportedAt = _clock.GetUtcNow().UtcDateTime,
             ImportedBy = Truncate(importedBy, 200),
+            SourceUrl = TruncateOrNull(sourceUrl, 500),
+            Authority = TruncateOrNull(authority, 200),
         };
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        await db.AlloggiatiCodeEntries.Where(e => e.Table == table).ExecuteDeleteAsync(cancellationToken);
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        if (db.Database.IsRelational())
+            await db.AlloggiatiCodeEntries.Where(e => e.Table == table).ExecuteDeleteAsync(cancellationToken);
+        else
+            db.AlloggiatiCodeEntries.RemoveRange(await db.AlloggiatiCodeEntries.Where(e => e.Table == table).ToListAsync(cancellationToken));
         db.AlloggiatiCodeTableImports.Add(import);
         foreach (var row in rows)
         {
@@ -174,13 +211,61 @@ public class AlloggiatiCodeTableService(
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
         db.ChangeTracker.Clear();
 
         logger.LogInformation(
             "Alloggiati {Table} table imported: {RowCount} codes, version {SourceVersion}, import {ImportId}",
             table, rows.Count, import.SourceVersion, import.Id);
         return new AlloggiatiCodeImportResult(table, rows.Count, import.Id, []);
+    }
+
+    public async Task<IReadOnlyList<AlloggiatiCodeImportResult>> ImportSeedIfEmptyAsync(CancellationToken cancellationToken = default)
+    {
+        var results = new List<AlloggiatiCodeImportResult>();
+        var counts = await RowCountsAsync(cancellationToken);
+        var assembly = typeof(AlloggiatiCodeTableService).Assembly;
+        var urls = new OfficialReferenceDataOptions();
+        const string sourceVersion = "Polizia di Stato, Portale Alloggiati, tabelle pubbliche scaricate il 2026-10-09";
+
+        foreach (var table in Enum.GetValues<AlloggiatiCodeTable>())
+        {
+            if (counts.GetValueOrDefault(table) > 0)
+            {
+                logger.LogInformation("Alloggiati {Table} seed skipped: the table already has {Rows} codes", table, counts[table]);
+                results.Add(new AlloggiatiCodeImportResult(table, counts[table], null, [], Unchanged: true));
+                continue;
+            }
+
+            await using var stream = assembly.GetManifestResourceStream(SeedResourceName(table));
+            if (stream is null)
+            {
+                logger.LogWarning("Alloggiati {Table} seed file is not part of this build", table);
+                results.Add(Rejected(table, AlloggiatiCodeImportErrors.EmptyFile));
+                continue;
+            }
+
+            var fileName = table switch
+            {
+                AlloggiatiCodeTable.Comuni => "comuni.csv",
+                AlloggiatiCodeTable.Stati => "stati.csv",
+                AlloggiatiCodeTable.Documenti => "documenti.csv",
+                AlloggiatiCodeTable.TipiAlloggiato => "tipo_alloggiato.csv",
+                _ => $"{table}.csv",
+            };
+            results.Add(await ImportAsync(
+                table,
+                stream,
+                fileName,
+                sourceVersion,
+                "system",
+                cancellationToken,
+                urls.AlloggiatiDownloadUrl(table),
+                PoliziaDiStatoAuthority));
+        }
+
+        return results;
     }
 
     private async Task<Dictionary<AlloggiatiCodeTable, int>> RowCountsAsync(CancellationToken cancellationToken) =>
@@ -343,4 +428,12 @@ public class AlloggiatiCodeTableService(
 
     private static string Truncate(string value, int maxLength) =>
         value.Length <= maxLength ? value : value[..maxLength];
+
+    private static string? TruncateOrNull(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
 }

@@ -114,6 +114,17 @@ public class ComuneImport
     [Required, MaxLength(64)]
     public string Sha256 { get; set; } = string.Empty;
 
+    /// <summary>Official URL the file was downloaded from. Null for an admin upload of a local file.</summary>
+    [MaxLength(500)]
+    public string? SourceUrl { get; set; }
+
+    /// <summary>Publishing body (e.g. ISTAT). Null when not stated.</summary>
+    [MaxLength(200)]
+    public string? Authority { get; set; }
+
+    /// <summary>When the file was retrieved from <see cref="SourceUrl"/>. Null for an admin upload.</summary>
+    public DateTime? RetrievedAt { get; set; }
+
     public int RowCount { get; set; }
     public int InsertedCount { get; set; }
     public int UpdatedCount { get; set; }
@@ -140,4 +151,7 @@ public enum ComuneImportOrigin
 
     /// <summary>Seed file shipped with the deploy (<c>Data/Seeds/comuni-istat.csv</c>), loaded at startup.</summary>
     StartupSeed = 2,
+
+    /// <summary>File downloaded by the scheduled job from the ISTAT permalink.</summary>
+    ScheduledDownload = 3,
 }

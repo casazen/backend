@@ -6,8 +6,8 @@ namespace Casazen.Core.Entities;
 
 /// <summary>
 /// One code of an official Alloggiati Web table (comuni, stati, tipi documento, tipi alloggiato). Platform reference
-/// data, the same for every org: it is loaded only by an admin import of the file downloaded from the Alloggiati portal
-/// (<see cref="AlloggiatiCodeTableImport"/>), never written by hand nor committed in the repository (RS-1, CO-12).
+/// data, the same for every org: loaded only from the official portal file (startup seed, scheduled download or admin
+/// upload; <see cref="AlloggiatiCodeTableImport"/>), never written by hand (RS-1, CO-12).
 /// </summary>
 [Table("AlloggiatiCodeEntries")]
 [Index(nameof(Table), nameof(Code), IsUnique = true)]
@@ -65,6 +65,14 @@ public class AlloggiatiCodeTableImport
     /// <summary>SHA-256 (hex) of the uploaded file.</summary>
     [Required, MaxLength(64)]
     public string Sha256 { get; set; } = string.Empty;
+
+    /// <summary>Official download URL of the table. Null for an admin upload of a local file.</summary>
+    [MaxLength(500)]
+    public string? SourceUrl { get; set; }
+
+    /// <summary>Publishing body (Polizia di Stato). Null when not stated.</summary>
+    [MaxLength(200)]
+    public string? Authority { get; set; }
 
     public int RowCount { get; set; }
 

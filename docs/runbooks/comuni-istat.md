@@ -7,29 +7,27 @@ how it is loaded and updated, what the product does with it and what it does whi
 
 | | |
 |---|---|
-| Source | ISTAT, *Elenco dei comuni italiani* (the "CODICI" sheet of `Elenco-comuni-italiani.xlsx`) |
-| Reference date | **2026-02-21** (the sheet is named `CODICI al 21_02_2026`) |
-| Delivered | by the product owner on **2026-10-01**, after the agents' network could not reach `istat.it`, `interno.gov.it`, `agenziaentrate.gov.it` (proxy 403) |
-| SHA-256 of the original workbook | `83842076860450f7e482daecea6b7a769f5f93d0bf5b0d48802b44896d7a26d5` |
-| In the repository | `Casazen.Infrastructure/Data/Seeds/comuni-istat.csv` (SHA-256 `b90e79d4...3b`, 7,894 comuni, 20 regions), the first sheet converted as it is (UTF-8, `;`), checked cell by cell against the workbook; `comuni-istat.source.json` with source and date; `README.md` of that folder |
-| State | **Done.** Nothing in the list is written by hand: the code only ships the official file and the closed list of the 20 regions (`ItalianRegions`) |
+| Source | ISTAT, *Elenco dei comuni italiani*, permalink CSV of the classification page |
+| Catalog | https://www.istat.it/classificazione/codici-dei-comuni-delle-province-e-delle-regioni/ |
+| File | https://www.istat.it/storage/codici-unita-amministrative/Elenco-comuni-italiani.csv |
+| Reference date | **2026-02-21** ("aggiornato al 21 febbraio 2026" on the catalog page) |
+| Retrieved | **2026-10-09** from the permalink above (official file, not rewritten) |
+| SHA-256 of the CSV | `57eaf945182fc64fa05f80f1a5fb2a84cff55ebde2af6e3947a731776e7809e0` |
+| In the repository | `Casazen.Infrastructure/Data/Seeds/comuni-istat.csv` (the official permalink file as downloaded), `comuni-istat.source.json` with URL, authority, date and SHA-256 |
+| State | **Done.** Loaded at startup from the seed; the Hangfire job `official-reference-data-refresh` re-downloads the permalink every day at 04:30 UTC and imports only when the SHA-256 changed |
 
 The cadastral code of the file comes from the Agenzia delle Entrate (`N.d.` = not available, kept as null). Sheets `NOTE` and `Legenda`
 of the workbook explain the columns: the ISTAT code of a comune is the (historical) province code plus the progressive number.
 
 ### Where to get a newer file
 
-CasaZen never downloads it by itself. The product owner (or an admin with a network that reaches the sites) takes:
+The scheduled job downloads the permalink CSV every day. To replace the seed of the deploy (optional, the job is enough):
 
-1. ISTAT, page **"Codici dei comuni, delle province e delle regioni"** (section *Classificazioni e strumenti*, `www.istat.it`), file
-   **"Elenco dei comuni italiani"** (CSV or XLSX). ISTAT updates it after every change of the territorial classification (mergers, name
-   changes, province changes); the "aggiornato al" date is in the name of the sheet or of the file.
-2. As a cross-check, the **ANPR** archive of the comuni (Ministero dell'Interno, *Anagrafe Nazionale della Popolazione Residente*, "Tabelle
-   di decodifica": the list of the comuni with their start and end of validity). Its headers differ (the importer finds the same columns by
-   synonyms, see below); use it to see suppressed comuni, not to replace the ISTAT list.
+1. ISTAT, page **"Codici dei comuni, delle province e delle regioni"**: https://www.istat.it/classificazione/codici-dei-comuni-delle-province-e-delle-regioni/
+2. Permalink CSV: https://www.istat.it/storage/codici-unita-amministrative/Elenco-comuni-italiani.csv
+3. ISTAT updates it after every change of the territorial classification (mergers, name changes, province changes); the "aggiornato al" date is on the catalog page.
 
-The URLs above are the starting pages as known when this runbook was written; they could not be opened from the agents' environment, so
-the exact file links are not verified here.
+As a cross-check, the **ANPR** archive of the comuni (Ministero dell'Interno) can show suppressed comuni; do not replace the ISTAT list with it.
 
 ## File format accepted
 
@@ -83,7 +81,11 @@ reference date). It never replaces a list that is as recent or more (for example
 instances (advisory lock) and never stops the API if it fails (it logs the reason). `Comuni__SeedOnStartup=false` turns it off. A seed
 file without `comuni-istat.source.json` (`sourceVersion`, `referenceDate`) is refused: nothing is invented for it.
 
-The import takes about a second. After the first deploy the log says `Comuni list imported (StartupSeed): 7894 rows, 7894 new...`.
+The import takes about a second. After the first deploy the log says `Comuni list imported (StartupSeed): 7896 rows, 7896 new...`.
+
+### 3. Every day (scheduled download)
+
+Hangfire job `official-reference-data-refresh` (`OfficialReferenceDataRefreshJob`, 04:30 UTC): reads the catalog page for the "aggiornato al" date, downloads the permalink CSV, and imports it when the SHA-256 differs from the last `ComuneImports` row. Hosts outside ISTAT / `*.gov.it` / `comune.*.it` are refused. `OfficialReferenceData__Enabled=false` turns the job into a no-op.
 
 ### 2. By an admin (any later official file, no deploy)
 
@@ -109,7 +111,7 @@ imports it because its reference date is newer. Without a new reference date not
 ## Check after an import
 
 ```sql
--- Rows, active rows, imports (expected after the seed: 7894 active).
+-- Rows, active rows, imports (expected after the seed: 7896 active).
 SELECT count(*) AS total, count(*) FILTER (WHERE "IsActive") AS active FROM "Comuni";
 SELECT "Origin", "SourceVersion", "ReferenceDate", "RowCount", "InsertedCount", "UpdatedCount", "UnchangedCount", "DeactivatedCount", "ImportedAt"
 FROM "ComuneImports" ORDER BY "ImportedAt" DESC;

@@ -94,6 +94,23 @@ Values are frozen in `TouristTaxRateSeed`; `TouristTaxRateSeedTests` checks them
 The seeded rows have fixed ids (MD5 of ISTAT code + start date) and are inserted once, by the migration. An admin
 change or delete is never overwritten.
 
+There is no national open dataset of tourist-tax rates. Two jobs, with different jobs:
+
+- **`official-reference-data-refresh`** (04:30 UTC daily): ISTAT comuni CSV, Alloggiati tables, and a deterministic
+  re-read of the institutional pages of the **pilot** comuni (`OfficialReferenceData:TouristTaxSources`). It overwrites
+  the matching seed rows in place when the page is readable. It never invents amounts.
+- **`comune-official-profile-refresh`** (05:00 UTC on the 1st of the month) and the Hangfire enqueue after a property
+  is created in a comune: MEF archive `nuova_at` (CSV index + PDF of the act). DeepSeek is used only as an extractor of
+  that already downloaded PDF, never as web search. Amounts are **inserted** as new `TouristTaxRates` rows and previous
+  rows of the same ISTAT code are **closed** (`EffectiveTo`); history is never deleted. `ValidFrom` is the first day of
+  the second month after the MEF publication date.
+
+CasaZen stores this as **reporting data, not legal value**. A PDF that cannot be read is logged (`unreadable` /
+`extract_failed`) with the URL and act id; no estimated amount is written. An extract without `actId` or without the
+HTTPS URL of the downloaded PDF is rejected and `TouristTaxRates` stays untouched.
+
+The daily ISTAT/Alloggiati job and the MEF agent do not call each other.
+
 ## Seed `UnifyTouristTaxOnTouristTaxRates` (BK-03)
 
 Sets `IstatCode` on the 4 rows above and loads the official (U) rows the extended model represents
@@ -109,16 +126,11 @@ Sets `IstatCode` on the 4 rows above and loads the official (U) rows the extende
 | Venezia | Gruppo 2 | 01/01-31/01 | 2,80 | 1,40 | 5 | 10 | 2025-04-01 |
 | Venezia | Gruppo 3 (A/4, A/5) | 01/01-31/01 | 2,10 | 1,00 | 5 | 10 | 2025-04-01 |
 
-Not loaded, on purpose:
+The frozen BK-03 seed left these out. Migration `ApplyOfficialTouristTaxExtracts` (2026-10-09) then inserted the rows
+whose amount is on an institutional page: Roma locazione breve, Venezia Gruppo 3 alta, Bologna (10,5 %, cap 7,00 €),
+Torino (3,80 €). Still without an amount:
 
-- **Roma, "alloggi per uso turistico / locazione breve" 6,00 €**: amount from third parties (T).
-- **Venezia, Gruppo 3 high season 3,00 €**: deduced (D). A Gruppo 3 stay from February is "tariffa non disponibile".
-- **Bologna, 10,5% max 7,00 €**: the percentage and the cap are official, but "per person" (price divided by the guests)
-  comes from third parties only (T) and the start date 01/01/2026 is deduced (D). Once confirmed, the admin adds it:
-  City `Bologna`, ISTAT `037006`, region `EMR`, type "Percentuale del prezzo", 10,5 %, cap 7,00, max nights 5,
-  minimum age 14, from the confirmed date, source B1 of `imposta_soggiorno.md`.
-- **Torino**: amount from third parties (T), nights capped per year (not modelled).
-- **Seveso, Cesano Maderno**: no rate found (an empty rate is never 0). Hosts see the warning.
+- **Seveso, Cesano Maderno**: the municipal pages publish no tariff (an empty rate is never 0). Hosts see the warning.
 
 Roma and Venezia rates are per accommodation category: the public calculator asks the category; property checkouts
 there show "tariffa non disponibile" until properties have a category (open product question, see below).
@@ -128,8 +140,8 @@ there show "tariffa non disponibile" until properties have a category (open prod
 Read-only queries on the environment schema (`casazen_test` / `casazen_prod`):
 
 ```sql
--- The seeded rates, with source and level (expected: 11 rows - Milano, Como, Firenze, Napoli, 2 Roma, 5 Venezia -
--- all VerificationLevel = 'Official', IstatCode set)
+-- The seeded rates, with source and level (expected: 15 rows - Milano, Como, Firenze, Napoli, Torino, Bologna,
+-- 3 Roma, 6 Venezia - all VerificationLevel = 'Official', IstatCode set)
 SELECT "City", "IstatCode", "AccommodationCategory", "SeasonStart", "SeasonEnd", "RatePerPersonPerNight",
        "ReducedRatePerPersonPerNight", "MaxNights", "MinimumAge", "EffectiveFrom", "VerificationLevel"
 FROM "TouristTaxRates" WHERE "SourceUrl" IS NOT NULL ORDER BY "City", "AccommodationCategory", "SeasonStart";
