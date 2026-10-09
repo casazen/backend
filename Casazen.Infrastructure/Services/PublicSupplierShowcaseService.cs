@@ -34,8 +34,9 @@ public sealed class PublicSupplierShowcaseService(
     {
         var normalized = SupplierShowcaseSlug.Normalize(slug);
 
-        // Nothing that long is a slug: no lookup, the same answer as for a slug nobody has.
-        if (normalized.Length is 0 or > PublicShowcaseLimits.SlugMaxLength)
+        // Nothing that long, empty or with a control character (a NUL cannot reach PostgreSQL) is a slug: no lookup, the same
+        // answer as for a slug nobody has.
+        if (!SupplierShowcaseSlug.IsLookupable(normalized, PublicShowcaseLimits.SlugMaxLength))
             return null;
 
         // One statement for unknown, pending and suspended alike: the cost and the answer do not tell them apart.
@@ -54,6 +55,11 @@ public sealed class PublicSupplierShowcaseService(
     public async Task<PublicSupplierExtension> GetExtensionAsync(SupplierProfile supplier, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(supplier);
+
+        // The services are gated in their own statement; the response time is not, so a profile that is not active (a caller
+        // that kept an old one) gets nothing at all.
+        if (supplier.Status != SupplierStatus.Active)
+            return new PublicSupplierExtension([], null);
 
         // One after the other: the reads share the request's context.
         var services = await catalog.ListPublicAsync(supplier.OrgId, cancellationToken);
@@ -77,7 +83,7 @@ public sealed class PublicSupplierShowcaseService(
         ArgumentNullException.ThrowIfNull(supplier);
 
         var normalized = SupplierShowcaseSlug.Normalize(serviceSlug);
-        if (normalized.Length is 0 or > SupplierServiceCatalogLimits.SlugMaxLength)
+        if (!SupplierShowcaseSlug.IsLookupable(normalized, SupplierServiceCatalogLimits.SlugMaxLength))
             return null;
 
         return await catalog.FindPublicAsync(supplier.OrgId, normalized, cancellationToken);

@@ -451,6 +451,27 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.DoesNotContain(forB.GetProperty("days").EnumerateArray(), d => d.GetProperty("available").GetBoolean()); // B has no hours
     }
 
+    [Fact]
+    public async Task ASlugWithAControlCharacter_IsA404ForTheServiceOfTheSlotsAndTheEstimate_NeverA500()
+    {
+        // A NUL cannot be sent to PostgreSQL (error 22021): on a real database a lookup with it would be a 500. The lookups
+        // of slugs refuse a control character before asking, so the answer is the plain "not found".
+        var supplier = await PublicShowcaseTestData.SeedSupplierAsync(factory);
+        await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
+        using var client = factory.CreateClient();
+
+        var slots = await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/slots?service=%00");
+        var slotsInside = await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/slots?service=pulizia%00profonda");
+        var quote = await PostAsync(client, supplier.Slug, "quote", new { service = "\u0000" });
+
+        // (A NUL in the path itself never reaches the action: the host refuses the request target.)
+        foreach (var response in new[] { slots, slotsInside, quote })
+        {
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Equal("supplier_service_not_found", (await ReadAsync(response)).GetProperty("code").GetString());
+        }
+    }
+
     // ─── The estimate ────────────────────────────────────────────────────────────
 
     [Fact]

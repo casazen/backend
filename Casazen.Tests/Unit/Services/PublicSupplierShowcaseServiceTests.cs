@@ -75,6 +75,39 @@ public class PublicSupplierShowcaseServiceTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => showcase.FindActiveSupplierAsync(Slug));
     }
 
+    [Theory]
+    [InlineData("\0")]
+    [InlineData("supplier\0srl")]
+    [InlineData("supplier-srl\0")]
+    [InlineData("supplier\tsrl")]
+    [InlineData("supplier\u0085srl")]
+    public async Task FindActiveSupplierAsync_ASlugWithAControlCharacter_IsNullWithoutALookup(string slug)
+    {
+        // A NUL cannot even be sent to PostgreSQL (22021): asking would be a 500 for a visitor who typed %00.
+        using var s = await WorldAsync();
+        var showcase = Showcase(s);
+        await s.Db.DisposeAsync();
+
+        Assert.Null(await showcase.FindActiveSupplierAsync(slug));
+    }
+
+    [Theory]
+    [InlineData("\0")]
+    [InlineData("pulizia\0")]
+    [InlineData("pu\0lizia")]
+    [InlineData("pulizia\nprofonda")]
+    public async Task FindServiceAsync_ASlugWithAControlCharacter_IsNullWithoutALookup_ForSlotsAndEstimateToo(string serviceSlug)
+    {
+        using var s = await WorldAsync();
+        var showcase = Showcase(s);
+        var supplier = await SupplierAsync(s);
+        await s.Db.DisposeAsync();
+
+        Assert.Null(await showcase.FindServiceAsync(supplier, serviceSlug));
+        Assert.Null(await showcase.GetSlotsAsync(supplier, serviceSlug, null, null));
+        Assert.Null(await showcase.QuoteAsync(supplier, serviceSlug, new SupplierQuoteRequest(null, null, null, null, null)));
+    }
+
     // ─── Services ────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -182,6 +215,24 @@ public class PublicSupplierShowcaseServiceTests
         var extension = await Showcase(s).GetExtensionAsync(await SupplierAsync(s));
 
         Assert.Single(extension.Services);
+        Assert.Null(extension.MedianResponseMinutes);
+    }
+
+    [Theory]
+    [InlineData(SupplierStatus.Pending)]
+    [InlineData(SupplierStatus.Suspended)]
+    public async Task GetExtensionAsync_AProfileThatIsNotActive_GetsNothingAtAll_NotEvenTheResponseTime(SupplierStatus status)
+    {
+        using var s = await WorldAsync();
+        var now = ServiceRequestScenario.Instant.UtcDateTime;
+        foreach (var minutes in new[] { 5, 10, 20, 30, 40 })
+            await s.SeedAsync(ServiceRequestStatus.PresoInCarico, r => Taken(r, now.AddDays(-2), minutes));
+        var stale = (await SupplierAsync(s));
+        stale.Status = status; // a caller that kept an old profile object
+
+        var extension = await Showcase(s).GetExtensionAsync(stale);
+
+        Assert.Empty(extension.Services);
         Assert.Null(extension.MedianResponseMinutes);
     }
 
