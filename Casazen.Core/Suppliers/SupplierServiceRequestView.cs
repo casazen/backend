@@ -45,6 +45,7 @@ namespace Casazen.Core.Suppliers;
 /// <param name="Cancellation">When, by whom and why the request was cancelled.</param>
 /// <param name="CompletionNotes">What the supplier wrote when it completed the work.</param>
 /// <param name="WorkPhotos">The photos of the work, in the private bucket (the ids the download endpoint takes).</param>
+/// <param name="PaymentMode">How the request is paid (SP-15a): decided when the supplier took it; <c>Manual</c> for every earlier request.</param>
 public sealed record SupplierServiceRequestView(
     Guid Id,
     ServiceRequestRentalContext RentalContext,
@@ -73,7 +74,8 @@ public sealed record SupplierServiceRequestView(
     SupplierJobProposal? Proposal,
     SupplierJobCancellation? Cancellation,
     string? CompletionNotes,
-    IReadOnlyList<ServiceRequestPhoto> WorkPhotos);
+    IReadOnlyList<ServiceRequestPhoto> WorkPhotos,
+    ServiceRequestPaymentMode PaymentMode = ServiceRequestPaymentMode.Manual);
 
 /// <summary>The values of <see cref="SupplierServiceRequestView.Source"/>.</summary>
 public static class SupplierRequestSources

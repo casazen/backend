@@ -339,8 +339,37 @@ public interface IServiceRequestService
     /// <summary>The host turns the proposal down (SP-04): the request stays <c>Richiesto</c> as it was; the supplier is told.</summary>
     Task<ServiceRequest> RejectProposalAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>Marks a completed request of <paramref name="hostOrgId"/> as paid; another org's request is not found.</summary>
+    /// <summary>
+    /// Marks a completed request of <paramref name="hostOrgId"/> as paid; another org's request is not found. A request paid
+    /// inside CasaZen (<see cref="ServiceRequestPaymentMode.Online"/>, SP-15a) cannot be marked by hand: 422
+    /// <see cref="ServicePaymentErrors.OnlinePayment"/>.
+    /// </summary>
     Task<ServiceRequest> MarkPaidAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The host confirms the final amount of a completed request that is above the quote by more than the tolerance (SP-15a,
+    /// decision D7): the request no longer needs the confirmation and, when it is paid inside CasaZen, its payment is created and
+    /// the link sent. Confirming twice is not an error; another org's request is not found; 422
+    /// <see cref="ServicePaymentErrors.NoConfirmationNeeded"/> when there is nothing to confirm.
+    /// </summary>
+    Task<ServiceRequest> ConfirmFinalAmountAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The supplier sends the payment request of a completed request paid inside CasaZen, or reminds the payer (at most once a
+    /// day), SP-15a. Behind the flag <c>SupplierOnlinePayments</c> at the endpoint. Returns the payment.
+    /// </summary>
+    Task<ServiceRequestPayment> RequestPaymentAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The supplier records that it was paid outside CasaZen (SP-15a, decision D5): <c>Completato → Pagato</c>, no commission. On a
+    /// request paid inside CasaZen the <paramref name="reason"/> is required (the trace of the exception). Returns the payment.
+    /// </summary>
+    Task<ServiceRequestPayment> RecordOfflinePaymentAsync(
+        Guid id,
+        Guid supplierOrgId,
+        string userId,
+        string? reason,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The supplier takes several new requests as they are (SP-04, at most <see cref="ServiceRequestLimits.MaxBatchAccept"/>):

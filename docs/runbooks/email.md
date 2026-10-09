@@ -104,6 +104,9 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `property-mode-change-failed` | host | the job could not apply the change (stays, imported blocks or leases in the way): why and the first free day | same, once per change |
 | `service-request-created` | supplier | new service request | `ServiceRequestService`, queued |
 | `service-request-status-changed` | host | request taken / completed / rejected by the supplier | `ServiceRequestService`, queued |
+| `service-payment-request`, `service-payment-reminder` | host org (the payer) | a service paid inside CasaZen was completed / the supplier asks again: the price, who asks and the link of the payment page (valid `SupplierPayments__PaymentLinkValidityDays`); never the commission (SP-15a) | `ServiceRequestService` (completion, confirmation of the amount) and `SupplierPaymentService.RequestPaymentAsync`, queued after the save; a link that cannot be queued is taken back |
+| `service-payment-received` | supplier | a payment made online was received: gross, CasaZen commission, net before Stripe's fees, no payout date promised (SP-15a: template ready, sent by the webhook of SP-15b) | `SupplierPaymentService` (SP-15b), queued |
+| `service-payment-offline-recorded` | host org (the payer) | the supplier recorded a payment received outside CasaZen, with its reason (SP-15a) | `SupplierPaymentService.RecordOfflineAsync`, queued |
 | `supplier-invite` | prospective supplier | invite by a platform admin | `SupplierService`, queued |
 | `supplier-booking-verification` | customer of a supplier's showcase | the customer booked a slot: the link that checks its address (SP-10) | `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-receipt` | customer | the address is checked: code, time by which the supplier answers, estimate | same |

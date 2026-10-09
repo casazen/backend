@@ -78,6 +78,15 @@ internal sealed class ServiceRequestScenario : IDisposable
 
     public SupplierServiceCatalogService Catalog => _kit.Catalog;
 
+    /// <summary>The payment service of SP-15a, over <see cref="Gateway"/>.</summary>
+    public SupplierPaymentService Payments => _kit.Payments;
+
+    /// <summary>The fake Stripe of the payments: nothing in a scenario reaches the real one.</summary>
+    public FakeSupplierPaymentGateway Gateway => _kit.Gateway;
+
+    /// <summary>The feature flags of the scenario: all off until a test (or <see cref="EnablePaymentsAsync"/>) switches one on.</summary>
+    public TestFeatureFlags Flags => _kit.Flags;
+
     public Guid HostOrgId { get; private set; }
 
     public Guid PropertyId { get; private set; }
@@ -96,12 +105,14 @@ internal sealed class ServiceRequestScenario : IDisposable
     /// When given, the context carries the converters of the encrypted personal columns, as in production
     /// (<c>EncryptedColumns</c>). The in-memory provider keeps the values it is given, so what is stored is proved on PostgreSQL.
     /// </param>
+    /// <param name="paymentOptions">The options of the payments (SP-15a): a platform commission of 10 % when null.</param>
     public static async Task<ServiceRequestScenario> CreateAsync(
         ServiceRequestOptions? options = null,
         FailingSaveInterceptor? saveInterceptor = null,
         ShowcaseBookingOptions? showcaseOptions = null,
         string? publicSiteBaseUrl = EmailTestHelpers.PublicSiteBaseUrl,
-        IDataProtectionProvider? dataProtection = null)
+        IDataProtectionProvider? dataProtection = null,
+        SupplierPaymentsOptions? paymentOptions = null)
     {
         var builder = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString());
         if (saveInterceptor is not null)
@@ -111,10 +122,50 @@ internal sealed class ServiceRequestScenario : IDisposable
         var clock = new FakeTimeProvider(Instant);
         var emails = new RecordingEmailQueue();
         var pushes = new ClearablePushQueue();
-        var kit = new ServiceRequestTestKit(db, emails, pushes, clock, options, publicSiteBaseUrl, showcaseOptions);
+        var kit = new ServiceRequestTestKit(
+            db, emails, pushes, clock, options, publicSiteBaseUrl, showcaseOptions, paymentOptions: paymentOptions);
         var scenario = new ServiceRequestScenario(kit, clock, emails, pushes);
         await scenario.SeedWorldAsync();
         return scenario;
+    }
+
+    /// <summary>The Stripe account the supplier of the scenario is connected to when <see cref="ConnectSupplierAsync"/> is not told another.</summary>
+    public const string SupplierAccountId = "acct_supplier_scenario";
+
+    /// <summary>
+    /// Switches the payments flag on and connects the supplier's Stripe account: from here a request is paid inside CasaZen when the
+    /// supplier takes it (SP-15a). <paramref name="ready"/> false leaves the account without charges and payouts (the KYC is not done).
+    /// </summary>
+    public async Task EnablePaymentsAsync(bool ready = true)
+    {
+        Flags.Set(Casazen.Core.Features.FeatureFlags.SupplierOnlinePayments, true);
+        await ConnectSupplierAsync(ready);
+    }
+
+    /// <summary>Gives the supplier org a connected account, with charges and payouts enabled when <paramref name="ready"/>.</summary>
+    public async Task ConnectSupplierAsync(bool ready = true, string accountId = SupplierAccountId)
+    {
+        var org = await Db.Orgs.SingleAsync(o => o.Id == SupplierOrgId);
+        org.StripeConnectedAccountId = accountId;
+        org.ConnectChargesEnabled = ready;
+        org.ConnectPayoutsEnabled = ready;
+        await Db.SaveChangesAsync();
+    }
+
+    /// <summary>The payments of a request as saved, whatever the context tracks (canceled ones included).</summary>
+    public async Task<List<ServiceRequestPayment>> PaymentsOfAsync(Guid requestId) =>
+        await Db.ServiceRequestPayments.AsNoTracking().Where(p => p.ServiceRequestId == requestId).OrderBy(p => p.CreatedAt).ToListAsync();
+
+    /// <summary>
+    /// A request paid inside CasaZen that the supplier completed with <paramref name="finalAmountCents"/> (the payments enabled, the
+    /// supplier connected): the request, taken and completed through the service the way the API does.
+    /// </summary>
+    public async Task<ServiceRequest> CompletedOnlineAsync(int? finalAmountCents = ServicePriceCents)
+    {
+        await EnablePaymentsAsync();
+        var request = await TakenAsync();
+        return await Service.CompleteAsync(
+            request.Id, SupplierOrgId, new CompleteServiceRequestCommand(FinalAmountCents: finalAmountCents));
     }
 
     /// <summary>Forgets the emails and pushes queued so far, to assert only on what the next step queues.</summary>
@@ -191,6 +242,15 @@ internal sealed class ServiceRequestScenario : IDisposable
         await Db.SaveChangesAsync();
         Db.ChangeTracker.Clear();
         return request;
+    }
+
+    /// <summary>Writes a change straight to a request (a state the flows reach slowly), whatever the context tracks.</summary>
+    public async Task ChangeRequestAsync(Guid id, Action<ServiceRequest> change)
+    {
+        var request = await Db.ServiceRequests.IgnoreQueryFilters().SingleAsync(r => r.Id == id);
+        change(request);
+        await Db.SaveChangesAsync();
+        Db.ChangeTracker.Clear();
     }
 
     public async Task SetSupplierStatusAsync(SupplierStatus status)

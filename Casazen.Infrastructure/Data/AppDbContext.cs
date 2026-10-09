@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Options;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
@@ -120,6 +121,9 @@ public class AppDbContext(
     /// </summary>
     public DbSet<ServiceCustomer> ServiceCustomers { get; set; } = null!;
     public DbSet<ShowcaseBookingHold> ShowcaseBookingHolds { get; set; } = null!;
+
+    // Payment of the service requests inside CasaZen (SP-15a): two parties, not tenant-filtered.
+    public DbSet<ServiceRequestPayment> ServiceRequestPayments { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
@@ -1384,6 +1388,75 @@ public class AppDbContext(
             {
                 t.HasCheckConstraint("CK_ShowcaseBookingHolds_Interval", "\"StartUtc\" < \"EndUtc\"");
                 t.HasCheckConstraint("CK_ShowcaseBookingHolds_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
+            });
+        });
+
+        // ─── Payment of the service requests inside CasaZen (SP-15a) ─────────────
+        // The commission a supplier is charged instead of the platform's (an admin sets it, SP-15b): a percentage, 0 to 50.
+        modelBuilder.Entity<SupplierProfile>().ToTable(t =>
+            t.HasCheckConstraint(
+                "CK_SupplierProfiles_CommissionPercentOverride",
+                $"\"CommissionPercentOverride\" IS NULL OR \"CommissionPercentOverride\" BETWEEN 0 AND {(int)SupplierPaymentsOptions.MaxCommissionPercent}"));
+
+        // One payment per request that is not canceled: the live one. A canceled row (replaced by an offline record, or withdrawn)
+        // frees the request, so the index ignores it. The creation paths also take the advisory lock ServiceRequestPayment; this
+        // index is what makes a second live payment impossible even if one of them did not.
+        modelBuilder.Entity<ServiceRequestPayment>(entity =>
+        {
+            entity.HasOne(p => p.ServiceRequest)
+                .WithMany()
+                .HasForeignKey(p => p.ServiceRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(p => p.SupplierOrg)
+                .WithMany()
+                .HasForeignKey(p => p.SupplierOrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(p => p.PayerOrg)
+                .WithMany()
+                .HasForeignKey(p => p.PayerOrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(p => p.ServiceRequestId)
+                .IsUnique()
+                .HasDatabaseName(ServiceCharges.LivePaymentIndexName)
+                .HasFilter($"\"Status\" <> {(int)ServicePaymentStatus.Canceled}");
+
+            // A PaymentIntent belongs to one payment: the webhook finds its payment by it (SP-15b).
+            entity.HasIndex(p => p.StripePaymentIntentId)
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPayments_StripePaymentIntentId")
+                .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
+
+            entity.HasIndex(p => new { p.SupplierOrgId, p.Status });
+            entity.HasIndex(p => p.PayerOrgId);
+
+            // The JSON column is added to no existing rows, but the database gives it the empty list like the other jsonb columns.
+            entity.Property(p => p.LineItemsJson).HasDefaultValue("[]");
+
+            // The checks mirror the rules of the service: a bad row is refused by the database too. The amounts follow
+            // SupplierCommission (the fee is strictly below the amount, or 0 for none, and the net is what is left), the percentage
+            // is the one of the options, a host payer has its org, and a payment that was paid says when and how.
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_Amounts",
+                    $"\"AmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents} AND \"ApplicationFeeCents\" >= 0 "
+                    + "AND \"ApplicationFeeCents\" < \"AmountCents\" AND \"NetCents\" = \"AmountCents\" - \"ApplicationFeeCents\" "
+                    + "AND \"RefundedCents\" BETWEEN 0 AND \"AmountCents\" AND \"PaymentIntentCount\" >= 0 AND \"SentCount\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_CommissionPercent",
+                    $"\"CommissionPercent\" BETWEEN 0 AND {(int)SupplierPaymentsOptions.MaxCommissionPercent}");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_FeeVat",
+                    "(\"FeeVatMode\" IS NULL AND \"FeeVatCents\" IS NULL) OR "
+                    + "(\"FeeVatMode\" IS NOT NULL AND \"FeeVatCents\" IS NOT NULL AND \"FeeVatCents\" >= 0)");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_Payer",
+                    $"(\"PayerKind\" = {(int)ServicePayerKind.Host} AND \"PayerOrgId\" IS NOT NULL) OR \"PayerKind\" = {(int)ServicePayerKind.Private}");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_Paid",
+                    $"\"Status\" NOT IN ({(int)ServicePaymentStatus.Paid}, {(int)ServicePaymentStatus.PartiallyRefunded}, {(int)ServicePaymentStatus.Refunded}) "
+                    + "OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
             });
         });
 

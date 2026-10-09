@@ -453,6 +453,15 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.ServiceRequestOptions>, Casazen.Core.Options.ServiceRequestOptionsValidator>();
         services.AddScoped<ServiceRequestNotifier>();
+        // Payment of the service requests inside CasaZen (SP-15a, decision D2): direct charge on the supplier's Stripe account with
+        // the platform commission. The commission and the times are configuration (SupplierPayments), validated at startup: the
+        // percentage has no default in code. The gateway is the only place that sets the application fee.
+        services.AddOptions<Casazen.Core.Options.SupplierPaymentsOptions>()
+            .BindConfiguration(Casazen.Core.Options.SupplierPaymentsOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierPaymentsOptions>, Casazen.Core.Options.SupplierPaymentsOptionsValidator>();
+        services.AddSingleton<ISupplierPaymentGateway, StripeSupplierPaymentGateway>();
+        services.AddScoped<ISupplierPaymentService, SupplierPaymentService>();
         // One instance per request for both doors (SP-11): the hosts' and the suppliers' operations, and the narrow set of what the
         // customer of a public showcase does to its own request, which only the customer's area (IShowcaseBookingManager) uses.
         services.AddScoped<ServiceRequestService>();

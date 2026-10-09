@@ -166,6 +166,15 @@ internal static class PostgresAdvisoryLocks
         ServiceCustomerRetentionRun = 1_313,
 
         /// <summary>
+        /// Payment of one service request (key: the request id, <c>requestId.ToString("N")</c>): the payment session of the payer
+        /// (anonymous with the link, or the signed-in host), the supplier's payment request and reminder, the offline record, and
+        /// (SP-15b) the Stripe webhook and the refunds change the payment one at a time, so a request never gets two payable
+        /// PaymentIntents, a link is never sent while another is being issued, and an offline record never races a payment in
+        /// progress (SP-15a). The values 1_320 to 1_329 are the payments of the service requests.
+        /// </summary>
+        ServiceRequestPayment = 1_320,
+
+        /// <summary>
         /// The people of one org (key: org id): adding, changing, deactivating or removing a member, and the owner's
         /// creation, run one at a time, so the owner rule is decided on rows nobody else is changing (AM-01). The seat
         /// count is decided under <see cref="OrgSeats"/>, which the callers take <b>before</b> this one (AM-02).

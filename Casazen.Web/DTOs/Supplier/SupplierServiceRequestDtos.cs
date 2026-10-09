@@ -129,6 +129,13 @@ public class SupplierServiceRequestDto
 
     /// <summary>The photos of the work; each <c>url</c> is an authenticated endpoint (the files are private).</summary>
     public IEnumerable<ServiceRequestWorkPhotoDto> WorkPhotos { get; set; } = [];
+
+    /// <summary>
+    /// How the request is paid (SP-15a), fixed when the supplier took it: <c>Online</c> (inside CasaZen, with the commission;
+    /// the supplier asks for the payment with <c>POST api/supplier/requests/{id}/payment-request</c>) or <c>Manual</c> (outside,
+    /// the host or the supplier records it). <c>Manual</c> for every earlier request.
+    /// </summary>
+    public string PaymentMode { get; set; } = nameof(Casazen.Core.Entities.Enums.ServiceRequestPaymentMode.Manual);
 }
 
 /// <summary><c>GET /api/supplier/inbox/{id}</c>: the request and its history (SU-08).</summary>
@@ -437,6 +444,7 @@ public static class SupplierServiceRequestMapper
         dto.CompletionNotes = view.CompletionNotes;
         // The supplier reads the photos of its own requests through the shared endpoint, the same whatever the context.
         dto.WorkPhotos = ServiceRequestDtoParts.ToPhotoDtos(view.Id, view.WorkPhotos, ServiceRequestDtoParts.ShortRentBasePath);
+        dto.PaymentMode = view.PaymentMode.ToString();
         return dto;
     }
 }
