@@ -20,6 +20,8 @@ public static class RecurringJobsRegistration
 
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
 
+        ConfigureServicePayments(recurringJobManager);
+
         recurringJobManager.AddOrUpdate<DynamicPricingJob>(
             DynamicPricingJob.RecurringJobId,
             job => job.ExecuteAsync(),
@@ -148,6 +150,27 @@ public static class RecurringJobsRegistration
             ServiceRequestAutoCancelJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ServiceRequestAutoCancelJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The jobs of the supplier service payments (SP-15b), <b>always</b> registered, whatever the state of
+    /// <see cref="FeatureFlags.SupplierOnlinePayments"/>: payments that exist (money in flight) must be followed to the end. The sync
+    /// reads the payments Stripe is processing and the refunds it has not completed; the reminders flag the late payments and, with
+    /// the flag on, send the pending requests and the reminders. The flag is read by the jobs themselves.
+    /// </summary>
+    private static void ConfigureServicePayments(IRecurringJobManager recurringJobManager)
+    {
+        recurringJobManager.AddOrUpdate<ServicePaymentSyncJob>(
+            ServicePaymentSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServicePaymentSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ServicePaymentRemindersJob>(
+            ServicePaymentRemindersJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServicePaymentRemindersJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

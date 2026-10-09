@@ -55,6 +55,18 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public int MinAmountCents { get; set; } = 50;
 
+    /// <summary>
+    /// The VAT rate of CasaZen's commission, as a percentage (0 to 100). <b>[CONSULENTE FISCALE]</b> (decision D4): <b>empty</b>
+    /// until the tax consultant decides whether the commission percentage already includes VAT or VAT is added on top. Nothing
+    /// computes with it and no payment stores a VAT amount (<c>FeeVatMode</c> and <c>FeeVatCents</c> stay empty): the monthly
+    /// commission export (SP-15b) only shows it in its <c>vat_percent</c> column, for the manual invoice. No default in code. Env
+    /// var <c>SupplierPayments__CommissionVatPercent</c>.
+    /// </summary>
+    public decimal? CommissionVatPercent { get; set; }
+
+    /// <summary>Highest VAT rate the configuration may carry (percent).</summary>
+    public const decimal MaxVatPercent = 100m;
+
     /// <summary>The days of the reminders: <see cref="ReminderDays"/> without duplicates, ascending; 2 and 7 when none is set.</summary>
     public IReadOnlyList<int> EffectiveReminderDays =>
         ReminderDays is { Length: > 0 } ? ReminderDays.Distinct().Order().ToArray() : [2, 7];
@@ -88,6 +100,8 @@ public sealed class SupplierPaymentsOptions
             failures.Add($"{SectionName}__ReminderDays must be days between {MinDays} and {MaxDays}.");
         if (MinAmountCents is < 1 or > ServiceRequestLimits.MaxAmountCents)
             failures.Add($"{SectionName}__MinAmountCents must be between 1 and {ServiceRequestLimits.MaxAmountCents} cents.");
+        if (CommissionVatPercent is { } vat && (vat is < 0m or > MaxVatPercent || decimal.Round(vat, 2) != vat))
+            failures.Add($"{SectionName}__CommissionVatPercent must be empty or between 0 and {MaxVatPercent} with at most two decimals.");
         return failures;
     }
 }

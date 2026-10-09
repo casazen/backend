@@ -171,6 +171,10 @@ builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
 // SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
 builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
+// SP-15b: the supplier service payments in flight, their reminders and the requests that waited for a supplier (always scheduled).
+builder.Services.AddScoped<ServicePaymentSyncJob>();
+builder.Services.AddScoped<ServicePaymentRemindersJob>();
+builder.Services.AddScoped<SendPendingPaymentRequestsJob>();
 builder.Services.AddScoped<DomainRecheckJob>();
 builder.Services.AddScoped<PropertyComplianceCheckJob>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();

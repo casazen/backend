@@ -30,9 +30,11 @@ namespace Casazen.Infrastructure.Services;
 /// confirmation, takes no lock: the <c>xmin</c> check of the request and the unique partial index (one payment per request that
 /// is not canceled) decide the race, and the loser gets a 409. Emails are queued after the commit, whether or not the caller is
 /// still there. Logs carry request, payment and Stripe ids only: no names, no email, no link, no client secret.</para>
-/// <para><b>Not here (SP-15b).</b> The Stripe webhook that makes a payment <c>Paid</c> after checking account, amount, currency and
-/// fee, the reminder and sync jobs, the refunds and the admin tools. Until they are deployed the flag
-/// <c>SupplierOnlinePayments</c> must stay off in production: a payment made online would not be recorded as paid.</para>
+/// <para><b>SP-15b.</b> The same class holds, in its own files, the Stripe webhook that makes a payment <c>Paid</c> after checking
+/// account, amount, currency and fee (<see cref="ISupplierPaymentWebhookService"/>, <c>.Webhook.cs</c>), the sync, reminder and
+/// pending-request jobs (<see cref="ISupplierPaymentJobService"/>, <c>.Jobs.cs</c>) and the admin refunds
+/// (<see cref="ISupplierPaymentRefundService"/>, <c>.Refunds.cs</c>): one payment lock, one way to issue a link and one way to
+/// read a PaymentIntent for all of them. The admin reads are in <c>SupplierPaymentAdminService</c>.</para>
 /// </remarks>
 public sealed partial class SupplierPaymentService(
     AppDbContext db,
@@ -42,8 +44,10 @@ public sealed partial class SupplierPaymentService(
     IFeatureFlags features,
     IOptions<SupplierPaymentsOptions> options,
     IConfiguration configuration,
+    ISupplierPaymentJobScheduler jobScheduler,
     ILogger<SupplierPaymentService> logger,
-    TimeProvider? timeProvider = null) : ISupplierPaymentService
+    TimeProvider? timeProvider = null)
+    : ISupplierPaymentService, ISupplierPaymentWebhookService, ISupplierPaymentJobService, ISupplierPaymentRefundService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -195,16 +199,20 @@ public sealed partial class SupplierPaymentService(
         };
     }
 
-    /// <summary>The percentage a payment is created with: the supplier's own, else the platform's (<c>SupplierPayments:CommissionPercent</c>).</summary>
+    /// <summary>
+    /// The percentage a payment is created with: the supplier's own while its override is in force (no end, or an end that has not
+    /// passed: SP-15b "periodo gratuito"), else the platform's (<c>SupplierPayments:CommissionPercent</c>).
+    /// </summary>
     private async Task<decimal> ReadCommissionPercentAsync(Guid supplierOrgId, CancellationToken cancellationToken)
     {
         // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
-        var overridePercent = await db.SupplierProfiles
+        var own = await db.SupplierProfiles
             .AsNoTracking()
             .Where(sp => sp.OrgId == supplierOrgId)
-            .Select(sp => sp.CommissionPercentOverride)
+            .Select(sp => new { sp.CommissionPercentOverride, sp.CommissionOverrideUntil })
             .FirstOrDefaultAsync(cancellationToken);
-        return overridePercent ?? options.Value.RequireCommissionPercent();
+        return SupplierCommission.EffectivePercent(
+            options.Value.RequireCommissionPercent(), own?.CommissionPercentOverride, own?.CommissionOverrideUntil, Now());
     }
 
     /// <summary>The supplier's Stripe account and name as they are now. An unknown org cannot be paid.</summary>

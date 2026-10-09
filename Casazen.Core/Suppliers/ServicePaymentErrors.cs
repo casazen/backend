@@ -110,6 +110,62 @@ public static class ServicePaymentErrors
     /// <summary>The key of <see cref="OnlinePayment"/>.</summary>
     public const string OnlinePaymentMessageKey = "ServiceRequestOnlinePayment";
 
+    // ─── Refunds and the admin tools (SP-15b) ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>422: the payment cannot be refunded: it is not paid online (still to be paid, in flight, withdrawn, or waiting for a review).</summary>
+    public const string RefundNotRefundable = "service_payment_not_refundable";
+
+    /// <summary>The key of <see cref="RefundNotRefundable"/>.</summary>
+    public const string RefundNotRefundableMessageKey = "ServicePaymentNotRefundable";
+
+    /// <summary>422: it was recorded as received outside CasaZen: no money went through CasaZen, so CasaZen has nothing to refund.</summary>
+    public const string RefundOffline = "service_payment_refund_offline";
+
+    /// <summary>The key of <see cref="RefundOffline"/>.</summary>
+    public const string RefundOfflineMessageKey = "ServicePaymentRefundOffline";
+
+    /// <summary>422: everything that could be refunded has been refunded, or is being refunded.</summary>
+    public const string RefundNothing = "service_payment_nothing_to_refund";
+
+    /// <summary>The key of <see cref="RefundNothing"/>.</summary>
+    public const string RefundNothingMessageKey = "ServicePaymentNothingToRefund";
+
+    /// <summary>422: the amount to refund is not a positive number of cents.</summary>
+    public const string RefundAmountInvalid = "service_payment_refund_amount_invalid";
+
+    /// <summary>The key of <see cref="RefundAmountInvalid"/>.</summary>
+    public const string RefundAmountInvalidMessageKey = "ServicePaymentRefundAmountInvalid";
+
+    /// <summary>422: the amount is more than what can still be refunded (argument 0: the most, in euro).</summary>
+    public const string RefundAmountExceeds = "service_payment_refund_amount_exceeds";
+
+    /// <summary>The key of <see cref="RefundAmountExceeds"/>.</summary>
+    public const string RefundAmountExceedsMessageKey = "ServicePaymentRefundAmountExceeds";
+
+    /// <summary>The key of the 400 for a refund note longer than <see cref="ServicePaymentLimits.OfflineNoteMaxLength"/> characters.</summary>
+    public const string RefundReasonTooLongMessageKey = "ServicePaymentRefundReasonTooLong";
+
+    /// <summary>422: the commission of a supplier must be a percentage from 0 to the highest the configuration allows, with two decimals at most (argument 0: the highest).</summary>
+    public const string CommissionInvalid = "supplier_commission_invalid";
+
+    /// <summary>The key of <see cref="CommissionInvalid"/>.</summary>
+    public const string CommissionInvalidMessageKey = "SupplierCommissionInvalid";
+
+    /// <summary>422: the end of a commission period must come with a percentage and be in the future.</summary>
+    public const string CommissionUntilInvalid = "supplier_commission_until_invalid";
+
+    /// <summary>The key of <see cref="CommissionUntilInvalid"/>.</summary>
+    public const string CommissionUntilInvalidMessageKey = "SupplierCommissionUntilInvalid";
+
+    /// <summary>The key of the 400 for a missing or too long reason of a commission change.</summary>
+    public const string CommissionReasonMessageKey = "SupplierCommissionReasonInvalid";
+
+    /// <summary>422: the month of the commission export is not a past or current month in the form <c>yyyy-MM</c>.</summary>
+    public const string ExportMonthInvalid = "service_payment_export_month_invalid";
+
+    /// <summary>The key of <see cref="ExportMonthInvalid"/>.</summary>
+    public const string ExportMonthInvalidMessageKey = "ServicePaymentExportMonthInvalid";
+
     /// <summary>Every <c>SharedResources</c> key of this feature (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
@@ -130,5 +186,15 @@ public static class ServicePaymentErrors
         StateChangedMessageKey,
         NoConfirmationNeededMessageKey,
         OnlinePaymentMessageKey,
+        RefundNotRefundableMessageKey,
+        RefundOfflineMessageKey,
+        RefundNothingMessageKey,
+        RefundAmountInvalidMessageKey,
+        RefundAmountExceedsMessageKey,
+        RefundReasonTooLongMessageKey,
+        CommissionInvalidMessageKey,
+        CommissionUntilInvalidMessageKey,
+        CommissionReasonMessageKey,
+        ExportMonthInvalidMessageKey,
     ];
 }

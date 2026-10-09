@@ -108,6 +108,72 @@ public class StripeSupplierPaymentGateway(
         }
     }
 
+    public async Task<ServiceChargeRefund> CreateRefundAsync(ServiceChargeRefundRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.PaymentIntentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.ConnectedAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.IdempotencyKey);
+
+        // Direct charge: the refund is created on the supplier's account (Stripe-Account header) and paid from its balance. There is
+        // no transfer to reverse. The commission goes back with the refund (all of it for a refund in full, in proportion for a
+        // partial one) when the payment carried one; a payment without a commission has none to give back.
+        var options = new RefundCreateOptions
+        {
+            PaymentIntent = request.PaymentIntentId,
+            Amount = request.AmountCents,
+            Metadata = new Dictionary<string, string>(request.Metadata) { ["kind"] = ServiceCharges.RefundKind },
+        };
+        if (request.RefundApplicationFee)
+            options.RefundApplicationFee = true;
+
+        var refund = await new RefundService(Client).CreateAsync(
+            options,
+            RequestOptionsFor(request.ConnectedAccountId, request.IdempotencyKey),
+            cancellationToken);
+
+        logger.LogInformation(
+            "Service refund {RefundId} created for {PaymentIntentId} on {AccountId}: {Status} (commission refunded: {FeeRefunded})",
+            refund.Id,
+            request.PaymentIntentId,
+            request.ConnectedAccountId,
+            refund.Status,
+            request.RefundApplicationFee);
+        return MapRefund(refund);
+    }
+
+    public async Task<IReadOnlyList<ServiceChargeRefund>> ListRefundsAsync(
+        string paymentIntentId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentIntentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectedAccountId);
+
+        var refunds = new List<ServiceChargeRefund>();
+        var options = new RefundListOptions { PaymentIntent = paymentIntentId, Limit = 100 };
+        await foreach (var refund in new RefundService(Client)
+                           .ListAutoPagingAsync(options, RequestOptionsFor(connectedAccountId), cancellationToken))
+        {
+            refunds.Add(MapRefund(refund));
+        }
+
+        return refunds;
+    }
+
+    /// <summary>A Stripe refund as CasaZen reads it; also used by the webhook handler for the <c>refund.*</c> events.</summary>
+    public static ServiceChargeRefund MapRefund(Refund refund)
+    {
+        ArgumentNullException.ThrowIfNull(refund);
+        return new ServiceChargeRefund(
+            refund.Id,
+            refund.PaymentIntentId,
+            refund.Amount,
+            refund.Status,
+            refund.FailureReason,
+            refund.Metadata is null ? null : new Dictionary<string, string>(refund.Metadata));
+    }
+
     private static ServiceChargeIntent Map(PaymentIntent paymentIntent, string connectedAccountId) => new(
         paymentIntent.Id,
         paymentIntent.Status ?? string.Empty,
@@ -116,7 +182,8 @@ public class StripeSupplierPaymentGateway(
         paymentIntent.ApplicationFeeAmount,
         paymentIntent.ClientSecret,
         connectedAccountId,
-        paymentIntent.LastPaymentError?.Code);
+        paymentIntent.LastPaymentError?.Code,
+        paymentIntent.AmountReceived);
 
     private static RequestOptions RequestOptionsFor(string connectedAccountId, string? idempotencyKey = null) => new()
     {
