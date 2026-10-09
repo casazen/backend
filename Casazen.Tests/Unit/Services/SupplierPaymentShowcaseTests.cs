@@ -37,6 +37,25 @@ public class SupplierPaymentShowcaseTests
     }
 
     [Fact]
+    public async Task AcceptProposal_AsTheCustomerOfAShowcaseRequest_TakesItAsAManualOneEvenWithTheFlagOnAndTheAccountReady()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        await s.EnableBookingAsync();
+        await s.EnablePaymentsAsync();
+        var (request, credentials) = await s.BookedForManagementAsync();
+        s.Clock.Advance(TimeSpan.FromMinutes(20));
+        await s.ProposeAsSupplierAsync(request.Id, ServiceRequestScenario.FridayAt14);
+        s.Clock.Advance(TimeSpan.FromMinutes(40));
+
+        await s.Kit.Manager.AcceptProposalAsync(credentials);
+
+        // The customer's acceptance takes the request on the supplier's behalf (SP-11) without deciding how it is paid.
+        var saved = await s.ReadAsync(request.Id);
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, saved.Status);
+        Assert.Equal(ServiceRequestPaymentMode.Manual, saved.PaymentMode);
+    }
+
+    [Fact]
     public async Task Complete_AShowcaseRequest_CreatesNoPaymentAndSendsNoLink()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
