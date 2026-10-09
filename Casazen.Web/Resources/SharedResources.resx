@@ -246,6 +246,27 @@
   <data name="PropertyResponsibleInvalid" xml:space="preserve">
     <value>Il responsabile deve essere una persona attiva dell'organizzazione che può vedere questo immobile.</value>
   </data>
+  <data name="AccessRequestAreaRequired" xml:space="preserve">
+    <value>Scegli a cosa vuoi accedere.</value>
+  </data>
+  <data name="AccessRequestAreaUnknown" xml:space="preserve">
+    <value>Non puoi chiedere l'accesso a questa area o pagina.</value>
+  </data>
+  <data name="AccessRequestNoteTooLong" xml:space="preserve">
+    <value>Il messaggio è troppo lungo (al massimo 200 caratteri).</value>
+  </data>
+  <data name="AccessRequestLimitReached" xml:space="preserve">
+    <value>Hai già inviato diverse richieste oggi e gli amministratori sono stati avvisati. Riprova domani.</value>
+  </data>
+  <data name="OrgActivityTypeUnknown" xml:space="preserve">
+    <value>Tipo di attività non riconosciuto.</value>
+  </data>
+  <data name="OrgActivityAreaUnknown" xml:space="preserve">
+    <value>Area non riconosciuta.</value>
+  </data>
+  <data name="OrgActivityRangeInvalid" xml:space="preserve">
+    <value>La data di inizio deve essere precedente alla data di fine.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>

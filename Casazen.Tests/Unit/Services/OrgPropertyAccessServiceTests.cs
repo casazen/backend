@@ -25,7 +25,7 @@ public class OrgPropertyAccessServiceTests
     private readonly OrgInvitationTestKit _kit = new();
 
     private OrgPropertyAccessService Service(AppDbContext db) =>
-        new(db, _kit.Cache.Object, NullLogger<OrgPropertyAccessService>.Instance, _kit.Clock);
+        _kit.PropertyAccess(db);
 
     private async Task<T> RunAsync<T>(Func<OrgPropertyAccessService, Task<T>> action)
     {

@@ -1,6 +1,9 @@
 using System.Security.Claims;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
+using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -17,6 +20,7 @@ public class GdprControllerTests
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver;
     private readonly Mock<IGuestAccessService> _mockGuestAccessService;
     private readonly Mock<IAuthorizationService> _mockAuthorization;
+    private readonly Mock<IOrgActivityService> _mockOrgActivity = new();
     private readonly GdprController _controller;
     private static readonly Guid OrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
 
@@ -31,6 +35,7 @@ public class GdprControllerTests
             _mockOrgContextResolver.Object,
             _mockGuestAccessService.Object,
             _mockAuthorization.Object,
+            _mockOrgActivity.Object,
             new Mock<ILogger<GdprController>>().Object)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
@@ -117,6 +122,65 @@ public class GdprControllerTests
         _mockGdprService.Verify(
             x => x.UpdateMarketingConsentAsync(OrgId, guestId, false, "Email del 02/09", It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    // ─── The org export carries the activity log, for who may read it (AM-02b) ───────────────────────────
+
+    private static OrgActivityItem ActivityItem() => new(
+        Guid.Parse("11111111-2222-3333-4444-555555555555"),
+        new DateTime(2026, 10, 9, 10, 30, 0, DateTimeKind.Utc),
+        "auth0|owner",
+        OrgActivityArea.Account,
+        OrgActivityType.MemberDeactivated,
+        OrgActivitySubjectType.Member,
+        "auth0|anna",
+        new Dictionary<string, string> { ["role"] = "Collaborator" });
+
+    private static async IAsyncEnumerable<OrgActivityItem> One(OrgActivityItem item)
+    {
+        yield return item;
+        await Task.CompletedTask;
+    }
+
+    private void CanReadTheActivity(bool allowed) =>
+        _mockAuthorization
+            .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.OrgActivityRead))
+            .ReturnsAsync(allowed ? AuthorizationResult.Success() : AuthorizationResult.Failed());
+
+    [Fact]
+    public async Task ExportOrgFiscal_ForWhoMayReadTheActivityLog_IncludesTheLogWithIdsAndCodes()
+    {
+        _mockGdprService.Setup(x => x.ExportOrgFiscalDataAsync(OrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, object> { ["fiscalCode"] = "RSSMRA80A01H501U" });
+        _mockOrgActivity.Setup(a => a.StreamAsync(OrgId, It.IsAny<OrgActivityFilter>(), It.IsAny<CancellationToken>()))
+            .Returns(One(ActivityItem()));
+        CanReadTheActivity(true);
+
+        var result = await _controller.ExportOrgFiscal(CancellationToken.None);
+
+        var export = Assert.IsType<Dictionary<string, object>>(Assert.IsType<OkObjectResult>(result).Value);
+        Assert.Equal("RSSMRA80A01H501U", export["fiscalCode"]);
+        var line = Assert.Single(Assert.IsType<List<OrgActivityEntryDto>>(export["activity"]));
+        Assert.Equal(
+            ("account", OrgActivityType.MemberDeactivated, "auth0|owner", "auth0|anna"),
+            (line.Area, line.Type, line.ActorUserId, line.SubjectId));
+    }
+
+    [Fact]
+    public async Task ExportOrgFiscal_ForWhoMayNotReadTheActivityLog_HasTheExportWithoutIt_AndReadsNothingOfTheLog()
+    {
+        _mockGdprService.Setup(x => x.ExportOrgFiscalDataAsync(OrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, object> { ["fiscalCode"] = "RSSMRA80A01H501U" });
+        CanReadTheActivity(false);
+
+        var result = await _controller.ExportOrgFiscal(CancellationToken.None);
+
+        var export = Assert.IsType<Dictionary<string, object>>(Assert.IsType<OkObjectResult>(result).Value);
+        Assert.Equal("RSSMRA80A01H501U", export["fiscalCode"]);
+        Assert.DoesNotContain("activity", export.Keys);
+        _mockOrgActivity.Verify(
+            a => a.StreamAsync(It.IsAny<Guid>(), It.IsAny<OrgActivityFilter>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     private Guid GuestAccessible(bool accessible)

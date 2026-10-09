@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -23,6 +24,7 @@ public class GdprController(
     IOrgContextResolver orgContextResolver,
     IGuestAccessService guestAccessService,
     IAuthorizationService authorizationService,
+    IOrgActivityService orgActivity,
     ILogger<GdprController> logger) : ControllerBase
 {
     /// <summary>Consents with their versions, retention per category and status of the guest's data.</summary>
@@ -119,6 +121,20 @@ public class GdprController(
         if (orgId is null)
             return NotFound();
         var data = await gdprService.ExportOrgFiscalDataAsync(orgId.Value, cancellationToken);
+
+        // The org's activity log (AM-02b) rides in the export, ids and codes as the endpoint of the log gives it, but only for who
+        // may read it (org.activity.read: the owner and the administrators). This export is open to the property permissions
+        // until #461 moves it under the owner's, and a collaborator must not read through it what it cannot read in the log.
+        // Whatever the OrgTeam flag says: the export is of what is stored.
+        if ((await authorizationService.AuthorizeAsync(User, CasazenPolicies.OrgActivityRead)).Succeeded)
+        {
+            var lines = new List<OrgActivityEntryDto>();
+            await foreach (var item in orgActivity.StreamAsync(orgId.Value, new OrgActivityFilter(), cancellationToken))
+                lines.Add(OrgActivityEntryDto.From(item));
+
+            data["activity"] = lines;
+        }
+
         return Ok(data);
     }
 
