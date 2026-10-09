@@ -672,6 +672,105 @@
   <data name="RentPaymentReceived_Cta" xml:space="preserve">
     <value>Open the lease</value>
   </data>
+  <data name="PropertyModeLabel_Short" xml:space="preserve">
+    <value>short-stay rental</value>
+  </data>
+  <data name="PropertyModeLabel_Long" xml:space="preserve">
+    <value>long-term rental</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_Subject" xml:space="preserve">
+    <value>Switch to long-term rental scheduled - {0}</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_Body" xml:space="preserve">
+    <value>We have scheduled the switch of &lt;strong&gt;{0}&lt;/strong&gt; from short stays to long-term rental, starting on &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_Until" xml:space="preserve">
+    <value>Until then the property stays in short-stay mode: the bookings you already have remain valid.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_CalendarClosed" xml:space="preserve">
+    <value>From the night before that day its dates are closed in the calendar: the booking site and the portals that read the CasaZen iCal calendar stop taking bookings.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Subject" xml:space="preserve">
+    <value>Switch to short-stay rental scheduled - {0}</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Body" xml:space="preserve">
+    <value>We have scheduled the switch of &lt;strong&gt;{0}&lt;/strong&gt; from long-term rental to short stays, starting on &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Until" xml:space="preserve">
+    <value>Until then the property stays in long-term mode, with its leases.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Requirements" xml:space="preserve">
+    <value>To take bookings on the booking site the short-stay requirements must be complete (CIN, documents, safety checklist): until they are, the property is not published.</value>
+  </data>
+  <data name="PropertyModeScheduled_Cancel" xml:space="preserve">
+    <value>You can cancel the switch from the property page until it has happened. It takes place by itself at the start of that day (midnight, Italian time).</value>
+  </data>
+  <data name="PropertyModeScheduled_Cta" xml:space="preserve">
+    <value>Open the property</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Subject" xml:space="preserve">
+    <value>{0} is now in long-term mode</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Body" xml:space="preserve">
+    <value>As of today &lt;strong&gt;{0}&lt;/strong&gt; is in long-term mode: it is no longer published on the booking site and takes no short-stay bookings.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_CalendarClosed" xml:space="preserve">
+    <value>Its dates stay closed in the calendar until {0}: the portals that read the CasaZen iCal calendar stop selling it.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_CalendarClosedNoDate" xml:space="preserve">
+    <value>Its dates stay closed in the calendar: the portals that read the CasaZen iCal calendar stop selling it.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Listings" xml:space="preserve">
+    <value>If the property is still online on a portal, remove the listing there: CasaZen closes the dates but does not edit your listings.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Cta" xml:space="preserve">
+    <value>Open the property</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Subject" xml:space="preserve">
+    <value>{0} is back in short-stay mode</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Body" xml:space="preserve">
+    <value>As of today &lt;strong&gt;{0}&lt;/strong&gt; is in short-stay mode.</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_CalendarOpen" xml:space="preserve">
+    <value>The dates closed by the switch to long-term rental, if there were any, are free again.</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Requirements" xml:space="preserve">
+    <value>Check that the CIN, documents and safety checklist are complete: until they are, the property is not published on the booking site.</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Cta" xml:space="preserve">
+    <value>Check the requirements</value>
+  </data>
+  <data name="PropertyModeFailed_Subject" xml:space="preserve">
+    <value>Switch not applied - {0}</value>
+  </data>
+  <data name="PropertyModeFailed_Body" xml:space="preserve">
+    <value>We could not apply the switch of &lt;strong&gt;{0}&lt;/strong&gt; to {1} planned for &lt;strong&gt;{2}&lt;/strong&gt;: the property is still in {3} mode.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_Bookings" xml:space="preserve">
+    <value>After it was scheduled, stays or portal reservations appeared that end after that day: the switch never overlaps a stay.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_Lease" xml:space="preserve">
+    <value>A lease ends after that day: the switch never overlaps a lease.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_DraftLease" xml:space="preserve">
+    <value>The property has a draft lease: it must be deleted before the switch.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_Other" xml:space="preserve">
+    <value>The property changed after the switch was scheduled, so it no longer matches its situation.</value>
+  </data>
+  <data name="PropertyModeFailed_CalendarReopened" xml:space="preserve">
+    <value>The dates closed for the switch are open again in the calendar.</value>
+  </data>
+  <data name="PropertyModeFailed_Earliest" xml:space="preserve">
+    <value>The first possible day now is &lt;strong&gt;{0}&lt;/strong&gt;: you can schedule the switch again from the property page.</value>
+  </data>
+  <data name="PropertyModeFailed_Retry" xml:space="preserve">
+    <value>You can schedule the switch again from the property page.</value>
+  </data>
+  <data name="PropertyModeFailed_Cta" xml:space="preserve">
+    <value>Open the property</value>
+  </data>
   <data name="ServiceRequestCreated_When" xml:space="preserve">
     <value>When: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>

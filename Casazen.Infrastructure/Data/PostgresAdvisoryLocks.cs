@@ -205,6 +205,13 @@ internal static class PostgresAdvisoryLocks
         /// (AM-02).
         /// </summary>
         OrgInvitationMaintenance = 1_404,
+
+        /// <summary>
+        /// One run of the hourly application of the scheduled changes of rental mode (single key, session lock held for the
+        /// whole run): two runs never apply or fail the same change at once, even outside Hangfire's own lock (PM-02). Each
+        /// change is then applied under the dates lock of its property, so it also serializes with the bookings.
+        /// </summary>
+        PropertyModeChangeRun = 1_501,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
