@@ -60,10 +60,12 @@ and production never block each other.
 | `domain-recheck` (BK-17: custom domains activate by themselves, a removed DNS record is noticed, dropped domains leave the Vercel project; see [seo-domain.md](seo-domain.md#10-custom-domains-on-vercel-bk-17)) | `*/15` | `DomainRecheckJob.ExecuteAsync` (what is due is decided per domain) | 60 s |
 | `org-invitation-maintenance` (AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days; it runs with `Features:OrgTeam` off too, and then it only deletes; see [org-team.md](org-team.md#15-emails-and-the-maintenance-job)) | hourly at :10 | `OrgInvitationMaintenanceJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run and the org's seats lock per invitation) | 300 s |
 | `org-activity-retention` (AM-02b: deletes the lines of the org activity log older than `OrgTeam__ActivityRetentionMonths`, 12 by default, in batches of 500 and at most 100 batches a run; always registered, because the retention does not depend on `Features:OrgTeam`; see [org-team.md](org-team.md#34-retention-12-months)) | 03:40 | `OrgActivityRetentionJob.ExecuteAsync` (plus a PostgreSQL session advisory lock per run) | 300 s |
+| `in-app-notification-retention` (UI-12a: deletes the in-app notifications older than 90 days, read or not, in one statement; **always registered**, rows written while `Features:InAppNotifications` was on are purged after it is turned off; see [§15](#15-in-app-notifications-ui-12a)) | 03:45 | `InAppNotificationRetentionJob.ExecuteAsync` | 300 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
-delivery key (`PushDeliveryJob.SendAsync:<key>`, 60 s), so two runs of the same push event never overlap.
+delivery key (`PushDeliveryJob.SendAsync:<key>`, 60 s), so two runs of the same push event never overlap; so does
+`InAppNotificationJob.CreateAsync` (UI-12a, `…CreateAsync:<key>`, 60 s, see [§15](#15-in-app-notifications-ui-12a)).
 `IcalSupplierSyncJob.SyncSupplierAsync` (first sync of a supplier's iCal URL and "sync now", SU-15) locks per
 supplier (`…SyncSupplierAsync:<orgId>`, 60 s). `SendPendingPaymentRequestsJob.ExecuteAsync` (SP-15b, queued when `account.updated` makes a
 supplier ready, see [§14](#14-service-payments-sp-15b)) holds its lock for 300 s.
@@ -255,9 +257,10 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 25 recurring jobs in each schema with every flag on; 19 with the defaults
+  -- 29 recurring jobs in each schema with every flag on; 23 with the defaults
   -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider, Features:SupplierRequestAutoCancel and
-  -- Features:PropertyModeChange off; service-request-expiry, service-request-reminders and org-invitation-maintenance are
+  -- Features:PropertyModeChange off; service-request-expiry, service-request-reminders, org-invitation-maintenance,
+  -- org-activity-retention, service-payment-sync, service-payment-reminders and in-app-notification-retention (UI-12a) are
   -- in both counts: they ignore the flags; property-mode-change (PM-02) is the one that appears with
   -- Features:PropertyModeChange on)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
@@ -294,8 +297,8 @@ checks: `Pending` + source `Direct` and either
   `Processing`/`Completed` + created more than the TTL ago;
 - or a **"pay at the property" request** (`OnSite`, BK-06, decision D5) past its own deadline `RequestExpiresAt`: the
   email confirmation window (`DirectBooking:OnSiteEmailVerificationMinutes`, default the checkout TTL), then, once the
-  guest has confirmed the email, the host's answer deadline (`DirectBooking:OnSiteApprovalHours`, **provisional**
-  default 24). A request created before BK-06 without a deadline expires with the checkout TTL. Details:
+  guest has confirmed the email, the host's answer deadline (`DirectBooking:OnSiteApprovalHours`, **24 hours**,
+  PO 2026-10-08). A request created before BK-06 without a deadline expires with the checkout TTL. Details:
   [direct-booking.md](direct-booking.md).
 
 - **Reads** (availability, calendar, iCal export) leave expired holds out at once, before the job runs. They never
@@ -620,3 +623,22 @@ SELECT "Status", count(*), min("CreatedAt") FROM casazen_prod."ServiceRequestPay
 ```
 
 If `Processing` payments or `Pending` refunds pile up, check that the Connect webhook endpoint sends the events listed in [stripe.md](stripe.md#stripe-settings-to-check-product-owner) and that `service-payment-sync` runs (Hangfire dashboard). `RecurringJobsConcurrencyTests` and `ServicePaymentJobsRegistrationTests` fail if one of them loses its lock or its schedule.
+
+## 15. In-app notifications (UI-12a)
+
+Task UI-12a. Two jobs, both described in [in-app-notifications.md](in-app-notifications.md):
+
+| Job | When | Lock (wait) | What |
+|---|---|---|---|
+| `InAppNotificationJob.CreateAsync(key, notification)` | queued next to every push by the decorator of `IPushNotificationService`, only with `Features:InAppNotifications` on | `InAppNotificationJob.CreateAsync:<key>` (60 s) | resolves the users of the push's audience and writes one `InAppNotifications` row per user for the key (unique on key and user). `[AutomaticRetry(Attempts = 5)]`, deleted after the last attempt; the arguments hold the audience, the type, the entity id and the instant, never the push text. Skips quietly if the flag was turned off meanwhile |
+| `in-app-notification-retention` (`InAppNotificationRetentionJob`) | 03:45 UTC, **always registered** | `InAppNotificationRetentionJob.ExecuteAsync` (300 s) | deletes the notifications older than 90 days, read or not (one statement over the index on `CreatedAt`) |
+
+**Logs**: `In-app notification <type> queued for <audience> <id> (key …, job …)` when the decorator queues it; `… (key …) written for N users
+of <audience> <id>`, `… the N users were told already`, `… nobody to tell for …`, `… written concurrently or a user is gone: read again
+(attempt n)` from the job; `In-app notification retention job done: N notifications deleted` every night. No user id and no push text.
+
+**If notifications do not appear** with the flag on: the push jobs run (`PushDeliveryJob`), the notification jobs queue next to them (SQL of
+[in-app-notifications.md § 6](in-app-notifications.md#6-turning-it-on-checking-rolling-back), last query), the audience has at least one
+active user (a booking that is gone, or every member deactivated, writes nothing and logs `nobody to tell`), and the flag is on **for the
+API process that queues the push and for the one that runs the job** (the same service on Railway). `InAppNotificationJobTests` and
+`InAppNotificationRetentionJobTests` fail if the job loses its retry or its lock, or the retention its schedule.

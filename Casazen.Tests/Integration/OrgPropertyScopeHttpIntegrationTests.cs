@@ -67,7 +67,8 @@ public class OrgPropertyScopeHttpIntegrationTests(OrgInvitationsFactory factory)
         var response = await client.GetAsync(path);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var rows = await response.Content.ReadFromJsonAsync<JsonElement>();
-        return rows.EnumerateArray().Select(row => row.GetProperty(property).GetGuid()).ToHashSet();
+        var items = rows.ValueKind == JsonValueKind.Array ? rows : rows.GetProperty("items");
+        return items.EnumerateArray().Select(row => row.GetProperty(property).GetGuid()).ToHashSet();
     }
 
     private static async Task<JsonElement> JsonAsync(HttpResponseMessage response, HttpStatusCode expected = HttpStatusCode.OK)

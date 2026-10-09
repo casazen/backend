@@ -106,6 +106,19 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string ConnectOnboardingRefresh() => Build(ConnectPaymentsPagePath + "?stripe_refresh=1");
 
     /// <summary>
+    /// Guest self-cancellation page of the booking site (BK-02, BK-07, PO 2026-10-08): the guest confirms the
+    /// cancellation there; the page then calls <c>POST /api/public/bookings/{id}/cancel?token=…</c>.
+    /// Only the booking id and the signed token are in the link, no personal data.
+    /// </summary>
+    public string GuestBookingCancel(string orgSlug, Guid bookingId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(
+            $"/book/{Uri.EscapeDataString(orgSlug)}/bookings/{bookingId:D}/cancel?token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
     /// Settings page of the supplier console (route <c>/app/supplier/settings</c> of the web app), where the supplier's Stripe
     /// Connect onboarding starts and ends (SP-14). The supplier has no plan or billing page, so it is not one of
     /// <see cref="BillingReturnPagePaths"/> (those are the pages of the Stripe Checkout and billing portal of the plans).

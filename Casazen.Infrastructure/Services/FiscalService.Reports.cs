@@ -14,6 +14,10 @@ namespace Casazen.Infrastructure.Services;
 /// only where fiscale.md documents the computation (cedolare secca), OTA withholding detail, tourist tax per comune and
 /// month from the amounts recorded by the tourist tax engine (BK-03). Documents in <see cref="FiscalReportDocuments"/>.
 /// </summary>
+/// <remarks>
+/// CO-18 (PO 2026-10-08): CasaZen considers a single owner per property. No co-ownership quota is ever computed or
+/// applied; the full amounts are attributed to the single taxpayer recorded on the property (or to the org tax profile).
+/// </remarks>
 public partial class FiscalService
 {
     public async Task<AnnualIncomeReport> GetAnnualReportAsync(
@@ -74,7 +78,8 @@ public partial class FiscalService
         return new AnnualIncomeReport(
             taxYear,
             FiscalCopy.PackLabel,
-            FiscalCopy.Disclaimer,
+            // CO-18 (PO 2026-10-08): disclaimer from configuration (ShortStayFiscal:Disclaimer); default is the PO-approved text.
+            _rules.Disclaimer,
             lines,
             totals,
             range,
@@ -132,7 +137,8 @@ public partial class FiscalService
             byOta,
             lines,
             range,
-            FiscalCopy.Disclaimer,
+            // CO-18 (PO 2026-10-08): disclaimer from configuration (ShortStayFiscal:Disclaimer).
+            _rules.Disclaimer,
             org.Name,
             _clock.TodayInRomeAsDateOnly(),
             new WithholdingTotals(lines.Sum(l => l.Gross), lines.Sum(l => l.Withholding), lines.Sum(l => l.Net), lines.Count),

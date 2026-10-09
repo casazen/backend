@@ -6,11 +6,13 @@ using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.Configuration;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
@@ -24,8 +26,14 @@ public class BookingsController(
     IPropertyAuthorizationService authorizationService,
     PropertyICalSyncService propertyICalSyncService,
     IOtaStayService otaStays,
-    ILogger<BookingsController> logger) : ControllerBase
+    ILogger<BookingsController> logger,
+    IOptions<BookingsOptions> bookingsOptions) : ControllerBase
 {
+    /// <summary>Upper bound for <c>pageSize</c> on <c>GET /api/bookings</c>, same cap as the other paged lists.</summary>
+    private const int MaxPageSize = 100;
+
+    private readonly BookingsOptions _bookingsOptions = bookingsOptions.Value;
+
     /// <summary>
     /// The bookings the caller sees, latest check-in first, as a plain array (web list, dashboard, guest detail):
     /// <c>propertyId</c> and <c>guestId</c> narrow it. TN-3: filtered in SQL by the caller's scope (org, and the owned
@@ -33,25 +41,31 @@ public class BookingsController(
     /// <c>propertyId</c>: 404 when the property is not in the caller's org, 403 without <c>booking.read</c> on it.
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(typeof(IEnumerable<BookingResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResultDto<BookingResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll(
+    public async Task<ActionResult<PagedResultDto<BookingResponseDto>>> GetAll(
         [FromServices] IOrgContextResolver orgContextResolver,
         [FromServices] IAuthorizationService hostAuthorization,
         [FromServices] IHostScopeResolver hostScopeResolver,
         [FromQuery] Guid? propertyId = null,
-        [FromQuery] Guid? guestId = null)
+        [FromQuery] Guid? guestId = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int? pageSize = null)
     {
         if (GetUserId() == null)
             return Unauthorized();
+
+        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
+        page = Math.Max(page, 1);
+        var effectivePageSize = Math.Clamp(pageSize ?? _bookingsOptions.DefaultPageSize, 1, MaxPageSize);
 
         var cancellationToken = HttpContext.RequestAborted;
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         // No org yet, or no reach on it: nothing of any org is visible (the tenant filter showed nothing either).
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
-            return Ok(Array.Empty<BookingResponseDto>());
+            return Ok(new PagedResultDto<BookingResponseDto> { Items = [], TotalCount = 0, Page = page, PageSize = effectivePageSize });
 
         if (propertyId is { } id)
         {
@@ -68,9 +82,17 @@ public class BookingsController(
             }
         }
 
-        var bookings = await bookingService.GetBookingsAsync(scope, propertyId, guestId, cancellationToken);
+        var (bookings, totalCount) = await bookingService.GetPagedBookingsAsync(
+            scope, page, effectivePageSize, propertyId, guestId, cancellationToken);
+
         var nowUtc = DateTime.UtcNow;
-        return Ok(bookings.Select(b => BookingMapper.ToResponse(b, nowUtc)).ToList());
+        return Ok(new PagedResultDto<BookingResponseDto>
+        {
+            Items = bookings.Select(b => BookingMapper.ToResponse(b, nowUtc)).ToList(),
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = effectivePageSize,
+        });
     }
 
     [HttpGet("{id}")]

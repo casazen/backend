@@ -159,11 +159,26 @@ public static class RecurringJobsRegistration
             PushReceiptsJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // UI-12a: the in-app notifications older than 90 days are deleted every night. Always registered: rows written while
+        // Features:InAppNotifications was on are purged after it is turned off; with the flag off the run finds nothing.
+        recurringJobManager.AddOrUpdate<InAppNotificationRetentionJob>(
+            InAppNotificationRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            InAppNotificationRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // CO-06: nightly compliance check of every published property (suspends the ones that lost a requirement).
         recurringJobManager.AddOrUpdate<PropertyComplianceCheckJob>(
             PropertyComplianceCheckJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             PropertyComplianceCheckJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // CO-18 (PO 2026-10-08): placeholder — runs weekly to check/update official fiscal rates when a source is configured.
+        recurringJobManager.AddOrUpdate<FiscalRatesUpdateJob>(
+            FiscalRatesUpdateJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "0 5 * * 1",  // every Monday at 05:00 UTC
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
