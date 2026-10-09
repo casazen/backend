@@ -13,7 +13,9 @@ namespace Casazen.Web.Controllers;
 /// fiscal data. Guest actions: guest of the caller's org only (another org's guest answers 404, TN-1), then the
 /// <c>guest.read</c> permission on that org to read, <c>guest.manage</c> (AM-03) to erase, anonymize or change the consents of
 /// a guest (TN-3, otherwise 403): the collaborator who registers and corrects guests (<c>guest.write</c>) cannot erase them.
-/// The class carries no permission because the org actions need <c>property.*</c> instead: every action has its own policy.
+/// The export of the org's fiscal data is an act of the holder of the org (AM-03b): only the owner and the administrators
+/// pass (<see cref="CasazenPolicies.OrgBillingAdmin"/>), and the sections that belong to a property are still narrowed to the
+/// properties the caller reaches. The class carries no permission because every action has its own policy.
 /// </summary>
 [ApiController]
 [Route("api/gdpr")]
@@ -23,6 +25,7 @@ public class GdprController(
     IOrgContextResolver orgContextResolver,
     IGuestAccessService guestAccessService,
     IAuthorizationService authorizationService,
+    IHostScopeResolver hostScopeResolver,
     ILogger<GdprController> logger) : ControllerBase
 {
     /// <summary>Consents with their versions, retention per category and status of the guest's data.</summary>
@@ -111,14 +114,28 @@ public class GdprController(
         return NoContent();
     }
 
+    /// <summary>
+    /// The fiscal data of the org and the people who have access (AM-03b): the owner and the administrators only, 403 for
+    /// everybody else. It used to need <c>property.read</c>, which a collaborator limited to some properties holds, and it
+    /// applied no scope: that collaborator could read the Partita IVA, the taxpayers' codici fiscali of every property and the
+    /// team. The caller's scope is applied as well, so a reach narrower than the org never gets another property's section.
+    /// </summary>
     [HttpGet("org/export")]
-    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ExportOrgFiscal(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
             return NotFound();
-        var data = await gdprService.ExportOrgFiscalDataAsync(orgId.Value, cancellationToken);
+
+        // No scope (a deactivated member, a member of another org) is no reach: never widened to the whole org.
+        if (await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
+            return Forbid();
+
+        var data = await gdprService.ExportOrgFiscalDataAsync(orgId.Value, scope, cancellationToken);
         return Ok(data);
     }
 

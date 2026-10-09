@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
@@ -17,6 +18,7 @@ public class GdprControllerTests
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver;
     private readonly Mock<IGuestAccessService> _mockGuestAccessService;
     private readonly Mock<IAuthorizationService> _mockAuthorization;
+    private readonly Mock<IHostScopeResolver> _mockScopeResolver;
     private readonly GdprController _controller;
     private static readonly Guid OrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
 
@@ -26,11 +28,13 @@ public class GdprControllerTests
         _mockOrgContextResolver = new Mock<IOrgContextResolver>();
         _mockGuestAccessService = new Mock<IGuestAccessService>();
         _mockAuthorization = new Mock<IAuthorizationService>();
+        _mockScopeResolver = new Mock<IHostScopeResolver>();
         _controller = new GdprController(
             _mockGdprService.Object,
             _mockOrgContextResolver.Object,
             _mockGuestAccessService.Object,
             _mockAuthorization.Object,
+            _mockScopeResolver.Object,
             new Mock<ILogger<GdprController>>().Object)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
