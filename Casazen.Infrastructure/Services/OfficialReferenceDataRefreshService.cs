@@ -1,9 +1,12 @@
+using System.Globalization;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.OfficialData;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Data.Seeds;
 using Casazen.Infrastructure.OfficialData;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -14,7 +17,8 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>
 /// Scheduled refresh of official public datasets (RS-6, RS-7, CO-12). Downloads the ISTAT comuni CSV, the four
 /// Alloggiati tables and the tourist-tax pages of the configured pilot comuni. Imports when the official file
-/// changed. Tourist-tax amounts are never invented: a page that cannot be parsed deterministically is logged only.
+/// changed. Tourist-tax amounts are written only when a locazioni-brevi tariff can be parsed from the HTML table
+/// or textual PDF; a failed re-read never overwrites the last good amount with null.
 /// </summary>
 public class OfficialReferenceDataRefreshService(
     OfficialSourceDownloader downloader,
@@ -263,28 +267,37 @@ public class OfficialReferenceDataRefreshService(
                 continue;
             }
 
+            var extraction = TouristTaxOfficialExtractor.TryExtract(source.IstatCode, file.Bytes);
+            if (!extraction.Succeeded || extraction.Rates.Count == 0)
+            {
+                // Keep the last good amount. Do not stamp SourceRetrievedAt as if the tariff was re-read.
+                results.Add(await RecordAsync(
+                    OfficialSourceDatasets.TouristTax,
+                    url.ToString(),
+                    source.Authority,
+                    OfficialSourceFetchStatus.ExtractFailed,
+                    extraction.Detail,
+                    file.HttpStatus,
+                    file.Sha256,
+                    source.IstatCode,
+                    cancellationToken));
+                continue;
+            }
+
             var now = _clock.GetUtcNow().UtcDateTime;
             var rates = await db.TouristTaxRates
                 .Where(r => r.IstatCode == source.IstatCode)
                 .ToListAsync(cancellationToken);
-            foreach (var rate in rates)
-            {
-                rate.SourceUrl ??= url.ToString();
-                rate.SourceAuthority = string.IsNullOrWhiteSpace(source.Authority) ? rate.SourceAuthority : source.Authority;
-                rate.SourceRetrievedAt = now;
-                rate.UpdatedAt = now;
-            }
-
+            ApplyExtractedRates(rates, extraction.Rates, url.ToString(), source, now);
             await db.SaveChangesAsync(cancellationToken);
             db.ChangeTracker.Clear();
 
-            // Reporting only: HTML/PDF of a comune is not a structured tariff file. Do not invent amounts.
             results.Add(await RecordAsync(
                 OfficialSourceDatasets.TouristTax,
                 url.ToString(),
                 source.Authority,
-                OfficialSourceFetchStatus.ExtractFailed,
-                "page retrieved; no deterministic structured tariff in the document (reporting only, amounts unchanged)",
+                OfficialSourceFetchStatus.Imported,
+                Truncate(extraction.Detail, 500),
                 file.HttpStatus,
                 file.Sha256,
                 source.IstatCode,
@@ -325,6 +338,85 @@ public class OfficialReferenceDataRefreshService(
             dataset, status, sourceUrl, detail);
         return new OfficialDatasetRefreshResult(dataset, sourceUrl, status, detail, httpStatus, sha256);
     }
+
+    private void ApplyExtractedRates(
+        List<TouristTaxRate> existing,
+        IReadOnlyList<ExtractedTouristTaxRate> extracted,
+        string sourceUrl,
+        OfficialTouristTaxSourceOptions source,
+        DateTime now)
+    {
+        foreach (var item in extracted)
+        {
+            var row = existing.FirstOrDefault(r => SameTariffRow(r, item));
+            if (row is null)
+            {
+                row = new TouristTaxRate
+                {
+                    Id = StableId(item),
+                    City = item.City,
+                    IstatCode = item.IstatCode,
+                    RegionCode = item.RegionCode,
+                    AccommodationCategory = item.AccommodationCategory,
+                    SeasonStart = item.SeasonStart,
+                    SeasonEnd = item.SeasonEnd,
+                    MinimumAge = 14,
+                    IsActive = true,
+                    EffectiveFrom = DateTime.SpecifyKind(item.EffectiveFrom, DateTimeKind.Utc),
+                    CreatedAt = now,
+                };
+                db.TouristTaxRates.Add(row);
+                existing.Add(row);
+            }
+
+            row.CalculationMethod = item.CalculationMethod;
+            row.RatePerPersonPerNight = item.RatePerPersonPerNight;
+            row.PercentOfNightlyPrice = item.PercentOfNightlyPrice;
+            row.CapPerPersonPerNight = item.CapPerPersonPerNight;
+            if (item.MaxNights is int maxNights)
+                row.MaxNights = maxNights;
+            if (item.ReducedRateMaxAge is int reducedAge)
+                row.ReducedRateMaxAge = reducedAge;
+            if (item.ReducedRatePerPersonPerNight is decimal reduced)
+                row.ReducedRatePerPersonPerNight = reduced;
+            row.SourceUrl = sourceUrl;
+            row.SourceAuthority = string.IsNullOrWhiteSpace(source.Authority) ? row.SourceAuthority : source.Authority;
+            row.SourceRetrievedAt = now;
+            row.VerificationLevel = TouristTaxRateVerification.Official;
+            row.UpdatedAt = now;
+            if (string.IsNullOrWhiteSpace(row.Notes))
+            {
+                row.Notes = Truncate(
+                    $"{item.City}: extracted {item.RatePerPersonPerNight.ToString("0.00", CultureInfo.InvariantCulture)} from {sourceUrl}",
+                    500);
+            }
+        }
+    }
+
+    private static bool SameTariffRow(TouristTaxRate row, ExtractedTouristTaxRate extracted) =>
+        string.Equals(row.IstatCode, extracted.IstatCode, StringComparison.Ordinal)
+        && string.Equals(row.SeasonStart, extracted.SeasonStart, StringComparison.Ordinal)
+        && SameCategory(row.AccommodationCategory, extracted.AccommodationCategory);
+
+    private static bool SameCategory(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) && string.IsNullOrWhiteSpace(right))
+            return true;
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+            return false;
+        return NormalizeCategory(left) == NormalizeCategory(right);
+    }
+
+    private static string NormalizeCategory(string value)
+    {
+        var chars = value.ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : ' ').ToArray();
+        return string.Join(' ', new string(chars).Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static Guid StableId(ExtractedTouristTaxRate item) =>
+        item.AccommodationCategory is null && item.SeasonStart is null
+            ? TouristTaxRateSeed.IdFor(item.IstatCode, item.EffectiveFrom)
+            : TouristTaxRateSeed.IdFor(item.IstatCode, item.EffectiveFrom, item.AccommodationCategory, item.SeasonStart);
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 

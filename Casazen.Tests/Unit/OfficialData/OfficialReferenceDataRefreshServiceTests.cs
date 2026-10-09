@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.OfficialData;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -105,9 +106,106 @@ public class OfficialReferenceDataRefreshServiceTests
         Assert.Equal(OfficialSourceFetchStatus.ExtractFailed, tax.Status);
         var rate = await db.TouristTaxRates.AsNoTracking().SingleAsync();
         Assert.Equal(9.50m, rate.RatePerPersonPerNight);
-        Assert.Equal("Comune di Milano", rate.SourceAuthority);
-        Assert.NotNull(rate.SourceRetrievedAt);
+        Assert.Null(rate.SourceAuthority);
+        Assert.Null(rate.SourceRetrievedAt);
         Assert.Contains(await db.OfficialSourceFetches.ToListAsync(), f => f.Status == OfficialSourceFetchStatus.ExtractFailed && f.IstatCode == "015146");
+    }
+
+    [Fact]
+    public async Task RefreshAsync_TouristTaxHtmlTable_WritesLocazioniBreviAmount()
+    {
+        await using var db = CreateDb();
+        db.TouristTaxRates.Add(new TouristTaxRate
+        {
+            City = "Milano",
+            IstatCode = "015146",
+            RegionCode = "LOM",
+            RatePerPersonPerNight = 6.30m,
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        const string page = "https://www.comune.milano.it/argomenti/tributi/imposta-di-soggiorno-informazioni";
+        var html = """
+            <h2>Tariffe dal 1° aprile 2026</h2>
+            <ul><li>Locazioni Brevi ex D.L. 50/2017: 9,50 €</li></ul>
+            """;
+        var handler = new StubHandler { [page] = Html(html) };
+        var options = new OfficialReferenceDataOptions
+        {
+            Enabled = true,
+            IstatCatalogUrl = "https://example.com/istat",
+            IstatComuniCsvUrl = "https://example.com/comuni.csv",
+            AlloggiatiDownloadBaseUrl = "https://example.com/blocked",
+            TouristTaxSources =
+            [
+                new OfficialTouristTaxSourceOptions
+                {
+                    IstatCode = "015146",
+                    Name = "Milano",
+                    Authority = "Comune di Milano",
+                    SourceUrl = page,
+                },
+            ],
+        };
+        var service = CreateService(db, options, handler);
+
+        var result = await service.RefreshAsync();
+
+        var tax = Assert.Single(result.TouristTax);
+        Assert.Equal(OfficialSourceFetchStatus.Imported, tax.Status);
+        var rate = await db.TouristTaxRates.AsNoTracking().SingleAsync();
+        Assert.Equal(9.50m, rate.RatePerPersonPerNight);
+        Assert.Equal("Comune di Milano", rate.SourceAuthority);
+        Assert.Equal(page, rate.SourceUrl);
+        Assert.NotNull(rate.SourceRetrievedAt);
+        Assert.Equal(TouristTaxRateVerification.Official, rate.VerificationLevel);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_TouristTaxExtractFailed_DoesNotClearLastGoodAmount()
+    {
+        await using var db = CreateDb();
+        db.TouristTaxRates.Add(new TouristTaxRate
+        {
+            City = "Milano",
+            IstatCode = "015146",
+            RegionCode = "LOM",
+            RatePerPersonPerNight = 9.50m,
+            SourceUrl = "https://www.comune.milano.it/argomenti/tributi/imposta-di-soggiorno-informazioni",
+            SourceAuthority = "Comune di Milano",
+            SourceRetrievedAt = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        const string page = "https://www.comune.milano.it/argomenti/tributi/imposta-di-soggiorno-informazioni";
+        var handler = new StubHandler { [page] = Html("<html><body>pagina senza tabella</body></html>") };
+        var options = new OfficialReferenceDataOptions
+        {
+            Enabled = true,
+            IstatCatalogUrl = "https://example.com/istat",
+            IstatComuniCsvUrl = "https://example.com/comuni.csv",
+            AlloggiatiDownloadBaseUrl = "https://example.com/blocked",
+            TouristTaxSources =
+            [
+                new OfficialTouristTaxSourceOptions
+                {
+                    IstatCode = "015146",
+                    Name = "Milano",
+                    Authority = "Comune di Milano",
+                    SourceUrl = page,
+                },
+            ],
+        };
+        var service = CreateService(db, options, handler);
+
+        var result = await service.RefreshAsync();
+
+        Assert.Equal(OfficialSourceFetchStatus.ExtractFailed, Assert.Single(result.TouristTax).Status);
+        var rate = await db.TouristTaxRates.AsNoTracking().SingleAsync();
+        Assert.Equal(9.50m, rate.RatePerPersonPerNight);
+        Assert.Equal(new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), rate.SourceRetrievedAt);
     }
 
     [Fact]

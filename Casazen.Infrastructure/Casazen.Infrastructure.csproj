@@ -26,6 +26,8 @@
     <PackageReference Include="Ical.Net" Version="4.3.1" />
     <!-- PDF rendering (LT-09): MIT, fully managed. Licence and font notes in docs/runbooks/lease-contract-templates.md. -->
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <!-- Official tourist-tax PDF text extraction (RS-7): Apache-2.0, same package the tests already use. -->
+    <PackageReference Include="PdfPig" Version="0.1.16" />
     <PackageReference Include="Resend" Version="0.5.1" />
     <PackageReference Include="Stripe.net" Version="50.1.0" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.12" />
