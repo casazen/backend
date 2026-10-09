@@ -198,6 +198,7 @@ public class RecurringJobsFeatureFlagTests
         bool rliProvider = false,
         bool eSignProvider = false,
         bool supplierRequestAutoCancel = false,
+        bool supplierOnlinePayments = false,
         bool propertyModeChange = false)
     {
         var flags = new Mock<IFeatureFlags>();
@@ -205,6 +206,7 @@ public class RecurringJobsFeatureFlagTests
         flags.Setup(f => f.IsEnabled(FeatureFlags.RliProvider)).Returns(rliProvider);
         flags.Setup(f => f.IsEnabled(FeatureFlags.ESignProvider)).Returns(eSignProvider);
         flags.Setup(f => f.IsEnabled(FeatureFlags.SupplierRequestAutoCancel)).Returns(supplierRequestAutoCancel);
+        flags.Setup(f => f.IsEnabled(FeatureFlags.SupplierOnlinePayments)).Returns(supplierOnlinePayments);
         flags.Setup(f => f.IsEnabled(FeatureFlags.PropertyModeChange)).Returns(propertyModeChange);
         return flags.Object;
     }

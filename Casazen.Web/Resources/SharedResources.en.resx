@@ -2563,4 +2563,34 @@
   <data name="ServiceRequestOnlinePayment" xml:space="preserve">
     <value>This request is paid through CasaZen with the link sent by email: you cannot mark it as paid by hand.</value>
   </data>
+  <data name="ServicePaymentNotRefundable" xml:space="preserve">
+    <value>This payment cannot be refunded from here: it is not recorded as successfully paid online.</value>
+  </data>
+  <data name="ServicePaymentRefundOffline" xml:space="preserve">
+    <value>This payment was recorded as received outside CasaZen: no money went through CasaZen, so there is nothing to refund from here.</value>
+  </data>
+  <data name="ServicePaymentNothingToRefund" xml:space="preserve">
+    <value>There is nothing left to refund on this payment.</value>
+  </data>
+  <data name="ServicePaymentRefundAmountInvalid" xml:space="preserve">
+    <value>The amount to refund must be a positive number of cents.</value>
+  </data>
+  <data name="ServicePaymentRefundAmountExceeds" xml:space="preserve">
+    <value>The amount is more than what can still be refunded ({0:N2} €).</value>
+  </data>
+  <data name="ServicePaymentRefundReasonTooLong" xml:space="preserve">
+    <value>The note can have at most {1} characters.</value>
+  </data>
+  <data name="SupplierCommissionInvalid" xml:space="preserve">
+    <value>The commission must be a percentage from 0 to {0}, with two decimals at most.</value>
+  </data>
+  <data name="SupplierCommissionUntilInvalid" xml:space="preserve">
+    <value>The end of the period needs a percentage and must be a future date.</value>
+  </data>
+  <data name="SupplierCommissionReasonInvalid" xml:space="preserve">
+    <value>Give the reason for the change (500 characters at most).</value>
+  </data>
+  <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
+    <value>Give a past or current month in the form yyyy-mm (for example 2026-10).</value>
+  </data>
 </root>

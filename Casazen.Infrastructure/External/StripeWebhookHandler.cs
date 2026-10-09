@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,7 @@ public class StripeWebhookHandler(
     IPaymentRefundService paymentRefundService,
     CheckoutPaymentSettlementService checkoutPayments,
     DeferredChargeService deferredCharges,
+    ISupplierPaymentWebhookService supplierPayments,
     ILogger<StripeWebhookHandler> logger,
     IActivityLog? activityLog = null)
 {
@@ -73,6 +75,10 @@ public class StripeWebhookHandler(
         RentPaymentNotice? rentNotice = null;
         // Platform invoice paid (PL-13): submitted to the configured SDI provider once the event is committed.
         Guid? sdiSubmission = null;
+        // Payment of a supplier's service (SP-15b): the receipt, the new link, the alert to the admins, the refund notices, once the event is committed.
+        IReadOnlyList<ServicePaymentNotice> servicePaymentNotices = [];
+        // A supplier that has just become able to receive payments (SP-15b): the payment requests that waited for it go out once the event is committed.
+        Guid? readySupplierOrgId = null;
         try
         {
             switch (stripeEvent.Type)
@@ -91,6 +97,15 @@ public class StripeWebhookHandler(
                     rentNotice = await HandleRentChargeAsync(
                         (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
                     break;
+                // The payment of a supplier's service (SP-15b, kind = service-charge): BEFORE the generic payment_intent.succeeded
+                // below, like the rent. Otherwise the event would be "processed" with no effect on the Connect endpoint (the generic
+                // handler drops every kind but direct-booking) or, on the platform endpoint, handed to the booking settlement.
+                case "payment_intent.succeeded" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.processing" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.payment_failed" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.canceled" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
+                    servicePaymentNotices = await HandleServiceChargeAsync(stripeEvent, (PaymentIntent)stripeEvent.Data.Object, source);
+                    break;
                 case "payment_intent.succeeded":
                     checkoutSettlement = await HandlePaymentSucceededAsync(
                         stripeEvent.Data.Object as PaymentIntent, source, stripeEvent.Account);
@@ -104,17 +119,42 @@ public class StripeWebhookHandler(
                         checkoutSettlement = await HandleSetupIntentSucceededAsync(stripeEvent.Data.Object as SetupIntent);
                     break;
                 case "charge.refunded":
-                    succeededRefunds = await HandleChargeRefundedAsync(stripeEvent.Data.Object as Charge, source, stripeEvent.Account);
-                    break;
+                    {
+                        // A refund of a supplier's service payment is recorded by the service payments (SP-15b); any other is a
+                        // booking payment's, as before.
+                        var serviceRefund = await HandleServiceChargeRefundedAsync(stripeEvent.Data.Object as Charge, stripeEvent.Account);
+                        if (serviceRefund is { Handled: true })
+                            servicePaymentNotices = serviceRefund.Notices;
+                        else
+                            succeededRefunds = await HandleChargeRefundedAsync(stripeEvent.Data.Object as Charge, source, stripeEvent.Account);
+                        break;
+                    }
                 case "refund.created":
                 case "refund.updated":
                 case "refund.failed":
                 case "charge.refund.updated":
-                    succeededRefunds = await HandleRefundChangedAsync(stripeEvent.Data.Object as Refund, source, stripeEvent.Account);
-                    break;
+                    {
+                        var serviceRefund = await HandleServiceRefundChangedAsync(stripeEvent.Data.Object as Refund, stripeEvent.Account);
+                        if (serviceRefund is { Handled: true })
+                            servicePaymentNotices = serviceRefund.Notices;
+                        else
+                            succeededRefunds = await HandleRefundChangedAsync(stripeEvent.Data.Object as Refund, source, stripeEvent.Account);
+                        break;
+                    }
+                case "charge.dispute.created":
+                    {
+                        // A dispute on a supplier's service payment: error in the log and an email to the admins (SP-15b). Disputes of
+                        // other payments are not handled here, as before.
+                        var dispute = await HandleServiceDisputeAsync(stripeEvent);
+                        if (dispute is { Handled: true })
+                            servicePaymentNotices = dispute.Notices;
+                        else
+                            logger.LogInformation("Unhandled Stripe event: {EventType} (source={Source})", stripeEvent.Type, source);
+                        break;
+                    }
                 case "account.updated":
                     if (source == WebhookSource.Connected)
-                        await HandleAccountUpdatedAsync(stripeEvent.Data.Object as Account);
+                        readySupplierOrgId = await HandleAccountUpdatedAsync(stripeEvent.Data.Object as Account);
                     break;
                 case "customer.subscription.created":
                 case "customer.subscription.updated":
@@ -174,6 +214,12 @@ public class StripeWebhookHandler(
 
         if (sdiSubmission is { } platformInvoiceId)
             await platformInvoices.SubmitToSdiAsync(platformInvoiceId);
+
+        if (servicePaymentNotices.Count > 0)
+            await supplierPayments.CompleteAsync(servicePaymentNotices);
+
+        if (readySupplierOrgId is { } supplierOrgId)
+            supplierPayments.ScheduleSendPendingRequests(supplierOrgId);
     }
 
     private async Task<IDbContextTransaction?> BeginEventTransactionAsync()
@@ -521,14 +567,94 @@ public class StripeWebhookHandler(
         return null;
     }
 
-    private async Task HandleAccountUpdatedAsync(Account? account)
+    /// <summary>
+    /// Applies <c>account.updated</c> to the org that owns the account. Returns the supplier org that has just become able to take
+    /// charges and payouts, if it did (SP-15b): its pending payment requests are queued once the event is committed.
+    /// </summary>
+    private async Task<Guid?> HandleAccountUpdatedAsync(Account? account)
     {
         if (account is null)
-            return;
+            return null;
 
         logger.LogInformation("Connect account updated: {AccountId}", account.Id);
         var snapshot = StripeConnectGateway.MapAccount(account);
-        await connectOnboardingService.ApplyAccountUpdatedAsync(snapshot);
+        var update = await connectOnboardingService.ApplyAccountUpdatedAsync(snapshot);
+        return update is { SupplierBecameReady: true, OrgId: { } orgId } ? orgId : null;
+    }
+
+    // ─── Supplier service payments (SP-15b) ─────────────────────────────────────────────────────────────────────────
+
+    private static bool IsServiceCharge(PaymentIntent? paymentIntent) =>
+        paymentIntent is not null &&
+        TryGetMetadataKind(paymentIntent, out var kind) &&
+        string.Equals(kind, ServiceCharges.Kind, StringComparison.Ordinal);
+
+    /// <summary>
+    /// An event of a service payment's PaymentIntent, from the Connect endpoint or from the platform endpoint listening to connected
+    /// accounts (the event's <c>account</c>), applied in the event transaction and never dropped as processed without effect. A
+    /// payment is recorded as paid only if account, amount, currency and commission are the ones that were asked for; otherwise it
+    /// goes to review (<see cref="ISupplierPaymentWebhookService"/>).
+    /// </summary>
+    private async Task<IReadOnlyList<ServicePaymentNotice>> HandleServiceChargeAsync(
+        Event stripeEvent,
+        PaymentIntent paymentIntent,
+        WebhookSource source)
+    {
+        logger.LogInformation(
+            "Service payment intent {PaymentIntentId}: {EventType} (source={Source}, account={AccountId})",
+            paymentIntent.Id,
+            stripeEvent.Type,
+            source,
+            stripeEvent.Account ?? "none");
+
+        var paymentId = paymentIntent.Metadata is not null
+                        && paymentIntent.Metadata.TryGetValue(ServiceCharges.PaymentMetadataKey, out var raw)
+                        && Guid.TryParse(raw, out var parsed)
+            ? parsed
+            : (Guid?)null;
+
+        return await supplierPayments.ApplyPaymentIntentEventAsync(new ServicePaymentIntentEvent(
+            stripeEvent.Id ?? string.Empty,
+            stripeEvent.Type,
+            paymentIntent.Id,
+            stripeEvent.Account,
+            paymentId,
+            paymentIntent.Amount,
+            paymentIntent.AmountReceived,
+            paymentIntent.Currency,
+            paymentIntent.ApplicationFeeAmount,
+            paymentIntent.LastPaymentError?.Code,
+            EventTime(stripeEvent)));
+    }
+
+    /// <summary>When Stripe says the event happened; null when the event has no creation time (synthetic events).</summary>
+    private static DateTime? EventTime(Event stripeEvent) =>
+        stripeEvent.Created.Year >= 2000 ? DateTime.SpecifyKind(stripeEvent.Created, DateTimeKind.Utc) : null;
+
+    private async Task<ServicePaymentEventResult> HandleServiceChargeRefundedAsync(Charge? charge, string? account) =>
+        charge is null || string.IsNullOrWhiteSpace(charge.PaymentIntentId)
+            ? ServicePaymentEventResult.NotOurs
+            : await supplierPayments.ApplyChargeRefundedAsync(charge.PaymentIntentId, account);
+
+    private async Task<ServicePaymentEventResult> HandleServiceRefundChangedAsync(Refund? refund, string? account) =>
+        refund is null || string.IsNullOrWhiteSpace(refund.PaymentIntentId)
+            ? ServicePaymentEventResult.NotOurs
+            : await supplierPayments.ApplyRefundChangedAsync(StripeSupplierPaymentGateway.MapRefund(refund), account);
+
+    private async Task<ServicePaymentEventResult> HandleServiceDisputeAsync(Event stripeEvent)
+    {
+        if (stripeEvent.Data.Object is not Dispute dispute || string.IsNullOrWhiteSpace(dispute.PaymentIntentId))
+            return ServicePaymentEventResult.NotOurs;
+
+        return await supplierPayments.ApplyDisputeCreatedAsync(new ServiceDisputeEvent(
+            stripeEvent.Id ?? string.Empty,
+            dispute.Id,
+            dispute.PaymentIntentId,
+            stripeEvent.Account,
+            dispute.Amount,
+            dispute.Currency,
+            dispute.Reason,
+            dispute.Status));
     }
 
     /// <summary>

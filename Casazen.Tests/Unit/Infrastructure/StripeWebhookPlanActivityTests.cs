@@ -176,6 +176,7 @@ public class StripeWebhookPlanActivityTests
             Mock.Of<IPaymentRefundService>(),
             TestCheckoutPaymentSettlement.Create(_db),
             TestDeferredCharges.Create(_db),
+            Mock.Of<ISupplierPaymentWebhookService>(),
             NullLogger<StripeWebhookHandler>.Instance,
             activity);
         await handler.HandleEventAsync(stripeEvent, WebhookSource.Platform);

@@ -27,6 +27,8 @@ public class RecurringJobsConcurrencyTests
         "service-request-auto-cancel",
         "service-request-expiry",
         "service-request-reminders",
+        "service-payment-sync",
+        "service-payment-reminders",
         "property-mode-change",
     ];
 
@@ -57,7 +59,7 @@ public class RecurringJobsConcurrencyTests
     {
         var jobs = RegisteredJobs();
 
-        foreach (var id in new[] { "ical-supplier-sync", "property-ical-sync", "booking-pull-all", "lease-sign-status-poll", "lease-registration-status-poll", "checkout-hold-expiry", "domain-recheck", "service-request-auto-cancel", "service-request-expiry" })
+        foreach (var id in new[] { "ical-supplier-sync", "property-ical-sync", "booking-pull-all", "lease-sign-status-poll", "lease-registration-status-poll", "checkout-hold-expiry", "domain-recheck", "service-request-auto-cancel", "service-request-expiry", "service-payment-sync" })
         {
             var attribute = ConcurrencyAttribute(jobs[id].Method)!;
             Assert.True(attribute.TimeoutSec < 5 * 60, $"{id} waits {attribute.TimeoutSec}s for its previous run");

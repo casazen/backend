@@ -467,7 +467,15 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierPaymentsOptions>, Casazen.Core.Options.SupplierPaymentsOptionsValidator>();
         services.AddSingleton<ISupplierPaymentGateway, StripeSupplierPaymentGateway>();
-        services.AddScoped<ISupplierPaymentService, SupplierPaymentService>();
+        // The payment service holds the payer's side (SP-15a) and, in its own interfaces, the Stripe webhook, the jobs and the admin
+        // refunds (SP-15b): one instance per scope, so they share the payment lock and the way a link is issued.
+        services.AddScoped<SupplierPaymentService>();
+        services.AddScoped<ISupplierPaymentService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentWebhookService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentJobService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentRefundService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentAdminService, SupplierPaymentAdminService>();
+        services.AddScoped<ISupplierPaymentJobScheduler, SupplierPaymentJobScheduler>();
         // One instance per request for both doors (SP-11): the hosts' and the suppliers' operations, and the narrow set of what the
         // customer of a public showcase does to its own request, which only the customer's area (IShowcaseBookingManager) uses.
         services.AddScoped<ServiceRequestService>();
