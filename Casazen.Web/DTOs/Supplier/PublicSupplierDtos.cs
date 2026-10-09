@@ -99,8 +99,11 @@ public class PublicSupplierServiceDetailDto : PublicSupplierServiceDto
 /// <summary>Body of <c>GET api/public/suppliers/{slug}/services</c>.</summary>
 public class PublicSupplierServiceListResponse
 {
-    /// <summary>The published services, by the supplier's order.</summary>
-    public IReadOnlyList<PublicSupplierServiceDto> Items { get; set; } = [];
+    /// <summary>
+    /// The published services in full, by the supplier's order: the same as the detail, with the structured supplements, so a
+    /// booking form needs one request to offer every service and its options. (The page of the supplier carries the cards.)
+    /// </summary>
+    public IReadOnlyList<PublicSupplierServiceDetailDto> Items { get; set; } = [];
 
     public int Total { get; set; }
 }

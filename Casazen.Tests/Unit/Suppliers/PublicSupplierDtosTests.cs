@@ -94,7 +94,7 @@ public class PublicSupplierDtosTests
         {
             PublicSupplierMapper.ToSummaryDto(service),
             PublicSupplierMapper.ToDetailDto(service),
-            new PublicSupplierServiceListResponse { Items = [PublicSupplierMapper.ToSummaryDto(service)], Total = 1 },
+            new PublicSupplierServiceListResponse { Items = [PublicSupplierMapper.ToDetailDto(service)], Total = 1 },
             PublicSupplierMapper.ToDto(slots),
             PublicSupplierMapper.ToDto(quote),
         };

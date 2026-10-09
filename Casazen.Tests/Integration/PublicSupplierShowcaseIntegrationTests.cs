@@ -162,7 +162,7 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         var supplier = await PublicShowcaseTestData.SeedSupplierAsync(factory);
         var other = await PublicShowcaseTestData.SeedSupplierAsync(factory);
         await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId, "Seconda", sortOrder: 2, priceFromCents: null, requiresQuote: true);
-        await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId, "Prima", sortOrder: 1, priceFromCents: 4500, priceUnit: SupplierServicePriceUnit.PerHour);
+        await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId, "Prima", sortOrder: 1, priceFromCents: 4500, priceUnit: SupplierServicePriceUnit.PerHour, supplementsJson: Supplements);
         await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId, "Bozza", SupplierServiceListingStatus.Draft);
         await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId, "Eliminato", deletedAt: DateTime.UtcNow);
         await PublicShowcaseTestData.SeedServiceAsync(factory, other.OrgId, "Di un altro");
@@ -179,10 +179,18 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.Equal("PerHour", items[0].GetProperty("priceUnit").GetString());
         Assert.Equal(JsonValueKind.Null, items[1].GetProperty("priceFromCents").ValueKind);
         Assert.True(items[1].GetProperty("requiresQuote").GetBoolean());
+        // Each one in full, like the detail: with the structured supplements the estimate is computed from.
+        Assert.Equal(5, items[0].GetProperty("supplements").GetArrayLength());
+        Assert.Equal(0, items[1].GetProperty("supplements").GetArrayLength());
+        Assert.Equal("Prima: descrizione lunga.", items[0].GetProperty("description").GetString());
         // Nothing of the console's bookkeeping: no id, no status, no version, no position, no dates.
         var names = items[0].EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray();
         Assert.Equal(
-            new[] { "category", "durationMinutes", "excluded", "included", "name", "photoUrls", "priceFromCents", "priceUnit", "pricesIncludeVat", "requiresQuote", "slug", "summary" },
+            new[]
+            {
+                "category", "description", "durationMinutes", "excluded", "included", "name", "photoUrls", "priceFromCents", "priceUnit",
+                "pricesIncludeVat", "requiresQuote", "slug", "summary", "supplements",
+            },
             names);
         AssertNoPrivateText(await response.Content.ReadAsStringAsync(), supplier.Secrets);
     }

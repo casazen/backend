@@ -68,9 +68,10 @@ public class PublicSupplierController(
     }
 
     /// <summary>
-    /// The published (<c>Active</c>) services of the supplier, by the supplier's order: name, category, summary, "from" price
-    /// and unit, whether the prices include VAT as the supplier declared, duration, what is included and excluded, photos.
-    /// 404 <c>not_found</c> as the page; 404 (no body worth reading) while the flag is off.
+    /// The published (<c>Active</c>) services of the supplier, by the supplier's order, each in full as the detail is: name,
+    /// category, summary, description, "from" price and unit, whether the prices include VAT as the supplier declared, duration,
+    /// what is included and excluded, photos and the structured supplements the estimate is computed from. 404 <c>not_found</c>
+    /// as the page; 404 (no body worth reading) while the flag is off.
     /// </summary>
     [HttpGet("{slug}/services")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
@@ -87,7 +88,7 @@ public class PublicSupplierController(
         var services = await showcase.ListServicesAsync(supplier, ct);
         return Ok(new PublicSupplierServiceListResponse
         {
-            Items = services.Select(PublicSupplierMapper.ToSummaryDto).ToList(),
+            Items = services.Select(PublicSupplierMapper.ToDetailDto).ToList(),
             Total = services.Count,
         });
     }
