@@ -1,7 +1,8 @@
 # Runbook: iCal import and export (property OTA calendars, supplier calendars)
 
 Tasks PC-10 (audit defects A2-10, A2-12, A2-23, A9-13), PC-11 (A2-11, A2-20), PC-12 (A2-22), SU-15 (A4-11, A9-14:
-supplier sync in Hangfire, [Supplier calendars](#supplier-calendars-su-15)), CO-21 (GC-AC9, decision D7) and PC-09
+supplier sync in Hangfire, [Supplier calendars](#supplier-calendars-su-15)), SP-05 (a supplier's events by the hour,
+[Events by the hour](#events-by-the-hour-sp-05)), CO-21 (GC-AC9, decision D7) and PC-09
 (A2-25, manual blocks). The
 download of the feed (anti-SSRF client, size and time limits, error codes) is described in
 [external-fetch.md](external-fetch.md) (FD-16). This page covers the import feeds of a property (many per property, URL
@@ -24,7 +25,7 @@ import URLs uses the Data Protection key ring of [storage.md](storage.md) (FD-07
 | Encryption of the import URL, startup re-encryption | `Data/Encryption/EncryptedStringConverter.cs`, `Data/Encryption/PropertyICalFeedUrlEncryption.cs` |
 | Masked URL of the API | `Web/Infrastructure/ICalFeedUrlMask.cs` |
 | Export link of a property, token and its regeneration (PC-12) | entity `PropertyICalExport` (table `PropertyICalExports`), `PropertyICalSyncService.RegenerateExportTokenAsync` |
-| Supplier sync (SU-15): state, "sync now", days of the feed vs manual days | `Services/CalendarSyncService.cs`, job `Web/BackgroundJobs/IcalSupplierSyncJob.cs`, actions `calendar/*` of `Web/Controllers/SupplierProfileController.cs` |
+| Supplier sync (SU-15): state, "sync now", days of the feed vs manual days; windows of hours (SP-05) | `Services/CalendarSyncService.cs`, job `Web/BackgroundJobs/IcalSupplierSyncJob.cs`, actions `calendar/*` of `Web/Controllers/SupplierProfileController.cs`; the mapping of a supplier feed to days and windows is `ICalImportService.ToSupplierBusy` |
 | OTA stay from a block (CO-21): rules, conversion, "da verificare" | `Core/Services/OtaStays.cs`, `Services/OtaStayService.cs`, `PropertyICalSyncService.ReviewOtaStaysAsync`, `Web/Controllers/OtaStaysController.cs` |
 
 The former F0 spike (`Casazen.Infrastructure/ICalSpike`, `ICalImportSpike`) no longer exists.
@@ -423,11 +424,17 @@ The API contract of FD-16 is unchanged: `lastErrorCode` / `calendarSyncErrorCode
 - **Timed** values are instants (`Z`, or `TZID`), converted to Europe/Rome before taking their date. A floating time
   (no `Z`, no `TZID`) or an unknown `TZID` is read as Europe/Rome wall clock. The nights are [Rome date of the start,
   Rome date of the end): 10 Oct 15:00 → 12 Oct 10:00 blocks 10 and 11. An event inside one day (10:00-12:00) blocks no
-  night of a property; for a supplier it marks that day busy.
+  night of a property; for a supplier it is a **window of those hours** (SP-05, [Events by the hour](#events-by-the-hour-sp-05)),
+  and only an event of whole days closes days.
+- Every occurrence also carries the **UTC instants** it covers and whether it is all-day (`ICalOccurrence.StartUtc`, `EndUtc`,
+  `IsAllDay`, SP-05); the property sync ignores them. The two days a year the clock changes follow RFC 5545 3.3.5, like the
+  working hours of a supplier (`RomeCalendar.ToUtc`): a wall-clock time that does not exist (02:30 on the last Sunday of March in
+  Rome) is read with the offset before the change, so it is 03:30 summer time; a time that happens twice (02:30 on the last
+  Sunday of October) is its first occurrence, in summer time.
 - **Recurring** events (`RRULE`, `RDATE`, minus `EXDATE` and the instances replaced by a `RECURRENCE-ID` override) are
   expanded from `RecurrenceMonthsBack` months before today (Europe/Rome) to `RecurrenceMonthsAhead` months after. Each
   instance is a block with key `UID#yyyyMMdd`. Rules that repeat more than once a day (`FREQ=HOURLY`, `BYHOUR` lists,
-  ...) are not expanded: they block no night and could produce millions of instances.
+  ...) are not expanded: they block no night (and, for a supplier, no hour) and could produce millions of instances.
 - Single events are imported whatever their dates (the feed decides what it publishes).
 - An event that cannot be read (no DTSTART, end before start) is skipped and counted; the other events are imported.
   The blocks it created at earlier syncs (same UID) are **kept**: an unreadable event is not proof that the
@@ -466,11 +473,12 @@ varchar(500)).
 ## Supplier calendars (SU-15)
 
 A supplier links **one** iCal feed (Google Calendar, Apple, Outlook, ...) in *Sincronizza calendario* or in the
-activation wizard. Its busy days go into `SupplierAvailability` (one row per day, `Available = false`). Since SP-03 that row
-is read as the *override of the day* by the supplier's agenda (weekly hours, time off, blocks, the slot planner,
-[`suppliers.md`](suppliers.md) section 20); the sync still writes whole days and nothing else. Events **by the hour** go into
-`SupplierBusyWindows` (`Kind = External`, `Source = ICalFeed`, `ExternalUid`), under the same lock, in SP-05: the table and the
-planner already read them.
+activation wizard. The events of **whole days** close days in `SupplierAvailability` (one row per day, `Available = false`).
+Since SP-03 that row is read as the *override of the day* by the supplier's agenda (weekly hours, time off, blocks, the slot
+planner, [`suppliers.md`](suppliers.md) section 20). Since SP-05 the events **by the hour** no longer close the day they fall
+on: each becomes a window in `SupplierBusyWindows` (`Kind = External`, `Source = ICalFeed`, `ExternalUid`), written under the
+same lock in the same transaction, and occupies only its own hours ([Events by the hour](#events-by-the-hour-sp-05)); the slot
+planner and the console calendar read them.
 
 ### API (policy `RequireSupplier`, the caller's supplier org only)
 
@@ -506,7 +514,8 @@ stays saved in `Syncing` and the 15-minute job syncs it (error logged: `Could no
 
 ### Days of the feed vs manual days (column `SupplierAvailability.Source`)
 
-`Source` is `Manual` (0, the supplier) or `ICalFeed` (1, the sync). The sync manages only the days of the feed:
+`Source` is `Manual` (0, the supplier) or `ICalFeed` (1, the sync). The sync manages only the days of the feed (the "busy"
+below are the events of **whole days**, plus a timed event with no length; an event by the hour is a window, next section):
 
 | Situation at a successful sync | Result |
 |---|---|
@@ -522,6 +531,102 @@ The availability page saves every visible day: a day sent with its current value
 unchanged stays a feed day); a day whose value the supplier changes becomes `Manual`. A feed day the supplier opens by
 hand is taken again by the next sync while the event is still in the feed (the calendar wins over an opening; a
 closure by hand always wins).
+
+### Events by the hour (SP-05)
+
+The sync reads each event of the feed and writes it according to its kind:
+
+| Event in the feed | What the sync writes |
+|---|---|
+| **All-day** (`DTSTART;VALUE=DATE`) | closed days in `SupplierAvailability`, exactly as before (previous section) |
+| **Timed, with a length** (`DTSTART` and `DTEND` with a time, or `DURATION`) | a **window of hours** in `SupplierBusyWindows`: `Kind = External`, `Source = ICalFeed`, `ExternalUid` the UID, `StartUtc`/`EndUtc`, `Label` the SUMMARY cut to 80 characters. A 10:00-11:00 event occupies that hour (and the supplier's buffer around it) and **nothing else**: the day stays open and the slot planner offers the other hours |
+| **Timed, with no length** (no `DTEND`, or equal to `DTSTART`) | has no hour to occupy: it keeps closing its **day**, as before SP-05 (the cautious reading: dropping it would offer a slot the supplier had closed) |
+| `STATUS:CANCELLED`, `TRANSP:TRANSPARENT` | nothing, as for the days |
+
+**Time zones.** `…Z` is read as written. A `TZID` that .NET finds in the server's time zone database (IANA names such as
+`Europe/Rome`; Windows names such as `W. Europe Standard Time` only where .NET can map them, which needs ICU) is the wall clock
+of that zone, summer time included, so 10:00 `Europe/Rome` is 08:00 UTC in summer and 09:00 in winter. A **floating** time (no
+`Z`, no `TZID`) and an **unknown** `TZID` (including a name .NET cannot map; the `VTIMEZONE` blocks of the file are not read) are
+read as **Europe/Rome wall clock**: the suppliers are in Italy, and a floating time means "the time on the clock wherever you
+are". The time zone of the server never plays a part (a test runs it on a server in Europe/Rome, in Pacific/Kiritimati and in
+America/Los_Angeles). The two days a year the clock changes:
+
+| Case (2026) | Reading |
+|---|---|
+| 29 March 02:30 `Europe/Rome` (does not exist) | with the offset before the change, +01:00: it is 03:30 summer time, 01:30 UTC; an event 01:00-04:00 lasts two real hours |
+| 25 October 02:30 `Europe/Rome` (happens twice) | its first occurrence, in summer time: 00:30 UTC; an event 01:00-04:00 lasts four real hours |
+
+**Recurrences.** Series are expanded in the import window (`RecurrenceMonthsBack` months before today to
+`RecurrenceMonthsAhead` after, Europe/Rome; defaults 1 and 18): **one window per occurrence**, same UID, other start. A series in a
+`TZID` keeps its wall-clock time across the clock changes (10:00 in Rome stays 10:00 in Rome), one in UTC does not; `EXDATE` and a
+moved instance (`RECURRENCE-ID`) are honored. **Limit: a series that repeats more than once a day** (`FREQ=HOURLY`, `MINUTELY`,
+`SECONDLY`, or several `BYHOUR`/`BYMINUTE` values) **is not expanded**: it occupies nothing, not even its first instance (before
+SP-05 it did not close any day either). It is counted in the warning `… sub-daily recurrences skipped`. A supplier who needs those
+hours blocks them from the agenda.
+
+**What is stored, and what is not.**
+
+- Windows are those of the **import window** above. A single event outside it (last year, in three years) is not stored, and is
+  when it comes into the window; the days of all-day events are not limited by it, as before. So the table keeps about the last
+  month and the next 18 months. Keep `ICalImport__RecurrenceMonthsAhead` at 12 or more: a supplier can set a horizon of 365 days
+  and an engagement beyond the window would not be seen by the planner.
+- At most **10 000 windows** per supplier, the nearest ones; the rest is left out and logged (`… engagements by the hour left
+  out`). A realistic calendar has a few hundred; a daily series over the whole window is about 550.
+- The **key** of a window is the supplier, the UID and the start (unique index `UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc`,
+  partial on `ExternalUid IS NOT NULL`). An event without UID gets a hash of its start, end and summary, the same at every sync (if
+  the supplier changes its time or title the old window goes and a new one comes); a UID longer than 255 characters is stored as
+  `sha256:<hex>`. The same UID and start twice fold into the longest window, so no hour is dropped and the index is never hit.
+- `Label` is the SUMMARY of the event ("Dentista"), cut to 80 characters, **only for the supplier's own console** (it is in
+  `blocks[]` of `GET api/supplier/calendar`). It is never in a public read (the public slots show only free hours, `suppliers.md`
+  section 22) and never in the logs.
+
+**At every sync**, in one transaction under the `SupplierCalendarSync` lock (the download stays outside it):
+
+| Situation | Result |
+|---|---|
+| Window already there (same UID and start) | kept: same row, same id; its end and label are updated if they changed |
+| Event new in the feed, or moved to another start | a new window (a moved event: the old row goes, see next row) |
+| Window of the feed no longer listed (event deleted or moved), **valid feed with no events** | removed: the hour is free again |
+| Block or extra opening of the supplier (`Source = Manual`) | **never read nor touched**, even at the hours of an event |
+| Window of another supplier | never touched (the same UID and start may exist in two suppliers) |
+| Feed with events that cannot be read (no start, end before start) | windows (and days) added and updated as usual, **nothing removed** at that run |
+| Download or format error, database failure | nothing changes, `Failure` + code |
+
+The same feed again changes **no row** (not the id, not an instant: the instants of a feed are whole seconds, which the
+microsecond column keeps as they are). The supplier cannot delete an engagement of the feed from the console (`DELETE
+api/supplier/availability/blocks/{id}` answers 404: edit the event in the calendar; it comes back at the next sync otherwise).
+
+**Concurrency.** The days and the windows are written in one transaction, in READ COMMITTED, **after** taking the advisory lock
+`SupplierCalendarSync` of the supplier (scope 1065, key the supplier org id): the same lock as the supplier's own agenda writes
+(hours, time off, blocks, rules, day overrides), the holds and booking checks of the showcase and the requests with a time. They
+wait for each other instead of reading a stale agenda, and two syncs of one supplier never insert the same window twice. The
+unique index is the last guard; the PostgreSQL tests are `SupplierCalendarSyncHoursPostgresTests`.
+
+**Migration `AddSupplierBusyWindowFeedKey`**: only the partial unique index above. It changes no row and cannot fail on existing
+data (nothing wrote `External` windows before SP-05, and the windows set by hand have no UID). The **first sync after the deploy**
+frees, in the same transaction, the days that timed events used to close (`ICalFeed` rows that are no longer busy days) and writes
+the windows in their place, so the hour is never free in between; days closed by hand (`Manual`, which includes every day written
+before SU-15, see below) are never freed. Down drops the index.
+
+**Merge of duplicate profiles** (`POST /api/admin/suppliers/fix-orphaned`): the windows of the duplicate move to the keeper,
+except an engagement the keeper already has with the same UID and start (both profiles read the same calendar): the keeper's row
+stays and the duplicate's copy goes with its profile; the keeper's next sync rewrites its engagements anyway.
+
+**Rollback.** There is no flag: the sync writes the windows as soon as the code is deployed. Reverting the code is safe for the
+schema (Down drops the index and nothing else), but the windows already written stay, and the previous sync neither reads nor
+frees them: they would keep occupying their hours in the planner. Remove them in the same step and the previous sync closes the
+days again at its next run (15 minutes, or "Sincronizza ora"); the supplier's own blocks are `Source` 0 and stay:
+
+```sql
+DELETE FROM "SupplierBusyWindows" WHERE "Source" = 1;
+```
+
+Support, the engagements of a supplier (`Source` 1 is `ICalFeed`):
+
+```sql
+SELECT "StartUtc", "EndUtc", "ExternalUid", "Label" FROM "SupplierBusyWindows"
+WHERE "OrgId" = '<supplier org id>' AND "Source" = 1 ORDER BY "StartUtc";
+```
 
 ### Migration `AddSupplierCalendarSyncSource` (existing data, prudent choice)
 
@@ -557,7 +662,8 @@ message can quote the document). Skipped events are logged as counts with the ty
 | `iCal sync failed for feed …` | Error | Database write rejected or other unexpected failure, `ical_sync_failed` stored |
 | `iCal sync of feed … failed; continuing with the next feed` | Error | Even the failure state could not be saved (e.g. database down, URL not decryptable); the batch goes on |
 | `iCal feed … changed during the sync: result discarded` | Information | Feed removed during the download |
-| `iCal sync completed for supplier …: N busy days, M marked busy, K freed` | Information | Supplier feed applied (SU-15) |
+| `iCal sync completed for supplier …: N busy days, M marked busy, K freed; W engagements by the hour, A added, U updated, R removed` | Information | Supplier feed applied (SU-15 days, SP-05 windows of hours) |
+| `iCal feed of supplier …: N engagements by the hour left out, the supplier keeps the nearest 10000` | Warning | The feed expands to more windows than the limit; the farthest are not stored (SP-05) |
 | `iCal download failed for supplier …` / `iCal feed of supplier … is not a readable iCalendar` / `iCal sync failed for supplier …` | Warning / Warning / Error | Supplier `Failure` with `ical_unreachable` (or `_too_large`, `_invalid_url`) / `ical_invalid_format` / `ical_sync_failed`, days kept |
 | `iCal sync of supplier … failed; continuing with the next supplier` | Error | Even the failure state could not be saved; the batch goes on |
 | `Could not queue the iCal sync of supplier …` | Error | Hangfire storage unavailable when the URL was saved or "sync now" was clicked; the 15-minute job syncs it |
@@ -575,8 +681,8 @@ message can quote the document). Skipped events are logged as counts with the ty
 | Variable | Meaning | Default |
 |---|---|---|
 | `App__ApiBaseUrl` | **Required for the export link**: the public https URL of this API (the Railway URL of this environment, different on test and production). The link given to hosts is `{App__ApiBaseUrl}/api/public/ical/{token}`. Without it the link would be built on `https://localhost:5001` and no channel would ever receive the calendar: `GET /api/health/ready` reports `api-url: degraded` (DEPLOY-CFG; the committed value used to be the production host, so the test environment published production links) | none |
-| `ICalImport__RecurrenceMonthsAhead` | Months after today (Europe/Rome) in which recurring events are expanded (1-60) | `18` |
-| `ICalImport__RecurrenceMonthsBack` | Months before today still expanded, for the calendar views (0-12) | `1` |
+| `ICalImport__RecurrenceMonthsAhead` | Months after today (Europe/Rome) in which recurring events are expanded (1-60). Since SP-05 it also bounds the **windows of hours** of a supplier's feed (an event further away is stored when it comes into range): keep it at 12 or more, the longest horizon a supplier can set is 365 days | `18` |
+| `ICalImport__RecurrenceMonthsBack` | Months before today still expanded, for the calendar views (0-12); the same lower bound for the windows of hours of a supplier | `1` |
 | `ICalImport__MaxFeedsPerProperty` | Import feeds a property may link (1-50); each is downloaded every 15 minutes | `10` |
 
 ## Checks after a deploy
@@ -597,7 +703,16 @@ message can quote the document). Skipped events are logged as counts with the ty
    and the busy days are closed on the availability page. Delete the event in Google Calendar and click
    "Sincronizza ora": the day is open again, while a day closed by hand stays closed. The API log has no
    `ObjectDisposedException`.
-6. Public booking site (BK-05): on the page of a published property with imported blocks, the availability calendar
+6. Supplier by the hour (SP-05): the migration `AddSupplierBusyWindowFeedKey` is applied (partial unique index
+   `UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc` on `SupplierBusyWindows`). In a linked test calendar create a
+   10:00-11:00 event on a day ahead and an all-day event on another, then "Sincronizza ora": `GET /api/supplier/calendar` lists
+   the first in `blocks[]` as `kind: "External"`, `source: "ICalFeed"` (08:00-09:00 UTC in summer, with the title as `label`),
+   the second in `closedDays[]`; `GET /api/supplier/availability` does **not** list the first day; the slots of a published
+   service (public page, flag `supplierShowcaseBooking`) do not offer 10:00 that day (with the default 30-minute buffer, nor
+   09:00 and 11:00) and offer the other hours. A block created by hand at another hour is still there after the sync;
+   `DELETE …/blocks/{id}` of the engagement answers 404. Delete the event and sync again: the hour is free and the window is gone.
+   The log has `iCal sync completed for supplier …` with the numbers of windows, and a second sync adds, updates and removes 0.
+7. Public booking site (BK-05): on the page of a published property with imported blocks, the availability calendar
    shows those nights as taken (`GET /api/public/bookings/property/{propertyId}/availability` lists them in
    `bookedDates`, dates only), and a checkout over one of them answers 409 `booking_dates_unavailable`. The check-out
    day of a block stays free. A property not published (inactive or compliance not activated) answers 404
