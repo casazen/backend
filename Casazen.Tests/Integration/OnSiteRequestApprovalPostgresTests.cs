@@ -1,5 +1,7 @@
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
@@ -282,6 +284,39 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
     }
 
     [PostgresFact]
+    public async Task ApproveOnSiteRequest_WaitsForRunningICalSyncAndSeesItsBlock()
+    {
+        // A real feed sync writes blocks under the PropertyICalSync advisory lock. Approval must wait for that lock;
+        // otherwise it can pass the block check and confirm while the sync commits an OTA reservation for the same nights.
+        Assert.True(_factory.UsesPostgreSql, "This race regression needs PostgreSQL advisory locks.");
+        var (hostId, property) = await SeedCheckoutReadyPropertyAsync();
+        var bookingId = await CreateConfirmedRequestAsync(property, NextYear(10, 10), NextYear(10, 13));
+        using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
+        _ = await host.GetFromJsonAsync<JsonElement>("/api/bookings/approval-requests");
+
+        await using var lockScope = _factory.Services.CreateAsyncScope();
+        var lockDb = lockScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await using var lockTx = await lockDb.Database.BeginTransactionAsync();
+        await lockDb.Database.ExecuteSqlRawAsync(
+            "SELECT pg_advisory_xact_lock({0}, {1})",
+            1010,
+            AdvisoryHash(property.Id.ToString()));
+
+        var approveTask = host.PostAsync($"/api/bookings/{bookingId}/approve", null);
+        var early = await Task.WhenAny(approveTask, Task.Delay(TimeSpan.FromSeconds(1)));
+        Assert.NotSame(approveTask, early);
+
+        await SeedCalendarBlockAsync(property, NextYear(10, 11), NextYear(10, 14));
+        await lockTx.CommitAsync();
+
+        var response = await approveTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("onsite_request_dates_blocked", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.Equal(BookingStatus.Pending, (await LoadBookingAsync(bookingId)).Status);
+    }
+
+    [PostgresFact]
     public async Task ConfirmEmail_WrongTokenThenRightTokenTwice_404ThenIdempotentSuccessAndOneHostEmail()
     {
         var (_, property) = await SeedCheckoutReadyPropertyAsync();
@@ -449,6 +484,26 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         await db.SaveChangesAsync();
         return export.ExportToken;
     }
+
+    private async Task SeedCalendarBlockAsync(Property property, DateTime start, DateTime end)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.CalendarBlocks.Add(new CalendarBlock
+        {
+            PropertyId = property.Id,
+            OrgId = property.OrgId,
+            StartUtc = start,
+            EndUtc = end,
+            Summary = "Airbnb (Not available)",
+            ExternalUid = $"airbnb-{Guid.NewGuid():N}",
+            LastSyncedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static int AdvisoryHash(string key) =>
+        BinaryPrimitives.ReadInt32LittleEndian(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)));
 
     private async Task UpdateBookingAsync(Guid bookingId, Action<Booking> change)
     {
