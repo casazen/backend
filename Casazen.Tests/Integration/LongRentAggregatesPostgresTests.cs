@@ -128,8 +128,16 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
 
         Assert.Equal(before, after);
 
-        // The collaborator «Solo alcuni» (AM-03) reads its grants inside the same statements: the same commands, not one more.
-        Assert.Equal(before, await CommandsPerCallAsync(new HostScope(_orgId, GrantedToUserId: "auth0|lr01-postgres-collaborator")));
+        // The collaborator «Solo alcuni» (AM-03), given some of the properties, reads its grants inside the same statements: the same
+        // commands, not one more. (One who was given nothing sees nothing, and the register then has no page to read.)
+        var collaborator = await GrantSomePropertiesToACollaboratorAsync(10);
+        await using (var db = _database!.CreateContext())
+        {
+            var visible = await new LeaseContractRepository(db).GetSummariesAsync(collaborator, new LeaseListQuery(), Today);
+            Assert.Equal(10, visible.Count);
+        }
+
+        Assert.Equal(before, await CommandsPerCallAsync(collaborator));
     }
 
     [PostgresFact]
@@ -321,6 +329,36 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
     }
 
     // --- seeding ----------------------------------------------------------------------------------------
+
+    /// <summary>A collaborator of the org «Solo alcuni», given <paramref name="count"/> of the owner properties: its scope.</summary>
+    private async Task<HostScope> GrantSomePropertiesToACollaboratorAsync(int count)
+    {
+        const string collaboratorId = "auth0|lr01-postgres-collaborator";
+        await using var db = _database!.CreateContext();
+        db.Users.Add(new User
+        {
+            Id = collaboratorId,
+            Email = $"{Guid.NewGuid():N}@example.com",
+            FirstName = "Prova",
+            LastName = "Collaboratore",
+            OrgId = _orgId,
+            Role = UserRole.None,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var propertyIds = await db.Properties.IgnoreQueryFilters()
+            .Where(p => p.OrgId == _orgId && p.OwnerId == OwnerId)
+            .OrderBy(p => p.Id)
+            .Select(p => p.Id)
+            .Take(count)
+            .ToListAsync();
+        Assert.Equal(count, propertyIds.Count);
+        db.PropertyMemberAccesses.AddRange(
+            propertyIds.Select(id => new PropertyMemberAccess { OrgId = _orgId, UserId = collaboratorId, PropertyId = id }));
+        await db.SaveChangesAsync();
+        return new HostScope(_orgId, GrantedToUserId: collaboratorId);
+    }
 
     /// <summary>
     /// <paramref name="count"/> more leases of the owner, each with its tenant, its schedule and twelve installments of 2026: January to
