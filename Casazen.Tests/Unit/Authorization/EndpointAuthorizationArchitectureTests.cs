@@ -31,6 +31,8 @@ public class EndpointAuthorizationArchitectureTests
         ["AuthController.GetProfile"] = "Profile of the caller, read from the token.",
         ["AuthController.Logout"] = "Ends the caller's own session.",
         ["MeController.GetContexts"] = "Lists the contexts the caller may enter (how the client picks host, landlord or supplier UI).",
+        ["MeController.PutLastContext"] = "UI-13a: remembers the area the caller entered last; it must be one of the contexts the caller can enter (422 otherwise) and it writes one column of the caller's own user row.",
+        ["SearchController.Search"] = "UI-13a: the palette searches every area of the caller, so no single context policy fits; each group is returned only when the caller holds the permission of that group in its context (the policies of the endpoints that list the same objects, SearchAccessResolver), in the caller's org and, for a collaborator limited to some properties, only in those (HostScope, in SQL). Behind the GlobalSearch flag and rate limited per user.",
         ["OnboardingController.GetStatus"] = "Onboarding state of the caller, needed before any context exists.",
         ["UsersController.GetMe"] = "Profile of the caller.",
         ["UsersController.UpdateMe"] = "Updates the caller's own profile.",

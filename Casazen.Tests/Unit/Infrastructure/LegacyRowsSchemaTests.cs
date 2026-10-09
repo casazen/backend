@@ -26,6 +26,7 @@ public class LegacyRowsSchemaTests
     private const string Lt14 = "LeaseMultipleParties";
     private const string Pm01 = "AddPropertyRentalMode";
     private const string Sp10 = "AddShowcaseBooking";
+    private const string Gsk = "AddGlobalSearchKeys";
     private const string Latest = "*";
 
     private static readonly Regex InsertShape = new(
@@ -46,6 +47,8 @@ public class LegacyRowsSchemaTests
         [nameof(LegacyLeaseRows)] = LegacyLeaseRows.Statement(new LeaseContract()),
         [nameof(LegacyBookingRows)] = LegacyBookingRows.Statement(new Booking()),
         [nameof(LegacyGuestRows)] = LegacyGuestRows.Statement(new Guest()),
+        [nameof(LegacyPartyRows)] = LegacyPartyRows.Statement(new Party()),
+        [nameof(LegacyServiceRequestRows)] = LegacyServiceRequestRows.Statement(new ServiceRequest()),
     };
 
     private static IReadOnlyList<SchemaStep> Steps => LazySteps.Value;
@@ -71,6 +74,13 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyBookingRows), Co14 },
         { nameof(LegacyBookingRows), Pm01 },
         { nameof(LegacyGuestRows), Pm01 },
+        { nameof(LegacyOrgRows), Gsk },
+        { nameof(LegacyPropertyRows), Gsk },
+        { nameof(LegacyGuestRows), Gsk },
+        { nameof(LegacyBookingRows), Gsk },
+        { nameof(LegacyLeaseRows), Gsk },
+        { nameof(LegacyPartyRows), Gsk },
+        { nameof(LegacyServiceRequestRows), Gsk },
     };
 
     /// <summary>The first migration after which each helper is valid (see the summary of each helper).</summary>
@@ -80,6 +90,7 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyLeaseRows), "LeasePartyRetention" },
         { nameof(LegacyBookingRows), "AddBookingCode" },
         { nameof(LegacyGuestRows), "GuestPrivacyConsentsAndRetention" },
+        { nameof(LegacyPartyRows), "LeaseMultipleParties" },
     };
 
     [Theory]
