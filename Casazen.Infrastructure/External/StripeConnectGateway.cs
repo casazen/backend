@@ -108,6 +108,24 @@ public class StripeConnectGateway(
         return link.Url;
     }
 
+    public async Task<string> CreateDashboardLoginLinkAsync(
+        string connectedAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectedAccountId);
+        EnsureApiKey();
+
+        // POST /v1/accounts/{id}/login_links: only for Express accounts of this platform. The URL is single-use and a
+        // credential, so it is returned to the caller and never logged here.
+        var link = await CallAsync(
+            "create the Express dashboard login link",
+            connectedAccountId,
+            () => new AccountLoginLinkService(Client).CreateAsync(connectedAccountId, cancellationToken: cancellationToken),
+            cancellationToken);
+
+        return link.Url;
+    }
+
     /// <summary>
     /// How a failed Stripe call is handled (BK-09). Stripe.net 50.1 (<c>SystemNetHttpClient</c>) already retried
     /// connection errors, 409, 5xx and the 429 marked <c>Stripe-Should-Retry</c> (e.g. <c>lock_timeout</c>); what reaches
