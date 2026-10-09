@@ -1,5 +1,7 @@
 using System.Data.Common;
+using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -50,7 +52,25 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    internal static string Shape(object value) => JsonSerializer.Serialize(value);
+    // The shapes are compared as text. Two things would make that text lie: System.Text.Json writes no field by default (every
+    // tuple below would be an empty object, and nothing in it compared), and a decimal keeps its scale (PostgreSQL gives 600.00
+    // where the reference has 600, the same amount).
+    private static readonly JsonSerializerOptions ShapeOptions = new()
+    {
+        IncludeFields = true,
+        Converters = { new DecimalByValueConverter() },
+    };
+
+    internal static string Shape(object value) => JsonSerializer.Serialize(value, ShapeOptions);
+
+    private sealed class DecimalByValueConverter : JsonConverter<decimal>
+    {
+        public override decimal Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            decimal.Parse(reader.GetString()!, CultureInfo.InvariantCulture);
+
+        public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options) =>
+            writer.WriteStringValue(value.ToString("0.########", CultureInfo.InvariantCulture));
+    }
 
     internal static HostDashboardService Dashboard(AppDbContext db) => new(db, new ConfigurationBuilder().Build(), Clock);
 
