@@ -170,9 +170,9 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
                 Amount = amountCents,
                 Currency = currency,
                 Metadata = metadata,
-                // No platform take-rate yet (A3-40): omitted, not an explicit 0. ApplicationFeeAmount is a nullable
-                // field Stripe treats as "no application fee" when unset; sending a literal 0 is unverified in test
-                // mode and Stripe may reject it. Set this to the real fee amount if/when a take-rate ships.
+                // Direct booking (PO 2026-10-08): no platform application fee. Left unset (not an explicit 0) so the
+                // parameter is omitted; Stripe processing fees stay on the host's connected account. Supplier jobs use
+                // Marketplace:CommissionPercent (3.5%) as ApplicationFeeAmount on a separate charge path.
                 AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
                 {
                     Enabled = true,

@@ -27,6 +27,7 @@ public class BookingService(
     ILogger<BookingService> logger,
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     OnSiteRequestNotifier onSiteNotifier,
+    IPricingAdapterService pricingAdapterService,
     TimeProvider? timeProvider = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -42,6 +43,15 @@ public class BookingService(
         Guid? guestId = null,
         CancellationToken cancellationToken = default) =>
         repository.GetByScopeAsync(scope, propertyId, guestId, cancellationToken);
+
+    public Task<(IReadOnlyList<Booking> Items, int TotalCount)> GetPagedBookingsAsync(
+        HostScope scope,
+        int page,
+        int pageSize,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default) =>
+        repository.GetPagedByScopeAsync(scope, page, pageSize, propertyId, guestId, cancellationToken);
 
     public async Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest)
     {
@@ -384,7 +394,16 @@ public class BookingService(
         CancellationToken cancellationToken = default)
     {
         var nights = (checkOut - checkIn).Days;
-        var basePrice = property.NightlyRate * nights + property.CleaningFee;
+        var from = DateOnly.FromDateTime(checkIn);
+        var appliedNights = await pricingAdapterService.GetAppliedNightlyPricesAsync(
+            property.Id, from, from.AddDays(nights), cancellationToken);
+        decimal lodging = 0;
+        for (var i = 0; i < nights; i++)
+        {
+            var date = from.AddDays(i);
+            lodging += appliedNights.TryGetValue(date, out var applied) ? applied : property.NightlyRate;
+        }
+        var basePrice = lodging + property.CleaningFee;
         var touristTax = await touristTaxQuoteService.QuoteAsync(
             TouristTaxComune.ForProperty(property),
             new TouristTaxStay(

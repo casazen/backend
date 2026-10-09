@@ -41,9 +41,10 @@ public class GuestRepository(AppDbContext context) : IGuestRepository
         int pageSize,
         CancellationToken cancellationToken = default)
     {
+        // PO 2026-10-08: the host list is bookers only. Companions live on StayGuest rows and are not guest cards.
         var query = context.Guests
             .AsNoTracking()
-            .Where(g => g.OrgId == orgId && !g.IsDeleted);
+            .Where(g => g.OrgId == orgId && !g.IsDeleted && g.Bookings.Any());
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {

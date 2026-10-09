@@ -169,6 +169,21 @@ public class UpdatePropertyRequest
         }
     }
 
+    /// <summary>Host override of catalog full-refund hours. Null leaves the stored override; omit to keep.</summary>
+    [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
+    public int? CancellationFullRefundHours { get; set; }
+
+    /// <summary>Host override of catalog partial-refund hours.</summary>
+    [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
+    public int? CancellationPartialRefundHours { get; set; }
+
+    /// <summary>Host override of catalog partial-refund percent (0-100).</summary>
+    [Range(typeof(decimal), "0", "100", ErrorMessage = "PropertyCancellationPercentRange")]
+    public decimal? CancellationPartialRefundPercent { get; set; }
+
+    /// <summary>Percent of stay or non-refundable. Long stays (28+ nights) ignore this.</summary>
+    public HostCancellationRefundType? CancellationRefundType { get; set; }
+
     /// <summary>
     /// Interno / scala (PC-06, A2-19); <c>null</c> or blank removes it. Together with the address it must be unique within
     /// the org: 409 <c>duplicate_property_address</c> otherwise.
@@ -264,6 +279,14 @@ public class UpdatePropertyRequest
             property.CinCode = CinCode;
         if (CancellationPolicyIdSent)
             property.CancellationPolicyId = CancellationPolicyId;
+        if (CancellationFullRefundHours is { } fullHours)
+            property.CancellationFullRefundHours = fullHours;
+        if (CancellationPartialRefundHours is { } partialHours)
+            property.CancellationPartialRefundHours = partialHours;
+        if (CancellationPartialRefundPercent is { } partialPercent)
+            property.CancellationPartialRefundPercent = partialPercent;
+        if (CancellationRefundType is { } refundType)
+            property.CancellationRefundType = refundType;
         if (SlugSent)
             property.Slug = string.IsNullOrWhiteSpace(Slug) ? null : Slug.Trim().ToLowerInvariant();
 

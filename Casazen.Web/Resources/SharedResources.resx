@@ -829,6 +829,18 @@
   <data name="BookingCancelPaymentPermissionRequired" xml:space="preserve">
     <value>Per cancellare una prenotazione con pagamenti serve il permesso di gestire i pagamenti.</value>
   </data>
+  <data name="GuestCancelTokenMissing" xml:space="preserve">
+    <value>Manca il token di cancellazione: apri il link ricevuto per email.</value>
+  </data>
+  <data name="GuestCancelTokenInvalid" xml:space="preserve">
+    <value>Il link di cancellazione non è valido o è già stato usato.</value>
+  </data>
+  <data name="GuestCancelTokenExpired" xml:space="preserve">
+    <value>Il link di cancellazione è scaduto. Chiedi all'host un nuovo link.</value>
+  </data>
+  <data name="BookingNotCancellableByGuest" xml:space="preserve">
+    <value>Questa prenotazione non può più essere cancellata in autonomia.</value>
+  </data>
   <data name="ServiceCategoryInvalid" xml:space="preserve">
     <value>La categoria di servizio «{0}» non è valida: scegline una dall'elenco delle categorie disponibili.</value>
   </data>
@@ -1248,6 +1260,12 @@
   </data>
   <data name="PropertyCancellationPolicyNotFound" xml:space="preserve">
     <value>La policy di cancellazione scelta non esiste: ricarica la pagina e scegline un'altra.</value>
+  </data>
+  <data name="PropertyCancellationHoursRange" xml:space="preserve">
+    <value>Le ore di preavviso per il rimborso devono essere un numero intero tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyCancellationPercentRange" xml:space="preserve">
+    <value>La percentuale di rimborso parziale deve essere tra {1} e {2}.</value>
   </data>
   <data name="PropertyActivationBlocked" xml:space="preserve">
     <value>L'immobile non può ancora essere attivato: completa i punti obbligatori elencati.</value>
