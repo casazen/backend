@@ -18,11 +18,16 @@ pagamento). Codice: `LeasesController`, `LongRentRentsController`, `LongRentAgen
 | `GET /api/long-rent/deadlines?from=&to=&type=` | `lease.read` | Scadenze in ordine di data (§ 5) |
 | `GET /api/long-rent/overview` | `lease.read` | Numeri d'area, checklist e prossima scadenza (§ 5) |
 
-Tutte le letture sono limitate **in SQL** all'org del chiamante e, se non ha un ruolo d'org, ai soli immobili che possiede
-(`HostScope`, TN-3: la stessa regola di `GET /api/leases`; un'unica funzione, `LongRentScopeQueries.WithinScope`). I solleciti
+Tutte le letture sono limitate **in SQL** all'org del chiamante e agli immobili che raggiunge: `HostScope` letto dal database
+(`IHostScopeResolver`, AM-03) e applicato con `InScope`, la stessa regola di `GET /api/leases` e di ogni altro elenco dell'host (tutta
+l'org per titolare, amministratori, property manager, commercialista e collaboratore con tutti gli immobili; solo gli immobili assegnati
+per il collaboratore «Solo alcuni»; gli immobili creati per un account senza team). `LongRentScopeQueries.WithinScope` aggiunge solo il
+filtro d'org e il percorso canone, contratto, immobile (che `HostScopeQueryExtensions` non ha); non decide chi vede cosa. I solleciti
 autorizzano ogni canone come `HostResource` del suo immobile (`LeaseOperations.Create`): altra org = 404, immobile non gestibile = 403
-(nel sollecito di massa: saltato come «non trovato», senza rivelare che esiste). Quando lo scope per immobile letto dal database
-(AM-03, `InScope`) sarà su `develop`, i due metodi di `LongRentScopeQueries` sono l'unico codice di LR-01 da cambiare.
+(nel sollecito di massa: saltato come «non trovato», senza rivelare che esiste). Oggi il ruolo Collaboratore del lungo periodo ha solo
+`property.read` (`OrgRoleCatalog`): non supera la policy `lease.read` di questi endpoint (403); lo scope resta applicato dai servizi come
+difesa in profondità e se un domani quel ruolo ricevesse `lease.read` non vedrebbe altri immobili che i suoi
+(`LongRentHostScopeTests`, `LongRentSqlShapeTests`, `LongRentAggregatesPostgresTests`).
 
 ## 2. Elenco contratti (B3)
 
