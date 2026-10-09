@@ -4159,6 +4159,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("FinalAmountCents")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("FinalAmountConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("FinalAmountNeedsConfirmation")
                         .HasColumnType("boolean");
 
@@ -4202,6 +4205,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("PaidBy")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PaymentMode")
+                        .HasColumnType("integer");
 
                     b.Property<string>("PriceLinesJson")
                         .IsRequired()
@@ -4330,6 +4339,143 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequests_ProposedInterval", "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR (\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ScheduledInterval", "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR (\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ServiceRequestPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AmountCents")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ApplicationFeeCents")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CanceledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("CommissionPercent")
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<string>("ConnectedAccountId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("FeeVatCents")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("FeeVatMode")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LateAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LineItemsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("MarkedPaidByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("NetCents")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OfflineNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("PaidVia")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PayerKind")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("PayerOrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PaymentIntentCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PaymentTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("RefundedCents")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SentCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ServiceRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StripePaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("SupplierOrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PayerOrgId");
+
+                    b.HasIndex("ServiceRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ServiceRequestPayments_ServiceRequestId_Live")
+                        .HasFilter("\"Status\" <> 4");
+
+                    b.HasIndex("StripePaymentIntentId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ServiceRequestPayments_StripePaymentIntentId")
+                        .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
+
+                    b.HasIndex("SupplierOrgId", "Status");
+
+                    b.ToTable("ServiceRequestPayments", t =>
+                        {
+                            t.HasCheckConstraint("CK_ServiceRequestPayments_Amounts", "\"AmountCents\" BETWEEN 1 AND 10000000 AND \"ApplicationFeeCents\" >= 0 AND \"ApplicationFeeCents\" < \"AmountCents\" AND \"NetCents\" = \"AmountCents\" - \"ApplicationFeeCents\" AND \"RefundedCents\" BETWEEN 0 AND \"AmountCents\" AND \"PaymentIntentCount\" >= 0 AND \"SentCount\" >= 0");
+
+                            t.HasCheckConstraint("CK_ServiceRequestPayments_CommissionPercent", "\"CommissionPercent\" BETWEEN 0 AND 50");
+
+                            t.HasCheckConstraint("CK_ServiceRequestPayments_FeeVat", "(\"FeeVatMode\" IS NULL AND \"FeeVatCents\" IS NULL) OR (\"FeeVatMode\" IS NOT NULL AND \"FeeVatCents\" IS NOT NULL AND \"FeeVatCents\" >= 0)");
+
+                            t.HasCheckConstraint("CK_ServiceRequestPayments_Paid", "\"Status\" NOT IN (2, 5, 6) OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_ServiceRequestPayments_Payer", "(\"PayerKind\" = 0 AND \"PayerOrgId\" IS NOT NULL) OR \"PayerKind\" = 1");
                         });
                 });
 
@@ -4895,6 +5041,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<decimal?>("CommissionPercentOverride")
+                        .HasColumnType("numeric(5,2)");
+
                     b.Property<string>("ComuneIstatCodesJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -4976,7 +5125,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("SupplierProfiles");
+                    b.ToTable("SupplierProfiles", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplierProfiles_CommissionPercentOverride", "\"CommissionPercentOverride\" IS NULL OR \"CommissionPercentOverride\" BETWEEN 0 AND 50");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SupplierServiceListing", b =>
@@ -6505,6 +6657,32 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
 
                     b.Navigation("Property");
+
+                    b.Navigation("SupplierOrg");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ServiceRequestPayment", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", "PayerOrg")
+                        .WithMany()
+                        .HasForeignKey("PayerOrgId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Casazen.Core.Entities.ServiceRequest", "ServiceRequest")
+                        .WithMany()
+                        .HasForeignKey("ServiceRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", "SupplierOrg")
+                        .WithMany()
+                        .HasForeignKey("SupplierOrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PayerOrg");
+
+                    b.Navigation("ServiceRequest");
 
                     b.Navigation("SupplierOrg");
                 });

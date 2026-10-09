@@ -1263,4 +1263,67 @@
   <data name="OrgInvitationExpired_Cta" xml:space="preserve">
     <value>Apri Persone e permessi</value>
   </data>
+  <data name="ServicePaymentRequest_Subject" xml:space="preserve">
+    <value>Da pagare: {0} ({1})</value>
+  </data>
+  <data name="ServicePaymentRequest_Body" xml:space="preserve">
+    <value>{0} ha completato il lavoro &lt;strong&gt;{1}&lt;/strong&gt; per l'immobile &lt;strong&gt;{2}&lt;/strong&gt; e ne chiede il pagamento.</value>
+  </data>
+  <data name="ServicePayment_Amount" xml:space="preserve">
+    <value>Importo da pagare: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServicePayment_Cta" xml:space="preserve">
+    <value>Paga online</value>
+  </data>
+  <data name="ServicePayment_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="ServicePayment_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0}. Dopo la scadenza chiedi al fornitore di inviartene uno nuovo.</value>
+  </data>
+  <data name="ServicePayment_Direct" xml:space="preserve">
+    <value>Il pagamento va direttamente sul conto Stripe del fornitore. Paghi l'importo indicato: la commissione di CasaZen è trattenuta al fornitore e non ti viene addebitata in più.</value>
+  </data>
+  <data name="ServicePayment_Personal" xml:space="preserve">
+    <value>Il link è personale: non inoltrarlo. Se hai già pagato, ignora questa email.</value>
+  </data>
+  <data name="ServicePaymentReminder_Subject" xml:space="preserve">
+    <value>Promemoria: pagamento da effettuare per {0}</value>
+  </data>
+  <data name="ServicePaymentReminder_Body" xml:space="preserve">
+    <value>Ti ricordiamo che il pagamento del lavoro &lt;strong&gt;{1}&lt;/strong&gt; di {0} per l'immobile &lt;strong&gt;{2}&lt;/strong&gt; risulta ancora da effettuare.</value>
+  </data>
+  <data name="ServicePaymentReceived_Subject" xml:space="preserve">
+    <value>Pagamento ricevuto: {0}</value>
+  </data>
+  <data name="ServicePaymentReceived_Body" xml:space="preserve">
+    <value>Il lavoro &lt;strong&gt;{0}&lt;/strong&gt; per l'immobile &lt;strong&gt;{1}&lt;/strong&gt; è stato pagato online: Stripe ha confermato il pagamento il {2}.</value>
+  </data>
+  <data name="ServicePaymentReceived_Gross" xml:space="preserve">
+    <value>Prezzo al lordo: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentReceived_Commission" xml:space="preserve">
+    <value>Commissione CasaZen ({0} %): &lt;strong&gt;{1}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentReceived_Net" xml:space="preserve">
+    <value>Netto per te, prima delle commissioni di Stripe: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentReceived_Payout" xml:space="preserve">
+    <value>Il versamento sul tuo conto bancario segue le impostazioni dei versamenti del tuo account Stripe.</value>
+  </data>
+  <data name="ServicePaymentReceived_Cta" xml:space="preserve">
+    <value>Apri la console fornitore</value>
+  </data>
+  <data name="ServicePaymentOfflineRecorded_Subject" xml:space="preserve">
+    <value>Pagamento registrato dal fornitore: {0}</value>
+  </data>
+  <data name="ServicePaymentOfflineRecorded_Body" xml:space="preserve">
+    <value>{0} ha registrato come ricevuto fuori da CasaZen il pagamento del lavoro &lt;strong&gt;{1}&lt;/strong&gt; per l'immobile &lt;strong&gt;{2}&lt;/strong&gt;: &lt;strong&gt;{3}&lt;/strong&gt;. La richiesta risulta ora pagata.</value>
+  </data>
+  <data name="ServicePaymentOfflineRecorded_ReasonLabel" xml:space="preserve">
+    <value>Motivo indicato dal fornitore</value>
+  </data>
+  <data name="ServicePaymentOfflineRecorded_Hint" xml:space="preserve">
+    <value>Se non è corretto, contatta il fornitore.</value>
+  </data>
 </root>

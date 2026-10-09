@@ -252,6 +252,14 @@ public partial class SupplierService
             .Where(sr => sr.SupplierOrgId == duplicateId)
             .ExecuteUpdateAsync(set => set.SetProperty(sr => sr.SupplierOrgId, keeperId), cancellationToken);
 
+        // The payments of those requests (SP-15a) name the supplier too, and the supplier's Stripe account is read from it: they
+        // move with their requests. The foreign key to the org is Restrict, so what stayed would also keep the duplicate org alive.
+        await db.ServiceRequestPayments
+            .Where(p => p.SupplierOrgId == duplicateId)
+            .ExecuteUpdateAsync(
+                set => set.SetProperty(p => p.SupplierOrgId, keeperId).SetProperty(p => p.UpdatedAt, now),
+                cancellationToken);
+
         // The public showcase (SP-10): its requests belong to the supplier org itself (OrgId = SupplierOrgId, not a host org), so
         // they move with the supplier; its customers and unverified holds are children of the profile like the agenda.
         var showcaseRowsMoved = await MoveShowcaseAsync(keeperId, duplicateId, cancellationToken);

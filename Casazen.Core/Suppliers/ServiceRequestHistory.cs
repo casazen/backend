@@ -14,9 +14,12 @@ namespace Casazen.Core.Suppliers;
 /// <see cref="ServiceRequestCancellationReasons"/> (<c>NoResponse</c>, <c>ProposalNotAnswered</c>, <c>CancelledByCustomer</c>).
 /// </param>
 /// <param name="CancelledBy">Who cancelled it (SP-04).</param>
+/// <param name="PaidBy">
+/// Who made the request paid (SP-15a); <c>null</c> is the party that asked (<paramref name="Requester"/>), who did before SP-15a.
+/// </param>
 /// <param name="Requester">
 /// Who asked for the work: the host for a host's request (the default), the customer for a request from the supplier's public
-/// showcase (SP-10). It is the party of the first step and of the payment.
+/// showcase (SP-10). It is the party of the first step and, unless <paramref name="PaidBy"/> says otherwise, of the payment.
 /// </param>
 public sealed record ServiceRequestMilestones(
     ServiceRequestStatus Status,
@@ -30,12 +33,14 @@ public sealed record ServiceRequestMilestones(
     DateTime? CancelledAt = null,
     string? CancellationReason = null,
     ServiceRequestActorParty? CancelledBy = null,
+    ServiceRequestActorParty? PaidBy = null,
     ServiceRequestActorParty Requester = ServiceRequestActorParty.Host);
 
 /// <summary>
 /// The history of a service request (SU-08): one step per transition of <see cref="ServiceRequestStateMachine"/>, with
 /// its date and the party that made it, rebuilt from the dates the request keeps. Requested (host), taken (supplier,
-/// with the member who took it), started (supplier), completed (supplier), paid (host), rejected (supplier, with the
+/// with the member who took it), started (supplier), completed (supplier), paid (the party that asked, or the supplier that
+/// recorded a payment received outside CasaZen: <see cref="ServiceRequestMilestones.PaidBy"/>), rejected (supplier, with the
 /// reason) or cancelled (the host, the supplier or CasaZen, with the reason). For a request from the supplier's public showcase
 /// (SP-10) the party that asked, and would pay, is the customer (<see cref="ServiceRequestMilestones.Requester"/>).
 /// </summary>
@@ -77,7 +82,7 @@ public static class ServiceRequestHistory
         if (request.PaidAt is { } paidAt)
         {
             steps.Add(new ServiceRequestHistoryEntry(
-                ServiceRequestStatus.Pagato, paidAt, request.Requester, null, null));
+                ServiceRequestStatus.Pagato, paidAt, request.PaidBy ?? request.Requester, null, null));
         }
 
         if (request.Status == ServiceRequestStatus.Rifiutato)

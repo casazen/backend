@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -49,6 +50,7 @@ public partial class ServiceRequestService(
     IImageStorageService images,
     IOptions<ServiceRequestOptions> options,
     IOptions<ShowcaseBookingOptions> showcaseOptions,
+    ISupplierPaymentService payments,
     ILogger<ServiceRequestService> logger,
     TimeProvider? timeProvider = null) : IServiceRequestService
 {
@@ -280,6 +282,10 @@ public partial class ServiceRequestService(
 
         var schedule = await ResolveTakeScheduleAsync(request, supplierOrgId, command, cancellationToken);
 
+        // SP-15a: how the request is paid is decided now and kept (Online only if the flag is on and the supplier's Stripe account
+        // can take charges and payouts: no payment before the KYC).
+        var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
+
         IDbContextTransaction? transaction = schedule is null ? null : await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
         await using (transaction)
         {
@@ -292,6 +298,7 @@ public partial class ServiceRequestService(
                 ServiceRequestErrorCodes.CannotTakeMessageKey,
                 r =>
                 {
+                    r.PaymentMode = paymentMode;
                     r.TakenAt = Now();
                     r.TakenByUserId = userId;
                     if (schedule is not null)
@@ -433,21 +440,36 @@ public partial class ServiceRequestService(
             reference, price.FinalAmountCents, options.Value.FinalAmountTolerancePercent);
         var notes = string.IsNullOrWhiteSpace(command?.Notes) ? null : command.Notes.Trim();
 
-        await TransitionAsync(
-            request,
-            ServiceRequestStatus.Completato,
-            ServiceRequestErrorCodes.CannotCompleteMessageKey,
-            r =>
-            {
-                // What the supplier writes is its own column: the host's notes stay as the host wrote them.
-                r.CompletionNotes = notes;
-                r.CompletedAt = Now();
-                r.FinalAmountCents = price.FinalAmountCents;
-                r.PriceLinesJson = ServiceRequestJson.Serialize(price.Lines);
-                r.FinalAmountNeedsConfirmation = needsConfirmation;
-            },
-            cancellationToken);
+        // SP-15a: a request paid inside CasaZen gets its payment together with the completion (one save), unless the amount still
+        // needs the host's confirmation (decision D7) or nothing can be charged online, in which case it falls back to manual.
+        var plan = await payments.PlanAsync(request, price.FinalAmountCents, price.Lines, needsConfirmation, cancellationToken);
 
+        try
+        {
+            await TransitionAsync(
+                request,
+                ServiceRequestStatus.Completato,
+                ServiceRequestErrorCodes.CannotCompleteMessageKey,
+                r =>
+                {
+                    // What the supplier writes is its own column: the host's notes stay as the host wrote them.
+                    r.CompletionNotes = notes;
+                    r.CompletedAt = Now();
+                    r.FinalAmountCents = price.FinalAmountCents;
+                    r.PriceLinesJson = ServiceRequestJson.Serialize(price.Lines);
+                    r.FinalAmountNeedsConfirmation = needsConfirmation;
+                    r.PaymentMode = plan.Mode;
+                },
+                cancellationToken);
+        }
+        catch
+        {
+            payments.Discard(plan);
+            throw;
+        }
+
+        // The link goes out after the save, and only the winner of the transition sends it.
+        await payments.AnnounceAsync(plan, request, cancellationToken);
         await notifier.NotifyHostAsync(request, cancellationToken);
         return request;
     }
@@ -490,11 +512,22 @@ public partial class ServiceRequestService(
         if (request is null || request.OrgId != hostOrgId || request.RentalContext == ServiceRequestRentalContext.Showcase)
             throw RequestNotFound(id);
 
+        // SP-15a, decision D5: a request paid inside CasaZen is paid with the link (the commission is part of it). The host cannot
+        // mark it paid by hand; the only exception is the supplier's, traced (api/supplier/requests/{id}/payment/offline).
+        if (request.PaymentMode == ServiceRequestPaymentMode.Online)
+        {
+            throw new DomainRuleException(ServicePaymentErrors.OnlinePayment, ServicePaymentErrors.OnlinePaymentMessageKey);
+        }
+
         await TransitionAsync(
             request,
             ServiceRequestStatus.Pagato,
             ServiceRequestErrorCodes.CannotMarkPaidMessageKey,
-            r => r.PaidAt = Now(),
+            r =>
+            {
+                r.PaidAt = Now();
+                r.PaidBy = ServiceRequestActorParty.Host;
+            },
             cancellationToken);
 
         // SU-09: the supplier learns that the host marked the request as paid (the payment itself is outside CasaZen).
@@ -549,6 +582,18 @@ public partial class ServiceRequestService(
         {
             logger.LogInformation(
                 "ServiceRequest {Id}: {Operation} refused, the request changed since it was read", request.Id, operation);
+            throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: ServiceCharges.LivePaymentIndexName,
+        })
+        {
+            // SP-15a: a save that creates the payment of the request (the completion, the host confirming the amount) lost the
+            // race against another call that created it first. Same answer as the xmin check: the request changed meanwhile.
+            logger.LogInformation(
+                "ServiceRequest {Id}: {Operation} refused, its payment was created by another call", request.Id, operation);
             throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
         }
         catch (DbUpdateException ex) when (IsLockConflict(ex))
