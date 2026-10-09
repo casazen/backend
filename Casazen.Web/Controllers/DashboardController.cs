@@ -60,7 +60,7 @@ public class DashboardController(
         if (scope is null)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
-        var query = new HostDashboardQuery(kind, monthStart, propertyId, compare, await CanReadPaymentsAsync(scope));
+        var query = new HostDashboardQuery(kind, monthStart, propertyId, compare, await CanReadPaymentsAsync());
         var kpis = await dashboardService.GetKpisAsync(scope, query, cancellationToken);
         return Ok(HostDashboardKpisDto.From(kpis));
     }
@@ -80,8 +80,7 @@ public class DashboardController(
         if (scope is null)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
-        var today = await todayService.GetTodayAsync(
-            scope, new HostTodayOptions(await CanReadPaymentsAsync(scope)), cancellationToken);
+        var today = await todayService.GetTodayAsync(scope, new HostTodayOptions(await CanReadPaymentsAsync()), cancellationToken);
         return Ok(HostTodayDto.From(today));
     }
 
@@ -126,9 +125,10 @@ public class DashboardController(
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
-    // Money (collected, failed payments) is payment data: it needs payment.read, which the collaborator does not hold (AM-03).
-    private Task<bool> CanReadPaymentsAsync(Casazen.Core.Authorization.HostScope scope) =>
-        authorizationService.IsAuthorizedAsync(User, Casazen.Core.Authorization.HostResource.ForOrg(scope.OrgId), PaymentOperations.Read);
+    // Money (collected, failed payments) is payment data: it needs payment.read, which the collaborator does not hold (AM-03). The
+    // permission of the role, as the policy of PaymentsController asks it; which payments are then counted is the scope's, in SQL.
+    private async Task<bool> CanReadPaymentsAsync() =>
+        (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
 
     /// <summary>
     /// <c>period</c>: <c>Month</c> (default), <c>Last30Days</c> or <c>Next30Days</c>, case-insensitive; <c>month</c>:
