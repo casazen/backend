@@ -38,6 +38,24 @@ internal static class OrgTeamAccess
     }
 
     /// <summary>
+    /// The caller's own member row, which must be active, whatever its role (AM-02b: any member asks the administrators for
+    /// access). <see cref="UnauthorizedAccessException"/> is a generic 403.
+    /// </summary>
+    public static async Task<OrgMember> RequireMemberAsync(
+        AppDbContext db,
+        Guid orgId,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var member = await db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(
+                m => m.OrgId == orgId && m.UserId == userId && m.Status == OrgMemberStatus.Active,
+                cancellationToken);
+
+        return member ?? throw new UnauthorizedAccessException("The caller is not an active member of this org.");
+    }
+
+    /// <summary>
     /// Opens the transaction that decides about the seats of <paramref name="orgId"/> (or joins the one open) and takes its
     /// seats lock first, then <paramref name="further"/> in the order given. The caller commits the transaction it gets
     /// back (<c>null</c> when it joined one, or off PostgreSQL).

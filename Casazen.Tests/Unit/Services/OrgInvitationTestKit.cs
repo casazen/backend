@@ -143,6 +143,20 @@ internal sealed class OrgInvitationTestKit
     public OrgPropertyAccessService PropertyAccess(AppDbContext db) =>
         new(db, Cache.Object, Activity(db), NullLogger<OrgPropertyAccessService>.Instance, Clock);
 
+    public OrgActivityService ActivityReader(AppDbContext db) => new(db);
+
+    public OrgActivityRetentionService Retention(AppDbContext db) =>
+        new(db, Config(), NullLogger<OrgActivityRetentionService>.Instance, Clock);
+
+    public OrgAccessRequestService AccessRequests(AppDbContext db) => new(
+        db,
+        Activity(db),
+        Queue(),
+        EmailTestHelpers.Links(PublicSiteBaseUrl),
+        Config(),
+        NullLogger<OrgAccessRequestService>.Instance,
+        Clock);
+
     /// <summary>The lines of the activity log of an org, oldest first, as stored.</summary>
     public async Task<List<OrgActivityEntry>> ReadActivityAsync(Guid orgId)
     {

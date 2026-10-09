@@ -750,4 +750,67 @@
   <data name="OrgInvitationExpired_Cta" xml:space="preserve">
     <value>Apri Persone e permessi</value>
   </data>
+  <data name="OrgAccessRequest_Subject" xml:space="preserve">
+    <value>{0} chiede di accedere a «{1}»</value>
+  </data>
+  <data name="OrgAccessRequest_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="OrgAccessRequest_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ({1}) ha chiesto di accedere a &lt;strong&gt;{2}&lt;/strong&gt; su CasaZen.</value>
+  </data>
+  <data name="OrgAccessRequest_NoteLabel" xml:space="preserve">
+    <value>Il suo messaggio</value>
+  </data>
+  <data name="OrgAccessRequest_Hint" xml:space="preserve">
+    <value>Se sei d'accordo, cambia il ruolo o gli immobili della persona da Persone e permessi. Se non ti torna, ignora questa email: non cambia nulla finché non lo decidi tu.</value>
+  </data>
+  <data name="OrgAccessRequest_Cta" xml:space="preserve">
+    <value>Apri Persone e permessi</value>
+  </data>
+  <data name="OrgAccessArea_Account" xml:space="preserve">
+    <value>Amministrazione</value>
+  </data>
+  <data name="OrgAccessArea_ShortRent" xml:space="preserve">
+    <value>Affitti brevi</value>
+  </data>
+  <data name="OrgAccessArea_LongRent" xml:space="preserve">
+    <value>Affitti lunghi</value>
+  </data>
+  <data name="OrgAccessArea_Supplier" xml:space="preserve">
+    <value>Fornitori</value>
+  </data>
+  <data name="OrgAccessArea_People" xml:space="preserve">
+    <value>Persone e permessi</value>
+  </data>
+  <data name="OrgAccessArea_Properties" xml:space="preserve">
+    <value>Immobili</value>
+  </data>
+  <data name="OrgAccessArea_Suppliers" xml:space="preserve">
+    <value>Fornitori di fiducia</value>
+  </data>
+  <data name="OrgAccessArea_Billing" xml:space="preserve">
+    <value>Piano e fatturazione</value>
+  </data>
+  <data name="OrgAccessArea_Organization" xml:space="preserve">
+    <value>Organizzazione</value>
+  </data>
+  <data name="OrgAccessArea_Activity" xml:space="preserve">
+    <value>Registro attività</value>
+  </data>
+  <data name="OrgAccessArea_Integrations" xml:space="preserve">
+    <value>Integrazioni</value>
+  </data>
+  <data name="OrgAccessArea_Security" xml:space="preserve">
+    <value>Sicurezza</value>
+  </data>
+  <data name="OrgAccessArea_Payments" xml:space="preserve">
+    <value>Incassi</value>
+  </data>
+  <data name="OrgAccessArea_Reports" xml:space="preserve">
+    <value>Report</value>
+  </data>
+  <data name="OrgAccessArea_Prices" xml:space="preserve">
+    <value>Prezzi</value>
+  </data>
 </root>
