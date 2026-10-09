@@ -32,36 +32,42 @@ public sealed class HostDashboardKpisDto
     /// <summary>The last bookings created, any status.</summary>
     public IReadOnlyList<HostDashboardStayDto> RecentBookings { get; init; } = [];
 
+    /// <summary>
+    /// Money collected in the period, by cash (SR-03): the day it came in, not the days of the stay it pays. <c>null</c> for a
+    /// caller who may not read payments.
+    /// </summary>
+    public HostDashboardCollectedDto? Collected { get; init; }
+
+    /// <summary>Share of the confirmed stays of the period that came from the booking site (SR-03).</summary>
+    public HostDashboardDirectShareDto DirectShare { get; init; } = new();
+
+    /// <summary>
+    /// The figures of the period of the same number of nights that ends where this one starts (SR-03); <c>null</c> unless the
+    /// request asked for <c>compare=true</c>.
+    /// </summary>
+    public HostDashboardPreviousDto? Previous { get; init; }
+
     public static HostDashboardKpisDto From(HostDashboardKpis kpis) => new()
     {
-        Period = new HostDashboardPeriodDto
-        {
-            Kind = kpis.Period.Kind,
-            From = DateOnly.FromDateTime(kpis.Period.From),
-            To = DateOnly.FromDateTime(kpis.Period.To.AddDays(-1)),
-            Nights = kpis.Period.Nights,
-        },
+        Period = HostDashboardPeriodDto.Of(kpis.Period),
         Today = DateOnly.FromDateTime(kpis.TodayInRome),
         PropertyCount = kpis.PropertyCount,
-        Occupancy = new HostDashboardOccupancyDto
-        {
-            OccupiedNights = kpis.Occupancy.OccupiedNights,
-            AvailableNights = kpis.Occupancy.AvailableNights,
-            ClosedNights = kpis.Occupancy.ClosedNights,
-            Rate = kpis.Occupancy.Rate,
-        },
-        Revenue = new HostDashboardRevenueDto { Amount = kpis.Revenue, StayCount = kpis.RevenueStayCount },
+        Occupancy = HostDashboardOccupancyDto.From(kpis.Occupancy),
+        Revenue = HostDashboardRevenueDto.From(kpis.Revenue, kpis.RevenueStayCount),
         ArrivalsToday = HostDashboardStayListDto.From(kpis.ArrivalsToday),
         DeparturesToday = HostDashboardStayListDto.From(kpis.DeparturesToday),
         UpcomingCheckIns = HostDashboardStayListDto.From(kpis.UpcomingCheckIns),
         RecentBookings = kpis.RecentBookings.Select(HostDashboardStayDto.From).ToList(),
+        Collected = kpis.Collected is null ? null : HostDashboardCollectedDto.From(kpis.Collected),
+        DirectShare = HostDashboardDirectShareDto.From(kpis.DirectShare),
+        Previous = kpis.Previous is null ? null : HostDashboardPreviousDto.From(kpis.Previous),
     };
 }
 
 /// <summary>The nights from <see cref="From"/> to <see cref="To"/>, both included.</summary>
 public sealed class HostDashboardPeriodDto
 {
-    /// <summary><c>Month</c> or <c>Last30Days</c>.</summary>
+    /// <summary><c>Month</c>, <c>Last30Days</c> or <c>Next30Days</c>.</summary>
     public HostDashboardPeriodKind Kind { get; init; }
 
     /// <summary>First night of the period.</summary>
@@ -71,6 +77,14 @@ public sealed class HostDashboardPeriodDto
     public DateOnly To { get; init; }
 
     public int Nights { get; init; }
+
+    public static HostDashboardPeriodDto Of(HostDashboardPeriod period) => new()
+    {
+        Kind = period.Kind,
+        From = DateOnly.FromDateTime(period.From),
+        To = DateOnly.FromDateTime(period.To.AddDays(-1)),
+        Nights = period.Nights,
+    };
 }
 
 /// <summary>Occupied / available nights of the period, over the active properties.</summary>
@@ -87,18 +101,106 @@ public sealed class HostDashboardOccupancyDto
 
     /// <summary><see cref="OccupiedNights"/> / <see cref="AvailableNights"/>, from 0 to 1; null when nothing is available.</summary>
     public decimal? Rate { get; init; }
+
+    public static HostDashboardOccupancyDto From(HostDashboardOccupancy occupancy) => new()
+    {
+        OccupiedNights = occupancy.OccupiedNights,
+        AvailableNights = occupancy.AvailableNights,
+        ClosedNights = occupancy.ClosedNights,
+        Rate = occupancy.Rate,
+    };
 }
 
 /// <summary>Revenue of the period: confirmed stays pro rata per night, base price (lodging + cleaning, no tourist tax).</summary>
 public sealed class HostDashboardRevenueDto
 {
+    /// <summary>Euros, rounded to the cent.</summary>
     public decimal Amount { get; init; }
+
+    /// <summary><see cref="Amount"/> in cents of euro (SR-03): the figure for new screens, exact.</summary>
+    public long AmountCents { get; init; }
 
     /// <summary>Always EUR: properties have no currency.</summary>
     public string Currency { get; init; } = "EUR";
 
     /// <summary>Confirmed stays with at least one night in the period.</summary>
     public int StayCount { get; init; }
+
+    public static HostDashboardRevenueDto From(decimal amount, int stayCount) => new()
+    {
+        Amount = amount,
+        AmountCents = PaymentCashRules.ToCents(amount),
+        StayCount = stayCount,
+    };
+}
+
+/// <summary>
+/// Money collected in the period, by cash (SR-03): the payments settled on those days, net of what was refunded
+/// (<see cref="PaymentCashRules"/>). Next to <see cref="HostDashboardRevenueDto"/>, which counts the nights of the stays.
+/// </summary>
+public sealed class HostDashboardCollectedDto
+{
+    /// <summary>Euros, rounded to the cent.</summary>
+    public decimal Amount { get; init; }
+
+    /// <summary><see cref="Amount"/> in cents of euro, exact.</summary>
+    public long AmountCents { get; init; }
+
+    public string Currency { get; init; } = "EUR";
+
+    /// <summary>Payments settled in the period.</summary>
+    public int PaymentCount { get; init; }
+
+    public static HostDashboardCollectedDto From(HostDashboardCollected collected) => new()
+    {
+        Amount = collected.Amount,
+        AmountCents = PaymentCashRules.ToCents(collected.Amount),
+        PaymentCount = collected.PaymentCount,
+    };
+}
+
+/// <summary>Of the confirmed stays of the period (the ones of the revenue), how many came from the booking site (SR-03).</summary>
+public sealed class HostDashboardDirectShareDto
+{
+    /// <summary>Confirmed stays with source <c>Direct</c> (the public checkout, not the ones the host entered).</summary>
+    public int DirectStays { get; init; }
+
+    /// <summary>All the confirmed stays of the period.</summary>
+    public int Stays { get; init; }
+
+    /// <summary><see cref="DirectStays"/> / <see cref="Stays"/>, from 0 to 1; null without any stay.</summary>
+    public decimal? Rate { get; init; }
+
+    public static HostDashboardDirectShareDto From(HostDashboardDirectShare share) => new()
+    {
+        DirectStays = share.DirectStays,
+        Stays = share.Stays,
+        Rate = share.Rate,
+    };
+}
+
+/// <summary>The figures of the period before the one asked for, to compare with (SR-03): the same definitions, other days.</summary>
+public sealed class HostDashboardPreviousDto
+{
+    public HostDashboardPeriodDto Period { get; init; } = new();
+
+    public HostDashboardOccupancyDto Occupancy { get; init; } = new();
+
+    public HostDashboardRevenueDto Revenue { get; init; } = new();
+
+    /// <summary><c>null</c> for a caller who may not read payments.</summary>
+    public HostDashboardCollectedDto? Collected { get; init; }
+
+    public HostDashboardDirectShareDto DirectShare { get; init; } = new();
+
+    public static HostDashboardPreviousDto From(HostDashboardFigures figures) => new()
+    {
+        Period = HostDashboardPeriodDto.Of(figures.Period),
+        Occupancy = HostDashboardOccupancyDto.From(figures.Occupancy),
+        Revenue = HostDashboardRevenueDto.From(figures.Revenue, figures.RevenueStayCount),
+        Collected = figures.Collected is null ? null : HostDashboardCollectedDto.From(figures.Collected),
+        DirectShare = HostDashboardDirectShareDto.From(figures.DirectShare),
+    };
 }
 
 public sealed class HostDashboardStayListDto

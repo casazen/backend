@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Tests.Unit.Authorization;
@@ -8,6 +9,7 @@ using Casazen.Web.DTOs.Payments;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -26,6 +28,7 @@ public class PaymentsControllerTests
     private static readonly Guid OrgId = Guid.NewGuid();
 
     private readonly Mock<IPaymentService> _paymentService = new();
+    private readonly Mock<IPaymentListService> _paymentList = new();
     private readonly Mock<IBookingService> _bookingService = new();
     private readonly Mock<IHostResourceLookup> _hostResources = new();
     private readonly Mock<IOrgContextResolver> _orgResolver = new();
@@ -52,7 +55,9 @@ public class PaymentsControllerTests
         var result = await CreateController().GetAll(PropertyId);
 
         Assert.IsType<NotFoundResult>(result.Result);
-        _paymentService.Verify(p => p.GetPropertyPaymentsAsync(It.IsAny<Guid>()), Times.Never);
+        _paymentList.Verify(
+            p => p.ListAsync(It.IsAny<HostScope>(), It.IsAny<PaymentListCriteria>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -70,26 +75,103 @@ public class PaymentsControllerTests
     [Fact]
     public async Task GetAll_WithoutPropertyId_QueriesOwnerScopeInSql()
     {
-        var visible = MakePayment(PropertyId);
-        _paymentService.Setup(p => p.GetPaymentsAsync(new HostScope(OrgId, OwnerId))).ReturnsAsync([visible]);
+        var visible = MakeListItem();
+        _paymentList
+            .Setup(p => p.ListAsync(new HostScope(OrgId, OwnerId), It.IsAny<PaymentListCriteria>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([visible]);
 
         var result = await CreateController().GetAll(null);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        Assert.Equal(visible.Id, Assert.Single(Assert.IsAssignableFrom<IEnumerable<Payment>>(ok.Value)).Id);
-        _paymentService.Verify(p => p.GetPaymentsAsync(It.Is<HostScope>(s => s != new HostScope(OrgId, OwnerId))), Times.Never);
+        Assert.Equal(visible.Id, Assert.Single(Assert.IsAssignableFrom<IEnumerable<PaymentListItemDto>>(ok.Value)).Id);
+        _paymentList.Verify(
+            p => p.ListAsync(It.Is<HostScope>(s => s != new HostScope(OrgId, OwnerId)), It.IsAny<PaymentListCriteria>(), It.IsAny<CancellationToken>()),
+            Times.Never);
         _hostResources.Verify(h => h.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task GetAll_WithoutPropertyId_AsPropertyManager_QueriesWholeOrg()
     {
-        _paymentService.Setup(p => p.GetPaymentsAsync(new HostScope(OrgId, null))).ReturnsAsync([]);
+        _paymentList
+            .Setup(p => p.ListAsync(new HostScope(OrgId, null), It.IsAny<PaymentListCriteria>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         var result = await CreateController(OwnerId, "PropertyManager").GetAll(null);
 
         Assert.IsType<OkObjectResult>(result.Result);
-        _paymentService.Verify(p => p.GetPaymentsAsync(new HostScope(OrgId, null)), Times.Once);
+        _paymentList.Verify(
+            p => p.ListAsync(new HostScope(OrgId, null), It.IsAny<PaymentListCriteria>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    // SR-03: a booking the caller may not read the payments of answers 404, like a missing one, and nothing is listed.
+    [Fact]
+    public async Task GetAll_WithBookingIdOfAnotherOwner_ReturnsNotFound()
+    {
+        var bookingId = Guid.NewGuid();
+        _hostResources.Setup(h => h.ForBookingAsync(bookingId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HostResource(OrgId, OtherOwnerId, PropertyId));
+
+        var result = await CreateController().GetAll(null, bookingId);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _paymentList.Verify(
+            p => p.ListAsync(It.IsAny<HostScope>(), It.IsAny<PaymentListCriteria>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetAll_WithBookingIdNotVisible_ReturnsNotFound()
+    {
+        var bookingId = Guid.NewGuid();
+        _hostResources.Setup(h => h.ForBookingAsync(bookingId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HostResource?)null);
+
+        var result = await CreateController().GetAll(null, bookingId);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetAll_WithBookingIdAndPeriod_PassesTheCriteriaAndTheScopeToTheList()
+    {
+        var bookingId = Guid.NewGuid();
+        _hostResources.Setup(h => h.ForBookingAsync(bookingId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HostResource(OrgId, OwnerId, PropertyId));
+        var item = MakeListItem();
+        _paymentList
+            .Setup(p => p.ListAsync(It.IsAny<HostScope>(), It.IsAny<PaymentListCriteria>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([item]);
+
+        var result = await CreateController().GetAll(
+            null, bookingId, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31));
+
+        var dto = Assert.Single(Assert.IsAssignableFrom<IEnumerable<PaymentListItemDto>>(Assert.IsType<OkObjectResult>(result.Result).Value));
+        Assert.Equal(item.Id, dto.Id);
+        Assert.Equal("Anna Verdi", dto.GuestName);
+        Assert.Equal("Trullo", dto.PropertyName);
+        Assert.Equal("ABCDE-FGHJK", dto.BookingCode);
+        Assert.Equal(10_000, dto.AmountCents);
+        _paymentList.Verify(
+            p => p.ListAsync(
+                new HostScope(OrgId, OwnerId),
+                new PaymentListCriteria(null, bookingId, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31)),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAll_FromAfterTo_Returns400WithAStableCode_AndListsNothing()
+    {
+        var result = await CreateController().GetAll(null, null, new DateOnly(2026, 11, 1), new DateOnly(2026, 10, 1));
+
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, problem.StatusCode);
+        Assert.Equal(PaymentsController.InvalidRangeCode, Assert.IsAssignableFrom<ProblemDetails>(problem.Value).Extensions["code"]);
+        _paymentList.Verify(
+            p => p.ListAsync(It.IsAny<HostScope>(), It.IsAny<PaymentListCriteria>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -186,6 +268,7 @@ public class PaymentsControllerTests
     {
         var controller = new PaymentsController(
             _paymentService.Object,
+            _paymentList.Object,
             _bookingService.Object,
             _hostResources.Object,
             HostAuthorizationTestHarness.Create(OrgId, (c, p) => _permissions?.Invoke(c, p) ?? true),
@@ -197,10 +280,37 @@ public class PaymentsControllerTests
 
         controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new DefaultHttpContext { User = HostAuthorizationTestHarness.User(userId, roles) },
+            HttpContext = new DefaultHttpContext
+            {
+                User = HostAuthorizationTestHarness.User(userId, roles),
+                // ApiProblem (FD-05 contract) localizes the detail through SharedResources.
+                RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
+            },
         };
         return controller;
     }
+
+    private static PaymentListItem MakeListItem() => new(
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        "ABCDEFGHJK",
+        PropertyId,
+        "Trullo",
+        "Anna Verdi",
+        100m,
+        0m,
+        PaymentStatus.Completed,
+        PaymentMethod.CreditCard,
+        "tx_1",
+        string.Empty,
+        null,
+        null,
+        0m,
+        false,
+        0m,
+        WithholdingSource.None,
+        new DateTime(2026, 10, 5, 0, 0, 0, DateTimeKind.Utc),
+        new DateTime(2026, 10, 5, 0, 0, 0, DateTimeKind.Utc));
 
     private static Booking MakeBooking(Guid propertyId, Guid? orgId = null) => new()
     {

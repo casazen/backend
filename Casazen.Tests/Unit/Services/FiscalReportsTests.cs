@@ -7,7 +7,6 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Documents;
 using Microsoft.EntityFrameworkCore;
@@ -322,7 +321,7 @@ public class FiscalReportsTests
             [new AnnualTaxpayerTotals(0, null, true, false, 70, 864196.90m, 181481.30m, 224690.90m)],
             Rules());
 
-        var pdf = new MigraDocPdfDocumentRenderer().Render(FiscalReportDocuments.Pdf(report));
+        var pdf = new SerializedPdfRenderer().Render(FiscalReportDocuments.Pdf(report));
 
         var pages = PdfTestReader.Pages(pdf);
         Assert.True(pages.Count > 2, $"{pages.Count} pages");
@@ -375,7 +374,7 @@ public class FiscalReportsTests
             new WithholdingTotals(12000000m, 2520000m, 9480000m, 120),
             Rules());
 
-        var pdf = new MigraDocPdfDocumentRenderer().Render(FiscalReportDocuments.Pdf(report));
+        var pdf = new SerializedPdfRenderer().Render(FiscalReportDocuments.Pdf(report));
 
         var pages = PdfTestReader.Pages(pdf);
         Assert.True(pages.Count > 2, $"{pages.Count} pages");
@@ -409,7 +408,7 @@ public class FiscalReportsTests
             stays,
             new TouristTaxTotals(60, 180, 120, 3078m, 6));
 
-        var pdf = new MigraDocPdfDocumentRenderer().Render(FiscalReportDocuments.Pdf(report));
+        var pdf = new SerializedPdfRenderer().Render(FiscalReportDocuments.Pdf(report));
 
         Assert.True(PdfTestReader.Pages(pdf).Count > 1);
         var words = PdfTestReader.BodyWords(pdf);
@@ -643,7 +642,7 @@ public class FiscalReportsTests
     }
 
     private static FiscalService CreateService(AppDbContext db) =>
-        new(db, new MigraDocPdfDocumentRenderer(), Options.Create(new ShortStayFiscalOptions()), new FakeTimeProvider(Now));
+        new(db, new SerializedPdfRenderer(), Options.Create(new ShortStayFiscalOptions()), new FakeTimeProvider(Now));
 
     private static AppDbContext CreateDb()
     {
