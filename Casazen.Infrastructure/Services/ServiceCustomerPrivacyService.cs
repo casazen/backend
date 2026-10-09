@@ -23,6 +23,9 @@ namespace Casazen.Infrastructure.Services;
 /// creation when it has none). A request still open (<c>Richiesto</c>, <c>PresoInCarico</c>, <c>InCorso</c>) keeps its customer.</para>
 /// <para><b>Marked by what is gone.</b> A customer is anonymized once (<c>AnonymizedAt</c>); a request has its place removed once
 /// (the three place columns are empty: the query looks for the ones that are not). A second run finds nothing.</para>
+/// <para><b>Against a booking at the same moment.</b> The list of the due customers is read without a lock; the customers of one
+/// supplier are then changed under that supplier's calendar lock (the lock a booking holds when its e-mail check creates the
+/// request) and read again after taking it, leaving alone any customer that has an open request by then.</para>
 /// </remarks>
 public sealed class ServiceCustomerPrivacyService(
     AppDbContext db,
@@ -120,35 +123,56 @@ public sealed class ServiceCustomerPrivacyService(
         return anonymized;
     }
 
-    /// <summary>The customers none of whose requests is open and whose last request (or creation) is older than the period.</summary>
+    /// <summary>
+    /// The customers none of whose requests is open and whose last request (or creation) is older than the period. The customers of
+    /// a supplier are changed under that supplier's calendar lock — the one a booking takes to create its request — and read again
+    /// after taking it: a customer who checks the e-mail of a new booking between the list and the change has an open request by
+    /// then and is left alone (the next night's run looks at it again).
+    /// </summary>
     private async Task<int> AnonymizeCustomersAsync(RetentionPeriodOptions period, DateTime today, CancellationToken cancellationToken)
     {
-        var candidates = await CandidateCustomersOf(db).ToListAsync(cancellationToken);
-        var dueIds = candidates
+        var candidates = await CandidateCustomersOf(db, period.CandidateStartBefore(today)).ToListAsync(cancellationToken);
+        var due = candidates
             .Where(c => !c.HasOpenRequest && period.HasEnded(c.ReferenceUtc, today))
-            .Select(c => c.Id)
+            .OrderBy(c => c.ReferenceUtc)
             .Take(ShowcaseBookingLimits.RetentionBatchSize)
             .ToList();
 
         var anonymized = 0;
-        foreach (var chunk in dueIds.Chunk(ChunkSize))
+        foreach (var ofSupplier in due.GroupBy(c => c.OrgId))
         {
-            db.ChangeTracker.Clear();
-            var now = UtcNow();
-            var loaded = await db.ServiceCustomers
-                .Where(c => chunk.Contains(c.Id) && c.AnonymizedAt == null)
-                .ToListAsync(cancellationToken);
-            foreach (var customer in loaded)
+            foreach (var chunk in ofSupplier.Select(c => c.Id).Chunk(ChunkSize))
             {
-                Anonymize(customer, now);
-                anonymized++;
-            }
+                db.ChangeTracker.Clear();
+                await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                    db, cancellationToken, CalendarSyncService.AvailabilityLock(ofSupplier.Key));
+                var now = UtcNow();
+                var loaded = await StillDue(db, chunk).ToListAsync(cancellationToken);
+                foreach (var customer in loaded)
+                {
+                    Anonymize(customer, now);
+                    anonymized++;
+                }
 
-            await db.SaveChangesAsync(cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+                if (transaction is not null)
+                    await transaction.CommitAsync(cancellationToken);
+            }
         }
 
         return anonymized;
     }
+
+    /// <summary>
+    /// The customers among <paramref name="ids"/> that are still to be anonymized: not anonymized yet and with no open request. Read
+    /// again under the supplier's calendar lock, right before the change, so a booking checked since the list was made keeps its
+    /// customer.
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<ServiceCustomer> StillDue(AppDbContext db, Guid[] ids) =>
+        db.ServiceCustomers.Where(c => ids.Contains(c.Id)
+                                       && c.AnonymizedAt == null
+                                       && !db.ServiceRequests.IgnoreQueryFilters().Any(r => r.CustomerId == c.Id && OpenStatuses.Contains(r.Status)));
 
     /// <summary>Replaces every personal field of <paramref name="customer"/>; the language and the consent version and date stay.</summary>
     public static void Anonymize(ServiceCustomer customer, DateTime now)
@@ -179,15 +203,22 @@ public sealed class ServiceCustomerPrivacyService(
             .Select(r => new RequestReference(r.Id, r.ScheduledEndUtc ?? r.CreatedAt));
 
     /// <summary>
-    /// The customers not yet anonymized, with whether one of their requests is open and the date the period counts from: the end of
-    /// their latest request (its creation when it has no hours), else their own creation.
+    /// The customers not yet anonymized, with their supplier, whether one of their requests is open and the date the period counts
+    /// from: the end of their latest request (its creation when it has no hours), else their own creation. Coarsely cut in SQL at
+    /// <paramref name="candidateBefore"/> like <see cref="CandidateRequestsOf"/>, so a night reads the customers whose period may
+    /// have ended and not every customer there is; the exact check is made on the row.
     /// </summary>
-    internal static IQueryable<CustomerReference> CandidateCustomersOf(AppDbContext db) =>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<CustomerReference> CandidateCustomersOf(AppDbContext db, DateTime candidateBefore) =>
         db.ServiceCustomers
             .AsNoTracking()
-            .Where(c => c.AnonymizedAt == null)
+            .Where(c => c.AnonymizedAt == null
+                        && (db.ServiceRequests.IgnoreQueryFilters()
+                                .Where(r => r.CustomerId == c.Id)
+                                .Max(r => (DateTime?)(r.ScheduledEndUtc ?? r.CreatedAt)) ?? c.CreatedAt) < candidateBefore)
             .Select(c => new CustomerReference(
                 c.Id,
+                c.OrgId,
                 db.ServiceRequests.IgnoreQueryFilters().Any(r => r.CustomerId == c.Id && OpenStatuses.Contains(r.Status)),
                 db.ServiceRequests.IgnoreQueryFilters()
                     .Where(r => r.CustomerId == c.Id)
@@ -196,8 +227,8 @@ public sealed class ServiceCustomerPrivacyService(
     /// <summary>A request and the date its retention period counts from.</summary>
     internal sealed record RequestReference(Guid Id, DateTime ReferenceUtc);
 
-    /// <summary>A customer, whether it has an open request, and the date its retention period counts from.</summary>
-    internal sealed record CustomerReference(Guid Id, bool HasOpenRequest, DateTime ReferenceUtc);
+    /// <summary>A customer, its supplier, whether it has an open request, and the date its retention period counts from.</summary>
+    internal sealed record CustomerReference(Guid Id, Guid OrgId, bool HasOpenRequest, DateTime ReferenceUtc);
 
     private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;
 }

@@ -171,6 +171,44 @@ public class ServiceCustomerPrivacyServiceTests
     }
 
     [Fact]
+    public async Task StillDue_ACustomerWhoseBookingWasCheckedSinceTheList_IsLeftAlone_TheIdleOneIsNot()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        await s.EnableBookingAsync();
+        var idle = await AddCustomerAsync(s, "inattivo@example.com");
+        // A customer who had been idle and books again: its e-mail is checked after the nightly list was read, so the request is
+        // open by the time the change is made (under the supplier's lock) and the customer must not be anonymized under it.
+        var (request, _) = await s.BookedAsync();
+        var returning = request.CustomerId!.Value;
+        var ids = new[] { idle, returning };
+
+        var due = await ServiceCustomerPrivacyService.StillDue(s.Db, ids).Select(c => c.Id).ToListAsync();
+
+        Assert.Equal([idle], due);
+
+        // Once its request is over (a completed one is not open), the customer is due again at the next run.
+        await s.Service.TakeAsync(request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
+        await s.Service.StartAsync(request.Id, s.SupplierOrgId);
+        await s.Service.CompleteAsync(request.Id, s.SupplierOrgId);
+        s.Db.ChangeTracker.Clear();
+        var later = await ServiceCustomerPrivacyService.StillDue(s.Db, ids).Select(c => c.Id).ToListAsync();
+        Assert.Equal(ids.Order(), later.Order());
+    }
+
+    [Fact]
+    public async Task StillDue_AnAnonymizedCustomer_IsNotDueAgain()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        await s.EnableBookingAsync();
+        var id = await AddCustomerAsync(s, "gia.anonimo@example.com");
+        var customer = await s.Db.ServiceCustomers.SingleAsync(c => c.Id == id);
+        ServiceCustomerPrivacyService.Anonymize(customer, s.Clock.GetUtcNow().UtcDateTime);
+        await s.Db.SaveChangesAsync();
+
+        Assert.Empty(await ServiceCustomerPrivacyService.StillDue(s.Db, [id]).ToListAsync());
+    }
+
+    [Fact]
     public async Task ApplyRetention_Twice_FindsNothingTheSecondTime()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
@@ -301,6 +339,25 @@ public class ServiceCustomerPrivacyServiceTests
     }
 
     // ─── helpers ───
+
+    /// <summary>A customer of the supplier of the scenario with no request at all.</summary>
+    private static async Task<Guid> AddCustomerAsync(ServiceRequestScenario s, string email)
+    {
+        var customer = new ServiceCustomer
+        {
+            OrgId = s.SupplierOrgId,
+            EmailHash = s.Kit.CustomerIndex.HashEmail(email),
+            FullName = "Cliente Inattivo",
+            Email = email,
+            Locale = "it",
+            CreatedAt = s.Clock.GetUtcNow().UtcDateTime,
+            UpdatedAt = s.Clock.GetUtcNow().UtcDateTime,
+        };
+        s.Db.ServiceCustomers.Add(customer);
+        await s.Db.SaveChangesAsync();
+        s.Db.ChangeTracker.Clear();
+        return customer.Id;
+    }
 
     /// <summary>A showcase request that was taken, started and completed at its time (Friday 9 October by default).</summary>
     private static async Task<ServiceRequest> CompletedAsync(ServiceRequestScenario s, DateTime? start = null)

@@ -5,6 +5,7 @@ using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -227,9 +228,35 @@ public class ShowcaseBookingTenancyTests
     }
 
     [Fact]
+    public void TheRetentionOfTheCustomers_OnTheNpgsqlProvider_CutsTheListInSql_AndReadsAgainOnlyWhatItChanges()
+    {
+        // With the encryption on, as in production: the converters of the encrypted columns are part of the translation.
+        using var db = NewNpgsqlContext(encrypted: true);
+        var cutoff = new DateTime(2024, 10, 9, 0, 0, 0, DateTimeKind.Utc);
+
+        var list = Regex.Replace(ServiceCustomerPrivacyService.CandidateCustomersOf(db, cutoff).ToQueryString(), @"\s+", " ");
+        var again = Regex.Replace(
+            ServiceCustomerPrivacyService.StillDue(db, [Guid.NewGuid(), Guid.NewGuid()]).ToQueryString(), @"\s+", " ");
+
+        // The cut is in the statement, so a night reads the customers whose period may have ended and not every customer there is;
+        // the list names no one (ids, supplier and two dates: nothing to decrypt).
+        Assert.Matches(@"\) < @", list);
+        Assert.Contains("\"AnonymizedAt\" IS NULL", list, StringComparison.Ordinal);
+        foreach (var column in new[] { "FullName", "Email", "Phone", "PayloadEncrypted" })
+            Assert.DoesNotContain($"\"{column}\"", list, StringComparison.Ordinal);
+
+        // Read again, just before the change, for the ids it is about: not anonymized and with no open request (looked for in SQL).
+        Assert.Contains("= ANY (@", again, StringComparison.Ordinal);
+        Assert.Contains("\"AnonymizedAt\" IS NULL", again, StringComparison.Ordinal);
+        Assert.Contains("NOT EXISTS", again, StringComparison.Ordinal);
+        Assert.Contains("\"CustomerId\"", again, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheSuppliersInbox_OnTheNpgsqlProvider_SelectsThePlaceAndTheContactsOnlyForARequestTheSupplierTook()
     {
-        using var db = NewNpgsqlContext();
+        // With the encryption on, as in production: a CASE takes its type mapping (and so the converter) from its first branch.
+        using var db = NewNpgsqlContext(encrypted: true);
         var reader = new SupplierServiceRequestReader(db);
 
         var sql = reader.Rows(Guid.NewGuid()).ToQueryString();
@@ -421,13 +448,16 @@ public class ShowcaseBookingTenancyTests
 
     // ─── helpers ───
 
-    private static AppDbContext NewNpgsqlContext() =>
+    /// <summary>A context on the Npgsql provider that never connects; <paramref name="encrypted"/> gives it the encryption of the columns.</summary>
+    private static AppDbContext NewNpgsqlContext(bool encrypted = false) =>
         new(
             new DbContextOptionsBuilder<AppDbContext>()
                 .UseNpgsql(
                     "Host=localhost;Database=casazen_design;Username=postgres;Password=postgres",
                     npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"))
-                .Options);
+                .Options,
+            tenantContext: null,
+            encrypted ? new EphemeralDataProtectionProvider() : null);
 
     /// <summary>The source without the lines that are only a comment (documentation names the tables without using them).</summary>
     private static string CodeWithoutComments(string text) =>
