@@ -151,6 +151,10 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `DELETE` | `/api/users/{id}` | Admin | Delete user |
 | `POST` | `/api/devices` | JWT | Register iOS/Android push device |
 | `DELETE` | `/api/devices/{deviceId}` | JWT | Unregister device |
+| `GET` | `/api/me/notifications?unread=&page=&pageSize=` | JWT, flag `InAppNotifications` | UI-12a: the caller's in-app notifications (the bell), newest first, paged (`pageSize` 1–50, default 20): `{ items: [{ id, type, entityId, createdAt, readAt }], totalCount, page, pageSize }`. No text: the client writes it from `type` |
+| `GET` | `/api/me/notifications/unread-count` | same | `{ count }` |
+| `POST` | `/api/me/notifications/{id}/read` | same | 204, idempotent; 404 for a notification that is not the caller's (another user's, another org's, deleted, unknown), never 403 |
+| `POST` | `/api/me/notifications/read-all` | same | 204 |
 
 #### Multi-tenancy (orgs & workspace)
 
@@ -738,6 +742,19 @@ erDiagram
 `Property.ResponsibleUserId` (`string?`, max 255, FK `Users` SET NULL, indexed): the member in charge of the property, told about it with the
 administrators (`docs/runbooks/org-team.md` § 24).
 
+#### `InAppNotification` (UI-12a)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (CASCADE), tenant key (`ITenantOwned`) | The org the event belongs to: the host org, or the supplier org for the supplier's inbox |
+| `UserId` | `string` (255) | FK `Users` (CASCADE) | The user who is told |
+| `Type` | `string` (64) | — | A value of `PushTypes`; the client writes the text from it. No guest or property name, no free text |
+| `EntityId` | `Guid?` | not a key | The service request (`service-request-*` types) or the booking the event is about |
+| `DeliveryKey` | `string` (200) | — | The key of the push of the same event |
+| | | **unique** `(DeliveryKey, UserId)` (`UIX_InAppNotifications_DeliveryKey_UserId`), indexes on `(UserId, ReadAt, CreatedAt)`, `CreatedAt`, `OrgId` | Once per event and user |
+| `CreatedAt`, `ReadAt` | `DateTime`, `DateTime?` | — | The instant of the event (UTC, microseconds); `null` while unread. Deleted 90 days after `CreatedAt` (`docs/runbooks/in-app-notifications.md`) |
+
 ---
 
 ## Design Patterns
@@ -777,6 +794,8 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
 | `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
 | `OrgInvitationMaintenanceJob` | Hourly at :10 UTC | AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days (`docs/runbooks/org-team.md` § 15) |
+| `InAppNotificationJob` | On push queued (`IPushNotificationService`), flag `InAppNotifications` on | UI-12a: writes one in-app notification per user of the push's audience, once per event and user (`docs/runbooks/in-app-notifications.md`) |
+| `InAppNotificationRetentionJob` | Daily at 03:45 UTC | UI-12a: deletes the in-app notifications older than 90 days; registered whatever the flag says |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment

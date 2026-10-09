@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261009111404_AddInAppNotifications")]
+    partial class AddInAppNotifications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -275,13 +278,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("FreeRefundDeadline")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("GuestCancelTokenExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("GuestCancelTokenHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
                     b.Property<string>("GuestEmailVerificationTokenHash")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
@@ -453,12 +449,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("FullRefundHours")
                         .HasColumnType("integer");
 
-                    b.Property<int>("GraceBookingDaysBeforeCheckin")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("GraceWindowHours")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -471,18 +461,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<string>("Slug")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex(new[] { "Slug" }, "UIX_CancellationPolicies_Slug")
-                        .IsUnique();
 
                     b.ToTable("CancellationPolicies");
                 });
@@ -2662,19 +2644,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("CancellationPolicyId")
                         .HasColumnType("uuid");
 
-                    b.Property<int?>("CancellationFullRefundHours")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("CancellationPartialRefundHours")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal?>("CancellationPartialRefundPercent")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<int>("CancellationRefundType")
-                        .HasColumnType("integer");
-
                     b.Property<string>("CinCode")
                         .HasMaxLength(25)
                         .HasColumnType("character varying(25)");
@@ -3401,9 +3370,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("LastFailedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("LastReminderAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<Guid>("LeaseContractId")
                         .HasColumnType("uuid");
 
@@ -3447,9 +3413,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<int>("ReminderCount")
-                        .HasColumnType("integer");
-
                     b.Property<Guid>("RentScheduleId")
                         .HasColumnType("uuid");
 
@@ -3475,8 +3438,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("LeaseContractId", "PeriodStart")
                         .IsUnique();
-
-                    b.HasIndex("OrgId", "DueDate");
 
                     b.ToTable("RentLedgerEntries");
                 });
@@ -4034,13 +3995,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<decimal?>("AppliedPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime?>("AppliedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal>("BasePrice")
                         .HasPrecision(18, 2)
