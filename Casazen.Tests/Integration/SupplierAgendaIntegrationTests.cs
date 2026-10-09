@@ -25,6 +25,12 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
 
     private static DateOnly Today => TimeProvider.System.TodayInRomeAsDateOnly();
 
+    /// <summary>
+    /// How far apart the same instant can be before and after a trip through PostgreSQL: a <c>timestamp</c> keeps microseconds,
+    /// the clock of the service (and of .NET) 100 ns, and what a write answers with is the value in memory, not the one stored.
+    /// </summary>
+    private static readonly TimeSpan DatabaseTimestampPrecision = TimeSpan.FromTicks(TimeSpan.TicksPerMillisecond / 1000);
+
     // ─── Who may call it ─────────────────────────────────────────────────────────
 
     [Theory]
@@ -143,7 +149,13 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
 
         var read = await ReadAsync(await client.GetAsync($"{Base}/hours"));
         Assert.Equal(saved.GetProperty("days").ToString(), read.GetProperty("days").ToString());
-        Assert.Equal(saved.GetProperty("configuredAt").GetDateTime(), read.GetProperty("configuredAt").GetDateTime());
+        // The PUT answers with the instant the service took from its clock (100 ns), the GET with the one PostgreSQL gives back
+        // (microseconds): the same instant up to the last digit. The check stays as sharp as the column: a value computed again
+        // at each read would be milliseconds away and fail.
+        Assert.Equal(
+            saved.GetProperty("configuredAt").GetDateTime(),
+            read.GetProperty("configuredAt").GetDateTime(),
+            DatabaseTimestampPrecision);
     }
 
     [Fact]
