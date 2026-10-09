@@ -33,6 +33,9 @@ public class AddOrgActivityLogMigrationPostgresTests : IAsyncLifetime
         return all[index - 1];
     }
 
+    private static string ThisMigration(AppDbContext db) =>
+        db.Database.GetMigrations().Single(m => m.EndsWith("_AddOrgActivityLog", StringComparison.Ordinal));
+
     private async Task<string> TextAsync(string sql)
     {
         await using var connection = new NpgsqlConnection(_database!.ConnectionString);
@@ -55,7 +58,9 @@ public class AddOrgActivityLogMigrationPostgresTests : IAsyncLifetime
         Assert.Equal("0", await TextAsync("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'OrgActivityEntries'"));
         var before = await SnapshotOfWhatExistsAsync();
 
-        await db.Database.MigrateAsync();
+        // Up to this migration, not to the latest: the migrations after it add columns of their own (DB-03: five), and "touches
+        // nothing else" is a statement about this one.
+        db.GetService<IMigrator>().Migrate(ThisMigration(db));
 
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'OrgActivityEntries'"));
         Assert.Equal(before, await SnapshotOfWhatExistsAsync());
@@ -63,7 +68,7 @@ public class AddOrgActivityLogMigrationPostgresTests : IAsyncLifetime
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_OrgActivityEntries_OrgId_Type'"));
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_OrgActivityEntries_When'"));
         Assert.Equal("c", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_OrgActivityEntries_Orgs_OrgId'"));
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+        Assert.DoesNotContain(await db.Database.GetPendingMigrationsAsync(), m => m.EndsWith("_AddOrgActivityLog", StringComparison.Ordinal));
     }
 
     [PostgresFact]
