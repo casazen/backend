@@ -363,6 +363,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IRentBillingService, RentBillingService>();
+        // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
+        services.AddScoped<IRentRegisterService, RentRegisterService>();
+        services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
