@@ -36,7 +36,7 @@ No default in code or in `appsettings.json` (the keys are there, empty).
 | `Gdpr__Retention__{Category}__Source` | Source that justifies the period (law, article, written decision) | The category is not applied, even with a period |
 
 `{Category}` is `DocumentScans`, `AlloggiatiData`, `Marketing` or `FiscalData`; `LeaseParties` is the parties of the
-long-term leases (§ 7). A category is applied only with at
+long-term leases (§ 7); `SupplierCustomers` is the private customers of the suppliers (§ 8). A category is applied only with at
 least one amount (0 is allowed: `Days = 0` means "the day after the reference date"), no negative amount and a source.
 Otherwise every run of the job logs
 `GDPR retention: category {Category} not applied (...)` and the host's GDPR tab shows "Periodo non configurato".
@@ -153,3 +153,48 @@ Gdpr__Retention__LeaseParties__Source=<article of law or written decision>
 Verification after deploy: Railway logs at 03:00 UTC show `GDPR retention: lease parties not applied (...)` (or
 `applied`) and `GDPR lease party retention done`. Database:
 `select "Id", "EndDate", "ErasureRequested", "PartiesAnonymizedAt" from "LeaseContracts" where "ErasureRequested" or "PartiesAnonymizedAt" is not null;`
+
+## 8. Private customers of the suppliers (SP-10)
+
+A customer who books a supplier from its public showcase has **no account** and is not a guest of a stay: it is a `ServiceCustomer` of
+**one supplier** (the supplier is the controller of the work it does for the customer; CasaZen provides the booking and holds the data
+for it). What is kept, where and how long (the flow is in [`suppliers.md`](suppliers.md) § 23):
+
+| Data | Where | Protection |
+|---|---|---|
+| name, e-mail address, phone | `ServiceCustomers` (and, while the e-mail is not checked, in the payload of `ShowcaseBookingHolds`) | encrypted at rest (`Casazen.ServiceCustomer`), found by an HMAC of the address, shown to the supplier as "Nome C." until it takes the request and in full only after (D9) |
+| street address, floor, access notes of the work | `ServiceRequests` | encrypted at rest (`Casazen.ServiceRequest.Location`), shown to the supplier only after the take |
+| comune and postal code | `ServiceRequests` | not encrypted; the supplier sees them before the take |
+| consent: version of the privacy notice, time, client address | `ServiceCustomers` | the booking is refused without it, or with a version that is not the current one (`Suppliers__Showcase__PrivacyNoticeVersion`); the text of the notice is a decision of the product owner and legal (D14) |
+| language | `ServiceCustomers` | `it` or `en`, the language of every e-mail to the customer |
+
+An unchecked booking is **deleted by the upkeep job** when its 30 minutes have passed (the data go with it); a checked one is deleted
+when it would have expired, and the request and the customer remain. The logs carry ids and codes only.
+
+| Trigger | When the customer is anonymized | Code |
+|---|---|---|
+| Retention | Nightly job `gdpr-data-retention`: a customer **none of whose requests is open** (`Richiesto`, `PresoInCarico`, `InCorso`) and whose last request ended more than `Gdpr:Retention:SupplierCustomers` ago (the end of the work; its creation when it had no hours; the customer's own creation when it has no request). **Off until configured** with a period and its source, like the other categories (§ 2): without them every run logs `GDPR retention: supplier customers not applied (...)` and nothing is anonymized | `ServiceCustomerPrivacyService.ApplyRetentionAsync` |
+
+**What is removed**: the name (`ANONYMIZED`), the e-mail (`ANON-{customerId}@deleted.local`), the phone and the client address of the
+consent, and the e-mail index (replaced, so the old address is never found again and a new booking of the same person makes a new
+customer); of every request of the customer that is over, the street address, the floor and the access notes. **What stays**: the
+language, the version and time of the consent (the proof that it was given), the comune and the postal code, the request itself (status,
+times, price, the supplier's accounts) and the customer row with its `AnonymizedAt`. The reminder skips an anonymized customer. The
+period and its source are **not decided here**: the product owner, the DPO and the accountant decide (the supplier may need the
+request for its own accounts).
+
+**Not done in SP-10** (decisions for later): an erasure request of the customer (art. 17), the export of its data (art. 15, 20) and the
+withdrawal of the consent. They need the customer's own area (SP-11) or an operator procedure; until then a request goes to the supplier
+(the controller) or to CasaZen support, who can anonymize the customer with `ServiceCustomerPrivacyService.Anonymize` (code change, no endpoint).
+
+Configuration (Railway, per environment), only after the decision of the product owner and the DPO/accountant:
+
+```
+Gdpr__Retention__SupplierCustomers__Years=<years after the end of the last request>
+Gdpr__Retention__SupplierCustomers__Source=<article of law or written decision>
+```
+
+Verification after deploy: the Railway log at 03:00 UTC shows `GDPR retention: supplier customers not applied (...)` (or `applied`) and
+`GDPR supplier customer retention done`. Database:
+`select "Id", "AnonymizedAt", "CreatedAt" from "ServiceCustomers" where "AnonymizedAt" is not null;` and
+`select count(*) from "ServiceCustomers" where "FullName" not like 'CfDJ8%';` (expected 0: every name is a payload).

@@ -99,6 +99,11 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `service-request-created` | supplier | new service request | `ServiceRequestService`, queued |
 | `service-request-status-changed` | host | request taken / completed / rejected by the supplier | `ServiceRequestService`, queued |
 | `supplier-invite` | prospective supplier | invite by a platform admin | `SupplierService`, queued |
+| `supplier-booking-verification` | customer of a supplier's showcase | the customer booked a slot: the link that checks its address (SP-10) | `ShowcaseBookingNotifier`, queued |
+| `supplier-booking-receipt` | customer | the address is checked: code, time by which the supplier answers, estimate | same |
+| `supplier-booking-new-request` | supplier | the address is checked: new request with comune and "Nome C." only (D9) | same |
+| `supplier-booking-accepted`, `-declined`, `-time-proposed`, `-cancelled`, `-expired` | customer | the supplier took, refused, proposed another time for, or cancelled the request; nobody answered in time (the job) | `ServiceRequestNotifier` → `ShowcaseBookingNotifier`, queued |
+| `supplier-booking-reminder` | customer | 18:00 (Rome) of the day before the work, once, if the supplier took the request before that time | `service-request-reminders` job → `ShowcaseBookingNotifier`, queued |
 | `rli-deadline-reminder`, `rli-deadline-overdue`, `rli-extra-eu-notice` | landlord | RLI registration deadline / extra-EU tenant (long rents) | `RliDeadlineReminderJob` (job) |
 
 Not sent by design: bookings entered by the host (`Manual`, PC-01) and the host's own confirmations or cancellations get no email to the host; manual bookings get no confirmation to the guest (the host can send the check-in link). There is no guest self-service cancellation yet, so no "cancelled by the guest" email to the host. No email for the CIN deadline alert (CO-20: only logged as not delivered).
@@ -124,6 +129,23 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 ### Language
 
 The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done.
+
+## Showcase booking emails (SP-10)
+
+Code: `Casazen.Infrastructure/Services/ShowcaseBookingNotifier.cs` (what is sent, when, to whom), `EmailTemplates.SupplierBooking.cs` (the nine templates),
+texts `SupplierBooking*` in `EmailTexts.resx` and `EmailTexts.en.resx`. Details of the flow: [suppliers.md § 23.8](suppliers.md#23-booking-from-the-suppliers-showcase-hold-e-mail-check-request--sp-10).
+
+- **Who and in which language.** The customer in the language it chose when it booked (`it` or `en`, `ServiceCustomerLocales`); the supplier always in Italian.
+  The customer's address is the one it typed; a customer whose data were anonymized (retention) is not written to.
+- **After the commit, by the winner only.** The verification e-mail is rendered **before** the hold is saved (a missing `App__PublicSiteBaseUrl` stops the
+  booking instead of sending a link to nothing) and queued after it; the others are queued after the change that causes them is saved and only by the party
+  that won the transition (a race loser sends nothing). A failure to queue is logged and never undoes the change.
+- **The supplier never learns more than D9 allows**: comune, "Nome C.", time and estimate; not the address, the contacts or the full name.
+- **Only what is true** (D24): no "guaranteed price", no "answers in an hour", nothing about payment. The reminder is promised in the e-mail of the take only
+  when it will really be sent. A test searches every template, in both languages, for the phrases that must never appear.
+- **Links** (all built by `PublicSiteLinks`): `…/fornitori/{slug}/conferma?hold={id}&token={token}` (the token is single use and works for 30 minutes),
+  `…/fornitori/{slug}/richiesta?codice={code}` (the page of the request, SP-11), `…/fornitori/{slug}` and the supplier's inbox.
+- **What Hangfire keeps.** Like every queued e-mail the job carries the recipient, the subject and the HTML for 24 hours: the verification e-mail carries the token.
 
 ## Adding a new email
 
