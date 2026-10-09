@@ -2128,6 +2128,15 @@
   <data name="PropertyCityLockedByLease" xml:space="preserve">
     <value>La città dell'immobile non può essere modificata dopo l'invio di un contratto a canone concordato per la registrazione.</value>
   </data>
+  <data name="PropertyNotBookableInLongMode" xml:space="preserve">
+    <value>Questo immobile è in modalità affitto lungo: non è pubblicato sul sito di prenotazione e non accetta prenotazioni di soggiorni brevi.</value>
+  </data>
+  <data name="PropertyRentalModeChangeNotAllowed" xml:space="preserve">
+    <value>La modalità di affitto (breve o lungo) di un immobile già creato non può essere modificata con questo salvataggio.</value>
+  </data>
+  <data name="PropertyListModeInvalid" xml:space="preserve">
+    <value>Modalità non valida: usa «short» (affitto breve) o «long» (affitto lungo).</value>
+  </data>
   <data name="DocumentTypeInvalid" xml:space="preserve">
     <value>Tipo di documento non valido.</value>
   </data>

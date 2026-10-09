@@ -2128,6 +2128,15 @@
   <data name="PropertyCityLockedByLease" xml:space="preserve">
     <value>The property city cannot be changed after a canone concordato lease has been submitted for registration.</value>
   </data>
+  <data name="PropertyNotBookableInLongMode" xml:space="preserve">
+    <value>This property is set to long-term rental: it is not published on the booking site and does not take short-stay bookings.</value>
+  </data>
+  <data name="PropertyRentalModeChangeNotAllowed" xml:space="preserve">
+    <value>The rental mode (short or long) of an existing property cannot be changed with this save.</value>
+  </data>
+  <data name="PropertyListModeInvalid" xml:space="preserve">
+    <value>Invalid mode: use "short" (short-term rental) or "long" (long-term rental).</value>
+  </data>
   <data name="DocumentTypeInvalid" xml:space="preserve">
     <value>Invalid document type.</value>
   </data>

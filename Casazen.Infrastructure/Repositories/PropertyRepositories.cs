@@ -38,11 +38,26 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     {
         ArgumentNullException.ThrowIfNull(scope);
 
+        return await ActivePropertiesInScope(scope).OrderBy(p => p.Name).ToListAsync();
+    }
+
+    public async Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope, RentalMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        return await ActivePropertiesInScope(scope)
+            .Where(p => p.RentalMode == mode)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private IQueryable<Property> ActivePropertiesInScope(HostScope scope)
+    {
         var query = context.Properties.Where(p => p.OrgId == scope.OrgId && p.IsActive);
         if (scope.OwnerId is { } ownerId)
             query = query.Where(p => p.OwnerId == ownerId);
 
-        return await query.OrderBy(p => p.Name).ToListAsync();
+        return query;
     }
 
     public async Task<IEnumerable<Property>> GetAllAsync()
@@ -109,6 +124,10 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         // The photo gallery is written only by PropertyPhotoService, under the property's photo lock (PC-04): a save of
         // the other fields, from a copy of the row read earlier, must never put back an older photo list.
         context.Entry(property).Property(p => p.PhotoUrls).IsModified = false;
+        // The rental mode is written when the property is created and by the scheduled mode change (PM-01, PM-02), never
+        // by a generic save: a copy of the row read earlier must not put back an older mode, and the update of the other
+        // fields cannot skip the checks the mode change makes on the stays and the leases.
+        context.Entry(property).Property(p => p.RentalMode).IsModified = false;
         await context.SaveChangesAsync();
         return property;
     }
@@ -191,7 +210,8 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        var query = context.Properties.Where(p => p.OrgId == scope.OrgId);
+        // Short-rent properties only (PM-01): a long-term property has no CIN obligation (D.L. 145/2023 is about short stays).
+        var query = context.Properties.Where(PropertyRentalModeRules.IsShortRent).Where(p => p.OrgId == scope.OrgId);
         if (scope.OwnerId is { } ownerId)
             query = query.Where(p => p.OwnerId == ownerId);
 
