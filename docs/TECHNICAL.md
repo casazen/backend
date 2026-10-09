@@ -145,6 +145,7 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships`; the `account` context (AM-01) only with `Features:OrgTeam` on |
+| `PUT` | `/api/me/last-context` | JWT | UI-13a: remember the area the caller entered last (`{ "contextKey" }`, one of the contexts `GET /api/me/contexts` lists for the caller; anything else: 422 `context_not_accessible`); `GET /api/me/contexts` gives it back as `lastUsedContextKey` while the caller can still enter it. Not behind a flag |
 | `GET` | `/api/orgs/plans` | Anonymous | Plan catalogue and property limits |
 | `GET` | `/api/orgs/me/entitlement` | OrgBillingAdmin (org policy, any rental context, PL-16) | Org plan tier (the effective one), limits, usage, `canAddProperty`, `canUseCustomDomain`; BL-01: `openAccess` (`true` when the tier shown is raised by `Entitlement:OpenAccess`, [`open-access.md`](runbooks/open-access.md)); AM-02: `limits.maxSeats`, `usage.seats`, `canInviteMember` |
 | `PUT` | `/api/orgs/me/plan` | Org billing admin | Downgrade / back to Starter only; upgrade without an active subscription → 403 `subscription_required`, Stripe-managed plan → 409 `managed_by_stripe` (#274) |
@@ -162,6 +163,12 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `GET` | `/api/orgs/{orgId}/domain` | JWT | Custom domain config for org |
 | `POST` | `/api/orgs/{orgId}/domain` | JWT | Set custom domain |
 | `POST` | `/api/orgs/{orgId}/domain/verify` | JWT | Verify DNS / domain ownership |
+
+#### Global search (UI-13a)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/search?q=&limit=` | JWT, flag `GlobalSearch` (off: 404), rate limited per user (`GlobalSearch`, 60 / min) | Groups of results by kind (`property`, `booking`, `guest`, `lease`, `service-request`, `supplier`, `supplier-request`), each only when the caller holds the permission of that group in its context, bound in SQL to its org and to the properties it reaches (AM-03). `q` 2 to 64 characters (400 `search_query_too_short` / `search_query_too_long`), `limit` per group (default 5, at most 20). A result is `{ type, id, title, subtitle, destination }` with a destination **key** (`short-rent.property`, `long-rent.lease`, …), guest e-mail masked, never phone or document. `Cache-Control: private, no-store`. Full-text search on generated `SearchKey` columns and their GIN indexes, no extension: [`runbooks/global-search.md`](runbooks/global-search.md) |
 
 #### Onboarding
 
