@@ -18,7 +18,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -33,6 +35,9 @@ namespace Casazen.Tests.Integration;
 /// <see cref="PostgresTestServer"/>, with every EF migration applied through <c>Database.Migrate()</c>;
 /// the database is dropped when the factory is disposed. Only when no PostgreSQL is available on a
 /// local run does it fall back to EF InMemory, with a warning (never on CI). See FD-04 / A9-11.
+/// The fallback behaves like the PostgreSQL path where it can (QA-INFRA-01): a store of its own for every factory instance
+/// (<see cref="UseDedicatedInMemoryDatabase"/>) and the reference data the migrations seed (contexts, roles and their
+/// permissions) written from the seed data of the model (<see cref="InMemoryReferenceDataSeeder"/>).
 /// </summary>
 public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 {
@@ -43,6 +48,9 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
     private readonly object _databaseLock = new();
     private PostgresTestDatabase? _database;
+
+    /// <summary>Name of the InMemory store of this factory; used only when the host runs without PostgreSQL.</summary>
+    private readonly string _inMemoryStoreName = $"casazen-it-{Guid.NewGuid():N}";
 
     public CasazenWebApplicationFactory()
     {
@@ -140,6 +148,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         {
             if (UsesPostgreSql)
                 UseDedicatedPostgresDatabase(services);
+            else
+                UseDedicatedInMemoryDatabase(services);
 
             if (SeedComuneSample)
                 services.AddHostedService(serviceProvider => new ComuneSampleSeeder(serviceProvider));
@@ -372,6 +382,27 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             .Build());
     }
 
+    /// <summary>
+    /// The local fallback without PostgreSQL (never on CI). The app registers one InMemory store with a fixed name for the whole
+    /// process, so every host shared it: two hosts starting together imported the comuni sample into the same rows
+    /// ("An item with the same key has already been added. Key: 001235"), and a test saw what other classes had written.
+    /// This gives the factory a store of its own, as the PostgreSQL path has a database of its own, and writes the reference
+    /// data into it before anything else starts. A subclass that registers another database afterwards wins, as on PostgreSQL.
+    /// </summary>
+    private void UseDedicatedInMemoryDatabase(IServiceCollection services)
+    {
+        RemoveAllOf<DbContextOptions<AppDbContext>>(services);
+        RemoveAllOf<IDbContextOptionsConfiguration<AppDbContext>>(services);
+        services.AddDbContext<AppDbContext>(options =>
+        {
+            options.UseInMemoryDatabase(_inMemoryStoreName);
+            options.ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning));
+        });
+
+        // First of the hosted services, so that the reference data is there before any start-up service reads the store.
+        services.Insert(0, ServiceDescriptor.Singleton<IHostedService>(serviceProvider => new InMemoryReferenceDataSeeder(serviceProvider)));
+    }
+
     private PostgresTestDatabase EnsureDatabase()
     {
         lock (_databaseLock)
@@ -424,6 +455,42 @@ internal sealed class ComuneSampleSeeder(IServiceProvider serviceProvider) : IHo
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         if (!await db.Comuni.AnyAsync(cancellationToken))
             await ComuneTestData.ImportSampleAsync(db);
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+/// <summary>
+/// QA-INFRA-01: on the InMemory fallback of a local run, writes the reference data that the migrations seed on PostgreSQL (the
+/// contexts, the roles and their permissions), taken from the seed data of the model (<c>HasData</c>) that the migrations are
+/// generated from, so the tests that need a membership, a role or a context run without PostgreSQL too. It does nothing on any
+/// other provider (a host whose database a test points elsewhere) and when the store already has roles.
+/// </summary>
+internal sealed class InMemoryReferenceDataSeeder(IServiceProvider serviceProvider) : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        using var scope = serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (!db.Database.IsInMemory() || await db.Roles.AnyAsync(cancellationToken))
+            return;
+
+        // EnsureCreated would seed the same rows, but only into a store nobody has touched yet; this works in any state.
+        var model = db.GetService<IDesignTimeModel>().Model;
+        foreach (var entityType in model.GetEntityTypes())
+        {
+            foreach (var row in entityType.GetSeedData())
+            {
+                var entity = Activator.CreateInstance(entityType.ClrType, nonPublic: true)!;
+                // Only the columns: a seed row also carries the navigation lists of the model (shared objects), and adding
+                // them would attach and change the seed of the model itself, which every other host of the process reads.
+                foreach (var (name, value) in row.Where(column => entityType.FindProperty(column.Key) is not null))
+                    entityType.ClrType.GetProperty(name)!.SetValue(entity, value);
+                db.Add(entity);
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
