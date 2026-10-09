@@ -27,10 +27,15 @@ public class ServiceRequestPaymentTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Sessions.cs"] = "The payer's session and page: by payment id (and token), or by request and payer org.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Supplier.cs"] = "The supplier's request and offline record: by request id, after the supplier owns the request.",
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The duplicate-supplier repair (SU-14) moves the payments of a merged supplier to the keeper: one update scoped by the duplicate's SupplierOrgId.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.Webhook.cs"] = "The Stripe webhook (SP-15b): the payment of a PaymentIntent, found by the PaymentIntent or the payment id, then read by id under the payment lock.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.Refunds.cs"] = "The admin's refund and the refund events (SP-15b): by payment id or by PaymentIntent, under the payment lock.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs"] = "The system jobs (SP-15b: sync, reminders, pending requests) run over the payments in a state, across every supplier, and handle each payment by id under its lock; a job has no tenant.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs"] = "The emails after a commit (SP-15b): the payment is read by its id.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = "The platform admin's list, detail and commission export (SP-15b, AdminOnly): read-only projections across the suppliers, on purpose.",
     };
 
     // The statements that are allowed after "db.ServiceRequestPayments" (whitespace removed): an insert, or a predicate on the
-    // payment id, on the request, or (for the host) on the request and the payer org.
+    // payment id, on the request, on the PaymentIntent (the webhook), or (for the host) on the request and the payer org.
     private static readonly string[] AllowedContinuations =
     [
         ".Add(",
@@ -38,7 +43,16 @@ public class ServiceRequestPaymentTenancyTests
         ".Where(p=>p.ServiceRequestId==",
         ".AsNoTracking().Where(p=>p.Id==",
         ".AsNoTracking().Where(p=>p.ServiceRequestId==",
+        ".AsNoTracking().Where(p=>p.StripePaymentIntentId==",
     ];
+
+    // The files that work over many payments by design, with the extra statements they may use: the jobs filter by state and time,
+    // the admin tools read across the suppliers. Every payment they change is still handled by id under the payment lock.
+    private static readonly IReadOnlyDictionary<string, string[]> ExtraContinuations = new Dictionary<string, string[]>
+    {
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs"] = [".AsNoTracking().Where(p=>"],
+        ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = [".AsNoTracking()"],
+    };
 
     // Any way to reach the table from code: the DbSet through whatever the context variable is called, or Set<T>().
     private static readonly Regex AnyTableUse = new(@"\.ServiceRequestPayments\b|Set<ServiceRequestPayment>\(", RegexOptions.Compiled);
@@ -197,15 +211,21 @@ public class ServiceRequestPaymentTenancyTests
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Sessions.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Supplier.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Webhook.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Refunds.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs")]
     public void EveryStatementOnTheTable_CarriesAnExplicitPredicateOrIsAnInsert(string relative)
     {
         var text = File.ReadAllText(Path.Combine(FindRepositoryRoot(), relative.Replace('/', Path.DirectorySeparatorChar)));
         var statements = DbSetUse.Matches(text);
         Assert.NotEmpty(statements);
 
+        var allowedHere = AllowedContinuations.Concat(ExtraContinuations.GetValueOrDefault(relative) ?? []).ToList();
         var offenders = statements
             .Select(m => Regex.Replace(m.Groups["rest"].Value, @"\s+", string.Empty))
-            .Where(rest => !AllowedContinuations.Any(allowed => rest.StartsWith(allowed, StringComparison.Ordinal)))
+            .Where(rest => !allowedHere.Any(allowed => rest.StartsWith(allowed, StringComparison.Ordinal)))
             .Select(rest => rest[..Math.Min(rest.Length, 60)])
             .ToList();
 

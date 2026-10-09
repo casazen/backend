@@ -1326,4 +1326,64 @@
   <data name="ServicePaymentOfflineRecorded_Hint" xml:space="preserve">
     <value>If this is not correct, contact the supplier.</value>
   </data>
+  <data name="ServicePaymentFailed_Subject" xml:space="preserve">
+    <value>Payment failed: {0}</value>
+  </data>
+  <data name="ServicePaymentFailed_Body" xml:space="preserve">
+    <value>The payment for the job &lt;strong&gt;{1}&lt;/strong&gt; by {0} for the property &lt;strong&gt;{2}&lt;/strong&gt; did not go through. You can try again with the new link below.</value>
+  </data>
+  <data name="ServicePaymentRefundedPayer_Subject" xml:space="preserve">
+    <value>Refund issued: {0}</value>
+  </data>
+  <data name="ServicePaymentRefundedPayer_Body" xml:space="preserve">
+    <value>A refund of &lt;strong&gt;{3}&lt;/strong&gt; was issued for the payment of the job &lt;strong&gt;{1}&lt;/strong&gt; by {0} for the property &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServicePaymentRefundedPayer_Hint" xml:space="preserve">
+    <value>The refund goes back to the payment method used. How long it takes to show up depends on your bank or card network.</value>
+  </data>
+  <data name="ServicePaymentRefundedSupplier_Subject" xml:space="preserve">
+    <value>Refund to the customer: {0}</value>
+  </data>
+  <data name="ServicePaymentRefundedSupplier_Body" xml:space="preserve">
+    <value>The payment for the job &lt;strong&gt;{0}&lt;/strong&gt; for the property &lt;strong&gt;{1}&lt;/strong&gt; was refunded to the customer for &lt;strong&gt;{2}&lt;/strong&gt;. The amount goes back to the customer from the balance of your Stripe account.</value>
+  </data>
+  <data name="ServicePaymentRefundedSupplier_Commission" xml:space="preserve">
+    <value>With the refund, the matching part of CasaZen's commission comes back to you: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServicePaymentRefundedSupplier_Hint" xml:space="preserve">
+    <value>The details of the movements are in the dashboard of your Stripe account.</value>
+  </data>
+  <data name="ServicePaymentAlertReview_Subject" xml:space="preserve">
+    <value>Service payment to review: {0}</value>
+  </data>
+  <data name="ServicePaymentAlertReview_Body" xml:space="preserve">
+    <value>A service payment was not recorded as paid: the data received from Stripe do not match what was asked for, or they concern a payment that had been withdrawn. The request was not marked as paid.</value>
+  </data>
+  <data name="ServicePaymentAlertReview_Action" xml:space="preserve">
+    <value>Check the charge on the Stripe Dashboard and decide whether to refund it or whether the payment is correct.</value>
+  </data>
+  <data name="ServicePaymentAlertDispute_Subject" xml:space="preserve">
+    <value>Dispute on a service payment: {0}</value>
+  </data>
+  <data name="ServicePaymentAlertDispute_Body" xml:space="preserve">
+    <value>The payer disputed the payment of a service. On CasaZen the payment stays as it is.</value>
+  </data>
+  <data name="ServicePaymentAlertDispute_Action" xml:space="preserve">
+    <value>Answer the dispute from the Stripe Dashboard before the deadline Stripe shows.</value>
+  </data>
+  <data name="ServicePaymentAlert_Supplier" xml:space="preserve">
+    <value>Supplier: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentAlert_Amount" xml:space="preserve">
+    <value>Amount: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentAlert_Payment" xml:space="preserve">
+    <value>Payment: {0}</value>
+  </data>
+  <data name="ServicePaymentAlert_Request" xml:space="preserve">
+    <value>Request: {0}</value>
+  </data>
+  <data name="ServicePaymentAlert_Detail" xml:space="preserve">
+    <value>Detail: {0}</value>
+  </data>
 </root>

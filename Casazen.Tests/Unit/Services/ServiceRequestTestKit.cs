@@ -40,7 +40,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
         ShowcaseBookingOptions? showcaseOptions = null,
         SupplierPaymentsOptions? paymentOptions = null,
         FakeSupplierPaymentGateway? gateway = null,
-        TestFeatureFlags? flags = null)
+        TestFeatureFlags? flags = null,
+        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null)
     {
         Db = db;
         Clock = clock ?? TimeProvider.System;
@@ -95,7 +96,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Flags,
             Microsoft.Extensions.Options.Options.Create(PaymentOptions),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:PublishableKey"] = PublishableKey }).Build(),
-            NullLogger<SupplierPaymentService>.Instance,
+            JobScheduler,
+            paymentLogger ?? NullLogger<SupplierPaymentService>.Instance,
             Clock);
         Matcher = ComuneTestServices.Matcher(db);
         Service = new ServiceRequestService(
@@ -147,6 +149,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public SupplierPaymentsOptions PaymentOptions { get; }
 
     public FakeSupplierPaymentGateway Gateway { get; }
+
+    /// <summary>Records the supplier orgs whose pending payment requests were queued (SP-15b); nothing reaches Hangfire.</summary>
+    public RecordingSupplierPaymentJobScheduler JobScheduler { get; } = new();
 
     public TestFeatureFlags Flags { get; }
 
