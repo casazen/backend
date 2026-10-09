@@ -4,7 +4,7 @@ Task FD-20 (defects A2-09, A9-17, R-10 webhook part, A8-16 OTA part, A9-15 OTA j
 Task FD-21 adds `AiSupplierDiscovery` (defects A8-01, A8-14, A8-15, A4-26, A8-16 AI part; decision D11).
 Task LT-01 adds `RliProvider` (defects A7-01, A7-21; decision D15; `docs/runbooks/rli.md`).
 Task LT-02 adds `ESignProvider` (defects A7-02, A7-16, A7-20; decision D15; `docs/runbooks/rli.md` § Contract signature).
-Task AM-01 adds `OrgTeam` (org team, wave redesign; decisions D1, D15; `docs/runbooks/org-team.md`); AM-02 gates the endpoints of the invitations and of the members on it.
+Task AM-01 adds `OrgTeam` (org team, wave redesign; decisions D1, D15; `docs/runbooks/org-team.md`); AM-02 gates the endpoints of the invitations and of the members on it; AM-03 gates the two endpoints that set the properties of a member on it (the scope itself is enforced with the flag off too, but nobody can be limited without the gated endpoints).
 
 ## How it works
 
