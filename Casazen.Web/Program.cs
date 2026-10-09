@@ -168,6 +168,12 @@ builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.AddScoped<SeoEventRetentionJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
+// SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
+builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
+// SP-10: upkeep of the bookings from the suppliers' public showcases (holds, unanswered requests) and the reminders of the day
+// before; both are scheduled whatever the feature flags say.
+builder.Services.AddScoped<ServiceRequestExpiryJob>();
+builder.Services.AddScoped<ServiceRequestReminderJob>();
 builder.Services.AddScoped<DomainRecheckJob>();
 builder.Services.AddScoped<PropertyComplianceCheckJob>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();

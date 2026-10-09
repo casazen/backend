@@ -466,7 +466,11 @@ varchar(500)).
 ## Supplier calendars (SU-15)
 
 A supplier links **one** iCal feed (Google Calendar, Apple, Outlook, ...) in *Sincronizza calendario* or in the
-activation wizard. Its busy days go into `SupplierAvailability` (one row per day, `Available = false`).
+activation wizard. Its busy days go into `SupplierAvailability` (one row per day, `Available = false`). Since SP-03 that row
+is read as the *override of the day* by the supplier's agenda (weekly hours, time off, blocks, the slot planner,
+[`suppliers.md`](suppliers.md) section 20); the sync still writes whole days and nothing else. Events **by the hour** go into
+`SupplierBusyWindows` (`Kind = External`, `Source = ICalFeed`, `ExternalUid`), under the same lock, in SP-05: the table and the
+planner already read them.
 
 ### API (policy `RequireSupplier`, the caller's supplier org only)
 

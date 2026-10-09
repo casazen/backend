@@ -16,4 +16,12 @@ public enum ServiceRequestRentalContext
 
     /// <summary>Long-term rental: tied to the property only, never to a booking.</summary>
     LongRent = 1,
+
+    /// <summary>
+    /// A customer without an account booked the supplier from its public showcase (SP-10, decision D34 revised). The request
+    /// belongs to the <b>supplier</b>: its <c>OrgId</c> is the supplier org, it has no property and no booking, and the place
+    /// of the work is on the request itself. No host endpoint reaches it: they filter on the context and on the org. A database
+    /// check ties the context to these fields (<c>CK_ServiceRequests_Context</c>).
+    /// </summary>
+    Showcase = 2,
 }

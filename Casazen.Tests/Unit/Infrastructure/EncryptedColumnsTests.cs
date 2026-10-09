@@ -10,7 +10,7 @@ namespace Casazen.Tests.Unit.Infrastructure;
 public class EncryptedColumnsTests
 {
     [Fact]
-    public void All_DeclaresTheSecretsICalUrlsGuestDocumentsAndQuesturaCredentials()
+    public void All_DeclaresTheSecretsICalUrlsGuestDocumentsQuesturaCredentialsAndTheSupplierCustomers()
     {
         var columns = EncryptedColumns.All.Select(c => $"{c.EntityType.Name}.{c.Property}:{c.Purpose}").Order().ToArray();
 
@@ -25,6 +25,15 @@ public class EncryptedColumnsTests
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.Username:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.WsKey:Casazen.PropertyQuesturaCredentials",
+                // SP-10: the private customers of the suppliers, the booking that waits for their e-mail check (the same data
+                // before it is a customer: one purpose) and the place of the work of a request from the public showcase.
+                "ServiceCustomer.Email:Casazen.ServiceCustomer",
+                "ServiceCustomer.FullName:Casazen.ServiceCustomer",
+                "ServiceCustomer.Phone:Casazen.ServiceCustomer",
+                "ServiceRequest.LocationAccessNotes:Casazen.ServiceRequest.Location",
+                "ServiceRequest.LocationAddress:Casazen.ServiceRequest.Location",
+                "ServiceRequest.LocationFloor:Casazen.ServiceRequest.Location",
+                "ShowcaseBookingHold.Payload:Casazen.ServiceCustomer",
                 "StayGuest.DocumentIssuePlaceName:Casazen.Guest.Document",
                 "StayGuest.DocumentNumber:Casazen.Guest.Document",
             },

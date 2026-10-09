@@ -133,6 +133,39 @@ internal static class PostgresAdvisoryLocks
         PropertyPhotos = 1_074,
 
         /// <summary>
+        /// Service catalog of one supplier (key: supplier org id, <c>orgId.ToString("N")</c>): the changes of a supplier's
+        /// services (create, duplicate, edit, delete, publish, pause, photos) and the merge of duplicate supplier profiles
+        /// (<c>fix-orphaned</c>) run one at a time, so the limit of services, the free slug and the photo list are never
+        /// decided on a stale read (SP-02).
+        /// </summary>
+        SupplierServiceCatalog = 1_302,
+
+        /// <summary>
+        /// One run of the automatic cancellation of the service requests nobody answered (single key, session lock held for the
+        /// whole run): two runs never cancel and notify the same requests at once, even outside Hangfire's own lock (SP-04, D8).
+        /// </summary>
+        ServiceRequestAutoCancelRun = 1_310,
+
+        /// <summary>
+        /// One run of the upkeep of the bookings from the public showcases (single key, session lock held for the whole run): the
+        /// holds past their expiry are deleted and the showcase requests nobody answered are cancelled and told once, even
+        /// outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceRequestExpiryRun = 1_311,
+
+        /// <summary>
+        /// One run of the reminders of the day before to the customers of the public showcases (single key, session lock held for
+        /// the whole run): two runs never send the same reminder at once, even outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceRequestRemindersRun = 1_312,
+
+        /// <summary>
+        /// One run of the retention of the data of the private customers of the suppliers (single key, session lock held for the
+        /// whole run): two nights' runs never anonymize the same rows at once, even outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceCustomerRetentionRun = 1_313,
+
+        /// <summary>
         /// One run of the hourly application of the scheduled changes of rental mode (single key, session lock held for the
         /// whole run): two runs never apply or fail the same change at once, even outside Hangfire's own lock (PM-02). Each
         /// change is then applied under the dates lock of its property, so it also serializes with the bookings.

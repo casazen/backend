@@ -1,6 +1,6 @@
 # Indice dei runbook
 
-Un runbook per tema (44 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
+Un runbook per tema (45 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
 
 > **Hosting in revisione (2026-10-02):** il PO ha cancellato Railway. Nei runbook "Railway" indica l'host del backend così com'era configurato: va riletto alla luce dell'analisi del task HOSTING ([`free-hosting-analysis.md`](free-hosting-analysis.md); raccomandazione: VM Oracle Cloud Always Free, decisione del PO ancora da prendere). Il database resta su Supabase. Le variabili e le procedure non legate all'host restano valide.
 
@@ -79,7 +79,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | Runbook | Argomento | Task |
 |---|---|---|
 | [`rli.md`](rli.md) | RLI registration of lease contracts | FD-06, FD-07, LT-01, LT-02, LT-03, LT-04, LT-07, LT-08 |
-| [`lease-contract-templates.md`](lease-contract-templates.md) | lease contract templates (approval gate, clause texts from the product owner) | FD-02, LT-02, LT-03, LT-09, LT-10 |
+| [`lease-contract-templates.md`](lease-contract-templates.md) | lease contract templates (approval gate, clause texts from the product owner, draft templates 2026-11 not approved) | FD-02, LG-02, LT-02, LT-03, LT-09, LT-10 |
 | [`canone-concordato.md`](canone-concordato.md) | Canone concordato: range, dati dell'accordo, tipo di contratto (LT-10, LT-13) | LT-08, LT-10, LT-13 |
 
 ## SEO e siti pubblici
