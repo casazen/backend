@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -20,6 +21,7 @@ public class GdprControllerTests
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver;
     private readonly Mock<IGuestAccessService> _mockGuestAccessService;
     private readonly Mock<IAuthorizationService> _mockAuthorization;
+    private readonly Mock<IHostScopeResolver> _mockScopeResolver;
     private readonly Mock<IOrgActivityService> _mockOrgActivity = new();
     private readonly GdprController _controller;
     private static readonly Guid OrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
@@ -30,11 +32,13 @@ public class GdprControllerTests
         _mockOrgContextResolver = new Mock<IOrgContextResolver>();
         _mockGuestAccessService = new Mock<IGuestAccessService>();
         _mockAuthorization = new Mock<IAuthorizationService>();
+        _mockScopeResolver = new Mock<IHostScopeResolver>();
         _controller = new GdprController(
             _mockGdprService.Object,
             _mockOrgContextResolver.Object,
             _mockGuestAccessService.Object,
             _mockAuthorization.Object,
+            _mockScopeResolver.Object,
             _mockOrgActivity.Object,
             new Mock<ILogger<GdprController>>().Object)
         {
@@ -147,10 +151,21 @@ public class GdprControllerTests
             .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.OrgActivityRead))
             .ReturnsAsync(allowed ? AuthorizationResult.Success() : AuthorizationResult.Failed());
 
+    /// <summary>The caller of the export is the holder (AM-03b): it has a scope, the whole org.</summary>
+    private void TheCallerIsTheHolder()
+    {
+        _controller.ControllerContext.HttpContext.User =
+            new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "auth0|owner")], "Test"));
+        _mockScopeResolver
+            .Setup(r => r.ResolveAsync("auth0|owner", It.IsAny<IReadOnlySet<string>>(), OrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HostScope(OrgId));
+    }
+
     [Fact]
     public async Task ExportOrgFiscal_ForWhoMayReadTheActivityLog_IncludesTheLogWithIdsAndCodes()
     {
-        _mockGdprService.Setup(x => x.ExportOrgFiscalDataAsync(OrgId, It.IsAny<CancellationToken>()))
+        TheCallerIsTheHolder();
+        _mockGdprService.Setup(x => x.ExportOrgFiscalDataAsync(OrgId, It.IsAny<HostScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, object> { ["fiscalCode"] = "RSSMRA80A01H501U" });
         _mockOrgActivity.Setup(a => a.StreamAsync(OrgId, It.IsAny<OrgActivityFilter>(), It.IsAny<CancellationToken>()))
             .Returns(One(ActivityItem()));
@@ -169,7 +184,8 @@ public class GdprControllerTests
     [Fact]
     public async Task ExportOrgFiscal_ForWhoMayNotReadTheActivityLog_HasTheExportWithoutIt_AndReadsNothingOfTheLog()
     {
-        _mockGdprService.Setup(x => x.ExportOrgFiscalDataAsync(OrgId, It.IsAny<CancellationToken>()))
+        TheCallerIsTheHolder();
+        _mockGdprService.Setup(x => x.ExportOrgFiscalDataAsync(OrgId, It.IsAny<HostScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, object> { ["fiscalCode"] = "RSSMRA80A01H501U" });
         CanReadTheActivity(false);
 

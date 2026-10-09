@@ -363,7 +363,7 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
     // ─── The export of the org (GDPR) ───────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task OrgExport_CarriesTheLogForWhoMayReadIt_AndNotForACollaboratorWhoReachesTheExport()
+    public async Task OrgExport_CarriesTheLogForWhoMayReadIt_AndACollaboratorDoesNotReachTheExportAtAll()
     {
         var (ownerId, orgId) = await NewOrgAsync();
         var collaboratorId = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Collaborator, ["short-rent"]);
@@ -382,12 +382,13 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         Assert.DoesNotContain("example.com", export.GetProperty("activity").GetRawText(), StringComparison.Ordinal);
         Assert.True(export.TryGetProperty("members", out _));
 
-        // A collaborator reaches this export with its property permission (until #461 moves it under the owner's): it gets the
-        // org's data as before and not the log, which it cannot read from the log's own endpoints either.
+        // A collaborator no longer reaches this export (AM-03b: it is the holder's, the policy of the org): 403, nothing of the org's
+        // data and nothing of the log, which it cannot read from the log's own endpoints either.
         var response = await collaborator.GetAsync("/api/gdpr/org/export");
-        var asCollaborator = await JsonAsync(response);
-        Assert.True(asCollaborator.TryGetProperty("members", out _));
-        Assert.False(asCollaborator.TryGetProperty("activity", out _));
+        await OrgTeamHttp.AssertProblemAsync(response, HttpStatusCode.Forbidden, "forbidden");
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("members", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("activity", body, StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.Forbidden, (await collaborator.GetAsync("/api/orgs/me/activity")).StatusCode);
     }
 
