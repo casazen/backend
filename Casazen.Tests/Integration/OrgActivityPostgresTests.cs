@@ -108,18 +108,28 @@ public class OrgActivityPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task ForeignKey_DeletingTheOrg_TakesItsLinesWithIt()
     {
-        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        // An org with people cannot be deleted at all: its users and its members reference it with a restricting key. The cascade
+        // of the log is therefore proved on an org nobody belongs to, and the other org, which has an owner, keeps its lines.
+        Guid emptyOrg;
+        await using (var db = _kit.NewDb())
+        {
+            emptyOrg = OrgTeamTestData.AddOrg(db).Id;
+            await db.SaveChangesAsync();
+        }
+
         var (other, _) = await _kit.SeedOwnerOrgAsync("auth0|owner-b");
-        await RecordAsync(org.Id, OrgActivityType.PlanChanged);
+        await RecordAsync(emptyOrg, OrgActivityType.PlanChanged);
+        await RecordAsync(emptyOrg, OrgActivityType.OrgNameChanged);
         await RecordAsync(other.Id, OrgActivityType.PlanChanged);
+        Assert.Equal(2, (await _kit.ReadActivityAsync(emptyOrg)).Count);
 
         await using var connection = new NpgsqlConnection(_database!.ConnectionString);
         await connection.OpenAsync();
         await using var delete = connection.CreateCommand();
-        delete.CommandText = $"DELETE FROM \"Orgs\" WHERE \"Id\" = '{org.Id}'";
-        await delete.ExecuteNonQueryAsync();
+        delete.CommandText = $"DELETE FROM \"Orgs\" WHERE \"Id\" = '{emptyOrg}'";
+        Assert.Equal(1, await delete.ExecuteNonQueryAsync());
 
-        Assert.Empty(await _kit.ReadActivityAsync(org.Id));
+        Assert.Empty(await _kit.ReadActivityAsync(emptyOrg));
         Assert.Single(await _kit.ReadActivityAsync(other.Id));
     }
 
