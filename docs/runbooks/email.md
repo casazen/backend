@@ -96,6 +96,9 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `alloggiati-failed` | host | Alloggiati Web communication rejected or failed | same, once per stay |
 | `checkout-reminder` | host | check-out day of a confirmed or checked-in stay, 20:00 property time | same, once per check-out date |
 | `property-compliance-suspended` | host | an active property lost an activation requirement (CIN, required document, safety checklist, base data) and was suspended from the booking site; the first check of a property published before CO-06 only with `Compliance__StatusCheck__NotifyOnFirstCheck=true` ([compliance.md](compliance.md#3-email-to-the-host)) | `PropertyComplianceStatusService` (request or `property-compliance-check` job), queued, once per suspension |
+| `property-mode-change-scheduled` | host | a change of rental mode (short stays ↔ long-term) was programmed: the day, what closes, how to withdraw it (PM-02, [property-rental-mode.md §8.6](property-rental-mode.md#86-e-mails-to-the-host)) | `PropertyModeService.ScheduleAsync` → `NotificationService`, queued, once per change |
+| `property-mode-change-applied` | host | the property changed mode at midnight of Rome | `property-mode-change` job → `NotificationService`, queued, once per change |
+| `property-mode-change-failed` | host | the job could not apply the change (stays, imported blocks or leases in the way): why and the first free day | same, once per change |
 | `service-request-created` | supplier | new service request | `ServiceRequestService`, queued |
 | `service-request-status-changed` | host | request taken / completed / rejected by the supplier | `ServiceRequestService`, queued |
 | `supplier-invite` | prospective supplier | invite by a platform admin | `SupplierService`, queued |

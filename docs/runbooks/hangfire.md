@@ -38,6 +38,7 @@ and production never block each other.
 | `gdpr-data-retention` | 03:00 | `GdprDataRetentionJob.ExecuteAsync` | 300 s |
 | `stay-alerts` (CO-10, see [§9](#9-stay-alerts-co-10); replaces `alloggiati-deadline-alert` and `guest-checkin-reminder`, removed at startup) | hourly | `StayAlertsJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `cin-deadline-alert` (CO-20: host alert about properties without a valid CIN, once per stage, see [cin-format.md](cin-format.md#cin-deadline-and-host-alerts-co-20)) | 08:00 | `CinDeadlineAlertJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
+| `property-mode-change` (PM-02: applies the scheduled changes of rental mode in the hour after midnight of Rome, idempotent; only with `Features:PropertyModeChange=true`, otherwise removed at startup: FD-20, [feature-flags.md](feature-flags.md); see [property-rental-mode.md §8.5](property-rental-mode.md#85-the-job-property-mode-change)) | hourly | `PropertyModeChangeJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run, and the dates lock of each property) | 300 s |
 | `lease-sign-status-poll` | `*/10` | `LeaseSignStatusPollingJob.ExecuteAsync` | 60 s |
 | `lease-registration-status-poll` | `*/5` | `LeaseRegistrationStatusPollingJob.ExecuteAsync` | 60 s |
 | `rli-deadline-reminder` (LT-04, see [§8](#8-rli-deadline-reminder-lt-04)) | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
@@ -247,7 +248,8 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   ORDER BY env, lastheartbeat DESC;
 
   -- 17 recurring jobs in each schema with every flag on; 13 with the defaults
-  -- (Features:OtaPartnerApi, Features:RliProvider and Features:ESignProvider off)
+  -- (Features:OtaPartnerApi, Features:RliProvider and Features:ESignProvider off);
+  -- one more, property-mode-change (PM-02), with Features:PropertyModeChange on
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';

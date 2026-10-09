@@ -45,10 +45,12 @@ activation. The frontend needs no change: the wizard shows the current status an
 | Safety checklist saved (`PUT …/compliance/safety-checklist`) | `PropertySafetyChecklistService.SaveAsync` |
 | Activation completed with blockers left | `ComplianceWizardService.CompleteActivationAsync` → `ActivateAsync` |
 | Every night, every active or suspended property | job `property-compliance-check` ([hangfire.md §10](hangfire.md#10-property-compliance-check-co-06)) |
+| A property goes back from long-term to short stays (scheduled change, PM-02) | `PropertyModeService`, right after the mode is saved |
 
 Only an `Active` property (suspension) or a `Suspended` one (reactivation) can change on a re-evaluation; a pending one
 is left as it is. A property in long-term mode (`RentalMode.Long`, PM-01) is not evaluated at all and cannot be activated:
-[property-rental-mode.md](property-rental-mode.md).
+[property-rental-mode.md](property-rental-mode.md). Its status is frozen while it is long-term, so when it comes back to
+short stays (PM-02) it is evaluated at once: one that lost a requirement in the meantime is suspended, with the usual e-mail.
 
 Saving the safety checklist **without** the final confirmation clears the confirmation (CO-07, SC-08): on an active
 property that is a missing requirement, so the property is suspended until the host saves it again with the
