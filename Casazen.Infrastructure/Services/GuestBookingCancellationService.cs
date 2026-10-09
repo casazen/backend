@@ -114,7 +114,9 @@ public sealed class GuestBookingCancellationService(
         var quote = await cancellationService.GetQuoteAsync(bookingId, cancellationToken);
 
         // Compute guest refund: property policy only (no FreeRefundDeadline floor), base = BasePrice
-        var policyPercent = EvaluatePolicyPercent(booking.Property?.CancellationPolicy, booking.CheckInDate, now);
+        var nights = (booking.CheckOutDate.Date - booking.CheckInDate.Date).Days;
+        var policy = CancellationRefundPolicy.EffectivePolicy(booking.Property, nights);
+        var policyPercent = EvaluatePolicyPercent(policy, booking.CheckInDate, now);
         var refundAmount = ComputeGuestRefund(quote.RefundableAmount, booking.BasePrice, policyPercent);
 
         // Invalidate token before cancelling to prevent replay even on failure

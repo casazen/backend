@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Validation;
@@ -125,6 +126,21 @@ public class CreatePropertyRequest
     /// <summary>Optional reference to the cancellation policy applied to new bookings.</summary>
     public Guid? CancellationPolicyId { get; set; }
 
+    /// <summary>Host override of catalog full-refund hours. Null keeps the catalog window.</summary>
+    [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
+    public int? CancellationFullRefundHours { get; set; }
+
+    /// <summary>Host override of catalog partial-refund hours.</summary>
+    [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
+    public int? CancellationPartialRefundHours { get; set; }
+
+    /// <summary>Host override of catalog partial-refund percent (0-100).</summary>
+    [Range(typeof(decimal), "0", "100", ErrorMessage = "PropertyCancellationPercentRange")]
+    public decimal? CancellationPartialRefundPercent { get; set; }
+
+    /// <summary>Percent of stay or non-refundable. Long stays (28+ nights) ignore this.</summary>
+    public HostCancellationRefundType CancellationRefundType { get; set; } = HostCancellationRefundType.Percent;
+
     /// <summary>Optional URL slug for direct booking links (unique within org).</summary>
     [MaxLength(100, ErrorMessage = "PropertySlugTooLong")]
     public string? Slug { get; set; }
@@ -157,6 +173,10 @@ public class CreatePropertyRequest
         CinCode = CinCode,
         Timezone = Timezone,
         CancellationPolicyId = CancellationPolicyId,
+        CancellationFullRefundHours = CancellationFullRefundHours,
+        CancellationPartialRefundHours = CancellationPartialRefundHours,
+        CancellationPartialRefundPercent = CancellationPartialRefundPercent,
+        CancellationRefundType = CancellationRefundType,
         Slug = string.IsNullOrWhiteSpace(Slug) ? null : Slug.Trim().ToLowerInvariant(),
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow,

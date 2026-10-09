@@ -2423,6 +2423,19 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("CancellationPolicyId")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("CancellationFullRefundHours")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("CancellationPartialRefundHours")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("CancellationPartialRefundPercent")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("CancellationRefundType")
+                        .HasColumnType("integer");
+
                     b.Property<string>("CinCode")
                         .HasMaxLength(25)
                         .HasColumnType("character varying(25)");

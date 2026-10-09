@@ -150,6 +150,19 @@ public class Property : ITenantOwned
     public Guid? CancellationPolicyId { get; set; }
     public virtual CancellationPolicy? CancellationPolicy { get; set; }
 
+    /// <summary>Host override of the catalog full-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
+    public int? CancellationFullRefundHours { get; set; }
+
+    /// <summary>Host override of the catalog partial-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
+    public int? CancellationPartialRefundHours { get; set; }
+
+    /// <summary>Host override of the catalog partial-refund percent. Null = catalog. Ignored for stays of 28+ nights.</summary>
+    [Precision(18, 2)]
+    public decimal? CancellationPartialRefundPercent { get; set; }
+
+    /// <summary>Host refund type (percent of stay vs non-refundable). Ignored for stays of 28+ nights.</summary>
+    public HostCancellationRefundType CancellationRefundType { get; set; } = HostCancellationRefundType.Percent;
+
     public bool IsActive { get; set; } = true;
 
     /// <summary>
