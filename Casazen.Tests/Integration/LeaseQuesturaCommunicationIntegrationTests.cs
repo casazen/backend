@@ -198,6 +198,21 @@ public class LeaseQuesturaCommunicationIntegrationTests
         var back = (await ReadJson(cleared)).GetProperty("questura");
         Assert.False(back.GetProperty("deliveryDateDeclared").GetBoolean());
         Assert.Equal(new DateTime(2026, 9, 23), back.GetProperty("deliveryDate").GetDateTime().Date);
+
+        (await MarkDoneAsync(client, leaseId, "2026-09-24")).EnsureSuccessStatusCode();
+
+        var mutateAfterDone = await client.PutAsJsonAsync(
+            $"/api/leases/{leaseId}/rli/questura/delivery-date", new { deliveryDate = "2026-09-28" });
+
+        Assert.Equal(HttpStatusCode.Conflict, mutateAfterDone.StatusCode);
+        Assert.Equal(QuesturaCommunicationErrorCodes.DeliveryDateLocked, await ProblemCodeAsync(mutateAfterDone));
+        var unchangedChecklist = await GetChecklistAsync(client, leaseId);
+        var unchanged = unchangedChecklist.GetProperty("questura");
+        Assert.False(unchanged.GetProperty("deliveryDateDeclared").GetBoolean());
+        Assert.Equal(new DateTime(2026, 9, 23), unchanged.GetProperty("deliveryDate").GetDateTime().Date);
+        Assert.True(ChecklistItem(unchangedChecklist, RliChecklistKeys.QuesturaExtraEu)
+            .GetProperty("done")
+            .GetBoolean());
     }
 
     [PostgresFact]
