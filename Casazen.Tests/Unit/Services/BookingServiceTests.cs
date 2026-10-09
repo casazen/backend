@@ -571,6 +571,124 @@ public class BookingServiceTests
         Assert.Equal(37000, chargedCents);
     }
 
+    [Fact]
+    public async Task CreateDirectBookingAsync_MarketingConsentWithAVersion_IsRecordedOnTheGuestAndInTheRegisterInOneInsert()
+    {
+        var service = NewServiceWithSettings(("Gdpr:MarketingConsentVersion", " marketing-2026-10 "));
+        var property = ConnectReadyProperty();
+        Booking? insertedBooking = null;
+        GuestConsentRecord? insertedConsent = null;
+        _mockRepository.Setup(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()))
+            .Callback((Booking b, GuestConsentRecord c) =>
+            {
+                insertedBooking = b;
+                insertedConsent = c;
+            })
+            .ReturnsAsync((Booking b, GuestConsentRecord _) => b);
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .ReturnsAsync(new Stripe.PaymentIntent { Id = "pi_mk", ClientSecret = "pi_mk_secret" });
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+        var input = DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate) with
+        {
+            MarketingConsent = true,
+            ConsentIpAddress = "203.0.113.7",
+        };
+
+        await service.CreateDirectBookingAsync(input);
+
+        Assert.NotNull(insertedBooking);
+        Assert.NotNull(insertedConsent);
+        var guest = insertedBooking.Guest;
+        Assert.True(guest.MarketingConsent);
+        Assert.NotNull(guest.MarketingConsentDate);
+        Assert.Equal(guest.Id, insertedConsent.GuestId);
+        Assert.Equal(property.OrgId, insertedConsent.OrgId);
+        Assert.Equal(GuestConsentPurpose.Marketing, insertedConsent.Purpose);
+        Assert.Equal(GuestConsentAction.Granted, insertedConsent.Action);
+        Assert.Equal("marketing-2026-10", insertedConsent.Version);
+        Assert.Equal(GuestConsentSource.BookingCheckout, insertedConsent.Source);
+        Assert.Equal("203.0.113.7", insertedConsent.IpAddress);
+        Assert.Equal(guest.MarketingConsentDate, insertedConsent.RecordedAt);
+        // The plain insert is for the checkouts without consent.
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_MarketingConsentWithoutAVersion_Throws422AndStoresNothing()
+    {
+        // Like the check-in portal (CO-15): no versioned text, no consent that can be proved.
+        var property = ConnectReadyProperty();
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+        var input = DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate) with { MarketingConsent = true };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.CreateDirectBookingAsync(input));
+
+        Assert.Equal(DirectBookingErrorCodes.MarketingConsentUnavailable, ex.Code);
+        Assert.Equal("DirectBookingMarketingConsentUnavailable", ex.MessageKey);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
+        _mockRepository.Verify(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()), Times.Never);
+        _mockPropertyRepository.Verify(x => x.GetByIdAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("marketing-2026-10")]
+    public async Task CreateDirectBookingAsync_NoMarketingConsent_KeepsTheTodayFlowWhetherOrNotTheTextHasAVersion(string? version)
+    {
+        var service = version is null
+            ? _service
+            : NewServiceWithSettings(("Gdpr:MarketingConsentVersion", version));
+        var property = ConnectReadyProperty();
+        Booking? inserted = null;
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>()))
+            .Callback((Booking b) => inserted = b)
+            .ReturnsAsync((Booking b) => b);
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .ReturnsAsync(new Stripe.PaymentIntent { Id = "pi_plain", ClientSecret = "pi_plain_secret" });
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        await service.CreateDirectBookingAsync(DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate));
+
+        Assert.NotNull(inserted);
+        Assert.False(inserted.Guest.MarketingConsent);
+        Assert.Null(inserted.Guest.MarketingConsentDate);
+        _mockRepository.Verify(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()), Times.Never);
+    }
+
+    /// <summary>A service like <c>_service</c> with more settings (same mocks), for the settings that default to none.</summary>
+    private BookingService NewServiceWithSettings(params (string Key, string? Value)[] settings)
+    {
+        var values = new Dictionary<string, string?>
+        {
+            ["DirectBooking:ConsentVersion"] = "2026-06-direct-checkout-v1",
+            ["DirectBooking:PendingTtlMinutes"] = "15",
+            ["DirectBooking:OnSiteMaxNights"] = "14",
+            ["Stripe:PublishableKey"] = "pk_test",
+        };
+        foreach (var (key, value) in settings)
+            values[key] = value;
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        return new BookingService(
+            _mockRepository.Object,
+            _mockPropertyRepository.Object,
+            _mockOrgService.Object,
+            _mockGuestRepository.Object,
+            _mockTouristTax.Object,
+            _mockStripe.Object,
+            new Mock<IPaymentRepository>().Object,
+            CreatePropertyICalSyncService(_db, configuration),
+            configuration,
+            new Mock<ILogger<BookingService>>().Object,
+            _mockHoldExpiry.Object,
+            new OnSiteRequestNotifier(
+                _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()));
+    }
+
     private Property ConnectReadyProperty()
     {
         var property = new Property

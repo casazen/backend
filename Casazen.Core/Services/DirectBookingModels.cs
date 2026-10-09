@@ -10,6 +10,11 @@ public record DirectBookingGuestInput(
     string? Phone,
     string Country);
 
+/// <param name="MarketingConsent">
+/// The guest ticked the optional box that agrees to receive offers (DB-03): never preselected, never required. Honoured only
+/// when the marketing consent text has a version (<c>Gdpr:MarketingConsentVersion</c>, CO-15): the version is recorded with
+/// the consent, so without one the answer is 422 <see cref="DirectBookingErrorCodes.MarketingConsentUnavailable"/>.
+/// </param>
 public record DirectBookingCreateInput(
     Guid PropertyId,
     DateTime CheckInDate,
@@ -21,7 +26,8 @@ public record DirectBookingCreateInput(
     string ConsentIpAddress,
     string? SpecialRequests,
     PaymentOption PaymentOption = PaymentOption.Immediate,
-    IReadOnlyList<int>? ChildrenAges = null);
+    IReadOnlyList<int>? ChildrenAges = null,
+    bool MarketingConsent = false);
 
 /// <summary>Stay to price before booking (checkout quote).</summary>
 /// <param name="ChildrenAges">Age of each minor at check-in, needed when the tourist tax depends on it.</param>
@@ -43,17 +49,17 @@ public record DirectBookingQuoteInput(
 /// the day the deferred payment is charged.
 /// </param>
 /// <param name="PaymentOptions">Which payment options the checkout may offer for this stay (A3-16).</param>
+/// <param name="Lodging">
+/// How the nights of the stay are priced (DB-03): the nights at the nightly rate and the weekend nights with the property's
+/// surcharge. <c>BasePrice = Lodging.Total + CleaningFee</c>; with no surcharge (the default) <c>Lodging.Total</c> is
+/// <c>NightlyRate x Nights</c>, as it has always been.
+/// </param>
 public record DirectBookingQuote(
     Guid PropertyId,
     DateTime CheckInDate,
     DateTime CheckOutDate,
     int Nights,
     decimal NightlyRate,
-/// <param name="Lodging">
-/// How the nights of the stay are priced (DB-03): the nights at the nightly rate and the weekend nights with the property's
-/// surcharge. <c>BasePrice = Lodging.Total + CleaningFee</c>; with no surcharge (the default) <c>Lodging.Total</c> is
-/// <c>NightlyRate x Nights</c>, as it has always been.
-/// </param>
     decimal CleaningFee,
     decimal BasePrice,
     TouristTaxQuote TouristTax,
@@ -175,7 +181,6 @@ public static class DirectBookingErrorCodes
 
     /// <summary>422: the tourist tax depends on the age of the minors and their ages are missing (BK-03).</summary>
     public const string ChildAgesRequired = "tourist_tax_child_ages_required";
-}
 
     /// <summary>
     /// 422: the stay is shorter than the minimum stay of the property (<c>Property.MinNights</c>, DB-03), in the quote and in
@@ -189,3 +194,4 @@ public static class DirectBookingErrorCodes
     /// so it is not offered (<c>marketingConsentVersion</c> of the public org is null) and not accepted either.
     /// </summary>
     public const string MarketingConsentUnavailable = "direct_booking_marketing_consent_unavailable";
+}

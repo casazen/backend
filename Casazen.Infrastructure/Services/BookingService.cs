@@ -2,6 +2,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
@@ -113,6 +114,17 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.ConsentOutdated, "DirectBookingConsentOutdated");
         }
 
+        // DB-03: the optional "send me offers" box. As on the check-in portal (CO-15) it exists only with a versioned text
+        // (Gdpr:MarketingConsentVersion): the version is recorded with the consent as the proof of what the guest agreed to.
+        // Without one a consent cannot be recorded properly, so it is refused instead of silently dropped.
+        var marketingVersion = GdprOptions.Normalize(
+            configuration[$"{GdprOptions.SectionName}:{nameof(GdprOptions.MarketingConsentVersion)}"]);
+        if (input.MarketingConsent && marketingVersion is null)
+        {
+            throw new DomainRuleException(
+                DirectBookingErrorCodes.MarketingConsentUnavailable, "DirectBookingMarketingConsentUnavailable");
+        }
+
         var property = await GetBookablePropertyAsync(input.PropertyId);
 
         var org = await orgService.GetByIdAsync(property.OrgId);
@@ -152,6 +164,12 @@ public class BookingService(
         // rejected checkout leaves no guest behind.
         var guest = NewGuestSnapshotWithConsent(
             property.OrgId, input.Guest, input.ConsentVersion, input.ConsentIpAddress);
+
+        // DB-03: the optional marketing consent is recorded on the guest and in the append-only register of the privacy
+        // history (version of the text, time, source, IP), in the same insert as the booking and the guest.
+        var marketingConsent = input.MarketingConsent && marketingVersion is not null
+            ? RecordMarketingConsent(guest, marketingVersion, input.ConsentIpAddress)
+            : null;
 
         var basePrice = price.BasePrice;
         var touristTaxAmount = price.TouristTax.AmountOrZero;
@@ -217,8 +235,11 @@ public class BookingService(
         Booking createdBooking;
         try
         {
-            // Booking and guest snapshot in one insert: a concurrent checkout that takes the dates first leaves neither.
-            createdBooking = await repository.AddAsync(booking);
+            // Booking and guest snapshot (and the marketing consent, when the guest gave it) in one insert: a concurrent
+            // checkout that takes the dates first leaves none of them.
+            createdBooking = marketingConsent is null
+                ? await repository.AddAsync(booking)
+                : await repository.AddWithGuestConsentAsync(booking, marketingConsent);
         }
         catch (InvalidOperationException ex) when (
             ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
@@ -370,6 +391,11 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.InvalidStay, "DirectBookingInvalidStay");
         }
 
+        if (property.MinNights is { } minNights && (checkOut - checkIn).Days < minNights)
+        {
+            throw new DomainRuleException(DirectBookingErrorCodes.MinNightsNotMet, "DirectBookingMinNightsNotMet", minNights);
+        }
+
         return (checkIn, checkOut);
     }
 
@@ -395,11 +421,6 @@ public class BookingService(
         var lodging = StayPricing.Lodging(checkInDate, nights, property.NightlyRate, property.WeekendSurchargePercent);
         var basePrice = lodging.Total + property.CleaningFee;
         var touristTax = await touristTaxQuoteService.QuoteAsync(
-        if (property.MinNights is { } minNights && (checkOut - checkIn).Days < minNights)
-        {
-            throw new DomainRuleException(DirectBookingErrorCodes.MinNightsNotMet, "DirectBookingMinNightsNotMet", minNights);
-        }
-
             TouristTaxComune.ForProperty(property),
             new TouristTaxStay(
                 checkInDate,
@@ -631,6 +652,33 @@ public class BookingService(
                 "Direct checkout {BookingId} could not be discarded after its payment failed to start; it stays a pending hold",
                 bookingId);
         }
+    }
+
+    /// <summary>
+    /// The guest of the checkout agreed to receive offers (DB-03): marks the snapshot (<c>Guest.MarketingConsent</c> and its
+    /// date) and returns the row of the append-only register of the privacy history (CO-15), with the version of the text the
+    /// guest saw, the source, the time and the IP, as the check-in portal records its own. Not saved: it is written with the
+    /// booking and the guest, in one transaction.
+    /// </summary>
+    private GuestConsentRecord RecordMarketingConsent(Guest guest, string version, string consentIpAddress)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        guest.MarketingConsent = true;
+        guest.MarketingConsentDate = now;
+
+        return new GuestConsentRecord
+        {
+            OrgId = guest.OrgId,
+            GuestId = guest.Id,
+            Purpose = GuestConsentPurpose.Marketing,
+            Action = GuestConsentAction.Granted,
+            Version = version,
+            Source = GuestConsentSource.BookingCheckout,
+            IpAddress = string.IsNullOrWhiteSpace(consentIpAddress)
+                ? null
+                : (consentIpAddress.Length > 50 ? consentIpAddress[..50] : consentIpAddress),
+            RecordedAt = now,
+        };
     }
 
     /// <summary>The guest of a direct checkout with its consent, not saved: it is written with its booking.</summary>
