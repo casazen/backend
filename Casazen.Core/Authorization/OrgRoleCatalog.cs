@@ -30,8 +30,12 @@ public sealed record SeededRole(int Id, string ContextKey, string RoleKey, IRead
 /// <item><term>Collaborator</term><description>none / <c>staff</c> / <c>staff</c> (long-rent: <c>property.read</c> only)</description></item>
 /// <item><term>Accountant</term><description><c>org_accountant</c> / <c>accountant</c> / <c>accountant</c></description></item>
 /// </list>
-/// <para>The finer permissions the collaborator needs (service requests, guest erasure) arrive with AM-03; until then
-/// the roles use the permissions that exist.</para>
+/// <para>AM-03 splits three things off the broad permissions, so that the collaborator can do its job without prices, CIN or
+/// bookings: <see cref="HostPermissions.ServiceRequestWrite"/> (create a request to a supplier, mark it paid: it used to be
+/// <c>property.write</c>), <see cref="HostPermissions.GuestManage"/> (erase, anonymize and change the consents of a guest: it
+/// used to be <c>guest.write</c>) and <see cref="HostPermissions.AlloggiatiSubmit"/> (register the guests of a stay and declare
+/// the Alloggiati communication sent: it used to be <c>booking.write</c>). The collaborator gets the first only; the owner and
+/// the property managers get all three, so nothing changes for them.</para>
 /// </remarks>
 public static class OrgRoleCatalog
 {
@@ -101,6 +105,7 @@ public static class OrgRoleCatalog
     [
         "property.read", "property.write", "booking.read", "booking.write", "payment.read", "payment.write",
         "ota.read", "ota.write", "guest.read", "guest.write",
+        .. HostPermissions.ShortRentFine,
     ];
 
     private static readonly string[] LongRentOperational =
@@ -123,8 +128,10 @@ public static class OrgRoleCatalog
         new(7, ShortRent, PropertyManagerRoleKey, [.. ShortRentOperational, AccountContext.Permissions.SuppliersManage]),
         new(8, LongRent, PropertyManagerRoleKey, [.. LongRentOperational, AccountContext.Permissions.SuppliersManage]),
 
-        // Collaborator: reads properties and bookings, handles guests; in long-term only the property list.
-        new(9, ShortRent, StaffRoleKey, ["property.read", "booking.read", "guest.read", "guest.write"]),
+        // Collaborator: reads properties and bookings, handles guests and asks the suppliers for interventions (AM-03); no
+        // prices, CIN, bookings, payments, no erasure of guests, no Alloggiati declaration. In long-term only the property list.
+        new(9, ShortRent, StaffRoleKey,
+            ["property.read", "booking.read", "guest.read", "guest.write", HostPermissions.ServiceRequestWrite]),
         new(10, LongRent, StaffRoleKey, ["property.read"]),
 
         // Accountant: reads, never writes. Its invoices are in the account context (org.billing.read).
