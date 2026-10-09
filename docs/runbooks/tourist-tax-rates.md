@@ -114,16 +114,11 @@ Sets `IstatCode` on the 4 rows above and loads the official (U) rows the extende
 | Venezia | Gruppo 2 | 01/01-31/01 | 2,80 | 1,40 | 5 | 10 | 2025-04-01 |
 | Venezia | Gruppo 3 (A/4, A/5) | 01/01-31/01 | 2,10 | 1,00 | 5 | 10 | 2025-04-01 |
 
-Not loaded, on purpose:
+The frozen BK-03 seed left these out. Migration `ApplyOfficialTouristTaxExtracts` (2026-10-09) then inserted the rows
+whose amount is on an institutional page: Roma locazione breve, Venezia Gruppo 3 alta, Bologna (10,5 %, cap 7,00 €),
+Torino (3,80 €). Still without an amount:
 
-- **Roma, "alloggi per uso turistico / locazione breve" 6,00 €**: amount from third parties (T).
-- **Venezia, Gruppo 3 high season 3,00 €**: deduced (D). A Gruppo 3 stay from February is "tariffa non disponibile".
-- **Bologna, 10,5% max 7,00 €**: the percentage and the cap are official, but "per person" (price divided by the guests)
-  comes from third parties only (T) and the start date 01/01/2026 is deduced (D). Once confirmed, the admin adds it:
-  City `Bologna`, ISTAT `037006`, region `EMR`, type "Percentuale del prezzo", 10,5 %, cap 7,00, max nights 5,
-  minimum age 14, from the confirmed date, source B1 of `imposta_soggiorno.md`.
-- **Torino**: amount from third parties (T), nights capped per year (not modelled).
-- **Seveso, Cesano Maderno**: no rate found (an empty rate is never 0). Hosts see the warning.
+- **Seveso, Cesano Maderno**: the municipal pages publish no tariff (an empty rate is never 0). Hosts see the warning.
 
 Roma and Venezia rates are per accommodation category: the public calculator asks the category; property checkouts
 there show "tariffa non disponibile" until properties have a category (open product question, see below).
@@ -133,8 +128,8 @@ there show "tariffa non disponibile" until properties have a category (open prod
 Read-only queries on the environment schema (`casazen_test` / `casazen_prod`):
 
 ```sql
--- The seeded rates, with source and level (expected: 11 rows - Milano, Como, Firenze, Napoli, 2 Roma, 5 Venezia -
--- all VerificationLevel = 'Official', IstatCode set)
+-- The seeded rates, with source and level (expected: 15 rows - Milano, Como, Firenze, Napoli, Torino, Bologna,
+-- 3 Roma, 6 Venezia - all VerificationLevel = 'Official', IstatCode set)
 SELECT "City", "IstatCode", "AccommodationCategory", "SeasonStart", "SeasonEnd", "RatePerPersonPerNight",
        "ReducedRatePerPersonPerNight", "MaxNights", "MinimumAge", "EffectiveFrom", "VerificationLevel"
 FROM "TouristTaxRates" WHERE "SourceUrl" IS NOT NULL ORDER BY "City", "AccommodationCategory", "SeasonStart";

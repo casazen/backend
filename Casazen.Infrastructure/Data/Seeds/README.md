@@ -14,7 +14,7 @@ edited row by row. To update it, replace the whole file with a newer official on
 | Reference date | **2026-02-21** ("aggiornato al 21 febbraio 2026") |
 | Retrieved | **2026-10-09** |
 | SHA-256 of this CSV | `57eaf945182fc64fa05f80f1a5fb2a84cff55ebde2af6e3947a731776e7809e0` |
-| Rows | 7,894 comuni, 20 regions |
+| Rows | 7,896 comuni, 20 regions, 107 province codes |
 
 The CSV is the official permalink file as downloaded (UTF-8, separator `;`, quoted header cells that contain line breaks). No value was changed. The cadastral code comes from the Agenzia delle Entrate (`N.d.` = not available). The Hangfire job `official-reference-data-refresh` re-downloads this URL every day.
 

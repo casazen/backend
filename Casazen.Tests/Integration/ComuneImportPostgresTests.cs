@@ -38,19 +38,20 @@ public class ComuneImportPostgresTests : IAsyncLifetime
         Assert.Equal(ComuneSeedOutcome.Imported, outcome);
         db.ChangeTracker.Clear();
         var comuni = await db.Comuni.AsNoTracking().ToListAsync();
-        Assert.Equal(7894, comuni.Count);
+        Assert.Equal(7896, comuni.Count);
         Assert.All(comuni, c => Assert.True(c.IsActive));
-        Assert.Equal(7894, comuni.Select(c => c.IstatCode).Distinct().Count());
+        Assert.Equal(7896, comuni.Select(c => c.IstatCode).Distinct().Count());
         Assert.All(comuni, c => Assert.Matches("^[0-9]{6}$", c.IstatCode));
         Assert.All(comuni, c => Assert.True(c.CadastralCode is null || ComuneRules.IsCadastralCode(c.CadastralCode)));
-        Assert.Equal(7894, comuni.Select(c => c.CadastralCode).Distinct().Count());
+        Assert.Equal(7896, comuni.Select(c => c.CadastralCode).Distinct().Count());
         Assert.All(comuni, c => Assert.NotNull(c.RegionCode));
         Assert.Equal(20, comuni.Select(c => c.RegionIstatCode).Distinct().Count());
-        Assert.Equal(110, comuni.Select(c => c.ProvinceCode).Distinct().Count());
+        // 107 sigle: Sud Sardegna replaced the four suppressed Sardinian provinces of the older 110.
+        Assert.Equal(107, comuni.Select(c => c.ProvinceCode).Distinct().Count());
 
         // The import is on record, with the source the product owner supplied.
         var import = await db.ComuneImports.AsNoTracking().SingleAsync();
-        Assert.Equal((ComuneImportOrigin.StartupSeed, "comuni-istat.csv", new DateOnly(2026, 2, 21), 7894, 7894, "system"), (import.Origin, import.SourceFileName, import.ReferenceDate, import.RowCount, import.InsertedCount, import.ImportedBy));
+        Assert.Equal((ComuneImportOrigin.StartupSeed, "comuni-istat.csv", new DateOnly(2026, 2, 21), 7896, 7896, "system"), (import.Origin, import.SourceFileName, import.ReferenceDate, import.RowCount, import.InsertedCount, import.ImportedBy));
         Assert.Contains("ISTAT", import.SourceVersion);
         Assert.Equal("57eaf945182fc64fa05f80f1a5fb2a84cff55ebde2af6e3947a731776e7809e0", import.Sha256);
         Assert.Equal("https://www.istat.it/storage/codici-unita-amministrative/Elenco-comuni-italiani.csv", import.SourceUrl);
@@ -94,7 +95,7 @@ public class ComuneImportPostgresTests : IAsyncLifetime
         var again = await service.ImportAsync(new ComuneImportRequest("comuni-istat.csv", "again", new DateOnly(2026, 2, 21), "admin"), stream);
 
         Assert.True(again.Success);
-        Assert.Equal((7894, 0, 0, 7894, 0), (again.Rows, again.Inserted, again.Updated, again.Unchanged, again.Deactivated));
+        Assert.Equal((7896, 0, 0, 7896, 0), (again.Rows, again.Inserted, again.Updated, again.Unchanged, again.Deactivated));
     }
 
     [PostgresFact]

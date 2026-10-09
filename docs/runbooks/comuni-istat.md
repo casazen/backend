@@ -81,7 +81,7 @@ reference date). It never replaces a list that is as recent or more (for example
 instances (advisory lock) and never stops the API if it fails (it logs the reason). `Comuni__SeedOnStartup=false` turns it off. A seed
 file without `comuni-istat.source.json` (`sourceVersion`, `referenceDate`) is refused: nothing is invented for it.
 
-The import takes about a second. After the first deploy the log says `Comuni list imported (StartupSeed): 7894 rows, 7894 new...`.
+The import takes about a second. After the first deploy the log says `Comuni list imported (StartupSeed): 7896 rows, 7896 new...`.
 
 ### 3. Every day (scheduled download)
 
@@ -111,7 +111,7 @@ imports it because its reference date is newer. Without a new reference date not
 ## Check after an import
 
 ```sql
--- Rows, active rows, imports (expected after the seed: 7894 active).
+-- Rows, active rows, imports (expected after the seed: 7896 active).
 SELECT count(*) AS total, count(*) FILTER (WHERE "IsActive") AS active FROM "Comuni";
 SELECT "Origin", "SourceVersion", "ReferenceDate", "RowCount", "InsertedCount", "UpdatedCount", "UnchangedCount", "DeactivatedCount", "ImportedAt"
 FROM "ComuneImports" ORDER BY "ImportedAt" DESC;
