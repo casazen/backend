@@ -29,6 +29,9 @@ public class DeepSeekWebSearchClient(
             return null;
         }
 
+        // FD-21 (PO 2026-10-08): scrub PII from every query before sending to DeepSeek web search.
+        query = PiiScrubber.Scrub(query);
+
         var baseUrl = config.AnthropicBaseUrl.TrimEnd('/');
         var payload = new
         {

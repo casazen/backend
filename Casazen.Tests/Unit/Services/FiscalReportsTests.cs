@@ -563,6 +563,8 @@ public class FiscalReportsTests
     [InlineData(true, "1234", null)]
     [InlineData(null, null, "RSSMRA80A01")]
     [InlineData(false, "12345678901", null)]
+    [InlineData(null, null, "RSSMRA85T10A562X")] // CO-18: structurally valid person code but wrong check character
+    [InlineData(null, null, "12345678901")] // CO-18: structurally valid numeric code but wrong check digit
     public async Task UpdateTaxProfile_InvalidIdentifiers_ThrowsValidation(bool? hasPartitaIva, string? number, string? fiscalCode)
     {
         var orgId = Guid.NewGuid();

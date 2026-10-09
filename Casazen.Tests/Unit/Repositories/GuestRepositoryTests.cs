@@ -165,9 +165,9 @@ public class GuestRepositoryTests
     public async Task GetPageAsync_GuestsOfTwoOrgs_ReturnsOnlyRequestedOrg()
     {
         // Arrange
-        await _repository.AddAsync(NewGuest("Guest1", "Test", "guest1@example.com", OrgA));
-        await _repository.AddAsync(NewGuest("Guest2", "Test", "guest2@example.com", OrgA));
-        await _repository.AddAsync(NewGuest("Other", "Test", "guest1@example.com", OrgB));
+        await AddBooker("Guest1", "Test", "guest1@example.com", OrgA);
+        await AddBooker("Guest2", "Test", "guest2@example.com", OrgA);
+        await AddBooker("Other", "Test", "guest1@example.com", OrgB);
 
         // Act
         var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
@@ -192,10 +192,11 @@ public class GuestRepositoryTests
     public async Task GetPageAsync_DeletedGuest_IsExcluded()
     {
         // Arrange
-        await _repository.AddAsync(NewGuest("Kept", "Test", "kept@example.com", OrgA));
+        await AddBooker("Kept", "Test", "kept@example.com", OrgA);
         var deleted = NewGuest("Deleted", "Test", "deleted@example.com", OrgA);
         deleted.IsDeleted = true;
         await _repository.AddAsync(deleted);
+        await AttachBooking(deleted);
 
         // Act
         var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
@@ -215,6 +216,7 @@ public class GuestRepositoryTests
             var guest = NewGuest($"Guest{i}", "Test", $"guest{i}@example.com", OrgA);
             guest.CreatedAt = now.AddMinutes(i);
             await _repository.AddAsync(guest);
+            await AttachBooking(guest);
         }
 
         // Act
@@ -236,10 +238,12 @@ public class GuestRepositoryTests
         var john = NewGuest("John", "Doe", "john.doe@example.com", OrgA);
         john.PhoneNumber = "+39 123456789";
         await _repository.AddAsync(john);
+        await AttachBooking(john);
         await _repository.AddAsync(NewGuest("Jane", "Smith", "jane.smith@test.com", OrgA));
         var otherOrgJohn = NewGuest("John", "Doe", "john.doe@example.com", OrgB);
         otherOrgJohn.PhoneNumber = "+39 123456789";
         await _repository.AddAsync(otherOrgJohn);
+        await AttachBooking(otherOrgJohn);
 
         // Act
         var (items, total) = await _repository.GetPageAsync(OrgA, searchTerm, 1, 20);
@@ -452,6 +456,39 @@ public class GuestRepositoryTests
         // Assert
         Assert.True(usage.HasReferences);
         Assert.Equal(expectedOpen, usage.HasOpenBookings);
+    }
+
+    [Fact]
+    public async Task GetPageAsync_GuestWithoutBooking_IsExcluded()
+    {
+        await _repository.AddAsync(NewGuest("Companion", "Only", "companion@example.com", OrgA));
+        await AddBooker("Booker", "Test", "booker@example.com", OrgA);
+
+        var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
+
+        Assert.Equal(1, total);
+        Assert.Equal("Booker", Assert.Single(items).FirstName);
+    }
+
+    private async Task<Guest> AddBooker(string firstName, string lastName, string email, Guid orgId)
+    {
+        var guest = await _repository.AddAsync(NewGuest(firstName, lastName, email, orgId));
+        await AttachBooking(guest);
+        return guest;
+    }
+
+    private async Task AttachBooking(Guest guest)
+    {
+        _context.Bookings.Add(new Booking
+        {
+            PropertyId = Guid.NewGuid(),
+            OrgId = guest.OrgId,
+            GuestId = guest.Id,
+            CheckInDate = Today,
+            CheckOutDate = Today.AddDays(2),
+            Status = BookingStatus.Confirmed,
+        });
+        await _context.SaveChangesAsync();
     }
 
     private static Guest NewGuest(string firstName, string lastName, string email, Guid orgId) => new()
