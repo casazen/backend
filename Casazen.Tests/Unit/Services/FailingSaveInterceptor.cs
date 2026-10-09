@@ -15,6 +15,24 @@ internal sealed class FailingSaveInterceptor : SaveChangesInterceptor
     /// <summary>Saves refused so far.</summary>
     public int Refused { get; private set; }
 
+    /// <summary>Called after each save that went through (for example to cancel the caller's token right after a commit).</summary>
+    public Action? AfterSave { get; set; }
+
+    public override ValueTask<int> SavedChangesAsync(
+        SaveChangesCompletedEventData eventData,
+        int result,
+        CancellationToken cancellationToken = default)
+    {
+        AfterSave?.Invoke();
+        return base.SavedChangesAsync(eventData, result, cancellationToken);
+    }
+
+    public override int SavedChanges(SaveChangesCompletedEventData eventData, int result)
+    {
+        AfterSave?.Invoke();
+        return base.SavedChanges(eventData, result);
+    }
+
     public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
         DbContextEventData eventData,
         InterceptionResult<int> result,

@@ -115,9 +115,34 @@ public class ServiceRequest
 
     /// <summary>
     /// Decision D7: the final amount is above the price the customer was quoted by more than the tolerance (20 % by default),
-    /// so the customer has to confirm it. SP-04 only records the fact; the confirmation flow is SP-15.
+    /// so the customer has to confirm it. SP-04 records the fact; the host's confirmation (SP-15a, <c>POST api/service-requests/{id}/final-amount/confirm</c>) clears it and keeps the trace in <see cref="FinalAmountConfirmedAt"/>.
     /// </summary>
     public bool FinalAmountNeedsConfirmation { get; set; }
+
+    // ─── Payment (SP-15a) ────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// How the request is paid (SP-15a, decisions D2 and D5), <b>fixed when the supplier takes the request</b>: <c>Online</c> only if
+    /// the payments flag was on and the supplier's Stripe account could take charges and payouts at that moment (no payment before
+    /// the KYC), <c>Manual</c> otherwise. The requests that exist before SP-15a are <c>Manual</c>. The only change after the take
+    /// is the fall back to <c>Manual</c> when the work is completed and nothing can be charged online (see
+    /// <c>ISupplierPaymentService.PlanAsync</c>). The payment itself is a <see cref="ServiceRequestPayment"/>.
+    /// </summary>
+    public ServiceRequestPaymentMode PaymentMode { get; set; } = ServiceRequestPaymentMode.Manual;
+
+    /// <summary>
+    /// When the host confirmed a final amount that was above the quote by more than the tolerance (decision D7). The confirmation
+    /// clears <see cref="FinalAmountNeedsConfirmation"/> (so every reader sees that nothing is left to confirm) and keeps the trace
+    /// here; a request paid inside CasaZen gets its payment at this moment. Null on a request that never needed it.
+    /// </summary>
+    public DateTime? FinalAmountConfirmedAt { get; set; }
+
+    /// <summary>
+    /// Who moved the request to <see cref="ServiceRequestStatus.Pagato"/> (SP-15a): the host marking it paid by hand, or the
+    /// supplier recording a payment received outside CasaZen (decision D5). The history of the request shows it. <c>null</c> on a
+    /// request that is not paid and on the ones paid before SP-15a (the host did).
+    /// </summary>
+    public ServiceRequestActorParty? PaidBy { get; set; }
 
     // ─── Lifecycle (SP-04) ───────────────────────────────────────────────────────────────────────────────────────────
 

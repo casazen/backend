@@ -250,6 +250,14 @@ public partial class SupplierService
             .Where(sr => sr.SupplierOrgId == duplicateId)
             .ExecuteUpdateAsync(set => set.SetProperty(sr => sr.SupplierOrgId, keeperId), cancellationToken);
 
+        // The payments of those requests (SP-15a) name the supplier too, and the supplier's Stripe account is read from it: they
+        // move with their requests. The foreign key to the org is Restrict, so what stayed would also keep the duplicate org alive.
+        await db.ServiceRequestPayments
+            .Where(p => p.SupplierOrgId == duplicateId)
+            .ExecuteUpdateAsync(
+                set => set.SetProperty(p => p.SupplierOrgId, keeperId).SetProperty(p => p.UpdatedAt, now),
+                cancellationToken);
+
         // A day the keeper already has keeps the keeper's value: the keeper is the profile in use.
         var daysMoved = await db.SupplierAvailability
             .Where(a => a.OrgId == duplicateId

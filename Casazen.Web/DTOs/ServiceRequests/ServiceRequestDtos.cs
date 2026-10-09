@@ -279,6 +279,13 @@ public class ServiceRequestDto
 
     /// <summary>When the host last reminded the supplier (a new reminder is possible 6 hours later).</summary>
     public DateTime? LastRemindedAt { get; set; }
+
+    /// <summary>
+    /// How the request is paid (SP-15a), fixed when the supplier took it: <c>Online</c> (inside CasaZen: the payer pays with the
+    /// link, the host cannot mark it paid by hand) or <c>Manual</c> (outside CasaZen, the host marks it paid). <c>Manual</c> for
+    /// every earlier request.
+    /// </summary>
+    public string PaymentMode { get; set; } = nameof(ServiceRequestPaymentMode.Manual);
 }
 
 /// <summary>
@@ -304,7 +311,7 @@ public class ServiceRequestPriceDto
 
     /// <summary>
     /// Decision D7: the final amount is more than 20 % above the quote, so the customer has to confirm it. SP-04 only gives the
-    /// flag; the confirmation itself arrives with the payments (SP-15).
+    /// flag; the host confirms with <c>POST api/service-requests/{id}/final-amount/confirm</c> (SP-15a), which clears it.
     /// </summary>
     public bool NeedsCustomerConfirmation { get; set; }
 

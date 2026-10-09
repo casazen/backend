@@ -430,6 +430,15 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.ServiceRequestOptions>, Casazen.Core.Options.ServiceRequestOptionsValidator>();
         services.AddScoped<ServiceRequestNotifier>();
+        // Payment of the service requests inside CasaZen (SP-15a, decision D2): direct charge on the supplier's Stripe account with
+        // the platform commission. The commission and the times are configuration (SupplierPayments), validated at startup: the
+        // percentage has no default in code. The gateway is the only place that sets the application fee.
+        services.AddOptions<Casazen.Core.Options.SupplierPaymentsOptions>()
+            .BindConfiguration(Casazen.Core.Options.SupplierPaymentsOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierPaymentsOptions>, Casazen.Core.Options.SupplierPaymentsOptionsValidator>();
+        services.AddSingleton<ISupplierPaymentGateway, StripeSupplierPaymentGateway>();
+        services.AddScoped<ISupplierPaymentService, SupplierPaymentService>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();

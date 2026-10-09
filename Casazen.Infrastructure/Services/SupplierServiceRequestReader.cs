@@ -143,7 +143,8 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
                 row.StartedAt,
                 row.CancelledAt,
                 row.CancellationReason,
-                row.CancelledBy),
+                row.CancelledBy,
+                row.PaidBy),
             takenByName);
 
         return ToView(row, ownerPhones, history);
@@ -261,6 +262,8 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
                 QuotedAmountCents = r.QuotedAmountCents,
                 FinalAmountCents = r.FinalAmountCents,
                 FinalAmountNeedsConfirmation = r.FinalAmountNeedsConfirmation,
+                PaymentMode = r.PaymentMode,
+                PaidBy = r.PaidBy,
                 PriceLinesJson = r.PriceLinesJson,
                 ResponseDueAt = r.ResponseDueAt,
                 StartedAt = r.StartedAt,
@@ -417,7 +420,8 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
             proposal,
             cancellation,
             NullIfBlank(row.CompletionNotes),
-            ServiceRequestJson.ReadPhotos(row.WorkPhotosJson));
+            ServiceRequestJson.ReadPhotos(row.WorkPhotosJson),
+            row.PaymentMode);
     }
 
     private static string HostName(SupplierRequestRow row) =>
@@ -452,6 +456,8 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
         public int? QuotedAmountCents { get; init; }
         public int? FinalAmountCents { get; init; }
         public bool FinalAmountNeedsConfirmation { get; init; }
+        public ServiceRequestPaymentMode PaymentMode { get; init; }
+        public ServiceRequestActorParty? PaidBy { get; init; }
         public string PriceLinesJson { get; init; } = "[]";
         public DateTime? ResponseDueAt { get; init; }
         public DateTime? StartedAt { get; init; }

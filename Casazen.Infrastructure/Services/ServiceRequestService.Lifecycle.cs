@@ -196,6 +196,9 @@ public partial class ServiceRequestService
             new SupplierSlotQuery(minutes, service?.MinNoticeHours, service?.WeekdaysMask));
         var proposedBy = request.ProposedByUserId;
 
+        // SP-15a: accepting the proposal is a take, so the request is paid the way the supplier can be paid right now.
+        var paymentMode = await payments.ResolveModeAsync(request.SupplierOrgId, cancellationToken);
+
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(request.SupplierOrgId, cancellationToken);
         await using (transaction)
         {
@@ -208,6 +211,7 @@ public partial class ServiceRequestService
                 ServiceRequestErrorCodes.CannotTakeMessageKey,
                 r =>
                 {
+                    r.PaymentMode = paymentMode;
                     r.ScheduledStartUtc = proposedStart;
                     r.ScheduledEndUtc = proposedEnd;
                     r.TakenAt = Now();

@@ -145,6 +145,15 @@ internal static class PostgresAdvisoryLocks
         /// whole run): two runs never cancel and notify the same requests at once, even outside Hangfire's own lock (SP-04, D8).
         /// </summary>
         ServiceRequestAutoCancelRun = 1_310,
+
+        /// <summary>
+        /// Payment of one service request (key: the request id, <c>requestId.ToString("N")</c>): the payment session of the payer
+        /// (anonymous with the link, or the signed-in host), the supplier's payment request and reminder, the offline record, and
+        /// (SP-15b) the Stripe webhook and the refunds change the payment one at a time, so a request never gets two payable
+        /// PaymentIntents, a link is never sent while another is being issued, and an offline record never races a payment in
+        /// progress (SP-15a). The values 1_320 to 1_329 are the payments of the service requests.
+        /// </summary>
+        ServiceRequestPayment = 1_320,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
