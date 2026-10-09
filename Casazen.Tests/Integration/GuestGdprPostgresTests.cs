@@ -440,11 +440,12 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             Assert.Equal((GuestConsentPurpose.Marketing, "marketing-2026-09", GuestConsentSource.RetentionPolicy), (expiry.Purpose, expiry.Version, expiry.Source));
         }
 
-        // Two years and a day: the whole record is anonymized, not marked deleted.
+        // Two years and a day: guest cards are not anonymized automatically (PO 2026-10-08).
         await RunRetentionAsync(storage, retention, checkOut.AddYears(2).AddDays(1));
         await RunRetentionAsync(storage, retention, checkOut.AddYears(2).AddDays(2));
         guest = await LoadGuestAsync(seeded.GuestId);
-        AssertNoPersonalData(guest);
+        Assert.Equal(("Giulia", "giulia.bianchi@example.com"), (guest.FirstName, guest.Email));
+        Assert.Null(guest.DataAnonymizedDate);
         Assert.False(guest.IsDeleted);
 
         await using (var scope = NewScope(out var db))
@@ -452,8 +453,9 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             var audits = await AuditAsync(db, seeded.GuestId);
             Assert.All(audits, a => Assert.Equal((GuestPrivacyAuditAction.RetentionApplied, null), (a.Action, a.ActorUserId)));
             Assert.Equal(
-                [GuestDataCategory.DocumentScans, GuestDataCategory.AlloggiatiData, GuestDataCategory.AlloggiatiData, GuestDataCategory.Marketing, GuestDataCategory.FiscalData],
+                [GuestDataCategory.DocumentScans, GuestDataCategory.AlloggiatiData, GuestDataCategory.AlloggiatiData, GuestDataCategory.Marketing],
                 audits.Select(a => a.Category!.Value));
+            Assert.DoesNotContain(GuestDataCategory.FiscalData, audits.Select(a => a.Category));
             Assert.Equal(3, audits.Where(a => a.Category == GuestDataCategory.AlloggiatiData).Sum(a => a.StayGuestsAnonymized));
         }
     }
