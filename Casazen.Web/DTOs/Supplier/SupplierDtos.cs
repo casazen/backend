@@ -420,6 +420,9 @@ public class SupplierDuplicateMergeDto
     /// </summary>
     public int AgendaRowsMoved { get; set; }
 
+    /// <summary>Showcase requests and private customers of the duplicate that went to the keeper (SP-10); its unverified holds are dropped.</summary>
+    public int ShowcaseRowsMoved { get; set; }
+
     /// <summary>False when the duplicate org also holds host data: only its supplier profile was removed.</summary>
     public bool DuplicateOrgDeleted { get; set; }
 }

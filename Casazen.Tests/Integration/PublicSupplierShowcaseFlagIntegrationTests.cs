@@ -103,7 +103,7 @@ public class PublicSupplierShowcaseFlagOffIntegrationTests(CasazenWebApplication
 
 /// <summary>
 /// The showcase host with an extra source of occupied time in the planning input of the supplier agenda: the holds that SP-10
-/// will add (a booking from the showcase waiting for the customer's e-mail check). It stands in for SP-10 to prove that the
+/// added (a booking from the showcase waiting for the customer's e-mail check). It stood in for SP-10 to prove that the
 /// public slots honour a hold the day it exists, without any change of SP-09.
 /// </summary>
 public sealed class PublicShowcaseWithHoldsFactory : PublicShowcaseFactory
@@ -139,6 +139,9 @@ public sealed class PublicShowcaseWithHoldsFactory : PublicShowcaseFactory
 
         public Task<SupplierPlanningRules> GetRulesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
             inner.GetRulesAsync(supplierOrgId, cancellationToken);
+
+        public Task<SupplierBookingSettings> GetBookingSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
+            inner.GetBookingSettingsAsync(supplierOrgId, cancellationToken);
 
         public Task<SupplierPlanningInput> BuildPlanningInputAsync(Guid supplierOrgId, DateOnly from, DateOnly to, CancellationToken cancellationToken = default) =>
             inner.BuildPlanningInputAsync(supplierOrgId, from, to, cancellationToken);

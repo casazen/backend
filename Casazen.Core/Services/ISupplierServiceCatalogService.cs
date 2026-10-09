@@ -56,6 +56,14 @@ public interface ISupplierServiceCatalogService
     Task<SupplierPublicService?> FindPublicAsync(Guid supplierOrgId, string serviceSlug, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same service as <see cref="FindPublicAsync"/>, found by the same statement and under the same rules, with the id of
+    /// the catalog row (SP-10: the booking from the showcase keeps it on the request). <c>null</c> for an unknown slug, a draft,
+    /// a paused, a deleted service, a service of another supplier and a supplier that is not active. Read-only. Only the booking
+    /// service asks for it: a public read never carries an id.
+    /// </summary>
+    Task<SupplierBookableService?> FindBookableAsync(Guid supplierOrgId, string serviceSlug, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a service as a draft: the slug comes from the name (unique among the supplier's services), the position is
     /// the last one unless the input gives it. Photos are not part of it (<see cref="AddPhotosAsync"/>).
     /// </summary>

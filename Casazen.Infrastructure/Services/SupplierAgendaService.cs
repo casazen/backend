@@ -31,6 +31,7 @@ namespace Casazen.Infrastructure.Services;
 public class SupplierAgendaService(
     AppDbContext db,
     ISupplierServiceRequestReader requests,
+    IShowcaseHoldReader holds,
     ILogger<SupplierAgendaService> logger,
     TimeProvider? timeProvider = null) : ISupplierAgendaService
 {
@@ -259,6 +260,15 @@ public class SupplierAgendaService(
         return ToRules(settings);
     }
 
+    public async Task<SupplierBookingSettings> GetBookingSettingsAsync(
+        Guid supplierOrgId,
+        CancellationToken cancellationToken = default) =>
+        await SettingsOf(supplierOrgId)
+            .AsNoTracking()
+            .Select(s => new SupplierBookingSettings(s.OnlineBookingEnabled, s.RespondWithinMinutes))
+            .FirstOrDefaultAsync(cancellationToken)
+        ?? SupplierBookingSettings.Default;
+
     // ─── Calendar and planner ────────────────────────────────────────────────────
 
     public async Task<SupplierCalendar> GetCalendarAsync(
@@ -338,7 +348,7 @@ public class SupplierAgendaService(
         // The requests of the supplier (SP-04): one with hours is a TimedRequest, which no slot may overlap (buffer included);
         // one that only has a day (the check-out day of its stay, the time still to agree) counts for the day's maximum and
         // takes no hour. A day more on each side, as for the windows. The request being moved is left out: it must not be in
-        // its own way. The showcase booking will add its holds here.
+        // its own way.
         var agendaRequests = await requests.ListForAgendaAsync(supplierOrgId, from.AddDays(-1), to.AddDays(1), cancellationToken);
         occupancies.AddRange(agendaRequests
             .Where(request => request.Id != exceptRequestId && JobStatuses.Contains(request.Status))
@@ -346,8 +356,20 @@ public class SupplierAgendaService(
                 ? SupplierOccupancy.TimedRequest(start, end)
                 : SupplierOccupancy.DatedRequest(request.Date)));
 
+        // The bookings from the public showcase that wait for the customer's e-mail check (SP-10) hold their slot like a request
+        // that has hours: a hold has its hours, its place in the day's maximum, and ends at its expiry. A hold that was checked
+        // is a request by now and is read above. The same range of days, a day more on each side, as for the windows.
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
+        var liveHolds = await holds.ListLiveAsync(
+            supplierOrgId,
+            RomeCalendar.StartOfDayUtc(from.AddDays(-1)),
+            RomeCalendar.StartOfDayUtc(to.AddDays(2)),
+            nowUtc,
+            cancellationToken);
+        occupancies.AddRange(liveHolds.Select(hold => SupplierOccupancy.Hold(hold.StartUtc, hold.EndUtc, hold.ExpiresAtUtc)));
+
         return new SupplierPlanningInput(
-            _clock.GetUtcNow().UtcDateTime,
+            nowUtc,
             rules,
             ToBands(hours),
             timeOff.Select(entry => new SupplierDateRange(entry.FromDate, entry.ToDate)).ToList(),

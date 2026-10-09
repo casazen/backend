@@ -16,7 +16,7 @@ namespace Casazen.Tests.Unit.Services;
 /// SP-09: the anonymous read side of a supplier's showcase (<see cref="PublicSupplierShowcaseService"/>) on the world of the
 /// service request scenario (an active supplier that works Monday to Friday 08-13 and 14-18 and Saturday 08-14, a two hours
 /// service at 60 euro, buffer 30 minutes, 35 days ahead, a slot every hour; Thursday 8 October 2026, 12:00 in Rome): who is
-/// visible, which services, the slots against the planner of SP-03 (parity, the requests with hours, the holds SP-10 adds),
+/// visible, which services, the slots against the planner of SP-03 (parity, the requests with hours, the holds of SP-10),
 /// the days without a slot that say nothing about why, the 30 seconds cache, and the estimate with the zones.
 /// </summary>
 public class PublicSupplierShowcaseServiceTests
@@ -305,7 +305,7 @@ public class PublicSupplierShowcaseServiceTests
         var friday10 = ServiceRequestScenario.FridayAt10; // 10:00 Rome
         var holds = new List<SupplierOccupancy>
         {
-            // SP-10 will put a hold here (a booking waiting for the e-mail check); it is a planner input like any other.
+            // SP-10 puts a hold here (a booking waiting for the e-mail check); it is a planner input like any other.
             SupplierOccupancy.Hold(friday10, friday10.AddHours(2), ServiceRequestScenario.Instant.UtcDateTime.AddMinutes(30)),
             SupplierOccupancy.Hold(ServiceRequestScenario.FridayAt14, ServiceRequestScenario.FridayAt14.AddHours(2), ServiceRequestScenario.Instant.UtcDateTime.AddMinutes(-1)),
         };
@@ -712,7 +712,7 @@ public class PublicSupplierShowcaseServiceTests
     }
 
     /// <summary>
-    /// The real agenda with a counter on the plans it computes, and extra occupancies (the holds SP-10 will add) put in the
+    /// The real agenda with a counter on the plans it computes, and extra occupancies (the holds of SP-10) put in the
     /// planning input of every plan.
     /// </summary>
     private sealed class AgendaProbe(ISupplierAgendaService inner) : ISupplierAgendaService
@@ -735,6 +735,9 @@ public class PublicSupplierShowcaseServiceTests
 
         public Task<SupplierPlanningRules> GetRulesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
             inner.GetRulesAsync(supplierOrgId, cancellationToken);
+
+        public Task<SupplierBookingSettings> GetBookingSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
+            inner.GetBookingSettingsAsync(supplierOrgId, cancellationToken);
 
         public Task<SupplierPlanningInput> BuildPlanningInputAsync(
             Guid supplierOrgId, DateOnly from, DateOnly to, CancellationToken cancellationToken = default) =>

@@ -71,7 +71,7 @@ public sealed record PublicQuote(
 /// every read goes through <see cref="ISupplierServiceCatalogService"/> and <see cref="ISupplierAgendaService"/>, whose
 /// statements carry the explicit <c>OrgId</c> predicate (and, for the catalog, the supplier's <c>Active</c> status).</para>
 /// <para><b>Slots.</b> Computed by <see cref="SupplierSlotPlanner"/> through <see cref="ISupplierAgendaService.PlanAsync(Guid, DateOnly, DateOnly, SupplierSlotQuery, CancellationToken)"/>,
-/// so whatever takes the supplier's time (requests with hours, blocks, calendar engagements, and the holds SP-10 adds to the
+/// so whatever takes the supplier's time (requests with hours, blocks, calendar engagements, and the holds of SP-10, added to the
 /// planning input) is already in. Cached for 30 seconds per replica: a slot shown is not a promise.</para>
 /// </remarks>
 public interface IPublicSupplierShowcaseService

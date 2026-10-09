@@ -112,6 +112,14 @@ public class AppDbContext(
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
+    /// <summary>
+    /// The booking from a supplier's public showcase (SP-10): the private customers and the holds that wait for the e-mail check.
+    /// Both keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list); only the booking service and the
+    /// few readers listed in <c>ShowcaseBookingTenancyTests</c> touch them, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<ServiceCustomer> ServiceCustomers { get; set; } = null!;
+    public DbSet<ShowcaseBookingHold> ShowcaseBookingHolds { get; set; } = null!;
+
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
@@ -1180,6 +1188,92 @@ public class AppDbContext(
                 $"(\"EstimatedAmountCents\" IS NULL OR \"EstimatedAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents}) AND "
                 + $"(\"QuotedAmountCents\" IS NULL OR \"QuotedAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents}) AND "
                 + $"(\"FinalAmountCents\" IS NULL OR \"FinalAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents})");
+        });
+
+        // ─── Booking from the public showcase of a supplier (SP-10, decision D34 revised) ─────────────────────────────
+        // A showcase request belongs to the supplier (OrgId = the supplier org), has no property and no booking, and carries its
+        // customer, its public code and the place of the work. The database keeps that true: the context, the source and these
+        // columns go together (PropertyId and BookingId are nullable only because of it). The host contexts keep what they had
+        // (a property, never a customer, a code or a place of their own); nothing is asked of BookingId there, which older
+        // requests leave empty. The check holds for every row that exists before this migration.
+        modelBuilder.Entity<ServiceRequest>(entity =>
+        {
+            entity.HasOne(sr => sr.Customer)
+                .WithMany()
+                .HasForeignKey(sr => sr.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(sr => sr.CustomerId).HasDatabaseName("IX_ServiceRequests_CustomerId");
+
+            // The code is unique for the supplier among its showcase requests (the host requests have none).
+            entity.HasIndex(sr => new { sr.SupplierOrgId, sr.PublicCode })
+                .IsUnique()
+                .HasFilter("\"PublicCode\" IS NOT NULL")
+                .HasDatabaseName("UIX_ServiceRequests_SupplierOrgId_PublicCode");
+
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_ServiceRequests_Context",
+                $"(\"RentalContext\" = {(int)ServiceRequestRentalContext.Showcase} "
+                + "AND \"PropertyId\" IS NULL AND \"BookingId\" IS NULL "
+                + $"AND \"Source\" = {(int)ServiceRequestSource.Showcase} "
+                + "AND \"CustomerId\" IS NOT NULL AND \"PublicCode\" IS NOT NULL AND \"LocationCity\" IS NOT NULL) OR "
+                + $"(\"RentalContext\" IN ({(int)ServiceRequestRentalContext.ShortRent}, {(int)ServiceRequestRentalContext.LongRent}) "
+                + "AND \"PropertyId\" IS NOT NULL "
+                + $"AND \"Source\" = {(int)ServiceRequestSource.Host} "
+                + "AND \"CustomerId\" IS NULL AND \"PublicCode\" IS NULL "
+                + "AND \"LocationComuneIstat\" IS NULL AND \"LocationCity\" IS NULL AND \"LocationPostalCode\" IS NULL "
+                + "AND \"LocationAddress\" IS NULL AND \"LocationFloor\" IS NULL AND \"LocationAccessNotes\" IS NULL)"));
+        });
+
+        modelBuilder.Entity<ServiceCustomer>(entity =>
+        {
+            // A child of the supplier profile like the agenda: the repair moves the customers before it deletes a profile.
+            entity.HasOne(c => c.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(c => c.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One customer per supplier and address; the HMAC of the address is the only thing the address is found by.
+            entity.HasIndex(c => new { c.OrgId, c.EmailHash })
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceCustomers_OrgId_EmailHash");
+        });
+
+        modelBuilder.Entity<ShowcaseBookingHold>(entity =>
+        {
+            entity.HasOne(h => h.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(h => h.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The request born from the hold. Set to null if the request is ever removed for good: the hold only remembers it.
+            entity.HasOne<ServiceRequest>()
+                .WithMany()
+                .HasForeignKey(h => h.ServiceRequestId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // The column says what it holds: encrypted at rest through the value converter of EncryptedColumns.
+            entity.Property(h => h.Payload).HasColumnName("PayloadEncrypted");
+
+            // The same client request id is the same hold (idempotency); a code is unique among the supplier's holds.
+            entity.HasIndex(h => new { h.OrgId, h.ClientRequestId })
+                .IsUnique()
+                .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_ClientRequestId");
+            entity.HasIndex(h => new { h.OrgId, h.PublicCode })
+                .IsUnique()
+                .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_PublicCode");
+
+            // The planner reads the holds of one supplier by time; the upkeep job reads the expired ones of every supplier; the
+            // cap of unverified bookings counts the ones of one address.
+            entity.HasIndex(h => new { h.OrgId, h.StartUtc }).HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_StartUtc");
+            entity.HasIndex(h => h.ExpiresAt).HasDatabaseName("IX_ShowcaseBookingHolds_ExpiresAt");
+            entity.HasIndex(h => new { h.OrgId, h.EmailHash }).HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_EmailHash");
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_ShowcaseBookingHolds_Interval", "\"StartUtc\" < \"EndUtc\"");
+                t.HasCheckConstraint("CK_ShowcaseBookingHolds_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
+            });
         });
 
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────

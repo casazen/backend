@@ -2299,4 +2299,31 @@
   <data name="SupplierQuoteInvalid" xml:space="preserve">
     <value>Alcuni dati della richiesta di stima non sono validi (campi: {0}). Controllali e riprova.</value>
   </data>
+  <data name="SupplierBookingInvalid" xml:space="preserve">
+    <value>Alcuni dati della prenotazione non sono validi (campi: {0}). Controllali e riprova.</value>
+  </data>
+  <data name="SupplierBookingOffline" xml:space="preserve">
+    <value>Questo fornitore non accetta prenotazioni online in questo momento: puoi chiedere un preventivo.</value>
+  </data>
+  <data name="SupplierBookingOutsideZone" xml:space="preserve">
+    <value>Il fornitore non lavora in questo comune: puoi comunque chiedere un preventivo.</value>
+  </data>
+  <data name="SupplierBookingConsentRequired" xml:space="preserve">
+    <value>Per inviare la richiesta serve accettare l'informativa sulla privacy.</value>
+  </data>
+  <data name="SupplierBookingConsentOutdated" xml:space="preserve">
+    <value>L'informativa sulla privacy è stata aggiornata: leggi la versione attuale e accettala di nuovo.</value>
+  </data>
+  <data name="SupplierBookingLinkInvalid" xml:space="preserve">
+    <value>Link di conferma non valido: apri il link ricevuto via email.</value>
+  </data>
+  <data name="SupplierBookingLinkExpired" xml:space="preserve">
+    <value>Il tempo per confermare la richiesta è scaduto e l'orario è tornato disponibile: invia una nuova richiesta dal sito del fornitore.</value>
+  </data>
+  <data name="SupplierBookingSupplierUnavailable" xml:space="preserve">
+    <value>Il fornitore non può ricevere richieste in questo momento. Riprova più tardi.</value>
+  </data>
+  <data name="SupplierBookingTokenRequired" xml:space="preserve">
+    <value>Apri il link ricevuto via email: il codice di conferma manca o non è valido.</value>
+  </data>
 </root>

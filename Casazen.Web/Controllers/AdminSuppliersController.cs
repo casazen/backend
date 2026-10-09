@@ -240,6 +240,7 @@ public class AdminSuppliersController(
                     DevicesMoved = m.DevicesMoved,
                     ServiceListingsMoved = m.ServiceListingsMoved,
                     AgendaRowsMoved = m.AgendaRowsMoved,
+                    ShowcaseRowsMoved = m.ShowcaseRowsMoved,
                     DuplicateOrgDeleted = m.DuplicateOrgDeleted,
                 })
                 .ToList(),

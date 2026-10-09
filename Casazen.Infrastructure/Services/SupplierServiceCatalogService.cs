@@ -103,6 +103,18 @@ public class SupplierServiceCatalogService(
         return listing is null ? null : ToPublic(listing);
     }
 
+    public async Task<SupplierBookableService?> FindBookableAsync(
+        Guid supplierOrgId,
+        string serviceSlug,
+        CancellationToken cancellationToken = default)
+    {
+        // The same statement as FindPublicAsync: the booking may use only what the public may see, with the id it needs to keep.
+        var listing = await PublicListingsOf(db, supplierOrgId)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Slug == serviceSlug, cancellationToken);
+        return listing is null ? null : new SupplierBookableService(listing.Id, ToPublic(listing));
+    }
+
     public async Task<SupplierServiceListing> CreateAsync(
         Guid supplierOrgId,
         SupplierServiceListingInput input,

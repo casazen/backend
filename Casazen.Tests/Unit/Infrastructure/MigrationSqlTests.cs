@@ -62,6 +62,106 @@ public class MigrationSqlTests
         Assert.True(
             keys.FindIndex(k => k.EndsWith("AddServiceRequestSchedule", StringComparison.Ordinal))
             > keys.FindIndex(k => k.EndsWith("AddSupplierAgenda", StringComparison.Ordinal)));
+        // SP-10: after the schedule of a request (the checked booking becomes a request with hours).
+        Assert.True(
+            keys.FindIndex(k => k.EndsWith("AddShowcaseBooking", StringComparison.Ordinal))
+            > keys.FindIndex(k => k.EndsWith("AddServiceRequestSchedule", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void AddShowcaseBooking_AddsTheTwoTablesTheColumnsTheChecksAndTheIndexes_WithoutRewritingARowThatExists()
+    {
+        using var db = NewNpgsqlContext();
+        var (previous, up, _) = ScriptsOf(db, "AddShowcaseBooking");
+
+        Assert.False(string.IsNullOrEmpty(previous));
+        // A request from a showcase has no property: the column only gets looser, nothing is dropped.
+        Assert.Contains("ALTER TABLE \"ServiceRequests\" ALTER COLUMN \"PropertyId\" DROP NOT NULL;", up);
+        foreach (var column in new[]
+                 {
+                     "CustomerId", "LocationAccessNotes", "LocationAddress", "LocationCity", "LocationComuneIstat", "LocationFloor",
+                     "LocationPostalCode", "PublicCode", "ReminderSentAt",
+                 })
+        {
+            Assert.Contains($"ALTER TABLE \"ServiceRequests\" ADD \"{column}\" ", up);
+        }
+
+        // Every request that exists is a host's: it gets Source = Host (0) and so satisfies the context check without a backfill.
+        Assert.Contains("ADD \"Source\" integer NOT NULL DEFAULT 0;", up);
+        Assert.Contains("CREATE TABLE \"ServiceCustomers\"", up);
+        Assert.Contains("CREATE TABLE \"ShowcaseBookingHolds\"", up);
+        // The payload of a hold is encrypted text, and its column says so.
+        Assert.Contains("\"PayloadEncrypted\" text,", up);
+        Assert.Contains("\"FullName\" text NOT NULL,", up);
+
+        // The customers and the holds are children of the supplier profile; a hold only remembers its request; a customer with a
+        // request is never deleted by accident.
+        Assert.Contains("FOREIGN KEY (\"OrgId\") REFERENCES \"SupplierProfiles\" (\"OrgId\") ON DELETE CASCADE", up);
+        Assert.Contains("FOREIGN KEY (\"ServiceRequestId\") REFERENCES \"ServiceRequests\" (\"Id\") ON DELETE SET NULL", up);
+        Assert.Contains("FOREIGN KEY (\"CustomerId\") REFERENCES \"ServiceCustomers\" (\"Id\") ON DELETE RESTRICT", up);
+
+        foreach (var check in new[] { "CK_ShowcaseBookingHolds_Interval", "CK_ShowcaseBookingHolds_Expiry", "CK_ServiceRequests_Context" })
+            Assert.Contains($"\"{check}\" CHECK", up);
+        Assert.Contains("CHECK (\"StartUtc\" < \"EndUtc\")", up);
+        Assert.Contains("CHECK (\"ExpiresAt\" > \"CreatedAt\")", up);
+        // The two kinds of request apart: a showcase request has no property, no stay and a customer; a host's has a property
+        // and none of the showcase's columns.
+        Assert.Contains("(\"RentalContext\" = 2 AND \"PropertyId\" IS NULL AND \"BookingId\" IS NULL AND \"Source\" = 1 AND \"CustomerId\" IS NOT NULL", up);
+        Assert.Contains("OR (\"RentalContext\" IN (0, 1) AND \"PropertyId\" IS NOT NULL AND \"Source\" = 0 AND \"CustomerId\" IS NULL", up);
+
+        foreach (var index in new[]
+                 {
+                     "UIX_ServiceCustomers_OrgId_EmailHash",
+                     "UIX_ShowcaseBookingHolds_OrgId_ClientRequestId",
+                     "UIX_ShowcaseBookingHolds_OrgId_PublicCode",
+                     "UIX_ServiceRequests_SupplierOrgId_PublicCode",
+                 })
+        {
+            Assert.Contains($"CREATE UNIQUE INDEX \"{index}\"", up);
+        }
+
+        // The host requests have no code: the unique index of the codes covers only the rows that have one.
+        Assert.Contains("(\"SupplierOrgId\", \"PublicCode\") WHERE \"PublicCode\" IS NOT NULL;", up);
+        Assert.Contains("CREATE INDEX \"IX_ShowcaseBookingHolds_ExpiresAt\"", up);
+
+        // The rows that exist are not rewritten, deleted or dropped.
+        Assert.DoesNotContain("UPDATE ", up);
+        Assert.DoesNotContain("DELETE FROM \"", up.Replace("DELETE FROM \"__EFMigrationsHistory\"", string.Empty, StringComparison.Ordinal));
+        Assert.DoesNotContain("DROP ", up.Replace("DROP NOT NULL", string.Empty, StringComparison.Ordinal));
+        Assert.DoesNotContain("SET NOT NULL", up);
+    }
+
+    [Fact]
+    public void AddShowcaseBooking_TheRevertDropsWhatItAdded_AndRefusesWhileAShowcaseRequestExists()
+    {
+        using var db = NewNpgsqlContext();
+        var (_, _, down) = ScriptsOf(db, "AddShowcaseBooking");
+
+        Assert.Contains("DROP TABLE \"ServiceCustomers\";", down);
+        Assert.Contains("DROP TABLE \"ShowcaseBookingHolds\";", down);
+        Assert.Contains("DROP CONSTRAINT \"CK_ServiceRequests_Context\";", down);
+        Assert.Contains("DROP INDEX \"UIX_ServiceRequests_SupplierOrgId_PublicCode\";", down);
+        foreach (var column in new[] { "CustomerId", "LocationAddress", "LocationCity", "PublicCode", "ReminderSentAt", "Source" })
+            Assert.Contains($"DROP COLUMN \"{column}\";", down);
+
+        // The property is put back to NOT NULL through an update to a property that does not exist: a foreign key violation while
+        // a showcase request exists, so the revert (one transaction) is undone and nothing is lost; the default is dropped after.
+        Assert.Contains("UPDATE \"ServiceRequests\" SET \"PropertyId\" = '00000000-0000-0000-0000-000000000000' WHERE \"PropertyId\" IS NULL;", down);
+        Assert.Contains("ALTER COLUMN \"PropertyId\" SET NOT NULL;", down);
+        Assert.Contains("ALTER TABLE \"ServiceRequests\" ALTER COLUMN \"PropertyId\" DROP DEFAULT;", down);
+        Assert.StartsWith("START TRANSACTION;", down.TrimStart());
+    }
+
+    private static (string Previous, string Up, string Down) ScriptsOf(AppDbContext db, string migrationName)
+    {
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var index = keys.FindIndex(k => k.EndsWith(migrationName, StringComparison.Ordinal));
+        Assert.True(index > 0, $"{migrationName} not found");
+        var migrator = db.GetService<IMigrator>();
+        return (
+            keys[index - 1],
+            migrator.GenerateScript(fromMigration: keys[index - 1], toMigration: keys[index]),
+            migrator.GenerateScript(fromMigration: keys[index], toMigration: keys[index - 1]));
     }
 
     [Fact]

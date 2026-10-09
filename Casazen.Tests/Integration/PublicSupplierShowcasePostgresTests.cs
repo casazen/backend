@@ -163,8 +163,8 @@ public class PublicSupplierShowcasePostgresTests(PublicShowcaseFactory factory) 
 
 /// <summary>
 /// SP-09 on PostgreSQL with a hold: the request with hours of one customer and the hold of another (a booking waiting for its
-/// e-mail check, which SP-10 will create) take their slots together on real timestamps, and an expired hold takes none. The hold
-/// enters the planning input of the agenda the way SP-10 will put it there, so the public read needs no change when it exists.
+/// e-mail check, which SP-10 creates) take their slots together on real timestamps, and an expired hold takes none. The hold
+/// enters the planning input of the agenda the way SP-10 puts it there, so the public read needed no change when it came.
 /// </summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class PublicSupplierShowcaseHoldsPostgresTests(PublicShowcaseWithHoldsFactory factory) : IClassFixture<PublicShowcaseWithHoldsFactory>

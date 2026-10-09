@@ -44,6 +44,14 @@ public class GdprRetentionOptions
     /// </summary>
     public RetentionPeriodOptions LeaseParties { get; set; } = new();
 
+    /// <summary>
+    /// Personal data of the private customers of the suppliers (SP-10): the customers who booked from a supplier's public
+    /// showcase and the place of their requests, counted from the last request of the customer. Not a
+    /// <see cref="GuestDataCategory"/>: applied by <c>ServiceCustomerPrivacyService</c>. Same rule: no period, no source,
+    /// nothing anonymized by retention (the period and its legal source are a decision of the product owner and legal).
+    /// </summary>
+    public RetentionPeriodOptions SupplierCustomers { get; set; } = new();
+
     public RetentionPeriodOptions For(GuestDataCategory category) => category switch
     {
         GuestDataCategory.DocumentScans => DocumentScans,

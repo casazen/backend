@@ -437,6 +437,31 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
+
+        // Booking from a supplier's public showcase (SP-10, flag SupplierShowcaseBooking): hold, e-mail check, request. The options
+        // (Suppliers:Showcase, and Suppliers:CustomerIndexKey for the HMAC of the customers' e-mail) are validated at startup: with the
+        // flag on, the version of the privacy notice and (outside Development and Testing) the key are required.
+        services.AddOptions<Casazen.Core.Options.ShowcaseBookingOptions>()
+            .BindConfiguration(Casazen.Core.Options.ShowcaseBookingOptions.SectionName)
+            .ValidateOnStart();
+        services.AddOptions<Casazen.Core.Options.ServiceCustomerIndexOptions>()
+            .BindConfiguration(Casazen.Core.Options.ServiceCustomerIndexOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<Casazen.Core.Options.ShowcaseBookingOptionsValidator>();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.ShowcaseBookingOptions>>(
+            provider => provider.GetRequiredService<Casazen.Core.Options.ShowcaseBookingOptionsValidator>());
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.ServiceCustomerIndexOptions>>(
+            provider => provider.GetRequiredService<Casazen.Core.Options.ShowcaseBookingOptionsValidator>());
+        services.AddSingleton<IServiceCustomerIndex, ServiceCustomerIndex>();
+        services.AddScoped<IShowcaseHoldReader, ShowcaseHoldReader>();
+        services.AddScoped<IServiceCustomerReader, ServiceCustomerReader>();
+        services.AddScoped<ShowcaseBookingNotifier>();
+        services.AddScoped<IShowcaseBookingService, ShowcaseBookingService>();
+        // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the
+        // customers' data: their recurring jobs are registered whatever the flags say.
+        services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
+        services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();
+        services.AddScoped<IServiceCustomerPrivacyService, ServiceCustomerPrivacyService>();
         // Supplier dashboard KPIs from the service requests (SU-11, A4-15) and the money of the console home (SP-04).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
         // The home ("Oggi") and the activation checklist of the supplier console (SP-04).

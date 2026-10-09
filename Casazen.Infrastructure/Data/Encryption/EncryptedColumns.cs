@@ -36,6 +36,20 @@ public static class EncryptedColumns
     public const string QuesturaCredentialsPurpose = "Casazen.PropertyQuesturaCredentials";
 
     /// <summary>
+    /// Purpose of the personal data of the private customers of the suppliers (SP-10): name, e-mail and phone of
+    /// <see cref="ServiceCustomer"/>, and the payload of the booking that waits for the e-mail check
+    /// (<see cref="ShowcaseBookingHold"/>), which is the same data before it is a customer. Unlike the guests of the hosts, nothing
+    /// here is searched in clear: the address is found by its HMAC (<see cref="ServiceCustomer.EmailHash"/>).
+    /// </summary>
+    public const string ServiceCustomerPurpose = "Casazen.ServiceCustomer";
+
+    /// <summary>
+    /// Purpose of the place of the work of a request from the public showcase (SP-10): street address, floor and access notes of
+    /// <see cref="ServiceRequest"/>. The comune and the postal code are not encrypted: the supplier sees them before it takes the request.
+    /// </summary>
+    public const string ServiceRequestLocationPurpose = "Casazen.ServiceRequest.Location";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -72,6 +86,20 @@ public static class EncryptedColumns
             nameof(PropertyQuesturaCredentials.Username),
             nameof(PropertyQuesturaCredentials.Password),
             nameof(PropertyQuesturaCredentials.WsKey)),
+        // SP-10: the private customers of the suppliers and the booking that waits for their e-mail check.
+        new EncryptedEntity<ServiceCustomer>(
+            ServiceCustomerPurpose,
+            nameof(ServiceCustomer.FullName),
+            nameof(ServiceCustomer.Email),
+            nameof(ServiceCustomer.Phone)),
+        new EncryptedEntity<ShowcaseBookingHold>(
+            ServiceCustomerPurpose,
+            nameof(ShowcaseBookingHold.Payload)),
+        new EncryptedEntity<ServiceRequest>(
+            ServiceRequestLocationPurpose,
+            nameof(ServiceRequest.LocationAddress),
+            nameof(ServiceRequest.LocationFloor),
+            nameof(ServiceRequest.LocationAccessNotes)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

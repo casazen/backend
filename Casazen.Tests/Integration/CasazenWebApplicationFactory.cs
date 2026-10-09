@@ -97,6 +97,13 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:PublicComuni:PermitLimit"] = "1000",
                 ["RateLimiting:PublicSupplierSlots:PermitLimit"] = "1000",
                 ["RateLimiting:PublicSupplierQuote:PermitLimit"] = "1000",
+                ["RateLimiting:PublicSupplierBookingCreate:PermitLimit"] = "1000",
+                ["RateLimiting:SupplierBookingCreatePerEmail:PermitLimit"] = "1000",
+                // SP-10: with Features:SupplierShowcaseBooking on, the version of the privacy notice is required at startup (the
+                // booking records it); the key of the e-mail index is required outside Development and Testing and is set here so
+                // the tests index the addresses the way a real environment does.
+                ["Suppliers:Showcase:PrivacyNoticeVersion"] = "2026-11-test",
+                ["Suppliers:CustomerIndexKey"] = "test-customer-index-key-0123456789abcdef",
                 // The official comuni list is not loaded into every test database (7,894 rows): tests that need comuni seed the
                 // few they use (ComuneTestData) or import the official file themselves.
                 ["Comuni:SeedOnStartup"] = "false",

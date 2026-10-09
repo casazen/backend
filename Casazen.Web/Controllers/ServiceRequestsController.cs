@@ -669,11 +669,12 @@ public class ServiceRequestsController(
                         r.StartedAt,
                         r.CancelledAt,
                         r.CancellationReason,
-                        r.CancelledBy),
+                        r.CancelledBy,
+                        r.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host),
                     takenByName: null)
                 .Select(h => ServiceRequestHistoryEntryDto.From(h))
                 .ToList(),
-            Source = SupplierRequestSources.CasaZen,
+            Source = SupplierRequestSources.Of(r.Source),
             ServiceListingId = r.ServiceListingId,
             ServiceName = r.ServiceNameSnapshot,
             ScheduledStart = r.ScheduledStartUtc,
