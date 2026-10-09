@@ -672,6 +672,24 @@
   <data name="RentPaymentReceived_Cta" xml:space="preserve">
     <value>Open the lease</value>
   </data>
+  <data name="RentReminder_Subject" xml:space="preserve">
+    <value>Rent reminder - {0}, due {1}</value>
+  </data>
+  <data name="RentReminder_BodyDue" xml:space="preserve">
+    <value>this is a reminder that the rent of &lt;strong&gt;€{0}&lt;/strong&gt; for &lt;strong&gt;{1}&lt;/strong&gt;, period from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt;, is due by &lt;strong&gt;{4}&lt;/strong&gt; and has not been paid yet.</value>
+  </data>
+  <data name="RentReminder_BodyOverdue" xml:space="preserve">
+    <value>this is a reminder that the rent of &lt;strong&gt;€{0}&lt;/strong&gt; for &lt;strong&gt;{1}&lt;/strong&gt;, period from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt;, was due on &lt;strong&gt;{4}&lt;/strong&gt; and has not been paid yet.</value>
+  </data>
+  <data name="RentReminder_NoteLabel" xml:space="preserve">
+    <value>Message from the landlord</value>
+  </data>
+  <data name="RentReminder_NoLink" xml:space="preserve">
+    <value>Please pay with the method you agreed with the landlord, {0}.</value>
+  </data>
+  <data name="RentReminder_AlreadyPaid" xml:space="preserve">
+    <value>If you have already paid, please ignore this email.</value>
+  </data>
   <data name="PropertyModeLabel_Short" xml:space="preserve">
     <value>short-stay rental</value>
   </data>

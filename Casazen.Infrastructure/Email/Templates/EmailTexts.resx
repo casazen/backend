@@ -672,6 +672,24 @@
   <data name="RentPaymentReceived_Cta" xml:space="preserve">
     <value>Apri il contratto</value>
   </data>
+  <data name="RentReminder_Subject" xml:space="preserve">
+    <value>Promemoria canone di locazione - {0}, scadenza {1}</value>
+  </data>
+  <data name="RentReminder_BodyDue" xml:space="preserve">
+    <value>ti ricordiamo che il canone di &lt;strong&gt;{0} €&lt;/strong&gt; per l'immobile &lt;strong&gt;{1}&lt;/strong&gt;, periodo dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt;, è da pagare entro il &lt;strong&gt;{4}&lt;/strong&gt; e non risulta ancora pagato.</value>
+  </data>
+  <data name="RentReminder_BodyOverdue" xml:space="preserve">
+    <value>ti ricordiamo che il canone di &lt;strong&gt;{0} €&lt;/strong&gt; per l'immobile &lt;strong&gt;{1}&lt;/strong&gt;, periodo dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt;, era in scadenza il &lt;strong&gt;{4}&lt;/strong&gt; e non risulta ancora pagato.</value>
+  </data>
+  <data name="RentReminder_NoteLabel" xml:space="preserve">
+    <value>Messaggio del locatore</value>
+  </data>
+  <data name="RentReminder_NoLink" xml:space="preserve">
+    <value>Per il pagamento usa il metodo che hai concordato con il locatore, {0}.</value>
+  </data>
+  <data name="RentReminder_AlreadyPaid" xml:space="preserve">
+    <value>Se hai già pagato, ignora questa email.</value>
+  </data>
   <data name="PropertyModeLabel_Short" xml:space="preserve">
     <value>affitto breve</value>
   </data>

@@ -714,6 +714,10 @@ public class AppDbContext(
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => e.OrgId);
 
+        // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasIndex(e => new { e.OrgId, e.DueDate });
+
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).
         modelBuilder.Entity<Org>()
