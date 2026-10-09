@@ -13,7 +13,8 @@ public class ComuneImuNotificationService(
     ILeaseEventRepository events,
     ITerritorialRentAgreementRepository territorialAgreements,
     IComuneImuChannelRepository imuChannels,
-    IPdfDocumentRenderer pdfRenderer) : IComuneImuNotificationService
+    IPdfDocumentRenderer pdfRenderer,
+    IOrgHolderService orgHolder) : IComuneImuNotificationService
 {
     public async Task<ImuNotificationExportResult?> ExportAsync(
         Guid leaseId, CancellationToken cancellationToken = default)
@@ -42,7 +43,7 @@ public class ComuneImuNotificationService(
 
     public async Task<bool?> MarkSentAsync(Guid leaseId, string ownerId, CancellationToken cancellationToken = default)
     {
-        var lease = await LoadOwnedLeaseAsync(leaseId, ownerId);
+        var lease = await LoadOwnedLeaseAsync(leaseId, ownerId, cancellationToken);
         if (lease is null)
             return null;
         if (!await IsReadyForImuNotificationAsync(lease, cancellationToken))
@@ -83,10 +84,16 @@ public class ComuneImuNotificationService(
         return new ImuNotificationStatusDto(true, true, null, city, channelDto);
     }
 
-    private async Task<LeaseContract?> LoadOwnedLeaseAsync(Guid leaseId, string ownerId)
+    /// <summary>
+    /// The lease, when <paramref name="userId"/> is the holder of its org (S5, AM-03): the communication to the Comune is the
+    /// landlord's, so the org's owner or an administrator marks it sent, not whoever created the property. The creator of the
+    /// property is the holder only for an account in no org team (see <see cref="IOrgHolderService"/>).
+    /// </summary>
+    private async Task<LeaseContract?> LoadOwnedLeaseAsync(Guid leaseId, string userId, CancellationToken cancellationToken)
     {
         var lease = await leases.GetByIdWithDetailsAsync(leaseId);
-        if (lease is null || lease.Property is null || lease.Property.OwnerId != ownerId)
+        if (lease is null || lease.Property is null
+            || !await orgHolder.IsHolderAsync(userId, lease.OrgId, lease.Property.OwnerId, cancellationToken))
             return null;
         return lease;
     }

@@ -193,8 +193,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
         // AM-01: the org's people (OrgMember) and, in the same transaction, the memberships that project their role.
         services.AddScoped<IOrgMembershipService, OrgMembershipService>();
-        // AM-03: which properties a caller reaches (from the org membership, in the authorization snapshot).
+        // AM-03: which properties a caller reaches (from the org membership, in the authorization snapshot), and who is the
+        // holder of the org for the acts the law ties to the landlord (RLI delega, IMU communication).
         services.AddScoped<IHostScopeResolver, HostScopeResolver>();
+        services.AddScoped<IOrgHolderService, OrgHolderService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
         // PL-02: host contexts only after the onboarding and the current consents; refusals answer 403 onboarding_required.
         services.AddScoped<IHostOnboardingGate, HostOnboardingGate>();
