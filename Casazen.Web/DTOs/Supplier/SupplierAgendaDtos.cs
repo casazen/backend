@@ -207,17 +207,30 @@ public class SupplierClosedDayDto
 }
 
 /// <summary>
-/// A service request as a whole-day item of the calendar (its time arrives with SP-04). No property, address or contact:
-/// those are in the request's detail, and only after the supplier took it.
+/// A service request as an item of the calendar: a whole-day item while its time is still to agree, a tile with hours once it
+/// has them (SP-04: <see cref="StartUtc"/> and <see cref="EndUtc"/>). No property, address or contact: those are in the
+/// request's detail, and only after the supplier took it.
 /// </summary>
 public class SupplierCalendarRequestDto
 {
     public Guid Id { get; set; }
 
-    /// <summary>The Europe/Rome day of the work (the check-out day of the stay of a short-rent request).</summary>
+    /// <summary>
+    /// The Europe/Rome day of the work: the day of <see cref="StartUtc"/> when the request has a time, else the check-out day of
+    /// the stay of a short-rent request.
+    /// </summary>
     public DateOnly Date { get; set; }
 
-    /// <summary><c>Richiesto</c> (to confirm), <c>PresoInCarico</c>, <c>InCorso</c>, <c>Completato</c> or <c>Pagato</c>.</summary>
+    /// <summary>First instant of the work (UTC); <c>null</c> for a request that only has a day (the time is to agree).</summary>
+    public DateTime? StartUtc { get; set; }
+
+    /// <summary>Instant the work ends (UTC); <c>null</c> for a request that only has a day.</summary>
+    public DateTime? EndUtc { get; set; }
+
+    /// <summary>
+    /// <c>Richiesto</c> (to confirm), <c>PresoInCarico</c>, <c>InCorso</c>, <c>Completato</c> or <c>Pagato</c>; a rejected or
+    /// cancelled request is not in the calendar.
+    /// </summary>
     public ServiceRequestStatus Status { get; set; }
 
     /// <summary>A code of <c>GET /api/service-categories</c>.</summary>
@@ -353,6 +366,8 @@ public static class SupplierAgendaMapper
                 {
                     Id = request.Id,
                     Date = request.Date,
+                    StartUtc = request.StartUtc,
+                    EndUtc = request.EndUtc,
                     Status = request.Status,
                     Category = request.Category,
                 })

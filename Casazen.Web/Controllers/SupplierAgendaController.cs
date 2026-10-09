@@ -206,8 +206,9 @@ public class SupplierAgendaController(
     /// What the supplier's calendar shows from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both
     /// included; today and the next 30 days when left out; at most 62 days): the weekly working hours, the days closed (by
     /// hand or by the calendar feed), the time off, the blocks, extra openings and engagements that touch the range, and the
-    /// requests that have a day as whole-day items (their time arrives with SP-04). 400 <c>validation_error</c> for a range
-    /// that is reversed or longer than 62 days.
+    /// requests of the supplier (SP-04): one with a time carries its <c>startUtc</c> and <c>endUtc</c> and falls on the
+    /// Europe/Rome day of its start, one without is a whole-day item on the check-out day of its stay; a rejected or cancelled
+    /// request is not listed. 400 <c>validation_error</c> for a range that is reversed or longer than 62 days.
     /// </summary>
     [HttpGet("calendar")]
     [ProducesResponseType(typeof(SupplierCalendarDto), StatusCodes.Status200OK)]

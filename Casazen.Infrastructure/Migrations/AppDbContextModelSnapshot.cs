@@ -3583,6 +3583,16 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CancelledBy")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -3594,7 +3604,23 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CompletionNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("EstimatedAmountCents")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("FinalAmountCents")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("FinalAmountNeedsConfirmation")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastRemindedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Notes")
@@ -3602,14 +3628,46 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("OptionsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PriceLinesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ProposalMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("ProposedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProposedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("ProposedEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ProposedStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("QuotedAmountCents")
+                        .HasColumnType("integer");
 
                     b.Property<string>("RejectionReason")
                         .HasMaxLength(500)
@@ -3617,6 +3675,25 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("RentalContext")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ResponseDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ScheduledEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ScheduledStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ServiceListingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ServiceNameSnapshot")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -3643,17 +3720,34 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
+                    b.Property<string>("WorkPhotosJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BookingId");
 
                     b.HasIndex("PropertyId");
 
+                    b.HasIndex("ServiceListingId");
+
                     b.HasIndex("OrgId", "Status");
+
+                    b.HasIndex("SupplierOrgId", "ScheduledStartUtc");
 
                     b.HasIndex("SupplierOrgId", "Status");
 
-                    b.ToTable("ServiceRequests");
+                    b.ToTable("ServiceRequests", t =>
+                        {
+                            t.HasCheckConstraint("CK_ServiceRequests_Amounts", "(\"EstimatedAmountCents\" IS NULL OR \"EstimatedAmountCents\" BETWEEN 1 AND 10000000) AND (\"QuotedAmountCents\" IS NULL OR \"QuotedAmountCents\" BETWEEN 1 AND 10000000) AND (\"FinalAmountCents\" IS NULL OR \"FinalAmountCents\" BETWEEN 1 AND 10000000)");
+
+                            t.HasCheckConstraint("CK_ServiceRequests_ProposedInterval", "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR (\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
+
+                            t.HasCheckConstraint("CK_ServiceRequests_ScheduledInterval", "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR (\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SignupAttribution", b =>
@@ -5668,6 +5762,11 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.SupplierServiceListing", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceListingId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Casazen.Core.Entities.Org", "SupplierOrg")
                         .WithMany()

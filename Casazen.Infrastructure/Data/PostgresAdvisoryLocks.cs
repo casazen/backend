@@ -139,6 +139,12 @@ internal static class PostgresAdvisoryLocks
         /// decided on a stale read (SP-02).
         /// </summary>
         SupplierServiceCatalog = 1_302,
+
+        /// <summary>
+        /// One run of the automatic cancellation of the service requests nobody answered (single key, session lock held for the
+        /// whole run): two runs never cancel and notify the same requests at once, even outside Hangfire's own lock (SP-04, D8).
+        /// </summary>
+        ServiceRequestAutoCancelRun = 1_310,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

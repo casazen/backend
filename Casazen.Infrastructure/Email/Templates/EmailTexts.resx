@@ -28,10 +28,7 @@
     <value>Ciao {0},</value>
   </data>
   <data name="ServiceRequestCreated_Body" xml:space="preserve">
-    <value>Hai ricevuto una nuova richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per la proprietà &lt;strong&gt;{1}&lt;/strong&gt;.</value>
-  </data>
-  <data name="ServiceRequestCreated_NotesLabel" xml:space="preserve">
-    <value>Note:</value>
+    <value>Hai ricevuto una nuova richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;.</value>
   </data>
   <data name="ServiceRequestCreated_Cta" xml:space="preserve">
     <value>Apri la console fornitore</value>
@@ -544,7 +541,7 @@
     <value>Nuova richiesta di servizio</value>
   </data>
   <data name="Push_ServiceRequestCreated_Body" xml:space="preserve">
-    <value>{0} presso {1}: accetta o rifiuta la richiesta dalla tua area fornitore.</value>
+    <value>{0} a {1}: accetta o rifiuta la richiesta dalla tua area fornitore.</value>
   </data>
   <data name="Push_ServiceRequestTaken_Title" xml:space="preserve">
     <value>Richiesta presa in carico</value>
@@ -674,5 +671,173 @@
   </data>
   <data name="RentPaymentReceived_Cta" xml:space="preserve">
     <value>Apri il contratto</value>
+  </data>
+  <data name="ServiceRequestCreated_When" xml:space="preserve">
+    <value>Quando: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCreated_Price" xml:space="preserve">
+    <value>Importo: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCreated_Hint" xml:space="preserve">
+    <value>L'indirizzo, il nome dell'immobile e le note dell'host si vedono dopo che prendi in carico la richiesta.</value>
+  </data>
+  <data name="ServiceRequestTaken_When" xml:space="preserve">
+    <value>Quando: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestStarted_Subject" xml:space="preserve">
+    <value>Intervento avviato — {0}</value>
+  </data>
+  <data name="ServiceRequestStarted_Body" xml:space="preserve">
+    <value>Il fornitore ha &lt;strong&gt;avviato l'intervento&lt;/strong&gt; di &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCompleted_Amount" xml:space="preserve">
+    <value>Importo finale: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCompleted_OverQuote" xml:space="preserve">
+    <value>L'importo supera il preventivo di oltre il {0}%.</value>
+  </data>
+  <data name="ServiceRequestCompleted_NotesLabel" xml:space="preserve">
+    <value>Note del fornitore:</value>
+  </data>
+  <data name="ServiceRequestCancelled_ReasonLabel" xml:space="preserve">
+    <value>Motivo:</value>
+  </data>
+  <data name="ServiceRequestCancelledBySupplier_Subject" xml:space="preserve">
+    <value>Richiesta fornitore annullata dal fornitore — {0}</value>
+  </data>
+  <data name="ServiceRequestCancelledBySupplier_Body" xml:space="preserve">
+    <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;annullata&lt;/strong&gt; dal fornitore.</value>
+  </data>
+  <data name="ServiceRequestCancelledNoResponse_Subject" xml:space="preserve">
+    <value>Richiesta fornitore annullata: nessuna risposta — {0}</value>
+  </data>
+  <data name="ServiceRequestCancelledNoResponse_Body" xml:space="preserve">
+    <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;annullata automaticamente&lt;/strong&gt;: il fornitore non ha risposto entro il termine.</value>
+  </data>
+  <data name="ServiceRequestCancelledNoResponse_Hint" xml:space="preserve">
+    <value>Puoi inviare la richiesta a un altro fornitore.</value>
+  </data>
+  <data name="ServiceRequestCancelledByHost_Subject" xml:space="preserve">
+    <value>Richiesta annullata dall'host — {0}</value>
+  </data>
+  <data name="ServiceRequestCancelledByHost_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="ServiceRequestCancelledByHost_Body" xml:space="preserve">
+    <value>L'host ha &lt;strong&gt;annullato&lt;/strong&gt; la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestExpired_Subject" xml:space="preserve">
+    <value>Richiesta scaduta — {0}</value>
+  </data>
+  <data name="ServiceRequestExpired_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="ServiceRequestExpired_Body" xml:space="preserve">
+    <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;annullata&lt;/strong&gt;: non hai risposto entro il termine.</value>
+  </data>
+  <data name="ServiceRequestReminder_Subject" xml:space="preserve">
+    <value>Promemoria: richiesta in attesa di risposta — {0}</value>
+  </data>
+  <data name="ServiceRequestReminder_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="ServiceRequestReminder_Body" xml:space="preserve">
+    <value>L'host ti ricorda la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: aspetta ancora la tua risposta.</value>
+  </data>
+  <data name="ServiceRequestReminder_Cta" xml:space="preserve">
+    <value>Rispondi dalla console fornitore</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_Subject" xml:space="preserve">
+    <value>Il fornitore propone un altro orario — {0}</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_Body" xml:space="preserve">
+    <value>Per la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt; il fornitore propone &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_MessageLabel" xml:space="preserve">
+    <value>Messaggio del fornitore:</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_Hint" xml:space="preserve">
+    <value>Puoi accettare o rifiutare la proposta dalla richiesta. Finché non rispondi, la richiesta resta in attesa.</value>
+  </data>
+  <data name="ServiceRequestTimeProposed_Cta" xml:space="preserve">
+    <value>Apri la prenotazione</value>
+  </data>
+  <data name="ServiceRequestProposalAccepted_Subject" xml:space="preserve">
+    <value>Proposta accettata — {0}</value>
+  </data>
+  <data name="ServiceRequestProposalAccepted_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="ServiceRequestProposalAccepted_Body" xml:space="preserve">
+    <value>L'host ha &lt;strong&gt;accettato&lt;/strong&gt; il nuovo orario per la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: la richiesta è ora presa in carico.</value>
+  </data>
+  <data name="ServiceRequestProposalAccepted_Cta" xml:space="preserve">
+    <value>Apri la console fornitore</value>
+  </data>
+  <data name="ServiceRequestProposalRejected_Subject" xml:space="preserve">
+    <value>Proposta rifiutata — {0}</value>
+  </data>
+  <data name="ServiceRequestProposalRejected_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="ServiceRequestProposalRejected_Body" xml:space="preserve">
+    <value>L'host ha &lt;strong&gt;rifiutato&lt;/strong&gt; il nuovo orario per la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;. La richiesta resta in attesa: puoi prenderla in carico così com'è, proporre un altro orario o rifiutarla.</value>
+  </data>
+  <data name="ServiceRequestProposalRejected_Cta" xml:space="preserve">
+    <value>Apri la console fornitore</value>
+  </data>
+  <data name="Push_ServiceRequestStarted_Title" xml:space="preserve">
+    <value>Intervento avviato</value>
+  </data>
+  <data name="Push_ServiceRequestStarted_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha avviato l'intervento.</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledBySupplier_Title" xml:space="preserve">
+    <value>Richiesta annullata dal fornitore</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledBySupplier_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha annullato la richiesta. Scegli un altro fornitore.</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledNoResponse_Title" xml:space="preserve">
+    <value>Richiesta annullata: nessuna risposta</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledNoResponse_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore non ha risposto in tempo. Scegli un altro fornitore.</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledByHost_Title" xml:space="preserve">
+    <value>Richiesta annullata dall'host</value>
+  </data>
+  <data name="Push_ServiceRequestCancelledByHost_Body" xml:space="preserve">
+    <value>{0} a {1}: l'host ha annullato la richiesta.</value>
+  </data>
+  <data name="Push_ServiceRequestExpired_Title" xml:space="preserve">
+    <value>Richiesta scaduta</value>
+  </data>
+  <data name="Push_ServiceRequestExpired_Body" xml:space="preserve">
+    <value>{0} a {1}: non hai risposto in tempo e la richiesta è stata annullata.</value>
+  </data>
+  <data name="Push_ServiceRequestReminder_Title" xml:space="preserve">
+    <value>Richiesta in attesa di risposta</value>
+  </data>
+  <data name="Push_ServiceRequestReminder_Body" xml:space="preserve">
+    <value>{0} a {1}: l'host ti ricorda di rispondere.</value>
+  </data>
+  <data name="Push_ServiceRequestTimeProposed_Title" xml:space="preserve">
+    <value>Nuovo orario proposto</value>
+  </data>
+  <data name="Push_ServiceRequestTimeProposed_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore propone un altro orario. Accettalo o rifiutalo.</value>
+  </data>
+  <data name="Push_ServiceRequestProposalAccepted_Title" xml:space="preserve">
+    <value>Proposta accettata</value>
+  </data>
+  <data name="Push_ServiceRequestProposalAccepted_Body" xml:space="preserve">
+    <value>{0} a {1}: l'host ha accettato il tuo orario.</value>
+  </data>
+  <data name="Push_ServiceRequestProposalRejected_Title" xml:space="preserve">
+    <value>Proposta rifiutata</value>
+  </data>
+  <data name="Push_ServiceRequestProposalRejected_Body" xml:space="preserve">
+    <value>{0} a {1}: l'host ha rifiutato il tuo orario, la richiesta resta in attesa.</value>
   </data>
 </root>

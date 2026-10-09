@@ -57,6 +57,29 @@ public class SupplierServiceCatalogService(
         await Listings(supplierOrgId).AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, cancellationToken)
         ?? throw SupplierServiceCatalogErrors.ServiceNotFound(id);
 
+    public async Task<SupplierServiceForRequest?> FindForRequestAsync(
+        Guid supplierOrgId,
+        Guid id,
+        CancellationToken cancellationToken = default) =>
+        await Listings(supplierOrgId)
+            .AsNoTracking()
+            .Where(l => l.Id == id)
+            .Select(l => new SupplierServiceForRequest(
+                l.Id,
+                l.Name,
+                l.Category,
+                l.Status,
+                l.DurationMinutes,
+                l.MinNoticeHours,
+                l.WeekdaysMask,
+                l.PriceFromCents,
+                l.PriceUnit,
+                l.RequiresQuote))
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<int> CountActiveAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
+        await Listings(supplierOrgId).CountAsync(l => l.Status == SupplierServiceListingStatus.Active, cancellationToken);
+
     public async Task<SupplierServiceListing> CreateAsync(
         Guid supplierOrgId,
         SupplierServiceListingInput input,
