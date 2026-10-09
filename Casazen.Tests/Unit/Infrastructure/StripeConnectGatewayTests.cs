@@ -189,6 +189,74 @@ public class StripeConnectGatewayTests
         Assert.Equal("https://app.example.org/app/short-rent/settings/payments?stripe_refresh=1", options.RefreshUrl);
     }
 
+    [Fact]
+    public async Task CreateDashboardLoginLinkAsync_PostsToTheLoginLinksOfTheAccount_ReturnsTheUrl()
+    {
+        // SP-14: POST /v1/accounts/{id}/login_links, the single-use link to the Express Dashboard of the supplier.
+        SetupLoginLink().ReturnsAsync(new LoginLink { Url = "https://connect.stripe.com/express/abc" });
+
+        var url = await Gateway().CreateDashboardLoginLinkAsync(AccountId);
+
+        Assert.Equal("https://connect.stripe.com/express/abc", url);
+        _client.Verify(
+            c => c.RequestAsync<LoginLink>(
+                HttpMethod.Post, $"/v1/accounts/{AccountId}/login_links", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Theory]
+    [MemberData(nameof(StripeErrors))]
+    public async Task CreateDashboardLoginLinkAsync_StripeError_ThrowsClassifiedConnectException(
+        HttpStatusCode status,
+        string? code,
+        StripeConnectFailure expected)
+    {
+        SetupLoginLink().ThrowsAsync(StripeError(status, code));
+
+        var ex = await Assert.ThrowsAsync<StripeConnectException>(() => Gateway().CreateDashboardLoginLinkAsync(AccountId));
+
+        Assert.Equal(expected, ex.Failure);
+        Assert.Equal(code, ex.StripeErrorCode);
+    }
+
+    [Fact]
+    public async Task CreateDashboardLoginLinkAsync_NetworkError_IsTransient()
+    {
+        SetupLoginLink().ThrowsAsync(new HttpRequestException("Connection refused"));
+
+        var ex = await Assert.ThrowsAsync<StripeConnectException>(() => Gateway().CreateDashboardLoginLinkAsync(AccountId));
+
+        Assert.Equal(StripeConnectFailure.Transient, ex.Failure);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("sk_test_...")]
+    public async Task CreateDashboardLoginLinkAsync_MissingOrPlaceholderKey_ThrowsConfigurationWithoutCallingStripe(string? secretKey)
+    {
+        var ex = await Assert.ThrowsAsync<StripeConnectException>(() => Gateway(secretKey).CreateDashboardLoginLinkAsync(AccountId));
+
+        Assert.Equal(StripeConnectFailure.Configuration, ex.Failure);
+        _client.Verify(
+            c => c.RequestAsync<LoginLink>(
+                It.IsAny<HttpMethod>(), It.IsAny<string>(), It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task CreateDashboardLoginLinkAsync_BlankAccount_ThrowsBeforeCallingStripe(string accountId)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => Gateway().CreateDashboardLoginLinkAsync(accountId));
+
+        _client.Verify(
+            c => c.RequestAsync<LoginLink>(
+                It.IsAny<HttpMethod>(), It.IsAny<string>(), It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     /// <summary>A Stripe error as Stripe.net 50.1 builds it from the JSON body (<c>LiveApiRequestor.BuildStripeException</c>).</summary>
     internal static StripeException StripeError(HttpStatusCode status, string? code) =>
         new(status, new StripeError { Type = "invalid_request_error", Code = code, Message = $"Stripe error {code}" }, $"Stripe error {code}");
@@ -196,6 +264,10 @@ public class StripeConnectGatewayTests
     private Moq.Language.Flow.ISetup<IStripeClient, Task<Account>> SetupGetAccount() =>
         _client.Setup(c => c.RequestAsync<Account>(
             HttpMethod.Get, $"/v1/accounts/{AccountId}", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()));
+
+    private Moq.Language.Flow.ISetup<IStripeClient, Task<LoginLink>> SetupLoginLink() =>
+        _client.Setup(c => c.RequestAsync<LoginLink>(
+            HttpMethod.Post, $"/v1/accounts/{AccountId}/login_links", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()));
 
     private StripeConnectGateway Gateway(string? secretKey = "sk_test_unit_connect") =>
         new(
