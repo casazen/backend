@@ -482,10 +482,11 @@ never a link to the dashboard.
 | `POST` | `/api/public/supplier-bookings/reschedule` | Anonymous | The customer moves a new request to another free slot (`startUtc`); 409 `supplier_slot_unavailable` if it is not free (SP-11) |
 | `POST` | `/api/public/supplier-bookings/proposal/accept` | Anonymous | The customer accepts the time the supplier proposed: the request is taken on the supplier's behalf, the slot checked again (SP-11) |
 | `POST` | `/api/public/supplier-bookings/proposal/reject` | Anonymous | The customer turns the proposed time down: the request stays new at its time (SP-11) |
-| `GET` | `/api/public/bookings/property/{propertyId}/availability` | Anonymous | Booked dates for public calendar |
+| `GET` | `/api/public/bookings/property/{propertyId}/availability` | Anonymous | Booked dates for public calendar, and the `minNights` of the property (DB-03) |
 | `GET` | `/api/public/bookings/{bookingId}/status` | Anonymous | Booking status (payment option) |
+| `POST` | `/api/public/bookings/quote` | Anonymous | Price of a stay with its breakdown in cents (`lines`: nights, weekend nights, cleaning, tourist tax, total); 422 `direct_booking_min_nights_not_met` below the minimum stay (DB-03, [direct-booking.md](runbooks/direct-booking.md) § 11) |
 | `POST` | `/api/public/bookings/lookup` | Anonymous | Guest booking lookup by id + email (rate-limited) |
-| `POST` | `/api/public/bookings` | Anonymous | Create direct booking (rate-limited) |
+| `POST` | `/api/public/bookings` | Anonymous | Create direct booking (rate-limited); optional `marketingConsent` (DB-03) |
 | `GET` | `/api/public/ical/{exportToken}` | Anonymous | Property iCal export feed |
 | `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session |
 | `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in |

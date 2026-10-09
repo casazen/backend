@@ -200,6 +200,8 @@ its own translation of the code (`apiErrors.codes.*`, `getProblemMessage`). `Boo
 | 422 | `direct_booking_invalid_payment_option` | unknown option |
 | 422 | **`direct_booking_deferred_payment_unavailable`** | "Paga alla scadenza" for a stay whose charge day is not after today (§ 7.5) |
 | 422 | `tourist_tax_child_ages_required` | ages of the minors missing (BK-03) |
+| 422 | `direct_booking_min_nights_not_met` | the stay is shorter than the minimum stay of the property (quote too, DB-03, § 11.2) |
+| 422 | `direct_booking_marketing_consent_unavailable` | `marketingConsent: true` while the marketing consent text has no version (DB-03, § 11.6) |
 | 422 | `onsite_request_too_many_nights` | § 2 |
 | 429 | `rate_limited` | FD-10 |
 | 503 | `payment_provider_error` | Stripe could not create the intent (the hold is cancelled) |
@@ -499,3 +501,157 @@ ORDER BY g."CreatedAt";
 
 After the deploy both lists must stop growing (compare `max("CreatedAt")` with the deploy date). Whether the rows found
 are deleted is a decision of the product owner (open question BK-18); until then they follow the GDPR retention.
+
+## 11. Public quote, minimum stay, weekend surcharge and public host data (DB-03)
+
+Task DB-03 of the redesign wave (`gap/03` step P3; wave spec decision D20: the surcharge is a percentage per property,
+**off by default, never imposed**). Backend only: the screens that use it are the tasks DB-04 (property page), DB-05
+(checkout), DB-07 (home and results) and DB-09 (editor). **Nothing changes until the host sets a field**: every default is
+what the code did before, and the migration rewrites no data.
+
+### 11.1 The fields and their defaults
+
+| Where | Field (JSON) | Default | Meaning | Edited with |
+|---|---|---|---|---|
+| `Properties.MinNights` | `minNights` | `null` | fewest nights a guest can book, 1 to 30; `null` = no minimum | `POST /api/properties`, `PUT /api/properties/{id}` (`null` removes it, leaving it out keeps it) |
+| `Properties.WeekendSurchargePercent` | `weekendSurchargePercent` | `0` | percent added to the nightly rate on the weekend nights; 0 to 100, two decimals; `0` = none | same (`0` turns it off, `null` or left out keeps it) |
+| `Orgs.Subtitle` | `subtitle` | `null` | the sentence under the slogan in the cover, up to 300 characters | `PUT /api/orgs/me/branding` |
+| `Orgs.HostName` | `hostName` | `null` | how the host is named on the site ("Scrivi a Giulia"), up to 100 characters | same |
+| `Orgs.PublicPhone` | `publicPhone` | `null` | the phone number the host chose to publish (`+` or digits only, 6 to 15 digits) | same |
+
+- **Where they are read.** The host sees all five in `GET /api/properties/{id}` and `GET /api/orgs/me/branding`. The public
+  sees `minNights`, `weekendSurchargePercent`, `acceptsBookings`, `hostName` and `publicPhone` in the property detail
+  (`GET /api/public/orgs/{slug}/properties/{slugOrId}` and `GET /api/properties/{id}/public`), and `subtitle`, `hostName`,
+  `publicPhone`, `acceptsBookings` and `marketingConsentVersion` in `GET /api/public/orgs/{slug}`. `minNights` is also in
+  `GET /api/public/bookings/property/{id}/availability`, so a calendar can grey out a selection that is too short.
+- **PATCH semantics.** `PUT /api/orgs/me/branding` replaces the colour, the theme and the tagline as a whole, as it always
+  did; `subtitle`, `hostName` and `publicPhone` change only when the body carries them (`null` or blank clears them), so
+  the appearance form of today, which does not know them, never erases them.
+- **Validation.** 400 `validation_error` for an input far beyond the limits (annotations of the DTOs), 422 with a stable code
+  for a value that breaks the rule (the same message in IT and EN): `org_branding_subtitle_too_long`,
+  `org_branding_host_name_too_long`, `org_branding_phone_invalid` (branding) and, behind the 400 of the forms,
+  `property_min_nights_invalid`, `property_weekend_surcharge_invalid` (service level). The database has a CHECK for each
+  stay rule (`CK_Properties_MinNights`, `CK_Properties_WeekendSurchargePercent`).
+- **Why 30 nights at most.** It is the longest short-term let; a longer minimum would make the property unbookable, and the
+  "locazione breve" contract ends there. One night is the same as no minimum, which is `null`.
+
+### 11.2 The minimum stay
+
+- A stay shorter than `MinNights` is refused by the **quote** (`POST /api/public/bookings/quote`) and by the **checkout**
+  (`POST /api/public/bookings`) with 422 `direct_booking_min_nights_not_met`; the message says the minimum ("Il soggiorno
+  minimo per questa casa è di 3 notti." / "The minimum stay for this property is 3 nights."). Nothing is written.
+- It is a rule of the **guests**, not of the host: the host's own quote (`POST /api/bookings/quote`), a manual booking, a
+  change of a manual booking and the iCal blocks are not refused by it (a friend for a night, a stay that comes from an OTA
+  with another minimum). The availability endpoint only publishes it.
+- A "pay at the property" request has its own cap (`onsite_request_too_many_nights`, § 2): a minimum above that cap leaves
+  the card as the only way to book.
+
+### 11.3 The weekend surcharge
+
+- **A weekend night** is a night that starts on a Friday or on a Saturday, by its Europe/Rome calendar date
+  (`PropertyStayRules.IsWeekendNight`). Stays are dates stored as midnight UTC of the Rome date, so the first night of a stay
+  is its check-in date and the clock changes of March and October move no night. A stay Friday to Monday has two weekend
+  nights (Friday, Saturday) and one ordinary night (Sunday); a full week has exactly two.
+- **The price.** A weekend night costs `round(rate x (100 + percent) / 100, 2)`, half away from zero; the lodging is the
+  exact sum of the nights, so every number of the quote is a whole number of cents. With `0` (the default) every night,
+  Friday and Saturday included, costs the rate and the price of a stay is `rate x nights` as it always was
+  (`StayPricing.Lodging`; test `StayPricingTests` over 14 start days x 15 lengths, `BookingServiceTests`
+  `QuoteDirectBookingAsync_DefaultRules_*`).
+- **Where it applies.** The guests' quote and booking, and the host's quote and manual booking, because they share one
+  calculation (`BookingService.PriceStayAsync`). The booking records the price of the quote; the payment is for it.
+- **Tourist tax.** A percentage rate (some comuni tax a share of the price of the night) reads the price of each night
+  (`TouristTaxStay.NightlyPrices`), the surcharge included; fixed rates and a property without weekend nights are
+  calculated as before (the single `NightlyPrice` is passed alone).
+
+Example, 3 nights from Friday at 150 EUR with a cleaning fee of 50 EUR, surcharge 15 %: Friday and Saturday 172.50 each,
+Sunday 150, total 545.00.
+
+### 11.4 The quote with its breakdown
+
+`POST /api/public/bookings/quote` (and the host's quote) keeps every field it had (`nights`, `nightlyRate`, `lodgingTotal`,
+`cleaningFee`, `basePrice`, `touristTax`, `totalPrice`, `currency`, `paymentOptions`; `lodgingTotal` is now the sum of the
+nights, which is `nightlyRate x nights` without a surcharge) and adds `lines`, the breakdown **in cents**:
+
+```json
+"lines": [
+  { "kind": "Nights",        "quantity": 1, "unitAmountCents": 15000, "amountCents": 15000 },
+  { "kind": "WeekendNights", "quantity": 2, "unitAmountCents": 17250, "amountCents": 34500 },
+  { "kind": "CleaningFee",   "quantity": 1, "unitAmountCents": 5000,  "amountCents": 5000 },
+  { "kind": "TouristTax",    "quantity": null, "unitAmountCents": null, "amountCents": 3600 },
+  { "kind": "Total",         "quantity": null, "unitAmountCents": null, "amountCents": 58100 }
+]
+```
+
+- Order: ordinary nights, weekend nights, cleaning, tourist tax, total. A line that does not apply is **left out**: no zero
+  nights, no cleaning fee of 0, no tax that could not be calculated (`touristTax.status` says why; a tax calculated at 0
+  because everyone is exempt is kept). Without a surcharge there is a single `Nights` line with every night.
+- The lines before `Total` add up to it, to the cent (`StayPricingTests`, `DirectBookingPublicDataIntegrationTests`). The
+  frontend shows them and never adds euros itself.
+
+### 11.5 Public host data and `acceptsBookings`
+
+- `acceptsBookings` is **the rule of the checkout**: the org has a Stripe connected account that is allowed to charge
+  (`Org.CanTakeDirectPayments`). Without it every booking, "pay at the property" requests included, is refused with 409
+  `direct_booking_payments_not_ready` (§ 2), so a site that says `false` shows the gentle "not bookable online yet" page
+  instead of a form that cannot succeed. If requests ever become possible without Connect, change
+  `Org.AcceptsDirectPayments` in that one place.
+- **The phone is public because the host entered it.** It is a new datum entered on purpose for the public site (the org had
+  no phone), so there is no opt-in flag like `ContactEmailPublic`: an org that never entered one publishes nothing, and
+  clearing the field unpublishes it. The stored value is `+` or digits only (separators are dropped); it proves nothing
+  about the number being reachable.
+- The host name, the subtitle and the phone are plain text rendered as text by the site, never as HTML.
+
+### 11.6 The optional "send me offers" box (`marketingConsent`)
+
+- `POST /api/public/bookings` accepts `marketingConsent` (boolean, optional, **default `false`**, never required, never a
+  condition of the booking). Offered only when the text has a version, like the check-in portal (CO-15): the public org
+  carries `marketingConsentVersion` (`Gdpr__MarketingConsentVersion`, empty in every environment today = no box). `true` with
+  no version is 422 `direct_booking_marketing_consent_unavailable` and nothing is stored.
+- Recorded on the guest of the booking (`Guest.MarketingConsent`, `MarketingConsentDate`) and in the append-only register of
+  the privacy history (`GuestConsentRecord`: purpose `Marketing`, action `Granted`, **the version of the text**, source
+  `BookingCheckout`, IP, time), **in the same insert as the booking and the guest snapshot** (`IBookingRepository.AddWithGuestConsentAsync`,
+  under the property lock). A checkout that loses the dates to a concurrent one leaves no consent; one whose payment cannot be
+  started is removed with its guest and the register rows (foreign key with cascade, BK-18 § 10).
+- The host reads it in the GDPR tab and can only **withdraw** it on the guest's documented request ([gdpr.md](gdpr.md)); the
+  withdrawal keeps the version of the text the guest agreed to. The tab labels the source (`GuestConsentSource`): the
+  frontend needs the label for `BookingCheckout` (follow-up FE).
+
+### 11.7 Public coordinates (privacy)
+
+- The exact position of a house (6 decimals, about 10 cm, what the host types) **never leaves CasaZen**. Every public
+  projection rounds latitude and longitude to **2 decimals** (about 1 km: a cell of 1.1 km by 0.8 km in Italy), half away from
+  zero: the property DTOs of the search, the org list and the two detail routes, and the JSON-LD of the crawler pages
+  (`PropertyAddress.ToPublicCoordinate`; the JSON-LD builder rounds whatever it is given). `0` stays `0` ("not set").
+- The street address, the unit (interno/scala) and the exact coordinates appear in no anonymous endpoint, and the pages of
+  the site must not show them before the booking is confirmed ("l'indirizzo esatto arriva con la conferma"). The host's own
+  endpoints (`GET /api/properties/{id}`) keep the exact values.
+- Test `AnonymousEndpoints_NeverReturnTheExactAddressTheUnitOrTheExactCoordinates` calls every anonymous endpoint that
+  gives a property or an org out (org, lists, both detail routes, search, crawler pages, sitemaps, availability, quote) and
+  fails naming the endpoint and the leaked value.
+
+### 11.8 Deploy, checks and rollback
+
+- **Migration `AddDirectBookingPublicData`** (EF, no data): `Properties.MinNights integer NULL`,
+  `Properties.WeekendSurchargePercent numeric(5,2) NOT NULL DEFAULT 0` with the two CHECKs, `Orgs.Subtitle varchar(500)`,
+  `Orgs.HostName varchar(100)`, `Orgs.PublicPhone varchar(20)`, all `NULL`. The old release (during the deploy) writes
+  rows without the new columns and the defaults satisfy the CHECKs. No flag: the fields are inert until a host sets them.
+- **After the deploy** (read only; replace the schema):
+
+```sql
+-- expected 0 / 0 / 0 right after the deploy: nobody has set the new fields yet
+SELECT count(*) FILTER (WHERE "MinNights" IS NOT NULL) AS with_minimum,
+       count(*) FILTER (WHERE "WeekendSurchargePercent" <> 0) AS with_surcharge
+FROM casazen_prod."Properties";
+SELECT count(*) FILTER (WHERE "PublicPhone" IS NOT NULL OR "HostName" IS NOT NULL OR "Subtitle" IS NOT NULL) AS with_profile
+FROM casazen_prod."Orgs";
+```
+
+- **Rollback.** Deploy the previous release: it ignores the columns. `Down` drops them (the values set in the meantime
+  are lost, the prices already booked are not: a booking stores its own amounts).
+- **Tests.** Unit: `StayPricingTests`, `PropertyStayRulesTests`, `TouristTaxCalculatorTests` (price per night),
+  `BookingServiceTests` (`*Minimum*`, `*Surcharge*`, `*MarketingConsent*`), `OrgBrandingRulesTests`, `OrgBrandingServiceTests`,
+  `UpdatePropertyRequestTests`, `PropertyServicePublicReadModelTests`, `PublicOrgControllerTests`, `SeoJsonLdTests`,
+  `LegacyRowsSchemaTests`. HTTP: `DirectBookingPublicDataIntegrationTests`, `DirectCheckoutMarketingConsentIntegrationTests`,
+  `OrgBrandingIntegrationTests`. PostgreSQL (CI): `AddDirectBookingPublicDataMigrationPostgresTests` (rows written by SQL at
+  the schema before the migration, defaults, CHECKs, old writer, Down/Up) and `DirectCheckoutMarketingConsentPostgresTests`
+  (two checkouts at once, payment not started, cascade, GDPR tab).
