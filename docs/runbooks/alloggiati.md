@@ -130,9 +130,13 @@ SELECT count(*) FROM "StayGuests" s JOIN "Bookings" b ON b."Id" = s."BookingId" 
 
 ## Tabelle codici Alloggiati (CO-12)
 
-Comuni, stati, tipi documento and tipi alloggiato are **official data of the Alloggiati portal**: CasaZen ships no
-code (RS-1: never invented, never committed). Until an admin imports them the forms ask for names only and every code
-shows "codice da completare". After an import:
+Comuni, stati, tipi documento and tipi alloggiato are **official data of the Alloggiati portal** (RS-1: never invented).
+The public files of https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Tabelle.aspx are downloaded without login
+(`ashx/Download.ashx?ID=0..3`). They are shipped as the seed of the deploy (`Data/Seeds/alloggiati/`, retrieved 2026-10-09)
+and loaded at startup when a table is empty. The Hangfire job `official-reference-data-refresh` re-downloads them every
+day at 04:30 UTC and replaces a table only when the SHA-256 changed. The SOAP method `Tabella` is unused (it needs host
+credentials). An admin can still upload a newer official file. Until a table is present the forms ask for names only and
+every code shows "codice da completare". After an import:
 
 - the forms suggest the official entries (guest portal `GET /api/public/checkin/{token}/codes`, host
   `GET /api/alloggiati/codes?list=comuni|stati|documenti|luoghi&q=`) and store the chosen code;
@@ -144,10 +148,9 @@ shows "codice da completare". After an import:
   Membro gruppo) and the state of birth of those born in Italy by the description "Italia" of the stati table. If the
   official descriptions differ, those codes stay to complete: report it (DUBBI of CO-12).
 
-### Download (admin, from a network that reaches the portal)
+### Download (public, no login)
 
-Area Download Tabelle: https://alloggiatiweb.poliziadistato.it/portalealloggiati/tabelle.aspx (RS-1; the links were
-blocked by the proxy of the development environment, so the file format is not verified):
+Area Download Tabelle: https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Tabelle.aspx (verified 2026-10-09, no credentials):
 
 | Table | Link | Import name |
 |---|---|---|

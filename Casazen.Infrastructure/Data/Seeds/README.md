@@ -8,17 +8,15 @@ edited row by row. To update it, replace the whole file with a newer official on
 
 | What | Value |
 |---|---|
-| Source | ISTAT, *Elenco dei comuni italiani* (ISTAT website, "Classificazioni e strumenti", *Codici dei comuni, delle province e delle regioni*) |
-| Reference date | **2026-02-21** (the sheet is named `CODICI al 21_02_2026`) |
-| Original file | `Elenco-comuni-italiani.xlsx`, delivered by the product owner on 2026-10-01 (RS-6) |
-| SHA-256 of the original file | `83842076860450f7e482daecea6b7a769f5f93d0bf5b0d48802b44896d7a26d5` |
-| SHA-256 of this CSV | `b90e79d45c2a81be38657ff37b76b013b23521b14aadb8382efd56273ac1a93b` |
-| Rows | 7,894 comuni (the header and 7,894 lines), 20 regions |
+| Source | ISTAT, *Elenco dei comuni italiani* (permalink CSV) |
+| Catalog | https://www.istat.it/classificazione/codici-dei-comuni-delle-province-e-delle-regioni/ |
+| File | https://www.istat.it/storage/codici-unita-amministrative/Elenco-comuni-italiani.csv |
+| Reference date | **2026-02-21** ("aggiornato al 21 febbraio 2026") |
+| Retrieved | **2026-10-09** |
+| SHA-256 of this CSV | `57eaf945182fc64fa05f80f1a5fb2a84cff55ebde2af6e3947a731776e7809e0` |
+| Rows | 7,894 comuni, 20 regions |
 
-The CSV is the first sheet of the workbook converted as it is: UTF-8, separator `;`, no quotes, the header cells with their
-line breaks turned into spaces. No value was changed (checked cell by cell against the workbook). The other sheets of the workbook
-(`NOTE`, `Legenda`) are the footnotes and the legend of the columns: the cadastral code comes from the Agenzia delle Entrate
-(`N.d.` = not available), the ISTAT code of a comune is the (historical) province code and the progressive number of the comune.
+The CSV is the official permalink file as downloaded (UTF-8, separator `;`, quoted header cells that contain line breaks). No value was changed. The cadastral code comes from the Agenzia delle Entrate (`N.d.` = not available). The Hangfire job `official-reference-data-refresh` re-downloads this URL every day.
 
 ### Columns (headers are the ISTAT ones, in this order)
 
@@ -63,4 +61,8 @@ document the origin. Do not write a date the official file does not state.
 
 ## `tourist-tax/rates.csv`
 
-Tourist tax rates researched by task RS-7 (see `TouristTaxRateSeed`).
+Tourist tax rates researched by task RS-7 (see `TouristTaxRateSeed`). There is **no national open dataset**. The daily job re-reads only the institutional URLs already stored for the pilot comuni; it never invents amounts. HTML/PDF extraction is not deterministic, so a fetch is logged in `OfficialSourceFetches` (`extract_failed`) and existing amounts stay as they are.
+
+## `alloggiati/`
+
+Official Alloggiati Web code tables (CO-12), public download 2026-10-09, no login. See `alloggiati/source.json` for URLs and SHA-256. Loaded at startup when a table is empty; the same daily job refreshes them when the portal file changed.

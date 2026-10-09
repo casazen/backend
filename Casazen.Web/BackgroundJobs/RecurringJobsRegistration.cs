@@ -172,6 +172,13 @@ public static class RecurringJobsRegistration
             job => job.ExecuteAsync(),
             "0 5 * * 1",  // every Monday at 05:00 UTC
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // RS-6, RS-7, CO-12: daily check of the official ISTAT comuni file, the Alloggiati tables and the tourist-tax pages.
+        recurringJobManager.AddOrUpdate<OfficialReferenceDataRefreshJob>(
+            OfficialReferenceDataRefreshJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            OfficialReferenceDataRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
     /// <summary>

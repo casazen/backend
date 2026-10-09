@@ -94,6 +94,11 @@ Values are frozen in `TouristTaxRateSeed`; `TouristTaxRateSeedTests` checks them
 The seeded rows have fixed ids (MD5 of ISTAT code + start date) and are inserted once, by the migration. An admin
 change or delete is never overwritten.
 
+There is no national open dataset of tourist-tax rates. The Hangfire job `official-reference-data-refresh` (04:30 UTC)
+re-reads only the institutional URLs already configured for the pilot comuni (`OfficialReferenceData:TouristTaxSources`).
+It never invents amounts: if the page is not a deterministic structured tariff, the attempt is stored in
+`OfficialSourceFetches` (`extract_failed`) and the stored rates stay unchanged.
+
 ## Seed `UnifyTouristTaxOnTouristTaxRates` (BK-03)
 
 Sets `IstatCode` on the 4 rows above and loads the official (U) rows the extended model represents

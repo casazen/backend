@@ -53,6 +53,10 @@
   <ItemGroup>
     <EmbeddedResource Include="Data\Seeds\comuni-istat.csv" LogicalName="Casazen.Infrastructure.Data.Seeds.comuni-istat.csv" Condition="Exists('Data\Seeds\comuni-istat.csv')" />
     <EmbeddedResource Include="Data\Seeds\comuni-istat.source.json" LogicalName="Casazen.Infrastructure.Data.Seeds.comuni-istat.source.json" Condition="Exists('Data\Seeds\comuni-istat.source.json')" />
+    <EmbeddedResource Include="Data\Seeds\alloggiati\comuni.csv" LogicalName="Casazen.Infrastructure.Data.Seeds.alloggiati.comuni.csv" Condition="Exists('Data\Seeds\alloggiati\comuni.csv')" />
+    <EmbeddedResource Include="Data\Seeds\alloggiati\stati.csv" LogicalName="Casazen.Infrastructure.Data.Seeds.alloggiati.stati.csv" Condition="Exists('Data\Seeds\alloggiati\stati.csv')" />
+    <EmbeddedResource Include="Data\Seeds\alloggiati\documenti.csv" LogicalName="Casazen.Infrastructure.Data.Seeds.alloggiati.documenti.csv" Condition="Exists('Data\Seeds\alloggiati\documenti.csv')" />
+    <EmbeddedResource Include="Data\Seeds\alloggiati\tipo_alloggiato.csv" LogicalName="Casazen.Infrastructure.Data.Seeds.alloggiati.tipo_alloggiato.csv" Condition="Exists('Data\Seeds\alloggiati\tipo_alloggiato.csv')" />
   </ItemGroup>
 
 </Project>

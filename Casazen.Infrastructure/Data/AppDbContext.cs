@@ -78,6 +78,7 @@ public class AppDbContext(
     // Official ISTAT list of the comuni and the log of its imports (SU-04)
     public DbSet<Comune> Comuni { get; set; } = null!;
     public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
+    public DbSet<OfficialSourceFetch> OfficialSourceFetches { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
@@ -361,6 +362,11 @@ public class AppDbContext(
         {
             entity.HasIndex(i => i.ImportedAt);
             entity.HasIndex(i => i.ReferenceDate);
+        });
+        modelBuilder.Entity<OfficialSourceFetch>(entity =>
+        {
+            entity.HasIndex(f => new { f.Dataset, f.RetrievedAt });
+            entity.HasIndex(f => f.IstatCode);
         });
 
         // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
