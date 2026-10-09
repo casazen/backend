@@ -1,6 +1,6 @@
 # Indice dei runbook
 
-Un runbook per tema (45 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02) e `org-team.md` (task AM-01, AM-02 e AM-03 della wave di redesign, 2026-10-08/09), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
+Un runbook per tema (47 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02), `org-team.md` (task AM-01, AM-02 e AM-03 della wave di redesign, 2026-10-08/09), `property-rental-mode.md` (task PM-01 della wave di redesign, 2026-10-08) e `open-access.md` (task BL-01 della wave di redesign, 2026-10-09), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
 
 > **Hosting in revisione (2026-10-02):** il PO ha cancellato Railway. Nei runbook "Railway" indica l'host del backend così com'era configurato: va riletto alla luce dell'analisi del task HOSTING ([`free-hosting-analysis.md`](free-hosting-analysis.md); raccomandazione: VM Oracle Cloud Always Free, decisione del PO ancora da prendere). Il database resta su Supabase. Le variabili e le procedure non legate all'host restano valide.
 
@@ -18,7 +18,8 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | [`billing-tax.md`](billing-tax.md) | VAT on the CasaZen subscriptions (Stripe Tax) and Italian e-invoices (SDI) | PL-10, PL-11, PL-13, RS-5 |
 | [`legal-documents.md`](legal-documents.md) | legal documents and subprocessors | BK-14, CO-13, CO-16, PL-02, PL-13, PL-14 |
 | [`demo-mode.md`](demo-mode.md) | web demo mode (no login) | PL-01 |
-| [`feature-flags.md`](feature-flags.md) | feature flags | FD-20, FD-21, LT-01, LT-02 |
+| [`feature-flags.md`](feature-flags.md) | feature flags (including `UiRedesign`, the rollout of the new interface) | BL-01, FD-20, FD-21, LT-01, LT-02 |
+| [`open-access.md`](open-access.md) | "accesso aperto": every org served as a chosen plan at least, from configuration (`Entitlement__OpenAccess__*`), what changes and how to go back to the paid plans | BL-01 |
 
 ## Fondamenta tecniche e CI
 
@@ -49,6 +50,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | Runbook | Argomento | Task |
 |---|---|---|
 | [`property-address.md`](property-address.md) | property address uniqueness, unit and coordinates | PC-03, PC-05, PC-06 |
+| [`property-rental-mode.md`](property-rental-mode.md) | rental mode of a property (short or long): rules, backfill with its dry run, predicates that ignore long-term properties, rollback | PM-01 |
 | [`ical.md`](ical.md) | iCal import and export (property OTA calendars, supplier calendars) | BK-02, BK-04, BK-05, BK-06, BK-21, CO-04, CO-08, CO-09 |
 | [`seasonal-suggestions.md`](seasonal-suggestions.md) | Suggerimenti stagionali (seasonal price suggestions) | BK-03, BK-07, FD-20, PC-15 |
 | [`direct-booking.md`](direct-booking.md) | direct booking — "Paga in struttura" requests, checkout outcome page, payment options | BK-02, BK-03, BK-04, BK-06, BK-07, BK-08, BK-10, BK-11 |
@@ -79,7 +81,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | Runbook | Argomento | Task |
 |---|---|---|
 | [`rli.md`](rli.md) | RLI registration of lease contracts | FD-06, FD-07, LT-01, LT-02, LT-03, LT-04, LT-07, LT-08 |
-| [`lease-contract-templates.md`](lease-contract-templates.md) | lease contract templates (approval gate, clause texts from the product owner) | FD-02, LT-02, LT-03, LT-09, LT-10 |
+| [`lease-contract-templates.md`](lease-contract-templates.md) | lease contract templates (approval gate, clause texts from the product owner, draft templates 2026-11 not approved) | FD-02, LG-02, LT-02, LT-03, LT-09, LT-10 |
 | [`canone-concordato.md`](canone-concordato.md) | Canone concordato: range, dati dell'accordo, tipo di contratto (LT-10, LT-13) | LT-08, LT-10, LT-13 |
 
 ## SEO e siti pubblici

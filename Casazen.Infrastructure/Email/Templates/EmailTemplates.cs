@@ -19,6 +19,10 @@ public static partial class EmailTemplates
         public const string ServiceRequestCreated = "service-request-created";
         public const string ServiceRequestStatusChanged = "service-request-status-changed";
         public const string ServiceRequestPaid = "service-request-paid";
+        public const string ServiceRequestCancelledToSupplier = "service-request-cancelled-to-supplier";
+        public const string ServiceRequestReminder = "service-request-reminder";
+        public const string ServiceRequestTimeProposed = "service-request-time-proposed";
+        public const string ServiceRequestProposalAnswered = "service-request-proposal-answered";
         public const string SupplierInvite = "supplier-invite";
         public const string GuestCheckInLink = "guest-checkin-link";
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
@@ -53,42 +57,192 @@ public static partial class EmailTemplates
             ? EmailTexts.Get(ServiceCategoryKey(category), culture)
             : category;
 
-    /// <summary>New service request, to the supplier.</summary>
+    /// <summary>
+    /// New service request, to the supplier. Before the take (decision D9, SP-04) it names only the comune of the property
+    /// and, when the request has them, the time and the amount: never the name of the property nor the host's notes, which
+    /// the supplier sees once it took the request.
+    /// </summary>
     public static EmailContent ServiceRequestCreated(
         CultureInfo culture,
         string supplierName,
         string category,
-        string propertyName,
-        string? notes,
-        string inboxUrl) =>
-        new EmailHtmlBuilder(culture)
+        string comune,
+        string inboxUrl,
+        DateTime? scheduledStartUtc = null,
+        int? amountCents = null)
+    {
+        var builder = new EmailHtmlBuilder(culture)
             .Paragraph("ServiceRequestCreated_Greeting", supplierName)
-            .Paragraph("ServiceRequestCreated_Body", ServiceCategoryLabel(culture, category), propertyName)
-            .Quote("ServiceRequestCreated_NotesLabel", notes)
-            .Button("ServiceRequestCreated_Cta", inboxUrl)
-            .Build("ServiceRequestCreated_Subject", propertyName);
+            .Paragraph("ServiceRequestCreated_Body", ServiceCategoryLabel(culture, category), comune);
+        if (scheduledStartUtc is { } scheduledStart)
+            builder.Paragraph("ServiceRequestCreated_When", builder.FormatInstant(scheduledStart));
+        if (amountCents is { } amount)
+            builder.Paragraph("ServiceRequestCreated_Price", FormatEuro(amount, culture));
 
-    /// <summary>Service request taken, completed or rejected by the supplier, to the host.</summary>
-    public static EmailContent ServiceRequestStatusChanged(
+        return builder
+            .Muted("ServiceRequestCreated_Hint")
+            .Button("ServiceRequestCreated_Cta", inboxUrl)
+            .Build("ServiceRequestCreated_Subject", comune);
+    }
+
+    /// <summary>The final amount and the notes the supplier left when it completed a request, for the email to the host.</summary>
+    /// <param name="TolerancePercent">The tolerance of decision D7, named when the amount is above the quote by more than it.</param>
+    public sealed record ServiceRequestCompletionEmail(int? FinalAmountCents, bool AmountNeedsConfirmation, int TolerancePercent, string? Notes);
+
+    /// <summary>
+    /// What happened to a service request, to the host: taken, started, completed, rejected by the supplier, or cancelled by the
+    /// supplier or by CasaZen (no answer in time). <c>null</c> when the status has no email to the host: a new request and a
+    /// paid one are the host's own doing, a request the host cancelled is not told back to it, and an unknown status sends
+    /// nothing (SP-04: before, an unknown status threw and was logged as an error).
+    /// </summary>
+    /// <param name="reason">The supplier's reason, for a rejection or a cancellation by the supplier.</param>
+    /// <param name="cancelledBy">Who cancelled the request, for <see cref="ServiceRequestStatus.Annullato"/>.</param>
+    /// <param name="completion">The final amount and notes, for <see cref="ServiceRequestStatus.Completato"/>.</param>
+    /// <param name="scheduledStartUtc">The time of the work, for <see cref="ServiceRequestStatus.PresoInCarico"/>.</param>
+    public static EmailContent? ServiceRequestStatusChanged(
         CultureInfo culture,
         ServiceRequestStatus status,
         string category,
         string propertyName,
-        string? rejectionReason = null)
+        string? reason = null,
+        ServiceRequestActorParty? cancelledBy = null,
+        ServiceRequestCompletionEmail? completion = null,
+        DateTime? scheduledStartUtc = null)
     {
         var prefix = status switch
         {
             ServiceRequestStatus.PresoInCarico => "ServiceRequestTaken",
+            ServiceRequestStatus.InCorso => "ServiceRequestStarted",
             ServiceRequestStatus.Completato => "ServiceRequestCompleted",
             ServiceRequestStatus.Rifiutato => "ServiceRequestRejected",
-            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "No email for this service request status."),
+            ServiceRequestStatus.Annullato when cancelledBy == ServiceRequestActorParty.Supplier => "ServiceRequestCancelledBySupplier",
+            ServiceRequestStatus.Annullato when cancelledBy == ServiceRequestActorParty.System => "ServiceRequestCancelledNoResponse",
+            _ => null,
         };
+        if (prefix is null)
+            return null;
 
         var builder = new EmailHtmlBuilder(culture).Paragraph($"{prefix}_Body", ServiceCategoryLabel(culture, category), propertyName);
-        if (status == ServiceRequestStatus.Rifiutato)
-            builder.Quote("ServiceRequestRejected_ReasonLabel", rejectionReason);
+        switch (status)
+        {
+            case ServiceRequestStatus.PresoInCarico when scheduledStartUtc is { } scheduledStart:
+                builder.Paragraph("ServiceRequestTaken_When", builder.FormatInstant(scheduledStart));
+                break;
+            case ServiceRequestStatus.Completato when completion is not null:
+                if (completion.FinalAmountCents is { } finalAmount)
+                    builder.Paragraph("ServiceRequestCompleted_Amount", FormatEuro(finalAmount, culture));
+                if (completion.AmountNeedsConfirmation)
+                    builder.Muted("ServiceRequestCompleted_OverQuote", completion.TolerancePercent);
+                builder.Quote("ServiceRequestCompleted_NotesLabel", completion.Notes);
+                break;
+            case ServiceRequestStatus.Rifiutato:
+                builder.Quote("ServiceRequestRejected_ReasonLabel", reason);
+                break;
+            case ServiceRequestStatus.Annullato when cancelledBy == ServiceRequestActorParty.Supplier:
+                builder.Quote("ServiceRequestCancelled_ReasonLabel", reason);
+                break;
+            case ServiceRequestStatus.Annullato:
+                builder.Muted("ServiceRequestCancelledNoResponse_Hint");
+                break;
+        }
 
         return builder.Build($"{prefix}_Subject", propertyName);
+    }
+
+    /// <summary>
+    /// A request cancelled by the host or by CasaZen (no answer in time), to the supplier. It names only the comune: the
+    /// supplier may not have taken the request, so it may not know the property (decision D9).
+    /// </summary>
+    /// <param name="cancelledBy"><see cref="ServiceRequestActorParty.Host"/> or <see cref="ServiceRequestActorParty.System"/>.</param>
+    /// <param name="reason">The host's reason (shown for a cancellation by the host only).</param>
+    public static EmailContent ServiceRequestCancelledToSupplier(
+        CultureInfo culture,
+        string supplierName,
+        string category,
+        string comune,
+        ServiceRequestActorParty cancelledBy,
+        string? reason,
+        string inboxUrl)
+    {
+        var prefix = cancelledBy == ServiceRequestActorParty.System ? "ServiceRequestExpired" : "ServiceRequestCancelledByHost";
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph($"{prefix}_Greeting", supplierName)
+            .Paragraph($"{prefix}_Body", ServiceCategoryLabel(culture, category), comune);
+        if (cancelledBy == ServiceRequestActorParty.Host)
+            builder.Quote("ServiceRequestCancelled_ReasonLabel", reason);
+
+        return builder
+            .Button("ServiceRequestCreated_Cta", inboxUrl)
+            .Build($"{prefix}_Subject", comune);
+    }
+
+    /// <summary>The host reminds the supplier to answer a new request (SP-04), to the supplier.</summary>
+    public static EmailContent ServiceRequestReminder(
+        CultureInfo culture,
+        string supplierName,
+        string category,
+        string comune,
+        string inboxUrl) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("ServiceRequestReminder_Greeting", supplierName)
+            .Paragraph("ServiceRequestReminder_Body", ServiceCategoryLabel(culture, category), comune)
+            .Button("ServiceRequestReminder_Cta", inboxUrl)
+            .Build("ServiceRequestReminder_Subject", comune);
+
+    /// <summary>
+    /// The supplier proposes another time for a new request (SP-04), to the host. <paramref name="hostUrl"/> is the page of the
+    /// stay when the request has one (a long-rent request has none).
+    /// </summary>
+    public static EmailContent ServiceRequestTimeProposed(
+        CultureInfo culture,
+        string category,
+        string propertyName,
+        DateTime proposedStartUtc,
+        DateTime proposedEndUtc,
+        string? message,
+        string? hostUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        builder.Paragraph(
+            "ServiceRequestTimeProposed_Body",
+            ServiceCategoryLabel(culture, category),
+            propertyName,
+            FormatInterval(builder, proposedStartUtc, proposedEndUtc));
+        builder.Quote("ServiceRequestTimeProposed_MessageLabel", message);
+        builder.Muted("ServiceRequestTimeProposed_Hint");
+        if (hostUrl is not null)
+            builder.Button("ServiceRequestTimeProposed_Cta", hostUrl);
+
+        return builder.Build("ServiceRequestTimeProposed_Subject", propertyName);
+    }
+
+    /// <summary>The host accepted or declined the time the supplier proposed (SP-04), to the supplier.</summary>
+    public static EmailContent ServiceRequestProposalAnswered(
+        CultureInfo culture,
+        string supplierName,
+        string category,
+        string comune,
+        bool accepted,
+        string inboxUrl)
+    {
+        var prefix = accepted ? "ServiceRequestProposalAccepted" : "ServiceRequestProposalRejected";
+        return new EmailHtmlBuilder(culture)
+            .Paragraph($"{prefix}_Greeting", supplierName)
+            .Paragraph($"{prefix}_Body", ServiceCategoryLabel(culture, category), comune)
+            .Button($"{prefix}_Cta", inboxUrl)
+            .Build($"{prefix}_Subject", comune);
+    }
+
+    /// <summary>An amount in cents as euro in <paramref name="culture"/> (<c>60,00 €</c>, <c>60.00 €</c>).</summary>
+    internal static string FormatEuro(int amountCents, CultureInfo culture) =>
+        $"{(amountCents / 100m).ToString("N2", culture)} €";
+
+    /// <summary>A time proposed for a job as <c>15/10/2026 10:00–12:00</c>, in Italian time (Europe/Rome).</summary>
+    private static string FormatInterval(EmailHtmlBuilder builder, DateTime startUtc, DateTime endUtc)
+    {
+        var endLocal = TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(endUtc, DateTimeKind.Utc), Casazen.Core.Utilities.RomeCalendar.TimeZone);
+        return $"{builder.FormatInstant(startUtc)}–{endLocal.ToString("HH:mm", builder.Culture)}";
     }
 
     /// <summary>

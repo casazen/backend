@@ -106,6 +106,25 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string ConnectOnboardingRefresh() => Build(ConnectPaymentsPagePath + "?stripe_refresh=1");
 
     /// <summary>
+    /// Settings page of the supplier console (route <c>/app/supplier/settings</c> of the web app), where the supplier's Stripe
+    /// Connect onboarding starts and ends (SP-14). The supplier has no plan or billing page, so it is not one of
+    /// <see cref="BillingReturnPagePaths"/> (those are the pages of the Stripe Checkout and billing portal of the plans).
+    /// </summary>
+    public const string SupplierSettingsPagePath = "/app/supplier/settings";
+
+    /// <summary>
+    /// <c>return_url</c> of the supplier's Connect Account Link: the settings page with <c>?stripe_return=1</c> (SP-14), where
+    /// the web app reads the account state again. Built by the server, like the host's, never taken from the client.
+    /// </summary>
+    public string SupplierConnectOnboardingReturn() => Build(SupplierSettingsPagePath + "?stripe_return=1");
+
+    /// <summary>
+    /// <c>refresh_url</c> of the supplier's Connect Account Link (expired or already used link): the settings page with
+    /// <c>?stripe_refresh=1</c>, from which the supplier starts a new link (SP-14).
+    /// </summary>
+    public string SupplierConnectOnboardingRefresh() => Build(SupplierSettingsPagePath + "?stripe_refresh=1");
+
+    /// <summary>
     /// "Le mie prenotazioni" of the org's booking site (BK-10, BK-11): the guest finds a booking there with its code and
     /// email. The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails
     /// link here. With <paramref name="bookingCode"/> the page opens with the code filled in (<c>?code=</c>) and still asks
@@ -118,6 +137,44 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return string.IsNullOrWhiteSpace(bookingCode)
             ? Build(path)
             : Build($"{path}?code={Uri.EscapeDataString(bookingCode)}");
+    }
+
+    /// <summary>
+    /// The public page of a supplier's showcase (route <c>/fornitori/:slug</c>, SU-13, SP-10): where a customer whose request
+    /// was refused, cancelled or lapsed goes to book again.
+    /// </summary>
+    public string SupplierShowcase(string supplierSlug)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
+        return Build($"/fornitori/{Uri.EscapeDataString(supplierSlug)}");
+    }
+
+    /// <summary>
+    /// Page of the supplier's showcase where the customer checks the e-mail of a booking (route
+    /// <c>/fornitori/:slug/conferma</c>, SP-10): the page reads the booking id and the token of the link and sends them to
+    /// <c>POST api/public/suppliers/{slug}/bookings/{id}/confirm-email</c>. Only the id and the random token (single use,
+    /// valid for the minutes of the hold) are in the link, no personal data.
+    /// </summary>
+    public string SupplierBookingConfirmation(string supplierSlug, Guid holdId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(
+            $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?hold={holdId:D}&token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
+    /// "La tua richiesta" on the supplier's showcase (route <c>/fornitori/:slug/richiesta</c>, SP-10, managed with SP-11): the
+    /// customer finds a request there with its code and e-mail. With <paramref name="publicCode"/> the page opens with the code
+    /// filled in (<c>?code=</c>, as <see cref="GuestBookings"/> does) and still asks for the e-mail before showing anything.
+    /// </summary>
+    public string SupplierBookingRequest(string supplierSlug, string? publicCode = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
+        var path = $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/richiesta";
+        return string.IsNullOrWhiteSpace(publicCode)
+            ? Build(path)
+            : Build($"{path}?code={Uri.EscapeDataString(Casazen.Core.Services.BookingCodes.Format(publicCode))}");
     }
 
     /// <summary>

@@ -17,6 +17,10 @@ public class OrgSummaryDto
     /// </summary>
     public string? PublicSiteUrl { get; set; }
 
-    /// <summary>Effective plan tier name (<c>Starter</c> | <c>Pro</c> | <c>Scale</c>): Starter unless a subscription pays for it.</summary>
+    /// <summary>
+    /// Effective plan tier name (<c>Starter</c> | <c>Pro</c> | <c>Scale</c>): Starter unless a subscription pays for it, or the
+    /// open access raises it (<c>Entitlement:OpenAccess</c>, BL-01, <c>docs/runbooks/open-access.md</c>). The plan the org pays
+    /// for is in <c>GET /api/billing/subscription</c>.
+    /// </summary>
     public string PlanTier { get; set; } = string.Empty;
 }

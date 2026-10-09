@@ -52,12 +52,16 @@ public static class PublicAvailabilityErrorCodes
 public static class PublicListing
 {
     /// <summary>
-    /// Published: active, not paused, and with the compliance activated (<see cref="PropertyComplianceStatus.Active"/>).
-    /// The public search, the property page and the availability use this rule; the checkout checks the same
-    /// condition. A <see cref="PropertyComplianceStatus.Suspended"/> property (a requirement lost after the
-    /// activation, CO-06) is not published, like a pending one. A paused property (PC-03, A2-05) is hidden here too,
-    /// but stays visible and editable to its own host — pausing is reversible and never deletes or archives it.
+    /// Published: in short-rent mode (<see cref="RentalMode.Short"/>, PM-01: a long-term property is never published, it
+    /// has no booking site, no search result, no availability, no SEO page and no sitemap entry), active, not paused, and
+    /// with the compliance activated (<see cref="PropertyComplianceStatus.Active"/>).
+    /// The public search, the property page, the availability, the SEO pages and the sitemaps, and the activation
+    /// checklist use this rule; the checkout checks the same condition. A <see cref="PropertyComplianceStatus.Suspended"/>
+    /// property (a requirement lost after the activation, CO-06) is not published, like a pending one. A paused property
+    /// (PC-03, A2-05) is hidden here too, but stays visible and editable to its own host — pausing is reversible and never
+    /// deletes or archives it. The mode comparison is the one of <see cref="PropertyRentalModeRules.IsShortRent"/>.
     /// </summary>
     public static Expression<Func<Property, bool>> IsPublished { get; } =
-        p => p.IsActive && !p.IsPaused && p.ComplianceStatus == PropertyComplianceStatus.Active;
+        p => p.RentalMode == RentalMode.Short
+            && p.IsActive && !p.IsPaused && p.ComplianceStatus == PropertyComplianceStatus.Active;
 }

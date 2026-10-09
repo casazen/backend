@@ -44,6 +44,10 @@ public class ComplianceWizardService(
         var property = await LoadPropertyAsync(propertyId, cancellationToken)
             ?? throw new KeyNotFoundException($"Property {propertyId} not found");
 
+        // PM-01: activating the listing publishes the property on the booking site; a property in long-term mode is never
+        // published (422 property_not_bookable_in_long_mode), whatever its other data say.
+        PropertyRentalModeRules.EnsureShortRent(property);
+
         if (tosAccepted != true)
             throw new DomainConflictException("activation_tos_required", "ActivationTosRequired");
 
@@ -63,8 +67,12 @@ public class ComplianceWizardService(
         var today = _clock.TodayInRome();
 
         // AM-03: every section is the caller's own (the properties and stays it reaches), not the whole org's.
+        // "Activate the property": the short-rent ones only (PM-01). A property in long-term mode has no listing to
+        // activate. The sections about stays (check-in, check-out, Alloggiati, turnovers) are not filtered by rental
+        // mode: they are duties of stays that happened, whatever the property is now.
         var pendingProperties = await db.Properties
             .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.OrgId == orgId && p.ComplianceStatus != PropertyComplianceStatus.Active)
             .InScope(scope)
             .OrderBy(p => p.Name)

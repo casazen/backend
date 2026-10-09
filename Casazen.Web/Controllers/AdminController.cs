@@ -102,8 +102,9 @@ public class AdminController(
     /// <summary>
     /// Updates an org's plan tier. Admin only. A plan driven by a live Stripe subscription is never overwritten
     /// (409 <c>managed_by_stripe</c>: the next webhook would silently undo it, A1-41), and without a subscription a
-    /// paid tier would not take effect (<see cref="IEntitlementService.ResolveEffectiveTier"/>), so an upgrade is
-    /// refused with 409 <c>subscription_required</c> instead of reporting a change that does nothing (#274).
+    /// paid tier would not take effect (<see cref="IEntitlementService.ResolvePaidTier"/>), so an upgrade is
+    /// refused with 409 <c>subscription_required</c> instead of reporting a change that does nothing (#274). The open access
+    /// (<c>Entitlement:OpenAccess</c>, BL-01) changes none of this: the rules compare with the tier the org pays for.
     /// </summary>
     [HttpPatch("orgs/{orgId:guid}/plan")]
     [ProducesResponseType(typeof(EntitlementDto), StatusCodes.Status200OK)]
@@ -124,7 +125,7 @@ public class AdminController(
         if (org is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
-        var outcome = PlanChangePolicy.EvaluateManualChange(org, entitlementService.ResolveEffectiveTier(org), planTier);
+        var outcome = PlanChangePolicy.EvaluateManualChange(org, entitlementService.ResolvePaidTier(org), planTier);
         if (outcome != ManualPlanChangeOutcome.Allowed)
         {
             logger.LogWarning(
@@ -143,6 +144,7 @@ public class AdminController(
         {
             OrgId = entitlement.OrgId,
             PlanTier = entitlement.PlanTier,
+            OpenAccess = entitlement.OpenAccess,
             Limits = new EntitlementLimitsDto { MaxProperties = entitlement.MaxProperties },
             Usage = new EntitlementUsageDto { Properties = entitlement.PropertyCount },
             CanAddProperty = entitlement.CanAddProperty

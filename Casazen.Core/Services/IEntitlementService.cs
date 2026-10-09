@@ -3,12 +3,23 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
+/// <param name="OrgId">The org the entitlement is about.</param>
+/// <param name="PlanTier">The <b>effective</b> tier name: what the limits below are those of.</param>
+/// <param name="MaxProperties">Properties the effective tier allows (<see cref="int.MaxValue"/> = unlimited).</param>
+/// <param name="PropertyCount">Properties of the org.</param>
+/// <param name="CanAddProperty"><c>true</c> while <paramref name="PropertyCount"/> is below <paramref name="MaxProperties"/>.</param>
+/// <param name="OpenAccess">
+/// <c>true</c> when <paramref name="PlanTier"/> is higher than the tier the subscription pays for, because
+/// <c>Entitlement:OpenAccess</c> is on (BL-01, <see cref="Casazen.Core.Services.OpenAccess"/>). <c>false</c> when the switch is
+/// off, and also when it is on but changes nothing for this org (it already has that tier or a higher one).
+/// </param>
 public sealed record EntitlementResult(
     Guid OrgId,
     string PlanTier,
     int MaxProperties,
     int PropertyCount,
-    bool CanAddProperty);
+    bool CanAddProperty,
+    bool OpenAccess = false);
 
 /// <summary>
 /// Enforces per-tier plan limits sourced from a tier→limits map in configuration
@@ -46,7 +57,10 @@ public interface IEntitlementService
     /// the stored tier only while a Stripe subscription pays for it (active, trialing, or past due within
     /// the grace period); Starter otherwise. Fail-closed: no subscription, incomplete (first payment not yet
     /// succeeded), unpaid, canceled, past due beyond grace, and Stripe states the platform does not map (paused…)
-    /// all resolve to Starter.
+    /// all resolve to Starter. With the open access on (<c>Entitlement:OpenAccess</c>, BL-01) that result is raised to the
+    /// configured tier, never lowered: limits, custom domain, "Realizzato con" and seats follow the raised tier, while the
+    /// stored tier and the Stripe data stay what they are. For the tier the subscription pays for see
+    /// <see cref="ResolvePaidTier"/>.
     /// </summary>
     PlanTier ResolveEffectiveTier(Org org);
 
@@ -65,4 +79,12 @@ public interface IEntitlementService
     /// <c>ResolveEffectiveTier</c> past-due logic — return <c>false</c>.
     /// </summary>
     Task<bool> CanUseCustomDomainAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The tier the org's subscription pays for (BL-01): <see cref="ResolveEffectiveTier"/> <b>without</b> the open access.
+    /// It is what the plan change rules compare with (<see cref="PlanChangePolicy"/>: without a subscription a plan above
+    /// it is refused, whatever the open access says) and what <see cref="SyncFromSubscriptionAsync"/> stores. Never use it to
+    /// gate a feature: that is <see cref="ResolveEffectiveTier"/>.
+    /// </summary>
+    PlanTier ResolvePaidTier(Org org);
 }

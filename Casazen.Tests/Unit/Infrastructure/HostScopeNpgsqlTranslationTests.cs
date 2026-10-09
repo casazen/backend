@@ -44,15 +44,8 @@ public class HostScopeNpgsqlTranslationTests
     private static HostDashboardService Dashboard(AppDbContext db) =>
         new(db, new ConfigurationBuilder().Build(), Clock);
 
-    private static ServiceRequestService ServiceRequests(AppDbContext db) => new(
-        db,
-        new ServiceRequestRepository(db),
-        new RecordingEmailQueue(),
-        EmailTestHelpers.Links(),
-        Mock.Of<IPushNotificationService>(),
-        ComuneTestServices.Matcher(db),
-        LegalTestServices.Legal(),
-        NullLogger<ServiceRequestService>.Instance);
+    // The service as the API builds it (SP-04 kit, over the database of the test): the listings below write no file.
+    private static ServiceRequestService ServiceRequests(AppDbContext db) => new ServiceRequestTestKit(db).Service;
 
     /// <summary>Every call of the code that takes the scope of the caller, by the name the failure reports.</summary>
     private static readonly Dictionary<string, Func<AppDbContext, HostScope, Task>> Calls = new()

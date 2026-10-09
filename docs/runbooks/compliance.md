@@ -47,7 +47,8 @@ activation. The frontend needs no change: the wizard shows the current status an
 | Every night, every active or suspended property | job `property-compliance-check` ([hangfire.md §10](hangfire.md#10-property-compliance-check-co-06)) |
 
 Only an `Active` property (suspension) or a `Suspended` one (reactivation) can change on a re-evaluation; a pending one
-is left as it is.
+is left as it is. A property in long-term mode (`RentalMode.Long`, PM-01) is not evaluated at all and cannot be activated:
+[property-rental-mode.md](property-rental-mode.md).
 
 Saving the safety checklist **without** the final confirmation clears the confirmation (CO-07, SC-08): on an active
 property that is a missing requirement, so the property is suspended until the host saves it again with the
