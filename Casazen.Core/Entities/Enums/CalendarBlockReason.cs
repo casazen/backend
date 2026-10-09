@@ -1,8 +1,9 @@
 namespace Casazen.Core.Entities.Enums;
 
 /// <summary>
-/// Why the host closed the dates by hand (<see cref="CalendarBlockSource.Manual"/>, PC-09, A2-25). Shown to the host
-/// only: the export to the OTAs and the booking site say "taken", never why.
+/// Why the dates of a manual block are closed (<see cref="CalendarBlockSource.Manual"/>, PC-09, A2-25): the host chooses
+/// among the first three, <see cref="ModeChange"/> is written by CasaZen. Shown to the host only: the export to the OTAs
+/// and the booking site say "taken", never why.
 /// </summary>
 public enum CalendarBlockReason
 {
@@ -14,4 +15,13 @@ public enum CalendarBlockReason
 
     /// <summary>Any other reason; the host may describe it in the note.</summary>
     Other = 2,
+
+    /// <summary>
+    /// Held by CasaZen, not chosen by the host (PM-02): the property went from short stays to long-term leases and its
+    /// dates are closed from the day of the change for about two years, so the portals that read the iCal export stop
+    /// selling them. The host can neither create it (<c>calendar_block_invalid_reason</c>) nor remove it by hand
+    /// (<c>calendar_block_held_by_mode_change</c>): it goes away when the property goes back to short stays. Stored as 3;
+    /// append only, like every value of this enum.
+    /// </summary>
+    ModeChange = 3,
 }

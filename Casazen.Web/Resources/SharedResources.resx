@@ -2134,4 +2134,43 @@
   <data name="ActivationIcalRecommended" xml:space="preserve">
     <value>Consigliato: collega un feed iCal delle OTA.</value>
   </data>
+  <data name="PropertyModeAlreadySet" xml:space="preserve">
+    <value>L'immobile è già in questa modalità: non c'è niente da cambiare.</value>
+  </data>
+  <data name="PropertyModeDateTooEarly" xml:space="preserve">
+    <value>Il passaggio avviene a mezzanotte (ora italiana): il primo giorno possibile è il {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeDateTooFar" xml:space="preserve">
+    <value>La data è troppo lontana: scegli un giorno entro il {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByBookings" xml:space="preserve">
+    <value>Ci sono soggiorni, prenotazioni o blocchi importati dai portali che finiscono dopo la data scelta: il passaggio ad affitto lungo non si sovrappone mai a un soggiorno. Il primo giorno possibile è il {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByLease" xml:space="preserve">
+    <value>C'è un contratto di locazione che termina dopo la data scelta: il passaggio ad affitto breve non si sovrappone mai a un contratto. Il primo giorno possibile è il {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByDraftLease" xml:space="preserve">
+    <value>Sull'immobile c'è una bozza di contratto: eliminala prima di passare ad affitto breve.</value>
+  </data>
+  <data name="PropertyModeChangeExists" xml:space="preserve">
+    <value>C'è già un passaggio programmato per questo immobile: annullalo prima di programmarne un altro.</value>
+  </data>
+  <data name="PropertyModeChangeNotFound" xml:space="preserve">
+    <value>Passaggio non trovato.</value>
+  </data>
+  <data name="PropertyModeChangeNotScheduled" xml:space="preserve">
+    <value>Il passaggio non è più in programma (è già avvenuto, è stato annullato o non è riuscito): non si può annullare.</value>
+  </data>
+  <data name="PropertyModeTargetInvalid" xml:space="preserve">
+    <value>Modalità di destinazione non valida: usa «short» (affitto breve) o «long» (affitto lungo).</value>
+  </data>
+  <data name="PropertyModeTargetRequired" xml:space="preserve">
+    <value>Indica la modalità di destinazione: «short» (affitto breve) o «long» (affitto lungo).</value>
+  </data>
+  <data name="PropertyModeDateRequired" xml:space="preserve">
+    <value>Indica il giorno da cui l'immobile cambia modalità.</value>
+  </data>
+  <data name="CalendarBlockHeldByModeChange" xml:space="preserve">
+    <value>Questo blocco chiude le date perché l'immobile è in affitto lungo: si toglie da solo quando lo riporti in affitto breve.</value>
+  </data>
 </root>

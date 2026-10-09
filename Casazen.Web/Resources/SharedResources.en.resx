@@ -2134,4 +2134,43 @@
   <data name="ActivationIcalRecommended" xml:space="preserve">
     <value>Recommended: connect an OTA iCal feed.</value>
   </data>
+  <data name="PropertyModeAlreadySet" xml:space="preserve">
+    <value>The property is already in this mode: there is nothing to change.</value>
+  </data>
+  <data name="PropertyModeDateTooEarly" xml:space="preserve">
+    <value>The switch takes place at midnight (Italian time): the first possible day is {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeDateTooFar" xml:space="preserve">
+    <value>The date is too far away: choose a day by {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByBookings" xml:space="preserve">
+    <value>There are stays, bookings or calendar blocks imported from the portals that end after the chosen date: the switch to long-term rental never overlaps a stay. The first possible day is {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByLease" xml:space="preserve">
+    <value>A lease ends after the chosen date: the switch to short-stay rental never overlaps a lease. The first possible day is {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByDraftLease" xml:space="preserve">
+    <value>The property has a draft lease: delete it before switching to short-stay rental.</value>
+  </data>
+  <data name="PropertyModeChangeExists" xml:space="preserve">
+    <value>A switch is already scheduled for this property: cancel it before scheduling another one.</value>
+  </data>
+  <data name="PropertyModeChangeNotFound" xml:space="preserve">
+    <value>Switch not found.</value>
+  </data>
+  <data name="PropertyModeChangeNotScheduled" xml:space="preserve">
+    <value>The switch is no longer scheduled (it has already happened, was cancelled or failed): it cannot be cancelled.</value>
+  </data>
+  <data name="PropertyModeTargetInvalid" xml:space="preserve">
+    <value>Invalid target mode: use "short" (short-term rental) or "long" (long-term rental).</value>
+  </data>
+  <data name="PropertyModeTargetRequired" xml:space="preserve">
+    <value>Choose the target mode: "short" (short-term rental) or "long" (long-term rental).</value>
+  </data>
+  <data name="PropertyModeDateRequired" xml:space="preserve">
+    <value>Choose the day the property changes mode.</value>
+  </data>
+  <data name="CalendarBlockHeldByModeChange" xml:space="preserve">
+    <value>This block closes the dates because the property is in long-term rental: it goes away by itself when you switch the property back to short-term rental.</value>
+  </data>
 </root>
