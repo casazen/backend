@@ -12,7 +12,7 @@ public interface ILeaseContractRepository
     Task<LeaseContract?> GetByIdWithDetailsAsync(Guid id);
 
     /// <summary>
-    /// Lease list rows of <paramref name="scope"/> (its org and, when set, only the properties its owner owns),
+    /// Lease list rows of <paramref name="scope"/> (its org and, unless the scope is org-wide, only the properties it reaches),
     /// projected in SQL to <see cref="LeaseSummaryDto"/>: no party data is read. Newest first.
     /// </summary>
     Task<IReadOnlyList<LeaseSummaryDto>> GetSummariesAsync(HostScope scope, Guid? propertyId = null);

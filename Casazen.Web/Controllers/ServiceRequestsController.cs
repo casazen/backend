@@ -16,7 +16,8 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Service requests (TN-3). Host side, short-rent context: <c>property.read</c> / <c>property.write</c>, then the
+/// Service requests (TN-3). Host side, short-rent context: <c>property.read</c> to read, <c>servicerequest.write</c> to create or
+/// mark paid (AM-03: it used to be <c>property.write</c>, which the collaborator does not have), then the
 /// property is authorized as a <see cref="HostResource"/> (org, permission, ownership). Supplier side:
 /// <see cref="CasazenPolicies.Supplier"/> plus the linked supplier org. <c>GET</c> list and detail serve both sides and
 /// evaluate the policy of the branch they take.
@@ -36,7 +37,9 @@ public class ServiceRequestsController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
-    ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
+    IHostScopeResolver hostScopeResolver,
+    ISupplierOrgContextResolver supplierOrgContextResolver,
+    ISupplierPaymentService supplierPayments) : ControllerBase
 {
     /// <summary>
     /// AI-assisted supplier match (D11: behind <see cref="FeatureFlags.AiSupplierDiscovery"/>, off by default, 404 while
@@ -45,7 +48,7 @@ public class ServiceRequestsController(
     /// </summary>
     [HttpPost("match-supplier")]
     [FeatureGate(FeatureFlags.AiSupplierDiscovery)]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
     [AiRateLimit]
     [ProducesResponseType(typeof(SupplierMatchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -59,7 +62,7 @@ public class ServiceRequestsController(
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null) return Unauthorized();
 
-        if (await AuthorizePropertyAsync(request.PropertyId, PropertyOperations.Write, cancellationToken) is { } denied)
+        if (await AuthorizePropertyAsync(request.PropertyId, ServiceRequestOperations.Write, cancellationToken) is { } denied)
             return denied;
 
         var result = await supplierMatchService.MatchAsync(
@@ -78,7 +81,7 @@ public class ServiceRequestsController(
     /// the comune, <c>chargeToGuest</c>), with the codes of <see cref="ServiceRequestErrorCodes"/>.
     /// </summary>
     [HttpPost]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -91,7 +94,7 @@ public class ServiceRequestsController(
         var userId = User.GetUserId();
         if (orgId is null || userId is null) return Unauthorized();
 
-        if (await AuthorizePropertyAsync(request.PropertyId, PropertyOperations.Write, cancellationToken) is { } denied)
+        if (await AuthorizePropertyAsync(request.PropertyId, ServiceRequestOperations.Write, cancellationToken) is { } denied)
             return denied;
 
         var created = await serviceRequestService.CreateAsync(
@@ -525,7 +528,7 @@ public class ServiceRequestsController(
             id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
         if (existing is null) return ServiceRequestNotFound();
 
-        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId, existing.PropertyId);
         if (existing.Property is null ||
             !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
             return Forbid();
@@ -534,13 +537,65 @@ public class ServiceRequestsController(
     }
 
     /// <summary>
-    /// Host marks a completed short-rent request as paid (manual flag, no Stripe transfer): <c>property.write</c> on the
+    /// The host confirms the final amount the supplier asked, when it is above the quote by more than the tolerance (SP-15a,
+    /// decision D7, <c>price.needsCustomerConfirmation</c>): <c>property.write</c> on the request's property. A request paid inside
+    /// CasaZen gets its payment now, and the payment link is emailed to the host's address; the request no longer needs the
+    /// confirmation. Confirming twice is not an error. 404 <c>service_request_not_found</c> outside the caller's scope; 422
+    /// <c>service_request_no_confirmation_needed</c> when there is nothing to confirm; 409 <c>service_request_state_changed</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/final-amount/confirm")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> ConfirmFinalAmount(Guid id, CancellationToken cancellationToken) =>
+        HostActionAsync(id, hostOrgId => serviceRequestService.ConfirmFinalAmountAsync(id, hostOrgId, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The PaymentIntent the signed-in host confirms with the Stripe Payment Element to pay a request paid inside CasaZen, without
+    /// the emailed link (SP-15a): <c>property.write</c> on the request's property, the same session as
+    /// <c>POST api/public/service-payments/{id}/payment-session</c>. 404 <c>service_request_not_found</c> outside the caller's
+    /// scope, <c>service_payment_not_found</c> when the request has no payment; 409 <c>service_payment_not_payable</c> /
+    /// <c>service_payment_in_flight</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/payment-session")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(ServicePaymentSessionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<ServicePaymentSessionDto>> CreatePaymentSession(Guid id, CancellationToken cancellationToken)
+    {
+        var scope = await GetHostScopeAsync(cancellationToken);
+        if (scope is null) return Unauthorized();
+
+        var existing = await serviceRequestService.GetByIdForHostAsync(
+            id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
+        if (existing is null) return ServiceRequestNotFound();
+
+        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId, existing.PropertyId);
+        if (existing.Property is null ||
+            !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
+            return Forbid();
+
+        // The answer carries a client secret: never cached.
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(ServicePaymentSessionDto.From(await supplierPayments.CreateHostSessionAsync(id, scope.OrgId, cancellationToken)));
+    }
+
+    /// <summary>
+    /// Host marks a completed short-rent request as paid (manual flag, no Stripe transfer): <c>servicerequest.write</c> on the
     /// request's property. A request outside the caller's host scope, or a long-rent one, is 404
     /// <c>service_request_not_found</c>; a request that is not completed is 422
-    /// <c>service_request_invalid_transition</c>; 409 <c>service_request_state_changed</c> on a concurrent change.
+    /// <c>service_request_invalid_transition</c>; a request paid inside CasaZen (<c>paymentMode: Online</c>, SP-15a) is 422
+    /// <c>service_request_online_payment</c> (it is paid with the link; decision D5); 409 <c>service_request_state_changed</c> on
+    /// a concurrent change.
     /// </summary>
     [HttpPost("{id:guid}/mark-paid")]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
@@ -554,9 +609,9 @@ public class ServiceRequestsController(
             id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
         if (existing is null) return ServiceRequestNotFound();
 
-        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId, existing.PropertyId);
         if (existing.Property is null ||
-            !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
+            !await authorizationService.IsAuthorizedAsync(User, resource, ServiceRequestOperations.Write))
             return Forbid();
 
         var updated = await serviceRequestService.MarkPaidAsync(id, scope.OrgId, cancellationToken);
@@ -576,7 +631,7 @@ public class ServiceRequestsController(
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        return orgId is null ? null : User.GetHostScope(orgId.Value);
+        return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
     /// <summary>
@@ -670,7 +725,8 @@ public class ServiceRequestsController(
                         r.CancelledAt,
                         r.CancellationReason,
                         r.CancelledBy,
-                        r.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host),
+                        PaidBy: r.PaidBy,
+                        Requester: r.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host),
                     takenByName: null)
                 .Select(h => ServiceRequestHistoryEntryDto.From(h))
                 .ToList(),
@@ -694,6 +750,7 @@ public class ServiceRequestsController(
             WorkPhotos = ServiceRequestDtoParts.ToPhotoDtos(r.Id, ServiceRequestJson.ReadPhotos(r.WorkPhotosJson), photosPath),
             Proposal = ServiceRequestDtoParts.ToProposalDto(r.ProposedStartUtc, r.ProposedEndUtc, r.ProposedAt, r.ProposalMessage),
             LastRemindedAt = r.LastRemindedAt,
+            PaymentMode = r.PaymentMode.ToString(),
         };
     }
 

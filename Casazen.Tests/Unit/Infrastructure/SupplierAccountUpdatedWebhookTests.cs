@@ -195,6 +195,7 @@ public class SupplierAccountUpdatedWebhookTests
             Mock.Of<IPaymentRefundService>(),
             TestCheckoutPaymentSettlement.Create(db, null),
             TestDeferredCharges.Create(db),
+            Mock.Of<ISupplierPaymentWebhookService>(),
             NullLogger<StripeWebhookHandler>.Instance);
 
     private static Event AccountUpdated(

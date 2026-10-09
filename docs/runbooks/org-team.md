@@ -2,9 +2,11 @@
 
 Task AM-01 of the wave spec (org team, step 1: who belongs to which org and as what; decisions D1, D12, D14, D15;
 backend only) is described in sections 1 to 9. Task AM-02 (step 2: invitations, members and seats; decisions D13, D14,
-D15, D35; backend only) is described in sections 10 to 19. The per-property scope and the fine permissions come with
-AM-03, the activity log and the access requests with AM-02b, the screens with AM-04: **nothing here changes what a user
-sees today**. The flag `OrgTeam` is off by default and gates every endpoint of AM-02 (section 18).
+D15, D35; backend only) is described in sections 10 to 19. Task AM-03 (step 3: the properties each member reaches, read
+from the database, and the finer permissions; stakes S3 and S5 of the wave spec; backend only) is described in
+sections 20 to 28. The activity log and the access requests come with AM-02b, the screens with AM-04: **nothing here
+changes what a user sees today, but for a collaborator limited to "Solo alcuni" (section 20), which nobody is yet**. The
+flag `OrgTeam` is off by default and gates every endpoint of the team (sections 18 and 26).
 
 ## 1. What exists after AM-01
 
@@ -22,7 +24,7 @@ sees today**. The flag `OrgTeam` is off by default and gates every endpoint of A
 ### The table
 
 `OrgMembers`: `Id`, `OrgId` (FK `Orgs`, `ON DELETE RESTRICT`), `UserId` (FK `Users`, `ON DELETE CASCADE`), `Role`,
-`Status` (Active 1, Deactivated 2), `PropertyScope` (All 1, Selected 2: AM-03 gives `Selected` its meaning, every
+`Status` (Active 1, Deactivated 2), `PropertyScope` (All 1, Selected 2: AM-03 gives `Selected` its meaning, section 20; every
 member has `All` now), `CreatedAt`, `CreatedByUserId`, `DeactivatedAt`.
 **`UIX_OrgMembers_UserId` is unique: a user belongs to one org only** (the org is `User.OrgId`; there is no `OrgId` on
 the membership). `IX_OrgMembers_OrgId_Role` serves "who is the owner of this org". Two org owners are possible in the
@@ -53,15 +55,15 @@ Seeded roles (migration `AddOrgMembership`, `HasData`, explicit ids; 1 to 3 are 
 | 4 | `account/org_owner` | `org.members.manage`, `org.billing.manage`, `org.billing.read`, `org.settings.manage`, `org.suppliers.manage`, `org.activity.read` |
 | 5 | `account/org_admin` | the same six |
 | 6 | `account/org_accountant` | `org.billing.read` |
-| 7 | `short-rent/property_manager` | `property.*`, `booking.*`, `payment.*`, `ota.*`, `guest.*` + `org.suppliers.manage`; **no billing, no team** (D12) |
+| 7 | `short-rent/property_manager` | `property.*`, `booking.*`, `payment.*`, `ota.*`, `guest.*`, `servicerequest.write`, `guest.manage`, `alloggiati.submit` (AM-03) + `org.suppliers.manage`; **no billing, no team** (D12) |
 | 8 | `long-rent/property_manager` | `property.*`, `lease.*`, `rent.read`, `rent.manage` + `org.suppliers.manage` |
-| 9 | `short-rent/staff` | `property.read`, `booking.read`, `guest.read`, `guest.write` |
+| 9 | `short-rent/staff` | `property.read`, `booking.read`, `guest.read`, `guest.write`, `servicerequest.write` (AM-03) |
 | 10 | `long-rent/staff` | `property.read` only (D14) |
 | 11 | `short-rent/accountant` | `property.read`, `booking.read`, `payment.read` |
 | 12 | `long-rent/accountant` | `property.read`, `lease.read` |
 
-The finer permissions the collaborator needs (service requests without `property.write`, guest erasure) arrive with
-AM-03; until then the roles use the permissions that exist, so a collaborator cannot create service requests yet.
+The finer permissions the collaborator needs (service requests without `property.write`, guest erasure, the Alloggiati
+declaration) are AM-03's: section 21. The owner role (id 1) holds them too, so nothing changes for it.
 
 `OrgBillingAdmin` **keeps its name** and its endpoints (AM-00). It passes for the owner role keys (`OrgOwnerRoles`),
 for a platform admin and, new, for an `account` membership holding `org.billing.manage` (`org_owner`, `org_admin`).
@@ -522,3 +524,228 @@ seats, every refusal, an owner leaving an empty org, an org in use) and `OrgInvi
 endpoint).
 `[PostgresFact]` (CI only): `OrgInvitationsSchemaPostgresTests` (the indexes), `OrgInvitationsPostgresTests` (concurrency
 of the seats and of the acceptance, atomicity of leaving an empty org, the maintenance job and its lock, the tenant filter).
+
+---
+
+# Part 3 - AM-03: the properties each member reaches, and the finer permissions
+
+## 20. What AM-03 adds
+
+A member of the org sees and touches **only the properties it reaches**, in every list and on every single resource, and
+what it reaches is read **from the database**, not from the claims of the token (stake S3 of the wave spec).
+
+| Piece | Where | What it does |
+|---|---|---|
+| `PropertyMemberAccess` | table `PropertyMemberAccesses`, `Casazen.Core/Entities/PropertyMemberAccess.cs` | One row per (person, property): the properties given to a **collaborator "Solo alcuni"**. `ITenantOwned`. Unique `(UserId, PropertyId)`; deleted with its property or its person (cascade). |
+| `Property.ResponsibleUserId` | column `Properties.ResponsibleUserId` (FK `Users`, `ON DELETE SET NULL`) | The member in charge of a property: told about it, with the administrators (section 24). |
+| `HostScope`, `IHostScopeResolver` | `Casazen.Core/Authorization`, `HostScopeResolver` | The one answer to "which properties does the caller reach?", read from the org membership in the authorization snapshot (database, cached 60 s). Replaces `GetHostScope`, which looked at the JWT roles. |
+| `query.InScope(scope)` | `HostScopeQueryExtensions` | The one way a list narrows to the scope: an `EXISTS` on `PropertyMemberAccesses`, parameterised, in the same SQL statement. Replaces the thirteen `scope.OwnerId` filters. |
+| `IOrgPropertyAccessService` | `OrgPropertyAccessService` | Reads and sets the properties of a member (with the count of people who reach each one) and the person in charge of a property. |
+| `IOrgHolderService` | `OrgHolderService` | Who is the holder of the org for the RLI delega and the IMU communication (section 25, stake S5). |
+| Fine permissions | `HostPermissions` | `servicerequest.write`, `guest.manage`, `alloggiati.submit` (section 21). |
+
+### The rule (what a caller reaches)
+
+| The caller | Reaches |
+|---|---|
+| Owner, Admin, PropertyManager or Accountant member, active | every property of the org (a stored `Selected` on these roles is ignored; the writes refuse it) |
+| Collaborator member, active, scope `All` | every property of the org, the ones created later too |
+| Collaborator member, active, scope `Selected` | **only** the properties of its `PropertyMemberAccesses` rows; none while it was given none |
+| Deactivated member, member of another org, inactive account | nothing (`null` scope: 403 where a scope is required, an empty list elsewhere), whatever the token says |
+| Account in **no** org team (an owner from before the team, a test account) | the rule of before, from the token: `PropertyManager` or `Admin` role = the org; any other role = the properties it created (`Property.OwnerId`) |
+
+A role left in the token **never widens** a member: the row decides. The decision is `HostScopeResolver.Decide`, a pure
+function of the snapshot (`HostScopeResolverTests` is its table).
+
+### Lists and single resources
+
+- **Lists** (`InScope`). Bookings, leases, payments, properties (also the CIN summary), the three fiscal reports, the
+  dashboard (properties, bookings, iCal feeds), the requests waiting for the host, the interventions, and, added with the
+  scope, the compliance cockpit and the Alloggiati stays. One SQL statement each: the reach is an `EXISTS` inside it, never a
+  list of ids loaded first and never a query per row (`HostScopeSqlShapeTests`, `HostScopePostgresTests`). It is **not** a second
+  global EF filter on purpose: a global filter would also apply to the jobs, which run for no user, and to every `Include`.
+  A row bound to no property (an org-level request) is outside every restricted scope.
+- **Single resources** (`HostResourceAuthorizationHandler`). `HostResource` carries the id of the property. The handler asks
+  the resolver, which answers from the cached snapshot (no query). A restricted member without a property id on the resource
+  is refused (fail closed). The org-wide members never reach this check.
+- The fiscal area needs `payment.read` as well as `property.read` (a collaborator reads properties, not money).
+
+## 21. The finer permissions
+
+Three permissions of the `short-rent` context were carved out of broad ones, so a role can be given the one action without
+the rest. The migration gives them to the roles that did the work before (the owner, id 1, and the property manager, id 7), so
+**nothing changes for them**; the collaborator gets only the first.
+
+| Permission | Actions (was) | Owner | Property manager | Collaborator | Accountant |
+|---|---|---|---|---|---|
+| `servicerequest.write` | create an intervention for a stay, find a supplier for it, mark it paid: `POST /api/service-requests`, `.../match-supplier`, `.../{id}/mark-paid` (`property.write`) | yes | yes | **yes** | no |
+| `guest.manage` | erase, anonymize and change the consents of a guest: `DELETE /api/guests/{id}` and the three write actions of `GdprController` (`guest.write`) | yes | yes | no | no |
+| `alloggiati.submit` | register the guests of a stay and declare the Alloggiati communication sent: `PUT /api/alloggiati/{bookingId}/stay-guests`, `.../mark-sent-manually`, `.../send` (`booking.write`) | yes | yes | no (see below) | no |
+
+The collaborator of the seeded catalogue therefore holds `property.read`, `booking.read`, `guest.read`, `guest.write`,
+`servicerequest.write` and **not** `property.write` (prices, CIN, pause, delete), `booking.write` (create, cancel, move),
+`payment.*`, `ota.*`, `guest.manage`, `alloggiati.submit`. `OrgRoleActionMatrixTests` is the table above for 46 actions of
+the API, evaluated on the policies the actions really carry and the roles really seeded.
+
+**Decision to confirm (product owner).** The collaborator does *not* get `alloggiati.submit`: the registration of the guests
+for the police is a legal act of the host, and the task text lists the permissions of the collaborator without it. The change is
+one row of `RolePermissions` (role 9) plus the catalogue (`OrgRoleCatalog`); until it is made, a collaborator can read the
+Alloggiati list but not register or declare.
+
+## 22. Endpoints
+
+All of them need the policy `RequireContext:account:org.members.manage` (owner and administrators) except the last one, and the
+first two answer **404 to everybody, before the authentication, while `Features__OrgTeam` is off**. The org is always the one of the caller.
+
+| Endpoint | Answer |
+|---|---|
+| `GET /api/orgs/me/members/{id}/properties` | 200 `{ memberId, role, propertyScope, scopeSupported, properties: [{ propertyId, name, city, granted, peopleWithAccess }] }`: the active properties of the org, with whether this member reaches each one and **how many active people of the org reach it** ("chi puo accedere"). `scopeSupported` is `false` for a member who is not a collaborator. 404 `org_member_not_found`. |
+| `PUT /api/orgs/me/members/{id}/properties` | 200 the same view. Body `{ propertyScope: "All" \| "Selected", propertyIds: [guid] }` (up to 500). `All` removes the rows (every property, the ones added later too); `Selected` replaces the set by exactly the ids given, none meaning the person sees nothing. The difference is written, not the whole set. 400 for a missing scope or more than 500 ids; 403 `org_owner_required` (only the owner touches an administrator); 404 `org_member_not_found`; 422 `org_member_scope_not_supported` (`Selected` for a role that is not the collaborator) and `org_member_property_unknown` (an id that is not a property of the org). |
+| `PUT /api/properties/{id}/responsible` | 204. Body `{ userId }`, `null` for nobody. Needs the permission to change the property (`property.write` in a rental context, and the same check on the property as `PUT /api/properties/{id}`). 404 `property_not_found`; 422 `property_responsible_invalid` when the person is not an active member of the org with an active account who reaches the property. The record of the property (`PropertyResponse`) carries `responsibleUserId`. |
+
+Messages are in `SharedResources(.en).resx` (keys `OrgMemberScopeNotSupported`, `OrgMemberPropertyUnknown`,
+`OrgMemberPropertyScopeRequired`, `OrgMemberPropertyIdsTooMany`, `PropertyResponsibleInvalid`); `OrgTeamLocalizationTests`
+checks every code in both languages.
+
+## 23. Who writes what, and the cache
+
+- **Only a collaborator can be "Solo alcuni".** `AddMemberAsync`, the invitation (`CreateAsync`) and the endpoint refuse
+  `Selected` for any other role with 422 `org_member_scope_not_supported`. An invitation sent before the rule is still accepted:
+  the person gets `All` (as its role reaches the whole org).
+- **The grants end with the role that made them possible.** `ChangeRoleAsync` to any role but the collaborator, `RemoveAsync`
+  and `AbandonEmptyOrgAsync` delete the rows and set the scope back to `All`; a person made a collaborator again reaches
+  everything, the old grants do not come back to life. A deactivation keeps them: the reactivation gives everything back.
+- **A new property is not given to anybody.** A collaborator "Solo alcuni" does not see the properties created after its list
+  was set until the owner adds them; the creator of a property reaches it by being an owner, an administrator or a manager.
+- **Locks and transaction.** `SetAsync` takes the org people lock (`OrgMembershipService.OrgLock`, the one the role changes take),
+  reads the actor and the member under it, applies the rules on the roles as they are at that moment and writes the scope and the
+  rows in one `SaveChanges`. Two writers on the same member leave one of the two sets whole (`HostScopePostgresTests`).
+- **Cache.** After the commit the writer calls `IUserAuthorizationCache.Invalidate(userId)`: the instance that served the write
+  sees the new scope and grants on the next request; **the other API instances within `Authorization:UserCacheSeconds` (60 s)**.
+  What may be late on them is the decision (is the member limited at all) and the single-resource checks; the lists read the
+  grants in SQL. Consequence to know: when the owner *narrows* a collaborator from "all" to "some", an instance that still holds the
+  old snapshot treats it as org-wide for up to a minute. Deactivating a member is not affected: that is read from the database
+  on every request (`member_inactive`, section 5).
+
+## 24. Who is told
+
+When something happens on a property (a new booking, a failed deferred charge, an update of a supplier), the people told are
+the **member in charge of the property and the administrators of the org** (the owner and the `Admin`s), plus, for the emails, the
+contact address of the org as before. While nobody is named, **the creator of the property stands in** (a manager who added a
+property keeps hearing about it until someone is put in charge). A deactivated member, an inactive account and a user of another
+org are never told. One rule for the push (`PushDeliveryJob`) and for the emails (`BookingNotifier`): `HostNotificationAudience`.
+The old rule read `User.Role` (`Admin` or `PropertyManager`), which says nothing about the team: a platform admin was in every
+org, a property manager of the team in none. The tests are `PushDeliveryJobTests` and `BookingNotifierHostAudienceTests`.
+
+What changes for an owner who never used the team: it is an `Owner` member (the AM-01 backfill), so it is told at the address of
+its own account as well as at the contact address of the org (one message when they are the same address).
+
+## 25. The holder of the org: RLI and IMU (stake S5)
+
+The delega for the RLI filing and the communication of the canone concordato to the Comune are acts of the **landlord**. They used
+to be allowed to `Property.OwnerId == caller`, i.e. to whoever created the property; with a team a property manager creates
+properties too. They now require the **holder of the org**: an active `Owner` or `Admin` of the org of the lease
+(`IOrgHolderService`, read from the database on every call, never from the authorization cache). The creator of the property is
+the holder only for an account in **no** org team, as it always was. `RliRegistrationService.SubmitToProviderAsync` answers
+`UnauthorizedAccessException` (403) otherwise; `ComuneImuNotificationService.MarkSentAsync` answers as for a lease that is not the caller (null, 404 at `POST .../canone-concordato/imu-notification/mark-sent`). Tests: `OrgHolderServiceTests`,
+`RliRegistrationHolderTests`, `ComuneImuNotificationServiceTests`.
+
+## 26. Deploy, flag and rollback of AM-03
+
+**Configuration.** Nothing is required. `Authorization__UserCacheSeconds` (60) is the freshness of the scope on the other
+instances (section 23); lower it only if narrowing an access must propagate faster, at the price of one more query per instance and
+user every that many seconds.
+
+**The migration** `20261009091620_AddPropertyMemberAccess` is additive: one nullable column, one table with three indexes, seven
+rows of `RolePermissions`. No existing row is changed; the previous build ignores the table and the column. It is applied at
+startup like the others.
+
+**What the flag does and does not do.** `Features__OrgTeam` gates the endpoints that *write* the team (AM-02 and the two
+`.../properties` endpoints of this part). The **enforcement** of the scope is not behind a flag, and does not need one: it changes
+what a user sees only for a collaborator "Solo alcuni", and that state can be created only through the gated endpoints (the
+invitation or the `PUT`). With the flag off nobody is limited, so nothing changes for any user. The notification audience (section 24)
+and the S5 rule (section 25) apply from the deploy.
+
+**Order.** (1) Deploy (flag off). (2) Check with the queries of section 27 that no member has `PropertyScope = 2` (there should be none).
+(3) AM-04 (the screens) and then `Features__OrgTeam=true`, as in section 18.
+
+| Level | How | Effect |
+|---|---|---|
+| Stop one person | deactivate the member, or give it `All` | immediate on this instance, within 60 s on the others (`All` only); the deactivation is read from the database on every request |
+| Stop the feature | unset `Features__OrgTeam` | the endpoints answer 404. A collaborator already limited **stays limited** (the rows and the scope are in the database): to widen it, set it to `All` first, or change its role |
+| Redeploy the previous build | nothing to undo: the table, the column and the permission rows are ignored | the old code reads the roles of the token again, which a collaborator has none of in the host roles: it sees only the properties it created, i.e. none, until the build is replaced or the member is made another role. The finer permissions are unused |
+| Undo the migration | `dotnet ef database update 20261008224500_PreferAlloggiatiReceiptDuplicates` (the migration before), with the previous build deployed | drops `PropertyMemberAccesses`, `Properties.ResponsibleUserId` and the seven permission rows; nothing else. The people limited to some properties lose the limit |
+
+**Merge order with the other branches.** AM-02b and PM-01 also add a migration and edit shared files (`PropertiesController`,
+`ComplianceWizardService`, `PropertyResponse`); the one that merges later regenerates its migration on the updated snapshot
+(`dotnet ef migrations remove`, then `add`), and PM-01 owns the `Legacy*Rows` helpers of the migration tests (the copy here is
+byte-identical).
+
+## 27. Operating it
+
+| Situation | What to do |
+|---|---|
+| "The collaborator sees nothing" | It is "Solo alcuni" with no property given (`propertyScope: Selected`, every `granted: false`): give it properties with `PUT .../properties`, or set `All`. A property added after the list was set is not in it. |
+| "The collaborator still sees a property I took away" | Within 60 s on the other API instances (section 23); the instance that served the change shows it at once. Wait a minute, or deactivate the member to stop it now (deactivation is read from the database on every request). |
+| 422 `org_member_scope_not_supported` | "Solo alcuni" is for collaborators. For another role the person reaches every property of the org; change the role first if it must be limited. |
+| 403 `org_owner_required` on `.../properties` | The target is an administrator: only the owner touches it (the access of an administrator cannot be limited anyway). |
+| A manager cannot give the RLI delega | Expected since AM-03 (stake S5): only the owner or an administrator of the org does. |
+| Nobody is told about a property | The person in charge left or was deactivated and the administrators are the only ones left; put somebody in charge (`PUT /api/properties/{id}/responsible`). |
+
+Read-only queries for support (never write by hand: the service keeps the scope and the rows together):
+
+```sql
+-- members limited to some properties, with how many they were given
+SELECT m."UserId", m."Status", count(a."Id") AS properties
+FROM "OrgMembers" m
+LEFT JOIN "PropertyMemberAccesses" a ON a."UserId" = m."UserId" AND a."OrgId" = m."OrgId"
+WHERE m."PropertyScope" = 2
+GROUP BY m."UserId", m."Status";
+
+-- grants of a member that is not (or no longer) limited: should be none
+SELECT a."UserId", a."PropertyId"
+FROM "PropertyMemberAccesses" a
+JOIN "OrgMembers" m ON m."UserId" = a."UserId"
+WHERE m."PropertyScope" <> 2 OR m."Role" <> 4;
+
+-- people with access to one property: members who reach everything + collaborators given it
+SELECT
+  (SELECT count(*) FROM "OrgMembers"
+     WHERE "OrgId" = '<org id>' AND "Status" = 1 AND ("Role" <> 4 OR "PropertyScope" = 1)) AS reach_everything,
+  (SELECT count(*) FROM "PropertyMemberAccesses" WHERE "PropertyId" = '<property id>') AS given_it;
+```
+
+## 28. Tests of AM-03
+
+Unit and in-memory (they run everywhere): `HostScopeResolverTests` (role by scope by status, the single check, the cache),
+`HostScopeListsTests` (the 13 filters and the lists added with the scope, a collaborator who sees only its own, the org-wide scope
+and the other org, shared with PostgreSQL through `HostScopePoints`), `HostScopeSqlShapeTests` (the SQL on the Npgsql provider:
+one `EXISTS`, parameterised, no id list, no second global filter), `HostScopeNpgsqlTranslationTests` (every list with the three
+kinds of scope translated by Npgsql, with no server), `HostScopeArchitectureTests` (nobody builds the filter by hand or reads the
+token again), `OrgRoleActionMatrixTests` (46 actions by 5 roles), `OrgRoleCatalogTests`, `OrgPropertyAccessServiceTests`,
+`OrgMembershipPropertyScopeTests`, `OrgHolderServiceTests`, `RliRegistrationHolderTests`, `BookingNotifierHostAudienceTests`,
+`PushDeliveryJobTests`, `ComplianceWizardServiceTests` (the cockpit), `TenantQueryFilterArchitectureTests` (`PropertyMemberAccess`
+is tenant-owned), `OrgTeamLocalizationTests`, `AuthorizationAttributeTests`.
+HTTP (in-memory locally, PostgreSQL in CI): `OrgPropertyScopeHttpIntegrationTests` (a collaborator that exists only in the database,
+limited by the owner through the real endpoints, sees only its own on the lists and the single resources, the change is seen on the next
+request, every refusal with its code, the person in charge).
+`[PostgresFact]` (CI only): `HostScopePostgresTests` (every point on real SQL with the foreign keys and unique indexes enforced, the
+number of commands does not grow with the number of properties, cascade and set null, two writers on one member, the snapshot),
+`AddPropertyMemberAccessMigrationPostgresTests` (the permissions added and nothing else, the table, the indexes, the delete rules, `Down`).
+
+## Decisions and follow-ups of AM-03
+
+- **"Solo alcuni" only for the collaborator** (an administrator or a manager limited to some properties would be a role that is not
+  the one the permissions say). Refused with 422; a stored `Selected` on another role is ignored.
+- **The collaborator has no `alloggiati.submit`** (section 21): to confirm with the product owner.
+- **A new property is not given to a limited collaborator**; there is no "all future properties" for "Solo alcuni" (that is `All`).
+- **The fiscal area needs `payment.read`** as well as `property.read`.
+- **FU1.** An invitation carries only the scope, not the properties: a limited collaborator joins seeing nothing until the owner gives
+  it properties. The AM-04 screen can do it in the same step with the member id of the acceptance.
+- **FU2.** The guests of the org are listed to every member with `guest.read`: a limited collaborator still lists the guests of the
+  properties it does not reach (the guest list has no property). Narrowing it needs a rule on the guest (guests of a stay of a reachable
+  property).
+- **FU3.** The contact shown to a supplier is still the creator of the property and the host email of the service request is still
+  the contact of the org (section 24 covers the push and the booking emails).
+- **FU4.** The activity log of the grants (who gave what to whom) is AM-02b's; `PropertyMemberAccesses.CreatedByUserId` and `CreatedAt`
+  are the raw material.

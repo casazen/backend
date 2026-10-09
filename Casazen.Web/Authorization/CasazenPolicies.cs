@@ -78,6 +78,27 @@ public static class CasazenPolicies
     public const string OtaRead = ShortRent + "ota.read";
     public const string OtaWrite = ShortRent + "ota.write";
 
+    // The finer permissions of AM-03, carved out of the broad ones so that the collaborator can do its job without prices, CIN
+    // or bookings (HostPermissions).
+
+    /// <summary>
+    /// Ask a supplier for an intervention on a stay (find the supplier, create the request, mark it paid). It used to be
+    /// <see cref="PropertyWrite"/>. Short-rent context.
+    /// </summary>
+    public const string ServiceRequestWrite = ShortRent + HostPermissions.ServiceRequestWrite;
+
+    /// <summary>
+    /// Erase or anonymize a guest and change its consents: the destructive and legal acts on a guest's data. It used to be
+    /// <see cref="GuestWrite"/>, which still lets a person register and correct a guest. Short-rent context.
+    /// </summary>
+    public const string GuestManage = ShortRent + HostPermissions.GuestManage;
+
+    /// <summary>
+    /// Register the guests of a stay and declare the Alloggiati communication sent. It used to be <see cref="BookingWrite"/>,
+    /// which still creates, moves and cancels bookings. Short-rent context.
+    /// </summary>
+    public const string AlloggiatiSubmit = ShortRent + HostPermissions.AlloggiatiSubmit;
+
     /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
     /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
@@ -113,6 +134,7 @@ public static class CasazenPolicies
         PaymentRead, PaymentWrite,
         GuestRead, GuestWrite,
         OtaRead, OtaWrite,
+        ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
         OrgMembersManage,

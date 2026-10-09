@@ -134,6 +134,15 @@ public static class OrgMembershipErrors
 
     /// <summary>409: the user belongs to another org (<c>User.OrgId</c>): changing org is AM-02's flow, not an add.</summary>
     public const string OtherOrg = "org_member_other_org";
+
+    /// <summary>
+    /// 422: «Solo alcuni» (<see cref="Casazen.Core.Entities.Enums.PropertyScope.Selected"/>) is for the collaborator; the owner, the
+    /// administrators, the property managers and the accountants reach every property of the org (AM-03).
+    /// </summary>
+    public const string ScopeNotSupported = "org_member_scope_not_supported";
+
+    /// <summary>422: a property given to a member is not a property of the org (AM-03).</summary>
+    public const string PropertyUnknown = "org_member_property_unknown";
 }
 
 /// <summary>Codes of <see cref="OrgMembershipFix"/> and <see cref="OrgMembershipIssue"/> (listed in the runbook).</summary>

@@ -36,7 +36,10 @@ public class OrgMember : ITenantOwned
 
     public OrgMemberStatus Status { get; set; } = OrgMemberStatus.Active;
 
-    /// <summary>Every property of the org until the per-property scope exists (AM-03).</summary>
+    /// <summary>
+    /// Every property of the org, or (a collaborator only) just the ones granted to the person in <see cref="PropertyMemberAccess"/>
+    /// (AM-03). The resolver of the scope reads it from here, never from the token.
+    /// </summary>
     public PropertyScope PropertyScope { get; set; } = PropertyScope.All;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

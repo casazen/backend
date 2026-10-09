@@ -14,4 +14,10 @@ public enum SupplierAdminAuditAction
 
     /// <summary>A pending invite was revoked: its link no longer works.</summary>
     InviteRevoked = 3,
+
+    /// <summary>
+    /// An admin set, changed or removed the supplier's own commission on the services paid inside CasaZen (SP-15b, decision D3).
+    /// The reason carries the change (old and new percentage, end date) and the admin's note.
+    /// </summary>
+    CommissionChanged = 4,
 }

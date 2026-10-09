@@ -31,10 +31,8 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
 
         var query = context.LeaseContracts
             .AsNoTracking()
-            .Where(l => l.OrgId == scope.OrgId);
-
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(l => l.Property.OwnerId == ownerId);
+            .Where(l => l.OrgId == scope.OrgId)
+            .InScope(scope);
 
         if (propertyId.HasValue)
             query = query.Where(l => l.PropertyId == propertyId.Value);
@@ -69,7 +67,8 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
         var today = DateOnly.FromDateTime(todayInRome);
         var leases = context.LeaseContracts
             .AsNoTracking()
-            .WithinScope(scope);
+            .Where(l => l.OrgId == scope.OrgId)
+            .InScope(scope);
 
         if (query.PropertyId is { } propertyId)
             leases = leases.Where(l => l.PropertyId == propertyId);

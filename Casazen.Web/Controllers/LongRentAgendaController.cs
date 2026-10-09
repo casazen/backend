@@ -14,7 +14,7 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The agenda and the overview of the long-term area (LR-01, B2): what is due and what waits, across all the leases the caller
 /// reaches. Reads only, <c>lease.read</c>, restricted in SQL to the caller's org and, unless org-wide, to the properties they
-/// own (<see cref="HostScope"/>, TN-3: the scope the lease endpoints use). Dates are Europe/Rome calendar days.
+/// reach (<see cref="HostScope"/>, TN-3 and AM-03: the scope the lease endpoints use). Dates are Europe/Rome calendar days.
 /// </summary>
 [ApiController]
 [Route("api/long-rent")]
@@ -22,6 +22,7 @@ namespace Casazen.Web.Controllers;
 public class LongRentAgendaController(
     ILongRentAgendaService agenda,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     TimeProvider? timeProvider = null) : ControllerBase
 {
     private const int FirstYear = 2000;
@@ -107,6 +108,6 @@ public class LongRentAgendaController(
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        return orgId is null ? null : User.GetHostScope(orgId.Value);
+        return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 }

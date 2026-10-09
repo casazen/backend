@@ -70,5 +70,23 @@ public interface IConnectOnboardingService
         string returnUrl,
         string refreshUrl,
         CancellationToken cancellationToken = default);
-    Task ApplyAccountUpdatedAsync(ConnectAccountSnapshot snapshot, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Applies an <c>account.updated</c> to the org that owns the account and says whether a supplier has just become able to
+    /// receive payments (SP-15b): the caller then queues the payment requests that waited for it. An unknown account changes
+    /// nothing and is <see cref="ConnectAccountUpdate.None"/>.
+    /// </summary>
+    Task<ConnectAccountUpdate> ApplyAccountUpdatedAsync(ConnectAccountSnapshot snapshot, CancellationToken cancellationToken = default);
+}
+
+/// <summary>What an <c>account.updated</c> changed for the org that owns the account.</summary>
+/// <param name="OrgId">The org the account belongs to; null when no org owns it.</param>
+/// <param name="SupplierBecameReady">
+/// The org is a supplier whose account could <b>not</b> take charges and payouts before this event and can now
+/// (<c>SupplierVerification.CanReceivePayments</c>): the payment requests that were pending for it can go out.
+/// </param>
+public sealed record ConnectAccountUpdate(Guid? OrgId, bool SupplierBecameReady)
+{
+    /// <summary>No org owns the account: nothing changed.</summary>
+    public static ConnectAccountUpdate None { get; } = new(null, false);
 }

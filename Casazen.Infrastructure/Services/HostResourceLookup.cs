@@ -12,13 +12,13 @@ public sealed class HostResourceLookup(AppDbContext db) : IHostResourceLookup
         db.Properties
             .AsNoTracking()
             .Where(p => p.Id == propertyId)
-            .Select(p => new HostResource(p.OrgId, p.OwnerId))
+            .Select(p => new HostResource(p.OrgId, p.OwnerId, p.Id))
             .FirstOrDefaultAsync(cancellationToken);
 
     public Task<HostResource?> ForBookingAsync(Guid bookingId, CancellationToken cancellationToken = default) =>
         db.Bookings
             .AsNoTracking()
             .Where(b => b.Id == bookingId)
-            .Select(b => new HostResource(b.Property.OrgId, b.Property.OwnerId))
+            .Select(b => new HostResource(b.Property.OrgId, b.Property.OwnerId, b.Property.Id))
             .FirstOrDefaultAsync(cancellationToken);
 }

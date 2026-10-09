@@ -58,6 +58,7 @@ public class DeployChecklistConsistencyTests
         ["Cors"] = typeof(CorsOriginOptions),
         ["Seo"] = typeof(SeoBootstrapOptions),
         ["Vercel"] = typeof(VercelDomainsOptions),
+        ["SupplierPayments"] = typeof(SupplierPaymentsOptions),
     };
 
     /// <summary>Roots whose keys are composed at runtime (no literal in the code, not in <c>appsettings.json</c>), with why.</summary>

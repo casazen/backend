@@ -15,8 +15,8 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The rent register of the long-term area (LR-01, B1): the installments of every lease the caller reaches, month by month,
 /// with the numbers of the month, and the landlord's reminders. Reads need <c>lease.read</c> and are restricted in SQL to the
-/// caller's org and, unless org-wide, to the properties they own (<see cref="HostScope"/>, TN-3, the scope the lease endpoints
-/// use). The reminders need <c>lease.create</c> (the permission that manages a lease after its creation, as the payment request
+/// caller's org and, unless org-wide, to the properties they reach (<see cref="HostScope"/>, TN-3 and AM-03, the scope the lease
+/// endpoints use). The reminders need <c>lease.create</c> (the permission that manages a lease after its creation, as the payment request
 /// of <c>api/leases/{id}/rent</c>) and each installment is authorized as a <see cref="HostResource"/> of its property: another
 /// org's installment is 404, one of a property the caller may not handle 403 (in a bulk reminder: skipped as not found).
 /// </summary>
@@ -29,6 +29,7 @@ public class LongRentRentsController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     TimeProvider? timeProvider = null) : ControllerBase
 {
     private const string InstallmentNotFoundCode = RentBillingErrorCodes.InstallmentNotFound;
@@ -183,6 +184,6 @@ public class LongRentRentsController(
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        return orgId is null ? null : User.GetHostScope(orgId.Value);
+        return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 }

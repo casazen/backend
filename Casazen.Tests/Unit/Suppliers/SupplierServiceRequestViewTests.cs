@@ -62,6 +62,26 @@ public class SupplierServiceRequestViewTests
     }
 
     [Fact]
+    public void Build_PaidRequest_CreditsThePaymentToWhoMadeIt()
+    {
+        // SP-15a: the supplier can record a payment received outside CasaZen (decision D5); a request paid before it has no author
+        // and keeps showing the host.
+        var bySupplier = ServiceRequestHistory.Build(
+            Milestones(ServiceRequestStatus.Pagato, taken: Taken, completed: Completed, paid: Paid, paidBy: ServiceRequestActorParty.Supplier),
+            takenByName: null);
+        var byHost = ServiceRequestHistory.Build(
+            Milestones(ServiceRequestStatus.Pagato, taken: Taken, completed: Completed, paid: Paid, paidBy: ServiceRequestActorParty.Host),
+            takenByName: null);
+        var unknown = ServiceRequestHistory.Build(
+            Milestones(ServiceRequestStatus.Pagato, taken: Taken, completed: Completed, paid: Paid),
+            takenByName: null);
+
+        Assert.Equal(ServiceRequestActorParty.Supplier, bySupplier.Single(h => h.Status == ServiceRequestStatus.Pagato).Actor);
+        Assert.Equal(ServiceRequestActorParty.Host, byHost.Single(h => h.Status == ServiceRequestStatus.Pagato).Actor);
+        Assert.Equal(ServiceRequestActorParty.Host, unknown.Single(h => h.Status == ServiceRequestStatus.Pagato).Actor);
+    }
+
+    [Fact]
     public void Build_RejectedRequest_EndsWithTheSupplierRejectionAndItsReason()
     {
         var rejectedAt = new DateTime(2026, 9, 2, 7, 30, 0, DateTimeKind.Utc);
@@ -274,7 +294,8 @@ public class SupplierServiceRequestViewTests
         DateTime? started = null,
         DateTime? cancelledAt = null,
         string? cancellationReason = null,
-        ServiceRequestActorParty? cancelledBy = null) =>
+        ServiceRequestActorParty? cancelledBy = null,
+        ServiceRequestActorParty? paidBy = null) =>
         new(
             status,
             Created,
@@ -286,5 +307,6 @@ public class SupplierServiceRequestViewTests
             started,
             cancelledAt,
             cancellationReason,
-            cancelledBy);
+            cancelledBy,
+            paidBy);
 }

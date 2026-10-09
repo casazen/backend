@@ -231,6 +231,21 @@
   <data name="OrgOwnerRequired" xml:space="preserve">
     <value>Only the owner of the organization can create and manage administrators.</value>
   </data>
+  <data name="OrgMemberScopeNotSupported" xml:space="preserve">
+    <value>Only collaborators can be limited to some properties: everybody else sees every property of the organization.</value>
+  </data>
+  <data name="OrgMemberPropertyUnknown" xml:space="preserve">
+    <value>One of the chosen properties is not part of the organization.</value>
+  </data>
+  <data name="OrgMemberPropertyScopeRequired" xml:space="preserve">
+    <value>Choose whether the person sees every property or only some.</value>
+  </data>
+  <data name="OrgMemberPropertyIdsTooMany" xml:space="preserve">
+    <value>You chose too many properties at once (500 at most).</value>
+  </data>
+  <data name="PropertyResponsibleInvalid" xml:space="preserve">
+    <value>The person in charge must be an active person of the organization who can see this property.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
   </data>
@@ -2499,5 +2514,89 @@
   </data>
   <data name="SupplierBookingStartRequired" xml:space="preserve">
     <value>Give the chosen time (startUtc).</value>
+  </data>
+  <data name="ServicePaymentLinkInvalid" xml:space="preserve">
+    <value>The payment link is not valid or has expired. Ask the supplier to send you a new one.</value>
+  </data>
+  <data name="ServicePaymentNotFound" xml:space="preserve">
+    <value>There is no payment to make for this request.</value>
+  </data>
+  <data name="ServicePaymentNotPayable" xml:space="preserve">
+    <value>This payment can no longer be made online. Contact the supplier.</value>
+  </data>
+  <data name="ServicePaymentAlreadyPaid" xml:space="preserve">
+    <value>This service is already paid.</value>
+  </data>
+  <data name="ServicePaymentInFlight" xml:space="preserve">
+    <value>A payment for this service is already being processed: do not pay again and check back shortly.</value>
+  </data>
+  <data name="ServicePaymentSupplierNotReady" xml:space="preserve">
+    <value>The supplier cannot receive online payments at the moment. Try again later or contact them.</value>
+  </data>
+  <data name="ServicePaymentNotOnline" xml:space="preserve">
+    <value>This request is not paid through CasaZen: there is no payment to request.</value>
+  </data>
+  <data name="ServicePaymentNotRequestable" xml:space="preserve">
+    <value>You can ask for the payment only for a job that is completed and not paid yet.</value>
+  </data>
+  <data name="ServicePaymentAmountUnconfirmed" xml:space="preserve">
+    <value>The final amount is above the quote: the host has to confirm it first. You can ask for the payment after the confirmation.</value>
+  </data>
+  <data name="ServicePaymentAmountRequired" xml:space="preserve">
+    <value>This job has no valid final amount to be paid.</value>
+  </data>
+  <data name="ServicePaymentRequestTooSoon" xml:space="preserve">
+    <value>You have already sent the payment request recently: you can send it again {0} hours after the last one.</value>
+  </data>
+  <data name="ServicePaymentNoRecipient" xml:space="preserve">
+    <value>There is no email address to send the payment request to.</value>
+  </data>
+  <data name="ServicePaymentRequestNotSent" xml:space="preserve">
+    <value>The payment request email could not be sent: nothing has changed, try again shortly.</value>
+  </data>
+  <data name="ServicePaymentOfflineReasonRequired" xml:space="preserve">
+    <value>This request is paid through CasaZen: to record a payment received outside CasaZen, give the reason.</value>
+  </data>
+  <data name="ServicePaymentOfflineReasonTooLong" xml:space="preserve">
+    <value>The reason can have at most {1} characters.</value>
+  </data>
+  <data name="ServicePaymentStateChanged" xml:space="preserve">
+    <value>The payment was just changed by another operation: reload the page and check its current state.</value>
+  </data>
+  <data name="ServiceRequestNoConfirmationNeeded" xml:space="preserve">
+    <value>There is no amount to confirm for this request.</value>
+  </data>
+  <data name="ServiceRequestOnlinePayment" xml:space="preserve">
+    <value>This request is paid through CasaZen with the link sent by email: you cannot mark it as paid by hand.</value>
+  </data>
+  <data name="ServicePaymentNotRefundable" xml:space="preserve">
+    <value>This payment cannot be refunded from here: it is not recorded as successfully paid online.</value>
+  </data>
+  <data name="ServicePaymentRefundOffline" xml:space="preserve">
+    <value>This payment was recorded as received outside CasaZen: no money went through CasaZen, so there is nothing to refund from here.</value>
+  </data>
+  <data name="ServicePaymentNothingToRefund" xml:space="preserve">
+    <value>There is nothing left to refund on this payment.</value>
+  </data>
+  <data name="ServicePaymentRefundAmountInvalid" xml:space="preserve">
+    <value>The amount to refund must be a positive number of cents.</value>
+  </data>
+  <data name="ServicePaymentRefundAmountExceeds" xml:space="preserve">
+    <value>The amount is more than what can still be refunded ({0:N2} €).</value>
+  </data>
+  <data name="ServicePaymentRefundReasonTooLong" xml:space="preserve">
+    <value>The note can have at most {1} characters.</value>
+  </data>
+  <data name="SupplierCommissionInvalid" xml:space="preserve">
+    <value>The commission must be a percentage from 0 to {0}, with two decimals at most.</value>
+  </data>
+  <data name="SupplierCommissionUntilInvalid" xml:space="preserve">
+    <value>The end of the period needs a percentage and must be a future date.</value>
+  </data>
+  <data name="SupplierCommissionReasonInvalid" xml:space="preserve">
+    <value>Give the reason for the change (500 characters at most).</value>
+  </data>
+  <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
+    <value>Give a past or current month in the form yyyy-mm (for example 2026-10).</value>
   </data>
 </root>

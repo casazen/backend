@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
@@ -82,13 +83,16 @@ public class AlloggiatiWebService(
         return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));
     }
 
-    public async Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(Guid orgId, Guid? propertyId)
+    public async Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(HostScope scope, Guid? propertyId)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         var query = context.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
             .Include(b => b.Property)
-            .Where(b => b.OrgId == orgId && ActiveBookingStatuses.Contains(b.Status));
+            .Where(b => b.OrgId == scope.OrgId && ActiveBookingStatuses.Contains(b.Status))
+            .InScope(scope);
 
         if (propertyId.HasValue)
             query = query.Where(b => b.PropertyId == propertyId.Value);

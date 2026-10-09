@@ -40,6 +40,7 @@ public class LeasesController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     IStringLocalizer<SharedResources> localizer,
     TimeProvider? timeProvider = null) : ControllerBase
 {
@@ -61,14 +62,14 @@ public class LeasesController(
     private string? GetOwnerId() => User.GetUserId();
 
     /// <summary>
-    /// Lease list of the caller's org, restricted to the properties they own unless org-wide (TN-3), newest first. Optional
-    /// narrowing (LR-01): <c>propertyId</c>; <c>view</c>, one of <c>All</c> (default), <c>Active</c> (registered and not ended),
-    /// <c>InPreparation</c> (not registered yet), <c>Expiring</c> (active, ending within six months) or <c>Ended</c> (registered
-    /// and ended, or rejected), derived from the status and the end date of each lease (400 <c>validation_error</c> for any other
-    /// value); <c>q</c>, a text looked for, without regard to case, in the name, city and address of the property and in the
-    /// first and last name of the tenants whose data were not anonymized (at most 100 characters). Each row carries the name of
-    /// its first tenant and, from the rent ledger, the next due date and what is overdue (<see cref="LeaseSummaryDto"/>), read in
-    /// the same statement as the list.
+    /// Lease list of the caller's org, restricted to the properties the caller reaches unless org-wide (TN-3, AM-03), newest
+    /// first. Optional narrowing (LR-01): <c>propertyId</c>; <c>view</c>, one of <c>All</c> (default), <c>Active</c> (registered
+    /// and not ended), <c>InPreparation</c> (not registered yet), <c>Expiring</c> (active, ending within six months) or
+    /// <c>Ended</c> (registered and ended, or rejected), derived from the status and the end date of each lease (400
+    /// <c>validation_error</c> for any other value); <c>q</c>, a text looked for, without regard to case, in the name, city and
+    /// address of the property and in the first and last name of the tenants whose data were not anonymized (at most 100
+    /// characters). Each row carries the name of its first tenant and, from the rent ledger, the next due date and what is
+    /// overdue (<see cref="LeaseSummaryDto"/>), read in the same statement as the list.
     /// </summary>
     /// <remarks>
     /// The <c>status</c> query parameter that older clients send has never filtered this list and still does not: it is not read.
@@ -86,9 +87,10 @@ public class LeasesController(
         if (!string.IsNullOrWhiteSpace(view) && !EnumNames.TryParseDefined(view, out listView))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "LeaseListViewUnknown");
 
-        // Org and ownership filter applied in SQL (HostScope), never the whole table filtered in memory.
+        // Org and property filter applied in SQL (HostScope), never the whole table filtered in memory.
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return Unauthorized();
 
         return Ok(await leaseService.GetLeasesAsync(scope, new LeaseListQuery(propertyId, listView, q)));

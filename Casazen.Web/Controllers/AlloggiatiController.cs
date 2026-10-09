@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -35,6 +36,7 @@ public class AlloggiatiController(
     IAlloggiatiCodeTableService codeTableService,
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     IStringLocalizer<SharedResources> localizer,
     ILogger<AlloggiatiController> logger) : ControllerBase
 {
@@ -54,10 +56,14 @@ public class AlloggiatiController(
         if (orgId is null)
             return Unauthorized();
 
+        // AM-03: the stays of the properties the caller reaches (a member «Solo alcuni» sees only its own).
+        if (await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
+            return Forbid();
+
         if (propertyId.HasValue && !await CanAccessPropertyAsync(propertyId.Value))
             return Forbid();
 
-        var summaries = await alloggiatiWebService.GetSummaryAsync(orgId.Value, propertyId);
+        var summaries = await alloggiatiWebService.GetSummaryAsync(scope, propertyId);
         return Ok(summaries.Select(MapSummary));
     }
 
@@ -172,12 +178,12 @@ public class AlloggiatiController(
     /// record the host as author (CO-09); complete data schedules the communication like the guest portal does.
     /// </summary>
     [HttpPut("{bookingId:guid}/stay-guests")]
-    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
     public async Task<ActionResult<AlloggiatiGuestSummaryDto>> ReplaceStayGuests(
         Guid bookingId,
         [FromBody] ReplaceStayGuestsRequest request)
     {
-        var (booking, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Write);
+        var (booking, denied) = await AuthorizeBookingAsync(bookingId, AlloggiatiOperations.Submit);
         if (denied is not null)
             return denied;
 
@@ -241,12 +247,12 @@ public class AlloggiatiController(
     /// <c>InviatoManualmente</c> (declared by the host), never <c>Inviato</c>, which needs a real receipt.
     /// </summary>
     [HttpPost("{bookingId:guid}/mark-sent-manually")]
-    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
     public async Task<ActionResult<AlloggiatiStatusDto>> MarkSentManually(
         Guid bookingId,
         [FromBody] MarkAlloggiatiSentManuallyRequest request)
     {
-        var (_, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Write);
+        var (_, denied) = await AuthorizeBookingAsync(bookingId, AlloggiatiOperations.Submit);
         if (denied is not null)
             return denied;
 
@@ -261,10 +267,10 @@ public class AlloggiatiController(
     /// <c>mark-sent-manually</c>.
     /// </summary>
     [HttpPost("{bookingId:guid}/send")]
-    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
     public async Task<IActionResult> SendManual(Guid bookingId)
     {
-        var (_, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Write);
+        var (_, denied) = await AuthorizeBookingAsync(bookingId, AlloggiatiOperations.Submit);
         if (denied is not null)
             return denied;
 

@@ -11,8 +11,9 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// Rights of the guests on their data, exercised by the host for them (CO-15, docs/runbooks/gdpr.md), and the org's
 /// fiscal data. Guest actions: guest of the caller's org only (another org's guest answers 404, TN-1), then the
-/// <c>guest.read</c> / <c>guest.write</c> permission on that org (TN-3, otherwise 403). The class carries no permission
-/// because the org actions need <c>property.*</c> instead: every action has its own policy.
+/// <c>guest.read</c> permission on that org to read, <c>guest.manage</c> (AM-03) to erase, anonymize or change the consents of
+/// a guest (TN-3, otherwise 403): the collaborator who registers and corrects guests (<c>guest.write</c>) cannot erase them.
+/// The class carries no permission because the org actions need <c>property.*</c> instead: every action has its own policy.
 /// </summary>
 [ApiController]
 [Route("api/gdpr")]
@@ -63,12 +64,12 @@ public class GdprController(
     /// The reason is stored on the record (up to 500 characters): never put personal data in it.
     /// </summary>
     [HttpDelete("guests/{id:guid}")]
-    [Authorize(Policy = CasazenPolicies.GuestWrite)]
+    [Authorize(Policy = CasazenPolicies.GuestManage)]
     public async Task<IActionResult> DeleteGuestData(Guid id, [FromQuery] string reason = "User request")
     {
         if (await ResolveGuestOrgAsync(id) is not { } orgId)
             return NotFound();
-        if (!await IsAllowedAsync(orgId, GuestOperations.Write))
+        if (!await IsAllowedAsync(orgId, GuestOperations.Manage))
             return Forbid();
 
         logger.LogInformation("GDPR deletion requested for guest {GuestId} by user {UserId}", id, User.GetUserId());
@@ -78,12 +79,12 @@ public class GdprController(
 
     /// <summary>Anonymization without deletion: 204, also when already anonymized; 409 while a stay is open.</summary>
     [HttpPost("guests/{id:guid}/anonymize")]
-    [Authorize(Policy = CasazenPolicies.GuestWrite)]
+    [Authorize(Policy = CasazenPolicies.GuestManage)]
     public async Task<IActionResult> AnonymizeGuestData(Guid id)
     {
         if (await ResolveGuestOrgAsync(id) is not { } orgId)
             return NotFound();
-        if (!await IsAllowedAsync(orgId, GuestOperations.Write))
+        if (!await IsAllowedAsync(orgId, GuestOperations.Manage))
             return Forbid();
 
         logger.LogInformation("GDPR anonymization requested for guest {GuestId} by user {UserId}", id, User.GetUserId());
@@ -97,12 +98,12 @@ public class GdprController(
     /// note 422 <c>gdpr_marketing_withdrawal_note_required</c>.
     /// </summary>
     [HttpPut("guests/{id:guid}/consent")]
-    [Authorize(Policy = CasazenPolicies.GuestWrite)]
+    [Authorize(Policy = CasazenPolicies.GuestManage)]
     public async Task<IActionResult> UpdateConsent(Guid id, [FromBody] UpdateConsentRequest request)
     {
         if (await ResolveGuestOrgAsync(id) is not { } orgId)
             return NotFound();
-        if (!await IsAllowedAsync(orgId, GuestOperations.Write))
+        if (!await IsAllowedAsync(orgId, GuestOperations.Manage))
             return Forbid();
 
         await gdprService.UpdateMarketingConsentAsync(

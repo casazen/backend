@@ -34,7 +34,9 @@ public class LongRentServiceRequestsController(
     IComuneDirectory comuneDirectory,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
-    AppDbContext db) : ControllerBase
+    IHostScopeResolver hostScopeResolver,
+    AppDbContext db,
+    ISupplierPaymentService supplierPayments) : ControllerBase
 {
     /// <summary>
     /// The long-rent requests in the caller's scope, newest first; with <c>propertyId</c> only that property's (404 when
@@ -252,7 +254,7 @@ public class LongRentServiceRequestsController(
             id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
         if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
 
-        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId, existing.PropertyId);
         if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Write))
             return Forbid();
 
@@ -260,9 +262,54 @@ public class LongRentServiceRequestsController(
     }
 
     /// <summary>
+    /// The landlord confirms the final amount of a long-rent request that is above the quote by more than the tolerance (SP-15a,
+    /// decision D7). Same rules and errors as the short-rent <c>POST api/service-requests/{id}/final-amount/confirm</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/final-amount/confirm")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> ConfirmFinalAmount(Guid id, CancellationToken cancellationToken) =>
+        HostActionAsync(id, hostOrgId => serviceRequestService.ConfirmFinalAmountAsync(id, hostOrgId, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The PaymentIntent the signed-in landlord confirms with the Stripe Payment Element to pay a long-rent request paid inside
+    /// CasaZen, without the emailed link (SP-15a). Same rules and errors as the short-rent
+    /// <c>POST api/service-requests/{id}/payment-session</c>; <c>property.write</c> in long-rent on the request's property.
+    /// </summary>
+    [HttpPost("{id:guid}/payment-session")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    [ProducesResponseType(typeof(ServicePaymentSessionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<ServicePaymentSessionDto>> CreatePaymentSession(Guid id, CancellationToken cancellationToken)
+    {
+        var scope = await GetHostScopeAsync(cancellationToken);
+        if (scope is null) return Unauthorized();
+
+        var existing = await serviceRequestService.GetByIdForHostAsync(
+            id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
+        if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
+
+        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId, existing.PropertyId);
+        if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Write))
+            return Forbid();
+
+        // The answer carries a client secret: never cached.
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(ServicePaymentSessionDto.From(await supplierPayments.CreateHostSessionAsync(id, scope.OrgId, cancellationToken)));
+    }
+
+    /// <summary>
     /// The landlord marks a completed long-rent request as paid (manual flag, no Stripe transfer): <c>property.write</c>
     /// in long-rent on the request's property. A request outside the caller's scope, or a short-rent one, is 404
-    /// <c>service_request_not_found</c>; one that is not completed is 422 <c>service_request_invalid_transition</c>;
+    /// <c>service_request_not_found</c>; one that is not completed is 422 <c>service_request_invalid_transition</c>; one paid
+    /// inside CasaZen (<c>paymentMode: Online</c>, SP-15a) is 422 <c>service_request_online_payment</c>;
     /// 409 <c>service_request_state_changed</c> on a concurrent change (SU-10).
     /// </summary>
     [HttpPost("{id:guid}/mark-paid")]
@@ -281,7 +328,7 @@ public class LongRentServiceRequestsController(
             id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
         if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
 
-        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId, existing.PropertyId);
         if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Write))
             return Forbid();
 
@@ -292,7 +339,7 @@ public class LongRentServiceRequestsController(
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        return orgId is null ? null : User.GetHostScope(orgId.Value);
+        return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
     /// <summary>
@@ -313,7 +360,7 @@ public class LongRentServiceRequestsController(
         if (property is null)
             return (null, this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound"));
 
-        var resource = new HostResource(property.OrgId, property.OwnerId);
+        var resource = new HostResource(property.OrgId, property.OwnerId, propertyId);
         return await authorizationService.IsAuthorizedAsync(User, resource, operation)
             ? (property, null)
             : (null, Forbid());
