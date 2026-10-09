@@ -23,6 +23,10 @@ activation counted, and a site nobody could pay on counted (no Stripe account, o
 `state` is `done`, `todo`, `inProgress` or `blocked` (another step comes first). `reason` and `state` are stable codes:
 the clients translate them (never rename one).
 
+**Only the short-rent properties count** (PM-01): `property`, `cin`, `sitePublished` and their reasons look at the properties
+in `RentalMode.Short`. A property in long-term mode is not "created" for this checklist, has no CIN to wait for and is not
+waiting for the compliance activation ([property-rental-mode.md](property-rental-mode.md)).
+
 ### Decision on paused properties (PC-03, note of the task)
 
 A **paused property does not count as a published site.** `sitePublished` uses `PublicListing.IsPublished` itself

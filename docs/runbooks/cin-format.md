@@ -107,7 +107,9 @@ displaying or stating it), as documented in `cin.md`. Texts in `src/i18n/locales
 `CinDeadlineAlertJob` → `CinDeadlineAlertService` (`Casazen.Infrastructure/Services/CinDeadlineAlertService.cs`). It runs
 after the nightly compliance check of CO-06 (`property-compliance-check`, 04:00 UTC).
 
-- **Properties:** `IsActive` with compliance status `Pending` or `Active` and a CIN missing or not valid (`CinFormat`).
+- **Properties:** short-rent ones only (a property in long-term mode, `RentalMode.Long`, has no CIN obligation and is never
+  alerted, PM-01: [property-rental-mode.md](property-rental-mode.md)), `IsActive` with compliance status `Pending` or `Active`
+  and a CIN missing or not valid (`CinFormat`).
 - **Stages**, each sent **once per property**: every `Cin__AlertDaysBefore` threshold reached (a run 10 days before the
   deadline sends the 30-day stage, saying "10 days left"), the deadline day, the day after it or later ("deadline
   passed", once). Without a deadline: **one** reminder of the obligation, without a date. Before the first threshold the

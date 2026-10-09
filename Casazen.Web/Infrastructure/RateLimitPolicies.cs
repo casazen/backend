@@ -48,6 +48,26 @@ public static class RateLimitPolicies
     public const string PublicComuni = "PublicComuni";
 
     /// <summary>
+    /// Free slots of a supplier's service (<c>GET api/public/suppliers/{slug}/slots</c>, SP-09): each read runs the slot planner
+    /// (cached 30 seconds per service), so it has a limit of its own, tighter than <see cref="PublicRead"/>.
+    /// </summary>
+    public const string PublicSupplierSlots = "PublicSupplierSlots";
+
+    /// <summary>
+    /// Price estimate of a supplier's service (<c>POST api/public/suppliers/{slug}/quote</c>, SP-09): the form asks again at
+    /// every change of an option, and every call may look up the comune, so it has a limit of its own.
+    /// </summary>
+    public const string PublicSupplierQuote = "PublicSupplierQuote";
+
+    /// <summary>
+    /// Booking of a supplier from its public showcase (<c>POST api/public/suppliers/{slug}/bookings</c>, SP-10): each call holds a
+    /// slot of the supplier's agenda for the minutes of the e-mail check, so it is the tightest of the public limits (5 per 10
+    /// minutes per client IP), and it is paired with a limit per e-mail address and supplier (<see cref="SupplierBookingEmailRateLimiter"/>,
+    /// 3 per hour). The check of the e-mail itself uses <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string PublicSupplierBookingCreate = "PublicSupplierBookingCreate";
+
+    /// <summary>
     /// What an org invitation link is for (<c>POST api/org-invitations/lookup</c>, AM-02): anonymous, a token in the body.
     /// Tighter than <see cref="PublicRead"/>: a page asks once, and the token is 256 random bits, so nobody has a reason
     /// to ask often.

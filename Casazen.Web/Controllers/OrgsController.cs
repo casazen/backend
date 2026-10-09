@@ -137,7 +137,9 @@ public class OrgsController(
     /// <summary>
     /// Returns the caller org's plan entitlement: tier, limits, current usage, and whether
     /// another property may be created (AC8). Org policy <see cref="CasazenPolicies.OrgBillingAdmin"/>, like the billing
-    /// endpoints: the org's owner reads it from the short-rent or the long-rent context alike (PL-16, A1-36).
+    /// endpoints: the org's owner reads it from the short-rent or the long-rent context alike (PL-16, A1-36). The tier is
+    /// the effective one: with the open access on (<c>Entitlement:OpenAccess</c>, BL-01) it can be higher than the plan the
+    /// org pays for, and <c>openAccess</c> says so.
     /// </summary>
     [HttpGet("me/entitlement")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -159,7 +161,8 @@ public class OrgsController(
     /// <c>subscription_required</c>, and a plan driven by a live subscription is refused with 409
     /// <c>managed_by_stripe</c> (use the billing portal). Only the org's billing admin may call it.
     /// Downgrades are allowed even when usage exceeds the new limit; existing properties remain,
-    /// but new creates are blocked until usage is under the limit.
+    /// but new creates are blocked until usage is under the limit. The open access (BL-01) changes none of these rules: they
+    /// compare with the plan the org pays for, not with the tier the open access raises it to.
     /// </summary>
     [HttpPut("me/plan")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -183,7 +186,9 @@ public class OrgsController(
         if (org is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
-        switch (PlanChangePolicy.EvaluateManualChange(org, entitlementService.ResolveEffectiveTier(org), planTier))
+        // The plan change rules compare with the tier the subscription pays for, not with the one raised by the open access
+        // (BL-01): without a subscription a paid tier is still refused, and the stored tier stays what the org pays for.
+        switch (PlanChangePolicy.EvaluateManualChange(org, entitlementService.ResolvePaidTier(org), planTier))
         {
             case ManualPlanChangeOutcome.ManagedByStripe:
                 return this.ApiProblem(StatusCodes.Status409Conflict, PlanProblemCodes.ManagedByStripe, "ManagedByStripe");
@@ -210,6 +215,7 @@ public class OrgsController(
         {
             OrgId = entitlement.OrgId,
             PlanTier = entitlement.PlanTier,
+            OpenAccess = entitlement.OpenAccess,
             Limits = new EntitlementLimitsDto { MaxProperties = entitlement.MaxProperties, MaxSeats = seats.Max },
             Usage = new EntitlementUsageDto { Properties = entitlement.PropertyCount, Seats = seats.Used },
             CanAddProperty = entitlement.CanAddProperty,

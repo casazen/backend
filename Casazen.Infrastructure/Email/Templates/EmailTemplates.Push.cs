@@ -11,26 +11,85 @@ namespace Casazen.Infrastructure.Email.Templates;
 /// </summary>
 public static partial class EmailTemplates
 {
-    /// <summary>New service request, to the supplier.</summary>
-    public static PushText ServiceRequestCreatedPush(CultureInfo culture, string category, string propertyName) =>
-        Push(culture, "Push_ServiceRequestCreated", ServiceCategoryLabel(culture, category), propertyName);
+    /// <summary>
+    /// New service request, to the supplier. It names the comune, not the property: before the take the supplier does not know
+    /// the property (decision D9, SP-04).
+    /// </summary>
+    public static PushText ServiceRequestCreatedPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ServiceRequestCreated", ServiceCategoryLabel(culture, category), comune);
 
-    /// <summary>Service request taken, completed or rejected by the supplier, to the host.</summary>
-    public static PushText ServiceRequestStatusPush(
+    /// <summary>
+    /// What happened to a service request, to the host: taken, started, completed, rejected by the supplier, or cancelled by the
+    /// supplier or by CasaZen (no answer in time). <c>null</c> for a status that has no push to the host (the caller then sends
+    /// nothing): see <see cref="ServiceRequestStatusChanged"/>.
+    /// </summary>
+    public static PushText? ServiceRequestStatusPush(
         CultureInfo culture,
         ServiceRequestStatus status,
         string category,
-        string propertyName)
+        string propertyName,
+        ServiceRequestActorParty? cancelledBy = null)
     {
         var prefix = status switch
         {
             ServiceRequestStatus.PresoInCarico => "Push_ServiceRequestTaken",
+            ServiceRequestStatus.InCorso => "Push_ServiceRequestStarted",
             ServiceRequestStatus.Completato => "Push_ServiceRequestCompleted",
             ServiceRequestStatus.Rifiutato => "Push_ServiceRequestRejected",
-            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "No push for this service request status."),
+            ServiceRequestStatus.Annullato when cancelledBy == ServiceRequestActorParty.Supplier => "Push_ServiceRequestCancelledBySupplier",
+            ServiceRequestStatus.Annullato when cancelledBy == ServiceRequestActorParty.System => "Push_ServiceRequestCancelledNoResponse",
+            _ => null,
         };
-        return Push(culture, prefix, ServiceCategoryLabel(culture, category), propertyName);
+        return prefix is null ? null : Push(culture, prefix, ServiceCategoryLabel(culture, category), propertyName);
     }
+
+    /// <summary>A request cancelled by the host, or by CasaZen when nobody answered in time, to the supplier (comune only).</summary>
+    public static PushText ServiceRequestCancelledToSupplierPush(
+        CultureInfo culture,
+        string category,
+        string comune,
+        ServiceRequestActorParty cancelledBy) =>
+        Push(
+            culture,
+            cancelledBy == ServiceRequestActorParty.System ? "Push_ServiceRequestExpired" : "Push_ServiceRequestCancelledByHost",
+            ServiceCategoryLabel(culture, category),
+            comune);
+
+    /// <summary>The host reminds the supplier to answer (SP-04), to the supplier.</summary>
+    public static PushText ServiceRequestReminderPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ServiceRequestReminder", ServiceCategoryLabel(culture, category), comune);
+
+    /// <summary>The supplier proposes another time (SP-04), to the host.</summary>
+    public static PushText ServiceRequestTimeProposedPush(CultureInfo culture, string category, string propertyName) =>
+        Push(culture, "Push_ServiceRequestTimeProposed", ServiceCategoryLabel(culture, category), propertyName);
+
+    /// <summary>The host accepted or declined the proposed time (SP-04), to the supplier.</summary>
+    public static PushText ServiceRequestProposalAnsweredPush(CultureInfo culture, string category, string comune, bool accepted) =>
+        Push(
+            culture,
+            accepted ? "Push_ServiceRequestProposalAccepted" : "Push_ServiceRequestProposalRejected",
+            ServiceCategoryLabel(culture, category),
+            comune);
+
+    /// <summary>The customer of the public showcase cancelled its request (SP-11), to the supplier (comune only).</summary>
+    public static PushText ShowcaseCancelledByCustomerPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ShowcaseCancelledByCustomer", ServiceCategoryLabel(culture, category), comune);
+
+    /// <summary>The customer of the public showcase moved a new request to another time (SP-11), to the supplier (comune only).</summary>
+    public static PushText ShowcaseRescheduledByCustomerPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ShowcaseRescheduledByCustomer", ServiceCategoryLabel(culture, category), comune);
+
+    /// <summary>The customer of the public showcase accepted or turned down the proposed time (SP-11), to the supplier (comune only).</summary>
+    public static PushText ShowcaseProposalAnsweredPush(CultureInfo culture, string category, string comune, bool accepted) =>
+        Push(
+            culture,
+            accepted ? "Push_ShowcaseProposalAccepted" : "Push_ShowcaseProposalRejected",
+            ServiceCategoryLabel(culture, category),
+            comune);
+
+    /// <summary>The customer of the public showcase did not answer the proposed time and the request was cancelled (SP-11), to the supplier.</summary>
+    public static PushText ShowcaseProposalLapsedPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ShowcaseProposalLapsed", ServiceCategoryLabel(culture, category), comune);
 
     /// <summary>Service request marked as paid by the host, to the supplier (SU-09).</summary>
     public static PushText ServiceRequestPaidPush(CultureInfo culture, string category, string propertyName) =>

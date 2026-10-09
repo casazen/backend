@@ -188,15 +188,8 @@ internal static class HostScopePoints
 
     // --- 13 · the interventions of the host ------------------------------------------------------------
 
-    private static ServiceRequestService ServiceRequests(AppDbContext db) => new(
-        db,
-        new ServiceRequestRepository(db),
-        new RecordingEmailQueue(),
-        EmailTestHelpers.Links(),
-        Mock.Of<IPushNotificationService>(),
-        ComuneTestServices.Matcher(db),
-        LegalTestServices.Legal(),
-        NullLogger<ServiceRequestService>.Instance);
+    // The service as the API builds it (SP-04 kit, over the database of the test): the listings below write no file.
+    private static ServiceRequestService ServiceRequests(AppDbContext db) => new ServiceRequestTestKit(db).Service;
 
     public static async Task InterventionsAsync(AppDbContext db, HostScopeWorld world)
     {
@@ -207,9 +200,9 @@ internal static class HostScopePoints
         var (orgWide, orgWideTotal) = await service.ListForHostAsync(
             world.OrgWide, ServiceRequestRentalContext.ShortRent, null, null, null, 1, 50);
 
-        OnlyTheGranted(world, restricted.Select(r => r.PropertyId), "interventions");
+        OnlyTheGranted(world, restricted.Select(r => r.PropertyId ?? Guid.Empty), "interventions");
         Assert.Equal(1, restrictedTotal);
-        TheWholeOrgButNotAnotherOne(world, orgWide.Select(r => r.PropertyId), "interventions");
+        TheWholeOrgButNotAnotherOne(world, orgWide.Select(r => r.PropertyId ?? Guid.Empty), "interventions");
         Assert.Equal(2, orgWideTotal);
 
         // The single read follows the same rule: the request of a hidden property is not found.

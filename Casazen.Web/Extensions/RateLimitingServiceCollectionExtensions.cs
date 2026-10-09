@@ -43,6 +43,9 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicIcal, 60, OneMinute),
         new(RateLimitPolicies.PublicRegistration, 5, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.PublicComuni, 120, OneMinute),
+        new(RateLimitPolicies.PublicSupplierSlots, 60, OneMinute),
+        new(RateLimitPolicies.PublicSupplierQuote, 30, OneMinute),
+        new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
 
         // The one policy of a signed-in endpoint: partitioned by person, since the request emails other people (AM-02b).
@@ -58,6 +61,14 @@ public static class RateLimitingServiceCollectionExtensions
 
         // Per email limit of "Le mie prenotazioni" ([GuestBookingEmailRateLimit], BK-11), next to its per-IP policy.
         services.AddSingleton<GuestBookingEmailRateLimiter>();
+
+        // Per email and supplier limit of the booking from a supplier's showcase ([SupplierBookingEmailRateLimit], SP-10), next to
+        // its per-IP policy.
+        services.AddSingleton<SupplierBookingEmailRateLimiter>();
+
+        // Per email and supplier limit of the customer's own area of a booking ([SupplierBookingManageRateLimit], SP-11), next to the
+        // per-IP policy PublicGuestBookingLookup.
+        services.AddSingleton<SupplierBookingManageEmailRateLimiter>();
 
         // Read from the final configuration (IConfiguration from DI), not while Program.cs is still building it.
         services.AddOptions<RateLimiterOptions>()
@@ -150,6 +161,10 @@ public static class RateLimitingServiceCollectionExtensions
 
         httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         httpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+
+        // The endpoints that answer privately (a customer's own area, SP-11) answer so when they are limited too.
+        if (httpContext.GetEndpoint()?.Metadata.GetMetadata<PrivateAnswerAttribute>() is not null)
+            PrivateAnswerAttribute.Apply(httpContext.Response);
 
         var problem = ApiProblemDetails.Create(
             httpContext,
