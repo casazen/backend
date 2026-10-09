@@ -76,6 +76,8 @@ public class ConfigurationFeatureFlagsTests
                 "UiRedesign",
                 "OrgTeam",
                 "PropertyModeChange",
+                // UI-12a: the flag of the in-app notifications is appended after the ones of the other tasks.
+                "InAppNotifications",
             },
             FeatureFlags.All);
     }

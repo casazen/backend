@@ -109,7 +109,7 @@ public sealed class InAppNotificationService(
     /// (<c>User.SupplierOrgId</c>). The tenant filter is bypassed on purpose and replaced by this predicate (see the remarks of the
     /// class); the user id is the caller's own, never an input of the request.
     /// </summary>
-    private IQueryable<InAppNotification> OwnNotifications(string userId) =>
+    internal IQueryable<InAppNotification> OwnNotifications(string userId) =>
         db.InAppNotifications
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(n => n.UserId == userId
