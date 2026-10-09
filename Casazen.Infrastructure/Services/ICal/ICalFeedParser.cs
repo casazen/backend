@@ -17,10 +17,18 @@ namespace Casazen.Infrastructure.Services.ICal;
 /// <item><c>STATUS:CANCELLED</c> and <c>TRANSP:TRANSPARENT</c> events block nothing.</item>
 /// <item>All-day values (<c>VALUE=DATE</c>) are calendar dates, read as written. Timed values are instants (UTC,
 /// <c>TZID</c>, or floating = Europe/Rome wall clock, also for an unknown <c>TZID</c>), converted to Europe/Rome before
-/// taking their date.</item>
+/// taking their date. Every occurrence also carries the UTC instants it covers (<see cref="ICalOccurrence.StartUtc"/>,
+/// <see cref="ICalOccurrence.EndUtc"/>) and whether it is all-day: the supplier sync (SP-05) turns the timed ones into
+/// windows of hours and the all-day ones into closed days.</item>
+/// <item>The two days a year the clock changes follow RFC 5545 3.3.5 (<see cref="WallClockToUtc"/>): a wall-clock time that
+/// does not exist (02:30 on the last Sunday of March in Rome) is read with the offset before the change, a time that
+/// happens twice (02:30 on the last Sunday of October) is its first occurrence, in summer time.</item>
 /// <item>Recurring events (<c>RRULE</c>, <c>RDATE</c>, minus <c>EXDATE</c> and the instances replaced by a
-/// <c>RECURRENCE-ID</c> override) are expanded between <c>recurrenceFrom</c> and <c>recurrenceUntil</c>. Rules that
-/// repeat more than once a day are not expanded (they block no night and could produce millions of instances).</item>
+/// <c>RECURRENCE-ID</c> override) are expanded between <c>recurrenceFrom</c> and <c>recurrenceUntil</c>, a timed series
+/// at the same wall-clock time every day (a series in a <c>TZID</c> follows the clock changes; one in UTC does not). Rules
+/// that repeat more than once a day (<c>FREQ=HOURLY</c>, <c>BYHOUR</c> lists, ...) are not expanded: they block nothing,
+/// neither a night nor an hour, and could produce millions of instances (documented limit, counted in
+/// <see cref="ICalFeedParseResult.UnsupportedRecurrences"/>).</item>
 /// <item>An event that cannot be read is skipped and counted (with its UID, so the caller can keep what it blocked
 /// before); it never fails the other events.</item>
 /// </list>
@@ -157,16 +165,17 @@ public static class ICalFeedParser
 
         private void Add(string? uid, string? summary, IDateTime start, IDateTime? end, bool inWindowOnly)
         {
-            if (ToDates(start, end) is not { } dates)
+            if (ToSpan(start, end) is not { } span)
             {
                 Unreadable("EndBeforeStart", uid);
                 return;
             }
 
-            if (inWindowOnly && (dates.LastDay < recurrenceFrom || dates.StartDate >= recurrenceUntil))
+            if (inWindowOnly && (span.LastDay < recurrenceFrom || span.StartDate >= recurrenceUntil))
                 return;
 
-            _occurrences.Add(new ICalOccurrence(uid, summary, dates.StartDate, dates.EndDate, dates.LastDay));
+            _occurrences.Add(new ICalOccurrence(
+                uid, summary, span.StartDate, span.EndDate, span.LastDay, span.StartUtc, span.EndUtc, span.IsAllDay));
         }
 
         private void Unreadable(string reason, string? uid)
@@ -185,18 +194,35 @@ public static class ICalFeedParser
         }
     }
 
+    /// <summary>What an event covers: its calendar days in Europe/Rome and the UTC instants (see <see cref="ICalOccurrence"/>).</summary>
+    internal readonly record struct EventSpan(
+        DateOnly StartDate,
+        DateOnly EndDate,
+        DateOnly LastDay,
+        DateTime StartUtc,
+        DateTime EndUtc,
+        bool IsAllDay);
+
     /// <summary>
-    /// Calendar dates of an event: first day, day after the last night, last day touched. Null when it ends before it
-    /// starts (or, all-day, on its start date).
+    /// Calendar days and instants of an event: first day, day after the last night, last day touched, and the UTC stretch.
+    /// Null when it ends before it starts (or, all-day, on its start date).
     /// </summary>
-    internal static (DateOnly StartDate, DateOnly EndDate, DateOnly LastDay)? ToDates(IDateTime start, IDateTime? end)
+    internal static EventSpan? ToSpan(IDateTime start, IDateTime? end)
     {
         if (!start.HasTime)
         {
             // VALUE=DATE: the date as written. Ical.Net's AsUtc would shift it by the server's UTC offset (A2-23).
             var firstDay = DateOnly.FromDateTime(start.Value);
             var endDate = end is null ? firstDay.AddDays(1) : CalendarDateOf(end);
-            return endDate > firstDay ? (firstDay, endDate, endDate.AddDays(-1)) : null;
+            return endDate > firstDay
+                ? new EventSpan(
+                    firstDay,
+                    endDate,
+                    endDate.AddDays(-1),
+                    RomeCalendar.StartOfDayUtc(firstDay),
+                    RomeCalendar.StartOfDayUtc(endDate),
+                    IsAllDay: true)
+                : null;
         }
 
         var startUtc = ToUtc(start);
@@ -206,7 +232,7 @@ public static class ICalFeedParser
 
         var startDay = RomeCalendar.DateInRome(startUtc);
         var lastDay = endUtc > startUtc ? RomeCalendar.DateInRome(endUtc.AddTicks(-1)) : startDay;
-        return (startDay, RomeCalendar.DateInRome(endUtc), lastDay);
+        return new EventSpan(startDay, RomeCalendar.DateInRome(endUtc), lastDay, startUtc, endUtc, IsAllDay: false);
     }
 
     private static DateOnly CalendarDateOf(IDateTime value) =>
@@ -214,19 +240,37 @@ public static class ICalFeedParser
 
     /// <summary>
     /// The UTC instant of a timed value: as is when UTC, else the wall clock of its <c>TZID</c>. A floating time or an
-    /// unknown <c>TZID</c> is read as Europe/Rome wall clock (where the properties are), never as the server's zone.
+    /// unknown <c>TZID</c> is read as Europe/Rome wall clock (where the properties and the suppliers are), never as the
+    /// server's zone.
     /// </summary>
     internal static DateTime ToUtc(IDateTime value)
     {
         if (value.IsUtc)
             return DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
 
-        var wallClock = DateTime.SpecifyKind(value.Value, DateTimeKind.Unspecified);
-        var zone = FindTimeZone(value.TzId) ?? RomeCalendar.TimeZone;
-        if (zone.IsInvalidTime(wallClock))
-            wallClock = wallClock.AddHours(1); // skipped by the spring-forward change: the same instant as one hour later
+        return WallClockToUtc(value.Value, FindTimeZone(value.TzId) ?? RomeCalendar.TimeZone);
+    }
 
-        return TimeZoneInfo.ConvertTimeToUtc(wallClock, zone);
+    /// <summary>
+    /// The UTC instant of a wall-clock time in <paramref name="zone"/>, with the rule of RFC 5545 3.3.5 for the two days a
+    /// year the clock changes (the same as <see cref="RomeCalendar.ToUtc(DateOnly, TimeOnly)"/> for Europe/Rome): a time
+    /// that does not exist (the hour skipped when summer time starts) is read with the offset in force <i>before</i> the
+    /// change, which puts it later on the clock (02:30 is 03:30 summer time); a time that happens twice (the hour repeated
+    /// when summer time ends) is its <i>first</i> occurrence, in summer time. <c>TimeZoneInfo.ConvertTimeToUtc</c> would
+    /// take the second one, in standard time.
+    /// </summary>
+    internal static DateTime WallClockToUtc(DateTime value, TimeZoneInfo zone)
+    {
+        var wallClock = DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+        TimeSpan offset;
+        if (zone.IsInvalidTime(wallClock))
+            offset = zone.GetUtcOffset(wallClock.AddDays(-1)); // no change happens twice in 24 hours
+        else if (zone.IsAmbiguousTime(wallClock))
+            offset = zone.GetAmbiguousTimeOffsets(wallClock).Max();
+        else
+            offset = zone.GetUtcOffset(wallClock);
+
+        return DateTime.SpecifyKind(wallClock - offset, DateTimeKind.Utc);
     }
 
     private static TimeZoneInfo? FindTimeZone(string? tzId)

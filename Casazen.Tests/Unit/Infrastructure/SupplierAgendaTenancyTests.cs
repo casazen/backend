@@ -26,6 +26,7 @@ public class SupplierAgendaTenancyTests
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSets and the model.",
         ["Casazen.Infrastructure/Services/SupplierAgendaService.cs"] = "The agenda: every statement carries the OrgId predicate.",
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles moves the agenda of the duplicate org.",
+        ["Casazen.Infrastructure/Services/CalendarSyncService.cs"] = "The iCal sync writes the windows of hours of the supplier's feed (SP-05), under the lock of the supplier: every statement carries the OrgId predicate and only touches the windows of the feed.",
     };
 
     private static readonly string[] DbSetNames =
@@ -107,6 +108,12 @@ public class SupplierAgendaTenancyTests
         Assert.Contains(windows.GetIndexes(), index =>
             index.Properties.Select(p => p.Name).SequenceEqual(new[] { "OrgId", "StartUtc" }));
 
+        // SP-05: the iCal sync finds its rows by supplier, UID and start; the windows set by hand have no UID and are outside.
+        var feedKey = Assert.Single(windows.GetIndexes(), index => index.IsUnique);
+        Assert.Equal(new[] { "OrgId", "ExternalUid", "StartUtc" }, feedKey.Properties.Select(p => p.Name));
+        Assert.Equal("UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc", feedKey.GetDatabaseName());
+        Assert.Equal("\"ExternalUid\" IS NOT NULL", feedKey.GetFilter());
+
         var timeOff = db.Model.FindEntityType(typeof(SupplierTimeOff))!;
         Assert.Contains(timeOff.GetIndexes(), index =>
             index.Properties.Select(p => p.Name).SequenceEqual(new[] { "OrgId", "FromDate" }));
@@ -153,10 +160,39 @@ public class SupplierAgendaTenancyTests
             ["time off"] = SupplierAgendaService.TimeOffOf(db, org).AsNoTracking().ToQueryString(),
             ["windows"] = SupplierAgendaService.WindowsOf(db, org).AsNoTracking().ToQueryString(),
             ["manual windows"] = SupplierAgendaService.ManualWindowsOf(db, org).AsNoTracking().ToQueryString(),
+            ["feed windows"] = CalendarSyncService.FeedWindowsOf(db, org).AsNoTracking().ToQueryString(),
             ["settings"] = SupplierAgendaService.SettingsOf(db, org).AsNoTracking().ToQueryString(),
         };
 
         Assert.All(statements, statement => Assert.Matches("\"OrgId\" = @", statement.Value));
+    }
+
+    [Fact]
+    public void FeedWindowsQuery_OfTheCalendarSync_ReadsOnlyTheWindowsOfTheFeed_NeverTheSuppliersOwn()
+    {
+        using var db = NewNpgsqlContext();
+
+        var sql = CalendarSyncService.FeedWindowsOf(db, Guid.NewGuid()).AsNoTracking().ToQueryString();
+
+        // Source = ICalFeed (1) of this supplier: a block or an extra opening (Manual, 0) is out of the sync's reach.
+        Assert.Matches("\"Source\" = 1", sql);
+        Assert.Matches("\"OrgId\" = @", sql);
+        Assert.DoesNotMatch("\"Source\" = 0", sql);
+    }
+
+    [Fact]
+    public void RepairQuery_OfTheWindowsThatMove_NamesBothOrgsAndSkipsTheEngagementsTheKeeperHas()
+    {
+        using var db = NewNpgsqlContext();
+
+        var sql = SupplierService.WindowsThatMove(db, Guid.NewGuid(), Guid.NewGuid()).AsNoTracking().ToQueryString();
+
+        // The duplicate's windows, minus the feed engagements (same UID and start) the keeper already has.
+        Assert.Matches("\"OrgId\" = @", sql);
+        Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
+        Assert.Contains("\"ExternalUid\" IS NULL", sql, StringComparison.Ordinal);
+        Assert.Matches("\"ExternalUid\" = ", sql);
+        Assert.Matches("\"StartUtc\" = ", sql);
     }
 
     [Fact]
@@ -241,6 +277,7 @@ public class SupplierAgendaTenancyTests
     [Theory]
     [InlineData("Casazen.Infrastructure/Services/SupplierAgendaService.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierService.Maintenance.cs")]
+    [InlineData("Casazen.Infrastructure/Services/CalendarSyncService.cs")]
     public void EveryStatementOnTheTables_CarriesTheOrgPredicateOrIsAnInsert(string relative)
     {
         var text = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), relative.Replace('/', Path.DirectorySeparatorChar))));

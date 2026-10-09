@@ -359,6 +359,27 @@ public class SupplierSlotPlannerTests
     }
 
     [Fact]
+    public void PlanDay_AnEngagementOfTheCalendarFeedFrom10To11_TakesThatHourOnly_NotTheDay()
+    {
+        // SP-05: the iCal sync turns a 10:00-11:00 event into an External stretch (08:00-09:00 UTC) instead of closing the
+        // day, so the day is open and every slot that clears the event (and the buffer around it) is still offered.
+        var engagement = SupplierOccupancy.External(Utc("2026-10-07T08:00:00Z"), Utc("2026-10-07T09:00:00Z"));
+
+        var noBuffer = SupplierSlotPlanner.PlanDay(Wed, Input(rules: Rules(bufferMinutes: 0), occupancies: [engagement]), Query());
+        var withBuffer = SupplierSlotPlanner.PlanDay(Wed, Input(occupancies: [engagement]), Query()); // the 30 minutes of the demo
+
+        Assert.Null(noBuffer.Closure);
+        Assert.Equal(["08:00", "09:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00"], Starts(noBuffer));
+        // 09:00-10:00 and 11:00-12:00 touch the half hour kept free on each side of the event.
+        Assert.Null(withBuffer.Closure);
+        Assert.Equal(["08:00", "12:00", "14:00", "15:00", "16:00", "17:00"], Starts(withBuffer));
+        // What closes the whole day is an all-day event: the day override, not a stretch of hours.
+        Assert.Equal(
+            SupplierDayClosure.DayClosed,
+            SupplierSlotPlanner.PlanDay(Wed, Input(closedDays: new HashSet<DateOnly> { Wed }, occupancies: [engagement]), Query()).Closure);
+    }
+
+    [Fact]
     public void PlanDay_ADayWhoseEveryHourIsTaken_IsOpenWithNoSlot_NotClosed()
     {
         // A block from 08:00 to 18:00 in Rome: the day is a working day (no closure), there is just nothing free.
