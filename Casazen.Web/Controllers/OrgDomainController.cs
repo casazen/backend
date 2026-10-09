@@ -2,8 +2,10 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -16,10 +18,15 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = "RequireOrgBillingAdmin")]
 public class OrgDomainController(
     IOrgContextResolver orgContextResolver,
-    IOrgDomainService orgDomainService) : ControllerBase
+    IOrgDomainService orgDomainService,
+    IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
     /// <summary>422: subdomain mode requested while <c>PublicHost__BaseDomain</c> is not configured (D3, no default).</summary>
     public const string SubdomainsNotConfiguredCode = "subdomains_not_configured";
+    public const string DomainInvalidCode = "org_domain_invalid";
+    public const string DomainInUseCode = "org_domain_in_use";
+    public const string DomainNotConfiguredCode = "org_domain_not_configured";
+    public const string DomainVerificationFailedCode = "org_domain_verification_failed";
 
     [HttpGet]
     [ProducesResponseType(typeof(OrgDomainConfigDto), StatusCodes.Status200OK)]
@@ -68,13 +75,15 @@ public class OrgDomainController(
             SetOrgDomainOutcome.PlanRequired => StatusCode(
                 StatusCodes.Status403Forbidden,
                 new { code = "plan_required", requiredPlan = "Pro" }),
-            SetOrgDomainOutcome.Conflict => Conflict(new { error = "Domain or subdomain already in use" }),
-            SetOrgDomainOutcome.ValidationError => BadRequest(new { error = result.ErrorMessage }),
+            SetOrgDomainOutcome.Conflict => this.ApiProblem(
+                StatusCodes.Status409Conflict, DomainInUseCode, "OrgDomainInUse"),
+            SetOrgDomainOutcome.ValidationError => this.ApiProblem(
+                StatusCodes.Status400BadRequest, DomainInvalidCode, result.ErrorKey ?? "OrgDomainInvalid"),
             SetOrgDomainOutcome.SubdomainsNotConfigured => this.ApiProblem(
                 StatusCodes.Status422UnprocessableEntity,
                 SubdomainsNotConfiguredCode,
                 "OrgDomainSubdomainsNotConfigured"),
-            _ => BadRequest(new { error = result.ErrorMessage ?? "Invalid domain configuration" }),
+            _ => this.ApiProblem(StatusCodes.Status400BadRequest, DomainInvalidCode, result.ErrorKey ?? "OrgDomainInvalid"),
         };
     }
 
@@ -100,14 +109,19 @@ public class OrgDomainController(
                 DomainVerificationStatus = result.Verification.Status,
                 CustomDomain = result.Verification.CustomDomain,
                 CheckedAt = result.Verification.CheckedAt,
-                Message = result.Verification.Message,
+                Detail = result.Verification.Detail,
+                Message = Explain(result.Verification.Detail),
+                VercelTxtHost = result.Verification.VercelTxtHost,
+                VercelTxtValue = result.Verification.VercelTxtValue,
             }),
             VerifyOrgDomainOutcome.NotFound => NotFound(),
-            VerifyOrgDomainOutcome.NotConfigured => BadRequest(new
-            {
-                error = "Custom domain is not configured for this organization",
-            }),
-            _ => BadRequest(new { error = "Domain verification failed" }),
+            VerifyOrgDomainOutcome.PlanRequired => StatusCode(
+                StatusCodes.Status403Forbidden,
+                new { code = "plan_required", requiredPlan = "Pro" }),
+            VerifyOrgDomainOutcome.NotConfigured => this.ApiProblem(
+                StatusCodes.Status400BadRequest, DomainNotConfiguredCode, "OrgDomainNotConfigured"),
+            _ => this.ApiProblem(
+                StatusCodes.Status400BadRequest, DomainVerificationFailedCode, "OrgDomainVerificationFailed"),
         };
     }
 
@@ -115,15 +129,15 @@ public class OrgDomainController(
     {
         var callerOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (callerOrgId is null)
-            return NotFound(new { error = "No organization assigned to the current user" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         if (callerOrgId.Value != orgId)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Access denied for this organization" });
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "OrgAccessDenied");
 
         return null;
     }
 
-    private static OrgDomainConfigDto Map(OrgDomainConfig config) => new()
+    private OrgDomainConfigDto Map(OrgDomainConfig config) => new()
     {
         OrgId = config.OrgId,
         PublicHostMode = config.PublicHostMode,
@@ -140,6 +154,9 @@ public class OrgDomainController(
                 TxtHost = config.DnsInstructions.TxtHost,
                 TxtValue = config.DnsInstructions.TxtValue,
                 SslNote = config.DnsInstructions.SslNote,
+                ARecordValues = config.DnsInstructions.ARecordValues,
+                VercelTxtHost = config.DnsInstructions.VercelTxtHost,
+                VercelTxtValue = config.DnsInstructions.VercelTxtValue,
             },
         PublicUrls = new PublicUrlsDto
         {
@@ -147,5 +164,24 @@ public class OrgDomainController(
             SubdomainUrl = config.PublicUrls.SubdomainUrl,
             CustomDomainUrl = config.PublicUrls.CustomDomainUrl,
         },
+        Status = new DomainStatusDto
+        {
+            Detail = config.Status.Detail,
+            Message = Explain(config.Status.Detail),
+            CheckedAt = config.Status.CheckedAt,
+            VerifiedAt = config.Status.VerifiedAt,
+            ActivationAvailable = config.Status.ActivationAvailable,
+            AutoCheckActive = config.Status.AutoCheckActive,
+        },
     };
+
+    /// <summary>The explanation of a <see cref="DomainIssues"/> code in the language of the request; <c>null</c> without a code or for an unknown one.</summary>
+    private string? Explain(string? detail)
+    {
+        if (string.IsNullOrEmpty(detail))
+            return null;
+
+        var text = localizer[$"DomainIssue_{detail}"];
+        return text.ResourceNotFound ? null : text.Value;
+    }
 }

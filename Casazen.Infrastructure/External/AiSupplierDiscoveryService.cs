@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities.Enums;
@@ -16,19 +15,16 @@ namespace Casazen.Infrastructure.External;
 /// </summary>
 /// <remarks>
 /// With the flag on (A8-01, A8-14, A4-26): only the known categories reach the prompt, results (empty ones too) are
-/// cached for 24 h per city and category, links are kept only when they are <c>https</c> (Google Maps links only on a
+/// cached per org, city and category in the bounded cache with a time to live (<see cref="IAiResponseCache"/>, A8-25), links are kept only when they are <c>https</c> (Google Maps links only on a
 /// Google Maps host), and the LLM's rating and review count are dropped because they have no verifiable source.
 /// </remarks>
 public partial class AiSupplierDiscoveryService(
     IWebSearchClient webSearch,
     IAiProvider aiProvider,
     IFeatureFlags featureFlags,
-    ILogger<AiSupplierDiscoveryService> logger) : IAiSupplierDiscoveryService
+    ILogger<AiSupplierDiscoveryService> logger,
+    IAiResponseCache? aiCache = null) : IAiSupplierDiscoveryService
 {
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(24);
-
-    private static readonly ConcurrentDictionary<string, (DateTime ExpiresAt, IReadOnlyList<ExternalSupplierSuggestion> Items)> Cache = new();
-
     private static readonly Dictionary<string, string> CategoryQueries = new(StringComparer.Ordinal)
     {
         [ServiceCategories.Cleaning] = "servizi pulizie affitti brevi",
@@ -38,6 +34,7 @@ public partial class AiSupplierDiscoveryService(
     };
 
     public async Task<IReadOnlyList<ExternalSupplierSuggestion>> SearchNearbyAsync(
+        Guid orgId,
         string city,
         string category,
         CancellationToken cancellationToken = default)
@@ -52,9 +49,9 @@ public partial class AiSupplierDiscoveryService(
         if (!CategoryQueries.TryGetValue(category, out var queryTerm) || string.IsNullOrWhiteSpace(city))
             return [];
 
-        var cacheKey = $"{city.Trim()}:{category}".ToLowerInvariant();
-        if (Cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresAt > DateTime.UtcNow)
-            return cached.Items;
+        var cacheKey = $"supplier-discovery:{city.Trim()}:{category}".ToLowerInvariant();
+        if (aiCache is not null && aiCache.TryGet<IReadOnlyList<ExternalSupplierSuggestion>>(orgId, cacheKey, out var cached) && cached is not null)
+            return cached;
 
         var searchQuery =
             $"Cerca fino a 5 attività reali di {queryTerm} a {city.Trim()}, Italia. Includi nome, indirizzo, telefono e sito web se disponibili.";
@@ -63,7 +60,7 @@ public partial class AiSupplierDiscoveryService(
         {
             var searchContent = await webSearch.SearchAsync(searchQuery, cancellationToken);
             if (string.IsNullOrWhiteSpace(searchContent))
-                return Remember(cacheKey, []);
+                return Remember(orgId, cacheKey, []);
 
             var extractPrompt =
                 """
@@ -72,8 +69,8 @@ public partial class AiSupplierDiscoveryService(
                 Massimo 5 elementi. Solo attività in Italia. Testo:
                 """ + searchContent;
 
-            var ai = await aiProvider.GenerateAsync(extractPrompt, AiModelTier.Economy, $"supplier-discovery:{cacheKey}", cancellationToken);
-            return Remember(cacheKey, ParseSuggestions(ai.Content));
+            var ai = await aiProvider.GenerateAsync(extractPrompt, AiModelTier.Economy, cacheKey, cancellationToken);
+            return Remember(orgId, cacheKey, ParseSuggestions(ai.Content));
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not AiBudgetExceededException)
         {
@@ -83,9 +80,9 @@ public partial class AiSupplierDiscoveryService(
         }
     }
 
-    private static IReadOnlyList<ExternalSupplierSuggestion> Remember(string cacheKey, IReadOnlyList<ExternalSupplierSuggestion> items)
+    private IReadOnlyList<ExternalSupplierSuggestion> Remember(Guid orgId, string cacheKey, IReadOnlyList<ExternalSupplierSuggestion> items)
     {
-        Cache[cacheKey] = (DateTime.UtcNow.Add(CacheDuration), items);
+        aiCache?.Set(orgId, cacheKey, items);
         return items;
     }
 

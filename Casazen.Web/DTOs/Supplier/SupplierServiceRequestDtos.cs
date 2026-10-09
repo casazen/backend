@@ -100,6 +100,15 @@ public class ServiceRequestHistoryEntryDto
 
     /// <summary>The rejection reason, on the <c>Rifiutato</c> step.</summary>
     public string? Reason { get; set; }
+
+    internal static ServiceRequestHistoryEntryDto From(ServiceRequestHistoryEntry entry) => new()
+    {
+        Status = entry.Status.ToString(),
+        At = entry.At,
+        Actor = entry.Actor.ToString(),
+        ActorName = entry.ActorName,
+        Reason = entry.Reason,
+    };
 }
 
 /// <summary>Maps the supplier view of a request (<see cref="SupplierServiceRequestView"/>) to the API DTOs.</summary>
@@ -111,14 +120,7 @@ public static class SupplierServiceRequestMapper
     public static SupplierServiceRequestDetailDto ToDetailDto(SupplierServiceRequestView view)
     {
         var dto = Fill(new SupplierServiceRequestDetailDto(), view);
-        dto.History = (view.History ?? []).Select(h => new ServiceRequestHistoryEntryDto
-        {
-            Status = h.Status.ToString(),
-            At = h.At,
-            Actor = h.Actor.ToString(),
-            ActorName = h.ActorName,
-            Reason = h.Reason,
-        }).ToList();
+        dto.History = (view.History ?? []).Select(h => ServiceRequestHistoryEntryDto.From(h)).ToList();
         return dto;
     }
 

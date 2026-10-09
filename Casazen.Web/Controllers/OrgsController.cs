@@ -1,9 +1,12 @@
+using System.ComponentModel.DataAnnotations;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
@@ -16,8 +19,105 @@ namespace Casazen.Web.Controllers;
 public class OrgsController(
     IOrgContextResolver orgContextResolver,
     IEntitlementService entitlementService,
-    IOrgService orgService) : ControllerBase
+    IOrgService orgService,
+    IPublicHostResolver publicHostResolver,
+    IOptions<PublicHostOptions> publicHostOptions) : ControllerBase
 {
+    /// <summary>
+    /// Returns the caller org's editable identity: name, public slug and contact email with its publication
+    /// opt-in (A1-22, A1-23). Org policy <see cref="CasazenPolicies.OrgBillingAdmin"/>: unlike
+    /// <c>OrgSummaryDto</c> (any member, via <c>/api/users/me</c>) this carries the contact email.
+    /// </summary>
+    [HttpGet("me/settings")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgSettingsDto>> GetMySettings(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var org = await orgService.GetByIdAsync(orgId.Value, cancellationToken);
+        if (org is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        return Ok(OrgSettingsDto.FromOrg(org));
+    }
+
+    /// <summary>
+    /// Whether a slug can become the caller org's public slug (A1-23): its normalized form and, when it cannot, the
+    /// reason code (<c>org_slug_invalid</c>, <c>org_slug_reserved</c>, <c>org_slug_taken</c>). Advisory only: the
+    /// PUT checks again under lock.
+    /// </summary>
+    [HttpGet("me/settings/slug-availability")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgSlugAvailabilityDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgSlugAvailabilityDto>> GetSlugAvailability(
+        [FromQuery, Required, MaxLength(100)] string slug,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var availability = await orgService.CheckSlugAvailabilityAsync(orgId.Value, slug, cancellationToken);
+        if (availability is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        return Ok(new OrgSlugAvailabilityDto
+        {
+            Slug = availability.Slug,
+            Available = availability.Available,
+            Code = availability.Code,
+        });
+    }
+
+    /// <summary>
+    /// Updates the caller org's name, public slug and contact email, including whether the contact email is
+    /// published on the public booking site (A1-22, A1-23). 422 <c>org_slug_invalid</c> / <c>org_slug_reserved</c>
+    /// for an unusable slug, 409 <c>org_slug_taken</c> when another org uses it. The previous slug keeps resolving
+    /// to the org (shared links), see <c>IOrgService.UpdateSettingsAsync</c>.
+    /// </summary>
+    [HttpPut("me/settings")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OrgSettingsDto>> UpdateMySettings(
+        [FromBody] UpdateOrgSettingsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var previousSlug = (await orgService.GetByIdAsync(orgId.Value, cancellationToken))?.Slug;
+        var updated = await orgService.UpdateSettingsAsync(
+            orgId.Value,
+            dto.Name,
+            dto.Slug,
+            dto.ContactEmail,
+            dto.ContactEmailPublic,
+            cancellationToken);
+        if (updated is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        if (previousSlug is not null && !string.Equals(previousSlug, updated.Slug, StringComparison.Ordinal))
+            publicHostResolver.InvalidateOrgHosts(updated, publicHostOptions.Value.NormalizedBaseDomain, previousSlug);
+
+        return Ok(OrgSettingsDto.FromOrg(updated));
+    }
+
     /// <summary>Returns available plan tiers and property limits.</summary>
     [HttpGet("plans")]
     [AllowAnonymous]
@@ -45,7 +145,7 @@ public class OrgsController(
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
-            return NotFound(new { error = "No organization assigned to the current user" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, cancellationToken);
         var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId.Value, cancellationToken);
@@ -81,7 +181,7 @@ public class OrgsController(
         CancellationToken cancellationToken)
     {
         if (!PlanCatalog.TryParseTier(dto.PlanTier, out var planTier))
-            return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)

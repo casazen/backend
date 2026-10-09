@@ -198,7 +198,7 @@ I siti host e fornitore usano un **design system pubblico separato** dalla conso
 | Superficie | Stato attuale | Target |
 |---|---|---|
 | Sito booking host | `/book/{slug}` — funzionale, aspetto tool | Vetrina Holidu-like |
-| Pagine SEO comune | Backend OK, FE da allineare al design system | Stesso visual language + CTA |
+| Pagine SEO comune | Aggiornato 2026-10-02: backend (`PublicContentController`, `PublicSeoController`, `PublicSeoFunnelController`) e FE (`src/features/public-seo/*`) esistono con test; il funnel `#300` è `partial`, vedi la AC Test Map di `specs/spec-seo-funnel.md` | Stesso visual language + CTA |
 | Vetrina fornitore v0 | Non esiste | Scheda servizi + zona + CTA contatto |
 
 **Spec da creare:** `spec-public-site-design-system`, `spec-custom-domain-booking`, `spec-native-host-app`, `spec-supplier-console-web`, `spec-supplier-public-site`, `spec-ical-calendar-sync`, `spec-compliance-wizards`, `spec-guest-check-in-portal`, `spec-golden-journey-e2e`
@@ -522,7 +522,7 @@ Percorso minimo automatizzato sull’**app nativa host**, usando la stessa preno
 
 ### Freeze (con eccezione iCal)
 
-LTR #269, unified inbox, AI copilot, OTA API partner #31-35 (non iCal), marketplace full US-014, GVR, enterprise, EU. Sbloccato MVP: iCal. Scope ridotto: imposta soggiorno comuni pilota; fiscale wizard.
+LTR #269 (**superato**: decisione D1 del 2026-09-23, LTR è una feature attiva, stato reale `partial` in `specs/README.md`), unified inbox, AI copilot, OTA API partner #31-35 (non iCal), marketplace full US-014, GVR, enterprise, EU. Sbloccato MVP: iCal. Scope ridotto: imposta soggiorno comuni pilota; fiscale wizard.
 
 **Aggiunta freeze:** PWA come strategia mobile principale — **sostituita da app nativa**.
 
@@ -667,6 +667,27 @@ Marketplace pagamenti, scale SEO, temi aggiuntivi, team seats leggeri, OTA se ri
 
 ---
 
+## Stato reale al 2026-10-02 (risanamento eseguito, task FN-05)
+
+Questa sezione sostituisce, dove in contrasto, le affermazioni "shipped" e "freeze" del resto del documento. Fonti: `specs/README.md` (stato di ogni spec con evidenza), `PIANO-RISANAMENTO-2026-09.md` § 9 (stato dei 335 difetti), `risanamento/RIEPILOGO-FINALE.md` (cosa è stato fatto, cosa resta e la procedura per portarlo su `develop`).
+
+- **Difetti dell'audit**: 335, di cui 327 chiusi e 8 parziali (nessuno aperto). "Chiuso" significa codice e test sul branch di integrazione, non "in produzione".
+- **Spec**: il registro dichiarava "shipped" 20 funzionalità in base alle issue chiuse. Ora `shipped` richiede codice, test e, dove serve, E2E eseguito. Risultato: **shipped** `public-booking-readmodel`, `branded-booking-site`, `public-site-design-system`, `supplier-console-web`, `compliance-wizards`, `ical-calendar-sync`, `micro-marketplace-v0`, `tenant-boundary`, `role-onboarding`, `admin-backend`, `property-detail`, `pricing-adapter-verification`, `split-layer`; **partial** `connect-onboarding`, `direct-checkout`, `custom-domain-booking`, `native-host-app`, `guest-check-in-portal`, `golden-journey-e2e`, `seo-funnel`, `saas-billing`, `onboarding-plg`, `supplier-public-site` e le cinque spec LTR (D1: LTR è attivo, i provider esterni sono spenti dietro flag); **planned/specced/idea/frozen** invariati per `native-supplier-app`, `org-seats-collaboration`, `supplier-directory` e le spec frozen.
+- **Golden Journey**: L3 da UI con host, fornitore, ospite e admin distinti, provato in locale 5 volte nella variante "paga in struttura" (FN-03, runbook `golden-journey-l3.md`). Il job GitHub Actions, la variante con carta Stripe di test e la suite Maestro su emulatore (FN-04, `mobile-e2e.md`) sono consegnati ma **mai eseguiti**: non contano come gate finché non sono verdi.
+- **Non fatto**: client del web service Alloggiati (CO-13: il file tracciato c'è, l'invio resta manuale), flussi ISTAT e Ross1000 (CO-22, specifiche non verificabili), tariffe dell'imposta di soggiorno non verificate alla fonte (RS-7), integrazione con gli assistenti AI (AI-01..AI-12, solo pianificata).
+- **Hosting**: il PO ha cancellato Railway; l'analisi delle alternative gratuite per il backend è in corso (task HOSTING, `docs/runbooks/free-hosting-analysis.md`). I riferimenti a Railway in questo documento e in `docs/INFRA.md` sono quelli storici e vanno riletti alla luce di quell'analisi.
+
+Difetti rimasti parziali:
+
+- **A1-22** (P1, PL-04): PL-04 consegna impostazioni org, slug e email pubblica; lo step "Nome attività" nell'onboarding e l'aggiornamento del customer Stripe già creato non sono fatti (DOMANDE-APERTE, PL-04).
+- **A2-17** (P1, PC-14): PC-14 elimina l'N+1 (una query filtrata per HostScope); la paginazione server-side di GET /api/bookings non è fatta (DOMANDE-APERTE, PC-14).
+- **A3-23** (P1, FN-03): FN-03: step 4 da UI guest provato in locale; il pagamento con carta Stripe di test gira solo in CI, non provato (runbook golden-journey-l3.md).
+- **A6-04** (P0, FN-03): FN-03: workflow L3 consegnato e provato in locale 5 volte (variante "paga in struttura"); job GitHub Actions e variante Stripe girano solo in CI e non sono stati provati; richiede segreti GitHub (runbook golden-journey-l3.md).
+- **A6-22** (P1, FN-04): FN-04: flow Maestro (login M0, schermate M1-M8 per testID) e job su emulatore consegnati ma mai eseguiti (nessun emulatore né Maestro qui); verificati solo `npm run e2e:check`, tsc, eslint, jest (runbook mobile-e2e.md).
+- **A6-23** (P1, FN-03): FN-03: attori distinti (host, fornitore, guest, admin) provati in locale; la variante con Stripe di test è solo in CI, non provata (runbook golden-journey-l3.md).
+- **A6-24** (P1, FN-03): FN-03: F1-F2 provati in locale nella variante "paga in struttura"; esecuzione in CI non provata (runbook golden-journey-l3.md).
+- **A7-29** (P2, LT-15): LT-15 consegna flusso reale su Postgres, matrice dei coefficienti ed e2e; la copertura con coverlet/soglie non è stata aggiunta (DOMANDE-APERTE, LT-15).
+
 ## Stato attuale vs piano
 
 | Asset | Azione |
@@ -698,6 +719,7 @@ Marketplace pagamenti, scale SEO, temi aggiuntivi, team seats leggeri, OTA se ri
 
 | Data | Cambiamento | Motivo |
 |---|---|---|
+| 2026-10-02 | Sezione "Stato reale al 2026-10-02"; LTR tolto dal freeze (D1); riga SEO allineata ai file reali | FN-05: registro e documenti allineati allo stato verificato (A7-30, A8-30) |
 | 2026-06-19 | GJ: verifica **mobile** — app host Maestro M1–M7 + fornitore web mobile F1–F2 | Parità web/app obbligatoria |
 | 2026-06-19 | Native app + siti premium + custom domain (Holidu) | Feedback utente |
 | 2026-06-05 | Council roadmap v3 | Baseline business |

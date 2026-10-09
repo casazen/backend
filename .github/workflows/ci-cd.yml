@@ -1,8 +1,8 @@
 name: CI/CD Pipeline
 
 # Backend gates: NuGet vulnerability gate, build, tests on PostgreSQL, format; deploy verification on push.
-# There is no backend Golden Journey E2E gate yet: the former e2e-golden-journey.yml only ran `echo` and was
-# removed (FD-02, A9-24). The real end-to-end gate arrives with task FN-03. Runbook: docs/runbooks/ci-backend.md.
+# The former `echo`-only e2e-golden-journey.yml was removed (FD-02, A9-24); the real end-to-end gate (UI, ephemeral stack)
+# is now e2e-golden-journey.yml (FN-03, docs/runbooks/golden-journey-l3.md). Runbook: docs/runbooks/ci-backend.md.
 
 on:
   push:

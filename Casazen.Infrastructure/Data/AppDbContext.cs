@@ -35,6 +35,13 @@ public class AppDbContext(
 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Org> Orgs { get; set; } = null!;
+    public DbSet<OrgSlugAlias> OrgSlugAliases { get; set; } = null!;
+
+    // Operator privacy notice and booking terms of the public site, versioned (BK-14, A3-21)
+    public DbSet<OrgSiteDocument> OrgSiteDocuments { get; set; } = null!;
+
+    /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
+    public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
@@ -64,6 +71,10 @@ public class AppDbContext(
     public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
     public DbSet<AlloggiatiCodeTableImport> AlloggiatiCodeTableImports { get; set; } = null!;
     public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
+
+    // Official ISTAT list of the comuni and the log of its imports (SU-04)
+    public DbSet<Comune> Comuni { get; set; } = null!;
+    public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
@@ -75,12 +86,12 @@ public class AppDbContext(
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
-    public DbSet<PlatformBillingMetrics> PlatformBillingMetrics { get; set; } = null!;
 
     // Supplier console (US-022 / #292)
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
+    public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
@@ -118,6 +129,7 @@ public class AppDbContext(
     public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
+    public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
@@ -283,6 +295,31 @@ public class AppDbContext(
             .HasForeignKey(e => e.ImportId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // SU-04: official ISTAT list of the comuni. The ISTAT code is the key; the cadastral code is unique among the active
+        // comuni only (a comune that changes province gets a new ISTAT code and keeps its cadastral code, so the old row,
+        // deactivated, and the new one coexist).
+        modelBuilder.Entity<Comune>(entity =>
+        {
+            entity.HasIndex(c => c.CadastralCode)
+                .IsUnique()
+                .HasFilter("\"IsActive\"")
+                .HasDatabaseName("IX_Comuni_CadastralCode_Active");
+            entity.HasIndex(c => c.CadastralCode);
+            entity.HasIndex(c => c.NormalizedName);
+            entity.HasIndex(c => c.ProvinceCode);
+            entity.HasIndex(c => c.RegionIstatCode);
+            entity.HasOne(c => c.SourceImport)
+                .WithMany()
+                .HasForeignKey(c => c.SourceImportId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.SourceImportId);
+        });
+        modelBuilder.Entity<ComuneImport>(entity =>
+        {
+            entity.HasIndex(i => i.ImportedAt);
+            entity.HasIndex(i => i.ReferenceDate);
+        });
+
         // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
         modelBuilder.Entity<PropertyQuesturaCredentials>(entity =>
         {
@@ -301,29 +338,51 @@ public class AppDbContext(
             .HasIndex(b => new { b.OrgId, b.BookingCode })
             .IsUnique();
 
-        // Precision for GPS coordinates
+        // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
+        // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
         modelBuilder.Entity<Property>()
             .Property(p => p.Latitude)
-            .HasPrecision(18, 2);
+            .HasPrecision(9, PropertyAddress.CoordinateScale);
 
         modelBuilder.Entity<Property>()
             .Property(p => p.Longitude)
-            .HasPrecision(18, 2);
+            .HasPrecision(9, PropertyAddress.CoordinateScale);
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
-        // Unique constraint on property address for active properties only
-        // Allows soft-deleted properties to be re-created at same address
+        // SU-04: the comune chosen from the official list; the region follows it.
+        modelBuilder.Entity<Property>().HasIndex(p => p.ComuneIstatCode);
+
+        // Unique address PER ORG and per unit (PC-06, A2-19). Before, the index was global: a host with two apartments in
+        // the same building could not create the second, and a host whose address was already used by ANOTHER org got a
+        // 409 that revealed a datum of that tenant. "AddressKey" is a stored generated column (shadow property): street,
+        // city, postal code and unit with case and runs of spaces ignored, so "Via Roma  1" and "via roma 1" are the same
+        // address; it is computed by the database, so every writer of the table is covered and the application never
+        // builds the key (never check-then-insert: the loser of two parallel creates gets 23505 on this index).
+        // A soft-deleted property (PC-05, IsDeleted) frees its address, so it can be re-created there. A paused one
+        // (PC-03, IsPaused) keeps it: pausing is temporary and the property stays the host's.
         modelBuilder.Entity<Property>()
-            .HasIndex(p => new { p.Address, p.City, p.PostalCode, p.IsActive })
+            .Property<string>("AddressKey")
+            .HasColumnType("text")
+            .HasComputedColumnSql(
+                "lower(regexp_replace(btrim(\"Address\"), '\\s+', ' ', 'g')) || '|' || "
+                + "lower(regexp_replace(btrim(\"City\"), '\\s+', ' ', 'g')) || '|' || "
+                + "lower(btrim(\"PostalCode\")) || '|' || "
+                + "lower(regexp_replace(btrim(coalesce(\"Unit\", '')), '\\s+', ' ', 'g'))",
+                stored: true);
+
+        modelBuilder.Entity<Property>()
+            .HasIndex("OrgId", "AddressKey")
             .IsUnique()
-            .HasFilter("\"IsActive\" = true");
+            .HasDatabaseName(PropertyAddress.UniqueIndexName)
+            .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
 
         modelBuilder.Entity<Property>()
             .HasIndex(p => new { p.OrgId, p.Slug })
             .IsUnique()
-            .HasFilter("\"Slug\" IS NOT NULL")
+            // A soft-deleted property (PC-05) frees its slug: SlugExistsInOrgAsync no longer sees it either.
+            .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false")
             .HasDatabaseName("UIX_Properties_OrgId_Slug");
 
         modelBuilder.Entity<Booking>().HasIndex(b => b.PropertyId);
@@ -496,8 +555,10 @@ public class AppDbContext(
             .HasForeignKey(p => p.LeaseContractId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // LT-14: several parties per role, in the order entered.
         modelBuilder.Entity<Party>()
-            .HasIndex(p => new { p.LeaseContractId, p.Role });
+            .HasIndex(p => new { p.LeaseContractId, p.Role, p.Position })
+            .IsUnique();
 
         // LeaseRegistration → LeaseContract (1-to-1, cascade)
         modelBuilder.Entity<LeaseRegistration>()
@@ -625,6 +686,33 @@ public class AppDbContext(
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.StripeCustomerId);
 
+        // Previous public slugs of an org (PL-04, A1-23): shared links keep resolving and the value stays reserved.
+        modelBuilder.Entity<OrgSlugAlias>()
+            .HasOne(a => a.Org)
+            .WithMany()
+            .HasForeignKey(a => a.OrgId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<OrgSlugAlias>()
+            .HasIndex(a => a.OrgId);
+
+        // Operator documents of the public site (BK-14, A3-21): immutable versions numbered per org and kind. The unique
+        // index is the guarantee of the numbering under concurrent publishes (23505, the loser takes the next number).
+        modelBuilder.Entity<OrgSiteDocument>(entity =>
+        {
+            entity.HasOne(d => d.Org)
+                .WithMany()
+                .HasForeignKey(d => d.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(d => d.Kind).HasConversion<string>().HasMaxLength(20);
+            entity.Property(d => d.Source).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasIndex(d => new { d.OrgId, d.Kind, d.Version })
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgSiteDocuments_Org_Kind_Version");
+        });
+
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.CustomDomain)
             .IsUnique()
@@ -662,20 +750,6 @@ public class AppDbContext(
         modelBuilder.Entity<PlatformInvoice>()
             .Property(i => i.TotalAmount)
             .HasPrecision(18, 2);
-
-        modelBuilder.Entity<PlatformBillingMetrics>()
-            .Property(m => m.EuB2cCrossBorderRevenue)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<PlatformBillingMetrics>().HasData(
-            new PlatformBillingMetrics
-            {
-                Id = 1,
-                CalendarYear = 2026,
-                EuB2cCrossBorderRevenue = 0m,
-                OssThresholdReached = false,
-                UpdatedAt = new DateTime(2026, 6, 11, 0, 0, 0, DateTimeKind.Utc),
-            });
 
         // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
         modelBuilder.Entity<Property>().HasIndex(p => p.OrgId);
@@ -820,6 +894,17 @@ public class AppDbContext(
                 .HasDatabaseName("IX_SignupAttributions_RecordedAt");
         });
 
+        // SEO funnel events (SE-04): platform data without an org or a person; the report groups by comune over a window,
+        // the nightly retention deletes by date.
+        modelBuilder.Entity<SeoEvent>(entity =>
+        {
+            entity.HasIndex(e => e.OccurredAt)
+                .HasDatabaseName("IX_SeoEvents_OccurredAt");
+
+            entity.HasIndex(e => new { e.ComuneCode, e.OccurredAt })
+                .HasDatabaseName("IX_SeoEvents_ComuneCode_OccurredAt");
+        });
+
         // ─── Supplier console (US-022 / #292) ────────────────────────────────────
         modelBuilder.Entity<SupplierProfile>()
             .HasOne(sp => sp.Org)
@@ -830,10 +915,23 @@ public class AppDbContext(
         modelBuilder.Entity<SupplierProfile>()
             .HasIndex(sp => sp.Status);
 
+        // SU-04: comuni chosen from the official list. A column added to a table with rows: the profiles that exist start
+        // with none (nothing is inferred from the free-text ComuniJson).
+        modelBuilder.Entity<SupplierProfile>()
+            .Property(sp => sp.ComuneIstatCodesJson)
+            .HasDefaultValueSql("'[]'::jsonb");
+
         modelBuilder.Entity<SupplierProfile>()
             .HasIndex(sp => sp.ClaimTokenHash)
             .IsUnique()
             .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
+
+        // SU-13: the slug of the public showcase is unique (profiles without one are not constrained).
+        modelBuilder.Entity<SupplierProfile>()
+            .HasIndex(sp => sp.ShowcaseSlug)
+            .IsUnique()
+            .HasFilter("\"ShowcaseSlug\" IS NOT NULL")
+            .HasDatabaseName("UIX_SupplierProfiles_ShowcaseSlug");
 
         // One profile per email (SU-14): the unique index on lower(btrim("Email")) is an expression index that EF cannot
         // model; it is created by the migration SupplierProfileEmailUnique (see SupplierProfileEmailIndex).
@@ -858,6 +956,11 @@ public class AppDbContext(
             .HasIndex(i => i.TokenHash)
             .IsUnique()
             .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
+
+        // Audit trail of the admin actions on suppliers and invites (SU-12): read per supplier, newest first. No foreign
+        // key: the trail outlives a supplier org deleted by the fix-orphaned repair.
+        modelBuilder.Entity<SupplierAdminAuditEntry>()
+            .HasIndex(e => new { e.SupplierOrgId, e.OccurredAt });
 
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()
@@ -1066,11 +1169,24 @@ public class AppDbContext(
                 .HasDatabaseName("IX_DeviceRegistrations_UserId");
         });
 
+        // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
+        // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,
+        // admin cross-org reads) still excludes deleted properties, and IgnoreQueryFilters([SoftDeleteQueryFilter])
+        // (fiscal/compliance reporting) still respects tenant isolation.
+        modelBuilder.Entity<Property>().HasQueryFilter(SoftDeleteQueryFilter, p => !p.IsDeleted);
+
         ApplyTenantQueryFilters(modelBuilder);
     }
 
     /// <summary>Key of the global tenant query filter, for <c>IgnoreQueryFilters([TenantQueryFilter])</c>.</summary>
     public const string TenantQueryFilter = "Tenant";
+
+    /// <summary>
+    /// Key of the global soft-delete filter on <see cref="Property"/> (PC-05), for
+    /// <c>IgnoreQueryFilters([SoftDeleteQueryFilter])</c> where a deleted property's historical data must still be
+    /// reachable (fiscal reports, compliance exports).
+    /// </summary>
+    public const string SoftDeleteQueryFilter = "SoftDelete";
 
     private static readonly MethodInfo ApplyTenantQueryFilterMethod = typeof(AppDbContext)
         .GetMethod(nameof(ApplyTenantQueryFilter), BindingFlags.Instance | BindingFlags.NonPublic)!;

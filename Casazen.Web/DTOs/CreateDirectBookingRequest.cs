@@ -5,23 +5,23 @@ namespace Casazen.Web.DTOs;
 
 public class CreateDirectBookingGuestRequest
 {
-    [Required(ErrorMessage = "First name is required")]
+    [Required(ErrorMessage = "FirstNameRequired")]
     [MaxLength(100)]
     public string FirstName { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Last name is required")]
+    [Required(ErrorMessage = "LastNameRequired")]
     [MaxLength(100)]
     public string LastName { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Email is required")]
-    [EmailAddress(ErrorMessage = "Invalid email address")]
+    [Required(ErrorMessage = "EmailRequired")]
+    [EmailAddress(ErrorMessage = "InvalidEmail")]
     [MaxLength(255)]
     public string Email { get; set; } = string.Empty;
 
     [MaxLength(20)]
     public string? Phone { get; set; }
 
-    [Required(ErrorMessage = "Country is required")]
+    [Required(ErrorMessage = "CountryRequired")]
     [MaxLength(100)]
     public string Country { get; set; } = string.Empty;
 }
@@ -31,32 +31,32 @@ public class CreateDirectBookingConsentRequest
     [Required]
     public bool DataProcessing { get; set; }
 
-    [Required(ErrorMessage = "Consent version is required")]
+    [Required(ErrorMessage = "ConsentVersionRequired")]
     [MaxLength(100)]
     public string ConsentVersion { get; set; } = string.Empty;
 }
 
 public class CreateDirectBookingRequest : IValidatableObject
 {
-    [Required(ErrorMessage = "Property is required")]
+    [Required(ErrorMessage = "PropertyRequired")]
     public Guid PropertyId { get; set; }
 
-    [Required(ErrorMessage = "Check-in date is required")]
+    [Required(ErrorMessage = "CheckInDateRequired")]
     public DateTime CheckInDate { get; set; }
 
-    [Required(ErrorMessage = "Check-out date is required")]
+    [Required(ErrorMessage = "CheckOutDateRequired")]
     public DateTime CheckOutDate { get; set; }
 
-    [Range(1, 100, ErrorMessage = "Number of adults must be at least 1")]
+    [Range(1, 100, ErrorMessage = "AdultsMinimum")]
     public int NumberOfAdults { get; set; }
 
-    [Range(0, 100, ErrorMessage = "Number of children cannot be negative")]
+    [Range(0, 100, ErrorMessage = "ChildrenNotNegative")]
     public int NumberOfChildren { get; set; }
 
-    [Required(ErrorMessage = "Guest information is required")]
+    [Required(ErrorMessage = "GuestInfoRequired")]
     public CreateDirectBookingGuestRequest Guest { get; set; } = null!;
 
-    [Required(ErrorMessage = "Consent is required")]
+    [Required(ErrorMessage = "ConsentRequired")]
     public CreateDirectBookingConsentRequest Consent { get; set; } = null!;
 
     [MaxLength(1000)]
@@ -64,7 +64,7 @@ public class CreateDirectBookingRequest : IValidatableObject
 
     /// <summary>Payment option: Immediate, OnCancellationDeadline, or OnSite.</summary>
     [Required]
-    [EnumDataType(typeof(PaymentOption), ErrorMessage = "Invalid payment option")]
+    [EnumDataType(typeof(PaymentOption), ErrorMessage = "InvalidPaymentOption")]
     public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;
 
     /// <summary>

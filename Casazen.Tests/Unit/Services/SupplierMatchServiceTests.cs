@@ -2,9 +2,11 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
@@ -53,7 +55,7 @@ public class SupplierMatchServiceTests
         aiProvider.Verify(
             p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        discovery.Verify(d => d.SearchNearbyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        discovery.Verify(d => d.SearchNearbyAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -94,6 +96,102 @@ public class SupplierMatchServiceTests
         Assert.Contains("Clean Co Srl", result.Recommended!.MatchReason);
     }
 
+    // SE-05 (A8-27): the client shows the AI notice only next to a reason an AI model really wrote.
+    [Fact]
+    public async Task MatchAsync_FlagOnAndProviderAnswers_ReasonIsMarkedAsAiGenerated()
+    {
+        await using var db = CreateDb();
+        var (orgId, propertyId, _) = await SeedAsync(db);
+        var service = CreateService(db, Mock.Of<IAiSupplierDiscoveryService>(), ProviderAnswering("Scelta adatta.", providerConfigured: true).Object, aiEnabled: true);
+
+        var result = await service.MatchAsync(orgId, propertyId, "cleaning", ServiceRequestUrgency.Normal);
+
+        Assert.True(result.Recommended!.ReasonGeneratedByAi);
+        Assert.Equal("Scelta adatta.", result.Recommended.MatchReason);
+        Assert.All(result.Alternatives, a => Assert.False(a.ReasonGeneratedByAi));
+    }
+
+    [Fact]
+    public async Task MatchAsync_FlagOff_ReasonIsStaticAndNotMarkedAsAiGenerated()
+    {
+        await using var db = CreateDb();
+        var (orgId, propertyId, _) = await SeedAsync(db);
+        var service = CreateService(db, Mock.Of<IAiSupplierDiscoveryService>(), Mock.Of<IAiProvider>(), aiEnabled: false);
+
+        var result = await service.MatchAsync(orgId, propertyId, "cleaning", ServiceRequestUrgency.Normal);
+
+        Assert.False(result.Recommended!.ReasonGeneratedByAi);
+    }
+
+    [Fact]
+    public async Task MatchAsync_FlagOnButProviderNotConfigured_UsesStaticReasonNotTheStubPlaceholder()
+    {
+        await using var db = CreateDb();
+        var (orgId, propertyId, _) = await SeedAsync(db);
+        var service = CreateService(
+            db, Mock.Of<IAiSupplierDiscoveryService>(), ProviderAnswering("<article>placeholder</article>", providerConfigured: false).Object, aiEnabled: true);
+
+        var result = await service.MatchAsync(orgId, propertyId, "cleaning", ServiceRequestUrgency.Normal);
+
+        Assert.False(result.Recommended!.ReasonGeneratedByAi);
+        Assert.Contains("Clean Co Srl", result.Recommended.MatchReason);
+        Assert.DoesNotContain("placeholder", result.Recommended.MatchReason);
+    }
+
+    [Fact]
+    public async Task MatchAsync_FlagOnProviderFails_ReasonIsStaticAndNotMarkedAsAiGenerated()
+    {
+        await using var db = CreateDb();
+        var (orgId, propertyId, _) = await SeedAsync(db);
+        var aiProvider = new Mock<IAiProvider>();
+        aiProvider
+            .Setup(p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiBudgetExceededException());
+        var service = CreateService(db, Mock.Of<IAiSupplierDiscoveryService>(), aiProvider.Object, aiEnabled: true);
+
+        var result = await service.MatchAsync(orgId, propertyId, "cleaning", ServiceRequestUrgency.Normal);
+
+        Assert.False(result.Recommended!.ReasonGeneratedByAi);
+    }
+
+    // A8-25: the answer is cached per org, so a second match of the same org pays nothing and another org never reads it.
+    [Fact]
+    public async Task MatchAsync_SameOrgTwice_ReusesTheCachedReasonAndAnotherOrgAsksTheProvider()
+    {
+        await using var db = CreateDb();
+        var (orgId, propertyId, _) = await SeedAsync(db);
+        var otherOrgId = Guid.NewGuid();
+        db.Orgs.Add(new Casazen.Core.Entities.Org { Id = otherOrgId, Name = "Altro", Slug = "altro", DisplayName = "Altro", ContactEmail = "a@x.it" });
+        db.Properties.Add(new Property { Id = Guid.NewGuid(), OrgId = otherOrgId, Name = "Altra", City = "Roma", PostalCode = "00100", OwnerId = "owner-2" });
+        await db.SaveChangesAsync();
+        var otherPropertyId = await db.Properties.IgnoreQueryFilters().Where(p => p.OrgId == otherOrgId).Select(p => p.Id).SingleAsync();
+        var aiProvider = ProviderAnswering("Scelta adatta.", providerConfigured: true);
+        var cache = new AiResponseCache(Options.Create(new AiCacheOptions()));
+        var service = CreateService(db, Mock.Of<IAiSupplierDiscoveryService>(), aiProvider.Object, aiEnabled: true, cache);
+
+        await service.MatchAsync(orgId, propertyId, "cleaning", ServiceRequestUrgency.Normal);
+        await service.MatchAsync(orgId, propertyId, "cleaning", ServiceRequestUrgency.Normal);
+        aiProvider.Verify(
+            p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        var other = await service.MatchAsync(otherOrgId, otherPropertyId, "cleaning", ServiceRequestUrgency.Normal);
+
+        Assert.True(other.Recommended!.ReasonGeneratedByAi);
+        aiProvider.Verify(
+            p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+    }
+
+    private static Mock<IAiProvider> ProviderAnswering(string content, bool providerConfigured)
+    {
+        var aiProvider = new Mock<IAiProvider>();
+        aiProvider
+            .Setup(p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiGenerationResult(content, 30, 5, AiModelTier.Economy, false, providerConfigured));
+        return aiProvider;
+    }
+
     private static async Task<(Guid OrgId, Guid PropertyId, Guid SupplierOrgId)> SeedAsync(AppDbContext db)
     {
         var orgId = Guid.NewGuid();
@@ -129,14 +227,18 @@ public class SupplierMatchServiceTests
         AppDbContext db,
         IAiSupplierDiscoveryService discovery,
         IAiProvider aiProvider,
-        bool aiEnabled)
+        bool aiEnabled,
+        IAiResponseCache? cache = null)
     {
         var supplierService = new SupplierService(
             db,
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
             Mock.Of<ISafeExternalHttpClient>(),
-            Options.Create(new SupplierRegistrationOptions()),
+            ComuneTestServices.Pilots(db),
+            ComuneTestServices.Directory(db),
+            ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             Mock.Of<ILogger<SupplierService>>());
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.AiSupplierDiscovery)).Returns(aiEnabled);
@@ -147,7 +249,8 @@ public class SupplierMatchServiceTests
             discovery,
             aiProvider,
             flags.Object,
-            Mock.Of<ILogger<SupplierMatchService>>());
+            Mock.Of<ILogger<SupplierMatchService>>(),
+            cache);
     }
 
     private static AppDbContext CreateDb()

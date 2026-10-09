@@ -1,13 +1,21 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
 public interface IBookingService
 {
-    Task<IEnumerable<Booking>> GetAllBookingsAsync();
     Task<Booking?> GetBookingAsync(Guid id);
-    Task<IEnumerable<Booking>> GetPropertyBookingsAsync(Guid propertyId);
-    Task<IEnumerable<Booking>> GetGuestBookingsAsync(Guid guestId);
+
+    /// <summary>
+    /// The bookings the caller sees (<paramref name="scope"/>, TN-3), optionally of one property and/or one guest, with
+    /// their property and guest: one SQL query, filtered by org and owner in the database (A2-17).
+    /// </summary>
+    Task<IReadOnlyList<Booking>> GetBookingsAsync(
+        HostScope scope,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a booking entered by the host: always <see cref="BookingStatus.Confirmed"/> with source

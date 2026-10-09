@@ -38,6 +38,14 @@ public static class ServiceCollectionExtensions
     {
         var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
             configuration.GetConnectionString("DefaultConnection"));
+        // Bounded Npgsql pool (HOSTING): the EF contexts of requests and jobs share Database:MaxPoolSize connections.
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            connectionString = DatabaseConnectionSettings
+                .Resolve(configuration, connectionString, hangfireRegistered: false)
+                .ForEntityFramework();
+        }
+
         services.AddDbContext<AppDbContext>(options =>
         {
             if (!string.IsNullOrEmpty(connectionString))
@@ -273,6 +281,7 @@ public static class ServiceCollectionExtensions
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();
+        services.AddScoped<ICalendarBlockService, CalendarBlockService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
@@ -297,10 +306,12 @@ public static class ServiceCollectionExtensions
         // CO-15: guest data rights and retention per category (docs/runbooks/gdpr.md); no period has a default.
         services.AddScoped<GuestDataEraser>();
         services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
+        services.AddScoped<ILeasePartyPrivacyService, LeasePartyPrivacyService>();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
+        services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
@@ -317,19 +328,37 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
+        services.AddScoped<IOrgBrandingService, OrgBrandingService>();
+        services.AddScoped<IOrgSiteDocumentService, OrgSiteDocumentService>();
+        // The hosts that resolve to no org are remembered, bounded, across requests (BK-16).
+        services.AddSingleton<PublicHostMissCache>();
         services.AddScoped<IPublicHostResolver, PublicHostResolver>();
+        // Origins of the orgs' own sites (subdomains and verified custom domains), public endpoints only (BK-16).
+        services.AddScoped<ICorsOriginSource, OrgHostCorsOriginSource>();
+        // Where an org's public site lives (own host or platform path) and its canonical URLs (BK-16).
+        services.AddScoped<PublicOrgSiteUrls>();
+        // Pages and sitemaps of the public site as crawlers read them (BK-15).
+        services.AddScoped<Casazen.Web.Seo.IPublicSeoService, Casazen.Web.Seo.PublicSeoService>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();
+        services.AddScoped<IDnsRecordLookup, DnsClientRecordLookup>();
+        // Custom domains on the Vercel project: add, verify, remove (BK-17, A3-25); no call without the token and project.
+        // No redirects (the bearer token never follows one to another host) and a bounded answer.
+        services.AddHttpClient<IVercelDomainsClient, Casazen.Infrastructure.External.VercelDomainsClient>(client =>
+                client.MaxResponseContentBufferSize = 1024 * 1024)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddScoped<IDomainVerificationService, DomainVerificationService>();
+        services.AddScoped<IDomainRecheckService, DomainRecheckService>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IOrgDomainService, OrgDomainService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<IBillingCheckoutService, BillingCheckoutService>();
-        services.AddScoped<IVatCalculationService, VatCalculationService>();
-        services.AddScoped<IViesService, ViesService>();
-        services.AddScoped<ISdiEInvoiceService, SdiEInvoiceService>();
+        // PL-13: VAT computed by Stripe Tax (no rate in code); no SDI provider is integrated in this build, so the
+        // e-invoices are issued manually (health check "einvoicing", docs/runbooks/billing-tax.md).
+        services.AddScoped<ISdiEInvoiceProvider, UnconfiguredSdiEInvoiceProvider>();
+        services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
-        services.AddScoped<IOssRevenueTracker, OssRevenueTracker>();
-        services.AddScoped<IRentBillingService, NullRentBillingService>();
+        services.AddScoped<IRentBillingService, RentBillingService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
@@ -367,7 +396,21 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
+        // SE-04: events of the SEO funnel (no personal data) and the featured properties of a comune.
+        services.AddScoped<ISeoEventService, SeoEventService>();
+        services.AddScoped<ISeoFeaturedPropertiesService, SeoFeaturedPropertiesService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
+        // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
+        services.AddScoped<ISupplierAdminService, SupplierAdminService>();
+
+        // Official ISTAT comuni list (SU-04): read side, import (admin upload and the seed file of the deploy), the SEO view,
+        // the supplier matching by ISTAT code and the validated pilot comuni of the supplier registration.
+        services.AddScoped<IComuneDirectory, ComuneDirectory>();
+        services.AddScoped<IComuneImportService, ComuneImportService>();
+        services.AddScoped<ISeoComuneCatalog, SeoComuneCatalog>();
+        services.AddScoped<ISupplierComuneMatcher, SupplierComuneMatcher>();
+        services.AddScoped<ISupplierPilotComuni, SupplierPilotComuni>();
+        services.AddScoped<IPropertyComuneResolver, PropertyComuneResolver>();
 
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
         services.AddOptions<SupplierRegistrationOptions>()

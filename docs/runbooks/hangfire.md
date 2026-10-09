@@ -42,13 +42,16 @@ and production never block each other.
 | `lease-registration-status-poll` | `*/5` | `LeaseRegistrationStatusPollingJob.ExecuteAsync` | 60 s |
 | `rli-deadline-reminder` (LT-04, see [§8](#8-rli-deadline-reminder-lt-04)) | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
 | `seo-content-refresh` | 04:00 on day 1 | `SeoContentRefreshJob.ExecuteAsync` | 300 s |
+| `seo-event-retention` (SE-04: deletes SEO funnel events older than `Seo__Events__RetentionDays`, see [seo-funnel.md](seo-funnel.md)) | 03:30 | `SeoEventRetentionJob.ExecuteAsync` | 300 s |
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
+| `rent-collection` (LT-06: payment links of the rent installments coming due, payments in flight read again, see [§12](#12-rent-collection-lt-06)) | 07:00 | `RentCollectionJob.ExecuteAsync` (plus a PostgreSQL advisory lock per lease) | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
 | `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days are written) | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` (CO-09: expires stale links, queues `GuestCheckInLinkEmailJob`, see [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
 | `property-compliance-check` (CO-06, see [§10](#10-property-compliance-check-co-06)) | 04:00 | `PropertyComplianceCheckJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `push-receipts` (MO-04, see [§11](#11-push-notifications-mo-04)) | `*/15` | `PushReceiptsJob.ExecuteAsync` | 60 s |
+| `domain-recheck` (BK-17: custom domains activate by themselves, a removed DNS record is noticed, dropped domains leave the Vercel project; see [seo-domain.md](seo-domain.md#10-custom-domains-on-vercel-bk-17)) | `*/15` | `DomainRecheckJob.ExecuteAsync` (what is due is decided per domain) | 60 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
@@ -524,3 +527,22 @@ ORDER BY createdat DESC LIMIT 20;
 or `nothing to send`; `Expo did not take … retried by Hangfire` (429/5xx: the job retries); `outcome of … unknown …, not
 repeated` (timeout); `refused … not retried` (4xx: for 401 see the access token); every 15 minutes `Push receipts: …
 checked, … delivered, … failed, … devices removed`. No push token appears in the logs.
+
+## 12. Rent collection (LT-06)
+
+Audit defect A7-07. `rent-collection` (daily 07:00 UTC, `RentCollectionJob`) works on the rent installments of the
+long-term leases ([stripe.md](stripe.md#recurring-rent-of-long-term-leases-lt-06)):
+
+- emails the tenants the payment link of each installment due within `RentBilling__PaymentRequestDaysBeforeDue` days
+  (default 5, provisional), once: the request is recorded with the installment under the lease's advisory lock, so a
+  retry, a manual trigger or a second instance never emails twice. Installments already due when the schedule was
+  generated are left to the landlord. Only active schedules of orgs whose Stripe account accepts charges.
+- reads again from Stripe the installments `Processing`, in case a webhook was lost.
+- A failed installment is logged (`Rent payment request of installment … failed`) and retried at the next run; when
+  no email can be queued the request is not recorded and the next run tries again.
+
+```sql
+-- Installments requested today, and those waiting for Stripe
+SELECT "Status", count(*) FROM casazen_prod."RentLedgerEntries"
+WHERE "PaymentRequestedAt" >= date_trunc('day', now()) OR "Status" = 1 GROUP BY 1;
+```

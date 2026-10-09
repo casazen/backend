@@ -5,12 +5,12 @@ title: Regime fiscale STR / cedolare secca 2026
 phase: compliance
 type: compliance
 priority: P1
-status: planned
+status: partial
 issue: 3
 depends_on: []
 blocks: []
 exit_contributes_to: Owner can configure 2026 STR fiscal regime, record OTA 21% withholding, and export a commercialista-ready CSV/PDF pack
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Regime fiscale STR / cedolare secca 2026 (#3)
@@ -23,7 +23,7 @@ Italian STR hosts need to apply L. 199/2025 / D.L. 50/2017 inside CasaZen: cedol
 
 **Done means:** an owner can complete regime assignment and download CSV+PDF packs that a commercialista can open and read (labeled columns/sections, disclaimer, no tax-due engine) — not only that UI chrome exists.
 
-**Phase:** compliance · **Type:** compliance · **Status:** planned · **Issue:** [#3](https://github.com/casazen/backend/issues/3)
+**Phase:** compliance · **Type:** compliance · **Status:** partial (realigned 2026-10-02, see Sessions/specs/README.md) · **Issue:** [#3](https://github.com/casazen/backend/issues/3)
 
 Design: `Sessions/design-3.md`. ADRs 001–003 do not inform this spec.
 

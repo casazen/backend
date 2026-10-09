@@ -5,12 +5,12 @@ title: Supplier public vetrina (marketing page)
 phase: 2
 type: feature
 priority: P1
-status: specced
+status: partial
 issue:
 depends_on: [supplier-console-web, public-site-design-system]
 blocks: []
 exit_contributes_to: Supplier discovery; ecosystem public surfaces
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Supplier Public Site (US-027)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 Public **vetrina** for active suppliers: services, service area (comuni), photos, reviews placeholder, CTA to contact or request via host console. Same `PublicSiteShell` as host sites. MVP may ship minimal v0 in Fase 1 if time; full spec targets Fase 2.
 
-**Phase:** 2 (Fase 1 min v0 optional) · **Type:** feature · **Status:** specced
+**Phase:** 2 (Fase 1 min v0 optional) · **Type:** feature · **Status:** partial (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

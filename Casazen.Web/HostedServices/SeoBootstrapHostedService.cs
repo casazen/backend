@@ -1,6 +1,6 @@
 using System.Globalization;
-using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
 using Hangfire;
@@ -66,7 +66,16 @@ public class SeoBootstrapHostedService(
                 return;
             }
 
-            var codes = ItalianComuneRegistry.AllCodes;
+            // The pilot comuni come from the official ISTAT list: without it there is nothing to generate, and no marker
+            // is written, so the next start tries again once the list is imported (docs/runbooks/comuni-istat.md).
+            var comuneCatalog = scope.ServiceProvider.GetRequiredService<ISeoComuneCatalog>();
+            IReadOnlyList<string> codes = (await comuneCatalog.GetPilotsAsync(cancellationToken)).Select(c => c.Code).ToList();
+            if (codes.Count == 0)
+            {
+                logger.LogWarning("SEO bootstrap skipped: the official ISTAT comuni list is not imported (docs/runbooks/comuni-istat.md)");
+                return;
+            }
+
             var jobClient = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
             var jobId = jobClient.Enqueue<SeoPageGenerationJob>(job => job.ExecuteAsync(codes));
 

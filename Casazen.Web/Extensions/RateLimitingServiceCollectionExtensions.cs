@@ -37,9 +37,11 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.GuestCheckIn, 10, OneMinute, "CheckIn:RateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.GuestCheckInSubmit, 3, OneMinute, "CheckIn:SubmitRateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.PublicTouristTaxCalc, 30, OneMinute, "SeoTouristTax:RateLimitPermitLimit"),
+        new(RateLimitPolicies.PublicSeoEvents, 60, OneMinute),
         new(RateLimitPolicies.PublicResolveHost, 60, OneMinute, "PublicHost:RateLimitPermitLimit"),
         new(RateLimitPolicies.PublicIcal, 60, OneMinute),
         new(RateLimitPolicies.PublicRegistration, 5, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.PublicComuni, 120, OneMinute),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

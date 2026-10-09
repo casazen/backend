@@ -21,7 +21,8 @@ public class SupplierMatchService(
     IAiSupplierDiscoveryService aiDiscovery,
     IAiProvider aiProvider,
     IFeatureFlags featureFlags,
-    ILogger<SupplierMatchService> logger) : ISupplierMatchService
+    ILogger<SupplierMatchService> logger,
+    IAiResponseCache? aiCache = null) : ISupplierMatchService
 {
     private static readonly ServiceRequestStatus[] OpenStatuses =
     [
@@ -54,13 +55,13 @@ public class SupplierMatchService(
             throw new UnauthorizedAccessException("Proprietà non appartiene all'organizzazione.");
 
         var aiEnabled = featureFlags.IsEnabled(FeatureFlags.AiSupplierDiscovery);
-        var suppliers = await supplierService.GetActiveByComune(property.City, category, cancellationToken);
+        var suppliers = await supplierService.GetActiveByComuneAsync(ComuneTarget.ForProperty(property), category, cancellationToken);
         if (suppliers.Count == 0)
         {
             if (!aiEnabled)
                 return new SupplierMatchResult(null, [], [], false);
 
-            var external = await aiDiscovery.SearchNearbyAsync(property.City, category, cancellationToken);
+            var external = await aiDiscovery.SearchNearbyAsync(orgId, property.City, category, cancellationToken);
             return new SupplierMatchResult(null, [], external, external.Count > 0);
         }
 
@@ -93,10 +94,10 @@ public class SupplierMatchService(
             .ToList();
 
         var top = scored[0];
-        var reason = aiEnabled && ServiceCategories.IsKnown(category)
-            ? await BuildMatchReasonAsync(top.Profile, category, urgency, top.Load, cancellationToken)
-            : BuildStaticReason(top.Profile, top.Load);
-        var recommended = ToCandidate(top.Profile, top.Score, reason);
+        var (reason, reasonByAi) = aiEnabled && ServiceCategories.IsKnown(category)
+            ? await BuildMatchReasonAsync(orgId, top.Profile, category, urgency, top.Load, cancellationToken)
+            : (BuildStaticReason(top.Profile, top.Load), false);
+        var recommended = ToCandidate(top.Profile, top.Score, reason, reasonByAi);
         var alternatives = scored
             .Skip(1)
             .Take(3)
@@ -110,7 +111,13 @@ public class SupplierMatchService(
         return new SupplierMatchResult(recommended, alternatives, [], false);
     }
 
-    private async Task<string> BuildMatchReasonAsync(
+    /// <summary>
+    /// The reason of the recommendation. <c>GeneratedByAi</c> only when a provider really answered (or a cached answer of
+    /// this org did): a static fallback, an empty answer and the placeholder of the stub provider are not AI text, so the
+    /// client shows no AI notice for them (A8-27).
+    /// </summary>
+    private async Task<(string Reason, bool GeneratedByAi)> BuildMatchReasonAsync(
+        Guid orgId,
         Casazen.Core.Entities.SupplierProfile profile,
         string category,
         ServiceRequestUrgency urgency,
@@ -122,17 +129,27 @@ public class SupplierMatchService(
             // Data minimization (A8-15): only fixed codes and a count reach the provider, nothing typed by the host.
             var prompt = BuildMatchReasonPrompt(category, urgency, openLoad);
             var cacheKey = $"supplier-match:{category}:{urgency}:{openLoad}";
-            var ai = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
+            AiGenerationResult? ai = null;
+            aiCache?.TryGet(orgId, cacheKey, out ai);
+            if (ai is null)
+            {
+                ai = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
+                if (ai.ProviderConfigured && !string.IsNullOrWhiteSpace(ai.Content))
+                    aiCache?.Set(orgId, cacheKey, ai);
+            }
+
             var text = ai.Content.Trim();
             if (text.Length > 160)
                 text = text[..160];
-            return string.IsNullOrWhiteSpace(text) ? BuildStaticReason(profile, openLoad) : text;
+            return ai.ProviderConfigured && !string.IsNullOrWhiteSpace(text)
+                ? (text, true)
+                : (BuildStaticReason(profile, openLoad), false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Budget exhausted or provider failure: the ranking does not depend on the AI, the reason falls back.
             logger.LogWarning(ex, "AI match reason failed for supplier {OrgId}", profile.OrgId);
-            return BuildStaticReason(profile, openLoad);
+            return (BuildStaticReason(profile, openLoad), false);
         }
     }
 
@@ -154,7 +171,8 @@ public class SupplierMatchService(
     private static SupplierMatchCandidate ToCandidate(
         Casazen.Core.Entities.SupplierProfile profile,
         int score,
-        string reason) =>
+        string reason,
+        bool reasonGeneratedByAi = false) =>
         new(
             profile.OrgId,
             profile.LegalName,
@@ -163,5 +181,6 @@ public class SupplierMatchService(
             profile.Bio,
             score,
             reason,
-            "platform");
+            "platform",
+            reasonGeneratedByAi);
 }

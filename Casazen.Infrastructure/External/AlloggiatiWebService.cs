@@ -13,7 +13,7 @@ namespace Casazen.Infrastructure.External;
 
 /// <summary>
 /// Alloggiati Web communications, honest state (CO-11, decision D6). CasaZen has no client of the Alloggiati web
-/// service yet (CO-13): nothing is transmitted, so a communication is never marked
+/// service (CO-13 only builds the record file the host uploads on the portal): nothing is transmitted, so a communication is never marked
 /// <see cref="AlloggiatiWebStatus.Inviato"/> here. On the arrival day (Europe/Rome) it becomes
 /// <see cref="AlloggiatiWebStatus.DaInviareManualmente"/>: the host sends it on the Questura portal using the
 /// per-guest summary, then declares it with <see cref="MarkSentManuallyAsync"/>.
@@ -38,6 +38,15 @@ public class AlloggiatiWebService(
 
     /// <summary>Error code of a communication already sent or declared sent.</summary>
     public const string AlreadySentCode = "alloggiati_already_sent";
+
+    /// <summary>Error code of a record file requested while the data is incomplete or an official code is to complete (422).</summary>
+    public const string RecordFileNotReadyCode = "alloggiati_file_not_ready";
+
+    /// <summary>Error code of a record file for a stay of less than 1 or more than 30 days (422).</summary>
+    public const string RecordFileStayDaysCode = "alloggiati_file_stay_days_invalid";
+
+    /// <summary>Error code of a record file with a name that cannot be written with the letters the portal accepts (422).</summary>
+    public const string RecordFileNameCode = "alloggiati_file_name_not_representable";
 
     /// <summary>
     /// A report still waiting for its job this long after the scheduled time is considered lost (e.g. Hangfire
@@ -150,6 +159,45 @@ public class AlloggiatiWebService(
             dataComplete,
             dataComplete && rows.All(r => r.CodesToComplete.Count == 0),
             missingTables);
+    }
+
+    public async Task<AlloggiatiRecordFileInfo> BuildRecordFileAsync(Guid bookingId)
+    {
+        var summary = await GetGuestSummaryAsync(bookingId);
+        var result = AlloggiatiRecordFile.Build(summary.Guests);
+        if (!result.Success)
+        {
+            // Positions and field names only: the log never carries the personal data of the guests.
+            logger.LogInformation(
+                "Alloggiati record file of booking {BookingId} not built: {Issues}",
+                bookingId, string.Join(", ", result.Issues.Select(i => $"{i.Kind}@{i.Position}:{i.Field}")));
+            throw RecordFileException(summary, result.Issues);
+        }
+
+        return new AlloggiatiRecordFileInfo(
+            bookingId,
+            summary.ArrivalDate,
+            result.LineCount,
+            result.ToBytes(),
+            $"alloggiati-{summary.ArrivalDate:yyyy-MM-dd}-{bookingId.ToString("N")[..8]}.txt");
+    }
+
+    /// <summary>The most useful reason first: data and codes, then the length of the stay, then a name.</summary>
+    private static DomainRuleException RecordFileException(
+        AlloggiatiGuestSummaryInfo summary,
+        IReadOnlyList<AlloggiatiRecordFileIssue> issues)
+    {
+        if (issues.Any(i => i.Kind is AlloggiatiRecordFileIssueKind.NoGuests
+                or AlloggiatiRecordFileIssueKind.TooManyGuests
+                or AlloggiatiRecordFileIssueKind.DataIncomplete
+                or AlloggiatiRecordFileIssueKind.CodeToComplete))
+            return new DomainRuleException(RecordFileNotReadyCode, "AlloggiatiRecordFileNotReady");
+
+        if (issues.Any(i => i.Kind == AlloggiatiRecordFileIssueKind.StayDaysOutOfRange))
+            return new DomainRuleException(RecordFileStayDaysCode, "AlloggiatiRecordFileStayDays", summary.StayDays, AlloggiatiTerms.MaxStayDaysPerSchedina);
+
+        var name = issues.First(i => i.Kind == AlloggiatiRecordFileIssueKind.NameNotRepresentable);
+        return new DomainRuleException(RecordFileNameCode, "AlloggiatiRecordFileName", name.Position + 1);
     }
 
     private static AlloggiatiGuestRow BuildRow(
@@ -281,8 +329,8 @@ public class AlloggiatiWebService(
         if (!AlloggiatiTerms.IsArrivalDayReached(booking.CheckInDate, _clock.TodayInRome()))
             return AlloggiatiProcessOutcome.NotYetDue;
 
-        // CO-13 will transmit here (Test, then Send) and set Inviato only with the receipt. Until then the host
-        // sends it on the portal: honest state, nothing is reported as sent.
+        // CasaZen does not transmit (no web service client, see docs/runbooks/alloggiati.md): the host uploads the record
+        // file (CO-13) or types the schedine on the portal. Honest state, nothing is reported as sent.
         report.Status = AlloggiatiWebStatus.DaInviareManualmente;
         report.ErrorMessage = null;
         report.UpdatedAt = UtcNow();

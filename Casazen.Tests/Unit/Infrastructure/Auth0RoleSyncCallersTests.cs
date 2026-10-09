@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -111,6 +113,66 @@ public class Auth0RoleSyncCallersTests
         var result = await controller.ChangeRole("auth0|target", new Casazen.Web.DTOs.Users.ChangeRoleDto { Role = "LongTermLandlord" });
 
         Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task UpdateRoles_UnmanageableRole_Returns400ValidationProblemWithoutCallingService()
+    {
+        var userService = new Mock<IUserService>(MockBehavior.Strict);
+        var controller = CreateUsersController(userService.Object, "auth0|admin");
+
+        var result = await controller.UpdateRoles(
+            "auth0|target", new Casazen.Web.DTOs.Users.UpdateUserRolesDto { Roles = ["PropertyOwner", "Staff"] });
+
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        var problem = Assert.IsAssignableFrom<ProblemDetails>(objectResult.Value);
+        Assert.Equal(ProblemCodes.ValidationError, problem.Extensions["code"]);
+        userService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task UpdateRoles_Auth0SyncFails_Returns502WithCode()
+    {
+        var user = new User { Id = "auth0|target", Role = UserRole.PropertyOwner };
+        var userService = new Mock<IUserService>();
+        userService.Setup(s => s.UpdateRolesAsync(
+                "auth0|target", It.IsAny<IReadOnlyCollection<UserRole>>(), "auth0|admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RoleSetUpdateResult(
+                user, [UserRole.PropertyOwner], [], [], Auth0SyncResult.Failed(Auth0SyncResult.RateLimitedCode)));
+        var controller = CreateUsersController(userService.Object, "auth0|admin");
+
+        var result = await controller.UpdateRoles(
+            "auth0|target", new Casazen.Web.DTOs.Users.UpdateUserRolesDto { Roles = ["PropertyOwner", "Supplier"] });
+
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
+        var problem = Assert.IsAssignableFrom<ProblemDetails>(objectResult.Value);
+        Assert.Equal(Auth0SyncResult.RateLimitedCode, problem.Extensions["code"]);
+    }
+
+    [Fact]
+    public async Task UpdateRoles_Synced_ReturnsResultingRolesAndDifference()
+    {
+        var user = new User { Id = "auth0|target", Role = UserRole.PropertyOwner };
+        var userService = new Mock<IUserService>();
+        userService.Setup(s => s.UpdateRolesAsync(
+                "auth0|target",
+                It.Is<IReadOnlyCollection<UserRole>>(r => r.Count == 2 && r.Contains(UserRole.Supplier)),
+                "auth0|admin",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RoleSetUpdateResult(
+                user, [UserRole.PropertyOwner, UserRole.Supplier], [UserRole.Supplier], [], Auth0SyncResult.Synced));
+        var controller = CreateUsersController(userService.Object, "auth0|admin");
+
+        var result = await controller.UpdateRoles(
+            "auth0|target", new Casazen.Web.DTOs.Users.UpdateUserRolesDto { Roles = ["PropertyOwner", "supplier"] });
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<Casazen.Web.DTOs.Users.UserRolesDto>(ok.Value);
+        Assert.Equal(["PropertyOwner", "Supplier"], dto.Roles);
+        Assert.Equal(["Supplier"], dto.RolesGranted);
+        Assert.Empty(dto.RolesRevoked);
     }
 
     [Fact]
@@ -275,7 +337,8 @@ public class Auth0RoleSyncCallersTests
             Mock.Of<IRequestTenantContext>(),
             NullLogger<UsersController>.Instance,
             Mock.Of<IEntitlementService>(),
-            Mock.Of<IHostOnboardingGate>())
+            Mock.Of<IHostOnboardingGate>(),
+            new PublicSiteLinks(Options.Create(new PublicSiteOptions())))
         {
             ControllerContext = new ControllerContext
             {

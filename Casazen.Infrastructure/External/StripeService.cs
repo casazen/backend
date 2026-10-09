@@ -14,6 +14,19 @@ public interface IStripeService
     Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId);
 
     /// <summary>
+    /// Creates an on-session PaymentIntent on the connected account (direct charge, automatic payment methods), sent with
+    /// <paramref name="idempotencyKey"/> so a retry gets the same PaymentIntent (rent installments, LT-06).
+    /// </summary>
+    Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata,
+        string idempotencyKey,
+        string? description,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a refund of a PaymentIntent (BK-02). Direct charges live on the connected account, so the request carries
     /// its <c>Stripe-Account</c> header (<see cref="StripeRefundCreateRequest.ConnectedAccountId"/>); null only for a
     /// PaymentIntent of the platform account. Always sent with the idempotency key of the refund row.
@@ -157,7 +170,9 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
                 Amount = amountCents,
                 Currency = currency,
                 Metadata = metadata,
-                ApplicationFeeAmount = 0,
+                // No platform take-rate yet (A3-40): omitted, not an explicit 0. ApplicationFeeAmount is a nullable
+                // field Stripe treats as "no application fee" when unset; sending a literal 0 is unverified in test
+                // mode and Stripe may reject it. Set this to the real fee amount if/when a take-rate ships.
                 AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
                 {
                     Enabled = true,
@@ -178,6 +193,39 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             logger.LogError(ex, "Error creating connected-account payment intent for {AccountId}", connectedAccountId);
             throw;
         }
+    }
+
+    public async Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata,
+        string idempotencyKey,
+        string? description,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectedAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+
+        var options = new PaymentIntentCreateOptions
+        {
+            Amount = amountCents,
+            Currency = currency,
+            Metadata = metadata,
+            Description = description,
+            // No application fee (A3-40): see CreateConnectedAccountPaymentIntentAsync above.
+            AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions { Enabled = true },
+        };
+
+        var paymentIntent = await new PaymentIntentService(Client).CreateAsync(
+            options,
+            RequestOptionsFor(connectedAccountId, idempotencyKey),
+            cancellationToken);
+        logger.LogInformation(
+            "Connected-account payment intent created: {PaymentIntentId} on {AccountId}",
+            paymentIntent.Id,
+            connectedAccountId);
+        return paymentIntent;
     }
 
     public async Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId)
@@ -418,7 +466,7 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             Confirm = true,
             OffSession = true,
             Metadata = metadata,
-            ApplicationFeeAmount = 0,
+            // See CreateConnectedAccountPaymentIntentAsync above (A3-40): omitted, not an explicit 0.
         };
 
         var paymentIntent = await new PaymentIntentService(Client).CreateAsync(

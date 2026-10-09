@@ -103,11 +103,143 @@ public class UpdatePropertyRequestTests
         Assert.Equal([PropertyAmenity.Heating], property.Amenities);
         Assert.Equal(string.Empty, property.HouseRules);
         Assert.Equal(otherPolicy, property.CancellationPolicyId);
-        Assert.False(property.IsActive);
+        // PC-03, A2-05: isActive is no longer writable through the generic update, the property stays visible.
+        Assert.True(property.IsActive);
         Assert.Equal("IT001272A1ABCDEFGH", property.CinCode);
         Assert.Equal("monolocale-centro", property.Slug);
         // Not in the body: kept.
         Assert.Equal(["https://cdn.example/1.jpg"], property.PhotoUrls);
+    }
+
+    [Fact]
+    public void ApplyTo_IsActiveFalseSent_IsIgnoredAndKeepsThePropertyVisibleAndUnpaused()
+    {
+        // PC-03, A2-05: the old form checkbox / "Pausa" toggle sent { isActive: false } and the property vanished
+        // from its own host's list and detail. Pausing is the dedicated pause/activate action only.
+        var property = StoredProperty();
+
+        Read("""{ "isActive": false, "isPaused": true, "pausedAt": "2026-01-01T00:00:00Z" }""").ApplyTo(property);
+
+        Assert.True(property.IsActive);
+        Assert.False(property.IsPaused);
+        Assert.Null(property.PausedAt);
+    }
+
+    [Fact]
+    public void ApplyTo_UnitSent_IsStoredTrimmedWithSpacesCollapsed()
+    {
+        var property = StoredProperty();
+
+        Read("""{ "unit": "  Scala  B   int. 5 " }""").ApplyTo(property);
+
+        Assert.Equal("Scala B int. 5", property.Unit);
+    }
+
+    [Fact]
+    public void ApplyTo_UnitLeftOut_KeepsTheStoredUnit()
+    {
+        var property = StoredProperty();
+        property.Unit = "int. 2";
+
+        Read("""{ "name": "Altro nome" }""").ApplyTo(property);
+
+        Assert.Equal("int. 2", property.Unit);
+    }
+
+    [Theory]
+    [InlineData("""{ "unit": null }""")]
+    [InlineData("""{ "unit": "   " }""")]
+    public void ApplyTo_UnitSentBlankOrNull_ClearsIt(string body)
+    {
+        var property = StoredProperty();
+        property.Unit = "int. 2";
+
+        Read(body).ApplyTo(property);
+
+        Assert.Null(property.Unit);
+    }
+
+    [Fact]
+    public void ApplyTo_CoordinatesWithMoreThanSixDecimals_AreRoundedToTheStoredPrecision()
+    {
+        var property = StoredProperty();
+
+        Read("""{ "latitude": 41.90278249, "longitude": 12.49636651 }""").ApplyTo(property);
+
+        Assert.Equal(41.902782m, property.Latitude);
+        Assert.Equal(12.496367m, property.Longitude);
+    }
+
+    [Theory]
+    [InlineData("""{ "latitude": 90.5 }""", "PropertyLatitudeRange")]
+    [InlineData("""{ "latitude": -91 }""", "PropertyLatitudeRange")]
+    [InlineData("""{ "longitude": 181 }""", "PropertyLongitudeRange")]
+    [InlineData("""{ "longitude": -4500.5 }""", "PropertyLongitudeRange")]
+    [InlineData("""{ "unit": "123456789012345678901234567890X" }""", "PropertyUnitTooLong")]
+    public void Validate_CoordinateOutOfRangeOrUnitTooLong_ReportsTheResourceKey(string body, string expectedKey)
+    {
+        var request = Read(body);
+        var results = new List<ValidationResult>();
+
+        var valid = Validator.TryValidateObject(request, new ValidationContext(request), results, validateAllProperties: true);
+
+        Assert.False(valid);
+        Assert.Contains(results, r => r.ErrorMessage == expectedKey);
+    }
+
+    [Fact]
+    public void Validate_CoordinatesAtTheLimits_AreValid()
+    {
+        var request = Read("""{ "latitude": -90, "longitude": 180, "unit": "int. 5" }""");
+
+        Assert.True(Validator.TryValidateObject(request, new ValidationContext(request), [], validateAllProperties: true));
+    }
+
+    [Fact]
+    public void ToProperty_UnitAndCoordinates_AreNormalizedAndRounded()
+    {
+        var request = JsonSerializer.Deserialize<CreatePropertyRequest>(
+            """{ "name": "Casa", "address": "Via Roma 1", "unit": " int.  5 ", "city": "Rimini", "latitude": 41.9027825, "longitude": 12.4963664 }""",
+            WebJson)!;
+
+        var property = request.ToProperty("auth0|owner");
+
+        Assert.Equal("int. 5", property.Unit);
+        Assert.Equal(41.902783m, property.Latitude);
+        Assert.Equal(12.496366m, property.Longitude);
+    }
+
+    [Fact]
+    public void Validate_CreateWithLatitudeOutOfRange_ReportsTheResourceKey()
+    {
+        var request = JsonSerializer.Deserialize<CreatePropertyRequest>(
+            """{ "name": "Casa", "address": "Via Roma 1", "city": "Rimini", "latitude": 120 }""", WebJson)!;
+        var results = new List<ValidationResult>();
+
+        Assert.False(Validator.TryValidateObject(request, new ValidationContext(request), results, validateAllProperties: true));
+        Assert.Contains(results, r => r.ErrorMessage == "PropertyLatitudeRange");
+    }
+
+    [Fact]
+    public void ApplyTo_PhotoUrlsSent_IsIgnoredBecauseTheGalleryHasItsOwnEndpoints()
+    {
+        // PC-04, A2-26: a client could otherwise point the public page at any URL, or at another property's photo
+        // (which a later delete from the gallery would then remove from the storage).
+        var property = StoredProperty();
+
+        Read("""{ "photoUrls": ["https://evil.example/x.jpg", "https://cdn.example/other-property/2.jpg"] }""").ApplyTo(property);
+
+        Assert.Equal(["https://cdn.example/1.jpg"], property.PhotoUrls);
+    }
+
+    [Fact]
+    public void ToProperty_PhotoUrlsSent_StartsWithAnEmptyGallery()
+    {
+        var request = JsonSerializer.Deserialize<CreatePropertyRequest>(
+            """{ "name": "Casa", "address": "Via Roma 1", "city": "Rimini", "photoUrls": ["https://evil.example/x.jpg"] }""",
+            WebJson)!;
+
+        Assert.Empty(request.ToProperty("auth0|owner").PhotoUrls);
     }
 
     [Fact]

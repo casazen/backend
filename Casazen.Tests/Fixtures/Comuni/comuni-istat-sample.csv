@@ -1,0 +1,30 @@
+Codice Regione;Codice dell'Unità territoriale sovracomunale (valida a fini statistici);Codice Provincia (Storico)(1);Progressivo del Comune (2);Codice Comune formato alfanumerico;Denominazione (Italiana e straniera);Denominazione in italiano;Denominazione altra lingua;Codice Ripartizione Geografica;Ripartizione geografica;Denominazione Regione;Denominazione dell'Unità territoriale sovracomunale (valida a fini statistici);Tipologia di Unità territoriale sovracomunale;Flag Comune capoluogo di Provincia/Città metropolitana/libero consorzio;Sigla automobilistica;Codice Comune formato numerico;Codice Comune numerico con 107 Province (dal 2017 al 2025);Codice Comune numerico con 110 Province (dal 2010 al 2016);Codice Comune numerico con 107 Province (dal 2006 al 2009);Codice Comune numerico con 103 Province (dal 1995 al 2005);Codice Catastale del Comune;Codice NUTS1 2021;Codice NUTS2 2021 (3);Codice NUTS3 2021;Codice NUTS1 2024;Codice NUTS2 2024 (3);Codice NUTS3 2024
+01;201;001;235;001235;Samone;Samone;;1;Nord-ovest;Piemonte;Torino;3;0;TO;1235;1235;1235;1235;1235;H753;ITC;ITC1;ITC11;ITC;ITC1;ITC11
+01;201;001;272;001272;Torino;Torino;;1;Nord-ovest;Piemonte;Torino;3;1;TO;1272;1272;1272;1272;1272;L219;ITC;ITC1;ITC11;ITC;ITC1;ITC11
+07;210;010;025;010025;Genova;Genova;;1;Nord-ovest;Liguria;Genova;3;1;GE;10025;10025;10025;10025;10025;D969;ITC;ITC3;ITC33;ITC;ITC3;ITC33
+03;013;013;075;013075;Como;Como;;1;Nord-ovest;Lombardia;Como;1;1;CO;13075;13075;13075;13075;13075;C933;ITC;ITC4;ITC42;ITC;ITC4;ITC42
+03;013;013;130;013130;Livo;Livo;;1;Nord-ovest;Lombardia;Como;1;0;CO;13130;13130;13130;13130;13130;E623;ITC;ITC4;ITC42;ITC;ITC4;ITC42
+03;013;013;145;013145;Menaggio;Menaggio;;1;Nord-ovest;Lombardia;Como;1;0;CO;13145;13145;13145;13145;13145;F120;ITC;ITC4;ITC42;ITC;ITC4;ITC42
+03;013;013;178;013178;Peglio;Peglio;;1;Nord-ovest;Lombardia;Como;1;0;CO;13178;13178;13178;13178;13178;G415;ITC;ITC4;ITC42;ITC;ITC4;ITC42
+03;013;013;250;013250;Bellagio;Bellagio;;1;Nord-ovest;Lombardia;Como;1;0;CO;13250;13250;13250;13250;13250;M335;ITC;ITC4;ITC42;ITC;ITC4;ITC42
+03;215;015;146;015146;Milano;Milano;;1;Nord-ovest;Lombardia;Milano;3;1;MI;15146;15146;15146;15146;15146;F205;ITC;ITC4;ITC4C;ITC;ITC4;ITC4C
+03;016;016;065;016065;Castro;Castro;;1;Nord-ovest;Lombardia;Bergamo;1;0;BG;16065;16065;16065;16065;16065;C337;ITC;ITC4;ITC46;ITC;ITC4;ITC46
+04;021;021;008;021008;Bolzano/Bozen;Bolzano;Bozen;2;Nord-est;Trentino-Alto Adige/Südtirol;Bolzano/Bozen;2;1;BZ;21008;21008;21008;21008;21008;A952;ITH;ITH1;ITH10;ITH;ITH1;ITH10
+04;021;021;051;021051;Merano/Meran;Merano;Meran;2;Nord-est;Trentino-Alto Adige/Südtirol;Bolzano/Bozen;2;0;BZ;21051;21051;21051;21051;21051;F132;ITH;ITH1;ITH10;ITH;ITH1;ITH10
+04;022;022;106;022106;Livo;Livo;;2;Nord-est;Trentino-Alto Adige/Südtirol;Trento;2;0;TN;22106;22106;22106;22106;22106;E624;ITH;ITH2;ITH20;ITH;ITH2;ITH20
+04;022;022;165;022165;Samone;Samone;;2;Nord-est;Trentino-Alto Adige/Südtirol;Trento;2;0;TN;22165;22165;22165;22165;22165;H754;ITH;ITH2;ITH20;ITH;ITH2;ITH20
+05;227;027;042;027042;Venezia;Venezia;;2;Nord-est;Veneto;Venezia;3;1;VE;27042;27042;27042;27042;27042;L736;ITH;ITH3;ITH35;ITH;ITH3;ITH35
+08;035;035;033;035033;Reggio nell'Emilia;Reggio nell'Emilia;;2;Nord-est;Emilia-Romagna;Reggio nell'Emilia;1;1;RE;35033;35033;35033;35033;35033;H223;ITH;ITH5;ITH53;ITH;ITH5;ITH53
+08;237;037;006;037006;Bologna;Bologna;;2;Nord-est;Emilia-Romagna;Bologna;3;1;BO;37006;37006;37006;37006;37006;A944;ITH;ITH5;ITH55;ITH;ITH5;ITH55
+08;040;040;012;040012;Forlì;Forlì;;2;Nord-est;Emilia-Romagna;Forlì-Cesena;1;1;FC;40012;40012;40012;40012;40012;D704;ITH;ITH5;ITH58;ITH;ITH5;ITH58
+11;041;041;041;041041;Peglio;Peglio;;3;Centro;Marche;Pesaro e Urbino;1;0;PU;41041;41041;41041;41041;41041;G416;ITI;ITI3;ITI31;ITI;ITI3;ITI31
+09;248;048;017;048017;Firenze;Firenze;;3;Centro;Toscana;Firenze;3;1;FI;48017;48017;48017;48017;48017;D612;ITI;ITI1;ITI14;ITI;ITI1;ITI14
+12;258;058;091;058091;Roma;Roma;;3;Centro;Lazio;Roma;3;1;RM;58091;58091;58091;58091;58091;H501;ITI;ITI4;ITI43;ITI;ITI4;ITI43
+15;062;062;070;062070;Sant'Agata de' Goti;Sant'Agata de' Goti;;4;Sud;Campania;Benevento;1;0;BN;62070;62070;62070;62070;62070;I197;ITF;ITF3;ITF32;ITF;ITF3;ITF32
+15;263;063;049;063049;Napoli;Napoli;;4;Sud;Campania;Napoli;3;1;NA;63049;63049;63049;63049;63049;F839;ITF;ITF3;ITF33;ITF;ITF3;ITF33
+16;075;075;096;075096;Castro;Castro;;4;Sud;Puglia;Lecce;1;0;LE;75096;75096;75096;75096;75096;M261;ITF;ITF4;ITF45;ITF;ITF4;ITF45
+19;282;082;053;082053;Palermo;Palermo;;5;Isole;Sicilia;Palermo;3;1;PA;82053;82053;82053;82053;82053;G273;ITG;ITG1;ITG12;ITG;ITG1;ITG12
+03;097;097;084;097084;Varenna;Varenna;;1;Nord-ovest;Lombardia;Lecco;1;0;LC;97084;97084;97084;97084;97084;L680;ITC;ITC4;ITC43;ITC;ITC4;ITC43
+03;108;108;019;108019;Cesano Maderno;Cesano Maderno;;1;Nord-ovest;Lombardia;Monza e della Brianza;1;0;MB;108019;108019;108019;15075;15075;C566;ITC;ITC4;ITC4D;ITC;ITC4;ITC4D
+03;108;108;033;108033;Monza;Monza;;1;Nord-ovest;Lombardia;Monza e della Brianza;1;1;MB;108033;108033;108033;15149;15149;F704;ITC;ITC4;ITC4D;ITC;ITC4;ITC4D
+03;108;108;040;108040;Seveso;Seveso;;1;Nord-ovest;Lombardia;Monza e della Brianza;1;0;MB;108040;108040;108040;15212;15212;I709;ITC;ITC4;ITC4D;ITC;ITC4;ITC4D

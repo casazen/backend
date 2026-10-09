@@ -36,6 +36,21 @@
   <data name="UserInactiveRoleChange" xml:space="preserve">
     <value>The user is deactivated: reactivate it before changing its role.</value>
   </data>
+  <data name="UserRoleNotManageable" xml:space="preserve">
+    <value>Unknown role, or a role an administrator cannot manage: {0}.</value>
+  </data>
+  <data name="UserLastActiveAdminRoleChange" xml:space="preserve">
+    <value>You cannot remove the Administrator role from the last active administrator: appoint another administrator first.</value>
+  </data>
+  <data name="UserRoleUnknown" xml:space="preserve">
+    <value>Unknown role.</value>
+  </data>
+  <data name="RentalTypeUnknown" xml:space="preserve">
+    <value>Unknown rental type.</value>
+  </data>
+  <data name="EnumValueInvalid" xml:space="preserve">
+    <value>Value not allowed. Allowed values: {0}.</value>
+  </data>
   <data name="UserDeactivated" xml:space="preserve">
     <value>User deactivated: CasaZen refuses all of its requests and the Auth0 account is blocked, without roles.</value>
   </data>
@@ -342,6 +357,12 @@
   <data name="PropertySlugTaken" xml:space="preserve">
     <value>This web address (slug) is already used by another property in your organization.</value>
   </data>
+  <data name="PropertyHasUpcomingBookings" xml:space="preserve">
+    <value>This property cannot be deleted: it has a booking (pending, confirmed or with the guests already checked in) whose check-out has not passed yet.</value>
+  </data>
+  <data name="PropertyHasActiveLeases" xml:space="preserve">
+    <value>This property cannot be deleted: it has a lease in force or in progress that has not ended yet.</value>
+  </data>
   <data name="BookingUpdateInvalid" xml:space="preserve">
     <value>The booking cannot be changed this way: check the dates, the number of guests and the booking status.</value>
   </data>
@@ -378,11 +399,98 @@
   <data name="SignupAttributionUnknownComune" xml:space="preserve">
     <value>The given comune (municipality) is not one CasaZen manages.</value>
   </data>
+  <data name="SeoEventUnknown" xml:space="preserve">
+    <value>The event is not one that is recorded (cta_click, signup_start).</value>
+  </data>
   <data name="SignupAttributionOnboardingRequired" xml:space="preserve">
     <value>The signup source can be recorded only after completing the onboarding.</value>
   </data>
   <data name="OrgDomainSubdomainsNotConfigured" xml:space="preserve">
     <value>CasaZen subdomains are not available yet: use the CasaZen path or a custom domain.</value>
+  </data>
+  <data name="OrgNameRequired" xml:space="preserve">
+    <value>The organization name is required.</value>
+  </data>
+  <data name="OrgNameTooLong" xml:space="preserve">
+    <value>The organization name cannot exceed 200 characters.</value>
+  </data>
+  <data name="OrgSlugRequired" xml:space="preserve">
+    <value>The web address (slug) is required.</value>
+  </data>
+  <data name="OrgSlugTooLong" xml:space="preserve">
+    <value>The web address (slug) cannot exceed 100 characters.</value>
+  </data>
+  <data name="OrgContactEmailRequired" xml:space="preserve">
+    <value>The contact email is required.</value>
+  </data>
+  <data name="OrgContactEmailTooLong" xml:space="preserve">
+    <value>The contact email cannot exceed 255 characters.</value>
+  </data>
+  <data name="OrgSlugInvalid" xml:space="preserve">
+    <value>This web address (slug) is not valid: use {0} to {1} characters among letters, numbers and hyphens.</value>
+  </data>
+  <data name="OrgSlugReserved" xml:space="preserve">
+    <value>This web address (slug) is reserved for the platform: choose another one.</value>
+  </data>
+  <data name="OrgSlugTaken" xml:space="preserve">
+    <value>This web address (slug) is already used, or was used, by another organization.</value>
+  </data>
+  <data name="OrgBrandingColorInvalid" xml:space="preserve">
+    <value>The color is not valid: use a hex code, for example #1a6b8f.</value>
+  </data>
+  <data name="OrgBrandingThemeInvalid" xml:space="preserve">
+    <value>This theme is not available for the public site.</value>
+  </data>
+  <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
+    <value>The tagline cannot exceed {0} characters.</value>
+  </data>
+  <data name="OrgBrandingTaglineTooLongInput" xml:space="preserve">
+    <value>The tagline is too long.</value>
+  </data>
+  <data name="OrgBrandingImageEmpty" xml:space="preserve">
+    <value>Select an image to upload.</value>
+  </data>
+  <data name="OrgBrandingImageTooLarge" xml:space="preserve">
+    <value>The image exceeds the maximum size of {0} MB.</value>
+  </data>
+  <data name="OrgBrandingImageTypeInvalid" xml:space="preserve">
+    <value>Unsupported format: upload a PNG, JPEG or WebP image.</value>
+  </data>
+  <data name="OrgBrandingImageDimensionsInvalid" xml:space="preserve">
+    <value>Invalid image size: it must be at least {0}×{1} pixels and at most {2}×{3}.</value>
+  </data>
+  <data name="PublicSearchFilterInvalid" xml:space="preserve">
+    <value>A search filter is not valid.</value>
+  </data>
+  <data name="OrgDocumentContentRequired" xml:space="preserve">
+    <value>Write the text of the document.</value>
+  </data>
+  <data name="OrgDocumentContentTooLong" xml:space="preserve">
+    <value>The text is longer than {0} characters.</value>
+  </data>
+  <data name="OrgDocumentContentTooLongInput" xml:space="preserve">
+    <value>The text is too long.</value>
+  </data>
+  <data name="OrgDocumentHtmlNotAllowed" xml:space="preserve">
+    <value>The text contains HTML code, which is not allowed: write plain text (you can use # for headings, - for lists, **bold** and [text](https://address) for links).</value>
+  </data>
+  <data name="OrgDocumentLinkInvalid" xml:space="preserve">
+    <value>A link is not valid: it must start with https://, http:// or mailto:.</value>
+  </data>
+  <data name="OrgDocumentUrlRequired" xml:space="preserve">
+    <value>Enter the address of the document.</value>
+  </data>
+  <data name="OrgDocumentUrlInvalid" xml:space="preserve">
+    <value>The address is not valid: it must be a complete https:// address, without credentials.</value>
+  </data>
+  <data name="OrgDocumentSourceInvalid" xml:space="preserve">
+    <value>Choose whether to write the text or give the address of a document.</value>
+  </data>
+  <data name="OrgDocumentVersionNotFound" xml:space="preserve">
+    <value>This version of the document does not exist.</value>
+  </data>
+  <data name="OrgDocumentKindUnknown" xml:space="preserve">
+    <value>Unknown document.</value>
   </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>This field is required.</value>
@@ -468,6 +576,15 @@
   </data>
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen does not transmit to Alloggiati Web yet: send the record on the Questura portal using the data summary, then mark it as sent manually.</value>
+  </data>
+  <data name="AlloggiatiRecordFileNotReady" xml:space="preserve">
+    <value>The file for the Alloggiati Web portal cannot be generated: the guest data is incomplete or an official code is missing. Complete the guest's Alloggiati details.</value>
+  </data>
+  <data name="AlloggiatiRecordFileStayDays" xml:space="preserve">
+    <value>The file for the Alloggiati Web portal cannot be generated: the stay lasts {0} days and one schedina accepts from 1 to {1}.</value>
+  </data>
+  <data name="AlloggiatiRecordFileName" xml:space="preserve">
+    <value>The file for the Alloggiati Web portal cannot be generated: the first or last name of guest {0} has characters the portal does not accept. Write them with letters of the Latin alphabet only, as on the document.</value>
   </data>
   <data name="TouristTaxRateNotFound" xml:space="preserve">
     <value>Tourist tax rate not found.</value>
@@ -630,6 +747,36 @@
   </data>
   <data name="SupplierComuneNotPilot" xml:space="preserve">
     <value>Self-registration is not available for this municipality: choose one from the list or ask for an invitation.</value>
+  </data>
+  <data name="ComuniDatasetUnavailable" xml:space="preserve">
+    <value>The official ISTAT comuni list is not available yet: a comune cannot be chosen or validated. Try again later or contact the CasaZen team.</value>
+  </data>
+  <data name="ComuneIstatUnknown" xml:space="preserve">
+    <value>The ISTAT code {0} is not a comune of the official list: choose the comune from the list.</value>
+  </data>
+  <data name="ComuniTooMany" xml:space="preserve">
+    <value>You can list at most {0} comuni.</value>
+  </data>
+  <data name="ComuneSearchQueryLength" xml:space="preserve">
+    <value>Type {0} to {1} characters to search for a comune.</value>
+  </data>
+  <data name="ComuniImportFieldRequired" xml:space="preserve">
+    <value>This field is required.</value>
+  </data>
+  <data name="ComuniImportReferenceDateInvalid" xml:space="preserve">
+    <value>Give the reference date of the list as YYYY-MM-DD (the "updated to" date of the official file).</value>
+  </data>
+  <data name="ComuniImportInvalid" xml:space="preserve">
+    <value>The file is not valid and no comune was imported: fix the listed lines and try again.</value>
+  </data>
+  <data name="ActivationCinIstatMismatch" xml:space="preserve">
+    <value>The comune in the CIN ({0}) differs from the comune of the property ({1}). This is not an error: a CIN does not change after a relocation or reclassification. Just check that the CIN is the one of this property.</value>
+  </data>
+  <data name="ActivationComuneMissing" xml:space="preserve">
+    <value>Choose the comune from the ISTAT list: it is needed for the documents your region requires, the tourist tax and the CIN check.</value>
+  </data>
+  <data name="ComuneIstatCodeInvalid" xml:space="preserve">
+    <value>The ISTAT code of the comune must be 6 digits: choose the comune from the list.</value>
   </data>
   <data name="OnSiteRequestTooManyNights" xml:space="preserve">
     <value>With payment at the property you can request at most {0} nights.</value>
@@ -1180,6 +1327,42 @@
   <data name="OtaStayBlockNotFound" xml:space="preserve">
     <value>Calendar block not found.</value>
   </data>
+  <data name="CalendarBlockNotFound" xml:space="preserve">
+    <value>Calendar block not found.</value>
+  </data>
+  <data name="CalendarBlockInvalidRange" xml:space="preserve">
+    <value>The end date must be after the start date.</value>
+  </data>
+  <data name="CalendarBlockInPast" xml:space="preserve">
+    <value>Past dates cannot be blocked: the block must start today or later.</value>
+  </data>
+  <data name="CalendarBlockTooLong" xml:space="preserve">
+    <value>A block can last at most {0} nights. To close the property for longer, pause it.</value>
+  </data>
+  <data name="CalendarBlockInvalidReason" xml:space="preserve">
+    <value>Choose the reason of the block: owner stay, maintenance or other.</value>
+  </data>
+  <data name="CalendarBlockNoteTooLong" xml:space="preserve">
+    <value>The note is too long (at most 200 characters).</value>
+  </data>
+  <data name="CalendarBlockOverlapsBooking" xml:space="preserve">
+    <value>A booking already takes one of these nights: cancel it or choose other dates.</value>
+  </data>
+  <data name="CalendarBlockOverlapsBlock" xml:space="preserve">
+    <value>You have already blocked one of these nights: remove that block or choose other dates.</value>
+  </data>
+  <data name="CalendarBlockNotManual" xml:space="preserve">
+    <value>This block comes from a channel calendar (iCal): remove it on the channel or unlink the calendar, not here.</value>
+  </data>
+  <data name="CalendarBlockStartRequired" xml:space="preserve">
+    <value>Enter the start date of the block.</value>
+  </data>
+  <data name="CalendarBlockEndRequired" xml:space="preserve">
+    <value>Enter the end date of the block.</value>
+  </data>
+  <data name="CalendarBlockReasonRequired" xml:space="preserve">
+    <value>Enter the reason of the block.</value>
+  </data>
   <data name="OtaStayBlockNotImported" xml:space="preserve">
     <value>Only a block imported from a linked OTA calendar can become a stay.</value>
   </data>
@@ -1302,5 +1485,647 @@
   </data>
   <data name="LtrVerifiedAtInFuture" xml:space="preserve">
     <value>The verification date cannot be in the future.</value>
+  </data>
+  <data name="LeaseLandlordRequired" xml:space="preserve">
+    <value>The lease needs at least one landlord.</value>
+  </data>
+  <data name="LeaseTenantRequired" xml:space="preserve">
+    <value>The lease needs at least one tenant.</value>
+  </data>
+  <data name="LeasePartiesTooMany" xml:space="preserve">
+    <value>Too many parties for one role: at most {0} landlords and {0} tenants.</value>
+  </data>
+  <data name="LeasePartyFiscalCodeInvalid" xml:space="preserve">
+    <value>The fiscal code of a party is not valid: it needs 16 characters with the right check character (natural person) or 11 digits (company).</value>
+  </data>
+  <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
+    <value>The same fiscal code is given for more than one party of the lease.</value>
+  </data>
+  <data name="PropertyAddressTaken" xml:space="preserve">
+    <value>An active property of your organization already has this address. If it is another apartment in the same building, enter the unit or staircase.</value>
+  </data>
+  <data name="PropertyUnitTooLong" xml:space="preserve">
+    <value>The unit or staircase can have at most 30 characters.</value>
+  </data>
+  <data name="PropertyLatitudeRange" xml:space="preserve">
+    <value>The latitude must be between -90 and 90 degrees.</value>
+  </data>
+  <data name="PropertyLongitudeRange" xml:space="preserve">
+    <value>The longitude must be between -180 and 180 degrees.</value>
+  </data>
+  <data name="PropertyCoordinatesInvalid" xml:space="preserve">
+    <value>The coordinates are not valid: the latitude must be between -90 and 90 degrees and the longitude between -180 and 180.</value>
+  </data>
+  <data name="BillingSdiRecipientCodeInvalid" xml:space="preserve">
+    <value>Invalid SDI recipient code: use letters and digits only (at most 7).</value>
+  </data>
+  <data name="BillingFiscalCodeInvalid" xml:space="preserve">
+    <value>Invalid tax code: use letters and digits only (at most 16).</value>
+  </data>
+  <data name="BillingPecEmailInvalid" xml:space="preserve">
+    <value>Invalid PEC address.</value>
+  </data>
+  <data name="PlatformInvoiceSdiStatusUnknown" xml:space="preserve">
+    <value>Unknown e-invoice status.</value>
+  </data>
+  <data name="PlatformInvoiceSdiReferenceInvalid" xml:space="preserve">
+    <value>Enter the reference of the issued e-invoice (at most 255 characters).</value>
+  </data>
+  <data name="PlatformInvoiceNotFound" xml:space="preserve">
+    <value>Invoice not found.</value>
+  </data>
+  <data name="PlatformInvoiceSdiAlreadyIssued" xml:space="preserve">
+    <value>The e-invoice has already been submitted or issued.</value>
+  </data>
+  <data name="PropertyPhotoNone" xml:space="preserve">
+    <value>Select at least one photo to upload.</value>
+  </data>
+  <data name="PropertyPhotoTooManyFiles" xml:space="preserve">
+    <value>You can upload at most {0} photos at a time.</value>
+  </data>
+  <data name="PropertyPhotoLimitReached" xml:space="preserve">
+    <value>A property can have at most {0} photos (it already has {1}): delete a photo before uploading more.</value>
+  </data>
+  <data name="PropertyPhotoInvalidType" xml:space="preserve">
+    <value>The file "{0}" is not a valid photo: only JPEG, PNG or WebP images are accepted.</value>
+  </data>
+  <data name="PropertyPhotoInvalidSize" xml:space="preserve">
+    <value>The file "{0}" is empty or larger than the {1} MB limit.</value>
+  </data>
+  <data name="PropertyPhotoNotFound" xml:space="preserve">
+    <value>The photo is no longer in the property gallery: reload the page.</value>
+  </data>
+  <data name="PropertyPhotosChanged" xml:space="preserve">
+    <value>The gallery was changed by another user or another tab: reload the page and try again.</value>
+  </data>
+  <data name="PropertyPhotoUrlRequired" xml:space="preserve">
+    <value>Specify the photo.</value>
+  </data>
+  <data name="PropertyPhotoUrlTooLong" xml:space="preserve">
+    <value>The photo address is too long.</value>
+  </data>
+  <data name="SeoNotFoundTitle" xml:space="preserve">
+    <value>Page not found</value>
+  </data>
+  <data name="SeoNotFoundText" xml:space="preserve">
+    <value>The page you asked for does not exist or is no longer available.</value>
+  </data>
+  <data name="SeoOrgTitle" xml:space="preserve">
+    <value>{0} — Book direct</value>
+  </data>
+  <data name="SeoOrgDescriptionOne" xml:space="preserve">
+    <value>Book direct with {0}: one property in {1}.</value>
+  </data>
+  <data name="SeoOrgDescriptionMany" xml:space="preserve">
+    <value>Book direct with {0}: {1} properties ({2}).</value>
+  </data>
+  <data name="SeoOrgDescriptionNone" xml:space="preserve">
+    <value>{0}: there are no properties to book right now.</value>
+  </data>
+  <data name="SeoOurProperties" xml:space="preserve">
+    <value>Our properties</value>
+  </data>
+  <data name="SeoPriceFrom" xml:space="preserve">
+    <value>From {0} per night</value>
+  </data>
+  <data name="SeoLabelDetails" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="SeoLabelGuests" xml:space="preserve">
+    <value>Guests</value>
+  </data>
+  <data name="SeoLabelBedrooms" xml:space="preserve">
+    <value>Bedrooms</value>
+  </data>
+  <data name="SeoLabelBathrooms" xml:space="preserve">
+    <value>Bathrooms</value>
+  </data>
+  <data name="SeoLabelCleaningFee" xml:space="preserve">
+    <value>Cleaning fee</value>
+  </data>
+  <data name="SeoLabelCin" xml:space="preserve">
+    <value>CIN code</value>
+  </data>
+  <data name="SeoLabelAmenities" xml:space="preserve">
+    <value>Amenities</value>
+  </data>
+  <data name="SeoLabelHouseRules" xml:space="preserve">
+    <value>House rules</value>
+  </data>
+  <data name="SeoLabelCancellation" xml:space="preserve">
+    <value>Cancellation policy</value>
+  </data>
+  <data name="SeoPropertyDescriptionFallback" xml:space="preserve">
+    <value>{0} in {1}: sleeps {2}, {3} bedrooms, {4} bathrooms. Book direct with the host.</value>
+  </data>
+  <data name="SeoPropertyDescriptionBasic" xml:space="preserve">
+    <value>{0} in {1}. Book direct with the host.</value>
+  </data>
+  <data name="SeoHubTitle" xml:space="preserve">
+    <value>Short-term rental guides by comune | CasaZen</value>
+  </data>
+  <data name="SeoHubHeading" xml:space="preserve">
+    <value>Short-term rental guides</value>
+  </data>
+  <data name="SeoHubDescription" xml:space="preserve">
+    <value>The guides and tourist tax calculators published on CasaZen, comune by comune.</value>
+  </data>
+  <data name="SeoHubGuides" xml:space="preserve">
+    <value>Guides by comune</value>
+  </data>
+  <data name="SeoHubCalculators" xml:space="preserve">
+    <value>Tourist tax calculation</value>
+  </data>
+  <data name="SeoHubEmpty" xml:space="preserve">
+    <value>No guides have been published yet.</value>
+  </data>
+  <data name="SeoGuideCta" xml:space="preserve">
+    <value>List your home</value>
+  </data>
+  <data name="SeoAmenity_WiFi" xml:space="preserve">
+    <value>WiFi</value>
+  </data>
+  <data name="SeoAmenity_TV" xml:space="preserve">
+    <value>TV</value>
+  </data>
+  <data name="SeoAmenity_CableTV" xml:space="preserve">
+    <value>Cable TV</value>
+  </data>
+  <data name="SeoAmenity_Workspace" xml:space="preserve">
+    <value>Workspace</value>
+  </data>
+  <data name="SeoAmenity_AirConditioning" xml:space="preserve">
+    <value>Air conditioning</value>
+  </data>
+  <data name="SeoAmenity_Heating" xml:space="preserve">
+    <value>Heating</value>
+  </data>
+  <data name="SeoAmenity_Fireplace" xml:space="preserve">
+    <value>Fireplace</value>
+  </data>
+  <data name="SeoAmenity_Kitchen" xml:space="preserve">
+    <value>Kitchen</value>
+  </data>
+  <data name="SeoAmenity_Refrigerator" xml:space="preserve">
+    <value>Refrigerator</value>
+  </data>
+  <data name="SeoAmenity_Microwave" xml:space="preserve">
+    <value>Microwave</value>
+  </data>
+  <data name="SeoAmenity_Dishwasher" xml:space="preserve">
+    <value>Dishwasher</value>
+  </data>
+  <data name="SeoAmenity_CoffeeMaker" xml:space="preserve">
+    <value>Coffee maker</value>
+  </data>
+  <data name="SeoAmenity_Stove" xml:space="preserve">
+    <value>Stove</value>
+  </data>
+  <data name="SeoAmenity_Oven" xml:space="preserve">
+    <value>Oven</value>
+  </data>
+  <data name="SeoAmenity_DiningTable" xml:space="preserve">
+    <value>Dining table</value>
+  </data>
+  <data name="SeoAmenity_Washer" xml:space="preserve">
+    <value>Washing machine</value>
+  </data>
+  <data name="SeoAmenity_Dryer" xml:space="preserve">
+    <value>Dryer</value>
+  </data>
+  <data name="SeoAmenity_IronAndBoard" xml:space="preserve">
+    <value>Iron and ironing board</value>
+  </data>
+  <data name="SeoAmenity_Pool" xml:space="preserve">
+    <value>Pool</value>
+  </data>
+  <data name="SeoAmenity_HotTub" xml:space="preserve">
+    <value>Hot tub</value>
+  </data>
+  <data name="SeoAmenity_Garden" xml:space="preserve">
+    <value>Garden</value>
+  </data>
+  <data name="SeoAmenity_Patio" xml:space="preserve">
+    <value>Patio</value>
+  </data>
+  <data name="SeoAmenity_Balcony" xml:space="preserve">
+    <value>Balcony</value>
+  </data>
+  <data name="SeoAmenity_BBQGrill" xml:space="preserve">
+    <value>Barbecue grill</value>
+  </data>
+  <data name="SeoAmenity_BeachAccess" xml:space="preserve">
+    <value>Beach access</value>
+  </data>
+  <data name="SeoAmenity_Terrace" xml:space="preserve">
+    <value>Terrace</value>
+  </data>
+  <data name="SeoAmenity_FreeParking" xml:space="preserve">
+    <value>Free parking</value>
+  </data>
+  <data name="SeoAmenity_PaidParking" xml:space="preserve">
+    <value>Paid parking</value>
+  </data>
+  <data name="SeoAmenity_Garage" xml:space="preserve">
+    <value>Garage</value>
+  </data>
+  <data name="SeoAmenity_EVCharger" xml:space="preserve">
+    <value>EV charger</value>
+  </data>
+  <data name="SeoAmenity_BikeStorage" xml:space="preserve">
+    <value>Bike storage</value>
+  </data>
+  <data name="SeoAmenity_SmokeDetector" xml:space="preserve">
+    <value>Smoke detector</value>
+  </data>
+  <data name="SeoAmenity_CarbonMonoxideDetector" xml:space="preserve">
+    <value>Carbon monoxide detector</value>
+  </data>
+  <data name="SeoAmenity_FireExtinguisher" xml:space="preserve">
+    <value>Fire extinguisher</value>
+  </data>
+  <data name="SeoAmenity_FirstAidKit" xml:space="preserve">
+    <value>First aid kit</value>
+  </data>
+  <data name="SeoAmenity_SecurityCameras" xml:space="preserve">
+    <value>Security cameras</value>
+  </data>
+  <data name="SeoAmenity_Safe" xml:space="preserve">
+    <value>Safe</value>
+  </data>
+  <data name="SeoAmenity_WheelchairAccessible" xml:space="preserve">
+    <value>Wheelchair accessible</value>
+  </data>
+  <data name="SeoAmenity_Elevator" xml:space="preserve">
+    <value>Elevator</value>
+  </data>
+  <data name="SeoAmenity_StepFreeAccess" xml:space="preserve">
+    <value>Step-free access</value>
+  </data>
+  <data name="SeoAmenity_PetFriendly" xml:space="preserve">
+    <value>Pets allowed</value>
+  </data>
+  <data name="SeoAmenity_SmokingAllowed" xml:space="preserve">
+    <value>Smoking allowed</value>
+  </data>
+  <data name="SeoAmenity_Crib" xml:space="preserve">
+    <value>Crib</value>
+  </data>
+  <data name="SeoAmenity_HighChair" xml:space="preserve">
+    <value>High chair</value>
+  </data>
+  <data name="SeoAmenity_Gym" xml:space="preserve">
+    <value>Gym</value>
+  </data>
+  <data name="SeoAmenity_Sauna" xml:space="preserve">
+    <value>Sauna</value>
+  </data>
+  <data name="SeoAmenity_SelfCheckIn" xml:space="preserve">
+    <value>Self check-in</value>
+  </data>
+  <data name="SeoAmenity_LongTermStaysAllowed" xml:space="preserve">
+    <value>Long stays allowed</value>
+  </data>
+  <data name="SeoAmenity_LuggageDropOffAllowed" xml:space="preserve">
+    <value>Luggage drop-off</value>
+  </data>
+  <data name="SeoAmenity_PrivateEntrance" xml:space="preserve">
+    <value>Private entrance</value>
+  </data>
+  <data name="DomainIssue_ownership_txt_missing" xml:space="preserve">
+    <value>We cannot find the TXT record that proves you own the domain. Check that it was created and wait for the DNS to propagate (it can take a few hours).</value>
+  </data>
+  <data name="DomainIssue_dns_not_pointing" xml:space="preserve">
+    <value>The domain does not point to our service yet: create the CNAME record shown (for a domain without www, the A records) and wait for the DNS to propagate.</value>
+  </data>
+  <data name="DomainIssue_vercel_verification_pending" xml:space="preserve">
+    <value>The service provider asks for one more TXT record to confirm the domain: add it and check again.</value>
+  </data>
+  <data name="DomainIssue_vercel_not_configured" xml:space="preserve">
+    <value>Activating custom domains is not available on the platform yet. Your domain will activate by itself as soon as it is.</value>
+  </data>
+  <data name="DomainIssue_vercel_unauthorized" xml:space="preserve">
+    <value>We cannot activate the domain right now because of a platform configuration problem. We will retry automatically; if it lasts, contact support.</value>
+  </data>
+  <data name="DomainIssue_vercel_unavailable" xml:space="preserve">
+    <value>The activation service is not answering right now. We will retry automatically.</value>
+  </data>
+  <data name="DomainIssue_domain_taken" xml:space="preserve">
+    <value>This domain is already in use by another CasaZen site.</value>
+  </data>
+  <data name="DomainIssue_vercel_domain_in_use" xml:space="preserve">
+    <value>This domain is already linked to another project or account of the service provider and we cannot activate it. Contact support.</value>
+  </data>
+  <data name="DomainIssue_vercel_rejected" xml:space="preserve">
+    <value>The service provider does not accept this domain. Check that it is spelled correctly.</value>
+  </data>
+  <data name="SeoDisclaimerLastUpdated" xml:space="preserve">
+    <value>Last updated: {0}</value>
+  </data>
+  <data name="SeoDisclaimerLastUpdatedUnknown" xml:space="preserve">
+    <value>Update date not available</value>
+  </data>
+  <data name="SeoDisclaimerNotLegalAdvice" xml:space="preserve">
+    <value>General information, not legal advice. The host remains responsible for compliance.</value>
+  </data>
+  <data name="SeoDisclaimerAiGenerated" xml:space="preserve">
+    <value>Text generated with the help of AI and approved by a CasaZen administrator before publication: always check the official sources.</value>
+  </data>
+  <data name="SupplierAlreadySuspended" xml:space="preserve">
+    <value>The supplier is already suspended.</value>
+  </data>
+  <data name="SupplierNotSuspended" xml:space="preserve">
+    <value>The supplier is not suspended: there is nothing to reactivate.</value>
+  </data>
+  <data name="SupplierInviteNotFound" xml:space="preserve">
+    <value>Invite not found.</value>
+  </data>
+  <data name="SupplierInviteNotPending" xml:space="preserve">
+    <value>Only a pending invite can be revoked: this one was already used, has expired or was already revoked.</value>
+  </data>
+  <data name="SupplierInviteNotResendable" xml:space="preserve">
+    <value>An invite that was already used or revoked cannot be sent again: create a new invite.</value>
+  </data>
+  <data name="SupplierInviteDuplicate" xml:space="preserve">
+    <value>Another invite for this email is already pending: revoke it before sending this one again.</value>
+  </data>
+  <data name="SupplierInviteRevoked" xml:space="preserve">
+    <value>This invite was revoked. Ask the CasaZen team to send you a new one.</value>
+  </data>
+  <data name="SupplierSuspended" xml:space="preserve">
+    <value>Your supplier account is suspended: you cannot complete the activation. Contact CasaZen support.</value>
+  </data>
+  <data name="ServiceRequestSupplierNotActive" xml:space="preserve">
+    <value>Your supplier account is not active (it is suspended or not yet activated): you cannot act on requests. Contact CasaZen support.</value>
+  </data>
+  <data name="SupplierSuspendReasonRequired" xml:space="preserve">
+    <value>Enter the reason for the suspension.</value>
+  </data>
+  <data name="SupplierSuspendReasonTooLong" xml:space="preserve">
+    <value>The suspension reason can have at most 500 characters.</value>
+  </data>
+  <data name="RentLeaseNotSigned" xml:space="preserve">
+    <value>The rent can be set up only for a lease signed by every party.</value>
+  </data>
+  <data name="RentLeaseDatesInvalid" xml:space="preserve">
+    <value>The lease dates do not allow a rent schedule.</value>
+  </data>
+  <data name="RentBillingDayInvalid" xml:space="preserve">
+    <value>The due day must be between {0} and {1}.</value>
+  </data>
+  <data name="RentAmountInvalid" xml:space="preserve">
+    <value>The installment amount must be greater than zero, with at most two decimals.</value>
+  </data>
+  <data name="RentCadenceLocked" xml:space="preserve">
+    <value>The cadence cannot change: some installments are paid or have a payment in progress.</value>
+  </data>
+  <data name="RentScheduleNotFound" xml:space="preserve">
+    <value>The rent schedule has not been set up yet.</value>
+  </data>
+  <data name="RentInstallmentNotFound" xml:space="preserve">
+    <value>Rent installment not found.</value>
+  </data>
+  <data name="RentInstallmentAlreadyPaid" xml:space="preserve">
+    <value>The installment is already paid.</value>
+  </data>
+  <data name="RentInstallmentInFlight" xml:space="preserve">
+    <value>An online payment of the installment is in progress: wait for Stripe's outcome.</value>
+  </data>
+  <data name="RentInstallmentNotPayable" xml:space="preserve">
+    <value>The installment can no longer be paid online: contact the landlord.</value>
+  </data>
+  <data name="RentOnlinePaymentsUnavailable" xml:space="preserve">
+    <value>To request online payments, connect a Stripe account enabled for charges (Settings > Payments).</value>
+  </data>
+  <data name="RentNoTenantEmail" xml:space="preserve">
+    <value>No tenant has an email address to send the payment request to.</value>
+  </data>
+  <data name="RentPaymentRequestNotSent" xml:space="preserve">
+    <value>The payment request was not sent: the email service is unavailable. Try again later.</value>
+  </data>
+  <data name="RentPaidOnInvalid" xml:space="preserve">
+    <value>Enter a valid payment date, not in the future (note of at most 500 characters).</value>
+  </data>
+  <data name="RentPaymentLinkInvalid" xml:space="preserve">
+    <value>The payment link is not valid or was replaced by a newer one.</value>
+  </data>
+  <data name="RentCadenceRequired" xml:space="preserve">
+    <value>Choose the rent cadence (monthly, bimonthly, quarterly or semiannual).</value>
+  </data>
+  <data name="RentBillingDayRange" xml:space="preserve">
+    <value>The due day must be between 1 and 28.</value>
+  </data>
+  <data name="SupplierActivationBlocked" xml:space="preserve">
+    <value>The profile cannot be activated: some required items are missing.</value>
+  </data>
+  <data name="SupplierProfileRequirements" xml:space="preserve">
+    <value>The profile is active and must stay complete: it needs a business name, a valid phone number, at least one category, at least one municipality and a description.</value>
+  </data>
+  <data name="SupplierTosVersionStale" xml:space="preserve">
+    <value>The Terms of Service have been updated. Reload the page and accept the current version.</value>
+  </data>
+  <data name="SupplierTosReacceptanceRequired" xml:space="preserve">
+    <value>You must accept the new version of the Terms of Service before handling requests.</value>
+  </data>
+  <data name="SupplierActivationStepInvalid" xml:space="preserve">
+    <value>The activation step must be between 1 and {0}.</value>
+  </data>
+  <data name="SupplierAvailabilityRangeInvalid" xml:space="preserve">
+    <value>The end date must be on or after the start date.</value>
+  </data>
+  <data name="SupplierAvailabilityRangeTooLong" xml:space="preserve">
+    <value>The maximum range is {0} days.</value>
+  </data>
+  <data name="SupplierPhotoLimit" xml:space="preserve">
+    <value>At most {0} photos are allowed: you already have {1} and are uploading {2}.</value>
+  </data>
+  <data name="SupplierPhotoInvalid" xml:space="preserve">
+    <value>Invalid file: {0}. Accepted formats: JPEG, PNG, WebP. Maximum size: 10 MB.</value>
+  </data>
+  <data name="SupplierPhotoUploadFailed" xml:space="preserve">
+    <value>The photo upload failed. Try again shortly.</value>
+  </data>
+  <data name="SupplierSearchTargetRequired" xml:space="preserve">
+    <value>Provide the municipality or the property to search for suppliers.</value>
+  </data>
+  <data name="SupplierShowcaseNotFound" xml:space="preserve">
+    <value>This supplier showcase does not exist or is no longer available.</value>
+  </data>
+  <data name="FirstNameRequired" xml:space="preserve">
+    <value>First name is required.</value>
+  </data>
+  <data name="LastNameRequired" xml:space="preserve">
+    <value>Last name is required.</value>
+  </data>
+  <data name="EmailRequired" xml:space="preserve">
+    <value>Email is required.</value>
+  </data>
+  <data name="PhoneRequired" xml:space="preserve">
+    <value>Phone is required.</value>
+  </data>
+  <data name="CountryRequired" xml:space="preserve">
+    <value>Country is required.</value>
+  </data>
+  <data name="ConsentVersionRequired" xml:space="preserve">
+    <value>Consent version is required.</value>
+  </data>
+  <data name="PropertyRequired" xml:space="preserve">
+    <value>Property is required.</value>
+  </data>
+  <data name="CheckInDateRequired" xml:space="preserve">
+    <value>Check-in date is required.</value>
+  </data>
+  <data name="CheckOutDateRequired" xml:space="preserve">
+    <value>Check-out date is required.</value>
+  </data>
+  <data name="AdultsMinimum" xml:space="preserve">
+    <value>At least one adult is required.</value>
+  </data>
+  <data name="ChildrenNotNegative" xml:space="preserve">
+    <value>Number of children cannot be negative.</value>
+  </data>
+  <data name="GuestInfoRequired" xml:space="preserve">
+    <value>Guest information is required.</value>
+  </data>
+  <data name="ConsentRequired" xml:space="preserve">
+    <value>Consent is required.</value>
+  </data>
+  <data name="InvalidPaymentOption" xml:space="preserve">
+    <value>Invalid payment option.</value>
+  </data>
+  <data name="FirstNameTooShort" xml:space="preserve">
+    <value>First name must be at least 2 characters.</value>
+  </data>
+  <data name="LastNameTooShort" xml:space="preserve">
+    <value>Last name must be at least 2 characters.</value>
+  </data>
+  <data name="PhoneTooShort" xml:space="preserve">
+    <value>Phone number must be at least 10 digits.</value>
+  </data>
+  <data name="GuestsCountRange" xml:space="preserve">
+    <value>Number of guests must be between 1 and 100.</value>
+  </data>
+  <data name="FirstNameTooLong" xml:space="preserve">
+    <value>First name cannot exceed 100 characters.</value>
+  </data>
+  <data name="LastNameTooLong" xml:space="preserve">
+    <value>Last name cannot exceed 100 characters.</value>
+  </data>
+  <data name="EmailTooLong" xml:space="preserve">
+    <value>Email cannot exceed 255 characters.</value>
+  </data>
+  <data name="PhoneTooLong" xml:space="preserve">
+    <value>Phone number cannot exceed 20 characters.</value>
+  </data>
+  <data name="AddressTooLong" xml:space="preserve">
+    <value>Address cannot exceed 500 characters.</value>
+  </data>
+  <data name="CityTooLong" xml:space="preserve">
+    <value>City cannot exceed 50 characters.</value>
+  </data>
+  <data name="PostalCodeTooLong" xml:space="preserve">
+    <value>Postal code cannot exceed 10 characters.</value>
+  </data>
+  <data name="CountryTooLong" xml:space="preserve">
+    <value>Country cannot exceed 100 characters.</value>
+  </data>
+  <data name="NotesTooLong" xml:space="preserve">
+    <value>Notes cannot exceed 1000 characters.</value>
+  </data>
+  <data name="OrgDomainRequired" xml:space="preserve">
+    <value>A custom domain is required for this mode.</value>
+  </data>
+  <data name="OrgSubdomainRequired" xml:space="preserve">
+    <value>A subdomain is required for this mode.</value>
+  </data>
+  <data name="OrgDomainInvalid" xml:space="preserve">
+    <value>The custom domain is not valid.</value>
+  </data>
+  <data name="OrgSubdomainInvalid" xml:space="preserve">
+    <value>The subdomain is not valid. Use only lowercase letters, numbers and hyphens.</value>
+  </data>
+  <data name="OrgSubdomainReserved" xml:space="preserve">
+    <value>This subdomain is reserved and cannot be used.</value>
+  </data>
+  <data name="OrgHostModeInvalid" xml:space="preserve">
+    <value>Invalid publishing mode.</value>
+  </data>
+  <data name="OrgDomainInUse" xml:space="preserve">
+    <value>Domain or subdomain already in use.</value>
+  </data>
+  <data name="OrgDomainNotConfigured" xml:space="preserve">
+    <value>No custom domain is configured for this organization.</value>
+  </data>
+  <data name="OrgDomainVerificationFailed" xml:space="preserve">
+    <value>Domain verification failed.</value>
+  </data>
+  <data name="OrgAccessDenied" xml:space="preserve">
+    <value>Access denied for this organization.</value>
+  </data>
+  <data name="ApeRequired" xml:space="preserve">
+    <value>The APE document is required before creating a lease contract.</value>
+  </data>
+  <data name="ImuNotificationNotReady" xml:space="preserve">
+    <value>The IMU notification can only be exported for registered canone concordato contracts.</value>
+  </data>
+  <data name="PropertyCityLockedByLease" xml:space="preserve">
+    <value>The property city cannot be changed after a canone concordato lease has been submitted for registration.</value>
+  </data>
+  <data name="DocumentTypeInvalid" xml:space="preserve">
+    <value>Invalid document type.</value>
+  </data>
+  <data name="DocumentFileInvalid" xml:space="preserve">
+    <value>Invalid file type or size for this document.</value>
+  </data>
+  <data name="CinStatusUnknown" xml:space="preserve">
+    <value>Unknown CIN status value.</value>
+  </data>
+  <data name="ConsentsIncomplete" xml:space="preserve">
+    <value>All required consents must be accepted.</value>
+  </data>
+  <data name="ConsentsStale" xml:space="preserve">
+    <value>Some legal documents have been updated. Please accept the current versions.</value>
+  </data>
+  <data name="BillingNoStripeCustomer" xml:space="preserve">
+    <value>No billing customer is linked to this organization.</value>
+  </data>
+  <data name="DevicePlatformInvalid" xml:space="preserve">
+    <value>The platform must be ios or android.</value>
+  </data>
+  <data name="DeviceFieldsRequired" xml:space="preserve">
+    <value>Device id and push token are required.</value>
+  </data>
+  <data name="HostQueryRequired" xml:space="preserve">
+    <value>The host query parameter is required.</value>
+  </data>
+  <data name="OtaPropertyIdMismatch" xml:space="preserve">
+    <value>The property ID in the URL must match the one in the request body.</value>
+  </data>
+  <data name="ImageFileInvalid" xml:space="preserve">
+    <value>The image file is not valid.</value>
+  </data>
+  <data name="NoOrganizationContext" xml:space="preserve">
+    <value>No organization context for the current user.</value>
+  </data>
+  <data name="ActivationStepBaseData" xml:space="preserve">
+    <value>Property basic data</value>
+  </data>
+  <data name="ActivationStepCin" xml:space="preserve">
+    <value>CIN code</value>
+  </data>
+  <data name="ActivationStepDocuments" xml:space="preserve">
+    <value>Required documents</value>
+  </data>
+  <data name="ActivationStepSafety" xml:space="preserve">
+    <value>Safety checklist</value>
+  </data>
+  <data name="ActivationStepIcal" xml:space="preserve">
+    <value>Calendar sync</value>
+  </data>
+  <data name="ActivationStepTouristTax" xml:space="preserve">
+    <value>Tourist tax</value>
+  </data>
+  <data name="ActivationIcalRecommended" xml:space="preserve">
+    <value>Recommended: connect an OTA iCal feed.</value>
   </data>
 </root>

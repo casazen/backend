@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
@@ -39,6 +40,12 @@ var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
     builder.Configuration.GetConnectionString("DefaultConnection"));
 // Outside Development/Testing a missing connection string stops the startup instead of running in memory (FD-12).
 RequiredConfiguration.EnsureDatabaseConnection(connectionString, builder.Environment);
+// Session-pooler limits and the transaction pooler (port 6543, breaks advisory locks and Hangfire) are refused outside
+// Development/Testing; elsewhere they are reported by the readiness check (HOSTING).
+if (!string.IsNullOrEmpty(connectionString) && RequiredConfiguration.IsEnforced(builder.Environment))
+{
+    DatabaseConnectionSettings.Resolve(builder.Configuration, connectionString, hangfireRegistered: true).EnsureUsable();
+}
 
 // Hangfire (skipped when no connection string, e.g. in CI/test), in a schema dedicated to this environment:
 // test and production share the database, never the queue (FD-11, docs/runbooks/hangfire.md).
@@ -157,14 +164,21 @@ builder.Services.AddScoped<LeaseRegistrationStatusPollingJob>();
 builder.Services.AddScoped<RliDeadlineReminderJob>();
 builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
+builder.Services.AddScoped<SeoEventRetentionJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
+builder.Services.AddScoped<DomainRecheckJob>();
 builder.Services.AddScoped<PropertyComplianceCheckJob>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();
 builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
+builder.Services.Configure<SeoEventOptions>(
+    builder.Configuration.GetSection(SeoEventOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.PublicHostOptions.SectionName));
+// Vercel Domains API (BK-17): the token and the project of the web app, set by the product owner (D9).
+builder.Services.Configure<Casazen.Core.Options.VercelDomainsOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.VercelDomainsOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.ComplianceOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.ComplianceOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.StayAlertOptions>(
@@ -178,14 +192,18 @@ builder.Services.AddOptions<Casazen.Core.Options.ShortStayFiscalOptions>()
     .Bind(builder.Configuration.GetSection(Casazen.Core.Options.ShortStayFiscalOptions.SectionName))
     .Validate(o => o.IsValid(), "ShortStayFiscal: threshold, nights and rates must be positive (rates below 1) and every source set.")
     .ValidateOnStart();
+// The official ISTAT comuni list is loaded before the SEO bootstrap, which generates the pages of its pilot comuni (SU-04).
+builder.Services.Configure<ComuniOptions>(builder.Configuration.GetSection(ComuniOptions.SectionName));
+builder.Services.AddHostedService<ComuneSeedHostedService>();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
+// Which legal documents are not published and what to configure (decision D9, docs/runbooks/legal-documents.md).
+builder.Services.AddHostedService<LegalDocumentsStartupCheck>();
 
 // API
 builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsResultFilter>())
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-        o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     })
     // Validation attributes may use a SharedResources key as ErrorMessage (a literal message is kept as is).
     .AddDataAnnotationsLocalization(options =>
@@ -207,6 +225,11 @@ builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsRes
             };
         };
     });
+// Enums as member names; a value no member declares (e.g. 7 or "7") is a 400 validation_error, not a 500 (PL-07).
+builder.Services.AddOptions<JsonOptions>()
+    .Configure<IStringLocalizerFactory>((o, localizerFactory) =>
+        o.JsonSerializerOptions.Converters.Add(
+            new DefinedEnumJsonConverterFactory(localizerFactory.Create(typeof(SharedResources)))));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -252,6 +275,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+app.LogDatabaseConnectionPlan();
 
 // First middleware: resolves the client IP and scheme from the trusted proxy's X-Forwarded-For / X-Forwarded-Proto.
 // Everything after it (rate limiting, consent evidence) reads HttpContext.Connection.RemoteIpAddress, never the header.

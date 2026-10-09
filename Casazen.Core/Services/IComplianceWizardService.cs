@@ -31,6 +31,24 @@ public record ComplianceActivationStep(string Id, string Label, string Status, b
     /// <c>safety_gas_detector_missing</c>); empty when the step is complete or not blocking.
     /// </summary>
     public IReadOnlyList<ActivationBlocker> Blockers { get; init; } = [];
+
+    /// <summary>
+    /// Non-blocking notes of the step, with stable codes (e.g. <c>cin_istat_comune_mismatch</c>, <c>comune_istat_missing</c>):
+    /// they never keep the step from being complete.
+    /// </summary>
+    public IReadOnlyList<ActivationWarning> Warnings { get; init; } = [];
+}
+
+/// <summary>
+/// A note on an activation step that does not block it (SU-04): stable snake_case <see cref="Code"/> (the frontend translates
+/// it) and the resource key of its message in <c>SharedResources</c>, formatted with <see cref="MessageArgs"/>.
+/// </summary>
+public sealed record ActivationWarning(string Code, string MessageKey, IReadOnlyList<object> MessageArgs)
+{
+    public ActivationWarning(string code, string messageKey)
+        : this(code, messageKey, [])
+    {
+    }
 }
 
 /// <summary>

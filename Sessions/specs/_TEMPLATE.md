@@ -5,7 +5,7 @@ title: Short human title
 phase: 1                      # 0 | 1 | 1.5 | 2 | 3 | 4 | ops | compliance | maintenance
 type: feature                 # feature | enabler | fix | compliance | ops | spike
 priority: P1                  # P0 (now) | P1 (this phase) | P2 (next) | P3 (later) | —
-status: specced               # idea | specced | planned | in-dev | shipped | blocked | deferred | frozen
+status: specced               # idea | specced | planned | in-dev | in-progress | partial | shipped | blocked | deferred | frozen (see README: shipped = code + tests + required E2E run)
 issue:                        # GitHub issue # when planned+ (e.g. 271)
 depends_on: []                # slugs of other specs
 blocks: []                    # slugs this unblocks

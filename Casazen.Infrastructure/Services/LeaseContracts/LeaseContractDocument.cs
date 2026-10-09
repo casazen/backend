@@ -197,7 +197,8 @@ internal static class LeaseContractDocument
 
     private static string? FormatParties(IEnumerable<Party>? parties, PartyRole role)
     {
-        var matching = parties?.Where(p => p.Role == role).ToList() ?? [];
+        // Every party of the role, in the order entered (LT-14: co-owners, co-tenants).
+        var matching = parties?.Where(p => p.Role == role).OrderBy(p => p.Position).ToList() ?? [];
         if (matching.Count == 0)
             return null;
 

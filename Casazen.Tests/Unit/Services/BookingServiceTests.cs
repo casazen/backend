@@ -25,6 +25,7 @@ public class BookingServiceTests
     private readonly Mock<IPropertyRepository> _mockPropertyRepository = new();
     private readonly Mock<IOrgService> _mockOrgService = new();
     private readonly Mock<ITouristTaxQuoteService> _mockTouristTax = new();
+    private readonly Mock<IStripeService> _mockStripe = new();
     private readonly RecordingEmailQueue _emails = new();
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -50,7 +51,7 @@ public class BookingServiceTests
             _mockOrgService.Object,
             _mockGuestRepository.Object,
             _mockTouristTax.Object,
-            new Mock<IStripeService>().Object,
+            _mockStripe.Object,
             new Mock<IPaymentRepository>().Object,
             CreatePropertyICalSyncService(_db, configuration),
             configuration,
@@ -164,12 +165,6 @@ public class BookingServiceTests
             _db.SaveChanges();
             return b;
         });
-        _mockGuestRepository.Setup(x => x.AddAsync(It.IsAny<Guest>())).ReturnsAsync((Guest g) =>
-        {
-            _db.Guests.Add(g);
-            _db.SaveChanges();
-            return g;
-        });
         _db.Orgs.Add(org);
         _db.Properties.Add(property);
         await _db.SaveChangesAsync();
@@ -183,6 +178,9 @@ public class BookingServiceTests
         Assert.Equal(PaymentOption.OnSite, stored.PaymentOption);
         Assert.Null(stored.GuestEmailVerifiedAt);
         _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Booking>()), Times.Never);
+        // BK-18: the guest snapshot is saved with its booking (one insert), never on its own.
+        _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
+        Assert.Equal("guest@example.com", (await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == stored.GuestId)).Email);
         // Email confirmation window = the checkout TTL (15 minutes) when OnSiteEmailVerificationMinutes is not set.
         Assert.InRange(stored.RequestExpiresAt!.Value, DateTime.UtcNow.AddMinutes(14), DateTime.UtcNow.AddMinutes(16));
         Assert.Equal(stored.RequestExpiresAt, result.OnSiteRequestExpiresAt);
@@ -201,6 +199,104 @@ public class BookingServiceTests
         Assert.False(string.IsNullOrWhiteSpace(result.CheckoutToken));
         Assert.NotEqual(result.CheckoutToken, stored.CheckoutTokenHash);
         Assert.True(CheckoutOutcomes.TokenMatches(stored.CheckoutTokenHash, result.CheckoutToken));
+    }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_PastCheckIn_Throws422WithoutStoringBookingOrGuest()
+    {
+        // A3-33: the guest (personal data and consent) used to be saved before this check and left behind.
+        var property = ConnectReadyProperty();
+        var yesterday = TimeProvider.System.TodayInRome().AddDays(-1);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.CreateDirectBookingAsync(
+            DirectInput(property.Id, yesterday, yesterday.AddDays(3), PaymentOption.Immediate)));
+
+        Assert.Equal(DirectBookingErrorCodes.InvalidStay, ex.Code);
+        _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_ValidStay_SavesTheGuestSnapshotWithTheBookingInOneInsert()
+    {
+        var property = ConnectReadyProperty();
+        Booking? inserted = null;
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>()))
+            .Callback((Booking b) => inserted = b)
+            .ReturnsAsync((Booking b) => b);
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .ReturnsAsync(new Stripe.PaymentIntent { Id = "pi_bk18", ClientSecret = "pi_bk18_secret" });
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        await _service.CreateDirectBookingAsync(DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate));
+
+        Assert.NotNull(inserted);
+        Assert.Equal(inserted.GuestId, inserted.Guest.Id);
+        Assert.Equal("guest@example.com", inserted.Guest.Email);
+        Assert.Equal(property.OrgId, inserted.Guest.OrgId);
+        _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
+        _mockRepository.Verify(x => x.DiscardCheckoutAttemptAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_DatesTakenConcurrently_ThrowsConflictWithoutSavingTheGuest()
+    {
+        var property = ConnectReadyProperty();
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>()))
+            .ThrowsAsync(new InvalidOperationException("Property not available for selected dates"));
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.CreateDirectBookingAsync(
+            DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate)));
+
+        Assert.Equal(BookingErrorCodes.DatesUnavailable, ex.Code);
+        _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
+        _mockGuestRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(PaymentOption.Immediate)]
+    [InlineData(PaymentOption.OnCancellationDeadline)]
+    public async Task CreateDirectBookingAsync_StripeFailsToStartThePayment_DiscardsTheAttemptWithItsGuest(PaymentOption option)
+    {
+        var property = ConnectReadyProperty();
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>())).ReturnsAsync((Booking b) => b);
+        var stripeDown = new Stripe.StripeException("Stripe unavailable");
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .ThrowsAsync(stripeDown);
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountSetupIntentAsync(
+                It.IsAny<string>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ThrowsAsync(stripeDown);
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        await Assert.ThrowsAsync<PaymentProcessingException>(() => _service.CreateDirectBookingAsync(
+            DirectInput(property.Id, checkIn, checkIn.AddDays(3), option)));
+
+        // Removed with its guest, not left as a cancelled booking that keeps the guest's personal data.
+        _mockRepository.Verify(x => x.DiscardCheckoutAttemptAsync(It.IsAny<Guid>()), Times.Once);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Booking>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_DiscardFailsAfterStripeFailure_StillThrowsThePaymentError()
+    {
+        var property = ConnectReadyProperty();
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>())).ReturnsAsync((Booking b) => b);
+        _mockRepository.Setup(x => x.DiscardCheckoutAttemptAsync(It.IsAny<Guid>()))
+            .ThrowsAsync(new TimeoutException("database unavailable"));
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .ThrowsAsync(new Stripe.StripeException("Stripe unavailable"));
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        await Assert.ThrowsAsync<PaymentProcessingException>(() => _service.CreateDirectBookingAsync(
+            DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate)));
     }
 
     [Fact]
@@ -234,6 +330,21 @@ public class BookingServiceTests
         Assert.True(quote.PaymentOptions.DeferredPaymentAvailable);
         Assert.Equal(checkIn.AddDays(-15), quote.PaymentOptions.DeferredChargeDate);
         Assert.Null(quote.PaymentOptions.FreeCancellationUntil);
+    }
+
+    [Fact]
+    public async Task QuoteDirectBookingAsync_PausedProperty_ThrowsNotFound()
+    {
+        // PC-03, A2-05: a paused property is hidden from new guest bookings, like an inactive or non-compliant one,
+        // but stays a normal, active property otherwise (existing bookings untouched, its own host still sees it).
+        var property = ConnectReadyProperty();
+        property.IsPaused = true;
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        var ex = await Assert.ThrowsAsync<NotFoundException>(() => _service.QuoteDirectBookingAsync(
+            new DirectBookingQuoteInput(property.Id, checkIn, checkIn.AddDays(3), 2, 0)));
+
+        Assert.Equal("PropertyNotFound", ex.MessageKey);
     }
 
     [Fact]

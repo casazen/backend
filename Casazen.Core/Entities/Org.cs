@@ -14,6 +14,12 @@ public class Org
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// Name given to an org provisioned without a display name (the access token carries none, A1-02). An org still
+    /// named so has not chosen its name yet: the activation checklist (PL-15) keeps asking for it.
+    /// </summary>
+    public const string PlaceholderName = "La mia organizzazione";
+
     [Required, MaxLength(200)]
     public string Name { get; set; } = string.Empty;
 
@@ -48,6 +54,13 @@ public class Org
     [MaxLength(255)]
     public string ContactEmail { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Opt-in (A1-22, A1-23): <see cref="ContactEmail"/> is included on the public booking site
+    /// (<c>PublicOrgDto</c>) only when this is true. Off by default — the org must actively choose to
+    /// publish it (GDPR, see <c>.claude/rules/compliance.md</c>); never inferred from having an email set.
+    /// </summary>
+    public bool ContactEmailPublic { get; set; }
+
     /// <summary>Non-secret Stripe customer reference (billing). Set by <c>spec-saas-billing</c>.</summary>
     [MaxLength(255)]
     public string? StripeCustomerId { get; set; }
@@ -66,7 +79,26 @@ public class Org
     [MaxLength(32)]
     public string? VatId { get; set; }
 
+    /// <summary>
+    /// Legacy: set by the old VIES stub. Since PL-13 the VAT id that counts for the tax is the one on the Stripe customer,
+    /// verified by Stripe (VIES); this column is cleared when the VAT id changes and never set again.
+    /// </summary>
     public DateTime? VatIdValidatedAt { get; set; }
+
+    /// <summary>
+    /// Billing data for the Italian e-invoice of the CasaZen subscription (PL-13): SDI recipient code ("codice
+    /// destinatario"). Name, address and VAT id come from the Stripe customer (Checkout).
+    /// </summary>
+    [MaxLength(7)]
+    public string? BillingSdiRecipientCode { get; set; }
+
+    /// <summary>Certified e-mail (PEC) for the e-invoice, alternative to <see cref="BillingSdiRecipientCode"/>.</summary>
+    [MaxLength(255)]
+    public string? BillingPecEmail { get; set; }
+
+    /// <summary>Codice fiscale of the billed person or company. Distinct from the STR <see cref="FiscalCode"/>.</summary>
+    [MaxLength(16)]
+    public string? BillingFiscalCode { get; set; }
 
     public DateTime? PastDueSince { get; set; }
 
@@ -85,6 +117,15 @@ public class Org
 
     /// <summary>JSON array of outstanding Stripe requirement field names (e.g. <c>["individual.verification.document"]</c>).</summary>
     public string? ConnectRequirementsDueJson { get; set; }
+
+    /// <summary>
+    /// The org can take a direct booking payment (PL-15, A3-26): a connected account is linked <b>and</b> Stripe reports
+    /// charges enabled. Having started the Connect onboarding is not enough. The checkout (<c>BookingService</c>) and the
+    /// activation checklist (<c>OnboardingService</c>) both read this one rule.
+    /// </summary>
+    [NotMapped]
+    public bool CanTakeDirectPayments =>
+        !string.IsNullOrWhiteSpace(StripeConnectedAccountId) && ConnectChargesEnabled;
 
     public bool IsActive { get; set; } = true;
 
@@ -119,6 +160,39 @@ public class Org
     /// <summary>Cryptographically random token expected in the <c>_casazen-challenge</c> TXT record.</summary>
     [MaxLength(128)]
     public string? DomainVerificationToken { get; set; }
+
+    /// <summary>
+    /// Why <see cref="DomainVerificationStatus"/> is what it is (BK-17): a stable code of <c>DomainIssues</c> (e.g.
+    /// <c>dns_not_pointing</c>), <c>null</c> when the domain is verified. The UI explains it in the user's language.
+    /// </summary>
+    [MaxLength(64)]
+    public string? DomainStatusDetail { get; set; }
+
+    /// <summary>UTC instant of the last check of the domain (manual or by the periodic job), <c>null</c> before the first.</summary>
+    public DateTime? DomainCheckedAt { get; set; }
+
+    /// <summary>UTC instant the domain last became <c>Verified</c>; <c>null</c> while it is not.</summary>
+    public DateTime? DomainVerifiedAt { get; set; }
+
+    /// <summary>UTC instant the owner set <see cref="CustomDomain"/>: the periodic job stops checking a pending domain a while after it.</summary>
+    public DateTime? DomainConfiguredAt { get; set; }
+
+    /// <summary>
+    /// UTC instant the domain was found on the Vercel project (added by the platform, BK-17); <c>null</c> when it is not
+    /// there. A domain that was there is removed from the project when the owner changes or drops it.
+    /// </summary>
+    public DateTime? DomainVercelAddedAt { get; set; }
+
+    /// <summary>Consecutive failed checks of a verified domain: it is only demoted after a few, so a DNS hiccup does not take a site down.</summary>
+    public int DomainCheckFailures { get; set; }
+
+    /// <summary>TXT record Vercel asks for before the domain may be used on the project (domain already on another Vercel account), host.</summary>
+    [MaxLength(253)]
+    public string? DomainVercelTxtHost { get; set; }
+
+    /// <summary>Value of the TXT record of <see cref="DomainVercelTxtHost"/>.</summary>
+    [MaxLength(500)]
+    public string? DomainVercelTxtValue { get; set; }
 
     /// <summary>Label for <c>{Subdomain}.casazen.it</c>; falls back to <see cref="Slug"/> when null.</summary>
     [MaxLength(63)]

@@ -17,6 +17,7 @@ Object keys:
 |---|---|
 | public | `properties/{propertyId}/photos/{random}.{ext}` |
 | public | `suppliers/{supplierOrgId}/photos/{random}.{ext}` |
+| public | `orgs/{orgId}/branding/{kind}/{random}.{ext}` — `kind` = `logo` or `hero` of the public booking site (BK-12): type and pixel size checked from the bytes, the previous image is deleted on replace/remove |
 | private | `properties/{propertyId}/documents/{random}.{ext}` |
 | private | `guest-documents/{orgId}/{guestId}/{random}.{ext}` |
 | private | `leases/{orgId}/{leaseId}/registration/{random}.pdf` (RLI receipts, LT-01: only through `GET /api/leases/{id}/registration/receipt`) |
@@ -162,7 +163,7 @@ guest check-in goes through the portal of CO-02 only (`/api/public/checkin/{toke
 
 1. Railway logs: no `OptionsValidationException`. With a certificate, the log contains `Data Protection keys: persisted in the database, encrypted with the configured certificate.`
 2. Database: `select count(*) from "DataProtectionKeys";` returns ≥ 1 (a key is created at the first startup). With a certificate, the `Xml` column contains `encryptedSecret`.
-3. Photo: upload a photo in the console. The returned URL starts with `Storage__PublicBaseUrl` and opens in a private browser window.
+3. Photo: upload a photo in the console (property page, **Foto** tab). The returned URL starts with `Storage__PublicBaseUrl` and opens in a private browser window. Delete it: the URL then answers 404 (the object is gone from the bucket, not only from the list).
 4. Document: upload a PDF to a property, then download it from the console. Then check that it is not public:
    - `curl -I https://<project-ref>.supabase.co/storage/v1/object/public/casazen-<env>-private/<key>` must **not** return 200;
    - `curl -I https://<api>/uploads/properties/<id>/documents/<file>` must return 404;
@@ -170,6 +171,36 @@ guest check-in goes through the portal of CO-02 only (`/api/public/checkin/{toke
    - with a token of another org's user, it returns 404.
 5. Signed URL: `curl -H "Authorization: Bearer <token>" https://<api>/api/properties/<id>/documents/<docId>/signed-url` returns `{ url, expiresAt }`. The URL works, then stops working after `Storage__SignedUrlTtlMinutes`.
 6. Redeploy (or restart the service), then repeat steps 3-5: the files are still there. If an OTA integration was configured again, its secret is still readable.
+
+## 7. Property photo gallery (PC-04, A2-26)
+
+Hosts manage the photos of a property in the web console (property page, **Foto** tab). Everything goes through
+`IFileStorage`; nothing is written to `wwwroot` or to the container disk.
+
+| What | Rule |
+|---|---|
+| Where | public bucket, key `properties/{propertyId}/photos/{random}.{ext}`; `Property.PhotoUrls` holds the absolute URLs in display order |
+| Cover | the **first** photo. Public pages (property page, search card, org site) already show `photoUrls[0]` / the first displayable URL first, so "set as cover" and "reorder" only change the order of the list |
+| Accepted files | JPEG, PNG, WebP; at most 10 MB each; at most 10 files per request and 20 photos per property. The **content** is checked (file signature), not only the extension and the declared type: a renamed text file or script is refused with `422 property_photo_invalid_type` |
+| Upload | all or none: one invalid file stores nothing; the limit is checked again under the property lock, and the objects of an upload that loses the race are removed |
+| Deletion | `DELETE /api/properties/{id}/images?url=...` (by URL, not by position). The object is removed from the bucket **first**, then the entry from the list. If the storage fails the photo stays listed and the host can retry |
+| Safety | a gallery entry deletes a storage object only if it lies under its own `properties/{propertyId}/photos/` folder: an entry that points elsewhere (an old relative `/uploads/...` path, an external URL, another property's photo) is only removed from the list |
+| Concurrency | every change of one property's gallery takes the advisory lock `PropertyPhotos` and re-reads the row, so parallel uploads, deletions and reorders never lose a photo. `PropertyRepository.UpdateAsync` never writes `PhotoUrls`: saving the other fields of an older copy of the row cannot put back an old list |
+| Who | `property.write` in the short-rent context **and** ownership of the property or an org-wide role (`PropertyOwner` owner, `PropertyManager`); another org's property answers 404 (tenant filter). Writes by an org-wide role on a colleague's property are written to the admin access audit |
+
+A `photoUrls` sent to `POST /api/properties` or `PUT /api/properties/{id}` is **ignored** (before PC-04 it replaced the
+list, so a client could point the public page at any URL, or at another property's object that a later deletion from
+the gallery would then remove from the shared bucket).
+
+**Orphan objects.** There is no job that sweeps the public bucket. An object can stay without an entry only if the process
+dies between the storage call and the database commit of an upload (the cleanup runs in the same request). They are
+harmless (random names, a few MB). To find them, list `properties/{propertyId}/photos/` in the Supabase dashboard and
+compare with `"PhotoUrls"` of `"Properties"`.
+
+**Old photos.** An entry that is a relative `/uploads/...` path (not migrated by `storage:migrate-legacy`, section 5)
+is shown in the gallery as "photo no longer available" and can be deleted; it never reaches the public pages.
+
+**CSP.** `img-src` of the web app must allow the host of `Storage__PublicBaseUrl` (section 3), as for every photo.
 
 ## Local development
 

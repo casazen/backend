@@ -141,10 +141,11 @@ The Hangfire dashboard can trigger `cin-deadline-alert` by hand: it sends only w
 
 ## Not done yet
 
-- **ISTAT check (warning only):** `CinFormat.HasIstatComuneMismatch` compares the ISTAT code inside the CIN with a
-  trusted ISTAT code of the property. It is not wired to any endpoint because properties only have a free-text
-  city and `ItalianComuneRegistry` holds 12 comuni. Wire it (as a non-blocking warning) once the ISTAT registry
-  of task SU-04 gives each property a reliable code.
+- **ISTAT check (warning only, SU-04):** wired. `CinFormat.HasIstatComuneMismatch` compares the ISTAT code inside the
+  CIN with the ISTAT code the host chose for the property from the official list (`Property.ComuneIstatCode`, never
+  inferred from the free-text city: [comuni-istat.md](comuni-istat.md)). A valid CIN of another comune gives the
+  non-blocking warning `cin_istat_comune_mismatch` on step `cin` of the activation wizard and `cinIstatMismatch` on
+  the property; a property with no comune chosen is not compared. The CIN is never refused or changed for it.
 - The format of the category (2 characters) and the variable length of the random part are taken from the
   official composition, read through search-engine extracts (see `cin.md`, "Limite della verifica"). Re-check
   against the decree text before relying on stricter rules.

@@ -425,9 +425,10 @@ public class GuestRepositoryTests
     [Theory]
     [InlineData(BookingStatus.CheckedOut, -5, false)]
     [InlineData(BookingStatus.Cancelled, 10, false)]
-    [InlineData(BookingStatus.Confirmed, -1, false)]
+    [InlineData(BookingStatus.Confirmed, -1, true)]
     [InlineData(BookingStatus.Confirmed, 0, true)]
     [InlineData(BookingStatus.Pending, 10, true)]
+    [InlineData(BookingStatus.CheckedIn, -1, true)]
     [InlineData(BookingStatus.CheckedIn, 2, true)]
     public async Task GetUsageAsync_GuestWithBooking_ReportsReferenceAndOpenState(
         BookingStatus status, int checkOutOffsetDays, bool expectedOpen)
