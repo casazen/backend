@@ -533,4 +533,47 @@ public class MigrationSqlTests
         Assert.Contains("'non_rimborsabile'", script);
         Assert.Equal(5, script.Split("INSERT INTO \"CancellationPolicies\"", StringSplitOptions.None).Length - 1);
     }
+
+    [Fact]
+    public void HostCancellationOverrides_AddsTheFourPropertyColumnsTheModelAndTheFormExpect()
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        Assert.Contains(keys, k => k.EndsWith("HostCancellationOverrides", StringComparison.Ordinal));
+        Assert.True(
+            keys.FindIndex(k => k.EndsWith("HostCancellationOverrides", StringComparison.Ordinal))
+            > keys.FindIndex(k => k.EndsWith("SeedCancellationPolicyCatalog", StringComparison.Ordinal)));
+        Assert.True(
+            keys.FindIndex(k => k.EndsWith("HostCancellationOverrides", StringComparison.Ordinal))
+            > keys.FindIndex(k => k.EndsWith("AddSupplierBusyWindowFeedKey", StringComparison.Ordinal)));
+
+        var (_, up, down) = ScriptsOf(db, "HostCancellationOverrides");
+        Assert.Contains("ALTER TABLE \"Properties\" ADD \"CancellationFullRefundHours\" integer;", up);
+        Assert.Contains("ALTER TABLE \"Properties\" ADD \"CancellationPartialRefundHours\" integer;", up);
+        Assert.Contains("ALTER TABLE \"Properties\" ADD \"CancellationPartialRefundPercent\" numeric(18,2);", up);
+        Assert.Contains("ALTER TABLE \"Properties\" ADD \"CancellationRefundType\" integer NOT NULL DEFAULT 0;", up);
+        Assert.DoesNotContain("INSERT INTO \"CancellationPolicies\"", up);
+
+        Assert.Contains("DROP COLUMN \"CancellationFullRefundHours\"", down);
+        Assert.Contains("DROP COLUMN \"CancellationPartialRefundHours\"", down);
+        Assert.Contains("DROP COLUMN \"CancellationPartialRefundPercent\"", down);
+        Assert.Contains("DROP COLUMN \"CancellationRefundType\"", down);
+    }
+
+    [Fact]
+    public void SeasonalAppliedPrice_AddsAppliedPriceAndAppliedAtOnSuggestions()
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        Assert.Contains(keys, k => k.EndsWith("SeasonalAppliedPrice", StringComparison.Ordinal));
+        Assert.True(
+            keys.FindIndex(k => k.EndsWith("SeasonalAppliedPrice", StringComparison.Ordinal))
+            > keys.FindIndex(k => k.EndsWith("SeasonalPriceSuggestions", StringComparison.Ordinal)));
+
+        var (_, up, down) = ScriptsOf(db, "SeasonalAppliedPrice");
+        Assert.Contains("ALTER TABLE \"SeasonalPriceSuggestions\" ADD \"AppliedPrice\" numeric(18,2);", up);
+        Assert.Contains("ALTER TABLE \"SeasonalPriceSuggestions\" ADD \"AppliedAt\" timestamp with time zone;", up);
+        Assert.Contains("DROP COLUMN \"AppliedPrice\"", down);
+        Assert.Contains("DROP COLUMN \"AppliedAt\"", down);
+    }
 }

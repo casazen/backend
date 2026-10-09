@@ -1,3 +1,5 @@
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -5,7 +7,9 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Casazen.Infrastructure.Migrations;
 
 /// <summary>Host-confirmed seasonal nightly prices (PO 2026-10-08). Proposals stay unused until applied.</summary>
-public class SeasonalAppliedPrice : Migration
+[DbContext(typeof(AppDbContext))]
+[Migration("20261009103000_SeasonalAppliedPrice")]
+public partial class SeasonalAppliedPrice : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {

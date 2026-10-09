@@ -1162,6 +1162,12 @@
   <data name="PropertyCancellationPolicyNotFound" xml:space="preserve">
     <value>The selected cancellation policy does not exist: reload the page and choose another one.</value>
   </data>
+  <data name="PropertyCancellationHoursRange" xml:space="preserve">
+    <value>Refund notice hours must be a whole number between {1} and {2}.</value>
+  </data>
+  <data name="PropertyCancellationPercentRange" xml:space="preserve">
+    <value>The partial refund percent must be between {1} and {2}.</value>
+  </data>
   <data name="PropertyActivationBlocked" xml:space="preserve">
     <value>The property cannot be activated yet: complete the required points listed.</value>
   </data>

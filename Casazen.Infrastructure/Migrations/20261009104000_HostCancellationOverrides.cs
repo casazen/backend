@@ -1,3 +1,5 @@
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -5,7 +7,9 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Casazen.Infrastructure.Migrations;
 
 /// <summary>Host-customizable cancellation percentages, periods and refund type (PO 2026-10-08). Long stay 28+ unchanged.</summary>
-public class HostCancellationOverrides : Migration
+[DbContext(typeof(AppDbContext))]
+[Migration("20261009104000_HostCancellationOverrides")]
+public partial class HostCancellationOverrides : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {

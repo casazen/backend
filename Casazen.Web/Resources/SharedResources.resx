@@ -1162,6 +1162,12 @@
   <data name="PropertyCancellationPolicyNotFound" xml:space="preserve">
     <value>La policy di cancellazione scelta non esiste: ricarica la pagina e scegline un'altra.</value>
   </data>
+  <data name="PropertyCancellationHoursRange" xml:space="preserve">
+    <value>Le ore di preavviso per il rimborso devono essere un numero intero tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyCancellationPercentRange" xml:space="preserve">
+    <value>La percentuale di rimborso parziale deve essere tra {1} e {2}.</value>
+  </data>
   <data name="PropertyActivationBlocked" xml:space="preserve">
     <value>L'immobile non può ancora essere attivato: completa i punti obbligatori elencati.</value>
   </data>
