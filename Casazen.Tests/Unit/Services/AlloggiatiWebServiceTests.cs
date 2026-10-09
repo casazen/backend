@@ -1,4 +1,5 @@
 using System.Text;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -609,7 +610,7 @@ public class AlloggiatiWebServiceTests
         var mine = await SeedBookingAsync(db);
         await SeedBookingAsync(db);
 
-        var rows = await CreateService(db, CheckIn).GetSummaryAsync(mine.OrgId, null);
+        var rows = await CreateService(db, CheckIn).GetSummaryAsync(new HostScope(mine.OrgId), null);
 
         Assert.Equal(mine.Id, Assert.Single(rows).BookingId);
     }

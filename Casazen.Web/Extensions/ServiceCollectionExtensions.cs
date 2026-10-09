@@ -1,6 +1,7 @@
 // File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
@@ -192,6 +193,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
         // AM-01: the org's people (OrgMember) and, in the same transaction, the memberships that project their role.
         services.AddScoped<IOrgMembershipService, OrgMembershipService>();
+        // AM-03: which properties a caller reaches (from the org membership, in the authorization snapshot), and who is the
+        // holder of the org for the acts the law ties to the landlord (RLI delega, IMU communication).
+        services.AddScoped<IHostScopeResolver, HostScopeResolver>();
+        services.AddScoped<IOrgHolderService, OrgHolderService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
         // PL-02: host contexts only after the onboarding and the current consents; refusals answer 403 onboarding_required.
         services.AddScoped<IHostOnboardingGate, HostOnboardingGate>();
@@ -405,6 +410,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
         services.AddScoped<IOrgInvitationService, OrgInvitationService>();
         services.AddScoped<IOrgTeamService, OrgTeamService>();
+        // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
+        services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();
         services.AddScoped<IOrgInvitationMaintenanceService, OrgInvitationMaintenanceService>();
         services.AddScoped<IAccountEmailResolver, AccountEmailResolver>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();

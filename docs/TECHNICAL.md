@@ -79,6 +79,7 @@ registered, registered but unused, or an action with neither).
 | `SharedPropertyRead` / `SharedPropertyWrite` | `property.*` in short-rent **or** long-rent: only the property core a long-term landlord needs (list, record, create/update, documents/APE) — A7-06 |
 | `PropertyRead` / `PropertyWrite` | short-rent `property.*`: the short-stay side of a property (photos, CIN, iCal, activation, detail with bookings/OTA, pricing, fiscal, service requests) |
 | `BookingRead/Write`, `PaymentRead/Write`, `GuestRead/Write`, `OtaRead/Write` | short-rent context permission |
+| `ServiceRequestWrite`, `GuestManage`, `AlloggiatiSubmit` | AM-03: short-rent permissions carved out of `property.write` (interventions), `guest.write` (erase, anonymize, consents of a guest) and `booking.write` (register the guests of a stay, declare the Alloggiati communication sent); the owner and the property manager hold them, the collaborator only the first (`docs/runbooks/org-team.md` § 21) |
 | `LeaseRead/Create/Sign/Register` | long-rent context permission |
 | `OrgMembersManage` (`RequireContext:account:org.members.manage`) | AM-02: the owner and the administrators of the org (permission of the `account` context); the invitations and the members endpoints, behind the flag `OrgTeam` |
 
@@ -110,9 +111,12 @@ and deletes the closed invitations 30 days after they closed.
 The policy says what kind of operation a user may do; the row itself is checked with
 `IAuthorizationService.AuthorizeAsync(User, HostResource, operation)` (`PropertyOperations`, `SharedPropertyOperations`,
 `BookingOperations`, `GuestOperations`, `PaymentOperations`, `OtaOperations`, `LeaseOperations`): `HostResourceAuthorizationHandler` grants it only when the row
-is in the caller's org, the caller holds the permission and, for property-bound rows, owns the property or has an
-org-wide role (`HostRoles.OrgWide`: `PropertyManager`, `Admin`). Lists use `User.GetHostScope(orgId)` → `HostScope`,
-filtered in SQL. Services never check roles: they receive the org / scope decided by the web layer. A row that is not in
+is in the caller's org, the caller holds the permission and, for property-bound rows, **reaches the property** (AM-03): every
+property for an owner, administrator, manager or accountant member and a collaborator with every property, only the ones in
+`PropertyMemberAccesses` for a collaborator "Solo alcuni", the ones it created for an account in no org team. The reach is read
+from the database (`IHostScopeResolver`, the authorization snapshot cached 60 s), never from the token roles. Lists use
+`await User.ResolveHostScopeAsync(resolver, orgId)` → `HostScope` and narrow with `query.InScope(scope)` (an `EXISTS` in the same SQL
+statement). Services never check roles: they receive the org / scope decided by the web layer. A row that is not in
 the caller's org answers 404; a visible row the caller may not use answers 403.
 
 There are **48** controller source files under `Casazen.Web/Controllers/`. The supplier jobs with QR check-in (`SupplierJobController`, `PublicCheckInController`) were removed by SU-11 (decision D12): supplier work is a `ServiceRequest` only.
@@ -151,6 +155,8 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `PUT` | `/api/orgs/me/members/{id}` | same | Change the role (never to Owner; Admin only by the owner) |
 | `POST` | `/api/orgs/me/members/{id}/deactivate`, `/reactivate` | same | Switch the access off / on (reactivating takes a seat); 409 `org_last_owner` for the owner |
 | `DELETE` | `/api/orgs/me/members/{id}` | same | The person leaves the org; its account stays |
+| `GET` | `/api/orgs/me/members/{id}/properties` | same | AM-03: the active properties of the org with whether this member reaches each (`granted`) and how many people do (`peopleWithAccess`); `scopeSupported` false for a member who is not a collaborator |
+| `PUT` | `/api/orgs/me/members/{id}/properties` | same | AM-03: `{ propertyScope, propertyIds }` with `propertyScope` `All` or `Selected` ("Solo alcuni" is the collaborator only); 403 `org_owner_required`, 422 `org_member_scope_not_supported`, `org_member_property_unknown` |
 | `POST` | `/api/org-invitations/lookup` | Anonymous, rate limited (`PublicInvitationLookup`), flag `OrgTeam` | What a link is for; every link that does not work answers the same 410 `invitation_invalid` |
 | `POST` | `/api/org-invitations/accept` | JWT (any signed-in account), flag `OrgTeam` | Accept with the four consents: 200 `{ orgId, orgName, role, areas, leftEmptyOrg }`; 403 `invitation_email_mismatch`, `invitation_email_not_verified`, `invitation_platform_admin`; 409 `invitation_user_has_organization`; 410 `invitation_expired`, `invitation_used`, `invitation_revoked`, `invitation_invalid` |
 | `GET` | `/api/orgs/{orgId}/domain` | JWT | Custom domain config for org |
@@ -167,11 +173,12 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/properties` | Properties of the caller's org the caller may handle (own ones; whole org for org-wide roles). Short-rent or long-rent. Each row carries `rentalMode` (`Short`/`Long`, PM-01); `?mode=short\|long` narrows the list (400 `validation_error` for another value), without it every property is listed |
+| `GET` | `/api/properties` | Properties of the caller org the caller reaches (AM-03: read from the org membership in the database; the whole org for an owner, administrator, manager, accountant or a collaborator with every property; only the ones given to a collaborator "Solo alcuni"; the ones created for an account in no team). Short-rent or long-rent Each row carries `rentalMode` (`Short`/`Long`, PM-01); `?mode=short\|long` narrows the list (400 `validation_error` for another value), without it every property is listed |
 | `GET` | `/api/properties/{id}` | The property record (`PropertyResponse`): no bookings, check-in tokens, OTA integrations or documents (PC-02, A2-32; bookings come from the booking endpoints). Short-rent or long-rent |
 | `GET` | `/api/properties/cancellation-policies` | Cancellation policies a property can reference (global catalog). Short-rent only |
 | `POST` | `/api/properties` | Create a new property. Short-rent or long-rent; `nightlyRate`/`maxGuests` may be `0` (long-term only property, blocks short-stay activation); `bedrooms` may be `0` (studio). Optional `rentalMode` (`Short`/`Long`, PM-01): without it, no guests **and** no rate create a `Long` property, anything else a `Short` one ([`property-rental-mode.md`](runbooks/property-rental-mode.md)) |
 | `PUT` | `/api/properties/{id}` | Update a property (owner or org-wide role) with **PATCH semantics** (PC-02, A2-04): a field left out of the body (or `null`) keeps its stored value; `cinCode`, `slug` and `cancellationPolicyId` sent as `null` are cleared. 400 `validation_error` for an invalid field, 422 `cancellation_policy_not_found`, 422 `property_rental_mode_change_not_allowed` for a `rentalMode` that is not the stored one (the mode is never changed by this save). Short-rent or long-rent |
+| `PUT` | `/api/properties/{id}/responsible` | AM-03: the member in charge of the property, `{ userId }` or `null`: 204; 422 `property_responsible_invalid` (not an active member who reaches the property). Short-rent or long-rent, same check as the update |
 | `GET` | `/api/properties/{id}/mode` | Behind `Features:PropertyModeChange` (PM-02). The mode of the property, the change waiting for its day and the last one that is over. Short-rent or long-rent ([`property-rental-mode.md` §8](runbooks/property-rental-mode.md#8-the-scheduled-change-of-mode-pm-02-decision-d16)) |
 | `GET` | `/api/properties/{id}/mode/preview?to=short\|long&date=` | PM-02. What a change to `to` on `date` (default: the first possible day) meets: stays, imported calendar blocks or leases in the way, the first free day, the `issues` the creation would answer. Ids and dates only |
 | `POST` | `/api/properties/{id}/mode/change` | PM-02. Programs the change (`{ to, effectiveDate }`, tomorrow at the earliest). 201, 404 `property_not_found`, 409 `property_mode_change_exists` / `property_mode_blocked_by_bookings` / `property_mode_blocked_by_lease` / `property_mode_blocked_by_draft_lease`, 422 `property_mode_unchanged` / `property_mode_date_too_early` / `property_mode_date_too_far`. To long-term the calendar closes from the night before the day |
@@ -250,7 +257,7 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/guests/{id}` | JWT | Get a single guest |
 | `POST` | `/api/guests` | JWT | Create a guest record |
 | `PUT` | `/api/guests/{id}` | JWT | Update guest details |
-| `DELETE` | `/api/guests/{id}` | JWT | Delete a guest |
+| `DELETE` | `/api/guests/{id}` | guest.manage (AM-03; was guest.write) | Delete a guest |
 
 #### Leases (long-term)
 
@@ -332,16 +339,16 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/alloggiati/{bookingId}/status` | booking.read | Submission status for a booking |
 | `GET` | `/api/alloggiati/{bookingId}/guest-summary` | booking.read | Per-guest data to copy on the Questura portal, in record order |
 | `GET` | `/api/alloggiati/{bookingId}/record-file` | booking.read + guest.read | The record file to upload on the portal (CO-13): one 168-character line per guest, UTF-8, CR+LF; built on request, never stored, `private, no-store`; `422 alloggiati_file_not_ready` / `alloggiati_file_stay_days_invalid` / `alloggiati_file_name_not_representable`. Downloading changes no status (`docs/runbooks/alloggiati.md`) |
-| `POST` | `/api/alloggiati/{bookingId}/mark-sent-manually` | booking.write | Host declares the schedina sent on the portal (`{ sentOn }`) → `InviatoManualmente` |
-| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Always `422 alloggiati_transmission_unavailable`: CasaZen has no web service client |
+| `POST` | `/api/alloggiati/{bookingId}/mark-sent-manually` | alloggiati.submit (AM-03; was booking.write) | Host declares the schedina sent on the portal (`{ sentOn }`) → `InviatoManualmente` |
+| `POST` | `/api/alloggiati/{bookingId}/send` | alloggiati.submit (AM-03; was booking.write) | Always `422 alloggiati_transmission_unavailable`: CasaZen has no web service client |
 | `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors actually used by the configuration (GDPR art. 28, `docs/runbooks/legal-documents.md`) |
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
 | `GET` | `/api/legal/privacy` | Anonymous | Privacy policy |
 | `GET` | `/api/gdpr/guests/{id}/export` | JWT | Export guest personal data |
-| `DELETE` | `/api/gdpr/guests/{id}` | JWT | Erasure request (Art. 17) |
-| `POST` | `/api/gdpr/guests/{id}/anonymize` | JWT | Anonymize guest record |
-| `PUT` | `/api/gdpr/guests/{id}/consent` | JWT | Update GDPR consent |
+| `DELETE` | `/api/gdpr/guests/{id}` | guest.manage (AM-03; was guest.write) | Erasure request (Art. 17) |
+| `POST` | `/api/gdpr/guests/{id}/anonymize` | guest.manage (AM-03; was guest.write) | Anonymize guest record |
+| `PUT` | `/api/gdpr/guests/{id}/consent` | guest.manage (AM-03; was guest.write) | Update GDPR consent |
 | `GET` | `/api/tourist-tax-rates` | JWT | List tourist tax rates |
 | `GET` | `/api/tourist-tax-rates/{id}` | JWT | Get rate by id |
 | `GET` | `/api/tourist-tax-rates/city/{city}` | JWT | Rates for a city |
@@ -416,8 +423,8 @@ never a link to the dashboard.
 | `POST` | `/api/supplier/payments/account` | Supplier + flag `SupplierOnlinePayments` | Creates the supplier's Express account when missing (one per org, advisory lock + idempotency key) and returns the state |
 | `POST` | `/api/supplier/payments/onboarding-link` | Supplier + flag `SupplierOnlinePayments` | Stripe Account Link (single use) with server-built return pages `/app/supplier/settings?stripe_return=1` / `?stripe_refresh=1`; creates the account when missing |
 | `POST` | `/api/supplier/payments/dashboard-link` | Supplier + flag `SupplierOnlinePayments` | Single-use login link to the supplier's Express Dashboard; 422 `supplier_payments_not_ready` without an account |
-| `POST` | `/api/service-requests/match-supplier` | JWT | Match suppliers for a request |
-| `POST` | `/api/service-requests` | JWT | Create service request |
+| `POST` | `/api/service-requests/match-supplier` | servicerequest.write (AM-03; was property.write) | Match suppliers for a request |
+| `POST` | `/api/service-requests` | servicerequest.write (AM-03; was property.write) | Create service request |
 | `GET` | `/api/service-requests` | JWT | List service requests |
 | `GET` | `/api/service-requests/{id}` | JWT | Get service request |
 | `POST` | `/api/service-requests/{id}/take` | Supplier | Take / claim request; optional body `{ scheduledStartUtc, scheduledEndUtc, quotedAmountCents }` (SP-04) |
@@ -431,7 +438,7 @@ never a link to the dashboard.
 | `POST` | `/api/service-requests/{id}/proposal/accept` | JWT | The host accepts the proposed time: the request is taken at that time (SP-04) |
 | `POST` | `/api/service-requests/{id}/proposal/reject` | JWT | The host turns the proposed time down (SP-04) |
 | `POST` | `/api/service-requests/{id}/remind` | JWT | The host reminds the supplier, at most once every 6 hours (SP-04) |
-| `POST` | `/api/service-requests/{id}/mark-paid` | JWT | Mark request paid; 422 `service_request_online_payment` for a request paid inside CasaZen (SP-15a) |
+| `POST` | `/api/service-requests/{id}/mark-paid` | servicerequest.write (AM-03; was property.write) | Mark request paid; 422 `service_request_online_payment` for a request paid inside CasaZen (SP-15a) |
 | `POST` | `/api/service-requests/{id}/final-amount/confirm` | JWT | The host confirms a final amount above the quote by more than the tolerance (D7): the payment of an online request is created and the link sent (SP-15a) |
 | `POST` | `/api/service-requests/{id}/payment-session` | JWT | The PaymentIntent the signed-in host confirms with Stripe.js to pay a request paid inside CasaZen (SP-15a) |
 | `POST` | `/api/long-rent/service-requests/{id}/cancel` \| `remind` \| `proposal/accept` \| `proposal/reject` | JWT (long-rent) | The same host actions for a long-rent request (SP-04) |
@@ -668,7 +675,7 @@ erDiagram
 | `UserId` | `string` | FK `Users` (CASCADE), **unique** | One org per user |
 | `Role` | `OrgRole` | Required | Owner 1 / Admin 2 / PropertyManager 3 / Collaborator 4 / Accountant 5 |
 | `Status` | `OrgMemberStatus` | Default Active | Active 1 / Deactivated 2 (403 `member_inactive` from the next request) |
-| `PropertyScope` | `PropertyScope` | Default All | All 1 / Selected 2 (`Selected` arrives with AM-03) |
+| `PropertyScope` | `PropertyScope` | Default All | All 1 / Selected 2 ("Solo alcuni": the properties of `PropertyMemberAccesses`; the collaborator only, AM-03) |
 | `CreatedAt`, `CreatedByUserId`, `DeactivatedAt` | `DateTime`, `string?`, `DateTime?` | — | Audit of the membership |
 
 #### `OrgInvitation` (AM-02)
@@ -688,6 +695,20 @@ erDiagram
 | `InvitedByUserId`, `Language` | `string`, `string` | Language `it` / `en` | Who invited; language of the emails |
 | `AcceptedAt`, `AcceptedByUserId`, `ClosedAt` | `DateTime?`, `string?`, `DateTime?` | — | How it ended; the purge counts 30 days from `ClosedAt` |
 | `CreatedAt`, `UpdatedAt` | `DateTime` | — | Audit |
+
+#### `PropertyMemberAccess` (AM-03)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (RESTRICT), tenant key (`ITenantOwned`) | The org of the property |
+| `UserId` | `string` | FK `Users` (CASCADE) | The member the property is given to (a collaborator "Solo alcuni") |
+| `PropertyId` | `Guid` | FK `Properties` (CASCADE) | The property given |
+| | | **unique** `(UserId, PropertyId)` (`UIX_PropertyMemberAccesses_UserId_PropertyId`), indexes on `PropertyId` and `(OrgId, UserId)` | One grant per pair |
+| `CreatedAt`, `CreatedByUserId` | `DateTime`, `string?` | — | When and by whom it was given |
+
+`Property.ResponsibleUserId` (`string?`, max 255, FK `Users` SET NULL, indexed): the member in charge of the property, told about it with the
+administrators (`docs/runbooks/org-team.md` § 24).
 
 ---
 

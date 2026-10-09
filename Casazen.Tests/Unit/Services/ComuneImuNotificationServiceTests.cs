@@ -375,9 +375,41 @@ public class ComuneImuNotificationServiceTests
         imu.Verify(s => s.GetStatusAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    /// <summary>
+    /// S5 (AM-03): the communication to the Comune is the landlord's, so it is marked sent by the holder of the org (its owner
+    /// or an administrator), not by whoever created the property: the property was created by someone else here.
+    /// </summary>
+    [Fact]
+    public async Task MarkSentAsync_TheHolderOfTheOrgWhoDidNotCreateTheProperty_MarksItSent()
+    {
+        var (sut, events) = CreateSut(BuildLease("Seveso", LeaseStatus.Registered), holders: ["auth0|titolare"]);
+
+        var result = await sut.MarkSentAsync(Guid.NewGuid(), "auth0|titolare");
+
+        Assert.True(result);
+        events.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e => e.EventType == LeaseEventType.ImuNotificationMarkedSent)), Times.Once);
+    }
+
+    [Fact]
+    public async Task MarkSentAsync_ACreatorOfThePropertyWhoIsNotTheHolderOfTheOrg_IsNotTheLandlord()
+    {
+        var lease = BuildLease("Seveso", LeaseStatus.Registered);
+        var holder = new Mock<IOrgHolderService>();
+        holder.Setup(h => h.IsHolderAsync(OwnerId, lease.OrgId, OwnerId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var (sut, events) = CreateSut(lease, orgHolder: holder.Object);
+
+        var result = await sut.MarkSentAsync(Guid.NewGuid(), OwnerId);
+
+        Assert.Null(result);
+        holder.VerifyAll();
+        events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
+    }
+
     private static (ComuneImuNotificationService Sut, Mock<ILeaseEventRepository> Events) CreateSut(
         LeaseContract? lease,
-        TerritorialRentAgreement? agreement = null)
+        TerritorialRentAgreement? agreement = null,
+        string[]? holders = null,
+        IOrgHolderService? orgHolder = null)
     {
         var leases = new Mock<ILeaseContractRepository>();
         leases.Setup(r => r.GetByIdWithDetailsAsync(It.IsAny<Guid>())).ReturnsAsync(lease);
@@ -393,8 +425,22 @@ public class ComuneImuNotificationServiceTests
             .ReturnsAsync((string city, CancellationToken _) => BuildChannel(city));
         return (
             new ComuneImuNotificationService(
-                leases.Object, events.Object, territorialAgreements.Object, imuChannels.Object, new MigraDocPdfDocumentRenderer()),
+                leases.Object, events.Object, territorialAgreements.Object, imuChannels.Object, new MigraDocPdfDocumentRenderer(), orgHolder ?? OrgHolder(holders ?? [])),
             events);
+    }
+
+    /// <summary>
+    /// The holder of the org: the creator of the property for an account in no org team (the rule of before the team), plus
+    /// the people named in <paramref name="holders"/> (the org's owner or administrators).
+    /// </summary>
+    private static IOrgHolderService OrgHolder(params string[] holders)
+    {
+        var holder = new Mock<IOrgHolderService>();
+        holder
+            .Setup(h => h.IsHolderAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string user, Guid _, string creator, CancellationToken _) =>
+                user == creator || holders.Contains(user));
+        return holder.Object;
     }
 
     /// <summary>Reference-data rows a real migration would seed for the two verified pilot comuni (LT-13, A7-22).</summary>
@@ -457,6 +503,7 @@ public class ComuneImuNotificationServiceTests
             Mock.Of<IHostResourceLookup>(),
             authorization.Object,
             Mock.Of<IOrgContextResolver>(),
+            Casazen.Tests.Unit.Authorization.HostAuthorizationTestHarness.ScopeResolver(),
             localizer.Object);
         controller.ControllerContext = new ControllerContext
         {

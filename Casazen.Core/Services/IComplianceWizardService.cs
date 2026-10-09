@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
@@ -222,7 +223,12 @@ public interface IComplianceWizardService
         bool? tosAccepted,
         CancellationToken cancellationToken = default);
 
-    Task<ComplianceSummaryResult> GetSummaryAsync(Guid orgId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// The compliance cockpit of the caller (US-019 AC10): the properties to activate, the check-ins to complete, the
+    /// check-outs due, the Alloggiati to send and the turnovers to close, <b>of the properties <paramref name="scope"/>
+    /// reaches</b> (AM-03: it used to filter by org only, so a member «Solo alcuni» saw the whole org's work).
+    /// </summary>
+    Task<ComplianceSummaryResult> GetSummaryAsync(HostScope scope, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Opens the check-out wizard of a booking the caller has already been authorized on (TN-3), with the rules of

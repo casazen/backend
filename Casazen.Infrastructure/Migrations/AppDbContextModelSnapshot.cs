@@ -2649,6 +2649,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("RentalMode")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ResponsibleUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("Slug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -2678,6 +2682,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OrgId");
 
                     b.HasIndex("OwnerId");
+
+                    b.HasIndex("ResponsibleUserId")
+                        .HasDatabaseName("IX_Properties_ResponsibleUserId");
 
                     b.HasIndex("OrgId", "AddressKey")
                         .IsUnique()
@@ -2860,6 +2867,45 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("PropertyId");
 
                     b.ToTable("PropertyICalFeeds");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyMemberAccess", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId")
+                        .HasDatabaseName("IX_PropertyMemberAccesses_PropertyId");
+
+                    b.HasIndex("OrgId", "UserId")
+                        .HasDatabaseName("IX_PropertyMemberAccesses_OrgId_UserId");
+
+                    b.HasIndex("UserId", "PropertyId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_PropertyMemberAccesses_UserId_PropertyId");
+
+                    b.ToTable("PropertyMemberAccesses");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyModeChange", b =>
@@ -3516,6 +3562,21 @@ namespace Casazen.Infrastructure.Migrations
                         },
                         new
                         {
+                            RoleId = 1,
+                            PermissionKey = "servicerequest.write"
+                        },
+                        new
+                        {
+                            RoleId = 1,
+                            PermissionKey = "guest.manage"
+                        },
+                        new
+                        {
+                            RoleId = 1,
+                            PermissionKey = "alloggiati.submit"
+                        },
+                        new
+                        {
                             RoleId = 2,
                             PermissionKey = "property.read"
                         },
@@ -3707,6 +3768,21 @@ namespace Casazen.Infrastructure.Migrations
                         new
                         {
                             RoleId = 7,
+                            PermissionKey = "servicerequest.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "guest.manage"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "alloggiati.submit"
+                        },
+                        new
+                        {
+                            RoleId = 7,
                             PermissionKey = "org.suppliers.manage"
                         },
                         new
@@ -3773,6 +3849,11 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 9,
                             PermissionKey = "guest.write"
+                        },
+                        new
+                        {
+                            RoleId = 9,
+                            PermissionKey = "servicerequest.write"
                         },
                         new
                         {
@@ -6333,6 +6414,11 @@ namespace Casazen.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Casazen.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ResponsibleUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("CancellationPolicy");
 
                     b.Navigation("Org");
@@ -6408,6 +6494,29 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Org");
+
+                    b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyMemberAccess", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany("MemberAccesses")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Property");
                 });
@@ -6934,6 +7043,8 @@ namespace Casazen.Infrastructure.Migrations
             modelBuilder.Entity("Casazen.Core.Entities.Property", b =>
                 {
                     b.Navigation("Bookings");
+
+                    b.Navigation("MemberAccesses");
 
                     b.Navigation("OtaIntegrations");
 

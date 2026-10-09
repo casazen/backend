@@ -34,6 +34,7 @@ public class LongRentServiceRequestsController(
     IComuneDirectory comuneDirectory,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     AppDbContext db,
     ISupplierPaymentService supplierPayments) : ControllerBase
 {
@@ -253,7 +254,7 @@ public class LongRentServiceRequestsController(
             id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
         if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
 
-        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId, existing.PropertyId);
         if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Write))
             return Forbid();
 
@@ -295,7 +296,7 @@ public class LongRentServiceRequestsController(
             id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
         if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
 
-        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId, existing.PropertyId);
         if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Write))
             return Forbid();
 
@@ -327,7 +328,7 @@ public class LongRentServiceRequestsController(
             id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
         if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
 
-        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId, existing.PropertyId);
         if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Write))
             return Forbid();
 
@@ -338,7 +339,7 @@ public class LongRentServiceRequestsController(
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        return orgId is null ? null : User.GetHostScope(orgId.Value);
+        return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
     /// <summary>
@@ -359,7 +360,7 @@ public class LongRentServiceRequestsController(
         if (property is null)
             return (null, this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound"));
 
-        var resource = new HostResource(property.OrgId, property.OwnerId);
+        var resource = new HostResource(property.OrgId, property.OwnerId, propertyId);
         return await authorizationService.IsAuthorizedAsync(User, resource, operation)
             ? (property, null)
             : (null, Forbid());

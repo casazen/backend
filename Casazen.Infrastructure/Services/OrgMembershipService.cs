@@ -95,6 +95,10 @@ public sealed partial class OrgMembershipService(
         if (role == OrgRole.Owner)
             throw new DomainRuleException(OrgMembershipErrors.OwnerNotAssignable, "OrgMemberOwnerNotAssignable");
 
+        // «Solo alcuni» is the collaborator's (AM-03): everybody else reaches every property of the org.
+        if (propertyScope == PropertyScope.Selected && role != OrgRole.Collaborator)
+            throw new DomainRuleException(OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported");
+
         var areas = (rentalContexts ?? [])
             .Where(OrgRoleCatalog.IsRentalContext)
             .Select(c => c.ToLowerInvariant())
@@ -147,6 +151,11 @@ public sealed partial class OrgMembershipService(
 
         var previous = member.Role;
         member.Role = role;
+
+        // Only the collaborator can be limited to some properties (AM-03): another role reaches the whole org, and the
+        // grants of the former role must not wait to come back to life if the person is made a collaborator again.
+        if (role != OrgRole.Collaborator)
+            await ClearPropertyAccessAsync(member, cancellationToken);
 
         // The areas are the rental contexts the person already works in; the role decides the key of each and the
         // account membership.
@@ -208,6 +217,7 @@ public sealed partial class OrgMembershipService(
 
         // Leave no link the onboarding can reuse: EnsureOrgForUserAsync would otherwise return this org and
         // EnsureOwnerAsync would insert a second Owner beside the one that cannot be removed (UnlinkOrgAsync).
+        await ClearPropertyAccessAsync(member, cancellationToken);
         db.OrgMembers.Remove(member);
         await ProjectAsync(userId, [], ManagedContexts, cancellationToken);
         await UnlinkOrgAsync(userId, member.OrgId, cancellationToken);
@@ -228,13 +238,32 @@ public sealed partial class OrgMembershipService(
             throw new DomainConflictException(OrgMembershipErrors.OtherOrg, "OrgMemberOtherOrg");
 
         if (member is not null)
+        {
+            await ClearPropertyAccessAsync(member, cancellationToken);
             db.OrgMembers.Remove(member);
+        }
 
         await ProjectAsync(userId, [], ManagedContexts, cancellationToken);
         await UnlinkOrgAsync(userId, orgId, cancellationToken);
         await SaveAsync(transaction, userId, cancellationToken);
 
         logger.LogInformation("Org owner left an empty org: userId={UserId} orgId={OrgId}", userId, orgId);
+    }
+
+    /// <summary>
+    /// Stages the end of the member's property grants (AM-03): the <see cref="PropertyMemberAccess"/> rows go and the scope
+    /// goes back to every property. For a member who leaves, changes to a role that reaches every property, or is removed. The
+    /// caller saves. A member that was never restricted costs one empty read.
+    /// </summary>
+    private async Task ClearPropertyAccessAsync(OrgMember member, CancellationToken cancellationToken)
+    {
+        var grants = await db.PropertyMemberAccesses.IgnoreQueryFilters()
+            .Where(a => a.UserId == member.UserId && a.OrgId == member.OrgId)
+            .ToListAsync(cancellationToken);
+        if (grants.Count > 0)
+            db.PropertyMemberAccesses.RemoveRange(grants);
+
+        member.PropertyScope = PropertyScope.All;
     }
 
     /// <summary>

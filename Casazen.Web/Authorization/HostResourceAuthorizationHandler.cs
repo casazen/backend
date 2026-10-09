@@ -10,7 +10,9 @@ namespace Casazen.Web.Authorization;
 /// <list type="number">
 /// <item>the caller's org (the same <see cref="ITenantContext"/> the EF tenant filter uses) is the row's org;</item>
 /// <item>the caller holds the operation's permission in one of its contexts (DB membership or JWT fallback);</item>
-/// <item>for rows bound to a property, the caller owns it or has an org-wide role (<see cref="HostRoles.OrgWide"/>).</item>
+/// <item>for rows bound to a property, the caller reaches it (<see cref="IHostScopeResolver"/>, AM-03): its org role says every
+/// property of the org, or it was given this one («Solo alcuni»); an account in no org team reaches the ones it created, or all
+/// of them with an org-wide token role (<see cref="HostRoles.OrgWide"/>).</item>
 /// </list>
 /// Everything else fails closed: no user id, no org, another org, missing permission.
 /// </summary>
@@ -21,6 +23,7 @@ namespace Casazen.Web.Authorization;
 public sealed class HostResourceAuthorizationHandler(
     ITenantContext tenantContext,
     IContextAuthorizationService contextAuthorizationService,
+    IHostScopeResolver hostScopeResolver,
     ILogger<HostResourceAuthorizationHandler> logger)
     : AuthorizationHandler<HostOperationRequirement, HostResource>
 {
@@ -41,12 +44,10 @@ public sealed class HostResourceAuthorizationHandler(
             return;
         }
 
-        if (resource.PropertyOwnerId is { } ownerId &&
-            !string.Equals(ownerId, userId, StringComparison.Ordinal) &&
-            !context.User.HasOrgWideHostAccess())
+        if (resource.IsBoundToProperty && !await hostScopeResolver.CanReachPropertyAsync(context.User, resource))
         {
             logger.LogDebug(
-                "Host resource denied: user {UserId} does not own the property and has no org-wide role ({Permission})",
+                "Host resource denied: user {UserId} does not reach the property of the row ({Permission})",
                 userId, requirement.PermissionKey);
             return;
         }

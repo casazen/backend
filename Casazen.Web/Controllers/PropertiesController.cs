@@ -45,6 +45,7 @@ public class PropertiesController(
     IPropertyDocumentService documentService,
     IAdminAccessAuditService adminAccessAuditService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     IEntitlementService entitlementService,
     PropertyICalSyncService propertyICalSyncService,
     IComplianceWizardService complianceWizardService,
@@ -53,8 +54,10 @@ public class PropertiesController(
     ILogger<PropertiesController> logger) : ControllerBase
 {
     /// <summary>
-    /// Properties of the caller's org the caller may handle (TN-3): every one for an org-wide role (a PropertyManager of
-    /// the org sees the properties whose pushes it receives, MO-12, A6-20), otherwise the ones they own, filtered in SQL.
+    /// Properties of the caller's org the caller may handle (TN-3, AM-03): every one for a member whose org role reaches the
+    /// whole org (the owner, the administrators, the property managers, the accountants, a collaborator with every
+    /// property), the ones it was given for a collaborator «Solo alcuni», otherwise (an account in no org team) the ones
+    /// they created or all with an org-wide token role; filtered in SQL.
     /// Shared by short-rent hosts and long-term landlords (A7-06). Each row is the property record
     /// (<see cref="PropertyResponse"/>), never the entity. <c>?mode=short|long</c> (PM-01) lists the properties in that
     /// rental mode only; without it the list is every property, as it has always been. The plan limit counts them all.
@@ -86,7 +89,8 @@ public class PropertiesController(
         }
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         var properties = modeFilter is { } wanted
@@ -404,7 +408,8 @@ public class PropertiesController(
             return Unauthorized();
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         if (!string.IsNullOrWhiteSpace(cinStatus) && cinStatus is not ("valid" or "missing" or "invalid"))
@@ -450,8 +455,7 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, existing.OwnerId, roles))
+        if (!await authorizationService.CanAccessAsync(userId, existing, GetUserRoles()))
             return Forbid();
 
         if (!ModelState.IsValid)

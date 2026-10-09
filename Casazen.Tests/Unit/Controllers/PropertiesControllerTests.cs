@@ -12,6 +12,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
@@ -69,6 +70,7 @@ public class PropertiesControllerTests
             _mockDocumentService.Object,
             _mockAuditService.Object,
             _mockOrgContextResolver.Object,
+            HostAuthorizationTestHarness.ScopeResolver(),
             _mockEntitlementService.Object,
             CreatePropertyICalSyncService(),
             _mockComplianceWizardService.Object,
@@ -105,7 +107,7 @@ public class PropertiesControllerTests
 
     private void AllowAuthorization()
     {
-        _mockAuthz.Setup(x => x.CanAccess(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>())).Returns(true);
+        _mockAuthz.Setup(x => x.CanAccessAsync(It.IsAny<string>(), It.IsAny<Property>(), It.IsAny<IEnumerable<string>>())).ReturnsAsync(true);
         _mockHostAuthz
             .Setup(x => x.AuthorizeAsync(
                 It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<IEnumerable<IAuthorizationRequirement>>()))
@@ -215,8 +217,8 @@ public class PropertiesControllerTests
         _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId))
             .ReturnsAsync(new Property { Id = propertyId, OwnerId = ownerId, Name = "Owner Property" });
         _mockAuthz
-            .Setup(x => x.CanAccess(attackerId, ownerId, It.IsAny<IEnumerable<string>>()))
-            .Returns(false);
+            .Setup(x => x.CanAccessAsync(attackerId, It.IsAny<Property>(), It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(false);
 
         var result = await _controller.GetById(propertyId);
 

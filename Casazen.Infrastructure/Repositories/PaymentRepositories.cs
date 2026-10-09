@@ -41,12 +41,12 @@ public class PaymentRepository(AppDbContext context) : IPaymentRepository
 
     public async Task<IEnumerable<Payment>> GetByScopeAsync(HostScope scope)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         var query = context.Payments
             .Include(p => p.Booking)
-            .Where(p => p.OrgId == scope.OrgId);
-
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(p => p.Booking.Property.OwnerId == ownerId);
+            .Where(p => p.OrgId == scope.OrgId)
+            .InScope(scope);
 
         return await query
             .OrderByDescending(p => p.CreatedAt)

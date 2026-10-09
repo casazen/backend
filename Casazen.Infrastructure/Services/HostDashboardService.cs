@@ -87,9 +87,7 @@ public sealed class HostDashboardService(
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        var feeds = db.PropertyICalFeeds.AsNoTracking().Where(f => f.OrgId == scope.OrgId);
-        if (scope.OwnerId is { } ownerId)
-            feeds = feeds.Where(f => f.Property.OwnerId == ownerId);
+        var feeds = db.PropertyICalFeeds.AsNoTracking().Where(f => f.OrgId == scope.OrgId).InScope(scope);
 
         // Never the import URL (encrypted, A2-20): the projection does not read it. Feeds with a sync error first.
         return await feeds
@@ -179,18 +177,12 @@ public sealed class HostDashboardService(
     }
 
     // Active properties of the scope, as GET /api/properties lists them.
-    private IQueryable<Property> ActivePropertiesInScope(HostScope scope)
-    {
-        var properties = db.Properties.AsNoTracking().Where(p => p.OrgId == scope.OrgId && p.IsActive);
-        return scope.OwnerId is { } ownerId ? properties.Where(p => p.OwnerId == ownerId) : properties;
-    }
+    private IQueryable<Property> ActivePropertiesInScope(HostScope scope) =>
+        db.Properties.AsNoTracking().Where(p => p.OrgId == scope.OrgId && p.IsActive).InScope(scope);
 
-    // Bookings of the scope (TN-3): the org and, unless org-wide, the properties the caller owns.
-    private IQueryable<Booking> BookingsInScope(HostScope scope)
-    {
-        var bookings = db.Bookings.AsNoTracking().Where(b => b.OrgId == scope.OrgId);
-        return scope.OwnerId is { } ownerId ? bookings.Where(b => b.Property.OwnerId == ownerId) : bookings;
-    }
+    // Bookings of the scope (TN-3, AM-03): the org and, unless org-wide, the properties the caller reaches.
+    private IQueryable<Booking> BookingsInScope(HostScope scope) =>
+        db.Bookings.AsNoTracking().Where(b => b.OrgId == scope.OrgId).InScope(scope);
 
     private static async Task<HostDashboardStayList> ListAsync(
         IQueryable<Booking> query,

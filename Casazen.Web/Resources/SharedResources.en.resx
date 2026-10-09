@@ -231,6 +231,21 @@
   <data name="OrgOwnerRequired" xml:space="preserve">
     <value>Only the owner of the organization can create and manage administrators.</value>
   </data>
+  <data name="OrgMemberScopeNotSupported" xml:space="preserve">
+    <value>Only collaborators can be limited to some properties: everybody else sees every property of the organization.</value>
+  </data>
+  <data name="OrgMemberPropertyUnknown" xml:space="preserve">
+    <value>One of the chosen properties is not part of the organization.</value>
+  </data>
+  <data name="OrgMemberPropertyScopeRequired" xml:space="preserve">
+    <value>Choose whether the person sees every property or only some.</value>
+  </data>
+  <data name="OrgMemberPropertyIdsTooMany" xml:space="preserve">
+    <value>You chose too many properties at once (500 at most).</value>
+  </data>
+  <data name="PropertyResponsibleInvalid" xml:space="preserve">
+    <value>The person in charge must be an active person of the organization who can see this property.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
   </data>

@@ -114,6 +114,10 @@ public sealed partial class OrgInvitationService
             var user = await db.Users.FirstAsync(u => u.Id == request.UserId, cancellationToken);
             await LeaveTheOldOrgAsync(user, lockedPlan, now, cancellationToken);
 
+            // «Solo alcuni» is the collaborator's (AM-03). The creation refuses it for another role, but an invitation sent
+            // before that rule must still be accepted: the person reaches the whole org, as that role does.
+            var propertyScope = invitation.Role == OrgRole.Collaborator ? invitation.PropertyScope : PropertyScope.All;
+
             // The member and every membership of its role, in this transaction.
             try
             {
@@ -123,7 +127,7 @@ public sealed partial class OrgInvitationService
                     invitation.Role,
                     invitation.Areas,
                     invitation.InvitedByUserId,
-                    invitation.PropertyScope,
+                    propertyScope,
                     cancellationToken);
             }
             catch (DomainConflictException ex) when (ex.Code is OrgMembershipErrors.AlreadyMember or OrgMembershipErrors.OtherOrg)

@@ -157,13 +157,50 @@ public class OrgRoleCatalogTests
     public void SeededRoles_LongRentCollaboratorOnlyReadsProperties() =>
         Assert.Equal(["property.read"], OrgRoleCatalog.SeededRoles.Single(r => r is { ContextKey: "long-rent", RoleKey: "staff" }).Permissions);
 
-    [Fact]
-    public void SeededRoles_FinerPermissionsOfAm03_AreNotIntroducedYet()
-    {
-        var all = OrgRoleCatalog.SeededRoles.SelectMany(r => r.Permissions).Distinct().ToList();
+    private static IReadOnlyList<string> PermissionsOf(string context, string roleKey) =>
+        OrgRoleCatalog.SeededRoles.Single(r => r.ContextKey == context && r.RoleKey == roleKey).Permissions;
 
-        Assert.DoesNotContain("servicerequest.write", all);
-        Assert.DoesNotContain("guest.manage", all);
+    [Theory]
+    [InlineData("servicerequest.write")]
+    [InlineData("guest.manage")]
+    [InlineData("alloggiati.submit")]
+    public void SeededRoles_FinerPermissionsOfAm03_ThePropertyManagerKeepsEverythingItDid(string permission) =>
+        Assert.Contains(permission, PermissionsOf("short-rent", "property_manager"));
+
+    [Fact]
+    public void SeededRoles_Collaborator_CreatesInterventionsButHasNoPricesCinBookingsPaymentsOrErasure()
+    {
+        var collaborator = PermissionsOf("short-rent", "staff");
+
+        Assert.Equal(
+            ["booking.read", "guest.read", "guest.write", "property.read", "servicerequest.write"],
+            collaborator.Order(StringComparer.Ordinal).ToArray());
+        // The carve-outs are exactly what keeps the collaborator out of the broad permissions.
+        foreach (var broad in new[] { "property.write", "booking.write", "payment.read", "payment.write", "guest.manage", "alloggiati.submit", "ota.write" })
+            Assert.DoesNotContain(broad, collaborator);
+    }
+
+    [Theory]
+    [InlineData("short-rent", "accountant")]
+    [InlineData("long-rent", "accountant")]
+    [InlineData("long-rent", "staff")]
+    [InlineData("long-rent", "property_manager")]
+    public void SeededRoles_FinerPermissionsOfAm03_AreOnlyInTheShortRentRolesThatAct(string context, string roleKey)
+    {
+        var permissions = PermissionsOf(context, roleKey);
+
+        Assert.DoesNotContain("servicerequest.write", permissions);
+        Assert.DoesNotContain("guest.manage", permissions);
+        Assert.DoesNotContain("alloggiati.submit", permissions);
+    }
+
+    [Fact]
+    public void FinerPermissions_TheOwnerKeepsThemOnTheTokenFallbackToo()
+    {
+        var owner = ContextAccessBootstrap.BuildFallbackAccess(["PropertyOwner"]).Single(c => c.ContextKey == "short-rent");
+
+        foreach (var permission in HostPermissions.ShortRentFine)
+            Assert.Contains(permission, owner.Permissions);
     }
 
     [Fact]
