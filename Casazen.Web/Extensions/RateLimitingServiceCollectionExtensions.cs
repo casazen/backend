@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
+using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -12,7 +13,8 @@ namespace Casazen.Web.Extensions;
 /// Rate limiting of the anonymous endpoints (A3-12, A3-41, A5-10, A8-22, A9-10). Every policy is a fixed window
 /// partitioned by client IP (<see cref="ClientIp.GetRateLimitKey"/>, resolved by the forwarded headers middleware), so
 /// one client exhausting its quota never blocks the others; the guest check-in policies are partitioned by IP and
-/// token hash. A rejected request gets 429 ProblemDetails with <c>code</c> <c>rate_limited</c> and <c>Retry-After</c>.
+/// token hash, and the global search (a signed-in endpoint, UI-13a) by user. A rejected request gets 429 ProblemDetails
+/// with <c>code</c> <c>rate_limited</c> and <c>Retry-After</c>.
 /// </summary>
 /// <remarks>
 /// Limits per client IP and window (runbook <c>docs/runbooks/proxy-ip.md</c>): <c>RateLimiting:{Policy}:PermitLimit</c>
@@ -46,6 +48,7 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicSupplierQuote, 30, OneMinute),
         new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
+        new(RateLimitPolicies.GlobalSearch, 60, OneMinute, PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)
@@ -77,9 +80,10 @@ public static class RateLimitingServiceCollectionExtensions
                     windows[definition.Name] = limiterOptions.Window;
 
                     var partitionByToken = definition.PartitionByToken;
+                    var partitionByUser = definition.PartitionByUser;
                     options.AddPolicy(definition.Name, httpContext =>
                         RateLimitPartition.GetFixedWindowLimiter(
-                            GetPartitionKey(httpContext, partitionByToken),
+                            GetPartitionKey(httpContext, partitionByToken, partitionByUser),
                             _ => limiterOptions));
                 }
 
@@ -116,9 +120,19 @@ public static class RateLimitingServiceCollectionExtensions
         };
     }
 
-    /// <summary>Client IP partition, plus a hash of the <c>{token}</c> route value when the policy asks for it.</summary>
-    public static string GetPartitionKey(HttpContext httpContext, bool partitionByToken)
+    /// <summary>
+    /// Client IP partition, plus a hash of the <c>{token}</c> route value when the policy asks for it. A policy partitioned
+    /// by user (<paramref name="partitionByUser"/>, the global search) uses a hash of the signed-in subject instead of the IP,
+    /// and falls back to the IP for a request that has none (it would not reach the limiter: the endpoint needs a signed-in user).
+    /// </summary>
+    public static string GetPartitionKey(HttpContext httpContext, bool partitionByToken, bool partitionByUser = false)
     {
+        if (partitionByUser && httpContext.User.GetUserId() is { Length: > 0 } userId)
+        {
+            // Hash, so the partition table never holds the subject of an account.
+            return "user:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(userId)), 0, 16);
+        }
+
         var ipKey = ClientIp.GetRateLimitKey(httpContext);
         if (!partitionByToken
             || httpContext.Request.RouteValues[TokenRouteValue]?.ToString() is not { Length: > 0 } token)
@@ -183,9 +197,11 @@ public static class RateLimitingServiceCollectionExtensions
 /// <param name="DefaultWindow">Fixed window length when not configured.</param>
 /// <param name="LegacyPermitLimitKey">Configuration key of the limit used before FD-10, still honoured.</param>
 /// <param name="PartitionByToken">Also partition by the hash of the <c>{token}</c> route value.</param>
+/// <param name="PartitionByUser">Partition by the signed-in user instead of the client IP (endpoints that need a signed-in user).</param>
 public sealed record RateLimitPolicyDefinition(
     string Name,
     int DefaultPermitLimit,
     TimeSpan DefaultWindow,
     string? LegacyPermitLimitKey = null,
-    bool PartitionByToken = false);
+    bool PartitionByToken = false,
+    bool PartitionByUser = false);

@@ -2,7 +2,8 @@ namespace Casazen.Web.Infrastructure;
 
 /// <summary>
 /// Names of the rate limiting policies of the anonymous endpoints (<c>[EnableRateLimiting(...)]</c>). Every policy is
-/// partitioned by client IP (<see cref="ClientIp.GetRateLimitKey"/>); the guest check-in policies also by token.
+/// partitioned by client IP (<see cref="ClientIp.GetRateLimitKey"/>); the guest check-in policies also by token, and
+/// <see cref="GlobalSearch"/>, the one of a signed-in endpoint, by user.
 /// Limits and windows come from configuration: see
 /// <see cref="Extensions.RateLimitingServiceCollectionExtensions"/> and <c>docs/runbooks/proxy-ip.md</c>.
 /// </summary>
@@ -73,4 +74,11 @@ public static class RateLimitPolicies
     /// to ask often.
     /// </summary>
     public const string PublicInvitationLookup = "PublicInvitationLookup";
+
+    /// <summary>
+    /// The global search of the palette (<c>GET api/search</c>, UI-13a). The only policy of an authenticated endpoint: it is
+    /// partitioned by <b>user</b> (a hash of the subject), not by IP, because the palette asks at every pause in typing and the
+    /// people of one office share an address. Each call runs up to seven short queries, so it has a limit of its own.
+    /// </summary>
+    public const string GlobalSearch = "GlobalSearch";
 }
