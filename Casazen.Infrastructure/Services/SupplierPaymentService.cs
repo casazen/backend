@@ -83,6 +83,15 @@ public sealed partial class SupplierPaymentService(
         if (request.PaymentMode != ServiceRequestPaymentMode.Online)
             return new ServicePaymentPlan(ServiceRequestPaymentMode.Manual, null, null);
 
+        // A request from a supplier's public showcase (SP-10) is never charged here: it is taken as a manual one, and this keeps a
+        // path that set it online by mistake from sending a payment link to the supplier's own address.
+        if (request.RentalContext == ServiceRequestRentalContext.Showcase)
+        {
+            logger.LogWarning(
+                "ServiceRequest {Id}: a request from a supplier's showcase is not paid inside CasaZen, it is completed as a manual one", request.Id);
+            return new ServicePaymentPlan(ServiceRequestPaymentMode.Manual, null, null);
+        }
+
         // The flag stops the creation of payment requests; what exists stays payable (money in flight). A request taken while it was
         // on is completed as a manual one now: nothing is stuck, the host marks it paid as before.
         if (!features.IsEnabled(FeatureFlags.SupplierOnlinePayments))
@@ -180,13 +189,14 @@ public sealed partial class SupplierPaymentService(
     {
         var percent = await ReadCommissionPercentAsync(request.SupplierOrgId, cancellationToken);
         var fee = SupplierCommission.FeeCents(amountCents, percent);
+        var (payerKind, payerOrgId) = PayerOf(request);
 
         return new ServiceRequestPayment
         {
             ServiceRequestId = request.Id,
             SupplierOrgId = request.SupplierOrgId,
-            PayerKind = ServicePayerKind.Host,
-            PayerOrgId = request.OrgId,
+            PayerKind = payerKind,
+            PayerOrgId = payerOrgId,
             AmountCents = amountCents,
             Currency = ServiceCharges.Currency,
             CommissionPercent = percent,
@@ -198,6 +208,16 @@ public sealed partial class SupplierPaymentService(
             UpdatedAt = now,
         };
     }
+
+    /// <summary>
+    /// Who pays a request: the host org that asked for it or, for a request from a supplier's public showcase (SP-10, whose
+    /// <c>OrgId</c> is the supplier's own and whose customer is a private person with no account), a private payer with no org.
+    /// The supplier is never the payer of its own work.
+    /// </summary>
+    private static (ServicePayerKind Kind, Guid? OrgId) PayerOf(ServiceRequest request) =>
+        request.RentalContext == ServiceRequestRentalContext.Showcase
+            ? (ServicePayerKind.Private, null)
+            : (ServicePayerKind.Host, request.OrgId);
 
     /// <summary>
     /// The percentage a payment is created with: the supplier's own while its override is in force (no end, or an end that has not

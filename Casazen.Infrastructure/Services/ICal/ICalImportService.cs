@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Microsoft.Extensions.Options;
 
@@ -20,14 +21,48 @@ public sealed record ParsedCalendarBlock(
 public sealed record PropertyICalBlocks(IReadOnlyList<ParsedCalendarBlock> Blocks, int MergedDuplicates);
 
 /// <summary>
+/// An engagement of a supplier's calendar feed that has hours (SP-05): the stretch [<see cref="StartUtc"/>,
+/// <see cref="EndUtc"/>), with a key that is unique in the feed together with the start.
+/// </summary>
+/// <param name="ExternalUid">The UID of the event, or a stable hash for an event without one; at most 255 characters.</param>
+/// <param name="StartUtc">First instant (UTC), a whole second.</param>
+/// <param name="EndUtc">Instant it ends (UTC), after <paramref name="StartUtc"/>.</param>
+/// <param name="Label">The SUMMARY cut to the length of a label, or null. Shown only in the supplier's own console.</param>
+public sealed record ParsedSupplierWindow(string ExternalUid, DateTime StartUtc, DateTime EndUtc, string? Label);
+
+/// <summary>
+/// What a supplier's feed says about the supplier's time (SP-05): the <b>days</b> to close (all-day events, as before) and
+/// the <b>windows of hours</b> to occupy (timed events), and how many occurrences were left out and why, for the logs.
+/// </summary>
+/// <param name="BusyDays">Days closed by the feed: every day an all-day event touches (and a timed event with no length).</param>
+/// <param name="Windows">The hours the feed occupies, by start then key.</param>
+/// <param name="MergedDuplicates">Occurrences with the same key and start folded into one (the longest is kept).</param>
+/// <param name="OutsideWindow">Timed occurrences wholly before the import window or after it: not stored (yet).</param>
+/// <param name="OverLimit">Windows left out because the supplier would have more than the limit (the farthest ones).</param>
+public sealed record SupplierICalBusy(
+    IReadOnlySet<DateOnly> BusyDays,
+    IReadOnlyList<ParsedSupplierWindow> Windows,
+    int MergedDuplicates,
+    int OutsideWindow,
+    int OverLimit);
+
+/// <summary>
 /// Import of iCal feeds (#294, PC-10): <see cref="ICalFeedParser"/> with the recurrence window of
 /// <see cref="ICalImportOptions"/> around today in Europe/Rome, and the mapping of the occurrences to property blocks
-/// (<see cref="ToPropertyBlocks"/>) or supplier busy days (<see cref="ToBusyDays"/>).
+/// (<see cref="ToPropertyBlocks"/>) or to what a supplier's feed occupies: busy days and windows of hours
+/// (<see cref="ToSupplierBusy"/>, <see cref="ToBusyDays"/>).
 /// </summary>
 public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOptions> options)
 {
     /// <summary>Longest range of busy days taken from one supplier event.</summary>
     internal const int MaxBusyDaysPerEvent = 366;
+
+    /// <summary>
+    /// Most windows of hours one supplier's feed may occupy (SP-05). It bounds the rows and the work of every sync against a
+    /// feed that expands to a great many occurrences (a dozen daily series over 18 months is already thousands); a normal
+    /// calendar has a few hundred. The nearest windows are kept, so what the planner looks at is never the part dropped.
+    /// </summary>
+    internal const int MaxWindowsPerSupplier = 10_000;
 
     private const string HashedUidPrefix = "sha256:";
 
@@ -112,7 +147,11 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
             && uids.Any(uid => string.Equals(FitKey(uid), externalUid, StringComparison.Ordinal));
     }
 
-    /// <summary>Supplier busy days: every calendar day an occurrence touches, from its first to its last day.</summary>
+    /// <summary>Busy days: every calendar day an occurrence touches, from its first to its last day.</summary>
+    /// <remarks>
+    /// A pure mapping of the occurrences it is given. The supplier sync does <b>not</b> give it every occurrence any more
+    /// (SP-05): <see cref="ToSupplierBusy"/> hands it the all-day ones, the timed ones become windows of hours.
+    /// </remarks>
     public static IReadOnlySet<DateOnly> ToBusyDays(IEnumerable<ICalOccurrence> occurrences)
     {
         var days = new HashSet<DateOnly>();
@@ -129,6 +168,82 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
         return days;
     }
 
+    /// <summary>
+    /// What a supplier's feed occupies (SP-05): an <b>all-day</b> event closes its days, as it always did; a <b>timed</b> event
+    /// with a length becomes a window of hours; a timed event with <b>no length</b> (DTEND equal to DTSTART, or none) has no hour
+    /// to occupy and keeps closing its day, as before (the cautious reading: dropping it would offer a slot the supplier had
+    /// closed).
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item>The windows are those of the import window of <see cref="ICalImportOptions"/> (from <c>RecurrenceMonthsBack</c>
+    /// months before today to <c>RecurrenceMonthsAhead</c> months after, Europe/Rome), the same one recurring events are expanded
+    /// in; a single event further away is stored when it comes into it. The days are not limited, as before.</item>
+    /// <item>The key of a window is the UID (an event without one gets a hash of its start, end and summary, the same at every
+    /// sync); a key longer than the column is replaced by its SHA-256. A series gives one window per occurrence (same UID,
+    /// other start). The same key and start twice (a broken feed, an override moved onto another instance) fold into the
+    /// longest, so no hour is dropped and the unique index of the table is never hit.</item>
+    /// <item>At most <see cref="MaxWindowsPerSupplier"/> windows, the nearest first; the rest is counted in
+    /// <see cref="SupplierICalBusy.OverLimit"/>.</item>
+    /// </list>
+    /// </remarks>
+    public SupplierICalBusy ToSupplierBusy(IEnumerable<ICalOccurrence> occurrences) =>
+        ToSupplierBusy(occurrences, MaxWindowsPerSupplier);
+
+    internal SupplierICalBusy ToSupplierBusy(IEnumerable<ICalOccurrence> occurrences, int maxWindows)
+    {
+        var today = timeProvider.TodayInRomeAsDateOnly();
+        var window = options.Value;
+        var windowStartUtc = RomeCalendar.StartOfDayUtc(today.AddMonths(-window.EffectiveMonthsBack));
+        var windowEndUtc = RomeCalendar.StartOfDayUtc(today.AddMonths(window.EffectiveMonthsAhead));
+
+        var dayBased = new List<ICalOccurrence>();
+        var folded = new Dictionary<(string Key, DateTime StartUtc), ParsedSupplierWindow>();
+        var timed = 0;
+        var outsideWindow = 0;
+        foreach (var occurrence in occurrences)
+        {
+            if (occurrence.IsAllDay || !occurrence.HasDuration)
+            {
+                dayBased.Add(occurrence);
+                continue;
+            }
+
+            timed++;
+            if (occurrence.EndUtc <= windowStartUtc || occurrence.StartUtc >= windowEndUtc)
+            {
+                outsideWindow++;
+                continue;
+            }
+
+            var key = FitKey(occurrence.Uid ?? WindowContentKey(occurrence), SupplierAgendaLimits.ExternalUidMaxLength);
+            var parsed = new ParsedSupplierWindow(
+                key,
+                occurrence.StartUtc,
+                occurrence.EndUtc,
+                Truncate(occurrence.Summary, SupplierAgendaLimits.LabelMaxLength));
+
+            // Same key and start: the longest wins (every hour it covers stays occupied).
+            if (!folded.TryGetValue((key, parsed.StartUtc), out var kept) || parsed.EndUtc > kept.EndUtc)
+                folded[(key, parsed.StartUtc)] = parsed;
+        }
+
+        var ordered = folded.Values
+            .OrderBy(w => w.StartUtc)
+            .ThenBy(w => w.ExternalUid, StringComparer.Ordinal)
+            .ToList();
+        var overLimit = Math.Max(0, ordered.Count - maxWindows);
+        if (overLimit > 0)
+            ordered.RemoveRange(maxWindows, overLimit);
+
+        return new SupplierICalBusy(
+            BusyDays: ToBusyDays(dayBased),
+            Windows: ordered,
+            MergedDuplicates: timed - outsideWindow - folded.Count,
+            OutsideWindow: outsideWindow,
+            OverLimit: overLimit);
+    }
+
     private static ParsedCalendarBlock ToBlock(string key, ICalOccurrence occurrence) =>
         new(
             key,
@@ -140,8 +255,15 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
     private static string ContentKey(ICalOccurrence occurrence) =>
         Sha256Hex($"{occurrence.StartDate:yyyy-MM-dd}|{occurrence.EndDate:yyyy-MM-dd}|{occurrence.Summary}");
 
-    private static string FitKey(string key) =>
-        key.Length <= CalendarBlock.ExternalUidMaxLength ? key : HashedUidPrefix + Sha256Hex(key);
+    // The same for a window of hours: the instants, not the dates (two events of one day have two keys).
+    private static string WindowContentKey(ICalOccurrence occurrence) =>
+        Sha256Hex(FormattableString.Invariant(
+            $"{occurrence.StartUtc:yyyyMMdd'T'HHmmss'Z'}|{occurrence.EndUtc:yyyyMMdd'T'HHmmss'Z'}|{occurrence.Summary}"));
+
+    private static string FitKey(string key) => FitKey(key, CalendarBlock.ExternalUidMaxLength);
+
+    private static string FitKey(string key, int maxLength) =>
+        key.Length <= maxLength ? key : HashedUidPrefix + Sha256Hex(key);
 
     private static string Sha256Hex(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();

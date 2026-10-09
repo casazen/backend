@@ -92,7 +92,7 @@ public class SupplierPaymentRequestTests
         var link = ServicePaymentTestSupport.LinkOf(Assert.Single(s.Emails.RequestEmails()).Content);
         var before = await s.OnlyPaymentOfAsync(completed.Id);
         s.Clock.Advance(TimeSpan.FromHours(25));
-        s.Emails.Accepting = false;
+        s.Emails.Refuse = true;
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.RequestPaymentAsync(completed.Id, s.SupplierOrgId));
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -218,7 +219,7 @@ public partial class SupplierService
                 "availabilityMoved={AvailabilityMoved}, " +
                 "availabilityDropped={AvailabilityDropped}, categoriesAdded={CategoriesAdded}, comuniAdded={ComuniAdded}, " +
                 "supplierLinks={SupplierLinks}, orgMembers={OrgMembers}, devices={Devices}, " +
-                "serviceListings={ServiceListings}, agendaRows={AgendaRows}, duplicateOrgDeleted={DuplicateOrgDeleted}",
+                "serviceListings={ServiceListings}, agendaRows={AgendaRows}, showcaseRows={ShowcaseRows}, duplicateOrgDeleted={DuplicateOrgDeleted}",
                 merge.DuplicateOrgId,
                 dryRun ? "would be merged (dry run)" : "merged",
                 merge.KeeperOrgId,
@@ -232,6 +233,7 @@ public partial class SupplierService
                 merge.DevicesMoved,
                 merge.ServiceListingsMoved,
                 merge.AgendaRowsMoved,
+                merge.ShowcaseRowsMoved,
                 merge.DuplicateOrgDeleted);
         }
     }
@@ -257,6 +259,10 @@ public partial class SupplierService
             .ExecuteUpdateAsync(
                 set => set.SetProperty(p => p.SupplierOrgId, keeperId).SetProperty(p => p.UpdatedAt, now),
                 cancellationToken);
+
+        // The public showcase (SP-10): its requests belong to the supplier org itself (OrgId = SupplierOrgId, not a host org), so
+        // they move with the supplier; its customers and unverified holds are children of the profile like the agenda.
+        var showcaseRowsMoved = await MoveShowcaseAsync(keeperId, duplicateId, cancellationToken);
 
         // A day the keeper already has keeps the keeper's value: the keeper is the profile in use.
         var daysMoved = await db.SupplierAvailability
@@ -314,7 +320,73 @@ public partial class SupplierService
             devices,
             orgDeleted,
             listingsMoved,
-            agendaRowsMoved);
+            agendaRowsMoved,
+            showcaseRowsMoved);
+    }
+
+    /// <summary>
+    /// Moves the public showcase of the duplicate (SP-10) to the keeper and returns the rows moved: the requests of its showcase
+    /// (their <c>OrgId</c> is the duplicate supplier org, which would stay behind and keep the org alive) and its private
+    /// customers. The keeper's rows stay as they are: a customer of the duplicate whose e-mail the keeper already has
+    /// (the same person booked both) is merged into the keeper's customer, with its requests, and its row goes; any other moves
+    /// with its requests. The unverified holds of the duplicate are dropped: they wait for an e-mail check for 30 minutes, hold
+    /// the slots of a calendar that is being merged, and would only collide with the keeper's (client request id, code).
+    /// </summary>
+    private async Task<int> MoveShowcaseAsync(Guid keeperId, Guid duplicateId, CancellationToken cancellationToken)
+    {
+        // The booking takes the supplier's calendar lock (both suppliers', here): it waits for the merge and then finds its rows
+        // where they belong. Taken inside the repair's transaction.
+        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db,
+            cancellationToken,
+            CalendarSyncService.AvailabilityLock(keeperId),
+            CalendarSyncService.AvailabilityLock(duplicateId));
+
+        // ServiceCustomers and ShowcaseBookingHolds are keyed by the supplier org and not tenant-filtered (TN-2 allow-list): both
+        // orgs are explicit, as in every query of these tables.
+        var moved = await db.ServiceRequests
+            .Where(sr => sr.OrgId == duplicateId && sr.RentalContext == ServiceRequestRentalContext.Showcase)
+            .ExecuteUpdateAsync(set => set.SetProperty(sr => sr.OrgId, keeperId), cancellationToken);
+
+        var duplicateCustomers = await db.ServiceCustomers
+            .AsNoTracking()
+            .Where(c => c.OrgId == duplicateId)
+            .Select(c => new { c.Id, c.EmailHash })
+            .ToListAsync(cancellationToken);
+        var keeperCustomers = (await db.ServiceCustomers
+                .AsNoTracking()
+                .Where(c => c.OrgId == keeperId)
+                .Select(c => new { c.Id, c.EmailHash })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(c => c.EmailHash, c => c.Id, StringComparer.Ordinal);
+
+        foreach (var customer in duplicateCustomers)
+        {
+            var id = customer.Id;
+            if (keeperCustomers.TryGetValue(customer.EmailHash, out var keeperCustomerId))
+            {
+                await db.ServiceRequests
+                    .Where(sr => sr.CustomerId == id)
+                    .ExecuteUpdateAsync(set => set.SetProperty(sr => sr.CustomerId, keeperCustomerId), cancellationToken);
+                await db.ServiceCustomers
+                    .Where(c => c.OrgId == duplicateId && c.Id == id)
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
+            else
+            {
+                await db.ServiceCustomers
+                    .Where(c => c.OrgId == duplicateId && c.Id == id)
+                    .ExecuteUpdateAsync(set => set.SetProperty(c => c.OrgId, keeperId), cancellationToken);
+            }
+
+            moved++;
+        }
+
+        await db.ShowcaseBookingHolds
+            .Where(h => h.OrgId == duplicateId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        return moved;
     }
 
     /// <summary>
@@ -386,7 +458,8 @@ public partial class SupplierService
     /// never mixed band by band), and then the keeper's <c>HoursConfiguredAt</c> follows;</item>
     /// <item>its settings (the rules) stay; the duplicate's settings row moves only when the keeper has none;</item>
     /// <item>the duplicate's time off, blocks, extra openings and calendar engagements all move: dropping a closure would
-    /// offer a slot the supplier had closed.</item>
+    /// offer a slot the supplier had closed. The one exception is an engagement of the calendar feed that the keeper has too
+    /// (same UID and start, <see cref="WindowsThatMove"/>): the keeper's row stays.</item>
     /// </list>
     /// What did not move goes with the duplicate profile (cascade).
     /// </summary>
@@ -416,8 +489,7 @@ public partial class SupplierService
         moved += await db.SupplierTimeOff
             .Where(t => t.OrgId == duplicateId)
             .ExecuteUpdateAsync(set => set.SetProperty(t => t.OrgId, keeperId), cancellationToken);
-        moved += await db.SupplierBusyWindows
-            .Where(w => w.OrgId == duplicateId)
+        moved += await WindowsThatMove(db, keeperId, duplicateId)
             .ExecuteUpdateAsync(set => set.SetProperty(w => w.OrgId, keeperId), cancellationToken);
 
         var duplicateSettings = await db.SupplierSettings
@@ -448,6 +520,23 @@ public partial class SupplierService
 
         return moved;
     }
+
+    /// <summary>
+    /// The windows of the duplicate that move to the keeper (SP-03, SP-05): all of them, except the engagements of the calendar
+    /// feed (<c>ExternalUid</c>) the keeper already has with the same UID and start. Those are unique per supplier (index
+    /// <c>UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc</c>, the iCal sync finds its rows by them), so moving the copy
+    /// would break the merge; both profiles read the same calendar, the keeper's row stays and the duplicate's goes with the
+    /// profile. The keeper's own sync rewrites its engagements at the next run, whatever the duplicate had.
+    /// </summary>
+    /// <remarks>Both orgs are explicit (the table is not tenant-filtered), as in every query of the agenda.</remarks>
+    internal static IQueryable<SupplierBusyWindow> WindowsThatMove(AppDbContext db, Guid keeperId, Guid duplicateId) =>
+        db.SupplierBusyWindows.Where(w => w.OrgId == duplicateId
+                                          && (w.ExternalUid == null
+                                              || !db.SupplierBusyWindows
+                                                  .Where(k => k.OrgId == keeperId
+                                                              && k.ExternalUid == w.ExternalUid
+                                                              && k.StartUtc == w.StartUtc)
+                                                  .Any()));
 
     /// <summary>
     /// Deletes the duplicate org once its members and devices are on the keeper. An org that also holds host data

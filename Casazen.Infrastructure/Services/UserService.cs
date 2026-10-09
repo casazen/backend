@@ -13,6 +13,7 @@ public class UserService(
     IAuth0ManagementService auth0Management,
     IOrgService orgService,
     IUserContextMembershipService membershipService,
+    IOrgMembershipService orgMembershipService,
     IUserAuthorizationCache authorizationCache,
     ILogger<UserService> logger) : IUserService
 {
@@ -430,6 +431,18 @@ public class UserService(
         string lastName)
     {
         var roles = MapRentalTypeToRoles(rentalType);
+
+        // A member of an org (a DB membership of a host context with a role other than the owner's, or an OrgId still
+        // pointing at a host org that already has an owner) cannot onboard: the grant below overwrites the role of an
+        // existing membership and assigns PropertyOwner in Auth0, and EnsureOwnerAsync would add a second owner of the
+        // org the person was removed from (AM-00, S2). Checked before anything is written. The real owner (no membership
+        // yet, or already the owner's) goes on, and so does a platform admin (not a host context).
+        if (await membershipService.IsHostMemberAsync(sub))
+        {
+            logger.LogWarning("Onboarding refused, the user is a member of an org and not its owner: userId={UserId}", sub);
+            throw new DomainConflictException(UserOnboardingErrors.MemberCannotOnboard, "MemberCannotOnboard");
+        }
+
         var user = await GetCurrentUserAsync(sub, email, firstName, lastName);
 
         user.RentalType = rentalType;
@@ -451,7 +464,11 @@ public class UserService(
         if (string.IsNullOrWhiteSpace(displayName))
             displayName = email;
 
-        await orgService.EnsureOrgForUserAsync(sub, email, displayName);
+        var org = await orgService.EnsureOrgForUserAsync(sub, email, displayName);
+
+        // AM-01: the one who sets up an org is its owner: the org member row and the account membership, together.
+        // Idempotent, so a repeated onboarding (or the retry of a failed one) finds them in place.
+        await orgMembershipService.EnsureOwnerAsync(sub, org.Id);
 
         user = await repository.GetByIdAsync(sub) ?? user;
 

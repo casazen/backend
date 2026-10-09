@@ -488,7 +488,7 @@ public class SupplierPaymentWebhookTests
         s.Clock.Advance(TimeSpan.FromHours(2));
         var notices = await s.Payments.ApplyPaymentIntentEventAsync(
             opened.EventOf(PaymentFailed, at: ServiceRequestScenario.Instant.UtcDateTime.AddHours(2)));
-        s.Emails.Accepting = false;
+        s.Emails.Refuse = true;
 
         await s.Payments.CompleteAsync(notices);
 

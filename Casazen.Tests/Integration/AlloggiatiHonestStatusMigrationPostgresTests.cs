@@ -1,4 +1,5 @@
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Migrations;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -57,6 +58,24 @@ public class AlloggiatiHonestStatusMigrationPostgresTests : IAsyncLifetime
             $"""UPDATE "AlloggiatiWebReports" SET "Status" = 2 WHERE "Id" = {s.SimulatedReport}"""));
         Assert.Equal("CK_AlloggiatiWebReports_SentRequiresReceipt", ex.ConstraintName);
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+
+        // The shipped merge already ran (newest row). A duplicate that is still stored is re-ranked by the later
+        // migration: the older receipt is kept and the newer blank row is removed.
+        var olderReceipt = Guid.NewGuid();
+        await db.Database.ExecuteSqlAsync($"""DROP INDEX "IX_AlloggiatiWebReports_BookingId_GuestId";""");
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO "AlloggiatiWebReports" (
+                "Id", "BookingId", "GuestId", "OrgId", "ReportedAt", "Status", "ConfirmationNumber",
+                "ErrorMessage", "RetryCount", "ManuallyCompleted", "CreatedAt", "UpdatedAt")
+            VALUES (
+                {olderReceipt}, {s.Bookings[0]}, {s.Guests[0]}, {s.Org},
+                now() - interval '5 days', 2, 'RIC-KEEP', NULL, 0, false,
+                now() - interval '5 days', now() - interval '5 days');
+            """);
+        await db.Database.ExecuteSqlRawAsync(PreferAlloggiatiReceiptDuplicates.Sql);
+
+        Assert.Equal(0L, await ScalarAsync<long>(db, $"""SELECT count(*) FROM "AlloggiatiWebReports" WHERE "Id" = '{s.SimulatedReport}'"""));
+        Assert.Equal((2, null, true, false), await ReportAsync(db, olderReceipt));
     }
 
     private sealed class Seed

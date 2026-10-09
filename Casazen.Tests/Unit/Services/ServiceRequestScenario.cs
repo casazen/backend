@@ -8,6 +8,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration;
 using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Push;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Tests.Unit.Services;
@@ -118,11 +119,20 @@ internal sealed class ServiceRequestScenario : IDisposable
 
     /// <param name="options">The options of the service request flows (the defaults of the wave spec when null).</param>
     /// <param name="saveInterceptor">Put on the context, to make a save fail at the moment the test chooses.</param>
+    /// <param name="showcaseOptions">The options of the booking from a showcase (the kit's version of the privacy notice when null).</param>
+    /// <param name="publicSiteBaseUrl">The base of the links in the e-mails; <c>null</c> for a site that is not configured.</param>
+    /// <param name="dataProtection">
+    /// When given, the context carries the converters of the encrypted personal columns, as in production
+    /// (<c>EncryptedColumns</c>). The in-memory provider keeps the values it is given, so what is stored is proved on PostgreSQL.
+    /// </param>
     /// <param name="paymentOptions">The options of the payments (SP-15a): a platform commission of 10 % when null.</param>
     /// <param name="paymentLogger">Where the payment service logs (SP-15b tests read the errors it writes); nowhere when null.</param>
     public static async Task<ServiceRequestScenario> CreateAsync(
         ServiceRequestOptions? options = null,
         FailingSaveInterceptor? saveInterceptor = null,
+        ShowcaseBookingOptions? showcaseOptions = null,
+        string? publicSiteBaseUrl = EmailTestHelpers.PublicSiteBaseUrl,
+        IDataProtectionProvider? dataProtection = null,
         SupplierPaymentsOptions? paymentOptions = null,
         Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null)
     {
@@ -130,11 +140,12 @@ internal sealed class ServiceRequestScenario : IDisposable
         if (saveInterceptor is not null)
             builder.AddInterceptors(saveInterceptor);
 
-        var db = new AppDbContext(builder.Options);
+        var db = new AppDbContext(builder.Options, tenantContext: null, dataProtection);
         var clock = new FakeTimeProvider(Instant);
         var emails = new RecordingEmailQueue();
         var pushes = new ClearablePushQueue();
-        var kit = new ServiceRequestTestKit(db, emails, pushes, clock, options, paymentOptions: paymentOptions, paymentLogger: paymentLogger);
+        var kit = new ServiceRequestTestKit(
+            db, emails, pushes, clock, options, publicSiteBaseUrl, showcaseOptions, paymentOptions: paymentOptions, paymentLogger: paymentLogger);
         var scenario = new ServiceRequestScenario(kit, clock, emails, pushes);
         await scenario.SeedWorldAsync();
         return scenario;

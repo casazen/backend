@@ -201,6 +201,11 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             Key = "admin",
                             DisplayName = "Amministrazione"
+                        },
+                        new
+                        {
+                            Key = "account",
+                            DisplayName = "Amministrazione"
                         });
                 });
 
@@ -1676,6 +1681,51 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("Orgs");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OrgMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PropertyScope")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OrgMembers_UserId");
+
+                    b.HasIndex("OrgId", "Role")
+                        .HasDatabaseName("IX_OrgMembers_OrgId_Role");
+
+                    b.ToTable("OrgMembers");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OrgSiteDocument", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2507,6 +2557,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<int>("RentalMode")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Slug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -2541,6 +2594,8 @@ namespace Casazen.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("UIX_Properties_OrgId_AddressKey")
                         .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
+
+                    b.HasIndex("OrgId", "RentalMode");
 
                     b.HasIndex("OrgId", "Slug")
                         .IsUnique()
@@ -3184,6 +3239,60 @@ namespace Casazen.Infrastructure.Migrations
                             Id = 3,
                             ContextKey = "admin",
                             RoleKey = "platform_admin"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            ContextKey = "account",
+                            RoleKey = "org_owner"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            ContextKey = "account",
+                            RoleKey = "org_admin"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            ContextKey = "account",
+                            RoleKey = "org_accountant"
+                        },
+                        new
+                        {
+                            Id = 7,
+                            ContextKey = "short-rent",
+                            RoleKey = "property_manager"
+                        },
+                        new
+                        {
+                            Id = 8,
+                            ContextKey = "long-rent",
+                            RoleKey = "property_manager"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            ContextKey = "short-rent",
+                            RoleKey = "staff"
+                        },
+                        new
+                        {
+                            Id = 10,
+                            ContextKey = "long-rent",
+                            RoleKey = "staff"
+                        },
+                        new
+                        {
+                            Id = 11,
+                            ContextKey = "short-rent",
+                            RoleKey = "accountant"
+                        },
+                        new
+                        {
+                            Id = 12,
+                            ContextKey = "long-rent",
+                            RoleKey = "accountant"
                         });
                 });
 
@@ -3325,6 +3434,221 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 3,
                             PermissionKey = "admin.seo.read"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.members.manage"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.billing.manage"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.billing.read"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.settings.manage"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.suppliers.manage"
+                        },
+                        new
+                        {
+                            RoleId = 4,
+                            PermissionKey = "org.activity.read"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.members.manage"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.billing.manage"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.billing.read"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.settings.manage"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.suppliers.manage"
+                        },
+                        new
+                        {
+                            RoleId = 5,
+                            PermissionKey = "org.activity.read"
+                        },
+                        new
+                        {
+                            RoleId = 6,
+                            PermissionKey = "org.billing.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "property.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "booking.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "booking.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "payment.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "payment.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "ota.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "ota.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "guest.read"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "guest.write"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "org.suppliers.manage"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "property.write"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "lease.read"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "lease.create"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "lease.sign"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "lease.register"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "rent.read"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "rent.manage"
+                        },
+                        new
+                        {
+                            RoleId = 8,
+                            PermissionKey = "org.suppliers.manage"
+                        },
+                        new
+                        {
+                            RoleId = 9,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 9,
+                            PermissionKey = "booking.read"
+                        },
+                        new
+                        {
+                            RoleId = 9,
+                            PermissionKey = "guest.read"
+                        },
+                        new
+                        {
+                            RoleId = 9,
+                            PermissionKey = "guest.write"
+                        },
+                        new
+                        {
+                            RoleId = 10,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 11,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 11,
+                            PermissionKey = "booking.read"
+                        },
+                        new
+                        {
+                            RoleId = 11,
+                            PermissionKey = "payment.read"
+                        },
+                        new
+                        {
+                            RoleId = 12,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 12,
+                            PermissionKey = "lease.read"
                         });
                 });
 
@@ -3574,6 +3898,67 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SeoEvents");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.ServiceCustomer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AnonymizedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConsentIp")
+                        .IsRequired()
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EmailHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("PrivacyAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PrivacyNoticeVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "EmailHash")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ServiceCustomers_OrgId_EmailHash");
+
+                    b.ToTable("ServiceCustomers");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.ServiceRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3611,6 +3996,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid");
+
                     b.Property<int?>("EstimatedAmountCents")
                         .HasColumnType("integer");
 
@@ -3625,6 +4013,27 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime?>("LastRemindedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LocationAccessNotes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LocationAddress")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LocationCity")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("LocationComuneIstat")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)");
+
+                    b.Property<string>("LocationFloor")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LocationPostalCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<string>("Notes")
                         .IsRequired()
@@ -3655,7 +4064,7 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("jsonb")
                         .HasDefaultValue("[]");
 
-                    b.Property<Guid>("PropertyId")
+                    b.Property<Guid?>("PropertyId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("ProposalMessage")
@@ -3675,12 +4084,19 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("ProposedStartUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PublicCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<int?>("QuotedAmountCents")
                         .HasColumnType("integer");
 
                     b.Property<string>("RejectionReason")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("ReminderSentAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("RentalContext")
                         .HasColumnType("integer");
@@ -3700,6 +4116,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("ServiceNameSnapshot")
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
@@ -3739,11 +4158,19 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("BookingId");
 
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("IX_ServiceRequests_CustomerId");
+
                     b.HasIndex("PropertyId");
 
                     b.HasIndex("ServiceListingId");
 
                     b.HasIndex("OrgId", "Status");
+
+                    b.HasIndex("SupplierOrgId", "PublicCode")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ServiceRequests_SupplierOrgId_PublicCode")
+                        .HasFilter("\"PublicCode\" IS NOT NULL");
 
                     b.HasIndex("SupplierOrgId", "ScheduledStartUtc");
 
@@ -3752,6 +4179,8 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("ServiceRequests", t =>
                         {
                             t.HasCheckConstraint("CK_ServiceRequests_Amounts", "(\"EstimatedAmountCents\" IS NULL OR \"EstimatedAmountCents\" BETWEEN 1 AND 10000000) AND (\"QuotedAmountCents\" IS NULL OR \"QuotedAmountCents\" BETWEEN 1 AND 10000000) AND (\"FinalAmountCents\" IS NULL OR \"FinalAmountCents\" BETWEEN 1 AND 10000000)");
+
+                            t.HasCheckConstraint("CK_ServiceRequests_Context", "(\"RentalContext\" = 2 AND \"PropertyId\" IS NULL AND \"BookingId\" IS NULL AND \"Source\" = 1 AND \"CustomerId\" IS NOT NULL AND \"PublicCode\" IS NOT NULL AND \"LocationCity\" IS NOT NULL) OR (\"RentalContext\" IN (0, 1) AND \"PropertyId\" IS NOT NULL AND \"Source\" = 0 AND \"CustomerId\" IS NULL AND \"PublicCode\" IS NULL AND \"LocationComuneIstat\" IS NULL AND \"LocationCity\" IS NULL AND \"LocationPostalCode\" IS NULL AND \"LocationAddress\" IS NULL AND \"LocationFloor\" IS NULL AND \"LocationAccessNotes\" IS NULL)");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ProposedInterval", "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR (\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
 
@@ -3893,6 +4322,84 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequestPayments_Paid", "\"Status\" NOT IN (2, 5, 6) OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_ServiceRequestPayments_Payer", "(\"PayerKind\" = 0 AND \"PayerOrgId\" IS NOT NULL) OR \"PayerKind\" = 1");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ShowcaseBookingHold", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EmailHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("EndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("text")
+                        .HasColumnName("PayloadEncrypted");
+
+                    b.Property<string>("PublicCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<Guid?>("ServiceRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_ShowcaseBookingHolds_ExpiresAt");
+
+                    b.HasIndex("ServiceRequestId");
+
+                    b.HasIndex("OrgId", "ClientRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_ClientRequestId");
+
+                    b.HasIndex("OrgId", "EmailHash")
+                        .HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_EmailHash");
+
+                    b.HasIndex("OrgId", "PublicCode")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_PublicCode");
+
+                    b.HasIndex("OrgId", "StartUtc")
+                        .HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_StartUtc");
+
+                    b.ToTable("ShowcaseBookingHolds", t =>
+                        {
+                            t.HasCheckConstraint("CK_ShowcaseBookingHolds_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
+
+                            t.HasCheckConstraint("CK_ShowcaseBookingHolds_Interval", "\"StartUtc\" < \"EndUtc\"");
                         });
                 });
 
@@ -4280,6 +4787,11 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OrgId", "StartUtc")
                         .HasDatabaseName("IX_SupplierBusyWindows_OrgId_StartUtc");
+
+                    b.HasIndex("OrgId", "ExternalUid", "StartUtc")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc")
+                        .HasFilter("\"ExternalUid\" IS NOT NULL");
 
                     b.ToTable("SupplierBusyWindows", t =>
                         {
@@ -5493,6 +6005,23 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Party");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OrgMember", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OrgSiteDocument", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
@@ -5896,12 +6425,28 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Page");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.ServiceCustomer", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.ServiceRequest", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Booking", "Booking")
                         .WithMany()
                         .HasForeignKey("BookingId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Casazen.Core.Entities.ServiceCustomer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
                         .WithMany()
@@ -5912,8 +6457,7 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
                         .WithMany()
                         .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Casazen.Core.Entities.SupplierServiceListing", null)
                         .WithMany()
@@ -5927,6 +6471,8 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Booking");
+
+                    b.Navigation("Customer");
 
                     b.Navigation("Org");
 
@@ -5959,6 +6505,22 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("ServiceRequest");
 
                     b.Navigation("SupplierOrg");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ShowcaseBookingHold", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.ServiceRequest", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceRequestId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("SupplierProfile");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SignupAttribution", b =>

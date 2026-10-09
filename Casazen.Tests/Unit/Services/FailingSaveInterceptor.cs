@@ -15,7 +15,7 @@ internal sealed class FailingSaveInterceptor : SaveChangesInterceptor
     /// <summary>Saves refused so far.</summary>
     public int Refused { get; private set; }
 
-    /// <summary>Called after each save that went through (for example to cancel the caller's token right after a commit).</summary>
+    /// <summary>Runs after every save that succeeded (to cancel the token of a request the moment its change is saved, for one).</summary>
     public Action? AfterSave { get; set; }
 
     public override ValueTask<int> SavedChangesAsync(

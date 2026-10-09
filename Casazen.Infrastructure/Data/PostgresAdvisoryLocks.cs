@@ -147,6 +147,25 @@ internal static class PostgresAdvisoryLocks
         ServiceRequestAutoCancelRun = 1_310,
 
         /// <summary>
+        /// One run of the upkeep of the bookings from the public showcases (single key, session lock held for the whole run): the
+        /// holds past their expiry are deleted and the showcase requests nobody answered are cancelled and told once, even
+        /// outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceRequestExpiryRun = 1_311,
+
+        /// <summary>
+        /// One run of the reminders of the day before to the customers of the public showcases (single key, session lock held for
+        /// the whole run): two runs never send the same reminder at once, even outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceRequestRemindersRun = 1_312,
+
+        /// <summary>
+        /// One run of the retention of the data of the private customers of the suppliers (single key, session lock held for the
+        /// whole run): two nights' runs never anonymize the same rows at once, even outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceCustomerRetentionRun = 1_313,
+
+        /// <summary>
         /// Payment of one service request (key: the request id, <c>requestId.ToString("N")</c>): the payment session of the payer
         /// (anonymous with the link, or the signed-in host), the supplier's payment request and reminder, the offline record, and
         /// (SP-15b) the Stripe webhook and the refunds change the payment one at a time, so a request never gets two payable
@@ -154,6 +173,21 @@ internal static class PostgresAdvisoryLocks
         /// progress (SP-15a). The values 1_320 to 1_329 are the payments of the service requests.
         /// </summary>
         ServiceRequestPayment = 1_320,
+
+        /// <summary>
+        /// The people of one org (key: org id): adding, changing, deactivating or removing a member, and the owner's
+        /// creation, run one at a time, so the owner rule and, with AM-02, the seat count are decided on rows nobody else
+        /// is changing (AM-01).
+        /// </summary>
+        OrgMembership = 1_401,
+
+        /// <summary>
+        /// One run of the org membership reconcile (single key): two admin runs never create the same owners or fix the
+        /// same memberships at once (AM-01). The run does not take the <see cref="OrgMembership"/> lock of every org it
+        /// touches: a member write that races with it is arbitrated by the unique indexes, and the run then answers 409
+        /// and saves nothing (it is idempotent, so it is simply run again).
+        /// </summary>
+        OrgMembershipMaintenance = 1_402,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

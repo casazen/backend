@@ -173,9 +173,11 @@ public class PropertyComplianceStatusService(
         }
 
         // Background run: no tenant context, every org's properties. Only an active property (suspension) or a suspended
-        // one (reactivation) can change here; a pending property waits for the host's activation.
+        // one (reactivation) can change here; a pending property waits for the host's activation. Only the short-rent
+        // ones (PM-01): a property in long-term mode has no booking site to be suspended from, and its host gets no email.
         var propertyIds = await db.Properties
             .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.ComplianceStatus == PropertyComplianceStatus.Active
                         || p.ComplianceStatus == PropertyComplianceStatus.Suspended)
             .OrderBy(p => p.Id)
@@ -274,6 +276,14 @@ public class PropertyComplianceStatusService(
             property = await LoadCurrentAsync(propertyId, cancellationToken)
                 ?? throw new NotFoundException($"Property {propertyId} not found");
             previous = property.ComplianceStatus;
+
+            // PM-01: a property in long-term mode is outside the compliance of the booking site. A re-evaluation (after an
+            // edit, a document, the checklist, the nightly check) changes nothing and writes to nobody; the activation is
+            // refused (422), since a long-term property is never published. Its status is left as it was.
+            if (activate)
+                PropertyRentalModeRules.EnsureShortRent(property);
+            else if (!PropertyRentalModeRules.IsShort(property))
+                return new PropertyComplianceCheck(propertyId, previous, previous, [], false);
 
             // A pending property is published only by the host's activation (terms accepted), never by a re-evaluation.
             if (!activate && previous == PropertyComplianceStatus.Pending)

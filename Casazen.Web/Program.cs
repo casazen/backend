@@ -79,6 +79,9 @@ if (!string.IsNullOrEmpty(stripeSecretKey))
 // Stripe mode of this environment (live keys only in Production) and plan prices, validated at startup (PL-11).
 builder.Services.AddCasazenBillingConfiguration(builder.Configuration, builder.Environment);
 
+// "Accesso aperto" (BL-01): Entitlement:OpenAccess:{Enabled,Tier}, off by default, validated at startup (docs/runbooks/open-access.md).
+builder.Services.AddCasazenOpenAccessConfiguration(builder.Configuration);
+
 // Services
 builder.Services.AddCasazenServices();
 builder.Services.AddScoped<IGuestService, GuestService>();
@@ -171,6 +174,10 @@ builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
 // SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
 builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
+// SP-10: upkeep of the bookings from the suppliers' public showcases (holds, unanswered requests) and the reminders of the day
+// before; both are scheduled whatever the feature flags say.
+builder.Services.AddScoped<ServiceRequestExpiryJob>();
+builder.Services.AddScoped<ServiceRequestReminderJob>();
 // SP-15b: the supplier service payments in flight, their reminders and the requests that waited for a supplier (always scheduled).
 builder.Services.AddScoped<ServicePaymentSyncJob>();
 builder.Services.AddScoped<ServicePaymentRemindersJob>();
@@ -318,6 +325,7 @@ if (PropertyComplianceCheckJob.IsRecalculateCommand(args))
 }
 
 app.LogDataProtectionKeyProtection();
+app.LogOpenAccess();
 
 // Swagger (must be before Authentication to allow anonymous access to swagger.json)
 if (app.Environment.IsDevelopment())

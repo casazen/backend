@@ -32,6 +32,11 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Notifications</b> (<see cref="ServiceRequestNotifier"/>) are queued after the change is saved, by the winner only.
 /// The operations of this class are split in files by topic: the lifecycle after the take (start, cancel, remind, propose, batch),
 /// and the photos of the work.</para>
+/// <para><b>Requests from the suppliers' public showcases (SP-10)</b> belong to the supplier and have a customer, not a host: the
+/// operations of the supplier work on them as on any request (take, refuse, start, complete, cancel, propose another time) and
+/// the customer is the one told; every operation of the <b>host</b> (list, read, cancel, remind, answer a proposal, mark as paid)
+/// answers 404 for them, whatever the org of the caller: they are filtered by their context and by their org, two reasons that
+/// do not depend on each other (the supplier org may also be a host org).</para>
 /// </remarks>
 public partial class ServiceRequestService(
     AppDbContext db,
@@ -44,6 +49,7 @@ public partial class ServiceRequestService(
     IFileStorage fileStorage,
     IImageStorageService images,
     IOptions<ServiceRequestOptions> options,
+    IOptions<ShowcaseBookingOptions> showcaseOptions,
     ISupplierPaymentService payments,
     ILogger<ServiceRequestService> logger,
     TimeProvider? timeProvider = null) : IServiceRequestService
@@ -57,6 +63,14 @@ public partial class ServiceRequestService(
         CreateServiceRequestCommand command,
         CancellationToken cancellationToken = default)
     {
+        // A request from a supplier's showcase is made by ShowcaseBookingService, from a checked e-mail address, and nowhere else:
+        // this is the host's path, which would give it a host org and a property (the table refuses that).
+        if (command.RentalContext == ServiceRequestRentalContext.Showcase)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(command), command.RentalContext, "A showcase request is not created through the host's path.");
+        }
+
         // Only category codes are stored (SU-03); anything else is a 422 before any lookup.
         var category = ServiceCategories.Require(command.Category);
 
@@ -270,7 +284,7 @@ public partial class ServiceRequestService(
 
         // SP-15a: how the request is paid is decided now and kept (Online only if the flag is on and the supplier's Stripe account
         // can take charges and payouts: no payment before the KYC).
-        var paymentMode = await payments.ResolveModeAsync(supplierOrgId, cancellationToken);
+        var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
         IDbContextTransaction? transaction = schedule is null ? null : await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
         await using (transaction)
@@ -494,8 +508,8 @@ public partial class ServiceRequestService(
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
 
-        // Another org's request is answered exactly like a missing one.
-        if (request is null || request.OrgId != hostOrgId)
+        // Another org's request, and one from a supplier's showcase, are answered exactly like a missing one.
+        if (request is null || request.OrgId != hostOrgId || request.RentalContext == ServiceRequestRentalContext.Showcase)
             throw RequestNotFound(id);
 
         // SP-15a, decision D5: a request paid inside CasaZen is paid with the link (the commission is part of it). The host cannot
@@ -582,10 +596,33 @@ public partial class ServiceRequestService(
                 "ServiceRequest {Id}: {Operation} refused, its payment was created by another call", request.Id, operation);
             throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
         }
+        catch (DbUpdateException ex) when (IsLockConflict(ex))
+        {
+            // A deadlock or a serialization failure of the database is the same thing for the caller as a request that changed under
+            // it: the other operation won, nothing of this one was saved (SP-11: the customer and the supplier act on one request).
+            logger.LogInformation(
+                "ServiceRequest {Id}: {Operation} refused, the database stopped it ({SqlState})", request.Id, operation, PostgresStateOf(ex));
+            throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
+        }
+    }
+
+    /// <summary>True for the errors PostgreSQL raises when two transactions get in each other's way: a deadlock and a serialization failure.</summary>
+    private static bool IsLockConflict(Exception ex) =>
+        PostgresStateOf(ex) is Npgsql.PostgresErrorCodes.DeadlockDetected or Npgsql.PostgresErrorCodes.SerializationFailure;
+
+    private static string? PostgresStateOf(Exception? ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is Npgsql.PostgresException postgres)
+                return postgres.SqlState;
+        }
+
+        return null;
     }
 
     /// <summary>The time the supplier proposed is dropped when the request moves on (taken, rejected, cancelled).</summary>
-    private static void ClearProposal(ServiceRequest request)
+    internal static void ClearProposal(ServiceRequest request)
     {
         request.ProposedStartUtc = null;
         request.ProposedEndUtc = null;
@@ -602,6 +639,9 @@ public partial class ServiceRequestService(
     {
         // ServiceRequest is not tenant-filtered (two parties, see the TN-2 allow-list); host and supplier
         // reads are scoped by the explicit OrgId / SupplierOrgId predicate, never by the included Property.
+        if (rentalContext == ServiceRequestRentalContext.Showcase)
+            return Task.FromResult<ServiceRequest?>(null);
+
         var query = ApplyHostScope(
             db.ServiceRequests
                 .IgnoreQueryFilters()
@@ -633,6 +673,9 @@ public partial class ServiceRequestService(
         CancellationToken cancellationToken = default)
     {
         // IgnoreQueryFilters: scoped by the explicit host OrgId predicate (see GetByIdForHostAsync).
+        if (rentalContext == ServiceRequestRentalContext.Showcase)
+            return Task.FromResult<(IReadOnlyList<ServiceRequest> Items, int Total)>(([], 0));
+
         var query = ApplyHostScope(
             db.ServiceRequests
                 .IgnoreQueryFilters()
@@ -718,7 +761,9 @@ public partial class ServiceRequestService(
     private async Task<ServiceRequest> GetRequestOfHostOrThrow(Guid id, Guid hostOrgId, CancellationToken cancellationToken)
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
-        if (request is null || request.OrgId != hostOrgId)
+
+        // The host never reaches a request of a supplier's public showcase (SP-10), even when the supplier org is also its org.
+        if (request is null || request.OrgId != hostOrgId || request.RentalContext == ServiceRequestRentalContext.Showcase)
             throw RequestNotFound(id);
 
         return request;

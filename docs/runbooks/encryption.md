@@ -20,6 +20,8 @@ value through EF; the database only ever holds the encrypted payload.
 | `Guests.DocumentNumber`, `Guests.DocumentIssuingCountry` | `Casazen.Guest.Document` | CO-14 |
 | `StayGuests.DocumentNumber`, `StayGuests.DocumentIssuePlaceName` | `Casazen.Guest.Document` | CO-14 |
 | `PropertyQuesturaCredentials.Username`, `Password`, `WsKey` | `Casazen.PropertyQuesturaCredentials` | CO-14 |
+| `ServiceCustomers.FullName`, `Email`, `Phone` and `ShowcaseBookingHolds.PayloadEncrypted` (property `Payload`: the same data before the e-mail check) | `Casazen.ServiceCustomer` | SP-10 |
+| `ServiceRequests.LocationAddress`, `LocationFloor`, `LocationAccessNotes` (requests from a supplier's showcase only) | `Casazen.ServiceRequest.Location` | SP-10 |
 
 `Guests` and `StayGuests` share one purpose on purpose: a payload copied from one table to the other by SQL (for example
 the CO-12 backfill) stays readable.
@@ -33,9 +35,13 @@ Not encrypted, deliberately:
 - **Document type and Alloggiati codes** (`DocumentTypeCode`, `DocumentIssuePlaceCode`): public code tables.
 - **Document scans**: they are files in the private storage bucket (FD-07, `docs/runbooks/storage.md`), not columns.
 
-**Blind index: none.** No query filters or sorts on an encrypted column (the document number is only read for a known
-guest). If an exact lookup is ever needed, add a separate column with an HMAC of the normalized value, keyed by a
-secret that is not in the database; never compare payloads (the same value encrypts differently every time).
+**Blind index: one, for the customers of the suppliers (SP-10).** No query filters or sorts on an encrypted column (the
+document number is only read for a known guest). The e-mail address of a private customer of a supplier is found by
+`ServiceCustomers.EmailHash`, the HMAC-SHA256 of the lowercase address keyed by `Suppliers__CustomerIndexKey`, a secret
+that is not in the database (`suppliers.md` section 23.7); the same column on the holds counts the bookings of one address.
+If another exact lookup is ever needed, do the same; never compare payloads (the same value encrypts differently every time).
+The comune and the postal code of a showcase request, the language and the consent (notice version, time, client address) of
+a customer are not encrypted: the supplier sees the first two before it takes the request, the rest is consent evidence.
 
 ## 2. How it works
 
@@ -169,6 +175,10 @@ an org-wide role — otherwise 403):
    test (as the iCal URLs do: `PropertyICalFeedUrlEncryption.IsLegacyPlaintext` plus the same test for SQL).
 4. Never read or write the column with raw SQL expecting the clear value, and never filter on it in a query.
 5. Update the list in `EncryptedColumnsTests` and this runbook.
+6. A column that is **born encrypted** (a new table, as the SP-10 ones) needs no startup step to be correct, but the step still covers
+   it: `ShowcaseBookingEncryptionPostgresTests` writes clear values by SQL and checks that the next startup encrypts them. Do not mix an encrypted
+   column and a clear one as the two branches of one `CASE` or `COALESCE` in a projection: EF gives the expression the mapping of the first
+   branch, so the other would be read with the wrong (or no) decryption. Select them as two columns (`SupplierServiceRequestReader.Rows`).
 
 ## 9. Troubleshooting
 

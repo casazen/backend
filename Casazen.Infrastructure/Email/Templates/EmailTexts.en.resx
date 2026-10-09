@@ -840,6 +840,252 @@
   <data name="Push_ServiceRequestProposalRejected_Body" xml:space="preserve">
     <value>{0} in {1}: the host declined your time, the request stays pending.</value>
   </data>
+  <data name="SupplierBooking_Greeting" xml:space="preserve">
+    <value>Hi {0},</value>
+  </data>
+  <data name="SupplierBooking_ReasonLabel" xml:space="preserve">
+    <value>The reason:</value>
+  </data>
+  <data name="SupplierBooking_RequestCta" xml:space="preserve">
+    <value>See the request</value>
+  </data>
+  <data name="SupplierBookingVerification_Subject" xml:space="preserve">
+    <value>Confirm your request to {0}</value>
+  </data>
+  <data name="SupplierBookingVerification_Body" xml:space="preserve">
+    <value>You asked to book &lt;strong&gt;{0}&lt;/strong&gt; with &lt;strong&gt;{1}&lt;/strong&gt; for &lt;strong&gt;{2}&lt;/strong&gt;. Confirm your email address to send the request: until you do, the supplier receives nothing.</value>
+  </data>
+  <data name="SupplierBookingVerification_Hold" xml:space="preserve">
+    <value>We keep the time free for {0} minutes. After that the link stops working and you can make the request again.</value>
+  </data>
+  <data name="SupplierBookingVerification_Cta" xml:space="preserve">
+    <value>Confirm and send the request</value>
+  </data>
+  <data name="SupplierBookingVerification_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this address into your browser:</value>
+  </data>
+  <data name="SupplierBookingVerification_Ignore" xml:space="preserve">
+    <value>If you did not ask for this booking, ignore this message: nothing happens.</value>
+  </data>
+  <data name="SupplierBookingReceipt_Subject" xml:space="preserve">
+    <value>Request sent to {0}</value>
+  </data>
+  <data name="SupplierBookingReceipt_Body" xml:space="preserve">
+    <value>We have sent your request to &lt;strong&gt;{0}&lt;/strong&gt;: &lt;strong&gt;{1}&lt;/strong&gt;, &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingReceipt_Code" xml:space="preserve">
+    <value>Request code: &lt;strong&gt;{0}&lt;/strong&gt;. You need it, together with your email, to find the request again.</value>
+  </data>
+  <data name="SupplierBookingReceipt_Deadline" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; has to accept it. If it does not answer by &lt;strong&gt;{1}&lt;/strong&gt;, the request is cancelled and we tell you.</value>
+  </data>
+  <data name="SupplierBookingReceipt_Price" xml:space="preserve">
+    <value>Estimated price: &lt;strong&gt;{0}&lt;/strong&gt;. It is an estimate: the supplier can give a different price when it accepts.</value>
+  </data>
+  <data name="SupplierBookingReceipt_NoPayment" xml:space="preserve">
+    <value>You pay nothing now with this request.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Subject" xml:space="preserve">
+    <value>New request from your site — {0}</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Body" xml:space="preserve">
+    <value>You have received a new booking request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Customer" xml:space="preserve">
+    <value>Customer: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_When" xml:space="preserve">
+    <value>When: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Price" xml:space="preserve">
+    <value>Estimated amount: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Deadline" xml:space="preserve">
+    <value>Answer by &lt;strong&gt;{0}&lt;/strong&gt;: after that the request is cancelled automatically.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Hint" xml:space="preserve">
+    <value>The customer's full name, address and contacts are shown once you accept the request.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Cta" xml:space="preserve">
+    <value>Open the requests</value>
+  </data>
+  <data name="SupplierBookingAccepted_Subject" xml:space="preserve">
+    <value>{0} accepted your request</value>
+  </data>
+  <data name="SupplierBookingAccepted_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; accepted your request for &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingAccepted_When" xml:space="preserve">
+    <value>When: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingAccepted_Quoted" xml:space="preserve">
+    <value>Price given by the supplier: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingAccepted_Estimated" xml:space="preserve">
+    <value>Estimated price: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingAccepted_Reminder" xml:space="preserve">
+    <value>We send you a reminder the day before, at {0}.</value>
+  </data>
+  <data name="SupplierBookingDeclined_Subject" xml:space="preserve">
+    <value>{0} cannot accept your request</value>
+  </data>
+  <data name="SupplierBookingDeclined_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; cannot accept your request for &lt;strong&gt;{1}&lt;/strong&gt; on &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingDeclined_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can choose another time.</value>
+  </data>
+  <data name="SupplierBookingDeclined_Cta" xml:space="preserve">
+    <value>Choose another time</value>
+  </data>
+  <data name="SupplierBookingTimeProposed_Subject" xml:space="preserve">
+    <value>{0} proposes another time</value>
+  </data>
+  <data name="SupplierBookingTimeProposed_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; cannot do &lt;strong&gt;{1}&lt;/strong&gt; on &lt;strong&gt;{2}&lt;/strong&gt; and proposes &lt;strong&gt;{3}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingTimeProposed_MessageLabel" xml:space="preserve">
+    <value>The supplier's message:</value>
+  </data>
+  <data name="SupplierBookingTimeProposed_Deadline" xml:space="preserve">
+    <value>Answer by &lt;strong&gt;{0}&lt;/strong&gt;: if you do not, the request is cancelled.</value>
+  </data>
+  <data name="SupplierBookingTimeProposed_Cta" xml:space="preserve">
+    <value>Answer the proposal</value>
+  </data>
+  <data name="SupplierBookingReminder_Subject" xml:space="preserve">
+    <value>Tomorrow: {0} with {1}</value>
+  </data>
+  <data name="SupplierBookingReminder_Body" xml:space="preserve">
+    <value>A reminder of tomorrow's appointment: &lt;strong&gt;{0}&lt;/strong&gt; with &lt;strong&gt;{1}&lt;/strong&gt;, &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingCancelled_Subject" xml:space="preserve">
+    <value>Your request to {0} was cancelled</value>
+  </data>
+  <data name="SupplierBookingCancelled_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; cancelled the request for &lt;strong&gt;{1}&lt;/strong&gt; on &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingCancelled_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can book another time.</value>
+  </data>
+  <data name="SupplierBookingCancelled_Cta" xml:space="preserve">
+    <value>Book again</value>
+  </data>
+  <data name="SupplierBookingExpired_Subject" xml:space="preserve">
+    <value>Your request to {0} has expired</value>
+  </data>
+  <data name="SupplierBookingExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; did not answer your request for &lt;strong&gt;{1}&lt;/strong&gt; on &lt;strong&gt;{2}&lt;/strong&gt; in time, so we cancelled it.</value>
+  </data>
+  <data name="SupplierBookingExpired_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can choose another time or ask another supplier.</value>
+  </data>
+  <data name="SupplierBookingExpired_Cta" xml:space="preserve">
+    <value>Book again</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_Subject" xml:space="preserve">
+    <value>You cancelled your request to {0}</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_Body" xml:space="preserve">
+    <value>You cancelled your request for &lt;strong&gt;{0}&lt;/strong&gt; with &lt;strong&gt;{1}&lt;/strong&gt; on &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_Code" xml:space="preserve">
+    <value>Request code: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_ReasonLabel" xml:space="preserve">
+    <value>The reason you gave:</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_Hint" xml:space="preserve">
+    <value>You have paid nothing and we charge you nothing for cancelling. If you change your mind, you can book again.</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_Cta" xml:space="preserve">
+    <value>Book again</value>
+  </data>
+  <data name="SupplierBookingProposalExpired_Subject" xml:space="preserve">
+    <value>Request to {0} cancelled: new time not answered</value>
+  </data>
+  <data name="SupplierBookingProposalExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; proposed another time for &lt;strong&gt;{1}&lt;/strong&gt; (requested for &lt;strong&gt;{2}&lt;/strong&gt;), but you did not answer in time, so we cancelled the request.</value>
+  </data>
+  <data name="SupplierBookingProposalExpired_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can book again.</value>
+  </data>
+  <data name="SupplierBookingProposalExpired_Cta" xml:space="preserve">
+    <value>Book again</value>
+  </data>
+  <data name="SupplierBookingByCustomer_Customer" xml:space="preserve">
+    <value>Customer: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingCancelledByCustomer_Subject" xml:space="preserve">
+    <value>Request cancelled by the customer — {0}</value>
+  </data>
+  <data name="SupplierBookingCancelledByCustomer_Body" xml:space="preserve">
+    <value>A request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; on &lt;strong&gt;{2}&lt;/strong&gt; was &lt;strong&gt;cancelled by the customer&lt;/strong&gt;. It no longer takes up the time.</value>
+  </data>
+  <data name="SupplierBookingCancelledByCustomer_ShortNotice" xml:space="preserve">
+    <value>The cancellation came with less than &lt;strong&gt;{0} h&lt;/strong&gt; notice.</value>
+  </data>
+  <data name="SupplierBookingRescheduledByCustomer_Subject" xml:space="preserve">
+    <value>The customer changed the time — {0}</value>
+  </data>
+  <data name="SupplierBookingRescheduledByCustomer_Body" xml:space="preserve">
+    <value>The customer asked to move the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingRescheduledByCustomer_Dropped" xml:space="preserve">
+    <value>The time you had proposed no longer applies.</value>
+  </data>
+  <data name="SupplierBookingRescheduledByCustomer_Deadline" xml:space="preserve">
+    <value>The request is waiting for your answer again: answer by &lt;strong&gt;{0}&lt;/strong&gt;, after that it is cancelled automatically.</value>
+  </data>
+  <data name="SupplierBookingProposalAccepted_Subject" xml:space="preserve">
+    <value>The customer accepted the new time — {0}</value>
+  </data>
+  <data name="SupplierBookingProposalAccepted_Body" xml:space="preserve">
+    <value>The customer has &lt;strong&gt;accepted&lt;/strong&gt; the new time for the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: &lt;strong&gt;{2}&lt;/strong&gt;. The request is now taken.</value>
+  </data>
+  <data name="SupplierBookingProposalRejected_Subject" xml:space="preserve">
+    <value>The customer turned down the new time — {0}</value>
+  </data>
+  <data name="SupplierBookingProposalRejected_Body" xml:space="preserve">
+    <value>The customer has &lt;strong&gt;turned down&lt;/strong&gt; the new time for the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;. The request stays pending at the time asked for, &lt;strong&gt;{2}&lt;/strong&gt;: answer by &lt;strong&gt;{3}&lt;/strong&gt;, after that it is cancelled automatically. You can take it as it is, propose another time or refuse it.</value>
+  </data>
+  <data name="SupplierBookingProposalLapsed_Subject" xml:space="preserve">
+    <value>Request cancelled: the customer did not answer — {0}</value>
+  </data>
+  <data name="SupplierBookingProposalLapsed_Body" xml:space="preserve">
+    <value>The customer did not answer in time the new time you proposed for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: the request was &lt;strong&gt;cancelled&lt;/strong&gt; and no longer takes up the time.</value>
+  </data>
+  <data name="Push_ShowcaseCancelledByCustomer_Title" xml:space="preserve">
+    <value>Request cancelled by the customer</value>
+  </data>
+  <data name="Push_ShowcaseCancelledByCustomer_Body" xml:space="preserve">
+    <value>{0} in {1}: the customer cancelled the request.</value>
+  </data>
+  <data name="Push_ShowcaseRescheduledByCustomer_Title" xml:space="preserve">
+    <value>The customer changed the time</value>
+  </data>
+  <data name="Push_ShowcaseRescheduledByCustomer_Body" xml:space="preserve">
+    <value>{0} in {1}: the request waits for your answer for the new time.</value>
+  </data>
+  <data name="Push_ShowcaseProposalAccepted_Title" xml:space="preserve">
+    <value>New time accepted</value>
+  </data>
+  <data name="Push_ShowcaseProposalAccepted_Body" xml:space="preserve">
+    <value>{0} in {1}: the customer accepted your time.</value>
+  </data>
+  <data name="Push_ShowcaseProposalRejected_Title" xml:space="preserve">
+    <value>New time turned down</value>
+  </data>
+  <data name="Push_ShowcaseProposalRejected_Body" xml:space="preserve">
+    <value>{0} in {1}: the customer turned down your time, the request stays pending.</value>
+  </data>
+  <data name="Push_ShowcaseProposalLapsed_Title" xml:space="preserve">
+    <value>Request cancelled</value>
+  </data>
+  <data name="Push_ShowcaseProposalLapsed_Body" xml:space="preserve">
+    <value>{0} in {1}: the customer did not answer the new time in time.</value>
+  </data>
   <data name="ServicePaymentRequest_Subject" xml:space="preserve">
     <value>To pay: {0} ({1})</value>
   </data>

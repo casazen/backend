@@ -83,16 +83,17 @@ public class ServiceRequestSqlTests
     }
 
     [Fact]
-    public void InboxFilter_ClientId_FiltersOnTheHostOrg()
+    public void InboxFilter_ClientId_FiltersOnTheCustomerOrTheHostOrg()
     {
         using var db = NewNpgsqlContext();
         var reader = Reader(db);
 
         var sql = reader.Filter(reader.Rows(SupplierOrg), new SupplierInboxQuery([], null, null, 1, 20, ClientId: Guid.NewGuid())).ToQueryString();
 
-        // The supplier predicate and the client one: two different columns of the request.
+        // The supplier predicate and the client one: two different columns of the request. The client is the private customer of
+        // a showcase request (SP-10) or, when it has none, the host org that owns the request.
         Assert.Contains("\"SupplierOrgId\" = @", sql);
-        Assert.Matches("\"OrgId\" = @", sql.Replace("\"SupplierOrgId\" = @", string.Empty, StringComparison.Ordinal));
+        Assert.Matches("COALESCE\\([^)]*\"CustomerId\"[^)]*\"OrgId\"[^)]*\\) = @", sql);
     }
 
     [Theory]

@@ -27,6 +27,18 @@ Error codes returned to clients: `auth0_management_not_configured`, `auth0_manag
 `auth0_role_not_found`, `auth0_rate_limited`, `auth0_management_error`. Deactivation (PL-03): `account_inactive` (403),
 `cannot_deactivate_self`, `last_active_admin`, `user_inactive` (422).
 
+Onboarding of a member of an org (AM-00): `PUT` / `POST /api/users/onboarding` from a user who already holds a DB
+membership of a host context (`short-rent`, `long-rent`) with a role other than the owner's (`OrgOwnerRoles`:
+`property_owner`, `long_term_landlord`) answers **409 `member_cannot_onboard`** and writes nothing: the onboarding grant
+overwrites the role of an existing membership and assigns `PropertyOwner` in Auth0, so a collaborator would have made
+itself the owner of the org it works for. The owner (no membership yet, or already the owner's) and a platform admin
+(the `admin` context is not a host context) onboard as before. A member's role changes only from the admin console.
+AM-01: a user with an `OrgMember` row whose role is not Owner is a member too (the org membership is the source of truth,
+whatever the projection says), and the onboarding of an owner now also writes its Owner `OrgMember` and its
+`account/org_owner` membership (`docs/runbooks/org-team.md`). A member that the org deactivated gets **403
+`member_inactive`** (from the next request, same read as `account_inactive`, which wins when both apply): its CasaZen and
+Auth0 accounts stay active, only the access to the org stops.
+
 ## 1. Tenants: one for test, one for production
 
 Task PL-11 (audit defect A1-32). Until now the web app used **the same tenant** for Vercel Preview and Production

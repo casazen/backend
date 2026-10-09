@@ -200,8 +200,11 @@ context. The header badge opens the plan page of the current shell (from the adm
 user's rental context, short-rent first; no link when the user has none). A plan or billing page of a context the user
 does not work in (old link, a Stripe return page created before PL-16) redirects to the same page of its context, query
 string included. On the backend `GET /api/orgs/me/entitlement` and every billing endpoint use the org policy
-`OrgBillingAdmin`, which admits the owner as `PropertyOwner` or `LongTermLandlord` (JWT role or DB membership of the
-short-rent or long-rent context), a `PropertyManager` and the platform admin; a `Staff` collaborator gets 403.
+`OrgBillingAdmin`, which admits the owner as `PropertyOwner` or `LongTermLandlord` (JWT role, or DB membership with the
+owner's role key of the short-rent or long-rent context), the platform admin and, since AM-01, a member whose `account`
+membership holds `org.billing.manage` (`org_owner`, `org_admin`; `docs/runbooks/org-team.md`); a `Staff` collaborator, a
+`PropertyManager` (it does not manage plan and invoices), an accountant (`org.billing.read` only) and a member of the org
+with any other DB role get 403.
 The same policy protects the custom domain and the Stripe Connect account endpoints: a long-term landlord can call
 them too, but the web app shows those pages only in the short-rent shell.
 

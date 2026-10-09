@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261009053802_AddSupplierPayments")]
-    partial class AddSupplierPayments
+    [Migration("20261009013311_AddShowcaseBooking")]
+    partial class AddShowcaseBooking
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -3577,6 +3577,67 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SeoEvents");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.ServiceCustomer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AnonymizedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConsentIp")
+                        .IsRequired()
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EmailHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("PrivacyAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PrivacyNoticeVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "EmailHash")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ServiceCustomers_OrgId_EmailHash");
+
+                    b.ToTable("ServiceCustomers");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.ServiceRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3614,20 +3675,41 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid");
+
                     b.Property<int?>("EstimatedAmountCents")
                         .HasColumnType("integer");
 
                     b.Property<int?>("FinalAmountCents")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime?>("FinalAmountConfirmedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<bool>("FinalAmountNeedsConfirmation")
                         .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LastRemindedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LocationAccessNotes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LocationAddress")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LocationCity")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("LocationComuneIstat")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)");
+
+                    b.Property<string>("LocationFloor")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LocationPostalCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<string>("Notes")
                         .IsRequired()
@@ -3646,19 +3728,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int?>("PaidBy")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("PaymentMode")
-                        .HasColumnType("integer");
-
                     b.Property<string>("PriceLinesJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
                         .HasDefaultValue("[]");
 
-                    b.Property<Guid>("PropertyId")
+                    b.Property<Guid?>("PropertyId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("ProposalMessage")
@@ -3678,12 +3754,19 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("ProposedStartUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PublicCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<int?>("QuotedAmountCents")
                         .HasColumnType("integer");
 
                     b.Property<string>("RejectionReason")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("ReminderSentAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("RentalContext")
                         .HasColumnType("integer");
@@ -3703,6 +3786,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("ServiceNameSnapshot")
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
@@ -3742,11 +3828,19 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("BookingId");
 
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("IX_ServiceRequests_CustomerId");
+
                     b.HasIndex("PropertyId");
 
                     b.HasIndex("ServiceListingId");
 
                     b.HasIndex("OrgId", "Status");
+
+                    b.HasIndex("SupplierOrgId", "PublicCode")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ServiceRequests_SupplierOrgId_PublicCode")
+                        .HasFilter("\"PublicCode\" IS NOT NULL");
 
                     b.HasIndex("SupplierOrgId", "ScheduledStartUtc");
 
@@ -3756,146 +3850,89 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_ServiceRequests_Amounts", "(\"EstimatedAmountCents\" IS NULL OR \"EstimatedAmountCents\" BETWEEN 1 AND 10000000) AND (\"QuotedAmountCents\" IS NULL OR \"QuotedAmountCents\" BETWEEN 1 AND 10000000) AND (\"FinalAmountCents\" IS NULL OR \"FinalAmountCents\" BETWEEN 1 AND 10000000)");
 
+                            t.HasCheckConstraint("CK_ServiceRequests_Context", "(\"RentalContext\" = 2 AND \"PropertyId\" IS NULL AND \"BookingId\" IS NULL AND \"Source\" = 1 AND \"CustomerId\" IS NOT NULL AND \"PublicCode\" IS NOT NULL AND \"LocationCity\" IS NOT NULL) OR (\"RentalContext\" IN (0, 1) AND \"PropertyId\" IS NOT NULL AND \"Source\" = 0 AND \"CustomerId\" IS NULL AND \"PublicCode\" IS NULL AND \"LocationComuneIstat\" IS NULL AND \"LocationCity\" IS NULL AND \"LocationPostalCode\" IS NULL AND \"LocationAddress\" IS NULL AND \"LocationFloor\" IS NULL AND \"LocationAccessNotes\" IS NULL)");
+
                             t.HasCheckConstraint("CK_ServiceRequests_ProposedInterval", "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR (\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ScheduledInterval", "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR (\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
                         });
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.ServiceRequestPayment", b =>
+            modelBuilder.Entity("Casazen.Core.Entities.ShowcaseBookingHold", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("AmountCents")
-                        .HasColumnType("integer");
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uuid");
 
-                    b.Property<int>("ApplicationFeeCents")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("CanceledAt")
+                    b.Property<DateTime?>("ConsumedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal>("CommissionPercent")
-                        .HasColumnType("numeric(5,2)");
-
-                    b.Property<string>("ConnectedAccountId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Currency")
+                    b.Property<string>("EmailHash")
                         .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
-
-                    b.Property<string>("FailureCode")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<int?>("FeeVatCents")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("FeeVatMode")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("LastSentAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("LateAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("LineItemsJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasDefaultValue("[]");
-
-                    b.Property<string>("MarkedPaidByUserId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<int>("NetCents")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("OfflineNote")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime?>("PaidAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("PaidVia")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("PayerKind")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid?>("PayerOrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("PaymentIntentCount")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("PaymentTokenHash")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<int>("RefundedCents")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("RequestedAt")
+                    b.Property<DateTime>("EndUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("SentCount")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("ServiceRequestId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("StripePaymentIntentId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<Guid>("SupplierOrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("text")
+                        .HasColumnName("PayloadEncrypted");
+
+                    b.Property<string>("PublicCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<Guid?>("ServiceRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PayerOrgId");
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_ShowcaseBookingHolds_ExpiresAt");
 
-                    b.HasIndex("ServiceRequestId")
+                    b.HasIndex("ServiceRequestId");
+
+                    b.HasIndex("OrgId", "ClientRequestId")
                         .IsUnique()
-                        .HasDatabaseName("UIX_ServiceRequestPayments_ServiceRequestId_Live")
-                        .HasFilter("\"Status\" <> 4");
+                        .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_ClientRequestId");
 
-                    b.HasIndex("StripePaymentIntentId")
+                    b.HasIndex("OrgId", "EmailHash")
+                        .HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_EmailHash");
+
+                    b.HasIndex("OrgId", "PublicCode")
                         .IsUnique()
-                        .HasDatabaseName("UIX_ServiceRequestPayments_StripePaymentIntentId")
-                        .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
+                        .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_PublicCode");
 
-                    b.HasIndex("SupplierOrgId", "Status");
+                    b.HasIndex("OrgId", "StartUtc")
+                        .HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_StartUtc");
 
-                    b.ToTable("ServiceRequestPayments", t =>
+                    b.ToTable("ShowcaseBookingHolds", t =>
                         {
-                            t.HasCheckConstraint("CK_ServiceRequestPayments_Amounts", "\"AmountCents\" BETWEEN 1 AND 10000000 AND \"ApplicationFeeCents\" >= 0 AND \"ApplicationFeeCents\" < \"AmountCents\" AND \"NetCents\" = \"AmountCents\" - \"ApplicationFeeCents\" AND \"RefundedCents\" BETWEEN 0 AND \"AmountCents\" AND \"PaymentIntentCount\" >= 0 AND \"SentCount\" >= 0");
+                            t.HasCheckConstraint("CK_ShowcaseBookingHolds_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
 
-                            t.HasCheckConstraint("CK_ServiceRequestPayments_CommissionPercent", "\"CommissionPercent\" BETWEEN 0 AND 50");
-
-                            t.HasCheckConstraint("CK_ServiceRequestPayments_FeeVat", "(\"FeeVatMode\" IS NULL AND \"FeeVatCents\" IS NULL) OR (\"FeeVatMode\" IS NOT NULL AND \"FeeVatCents\" IS NOT NULL AND \"FeeVatCents\" >= 0)");
-
-                            t.HasCheckConstraint("CK_ServiceRequestPayments_Paid", "\"Status\" NOT IN (2, 5, 6) OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_ServiceRequestPayments_Payer", "(\"PayerKind\" = 0 AND \"PayerOrgId\" IS NOT NULL) OR \"PayerKind\" = 1");
+                            t.HasCheckConstraint("CK_ShowcaseBookingHolds_Interval", "\"StartUtc\" < \"EndUtc\"");
                         });
                 });
 
@@ -4378,9 +4415,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<decimal?>("CommissionPercentOverride")
-                        .HasColumnType("numeric(5,2)");
-
                     b.Property<string>("ComuneIstatCodesJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -4462,10 +4496,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("SupplierProfiles", t =>
-                        {
-                            t.HasCheckConstraint("CK_SupplierProfiles_CommissionPercentOverride", "\"CommissionPercentOverride\" IS NULL OR \"CommissionPercentOverride\" BETWEEN 0 AND 50");
-                        });
+                    b.ToTable("SupplierProfiles");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SupplierServiceListing", b =>
@@ -5899,12 +5930,28 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Page");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.ServiceCustomer", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.ServiceRequest", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Booking", "Booking")
                         .WithMany()
                         .HasForeignKey("BookingId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Casazen.Core.Entities.ServiceCustomer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
                         .WithMany()
@@ -5915,8 +5962,7 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
                         .WithMany()
                         .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Casazen.Core.Entities.SupplierServiceListing", null)
                         .WithMany()
@@ -5931,6 +5977,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Navigation("Booking");
 
+                    b.Navigation("Customer");
+
                     b.Navigation("Org");
 
                     b.Navigation("Property");
@@ -5938,30 +5986,20 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("SupplierOrg");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.ServiceRequestPayment", b =>
+            modelBuilder.Entity("Casazen.Core.Entities.ShowcaseBookingHold", b =>
                 {
-                    b.HasOne("Casazen.Core.Entities.Org", "PayerOrg")
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithMany()
-                        .HasForeignKey("PayerOrgId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                    b.HasOne("Casazen.Core.Entities.ServiceRequest", "ServiceRequest")
+                    b.HasOne("Casazen.Core.Entities.ServiceRequest", null)
                         .WithMany()
                         .HasForeignKey("ServiceRequestId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("Casazen.Core.Entities.Org", "SupplierOrg")
-                        .WithMany()
-                        .HasForeignKey("SupplierOrgId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("PayerOrg");
-
-                    b.Navigation("ServiceRequest");
-
-                    b.Navigation("SupplierOrg");
+                    b.Navigation("SupplierProfile");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SignupAttribution", b =>

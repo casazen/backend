@@ -20,6 +20,21 @@ public static class RecurringJobsRegistration
 
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
 
+        // SP-10: the upkeep of the bookings from the suppliers' public showcases is registered whatever the flags say. A hold that
+        // was made while SupplierShowcaseBooking was on has to lapse, a request nobody answered has to be cancelled and a booking
+        // that exists keeps its reminder, also after the flag is turned off; with the flag off these runs just find nothing.
+        recurringJobManager.AddOrUpdate<ServiceRequestExpiryJob>(
+            ServiceRequestExpiryJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServiceRequestExpiryJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ServiceRequestReminderJob>(
+            ServiceRequestReminderJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            Cron.Hourly,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         ConfigureServicePayments(recurringJobManager);
 
         recurringJobManager.AddOrUpdate<DynamicPricingJob>(

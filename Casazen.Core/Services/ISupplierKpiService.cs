@@ -30,6 +30,15 @@ public interface ISupplierKpiService
     /// first request" of the console checklist (SP-04).
     /// </summary>
     Task<bool> HasAnsweredARequestAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The typical time the supplier takes to answer, for the public showcase (SP-09): the <b>median</b> of
+    /// <c>TakenAt − CreatedAt</c> over the requests taken in the last <see cref="SupplierEarningsSummary.ResponseWindowDays"/>
+    /// days (the same pairs the average of <see cref="GetEarningsSummaryAsync"/> is made of), in whole minutes. <c>null</c> until
+    /// there are <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/> of them: a response time is shown only when it is
+    /// measured, never written by hand. Read-only.
+    /// </summary>
+    Task<int?> GetMedianResponseMinutesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Service-request KPIs of a supplier org.</summary>

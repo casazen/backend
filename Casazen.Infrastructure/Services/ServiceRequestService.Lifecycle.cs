@@ -159,6 +159,13 @@ public partial class ServiceRequestService
             request.ProposedByUserId = userId;
             request.ProposalMessage = message;
             request.UpdatedAt = now;
+
+            // A showcase request has no host who may take as long as it needs: the customer has Suppliers:Showcase:
+            // ProposalResponseMinutes to answer (the answer arrives with SP-11), then the request lapses like one nobody
+            // answered. The deadline of the supplier is spent: the supplier did answer.
+            if (request.RentalContext == ServiceRequestRentalContext.Showcase)
+                request.ResponseDueAt = now.AddMinutes(showcaseOptions.Value.ProposalResponseMinutes);
+
             await SaveAsync(request, "proposal", cancellationToken);
             await CommitAsync(transaction, cancellationToken);
         }
@@ -197,7 +204,7 @@ public partial class ServiceRequestService
         var proposedBy = request.ProposedByUserId;
 
         // SP-15a: accepting the proposal is a take, so the request is paid the way the supplier can be paid right now.
-        var paymentMode = await payments.ResolveModeAsync(request.SupplierOrgId, cancellationToken);
+        var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(request.SupplierOrgId, cancellationToken);
         await using (transaction)

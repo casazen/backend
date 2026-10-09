@@ -150,6 +150,49 @@ public class RecurringJobsFeatureFlagTests
         Assert.DoesNotContain(ServiceRequestAutoCancelJob.RecurringJobId, registered);
     }
 
+    // ─── SP-10: the upkeep of the bookings from the suppliers' public showcases is always on ───
+
+    [Fact]
+    public void Configure_TheShowcaseBookingUpkeep_IsRegisteredWhateverTheFlagsSay_AndNeverRemoved()
+    {
+        Assert.Equal("service-request-expiry", ServiceRequestExpiryJob.RecurringJobId);
+        Assert.Equal("service-request-reminders", ServiceRequestReminderJob.RecurringJobId);
+
+        foreach (var flags in new[]
+                 {
+                     Flags(otaPartnerApi: false),
+                     Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true, supplierRequestAutoCancel: true),
+                 })
+        {
+            var (manager, registered) = Manager();
+
+            RecurringJobsRegistration.Configure(manager.Object, flags);
+
+            // A booking made while SupplierShowcaseBooking was on has to lapse and be reminded of after the flag is turned off.
+            Assert.Contains(ServiceRequestExpiryJob.RecurringJobId, registered);
+            Assert.Contains(ServiceRequestReminderJob.RecurringJobId, registered);
+            manager.Verify(m => m.RemoveIfExists(ServiceRequestExpiryJob.RecurringJobId), Times.Never);
+            manager.Verify(m => m.RemoveIfExists(ServiceRequestReminderJob.RecurringJobId), Times.Never);
+        }
+    }
+
+    [Fact]
+    public void Configure_TheShowcaseBookingUpkeep_RunsEveryFiveMinutes_AndTheRemindersEveryHour_InUtc()
+    {
+        var manager = new Mock<IRecurringJobManager>();
+        var scheduled = new Dictionary<string, (string Cron, RecurringJobOptions Options)>();
+        manager
+            .Setup(m => m.AddOrUpdate(It.IsAny<string>(), It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<RecurringJobOptions>()))
+            .Callback<string, Job, string, RecurringJobOptions>((id, _, cron, options) => scheduled[id] = (cron, options));
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false));
+
+        Assert.Equal("*/5 * * * *", scheduled[ServiceRequestExpiryJob.RecurringJobId].Cron);
+        Assert.Equal("0 * * * *", scheduled[ServiceRequestReminderJob.RecurringJobId].Cron);
+        Assert.Equal(TimeZoneInfo.Utc, scheduled[ServiceRequestExpiryJob.RecurringJobId].Options.TimeZone);
+        Assert.Equal(TimeZoneInfo.Utc, scheduled[ServiceRequestReminderJob.RecurringJobId].Options.TimeZone);
+    }
+
     internal static IFeatureFlags Flags(
         bool otaPartnerApi,
         bool rliProvider = false,

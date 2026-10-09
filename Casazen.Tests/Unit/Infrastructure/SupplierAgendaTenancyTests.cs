@@ -26,6 +26,7 @@ public class SupplierAgendaTenancyTests
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSets and the model.",
         ["Casazen.Infrastructure/Services/SupplierAgendaService.cs"] = "The agenda: every statement carries the OrgId predicate.",
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles moves the agenda of the duplicate org.",
+        ["Casazen.Infrastructure/Services/CalendarSyncService.cs"] = "The iCal sync writes the windows of hours of the supplier's feed (SP-05), under the lock of the supplier: every statement carries the OrgId predicate and only touches the windows of the feed.",
     };
 
     private static readonly string[] DbSetNames =
@@ -107,6 +108,12 @@ public class SupplierAgendaTenancyTests
         Assert.Contains(windows.GetIndexes(), index =>
             index.Properties.Select(p => p.Name).SequenceEqual(new[] { "OrgId", "StartUtc" }));
 
+        // SP-05: the iCal sync finds its rows by supplier, UID and start; the windows set by hand have no UID and are outside.
+        var feedKey = Assert.Single(windows.GetIndexes(), index => index.IsUnique);
+        Assert.Equal(new[] { "OrgId", "ExternalUid", "StartUtc" }, feedKey.Properties.Select(p => p.Name));
+        Assert.Equal("UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc", feedKey.GetDatabaseName());
+        Assert.Equal("\"ExternalUid\" IS NOT NULL", feedKey.GetFilter());
+
         var timeOff = db.Model.FindEntityType(typeof(SupplierTimeOff))!;
         Assert.Contains(timeOff.GetIndexes(), index =>
             index.Properties.Select(p => p.Name).SequenceEqual(new[] { "OrgId", "FromDate" }));
@@ -153,10 +160,39 @@ public class SupplierAgendaTenancyTests
             ["time off"] = SupplierAgendaService.TimeOffOf(db, org).AsNoTracking().ToQueryString(),
             ["windows"] = SupplierAgendaService.WindowsOf(db, org).AsNoTracking().ToQueryString(),
             ["manual windows"] = SupplierAgendaService.ManualWindowsOf(db, org).AsNoTracking().ToQueryString(),
+            ["feed windows"] = CalendarSyncService.FeedWindowsOf(db, org).AsNoTracking().ToQueryString(),
             ["settings"] = SupplierAgendaService.SettingsOf(db, org).AsNoTracking().ToQueryString(),
         };
 
         Assert.All(statements, statement => Assert.Matches("\"OrgId\" = @", statement.Value));
+    }
+
+    [Fact]
+    public void FeedWindowsQuery_OfTheCalendarSync_ReadsOnlyTheWindowsOfTheFeed_NeverTheSuppliersOwn()
+    {
+        using var db = NewNpgsqlContext();
+
+        var sql = CalendarSyncService.FeedWindowsOf(db, Guid.NewGuid()).AsNoTracking().ToQueryString();
+
+        // Source = ICalFeed (1) of this supplier: a block or an extra opening (Manual, 0) is out of the sync's reach.
+        Assert.Matches("\"Source\" = 1", sql);
+        Assert.Matches("\"OrgId\" = @", sql);
+        Assert.DoesNotMatch("\"Source\" = 0", sql);
+    }
+
+    [Fact]
+    public void RepairQuery_OfTheWindowsThatMove_NamesBothOrgsAndSkipsTheEngagementsTheKeeperHas()
+    {
+        using var db = NewNpgsqlContext();
+
+        var sql = SupplierService.WindowsThatMove(db, Guid.NewGuid(), Guid.NewGuid()).AsNoTracking().ToQueryString();
+
+        // The duplicate's windows, minus the feed engagements (same UID and start) the keeper already has.
+        Assert.Matches("\"OrgId\" = @", sql);
+        Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
+        Assert.Contains("\"ExternalUid\" IS NULL", sql, StringComparison.Ordinal);
+        Assert.Matches("\"ExternalUid\" = ", sql);
+        Assert.Matches("\"StartUtc\" = ", sql);
     }
 
     [Fact]
@@ -209,13 +245,39 @@ public class SupplierAgendaTenancyTests
             offenders.Count == 0,
             "The tables of the supplier's agenda are not tenant-filtered (keyed by the supplier org): any other reader must " +
             "filter by the supplier OrgId itself. Use SupplierAgendaService, or add the file to AllowedFiles with its reason and " +
-            "an explicit OrgId predicate (the public slots of SP-09 read through the planner input and also need the supplier's " +
-            "Active status): " + string.Join(", ", offenders));
+            "an explicit OrgId predicate (the public slots of SP-09 read the agenda only through ISupplierAgendaService.PlanAsync, " +
+            "for a supplier PublicSupplierShowcaseService found Active): " + string.Join(", ", offenders));
+    }
+
+    [Fact]
+    public void ThePublicSlots_ReadTheAgendaOnlyThroughThePlannerOfTheAgendaService()
+    {
+        // SP-09 adds no file to the allow-list: the public service and its cache never name a table of the agenda, and the
+        // planner they call is the one the agenda service feeds with the requests with hours, the blocks, the calendar
+        // engagements and (SP-10) the holds.
+        var root = FindRepositoryRoot();
+        foreach (var relative in new[]
+                 {
+                     "Casazen.Infrastructure/Services/PublicSupplierShowcaseService.cs",
+                     "Casazen.Infrastructure/Services/PublicSupplierSlotCache.cs",
+                     "Casazen.Web/Controllers/PublicSupplierController.cs",
+                 })
+        {
+            var text = CodeWithoutComments(File.ReadAllText(Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar))));
+            Assert.False(AnyTableUse.IsMatch(text), $"{relative} reads a table of the agenda itself");
+            Assert.False(AllowedFiles.ContainsKey(relative), $"{relative} must not be allow-listed");
+        }
+
+        var service = CodeWithoutComments(File.ReadAllText(
+            Path.Combine(root, "Casazen.Infrastructure", "Services", "PublicSupplierShowcaseService.cs")));
+        Assert.Contains("agenda.PlanAsync(", service);
+        Assert.Contains("agenda.GetRulesAsync(", service);
     }
 
     [Theory]
     [InlineData("Casazen.Infrastructure/Services/SupplierAgendaService.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierService.Maintenance.cs")]
+    [InlineData("Casazen.Infrastructure/Services/CalendarSyncService.cs")]
     public void EveryStatementOnTheTables_CarriesTheOrgPredicateOrIsAnInsert(string relative)
     {
         var text = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), relative.Replace('/', Path.DirectorySeparatorChar))));

@@ -96,6 +96,18 @@ public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : IS
             .Where(r => r.SupplierOrgId == supplierOrgId)
             .AnyAsync(r => r.TakenAt != null || r.Status == ServiceRequestStatus.Rifiutato, cancellationToken);
 
+    public async Task<int?> GetMedianResponseMinutesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
+    {
+        // The requests of the average of GET today (SP-04): taken in the last 90 days, the latest ones when there are many (a
+        // public page is read often). The median is made here, on the pairs, so the arithmetic on instants does not depend
+        // on the provider.
+        var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-SupplierEarningsSummary.ResponseWindowDays);
+        var answers = await RecentAnswersOf(db, supplierOrgId, since, PublicShowcaseLimits.ResponseTimeMaxSamples)
+            .ToListAsync(cancellationToken);
+        return SupplierResponseTimes.PublicMedianMinutes(
+            answers.Select(answer => (answer.TakenAt - answer.CreatedAt).TotalMinutes).ToList());
+    }
+
     /// <summary>The jobs and the final amounts of the requests of the supplier completed (or paid) inside <c>[startUtc, endUtc)</c>.</summary>
     /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
     internal static IQueryable<AmountGroup> CompletedInOf(AppDbContext db, Guid supplierOrgId, DateTime startUtc, DateTime endUtc) =>
@@ -122,6 +134,19 @@ public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : IS
         db.ServiceRequests
             .AsNoTracking()
             .Where(r => r.SupplierOrgId == supplierOrgId && r.TakenAt != null && r.TakenAt >= sinceUtc)
+            .Select(r => new AnswerPair(r.CreatedAt, r.TakenAt!.Value));
+
+    /// <summary>
+    /// The latest <paramref name="limit"/> requests of the supplier taken since <paramref name="sinceUtc"/>, when each was
+    /// received and taken: the sample of the public response time (a median needs the pairs, not a sum).
+    /// </summary>
+    internal static IQueryable<AnswerPair> RecentAnswersOf(AppDbContext db, Guid supplierOrgId, DateTime sinceUtc, int limit) =>
+        // ServiceRequest has no tenant filter (two parties, TN-2 allow-list): scoped by the supplier org explicitly.
+        db.ServiceRequests
+            .AsNoTracking()
+            .Where(r => r.SupplierOrgId == supplierOrgId && r.TakenAt != null && r.TakenAt >= sinceUtc)
+            .OrderByDescending(r => r.TakenAt)
+            .Take(limit)
             .Select(r => new AnswerPair(r.CreatedAt, r.TakenAt!.Value));
 
     /// <summary>A number of requests and the sum of their final amounts (<c>null</c> when none has one).</summary>

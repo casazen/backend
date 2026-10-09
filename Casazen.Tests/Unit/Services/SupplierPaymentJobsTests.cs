@@ -440,7 +440,7 @@ public class SupplierPaymentJobsTests
         var (s, _, paymentId, oldToken) = await AskedAsync();
         using var _ = s;
         s.Clock.Advance(TimeSpan.FromDays(2));
-        s.Emails.Accepting = false;
+        s.Emails.Refuse = true;
 
         var failed = await s.Payments.RunRemindersAsync();
 
@@ -450,7 +450,7 @@ public class SupplierPaymentJobsTests
         Assert.Equal(1, payment.SentCount);
         Assert.Equal(PublicServicePaymentState.Payable, (await s.Payments.GetPublicAsync(paymentId, oldToken)).State);
 
-        s.Emails.Accepting = true;
+        s.Emails.Refuse = false;
         var next = await s.Payments.RunRemindersAsync();
 
         Assert.Equal(1, next.RemindersSent);
@@ -628,7 +628,7 @@ public class SupplierPaymentJobsTests
         var (s, _, paymentId) = await PendingAsync();
         using var _ = s;
         await s.ConnectSupplierAsync(ready: true);
-        s.Emails.Accepting = false;
+        s.Emails.Refuse = true;
 
         var failed = await s.Payments.SendPendingRequestsAsync(s.SupplierOrgId);
 
@@ -638,7 +638,7 @@ public class SupplierPaymentJobsTests
         Assert.Equal(0, payment.SentCount);
         Assert.Null(payment.RequestedAt);
 
-        s.Emails.Accepting = true;
+        s.Emails.Refuse = false;
         Assert.Equal(1, await s.Payments.SendPendingRequestsAsync(s.SupplierOrgId));
     }
 

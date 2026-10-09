@@ -144,6 +144,30 @@
   <data name="NoOrganizationAssigned" xml:space="preserve">
     <value>Nessuna organizzazione assegnata all'utente corrente</value>
   </data>
+  <data name="MemberCannotOnboard" xml:space="preserve">
+    <value>Fai già parte di un'organizzazione come collaboratore: non puoi attivare un nuovo account né cambiare il tuo ruolo. Se ti serve un altro ruolo, chiedilo al titolare dell'organizzazione.</value>
+  </data>
+  <data name="MemberInactive" xml:space="preserve">
+    <value>Il tuo accesso all'organizzazione è stato disattivato. Contatta chi la amministra per riattivarlo.</value>
+  </data>
+  <data name="OrgLastOwner" xml:space="preserve">
+    <value>Il titolare dell'organizzazione non può essere disattivato, rimosso né cambiare ruolo: ogni organizzazione ha sempre il suo titolare.</value>
+  </data>
+  <data name="OrgMemberAlreadyMember" xml:space="preserve">
+    <value>Questa persona fa già parte di un'organizzazione.</value>
+  </data>
+  <data name="OrgMemberAreaRequired" xml:space="preserve">
+    <value>Scegli almeno un'area di lavoro per la persona (affitti brevi o affitti lunghi).</value>
+  </data>
+  <data name="OrgMemberOtherOrg" xml:space="preserve">
+    <value>Questa persona appartiene a un'altra organizzazione: per cambiarla serve l'invito dell'organizzazione.</value>
+  </data>
+  <data name="OrgMemberOwnerNotAssignable" xml:space="preserve">
+    <value>Il ruolo di titolare non si assegna: l'organizzazione resta a chi l'ha creata (il trasferimento di titolarità non è ancora disponibile).</value>
+  </data>
+  <data name="OrgMembershipMaintenanceConflict" xml:space="preserve">
+    <value>Un'altra modifica ha interrotto la riconciliazione dei membri: non è stato salvato nulla. Riprova.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
@@ -2128,6 +2152,15 @@
   <data name="PropertyCityLockedByLease" xml:space="preserve">
     <value>La città dell'immobile non può essere modificata dopo l'invio di un contratto a canone concordato per la registrazione.</value>
   </data>
+  <data name="PropertyNotBookableInLongMode" xml:space="preserve">
+    <value>Questo immobile è in modalità affitto lungo: non è pubblicato sul sito di prenotazione e non accetta prenotazioni di soggiorni brevi.</value>
+  </data>
+  <data name="PropertyRentalModeChangeNotAllowed" xml:space="preserve">
+    <value>La modalità di affitto (breve o lungo) di un immobile già creato non può essere modificata con questo salvataggio.</value>
+  </data>
+  <data name="PropertyListModeInvalid" xml:space="preserve">
+    <value>Modalità non valida: usa «short» (affitto breve) o «long» (affitto lungo).</value>
+  </data>
   <data name="DocumentTypeInvalid" xml:space="preserve">
     <value>Tipo di documento non valido.</value>
   </data>
@@ -2280,6 +2313,63 @@
   </data>
   <data name="SupplierInboxWhenInvalid" xml:space="preserve">
     <value>Periodo non valido: usa oggi, settimana oppure mese.</value>
+  </data>
+  <data name="SupplierSlotsServiceRequired" xml:space="preserve">
+    <value>Indica il servizio di cui vuoi vedere gli orari (parametro service).</value>
+  </data>
+  <data name="SupplierSlotsDaysInvalid" xml:space="preserve">
+    <value>Il numero di giorni (parametro days) deve essere compreso tra 1 e {0}.</value>
+  </data>
+  <data name="SupplierQuoteInvalid" xml:space="preserve">
+    <value>Alcuni dati della richiesta di stima non sono validi (campi: {0}). Controllali e riprova.</value>
+  </data>
+  <data name="SupplierBookingInvalid" xml:space="preserve">
+    <value>Alcuni dati della prenotazione non sono validi (campi: {0}). Controllali e riprova.</value>
+  </data>
+  <data name="SupplierBookingOffline" xml:space="preserve">
+    <value>Questo fornitore non accetta prenotazioni online in questo momento: puoi chiedere un preventivo.</value>
+  </data>
+  <data name="SupplierBookingOutsideZone" xml:space="preserve">
+    <value>Il fornitore non lavora in questo comune: puoi comunque chiedere un preventivo.</value>
+  </data>
+  <data name="SupplierBookingConsentRequired" xml:space="preserve">
+    <value>Per inviare la richiesta serve accettare l'informativa sulla privacy.</value>
+  </data>
+  <data name="SupplierBookingConsentOutdated" xml:space="preserve">
+    <value>L'informativa sulla privacy è stata aggiornata: leggi la versione attuale e accettala di nuovo.</value>
+  </data>
+  <data name="SupplierBookingLinkInvalid" xml:space="preserve">
+    <value>Link di conferma non valido: apri il link ricevuto via email.</value>
+  </data>
+  <data name="SupplierBookingLinkExpired" xml:space="preserve">
+    <value>Il tempo per confermare la richiesta è scaduto e l'orario è tornato disponibile: invia una nuova richiesta dal sito del fornitore.</value>
+  </data>
+  <data name="SupplierBookingSupplierUnavailable" xml:space="preserve">
+    <value>Il fornitore non può ricevere richieste in questo momento. Riprova più tardi.</value>
+  </data>
+  <data name="SupplierBookingTokenRequired" xml:space="preserve">
+    <value>Apri il link ricevuto via email: il codice di conferma manca o non è valido.</value>
+  </data>
+  <data name="SupplierBookingNotFound" xml:space="preserve">
+    <value>Nessuna richiesta corrisponde a questo codice e a questo indirizzo email. Controlla il codice nell'email di conferma e usa l'indirizzo email con cui hai prenotato.</value>
+  </data>
+  <data name="SupplierBookingCannotCancel" xml:space="preserve">
+    <value>Questa richiesta non si può più annullare da qui: il lavoro è già iniziato o concluso, l'orario è passato, oppure la richiesta è già chiusa. Se serve, contatta il fornitore.</value>
+  </data>
+  <data name="SupplierBookingCannotReschedule" xml:space="preserve">
+    <value>Non si può cambiare l'orario di questa richiesta: si può fare solo finché il fornitore non ha risposto, se è attivo e se il servizio è ancora disponibile. Puoi annullarla e prenotare di nuovo.</value>
+  </data>
+  <data name="SupplierBookingNoProposal" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun nuovo orario da accettare o rifiutare.</value>
+  </data>
+  <data name="SupplierBookingProposalExpired" xml:space="preserve">
+    <value>Il tempo per rispondere al nuovo orario è scaduto: la richiesta si annulla da sola. Potrai prenotare di nuovo dal sito del fornitore.</value>
+  </data>
+  <data name="SupplierBookingAccessRequired" xml:space="preserve">
+    <value>Indica il fornitore, il codice della richiesta e l'indirizzo email con cui hai prenotato.</value>
+  </data>
+  <data name="SupplierBookingStartRequired" xml:space="preserve">
+    <value>Indica l'orario scelto (startUtc).</value>
   </data>
   <data name="ServicePaymentLinkInvalid" xml:space="preserve">
     <value>Il link di pagamento non è valido o è scaduto. Chiedi al fornitore di inviartene uno nuovo.</value>

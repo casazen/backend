@@ -133,6 +133,43 @@ public class SupplierServiceListingTenancyTests
     }
 
     [Fact]
+    public void PublicCatalogQuery_OnTheNpgsqlProvider_AddsTheActiveStatusOfTheServiceAndOfTheSupplierInTheSameStatement()
+    {
+        using var db = NewNpgsqlContext();
+
+        // SP-09: the anonymous reads go through this query (ListPublicAsync, FindPublicAsync), so the supplier org, the
+        // not-deleted and Active predicates of the service and the Active status of the supplier's profile are one statement.
+        var sql = SupplierServiceCatalogService.PublicListingsOf(db, Guid.NewGuid()).AsNoTracking().ToQueryString();
+
+        Assert.Matches("\"OrgId\" = @", sql);
+        Assert.Contains("\"DeletedAt\" IS NULL", sql);
+        Assert.Contains("JOIN \"SupplierProfiles\"", sql);
+        Assert.Equal(2, Regex.Matches(sql, "\"Status\" = 1").Count);
+    }
+
+    [Fact]
+    public void ThePublicShowcase_ReadsTheCatalogOnlyThroughTheCatalogService()
+    {
+        // SP-09 adds no file to the allow-list: the public service, the controller and the DTOs never name the table.
+        var root = FindRepositoryRoot();
+        var publicFiles = new[]
+        {
+            "Casazen.Infrastructure/Services/PublicSupplierShowcaseService.cs",
+            "Casazen.Infrastructure/Services/PublicSupplierSlotCache.cs",
+            "Casazen.Web/Controllers/PublicSupplierController.cs",
+            "Casazen.Web/DTOs/Supplier/PublicSupplierDtos.cs",
+            "Casazen.Core/Services/IPublicSupplierShowcaseService.cs",
+        };
+
+        foreach (var relative in publicFiles)
+        {
+            var text = File.ReadAllText(Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar)));
+            Assert.False(AnyTableUse.IsMatch(text), $"{relative} reads the catalog table itself");
+            Assert.False(AllowedFiles.ContainsKey(relative), $"{relative} must not be allow-listed: it goes through the catalog service");
+        }
+    }
+
+    [Fact]
     public void TheTable_IsUsedOnlyByTheCatalogServiceTheRepairAndTheContext()
     {
         var root = FindRepositoryRoot();
@@ -149,7 +186,8 @@ public class SupplierServiceListingTenancyTests
             offenders.Count == 0,
             "SupplierServiceListings is not tenant-filtered (keyed by the supplier org): any other reader must filter by the " +
             "supplier OrgId itself. Use SupplierServiceCatalogService, or add the file to AllowedFiles with its reason and " +
-            "an explicit OrgId predicate (the public reads of SP-09 also need the supplier's Active status): " +
+            "an explicit OrgId predicate (the anonymous reads of SP-09 use SupplierServiceCatalogService.ListPublicAsync and " +
+            "FindPublicAsync, which also require the service and the supplier to be Active): " +
             string.Join(", ", offenders));
     }
 

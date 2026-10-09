@@ -226,16 +226,25 @@ public class ServiceRequestSupportTests
         Assert.Equal(
             new[] { ("Richiesto", 0), ("PresoInCarico", 1), ("InCorso", 2), ("Completato", 3), ("Pagato", 4), ("Rifiutato", 5), ("Annullato", 6) },
             Enum.GetValues<Casazen.Core.Entities.Enums.ServiceRequestStatus>().Select(s => (s.ToString(), (int)s)));
+        // SP-10 appended the customer of the public showcase after CasaZen itself; the integers of the others did not move.
         Assert.Equal(
-            new[] { ("Host", 0), ("Supplier", 1), ("System", 2) },
+            new[] { ("Host", 0), ("Supplier", 1), ("System", 2), ("Customer", 3) },
             Enum.GetValues<Casazen.Core.Entities.Enums.ServiceRequestActorParty>().Select(a => (a.ToString(), (int)a)));
+        Assert.Equal(
+            new[] { ("ShortRent", 0), ("LongRent", 1), ("Showcase", 2) },
+            Enum.GetValues<Casazen.Core.Entities.Enums.ServiceRequestRentalContext>().Select(c => (c.ToString(), (int)c)));
+        Assert.Equal(
+            new[] { ("Host", 0), ("Showcase", 1) },
+            Enum.GetValues<Casazen.Core.Entities.Enums.ServiceRequestSource>().Select(c => (c.ToString(), (int)c)));
     }
 
     [Fact]
-    public void Sources_TheSourceOfARequestIsCasazenForNowAndShowcaseIsReservedForTheBookingFromTheShowcase()
+    public void Sources_TheSourceOfARequestIsCasazenForAHostAndShowcaseForACustomerOfThePublicShowcase()
     {
         Assert.Equal("casazen", SupplierRequestSources.CasaZen);
         Assert.Equal("showcase", SupplierRequestSources.Showcase);
+        Assert.Equal("casazen", SupplierRequestSources.Of(Casazen.Core.Entities.Enums.ServiceRequestSource.Host));
+        Assert.Equal("showcase", SupplierRequestSources.Of(Casazen.Core.Entities.Enums.ServiceRequestSource.Showcase));
         Assert.Equal("NoResponse", ServiceRequestCancellationReasons.NoResponse);
     }
 

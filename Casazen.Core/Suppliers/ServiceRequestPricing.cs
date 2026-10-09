@@ -13,6 +13,23 @@ public static class ServiceRequestCancellationReasons
     /// <c>ResponseDueAt</c>. Stored with <c>CancelledBy = System</c>; the client translates it, it is not a sentence.
     /// </summary>
     public const string NoResponse = "NoResponse";
+
+    /// <summary>
+    /// A request from the public showcase whose supplier had proposed another time and whose customer did not answer before
+    /// the deadline (SP-11, <c>Suppliers:Showcase:ProposalResponseMinutes</c>): cancelled by CasaZen (<c>CancelledBy = System</c>),
+    /// but the supplier did answer — it is the customer who did not. Its own code, so no party is told the other one stayed
+    /// silent (decision D24). The client translates it, it is not a sentence.
+    /// </summary>
+    public const string ProposalNotAnswered = "ProposalNotAnswered";
+
+    /// <summary>
+    /// The customer of the public showcase cancelled its own booking without giving a reason (SP-11, <c>CancelledBy = Customer</c>).
+    /// When the customer wrote a reason, the text is stored instead. The client translates the code, it is not a sentence.
+    /// </summary>
+    public const string CancelledByCustomer = "CancelledByCustomer";
+
+    /// <summary>True for a value of <c>CancellationReason</c> that is one of the codes above and not text a person wrote.</summary>
+    public static bool IsCode(string? reason) => reason is NoResponse or ProposalNotAnswered or CancelledByCustomer;
 }
 
 /// <summary>The kinds of line of <see cref="ServiceRequestPriceLine"/>.</summary>
@@ -33,6 +50,19 @@ public sealed record ServiceRequestExtra(string Label, int AmountCents);
 
 /// <summary>An option (supplement) of the catalog the customer picked, snapshotted on the request (<c>ServiceRequest.OptionsJson</c>).</summary>
 public sealed record ServiceRequestOption(string Code, string Label, int AmountCents, string Per, int Quantity);
+
+/// <summary>The codes of the entries of <c>ServiceRequest.OptionsJson</c> that are not a supplement of the price list (SP-10).</summary>
+public static class ServiceRequestOptionCodes
+{
+    /// <summary>
+    /// The quantity the customer chose for a price per hour, per set or per square meter (the base of the estimate): the label is
+    /// the name of the service, <c>Per</c> the unit, <c>AmountCents</c> the price of one unit, <c>Quantity</c> how many.
+    /// </summary>
+    public const string Quantity = "quantity";
+
+    /// <summary><c>Per</c> of the quantity of a price per square meter (the supplements have <see cref="SupplierServiceSupplementUnits"/>).</summary>
+    public const string SquareMeter = "sqm";
+}
 
 /// <summary>A photo of the work in the private bucket (<c>ServiceRequest.WorkPhotosJson</c>): the id is what the download endpoint takes.</summary>
 public sealed record ServiceRequestPhoto(Guid Id, string Key, DateTime UploadedAt);

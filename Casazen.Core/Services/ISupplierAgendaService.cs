@@ -37,6 +37,18 @@ public sealed record SupplierAgendaRequest(
 }
 
 /// <summary>
+/// The two settings of the supplier that the booking from the public showcase reads (SP-10): whether it takes bookings online
+/// (<c>SupplierSettings.OnlineBookingEnabled</c>, off until the supplier turns it on) and how long it has to answer a new request
+/// (<c>RespondWithinMinutes</c>, decision D8: 180). A supplier that never saved a setting has the defaults, which is "no online
+/// bookings".
+/// </summary>
+public sealed record SupplierBookingSettings(bool OnlineBookingEnabled, int RespondWithinMinutes)
+{
+    /// <summary>What a supplier that never saved a setting has.</summary>
+    public static SupplierBookingSettings Default { get; } = new(false, SupplierAgendaDefaults.RespondWithinMinutes);
+}
+
+/// <summary>
 /// What the supplier's calendar shows for a range of days (<c>GET api/supplier/calendar</c>): the working hours, the days
 /// closed, the time off, the blocks, extra openings and engagements that touch the range, and the requests as items of a
 /// whole day.
@@ -118,6 +130,13 @@ public interface ISupplierAgendaService
     /// <summary>Replaces the five rules the console edits (the other settings of the supplier stay as they are).</summary>
     /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.RulesInvalid"/> (with the fields).</exception>
     Task<SupplierPlanningRules> ReplaceRulesAsync(Guid supplierOrgId, SupplierRulesInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The settings the booking from the public showcase reads (SP-10): <c>OnlineBookingEnabled</c> and
+    /// <c>RespondWithinMinutes</c>. The defaults while the supplier never saved a setting; a read never creates the settings row.
+    /// Read-only.
+    /// </summary>
+    Task<SupplierBookingSettings> GetBookingSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// What the supplier's calendar shows from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both

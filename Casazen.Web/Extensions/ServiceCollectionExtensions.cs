@@ -190,6 +190,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserAuthorizationSnapshotStore>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserAuthorizationCache>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
+        // AM-01: the org's people (OrgMember) and, in the same transaction, the memberships that project their role.
+        services.AddScoped<IOrgMembershipService, OrgMembershipService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
         // PL-02: host contexts only after the onboarding and the current consents; refusals answer 403 onboarding_required.
         services.AddScoped<IHostOnboardingGate, HostOnboardingGate>();
@@ -405,6 +407,10 @@ public static class ServiceCollectionExtensions
         // The supplier's agenda (SP-03): hours, time off, blocks, rules, calendar and the input of the slot planner. Rows keyed
         // by the supplier org, not tenant-filtered; every write under the SupplierCalendarSync lock.
         services.AddScoped<ISupplierAgendaService, SupplierAgendaService>();
+        // The anonymous read side of the supplier showcase (SP-09): services, free slots and price estimate, behind the flag
+        // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
+        services.AddSingleton<PublicSupplierSlotCache>();
+        services.AddScoped<IPublicSupplierShowcaseService, PublicSupplierShowcaseService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
 
@@ -447,9 +453,40 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierPaymentRefundService>(sp => sp.GetRequiredService<SupplierPaymentService>());
         services.AddScoped<ISupplierPaymentAdminService, SupplierPaymentAdminService>();
         services.AddScoped<ISupplierPaymentJobScheduler, SupplierPaymentJobScheduler>();
-        services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        // One instance per request for both doors (SP-11): the hosts' and the suppliers' operations, and the narrow set of what the
+        // customer of a public showcase does to its own request, which only the customer's area (IShowcaseBookingManager) uses.
+        services.AddScoped<ServiceRequestService>();
+        services.AddScoped<IServiceRequestService>(provider => provider.GetRequiredService<ServiceRequestService>());
+        services.AddScoped<IShowcaseRequestCustomerActions>(provider => provider.GetRequiredService<ServiceRequestService>());
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
+
+        // Booking from a supplier's public showcase (SP-10, flag SupplierShowcaseBooking): hold, e-mail check, request. The options
+        // (Suppliers:Showcase, and Suppliers:CustomerIndexKey for the HMAC of the customers' e-mail) are validated at startup: with the
+        // flag on, the version of the privacy notice and (outside Development and Testing) the key are required.
+        services.AddOptions<Casazen.Core.Options.ShowcaseBookingOptions>()
+            .BindConfiguration(Casazen.Core.Options.ShowcaseBookingOptions.SectionName)
+            .ValidateOnStart();
+        services.AddOptions<Casazen.Core.Options.ServiceCustomerIndexOptions>()
+            .BindConfiguration(Casazen.Core.Options.ServiceCustomerIndexOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<Casazen.Core.Options.ShowcaseBookingOptionsValidator>();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.ShowcaseBookingOptions>>(
+            provider => provider.GetRequiredService<Casazen.Core.Options.ShowcaseBookingOptionsValidator>());
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.ServiceCustomerIndexOptions>>(
+            provider => provider.GetRequiredService<Casazen.Core.Options.ShowcaseBookingOptionsValidator>());
+        services.AddSingleton<IServiceCustomerIndex, ServiceCustomerIndex>();
+        services.AddScoped<IShowcaseHoldReader, ShowcaseHoldReader>();
+        services.AddScoped<IServiceCustomerReader, ServiceCustomerReader>();
+        services.AddScoped<ShowcaseBookingNotifier>();
+        services.AddScoped<IShowcaseBookingService, ShowcaseBookingService>();
+        // The customer's own area of a booking (SP-11): find it with the code and the e-mail, cancel it, move it, answer a proposed time.
+        services.AddScoped<IShowcaseBookingManager, ShowcaseBookingManager>();
+        // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the
+        // customers' data: their recurring jobs are registered whatever the flags say.
+        services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
+        services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();
+        services.AddScoped<IServiceCustomerPrivacyService, ServiceCustomerPrivacyService>();
         // Supplier dashboard KPIs from the service requests (SU-11, A4-15) and the money of the console home (SP-04).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
         // The home ("Oggi") and the activation checklist of the supplier console (SP-04).

@@ -549,7 +549,7 @@ public class SupplierPaymentSessionTests
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnablePaymentsAsync();
         var taken = await s.TakenAsync();
-        s.Emails.Accepting = false;
+        s.Emails.Refuse = true;
         var completed = await s.Service.CompleteAsync(taken.Id, s.SupplierOrgId);
         var pending = await s.OnlyPaymentOfAsync(completed.Id);
         Assert.Null(pending.PaymentTokenHash);

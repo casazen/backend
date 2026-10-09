@@ -46,10 +46,12 @@ and production never block each other.
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
 | `rent-collection` (LT-06: payment links of the rent installments coming due, payments in flight read again, see [§12](#12-rent-collection-lt-06)) | 07:00 | `RentCollectionJob.ExecuteAsync` (plus a PostgreSQL advisory lock per lease) | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
+| `service-request-expiry` (SP-10: deletes the booking holds past their expiry, cancels the showcase requests nobody answered and tells the customer; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | `*/5` | `ServiceRequestExpiryJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 60 s |
+| `service-request-reminders` (SP-10: the reminder to the customer of a showcase request, 18:00 Rome of the day before; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | hourly | `ServiceRequestReminderJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 300 s |
 | `service-request-auto-cancel` (SP-04, D8: cancels the new service requests nobody answered; only with `Features:SupplierRequestAutoCancel=true`, otherwise removed at startup, see [suppliers.md](suppliers.md) § 21.8) | `*/10` | `ServiceRequestAutoCancelJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 requests per run) | 60 s |
-| `service-payment-sync` (SP-15b: reads again the payments Stripe is processing and the refunds it has not completed; always scheduled, see [§13](#13-service-payments-sp-15b)) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
-| `service-payment-reminders` (SP-15b: flags the late payments, sends the pending requests and the reminders at +2 and +7 days with `Features:SupplierOnlinePayments` on; always scheduled, see [§13](#13-service-payments-sp-15b)) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (plus the payment lock of each request) | 300 s |
-| `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days are written) | 60 s |
+| `service-payment-sync` (SP-15b: reads again the payments Stripe is processing and the refunds it has not completed; always scheduled, see [§14](#14-service-payments-sp-15b)) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
+| `service-payment-reminders` (SP-15b: flags the late payments, sends the pending requests and the reminders at +2 and +7 days with `Features:SupplierOnlinePayments` on; always scheduled, see [§14](#14-service-payments-sp-15b)) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (plus the payment lock of each request) | 300 s |
+| `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15); SP-05: the events by the hour become windows of hours, see [ical.md](ical.md#events-by-the-hour-sp-05)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days and windows are written) | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` (CO-09: expires stale links, queues `GuestCheckInLinkEmailJob`, see [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
 | `property-compliance-check` (CO-06, see [§10](#10-property-compliance-check-co-06)) | 04:00 | `PropertyComplianceCheckJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
@@ -61,7 +63,7 @@ submissions of the same booking to Alloggiati Web never run at once. `PushDelive
 delivery key (`PushDeliveryJob.SendAsync:<key>`, 60 s), so two runs of the same push event never overlap.
 `IcalSupplierSyncJob.SyncSupplierAsync` (first sync of a supplier's iCal URL and "sync now", SU-15) locks per
 supplier (`…SyncSupplierAsync:<orgId>`, 60 s). `SendPendingPaymentRequestsJob.ExecuteAsync` (SP-15b, queued when `account.updated` makes a
-supplier ready, see [§13](#13-service-payments-sp-15b)) holds its lock for 300 s.
+supplier ready, see [§14](#14-service-payments-sp-15b)) holds its lock for 300 s.
 
 The test `RecurringJobsConcurrencyTests` fails if a recurring job is added without `[DisableConcurrentExecution]`.
 
@@ -250,8 +252,9 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 17 recurring jobs in each schema with every flag on; 13 with the defaults
-  -- (Features:OtaPartnerApi, Features:RliProvider and Features:ESignProvider off)
+  -- 24 recurring jobs in each schema with every flag on; 19 with the defaults
+  -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider and Features:SupplierRequestAutoCancel off;
+  -- service-request-expiry and service-request-reminders are in both counts: they ignore the flags)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';
@@ -551,7 +554,48 @@ SELECT "Status", count(*) FROM casazen_prod."RentLedgerEntries"
 WHERE "PaymentRequestedAt" >= date_trunc('day', now()) OR "Status" = 1 GROUP BY 1;
 ```
 
-## 13. Service payments (SP-15b)
+## 13. Showcase booking upkeep (SP-10)
+
+Two recurring jobs work on the bookings a customer makes from a supplier's public showcase
+([suppliers.md § 23](suppliers.md#23-booking-from-the-suppliers-showcase-hold-e-mail-check-request--sp-10)). Both are **registered at
+every startup whatever `Features:SupplierShowcaseBooking` says**: a booking made while the flag was on has to lapse, and be
+reminded of, also after the flag is turned off (with it off, a run finds nothing to do and costs one query).
+
+- `service-request-expiry` (`*/5`, `ServiceRequestExpiryJob`, wait 60 s). One run, under a PostgreSQL **session lock** (a second run is
+  skipped and says so in the log), (1) deletes the holds whose `ExpiresAt` has passed (500 per run, oldest first, by id, without reading
+  their payload; a hold that was checked is kept until then for the second click on the link), and (2) cancels the showcase requests
+  whose `ResponseDueAt` has passed (500 per run), one at a time and saved only if nobody touched the request since it was read
+  (`xmin`: a supplier that takes it meanwhile wins and the run counts a conflict). The customer is told (`supplier-booking-expired`),
+  the supplier by the existing mail of SP-04. A request whose customer did not answer a time the supplier proposed (the deadline of a
+  pending proposal is the customer's) is cancelled with the reason `ProposalNotAnswered`: the customer is told
+  `supplier-booking-proposal-expired` and the supplier `supplier-booking-proposal-lapsed` (SP-11, [suppliers.md § 24](suppliers.md#24-the-customers-own-area-find-cancel-move-and-answer-a-proposed-time--sp-11)). It is the code of `service-request-auto-cancel` with the showcase scope, **without that
+  job's flag**: the host job stays behind `Features:SupplierRequestAutoCancel`, the two never touch each other's requests.
+- `service-request-reminders` (hourly, `ServiceRequestReminderJob`, wait 300 s). One run under a session lock looks at the showcase
+  requests the supplier took (`PresoInCarico`) whose work starts in the next 48 hours and which have no `ReminderSentAt`, and sends the
+  reminder to those for which 18:00 Europe/Rome of the day before has come and the work has not started, **if the supplier took the
+  request before that time** (the mail of the take promised the reminder only then). The request is marked **before** the mail is
+  queued: a crash or a repeated run sends it once or not at all, never twice. At the change of the clocks the hour follows the wall
+  clock of Rome.
+- Failure: a row that fails is logged by id and retried at the next run (expiry) or not retried (reminder: at most once); a run that
+  fails entirely is retried by Hangfire; nothing personal is in the logs.
+
+```sql
+-- Holds that should be gone (expected 0 a few minutes after the expiry)
+SELECT count(*) FROM casazen_prod."ShowcaseBookingHolds" WHERE "ExpiresAt" < now() - interval '15 minutes';
+
+-- Showcase requests past their deadline still waiting (expected 0 a few minutes after)
+SELECT count(*) FROM casazen_prod."ServiceRequests"
+WHERE "RentalContext" = 2 AND "Status" = 0 AND "ResponseDueAt" < now() - interval '15 minutes';
+
+-- Reminders sent in the last day
+SELECT count(*) FROM casazen_prod."ServiceRequests" WHERE "ReminderSentAt" > now() - interval '1 day';
+```
+
+The nightly `gdpr-data-retention` also applies `Gdpr:Retention:SupplierCustomers` to the customers of the suppliers
+([gdpr.md § 8](gdpr.md#8-private-customers-of-the-suppliers-sp-10)). `RecurringJobsConcurrencyTests` requires `[DisableConcurrentExecution]`
+on both jobs; `RecurringJobsFeatureFlagTests` that they are registered with every flag off.
+
+## 14. Service payments (SP-15b)
 
 Task SP-15b. Three jobs follow the money of the services paid inside CasaZen ([stripe.md](stripe.md#services-of-the-suppliers-sp-15)). The two recurring ones are **always registered**, whatever the state of `Features__SupplierOnlinePayments`: they follow money that is already in flight, and the reminders only flag the late payments while the flag is off. Each payment (and each refund) is handled on its own, under the payment lock of its request (advisory lock `ServiceRequestPayment`, key = the request id), in its own transaction and read again after the lock; an error on one is logged and counted and the others go on, so a retry, a manual trigger or a webhook arriving at the same moment never records a payment or sends an email twice.
 

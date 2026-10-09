@@ -85,6 +85,10 @@ public interface IUserService
     /// selected role and syncs the Auth0 onboarding roles. <c>RoleSync</c> reports the Auth0 outcome;
     /// the DB changes are kept even when Auth0 fails.
     /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// <see cref="UserOnboardingErrors.MemberCannotOnboard"/>: the user is a member of an org (a DB membership of a host
+    /// context with a role other than the owner's), not its owner. Nothing is written.
+    /// </exception>
     Task<(User User, IReadOnlyList<string> RolesAssigned, Auth0SyncResult RoleSync)> CompleteOnboardingAsync(
         string sub,
         RentalType rentalType,
