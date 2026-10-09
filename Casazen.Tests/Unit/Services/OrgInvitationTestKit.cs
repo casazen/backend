@@ -107,6 +107,7 @@ internal sealed class OrgInvitationTestKit
         Cache.Object,
         Queue(),
         EmailTestHelpers.Links(PublicSiteBaseUrl),
+        Activity(db),
         NullLogger<OrgInvitationService>.Instance,
         clock ?? Clock);
 
@@ -115,20 +116,55 @@ internal sealed class OrgInvitationTestKit
         Seats(db),
         Membership(db),
         Cache.Object,
+        Activity(db),
         NullLogger<OrgTeamService>.Instance);
 
-    public OrgInvitationMaintenanceService Maintenance(AppDbContext db)
+    public OrgInvitationMaintenanceService Maintenance(AppDbContext db) => new(
+        db,
+        Flags(),
+        Queue(),
+        EmailTestHelpers.Links(PublicSiteBaseUrl),
+        Config(),
+        NullLogger<OrgInvitationMaintenanceService>.Instance,
+        Clock);
+
+    // ─── The activity log (AM-02b) ──────────────────────────────────────────────────────────────────────
+
+    private IFeatureFlags Flags()
     {
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.OrgTeam)).Returns(OrgTeamFlag);
-        return new OrgInvitationMaintenanceService(
-            db,
-            flags.Object,
-            Queue(),
-            EmailTestHelpers.Links(PublicSiteBaseUrl),
-            Config(),
-            NullLogger<OrgInvitationMaintenanceService>.Instance,
-            Clock);
+        return flags.Object;
+    }
+
+    /// <summary>The activity log writer on <paramref name="db"/>: the service that saves with that context saves its lines too.</summary>
+    public ActivityLog Activity(AppDbContext db) => new(db, Flags(), Clock);
+
+    public OrgPropertyAccessService PropertyAccess(AppDbContext db) =>
+        new(db, Cache.Object, Activity(db), NullLogger<OrgPropertyAccessService>.Instance, Clock);
+
+    public OrgActivityService ActivityReader(AppDbContext db) => new(db);
+
+    public OrgActivityRetentionService Retention(AppDbContext db) =>
+        new(db, Config(), NullLogger<OrgActivityRetentionService>.Instance, Clock);
+
+    public OrgAccessRequestService AccessRequests(AppDbContext db) => new(
+        db,
+        Activity(db),
+        Queue(),
+        EmailTestHelpers.Links(PublicSiteBaseUrl),
+        Config(),
+        NullLogger<OrgAccessRequestService>.Instance,
+        Clock);
+
+    /// <summary>The lines of the activity log of an org, oldest first, as stored.</summary>
+    public async Task<List<OrgActivityEntry>> ReadActivityAsync(Guid orgId)
+    {
+        await using var db = NewDb();
+        return await db.OrgActivityEntries.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.OrgId == orgId)
+            .OrderBy(e => e.When).ThenBy(e => e.Type)
+            .ToListAsync();
     }
 
     // ─── Data ───────────────────────────────────────────────────────────────────────────────────────────

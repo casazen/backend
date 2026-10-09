@@ -127,6 +127,10 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         // by a generic save: a copy of the row read earlier must not put back an older mode, and the update of the other
         // fields cannot skip the checks the mode change makes on the stays and the leases.
         context.Entry(property).Property(p => p.RentalMode).IsModified = false;
+        // The person in charge is written only by OrgPropertyAccessService, under the org's people lock (AM-03): when it is set,
+        // and when the access to the property is taken away (AM-03b). A save of the other fields, from a copy of the row read
+        // earlier, must never put back the name of a person who has lost the property in the meantime.
+        context.Entry(property).Property(p => p.ResponsibleUserId).IsModified = false;
         await context.SaveChangesAsync();
         return property;
     }

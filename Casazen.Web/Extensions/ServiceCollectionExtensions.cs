@@ -419,6 +419,12 @@ public static class ServiceCollectionExtensions
         // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
         services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();
         services.AddScoped<IOrgInvitationMaintenanceService, OrgInvitationMaintenanceService>();
+        // AM-02b: the activity log of the org (ids and codes only), written inside the unit of work of the services above and of
+        // the plan and settings of the org; its list and CSV; the requests for access to the administrators; its retention.
+        services.AddScoped<IActivityLog, ActivityLog>();
+        services.AddScoped<IOrgActivityService, OrgActivityService>();
+        services.AddScoped<IOrgAccessRequestService, OrgAccessRequestService>();
+        services.AddScoped<IOrgActivityRetentionService, OrgActivityRetentionService>();
         services.AddScoped<IAccountEmailResolver, AccountEmailResolver>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         // SE-04: events of the SEO funnel (no personal data) and the featured properties of a comune.
@@ -467,7 +473,15 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierPaymentsOptions>, Casazen.Core.Options.SupplierPaymentsOptionsValidator>();
         services.AddSingleton<ISupplierPaymentGateway, StripeSupplierPaymentGateway>();
-        services.AddScoped<ISupplierPaymentService, SupplierPaymentService>();
+        // The payment service holds the payer's side (SP-15a) and, in its own interfaces, the Stripe webhook, the jobs and the admin
+        // refunds (SP-15b): one instance per scope, so they share the payment lock and the way a link is issued.
+        services.AddScoped<SupplierPaymentService>();
+        services.AddScoped<ISupplierPaymentService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentWebhookService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentJobService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentRefundService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentAdminService, SupplierPaymentAdminService>();
+        services.AddScoped<ISupplierPaymentJobScheduler, SupplierPaymentJobScheduler>();
         // One instance per request for both doors (SP-11): the hosts' and the suppliers' operations, and the narrow set of what the
         // customer of a public showcase does to its own request, which only the customer's area (IShowcaseBookingManager) uses.
         services.AddScoped<ServiceRequestService>();

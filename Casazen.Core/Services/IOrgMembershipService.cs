@@ -90,6 +90,8 @@ public interface IOrgMembershipService
     /// onboarding provisions a new org instead of making the person a second owner of this one. The CasaZen
     /// account stays, with its Auth0 login; its consents of that org stay as the record of what was accepted (they apply
     /// to that org only: another org needs its own). The person can onboard an org of its own, or accept another invitation.
+    /// Since AM-03b the properties the person was in charge of (<c>Property.ResponsibleUserId</c>) go back to nobody in the same save:
+    /// the name must not wait for the person to come back with another invitation.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">The member is the owner (<see cref="OrgMembershipErrors.LastOwner"/>).</exception>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user is not a member of any org.</exception>

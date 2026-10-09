@@ -125,6 +125,9 @@ public class AppDbContext(
     // Payment of the service requests inside CasaZen (SP-15a): two parties, not tenant-filtered.
     public DbSet<ServiceRequestPayment> ServiceRequestPayments { get; set; } = null!;
 
+    // The refunds of a service payment (SP-15b): they belong to the payment, so they are not tenant-filtered either.
+    public DbSet<ServiceRequestPaymentRefund> ServiceRequestPaymentRefunds { get; set; } = null!;
+
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
@@ -170,6 +173,9 @@ public class AppDbContext(
     public DbSet<OrgMember> OrgMembers { get; set; } = null!;
     public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
     public DbSet<PropertyMemberAccess> PropertyMemberAccesses { get; set; } = null!;
+
+    // Who did what in an org, as ids and codes (AM-02b)
+    public DbSet<OrgActivityEntry> OrgActivityEntries { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -1002,6 +1008,29 @@ public class AppDbContext(
                 .HasDatabaseName("IX_PropertyMemberAccesses_OrgId_UserId");
         });
 
+        // ─── Activity log of the org (AM-02b) ───────────────────────────────────────────────────────────────
+        modelBuilder.Entity<OrgActivityEntry>(entity =>
+        {
+            // The log of an org goes with it. No foreign key to the account: the history outlives it and holds ids only.
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(e => e.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The page of the people who administer the org: the newest lines of one org (the tenant filter reads OrgId too).
+            entity.HasIndex(e => new { e.OrgId, e.When })
+                .IsDescending(false, true)
+                .HasDatabaseName("IX_OrgActivityEntries_OrgId_When");
+
+            // The filter by event, and the count of the access requests of one person.
+            entity.HasIndex(e => new { e.OrgId, e.Type })
+                .HasDatabaseName("IX_OrgActivityEntries_OrgId_Type");
+
+            // The retention deletes across every org what is older than the cutoff.
+            entity.HasIndex(e => e.When)
+                .HasDatabaseName("IX_OrgActivityEntries_When");
+        });
+
         // The member in charge of a property (AM-03): notified together with the org's administrators. The account can go;
         // the property keeps its history and is simply left without a named person.
         modelBuilder.Entity<Property>()
@@ -1457,6 +1486,49 @@ public class AppDbContext(
                     "CK_ServiceRequestPayments_Paid",
                     $"\"Status\" NOT IN ({(int)ServicePaymentStatus.Paid}, {(int)ServicePaymentStatus.PartiallyRefunded}, {(int)ServicePaymentStatus.Refunded}) "
                     + "OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
+            });
+        });
+
+        // ─── Refunds of the service payments and the commission period (SP-15b) ─────────────
+        // The end of a commission period only makes sense with the percentage it ends.
+        modelBuilder.Entity<SupplierProfile>().ToTable(t =>
+            t.HasCheckConstraint(
+                "CK_SupplierProfiles_CommissionOverrideUntil",
+                "\"CommissionOverrideUntil\" IS NULL OR \"CommissionPercentOverride\" IS NOT NULL"));
+
+        // A refund belongs to its payment: restrict, so a payment with refunds is never deleted. The sequence is the n of the
+        // idempotency key and is unique within the payment; a Stripe refund and a key belong to one refund each.
+        modelBuilder.Entity<ServiceRequestPaymentRefund>(entity =>
+        {
+            entity.HasOne(r => r.ServiceRequestPayment)
+                .WithMany()
+                .HasForeignKey(r => r.ServiceRequestPaymentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(r => new { r.ServiceRequestPaymentId, r.Sequence })
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_Payment_Sequence");
+            entity.HasIndex(r => r.StripeRefundId)
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_StripeRefundId")
+                .HasFilter("\"StripeRefundId\" IS NOT NULL");
+            entity.HasIndex(r => r.IdempotencyKey)
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_IdempotencyKey")
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+            // The sync job looks for the refunds that wait for Stripe, by status.
+            entity.HasIndex(r => r.Status);
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPaymentRefunds_Amounts",
+                    $"\"AmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents} AND \"Sequence\" >= 1 "
+                    + "AND (\"ApplicationFeeRefundedCents\" IS NULL OR \"ApplicationFeeRefundedCents\" >= 0)");
+                // A refund that succeeded says when.
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPaymentRefunds_Succeeded",
+                    $"\"Status\" <> {(int)ServicePaymentRefundStatus.Succeeded} OR \"CompletedAt\" IS NOT NULL");
             });
         });
 

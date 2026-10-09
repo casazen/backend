@@ -27,7 +27,9 @@ public class Property : ITenantOwned
     /// <summary>
     /// The member of the org in charge of the property (AM-03): the one who receives its notifications (new booking,
     /// supplier updates) together with the org's owner and administrators. <c>null</c> = nobody was named, and the creator
-    /// (<see cref="OwnerId"/>) is notified instead. Always a user of the same org (checked when it is set).
+    /// (<see cref="OwnerId"/>) is notified instead. Always a user of the same org who reaches the property (checked when it is
+    /// set), and back to <c>null</c> when that person loses the property or leaves the org (AM-03b); the notifications read the
+    /// reach again anyway (<c>HostNotificationAudience</c>).
     /// </summary>
     [MaxLength(255)]
     public string? ResponsibleUserId { get; set; }
