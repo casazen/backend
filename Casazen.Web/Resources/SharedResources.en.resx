@@ -2365,4 +2365,25 @@
   <data name="SupplierBookingTokenRequired" xml:space="preserve">
     <value>Open the link you received by email: the confirmation code is missing or not valid.</value>
   </data>
+  <data name="SupplierBookingNotFound" xml:space="preserve">
+    <value>No request matches this code and email address. Check the code in the confirmation email and use the email address you booked with.</value>
+  </data>
+  <data name="SupplierBookingCannotCancel" xml:space="preserve">
+    <value>This request can no longer be cancelled here: the work has already started or is done, its time has passed, or the request is already closed. If you need to, contact the supplier.</value>
+  </data>
+  <data name="SupplierBookingCannotReschedule" xml:space="preserve">
+    <value>The time of this request cannot be changed: it can only be changed until the supplier has answered, while the supplier is active and the service is still available. You can cancel it and book again.</value>
+  </data>
+  <data name="SupplierBookingNoProposal" xml:space="preserve">
+    <value>There is no new time to accept or turn down for this request.</value>
+  </data>
+  <data name="SupplierBookingProposalExpired" xml:space="preserve">
+    <value>The time to answer the new time has passed: the request is cancelled automatically. You can book again from the supplier's site.</value>
+  </data>
+  <data name="SupplierBookingAccessRequired" xml:space="preserve">
+    <value>Give the supplier, the request code and the email address you booked with.</value>
+  </data>
+  <data name="SupplierBookingStartRequired" xml:space="preserve">
+    <value>Give the chosen time (startUtc).</value>
+  </data>
 </root>

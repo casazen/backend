@@ -185,6 +185,38 @@ public class ClientIpAndRateLimitConfigurationTests
     }
 
     [Fact]
+    public void Policies_TheCustomersAreaOfABooking_SharesThePerIpPolicyOfTheGuests_AndHasItsOwnLimitPerAddress()
+    {
+        // SP-11: the five endpoints of the customer's own area use the policy of "Le mie prenotazioni" per IP (10 every 5 minutes)...
+        var perIp = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicGuestBookingLookup), Configuration());
+        var perEmail = RateLimitingServiceCollectionExtensions.ResolveOptions(SupplierBookingManageEmailRateLimiter.Policy, Configuration());
+
+        Assert.Equal((10, TimeSpan.FromMinutes(5)), (perIp.PermitLimit, perIp.Window));
+        // ...and a limit per address and supplier of their own, applied by a filter next to it (10 every 15 minutes).
+        Assert.Equal(("SupplierBookingManagePerEmail", 10, TimeSpan.FromMinutes(15)), (SupplierBookingManageEmailRateLimiter.Policy.Name, perEmail.PermitLimit, perEmail.Window));
+        Assert.DoesNotContain(SupplierBookingManageEmailRateLimiter.Policy.Name, RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name));
+        // The guests' own limit per address is where it was.
+        var guests = RateLimitingServiceCollectionExtensions.ResolveOptions(GuestBookingEmailRateLimiter.Policy, Configuration());
+        Assert.Equal(("GuestBookingLookupPerEmail", 5, TimeSpan.FromMinutes(15)), (GuestBookingEmailRateLimiter.Policy.Name, guests.PermitLimit, guests.Window));
+    }
+
+    [Fact]
+    public void Policies_TheLimitPerAddressOfTheCustomersArea_IsSetByItsOwnConfigurationKeys()
+    {
+        var configuration = Configuration(
+            ("RateLimiting:SupplierBookingManagePerEmail:PermitLimit", "4"),
+            ("RateLimiting:SupplierBookingManagePerEmail:WindowSeconds", "300"),
+            ("RateLimiting:PublicGuestBookingLookup:PermitLimit", "20"));
+
+        var perEmail = RateLimitingServiceCollectionExtensions.ResolveOptions(SupplierBookingManageEmailRateLimiter.Policy, configuration);
+        var guests = RateLimitingServiceCollectionExtensions.ResolveOptions(GuestBookingEmailRateLimiter.Policy, configuration);
+
+        Assert.Equal((4, TimeSpan.FromMinutes(5)), (perEmail.PermitLimit, perEmail.Window));
+        // Setting one does not move the other: they are two limits.
+        Assert.Equal(5, guests.PermitLimit);
+    }
+
+    [Fact]
     public void ConfigureForwardedHeaders_NothingConfigured_TrustsOneHopFromAnyPeer()
     {
         var options = new ForwardedHeadersOptions();

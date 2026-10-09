@@ -145,12 +145,16 @@ public class ServiceRequest
     /// <summary>When the request was cancelled (<see cref="ServiceRequestStatus.Annullato"/>).</summary>
     public DateTime? CancelledAt { get; set; }
 
-    /// <summary>Who cancelled it: the host, the supplier (before the start) or CasaZen (no answer in time).</summary>
+    /// <summary>
+    /// Who cancelled it: the host, the supplier (before the start), the customer of a request from the showcase (SP-11) or CasaZen
+    /// (no answer in time).
+    /// </summary>
     public ServiceRequestActorParty? CancelledBy { get; set; }
 
     /// <summary>
-    /// Why it was cancelled: the text the host or the supplier wrote, or the code <c>NoResponse</c>
-    /// (<see cref="ServiceRequestCancellationReasons.NoResponse"/>) of the automatic cancellation.
+    /// Why it was cancelled: the text the host, the supplier or the customer wrote, or the code of the automatic cancellation
+    /// (<see cref="ServiceRequestCancellationReasons.NoResponse"/>, <see cref="ServiceRequestCancellationReasons.ProposalNotAnswered"/>)
+    /// or of a customer who gave no reason (<see cref="ServiceRequestCancellationReasons.CancelledByCustomer"/>).
     /// </summary>
     [MaxLength(ServiceRequestLimits.CancellationReasonMaxLength)]
     public string? CancellationReason { get; set; }

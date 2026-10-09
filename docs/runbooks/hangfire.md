@@ -565,7 +565,9 @@ reminded of, also after the flag is turned off (with it off, a run finds nothing
   their payload; a hold that was checked is kept until then for the second click on the link), and (2) cancels the showcase requests
   whose `ResponseDueAt` has passed (500 per run), one at a time and saved only if nobody touched the request since it was read
   (`xmin`: a supplier that takes it meanwhile wins and the run counts a conflict). The customer is told (`supplier-booking-expired`),
-  the supplier by the existing mail of SP-04. It is the code of `service-request-auto-cancel` with the showcase scope, **without that
+  the supplier by the existing mail of SP-04. A request whose customer did not answer a time the supplier proposed (the deadline of a
+  pending proposal is the customer's) is cancelled with the reason `ProposalNotAnswered`: the customer is told
+  `supplier-booking-proposal-expired` and the supplier `supplier-booking-proposal-lapsed` (SP-11, [suppliers.md § 24](suppliers.md#24-the-customers-own-area-find-cancel-move-and-answer-a-proposed-time--sp-11)). It is the code of `service-request-auto-cancel` with the showcase scope, **without that
   job's flag**: the host job stays behind `Features:SupplierRequestAutoCancel`, the two never touch each other's requests.
 - `service-request-reminders` (hourly, `ServiceRequestReminderJob`, wait 300 s). One run under a session lock looks at the showcase
   requests the supplier took (`PresoInCarico`) whose work starts in the next 48 hours and which have no `ReminderSentAt`, and sends the

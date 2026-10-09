@@ -26,6 +26,12 @@ public class ShowcaseBookingOptions
     /// <inheritdoc cref="MinProposalResponseMinutes"/>
     public const int MaxProposalResponseMinutes = 7 * 24 * 60;
 
+    /// <summary>Shortest and longest free cancellation notice, in hours (0 is "free until the work starts"; a month at most).</summary>
+    public const int MinFreeCancellationHours = 0;
+
+    /// <inheritdoc cref="MinFreeCancellationHours"/>
+    public const int MaxFreeCancellationHours = 24 * 30;
+
     /// <summary>
     /// Minutes a booking waits for the customer to check the e-mail (30): the slot is held for that long and the link works
     /// for that long. Env var <c>Suppliers__Showcase__EmailVerificationMinutes</c>.
@@ -34,10 +40,19 @@ public class ShowcaseBookingOptions
 
     /// <summary>
     /// Minutes the customer has to answer another time the supplier proposed for a booking (a day): the request waits that long
-    /// for the answer, then it lapses like a request nobody answered (the answer itself arrives with SP-11). Env var
-    /// <c>Suppliers__Showcase__ProposalResponseMinutes</c>.
+    /// for the answer (SP-11: <c>proposal/accept</c> and <c>proposal/reject</c>), then it lapses with the reason
+    /// <c>ProposalNotAnswered</c> and both parties are told. Env var <c>Suppliers__Showcase__ProposalResponseMinutes</c>.
     /// </summary>
     public int ProposalResponseMinutes { get; set; } = 24 * 60;
+
+    /// <summary>
+    /// Hours before the work in which the customer can still cancel a booking <b>for free</b> (24, SP-11). In v1 a cancellation
+    /// after that costs nothing either (decision D6: no exit cost), so the number only decides what the customer is told
+    /// ("free until …") and whether the supplier is told the notice was short; it is the value a later fee would read. Elapsed
+    /// hours, not hours of the clock: 24 hours before 08:00 of the Sunday the clocks go back (25 October 2026) is 09:00 of the
+    /// Saturday, on the clock of that day. Env var <c>Suppliers__Showcase__FreeCancellationHours</c>.
+    /// </summary>
+    public int FreeCancellationHours { get; set; } = 24;
 
     /// <summary>
     /// The version of the privacy notice a customer accepts when it books (the text the web app shows): the booking is refused
@@ -64,6 +79,12 @@ public class ShowcaseBookingOptions
         {
             failures.Add(
                 $"Suppliers__Showcase__ProposalResponseMinutes must be between {MinProposalResponseMinutes} and {MaxProposalResponseMinutes} minutes.");
+        }
+
+        if (FreeCancellationHours is < MinFreeCancellationHours or > MaxFreeCancellationHours)
+        {
+            failures.Add(
+                $"Suppliers__Showcase__FreeCancellationHours must be between {MinFreeCancellationHours} and {MaxFreeCancellationHours} hours.");
         }
 
         if (CurrentPrivacyNoticeVersion is { Length: > 50 })

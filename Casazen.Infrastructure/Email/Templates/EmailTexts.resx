@@ -1083,4 +1083,106 @@
   <data name="SupplierBookingExpired_Cta" xml:space="preserve">
     <value>Prenota di nuovo</value>
   </data>
+  <data name="SupplierBookingCancellationReceipt_Subject" xml:space="preserve">
+    <value>Hai annullato la richiesta a {0}</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_Body" xml:space="preserve">
+    <value>Hai annullato la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_Code" xml:space="preserve">
+    <value>Codice della richiesta: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_ReasonLabel" xml:space="preserve">
+    <value>Il motivo che hai indicato:</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_Hint" xml:space="preserve">
+    <value>Non hai pagato nulla e non ti addebitiamo nulla per l'annullo. Se cambi idea, puoi prenotare di nuovo.</value>
+  </data>
+  <data name="SupplierBookingCancellationReceipt_Cta" xml:space="preserve">
+    <value>Prenota di nuovo</value>
+  </data>
+  <data name="SupplierBookingProposalExpired_Subject" xml:space="preserve">
+    <value>Richiesta a {0} annullata: nuovo orario senza risposta</value>
+  </data>
+  <data name="SupplierBookingProposalExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti aveva proposto un altro orario per &lt;strong&gt;{1}&lt;/strong&gt; (richiesto per &lt;strong&gt;{2}&lt;/strong&gt;), ma non hai risposto in tempo: abbiamo annullato la richiesta.</value>
+  </data>
+  <data name="SupplierBookingProposalExpired_Hint" xml:space="preserve">
+    <value>Non hai pagato nulla. Puoi prenotare di nuovo.</value>
+  </data>
+  <data name="SupplierBookingProposalExpired_Cta" xml:space="preserve">
+    <value>Prenota di nuovo</value>
+  </data>
+  <data name="SupplierBookingByCustomer_Customer" xml:space="preserve">
+    <value>Cliente: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingCancelledByCustomer_Subject" xml:space="preserve">
+    <value>Richiesta annullata dal cliente — {0}</value>
+  </data>
+  <data name="SupplierBookingCancelledByCustomer_Body" xml:space="preserve">
+    <value>Una richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{2}&lt;/strong&gt; è stata &lt;strong&gt;annullata dal cliente&lt;/strong&gt;. Non occupa più l'orario.</value>
+  </data>
+  <data name="SupplierBookingCancelledByCustomer_ShortNotice" xml:space="preserve">
+    <value>L'annullo è arrivato con meno di &lt;strong&gt;{0} h&lt;/strong&gt; di preavviso.</value>
+  </data>
+  <data name="SupplierBookingRescheduledByCustomer_Subject" xml:space="preserve">
+    <value>Il cliente ha cambiato orario — {0}</value>
+  </data>
+  <data name="SupplierBookingRescheduledByCustomer_Body" xml:space="preserve">
+    <value>Il cliente ha chiesto di spostare la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: da &lt;strong&gt;{2}&lt;/strong&gt; a &lt;strong&gt;{3}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingRescheduledByCustomer_Dropped" xml:space="preserve">
+    <value>L'orario che avevi proposto non vale più.</value>
+  </data>
+  <data name="SupplierBookingRescheduledByCustomer_Deadline" xml:space="preserve">
+    <value>La richiesta è di nuovo in attesa: rispondi entro le &lt;strong&gt;{0}&lt;/strong&gt;, dopo quell'ora si annulla da sola.</value>
+  </data>
+  <data name="SupplierBookingProposalAccepted_Subject" xml:space="preserve">
+    <value>Il cliente ha accettato il nuovo orario — {0}</value>
+  </data>
+  <data name="SupplierBookingProposalAccepted_Body" xml:space="preserve">
+    <value>Il cliente ha &lt;strong&gt;accettato&lt;/strong&gt; il nuovo orario per la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: &lt;strong&gt;{2}&lt;/strong&gt;. La richiesta è ora presa in carico.</value>
+  </data>
+  <data name="SupplierBookingProposalRejected_Subject" xml:space="preserve">
+    <value>Il cliente ha rifiutato il nuovo orario — {0}</value>
+  </data>
+  <data name="SupplierBookingProposalRejected_Body" xml:space="preserve">
+    <value>Il cliente ha &lt;strong&gt;rifiutato&lt;/strong&gt; il nuovo orario per la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;. La richiesta resta in attesa dell'orario richiesto, &lt;strong&gt;{2}&lt;/strong&gt;: rispondi entro le &lt;strong&gt;{3}&lt;/strong&gt;, dopo quell'ora si annulla da sola. Puoi prenderla in carico così com'è, proporre un altro orario o rifiutarla.</value>
+  </data>
+  <data name="SupplierBookingProposalLapsed_Subject" xml:space="preserve">
+    <value>Richiesta annullata: il cliente non ha risposto — {0}</value>
+  </data>
+  <data name="SupplierBookingProposalLapsed_Body" xml:space="preserve">
+    <value>Il cliente non ha risposto in tempo al nuovo orario che avevi proposto per &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: la richiesta è stata &lt;strong&gt;annullata&lt;/strong&gt; e non occupa più l'orario.</value>
+  </data>
+  <data name="Push_ShowcaseCancelledByCustomer_Title" xml:space="preserve">
+    <value>Richiesta annullata dal cliente</value>
+  </data>
+  <data name="Push_ShowcaseCancelledByCustomer_Body" xml:space="preserve">
+    <value>{0} a {1}: il cliente ha annullato la richiesta.</value>
+  </data>
+  <data name="Push_ShowcaseRescheduledByCustomer_Title" xml:space="preserve">
+    <value>Il cliente ha cambiato orario</value>
+  </data>
+  <data name="Push_ShowcaseRescheduledByCustomer_Body" xml:space="preserve">
+    <value>{0} a {1}: la richiesta aspetta la tua risposta per il nuovo orario.</value>
+  </data>
+  <data name="Push_ShowcaseProposalAccepted_Title" xml:space="preserve">
+    <value>Nuovo orario accettato</value>
+  </data>
+  <data name="Push_ShowcaseProposalAccepted_Body" xml:space="preserve">
+    <value>{0} a {1}: il cliente ha accettato il tuo orario.</value>
+  </data>
+  <data name="Push_ShowcaseProposalRejected_Title" xml:space="preserve">
+    <value>Nuovo orario rifiutato</value>
+  </data>
+  <data name="Push_ShowcaseProposalRejected_Body" xml:space="preserve">
+    <value>{0} a {1}: il cliente ha rifiutato il tuo orario, la richiesta resta in attesa.</value>
+  </data>
+  <data name="Push_ShowcaseProposalLapsed_Title" xml:space="preserve">
+    <value>Richiesta annullata</value>
+  </data>
+  <data name="Push_ShowcaseProposalLapsed_Body" xml:space="preserve">
+    <value>{0} a {1}: il cliente non ha risposto in tempo al nuovo orario.</value>
+  </data>
 </root>

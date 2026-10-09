@@ -29,6 +29,14 @@ public static partial class EmailTemplates
         public const string SupplierBookingReminder = "supplier-booking-reminder";
         public const string SupplierBookingCancelled = "supplier-booking-cancelled";
         public const string SupplierBookingExpired = "supplier-booking-expired";
+
+        // The customer's own area of a booking (SP-11).
+        public const string SupplierBookingCancellationReceipt = "supplier-booking-cancellation-receipt";
+        public const string SupplierBookingProposalExpired = "supplier-booking-proposal-expired";
+        public const string SupplierBookingCancelledByCustomer = "supplier-booking-cancelled-by-customer";
+        public const string SupplierBookingRescheduledByCustomer = "supplier-booking-rescheduled-by-customer";
+        public const string SupplierBookingProposalAnsweredByCustomer = "supplier-booking-proposal-answered-by-customer";
+        public const string SupplierBookingProposalLapsed = "supplier-booking-proposal-lapsed";
     }
 
     /// <summary>
@@ -259,5 +267,189 @@ public static partial class EmailTemplates
             .Muted("SupplierBookingExpired_Hint")
             .Button("SupplierBookingExpired_Cta", showcaseUrl)
             .Build("SupplierBookingExpired_Subject", supplierName);
+    }
+
+    // ─── The customer's own area of a booking (SP-11) ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The customer cancelled its booking, to the customer: the receipt, with the reason it wrote (when it wrote one) and the words
+    /// that nothing was paid and nothing is charged (decision D6: no exit cost in v1, so a late cancellation is the same).
+    /// </summary>
+    public static EmailContent SupplierBookingCancellationReceipt(
+        CultureInfo culture,
+        string customerName,
+        string supplierName,
+        string serviceName,
+        DateTime startUtc,
+        string publicCode,
+        string? reason,
+        string showcaseUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
+            .Paragraph("SupplierBooking_Greeting", customerName)
+            .Paragraph("SupplierBookingCancellationReceipt_Body", serviceName, supplierName, builder.FormatInstant(startUtc))
+            .Paragraph("SupplierBookingCancellationReceipt_Code", Casazen.Core.Services.BookingCodes.Format(publicCode))
+            .Quote("SupplierBookingCancellationReceipt_ReasonLabel", reason)
+            .Muted("SupplierBookingCancellationReceipt_Hint")
+            .Button("SupplierBookingCancellationReceipt_Cta", showcaseUrl)
+            .Build("SupplierBookingCancellationReceipt_Subject", supplierName);
+    }
+
+    /// <summary>
+    /// The customer did not answer the other time the supplier proposed, and the request was cancelled, to the customer. Not the
+    /// words of <see cref="SupplierBookingExpired"/>: there it is the supplier that did not answer, here it is the customer (decision D24).
+    /// </summary>
+    /// <param name="startUtc">The time the customer had asked for (the request keeps it while a proposal waits).</param>
+    public static EmailContent SupplierBookingProposalExpired(
+        CultureInfo culture,
+        string customerName,
+        string supplierName,
+        string serviceName,
+        DateTime startUtc,
+        string showcaseUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
+            .Paragraph("SupplierBooking_Greeting", customerName)
+            .Paragraph("SupplierBookingProposalExpired_Body", supplierName, serviceName, builder.FormatInstant(startUtc))
+            .Muted("SupplierBookingProposalExpired_Hint")
+            .Button("SupplierBookingProposalExpired_Cta", showcaseUrl)
+            .Build("SupplierBookingProposalExpired_Subject", supplierName);
+    }
+
+    /// <summary>
+    /// The customer cancelled a request, to the supplier (Italian): the comune, the service and the time, "Nome C." and the reason it
+    /// wrote. When the supplier had taken the request and the cancellation came with less notice than the free cancellation asks
+    /// for, the mail says so (<paramref name="shortNoticeHours"/>); nothing else is claimed about it.
+    /// </summary>
+    public static EmailContent SupplierBookingCancelledByCustomer(
+        CultureInfo culture,
+        string supplierName,
+        string serviceName,
+        string comune,
+        string customerShortName,
+        DateTime startUtc,
+        string? reason,
+        int? shortNoticeHours,
+        string inboxUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        builder
+            .Paragraph("SupplierBooking_Greeting", supplierName)
+            .Paragraph("SupplierBookingCancelledByCustomer_Body", serviceName, comune, builder.FormatInstant(startUtc));
+        CustomerLine(builder, customerShortName);
+        builder.Quote("SupplierBooking_ReasonLabel", reason);
+        if (shortNoticeHours is { } hours)
+            builder.Paragraph("SupplierBookingCancelledByCustomer_ShortNotice", hours);
+
+        return builder
+            .Button("SupplierBookingNewRequest_Cta", inboxUrl)
+            .Build("SupplierBookingCancelledByCustomer_Subject", comune);
+    }
+
+    /// <summary>
+    /// The customer moved a new request to another time, to the supplier (Italian): from when to when, that the request waits again
+    /// and until when the supplier has to answer, and — when it had proposed another time — that the proposal no longer applies.
+    /// </summary>
+    public static EmailContent SupplierBookingRescheduledByCustomer(
+        CultureInfo culture,
+        string supplierName,
+        string serviceName,
+        string comune,
+        string customerShortName,
+        DateTime previousStartUtc,
+        DateTime newStartUtc,
+        DateTime respondByUtc,
+        bool proposalDropped,
+        string inboxUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        builder
+            .Paragraph("SupplierBooking_Greeting", supplierName)
+            .Paragraph(
+                "SupplierBookingRescheduledByCustomer_Body",
+                serviceName,
+                comune,
+                builder.FormatInstant(previousStartUtc),
+                builder.FormatInstant(newStartUtc));
+        CustomerLine(builder, customerShortName);
+        if (proposalDropped)
+            builder.Paragraph("SupplierBookingRescheduledByCustomer_Dropped");
+
+        return builder
+            .Paragraph("SupplierBookingRescheduledByCustomer_Deadline", builder.FormatInstant(respondByUtc))
+            .Button("SupplierBookingNewRequest_Cta", inboxUrl)
+            .Build("SupplierBookingRescheduledByCustomer_Subject", comune);
+    }
+
+    /// <summary>
+    /// The customer answered the time the supplier proposed, to the supplier (Italian). Accepted: the new time, and that the request
+    /// is taken. Turned down: the request stays at the time first asked for, and the supplier has until
+    /// <paramref name="respondByUtc"/> to answer it.
+    /// </summary>
+    /// <param name="startUtc">The new time when <paramref name="accepted"/>, the time first asked for when not.</param>
+    /// <param name="respondByUtc">The supplier's new deadline; named only when the proposal was turned down.</param>
+    public static EmailContent SupplierBookingProposalAnsweredByCustomer(
+        CultureInfo culture,
+        string supplierName,
+        string serviceName,
+        string comune,
+        string customerShortName,
+        bool accepted,
+        DateTime startUtc,
+        DateTime? respondByUtc,
+        string inboxUrl)
+    {
+        var prefix = accepted ? "SupplierBookingProposalAccepted" : "SupplierBookingProposalRejected";
+        var builder = new EmailHtmlBuilder(culture);
+        builder.Paragraph("SupplierBooking_Greeting", supplierName);
+        if (accepted)
+        {
+            builder.Paragraph($"{prefix}_Body", serviceName, comune, builder.FormatInstant(startUtc));
+        }
+        else
+        {
+            builder.Paragraph(
+                $"{prefix}_Body",
+                serviceName,
+                comune,
+                builder.FormatInstant(startUtc),
+                builder.FormatInstant(respondByUtc ?? startUtc));
+        }
+
+        CustomerLine(builder, customerShortName);
+        return builder
+            .Button("SupplierBookingNewRequest_Cta", inboxUrl)
+            .Build($"{prefix}_Subject", comune);
+    }
+
+    /// <summary>
+    /// The customer did not answer the time the supplier proposed and the request was cancelled, to the supplier (Italian). Not the
+    /// words of the request nobody answered: here the supplier did answer, and it is the customer who did not (decision D24).
+    /// </summary>
+    public static EmailContent SupplierBookingProposalLapsed(
+        CultureInfo culture,
+        string supplierName,
+        string serviceName,
+        string comune,
+        string customerShortName,
+        string inboxUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        builder
+            .Paragraph("SupplierBooking_Greeting", supplierName)
+            .Paragraph("SupplierBookingProposalLapsed_Body", serviceName, comune);
+        CustomerLine(builder, customerShortName);
+        return builder
+            .Button("SupplierBookingNewRequest_Cta", inboxUrl)
+            .Build("SupplierBookingProposalLapsed_Subject", comune);
+    }
+
+    /// <summary>"Cliente: Nome C." — left out when there is no name to show (decision D9: never more than the short name).</summary>
+    private static void CustomerLine(EmailHtmlBuilder builder, string customerShortName)
+    {
+        if (!string.IsNullOrWhiteSpace(customerShortName))
+            builder.Paragraph("SupplierBookingByCustomer_Customer", customerShortName);
     }
 }
