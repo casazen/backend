@@ -58,9 +58,11 @@ public static class FeatureFlags
 
     /// <summary>
     /// SP-02 (redesign wave, decision D2): payment of a supplier's work inside CasaZen (direct charge on the supplier's
-    /// Stripe account with the platform commission), off until the product owner turns it on. It will gate the creation of
-    /// the payment requests (SP-15); nothing consumes it yet, SP-02 only introduces and exposes it. Without it the
-    /// existing manual flow ("Segna pagato" by the host) stays the only one.
+    /// Stripe account with the platform commission), off until the product owner turns it on. SP-14 puts the supplier's Stripe
+    /// Connect account behind it (<c>api/supplier/payments/*</c>: onboarding, state, Express Dashboard link; 404 while it is
+    /// off); SP-15 will also gate the creation of the payment requests. The processing of the Stripe webhooks
+    /// (<c>account.updated</c> and, later, the payments in flight) is not behind it. Without it the existing manual flow
+    /// ("Segna pagato" by the host) stays the only one.
     /// </summary>
     public const string SupplierOnlinePayments = "SupplierOnlinePayments";
 
