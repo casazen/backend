@@ -260,12 +260,13 @@ public class AddPropertyRentalModeMigrationPostgresTests : IAsyncLifetime
 
     /// <summary>
     /// The org, its guest and the properties of every combination of the signals, at the schema right before the migration.
-    /// The properties are raw rows (the entity writes the column that the migration adds); the leases and the bookings are
-    /// entities, since the migration does not touch their tables.
+    /// Every row is written by SQL naming only the columns that exist at this point (<see cref="LegacyOrgRows"/> and siblings),
+    /// never through the model: the model also writes the column that this migration adds, and the columns of every migration
+    /// that will come after it.
     /// </summary>
     private static async Task SeedAsync(AppDbContext db, Seed s)
     {
-        db.Orgs.Add(new OrgEntity
+        await LegacyOrgRows.InsertAsync(db, new OrgEntity
         {
             Id = s.Org,
             Name = "Org PM-01",
@@ -275,7 +276,7 @@ public class AddPropertyRentalModeMigrationPostgresTests : IAsyncLifetime
             PlanTier = PlanTier.Starter,
             IsActive = true,
         });
-        db.Guests.Add(new Guest
+        await LegacyGuestRows.InsertAsync(db, new Guest
         {
             Id = s.Guest,
             OrgId = s.Org,
@@ -283,7 +284,6 @@ public class AddPropertyRentalModeMigrationPostgresTests : IAsyncLifetime
             LastName = "Rossi",
             Email = $"mario.{Guid.NewGuid():N}@example.com",
         });
-        await db.SaveChangesAsync();
 
         // maxGuests 0 and nightlyRate 0 = the A7-06 marker.
         await InsertPropertyAsync(db, s.OnlyContracts, s.Org, "Solo contratti", 0, 0);
@@ -303,43 +303,55 @@ public class AddPropertyRentalModeMigrationPostgresTests : IAsyncLifetime
         await InsertPropertyAsync(db, s.LeasedNeighbour, s.Org, "Locato accanto", 3, 90);
         await InsertPropertyAsync(db, s.DeletedWithContracts, s.Org, "Eliminato con contratti", 0, 0, isDeleted: true);
 
-        Lease(db, s, s.OnlyContracts, LeaseStatus.Signed, 2026, 2030);
-        Lease(db, s, s.OnlyEndedContract, LeaseStatus.Registered, 2020, 2024);
-        Lease(db, s, s.ContractsAndBookingsWithMarker, LeaseStatus.Registered, 2025, 2029);
-        Lease(db, s, s.ContractsAndBookingsWithShortStayData, LeaseStatus.Signed, 2025, 2029);
-        Lease(db, s, s.ContractsAndOnlyACancelledBooking, LeaseStatus.Signed, 2025, 2029);
-        Lease(db, s, s.ContractsWithShortStayData, LeaseStatus.AwaitingSignature, 2026, 2030);
-        Lease(db, s, s.ContractsWithGuestsOnly, LeaseStatus.PartiallySigned, 2026, 2030);
-        Lease(db, s, s.ContractsWithRateOnly, LeaseStatus.RegistrationPending, 2026, 2030);
-        Lease(db, s, s.OnlyDraftContract, LeaseStatus.Draft, 2026, 2030);
-        Lease(db, s, s.OnlyRejectedContract, LeaseStatus.Rejected, 2026, 2030);
-        Lease(db, s, s.LeasedNeighbour, LeaseStatus.SentToProvider, 2026, 2030);
-        Lease(db, s, s.DeletedWithContracts, LeaseStatus.Signed, 2026, 2030);
+        await InsertLeaseAsync(db, s, s.OnlyContracts, LeaseStatus.Signed, 2026, 2030);
+        await InsertLeaseAsync(db, s, s.OnlyEndedContract, LeaseStatus.Registered, 2020, 2024);
+        await InsertLeaseAsync(db, s, s.ContractsAndBookingsWithMarker, LeaseStatus.Registered, 2025, 2029);
+        await InsertLeaseAsync(db, s, s.ContractsAndBookingsWithShortStayData, LeaseStatus.Signed, 2025, 2029);
+        await InsertLeaseAsync(db, s, s.ContractsAndOnlyACancelledBooking, LeaseStatus.Signed, 2025, 2029);
+        await InsertLeaseAsync(db, s, s.ContractsWithShortStayData, LeaseStatus.AwaitingSignature, 2026, 2030);
+        await InsertLeaseAsync(db, s, s.ContractsWithGuestsOnly, LeaseStatus.PartiallySigned, 2026, 2030);
+        await InsertLeaseAsync(db, s, s.ContractsWithRateOnly, LeaseStatus.RegistrationPending, 2026, 2030);
+        await InsertLeaseAsync(db, s, s.OnlyDraftContract, LeaseStatus.Draft, 2026, 2030);
+        await InsertLeaseAsync(db, s, s.OnlyRejectedContract, LeaseStatus.Rejected, 2026, 2030);
+        await InsertLeaseAsync(db, s, s.LeasedNeighbour, LeaseStatus.SentToProvider, 2026, 2030);
+        await InsertLeaseAsync(db, s, s.DeletedWithContracts, LeaseStatus.Signed, 2026, 2030);
 
-        Booking(db, s, s.OnlyBookings, BookingStatus.Confirmed);
-        Booking(db, s, s.ContractsAndBookingsWithMarker, BookingStatus.CheckedOut);
-        Booking(db, s, s.ContractsAndBookingsWithShortStayData, BookingStatus.Confirmed);
-        Booking(db, s, s.ContractsAndOnlyACancelledBooking, BookingStatus.Cancelled);
-        Booking(db, s, s.ShortStayProperty, BookingStatus.Pending);
-        await db.SaveChangesAsync();
-        db.ChangeTracker.Clear();
+        await InsertBookingAsync(db, s, s.OnlyBookings, BookingStatus.Confirmed);
+        await InsertBookingAsync(db, s, s.ContractsAndBookingsWithMarker, BookingStatus.CheckedOut);
+        await InsertBookingAsync(db, s, s.ContractsAndBookingsWithShortStayData, BookingStatus.Confirmed);
+        await InsertBookingAsync(db, s, s.ContractsAndOnlyACancelledBooking, BookingStatus.Cancelled);
+        await InsertBookingAsync(db, s, s.ShortStayProperty, BookingStatus.Pending);
     }
 
-    /// <summary>A live or deleted property row with the columns of the schema before the migration.</summary>
-    private static Task InsertPropertyAsync(
-        AppDbContext db, Guid id, Guid orgId, string name, int maxGuests, decimal nightlyRate, bool isDeleted = false) =>
-        db.Database.ExecuteSqlAsync($"""
-            INSERT INTO "Properties" (
-                "Id", "OwnerId", "OrgId", "Name", "Description", "Address", "City", "PostalCode",
-                "Latitude", "Longitude", "Bedrooms", "Bathrooms", "MaxGuests", "NightlyRate", "CleaningFee", "DamageDeposit",
-                "Amenities", "PhotoUrls", "HouseRules", "Timezone", "IsActive", "IsDeleted", "CreatedAt", "UpdatedAt")
-            VALUES ({id}, 'auth0|pm01', {orgId}, {name}, 'PM-01', {"Via PM-01 " + id.ToString("N")}, 'Monza', '20900',
-                0, 0, 1, 1, {maxGuests}, {nightlyRate}, 0, 0,
-                ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, {isDeleted}, now(), {Seed.UpdatedAt});
-            """);
+    /// <summary>
+    /// A live or deleted property with the columns of the schema before the migration (<see cref="LegacyPropertyRows"/>).
+    /// The soft delete column (PC-05) comes before this point: the row is deleted after it is written.
+    /// </summary>
+    private static async Task InsertPropertyAsync(
+        AppDbContext db, Guid id, Guid orgId, string name, int maxGuests, decimal nightlyRate, bool isDeleted = false)
+    {
+        await LegacyPropertyRows.InsertAsync(db, new Property
+        {
+            Id = id,
+            OrgId = orgId,
+            OwnerId = "auth0|pm01",
+            Name = name,
+            Description = "PM-01",
+            Address = "Via PM-01 " + id.ToString("N"),
+            City = "Monza",
+            PostalCode = "20900",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = maxGuests,
+            NightlyRate = nightlyRate,
+            UpdatedAt = Seed.UpdatedAt,
+        });
+        if (isDeleted)
+            await db.Database.ExecuteSqlAsync($"""UPDATE "Properties" SET "IsDeleted" = true, "DeletedAt" = now() WHERE "Id" = {id}""");
+    }
 
-    private static void Lease(AppDbContext db, Seed s, Guid propertyId, LeaseStatus status, int fromYear, int toYear) =>
-        db.LeaseContracts.Add(new LeaseContract
+    private static Task InsertLeaseAsync(AppDbContext db, Seed s, Guid propertyId, LeaseStatus status, int fromYear, int toYear) =>
+        LegacyLeaseRows.InsertAsync(db, new LeaseContract
         {
             PropertyId = propertyId,
             OrgId = s.Org,
@@ -349,8 +361,8 @@ public class AddPropertyRentalModeMigrationPostgresTests : IAsyncLifetime
             MonthlyRent = 800m,
         });
 
-    private static void Booking(AppDbContext db, Seed s, Guid propertyId, BookingStatus status) =>
-        db.Bookings.Add(new Booking
+    private static Task InsertBookingAsync(AppDbContext db, Seed s, Guid propertyId, BookingStatus status) =>
+        LegacyBookingRows.InsertAsync(db, new Booking
         {
             PropertyId = propertyId,
             OrgId = s.Org,
