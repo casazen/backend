@@ -1520,7 +1520,7 @@ text seeded around the supplier (phone, e-mail, VAT number, block and leave labe
 | Method and path | Rate limit (per IP) | Flag | Answer |
 |---|---|---|---|
 | `GET api/public/suppliers/{slug}` | `PublicRead` 120 / min | **not** gated | the page of SU-13; with the flag on also `services` and `medianResponseMinutes` (22.3) |
-| `GET api/public/suppliers/{slug}/services` | `PublicRead` | `SupplierShowcaseBooking` | `{ items[], total }`: the published services as cards (22.4) |
+| `GET api/public/suppliers/{slug}/services` | `PublicRead` | `SupplierShowcaseBooking` | `{ items[], total }`: the published services **in full**, like the detail (22.4) |
 | `GET api/public/suppliers/{slug}/services/{serviceSlug}` | `PublicRead` | `SupplierShowcaseBooking` | one service with its description and structured supplements |
 | `GET api/public/suppliers/{slug}/slots?service=&from=&days=` | `PublicSupplierSlots` 60 / min | `SupplierShowcaseBooking` | the free slots (22.5) |
 | `POST api/public/suppliers/{slug}/quote` | `PublicSupplierQuote` 30 / min | `SupplierShowcaseBooking` | the price estimate (22.6); body limit 8 KB |
@@ -1550,7 +1550,7 @@ SP-16; the DTO will then gain a `paused` flag.
 
 ### 22.4 Services
 
-`GET …/services` returns cards, `…/services/{serviceSlug}` the detail (the slug is lowercased; the address bar may send capitals).
+`GET …/services` returns every published service in full (the same shape as the detail, so a booking form needs one request), `…/services/{serviceSlug}` one of them (the slug is lowercased; the address bar may send capitals). The page itself (22.3) carries the cards, without the description and the supplements.
 
 | Field | |
 |---|---|
@@ -1558,7 +1558,7 @@ SP-16; the DTO will then gain a `paused` flag.
 | `priceFromCents`, `priceUnit` (`PerJob`, `PerHour`, `PerSet`, `PerSquareMeter`), `requiresQuote` | `priceFromCents` is `null` for "on quote" |
 | `pricesIncludeVat` | **the supplier's declaration** (D4), false until it says so: false is not "VAT excluded", it is "nothing promised". CasaZen never adds or subtracts VAT, and the page may say "IVA inclusa" only when it is true (the tax wording is `[CONSULENTE FISCALE]`) |
 | `durationMinutes`, `included[]`, `excluded[]`, `photoUrls[]` | |
-| detail only: `description`, `supplements[]` `{ code, label, amountCents, per, max, includedSqm }` | `per` is `flat`, `bathroom`, `sqm30`, `set` or `hour`; `includedSqm` (60) only for `sqm30` |
+| list and detail, not the cards of the page: `description`, `supplements[]` `{ code, label, amountCents, per, max, includedSqm }` | `per` is `flat`, `bathroom`, `sqm30`, `set` or `hour`; `includedSqm` (60) only for `sqm30` |
 
 The services come from `SupplierServiceCatalogService.ListPublicAsync` / `FindPublicAsync`: **one statement** with the supplier org, not
 deleted, service `Active` **and** the profile of that org `Active` (a join), so a draft, a paused or deleted service, another
