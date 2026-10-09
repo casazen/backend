@@ -151,7 +151,10 @@ public sealed record SupplierJobClient(Guid Id, string Name);
 /// <summary>A time the supplier proposed instead of the requested one, waiting for the host's answer.</summary>
 public sealed record SupplierJobProposal(DateTime StartUtc, DateTime EndUtc, DateTime ProposedAt, string? Message);
 
-/// <summary>A cancelled request: when, by whom, and the reason (the text written, or <c>NoResponse</c>).</summary>
+/// <summary>
+/// A cancelled request: when, by whom, and the reason (the text written, or one of the codes of
+/// <see cref="ServiceRequestCancellationReasons"/>: <c>NoResponse</c>, <c>ProposalNotAnswered</c>, <c>CancelledByCustomer</c>).
+/// </summary>
 public sealed record SupplierJobCancellation(DateTime At, ServiceRequestActorParty By, string? Reason);
 
 /// <summary>One step of the history of a service request.</summary>

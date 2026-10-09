@@ -17,7 +17,8 @@ public enum ServiceRequestActorParty
 
     /// <summary>
     /// A private customer of the supplier's public showcase (SP-10): the one who asked for the work, with no account, by checking
-    /// its e-mail. It is the party of the first step of the history of a showcase request; its own cancellation arrives with SP-11.
+    /// its e-mail. It is the party of the first step of the history of a showcase request and, since SP-11, of its cancellation
+    /// (<c>CancelledBy = Customer</c>): the customer cancels with the code of its booking and its e-mail address.
     /// </summary>
     Customer = 3,
 }

@@ -79,10 +79,108 @@ public class EndpointAuthorizationArchitectureTests
         ["PublicSupplierBookingController.ConfirmEmail"] = "The customer follows the link of the verification e-mail: the token in the body is the secret, and only then the request exists (SP-10, behind SupplierShowcaseBooking, rate limited).",
     };
 
+    /// <summary>
+    /// The anonymous endpoints of the customer's own area of a booking made from the supplier showcase (SP-11), each with the reason it
+    /// is public: the customer has no account, and proves it is the one who booked with the code of the booking and its e-mail address.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> PublicSupplierBookingManagement = new Dictionary<string, string>
+    {
+        ["PublicSupplierBookingManagementController.Lookup"] = "A customer without an account finds its booking again with the code and the e-mail address of the booking: one 404 for everything that does not identify it (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingManagementController.Cancel"] = "The customer cancels its own booking, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingManagementController.Reschedule"] = "The customer moves its own new request to another free slot, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingManagementController.AcceptProposal"] = "The customer accepts the other time the supplier proposed for its own booking, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingManagementController.RejectProposal"] = "The customer turns down the other time the supplier proposed for its own booking, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+    };
+
+    private static IEnumerable<MethodInfo> PublicBookingManagementActions() =>
+        typeof(PublicSupplierBookingManagementController)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => !m.IsSpecialName && m.GetCustomAttributes(inherit: true).OfType<IActionHttpMethodProvider>().Any());
+
     private static IEnumerable<MethodInfo> PublicBookingActions() =>
         typeof(PublicSupplierBookingController)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(m => !m.IsSpecialName && m.GetCustomAttributes(inherit: true).OfType<IActionHttpMethodProvider>().Any());
+
+    [Fact]
+    public void PublicSupplierBookingManagement_EveryAnonymousAction_IsListedWithItsReason()
+    {
+        var anonymous = Actions()
+            .Where(a => a.IsAnonymous && a.Key.StartsWith(nameof(PublicSupplierBookingManagementController) + ".", StringComparison.Ordinal))
+            .Select(a => a.Key)
+            .Order()
+            .ToList();
+
+        Assert.Equal(PublicSupplierBookingManagement.Keys.Order(), anonymous);
+        Assert.All(PublicSupplierBookingManagement, entry => Assert.True(entry.Value.Length >= 40, $"{entry.Key}: say why it is public"));
+    }
+
+    [Fact]
+    public void PublicSupplierBookingManagement_EveryAction_IsBehindTheFlag_RateLimitedPerIpAndPerAddress_AndBoundedInSize()
+    {
+        var registered = RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(PublicSupplierBookingManagement.Count, PublicBookingManagementActions().Count());
+        foreach (var action in PublicBookingManagementActions())
+        {
+            var gates = action.GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag).ToList();
+            Assert.Equal(new[] { FeatureFlags.SupplierShowcaseBooking }, gates);
+
+            // The policy of "Le mie prenotazioni" per IP, and the limit per address and supplier next to it, on every endpoint.
+            Assert.Equal(RateLimitPolicies.PublicGuestBookingLookup, RateLimitPolicyOf(action));
+            Assert.Contains(RateLimitPolicyOf(action)!, registered);
+            Assert.Single(action.GetCustomAttributes<SupplierBookingManageRateLimitAttribute>());
+
+            var limit = action.GetCustomAttribute<RequestSizeLimitAttribute>();
+            Assert.NotNull(limit);
+            Assert.Equal((long?)ShowcaseBookingLimits.ManageMaxBodyBytes, GetBytes(limit));
+            Assert.True(GetBytes(limit) <= 64 * 1024, $"{action.Name}: the body of an anonymous call is small");
+        }
+    }
+
+    [Fact]
+    public void PublicSupplierBookingManagement_TheCodeAndTheAddressAreInTheBody_NeverInTheUrl()
+    {
+        var controllerRoute = typeof(PublicSupplierBookingManagementController).GetCustomAttribute<RouteAttribute>();
+
+        Assert.Equal("api/public/supplier-bookings", controllerRoute?.Template);
+        Assert.NotNull(typeof(PublicSupplierBookingManagementController).GetCustomAttribute<AllowAnonymousAttribute>());
+        foreach (var action in PublicBookingManagementActions())
+        {
+            var verbs = action.GetCustomAttributes<HttpMethodAttribute>().ToList();
+            var template = Assert.Single(verbs).Template ?? string.Empty;
+
+            // POST only (a GET would put the credentials where logs and caches read them), and no route parameter at all.
+            Assert.Equal(new[] { "POST" }, Assert.Single(verbs).HttpMethods);
+            Assert.DoesNotContain("{", template);
+            Assert.DoesNotContain(action.GetParameters(), p => p.GetCustomAttributes<FromQueryAttribute>().Any() || p.GetCustomAttributes<FromRouteAttribute>().Any());
+            Assert.All(
+                action.GetParameters().Where(p => p.ParameterType != typeof(CancellationToken)),
+                p => Assert.NotEmpty(p.GetCustomAttributes<FromBodyAttribute>()));
+        }
+    }
+
+    [Fact]
+    public void PublicSupplierBookingManagement_TheBodiesAreCountedByTheLimitPerAddress()
+    {
+        foreach (var action in PublicBookingManagementActions())
+        {
+            var body = Assert.Single(action.GetParameters(), p => p.GetCustomAttributes<FromBodyAttribute>().Any());
+            Assert.True(
+                typeof(Casazen.Web.DTOs.IPerEmailRateLimitedRequest).IsAssignableFrom(body.ParameterType),
+                $"{action.Name}: its body has to carry the address the limit counts");
+        }
+    }
+
+    [Fact]
+    public void PublicSupplierBookingManagement_TheFlagMakesThemAnswerLikeARouteThatDoesNotExist_BeforeAuthenticationAndBinding()
+    {
+        // The flag is read by the middleware that runs before authentication and model binding: every action carries the attribute.
+        Assert.All(
+            PublicBookingManagementActions(),
+            action => Assert.NotEmpty(action.GetCustomAttributes<FeatureGateAttribute>(inherit: true)));
+        Assert.Empty(typeof(PublicSupplierBookingManagementController).GetCustomAttributes<FeatureGateAttribute>(inherit: true));
+    }
 
     [Fact]
     public void PublicSupplierBooking_EveryAnonymousAction_IsListedWithItsReason()

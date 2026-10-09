@@ -9,7 +9,10 @@ namespace Casazen.Core.Suppliers;
 /// </param>
 /// <param name="StartedAt">When the supplier started the work (SP-04); <c>null</c> for a request that was never started.</param>
 /// <param name="CancelledAt">When the request was cancelled (SP-04).</param>
-/// <param name="CancellationReason">The reason of the cancellation: the text of the host or the supplier, or <c>NoResponse</c>.</param>
+/// <param name="CancellationReason">
+/// The reason of the cancellation: the text of the host, the supplier or the customer, or one of the codes of
+/// <see cref="ServiceRequestCancellationReasons"/> (<c>NoResponse</c>, <c>ProposalNotAnswered</c>, <c>CancelledByCustomer</c>).
+/// </param>
 /// <param name="CancelledBy">Who cancelled it (SP-04).</param>
 /// <param name="PaidBy">
 /// Who made the request paid (SP-15a); <c>null</c> is the party that asked (<paramref name="Requester"/>), who did before SP-15a.

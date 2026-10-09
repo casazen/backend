@@ -79,6 +79,9 @@ if (!string.IsNullOrEmpty(stripeSecretKey))
 // Stripe mode of this environment (live keys only in Production) and plan prices, validated at startup (PL-11).
 builder.Services.AddCasazenBillingConfiguration(builder.Configuration, builder.Environment);
 
+// "Accesso aperto" (BL-01): Entitlement:OpenAccess:{Enabled,Tier}, off by default, validated at startup (docs/runbooks/open-access.md).
+builder.Services.AddCasazenOpenAccessConfiguration(builder.Configuration);
+
 // Services
 builder.Services.AddCasazenServices();
 builder.Services.AddScoped<IGuestService, GuestService>();
@@ -318,6 +321,7 @@ if (PropertyComplianceCheckJob.IsRecalculateCommand(args))
 }
 
 app.LogDataProtectionKeyProtection();
+app.LogOpenAccess();
 
 // Swagger (must be before Authentication to allow anonymous access to swagger.json)
 if (app.Environment.IsDevelopment())

@@ -111,10 +111,17 @@ public class SupplierServiceRequestDto
     /// <summary>When the request was cancelled.</summary>
     public DateTime? CancelledAt { get; set; }
 
-    /// <summary>Who cancelled it: <c>Host</c>, <c>Supplier</c> or <c>System</c> (no answer in time).</summary>
+    /// <summary>
+    /// Who cancelled it: <c>Host</c>, <c>Supplier</c>, <c>Customer</c> (the customer of a request from the showcase, SP-11) or
+    /// <c>System</c> (nobody answered in time).
+    /// </summary>
     public string? CancelledBy { get; set; }
 
-    /// <summary>The reason written by the host or the supplier, or the code <c>NoResponse</c> of the automatic cancellation.</summary>
+    /// <summary>
+    /// The reason written by the host, the supplier or the customer, or a code when nobody wrote one: <c>NoResponse</c> (nobody
+    /// answered in time), <c>ProposalNotAnswered</c> (the customer did not answer the time proposed in a day) or
+    /// <c>CancelledByCustomer</c> (the customer cancelled and gave no reason).
+    /// </summary>
     public string? CancellationReason { get; set; }
 
     /// <summary>What the supplier wrote when it completed the work.</summary>
@@ -181,7 +188,10 @@ public class ServiceRequestHistoryEntryDto
     /// <summary>The supplier member who took the request, when known; host members are never named.</summary>
     public string? ActorName { get; set; }
 
-    /// <summary>The rejection or cancellation reason, on the <c>Rifiutato</c> and <c>Annullato</c> steps (<c>NoResponse</c> for the automatic one).</summary>
+    /// <summary>
+    /// The rejection or cancellation reason, on the <c>Rifiutato</c> and <c>Annullato</c> steps: the text a person wrote, or the code
+    /// <c>NoResponse</c>, <c>ProposalNotAnswered</c> or <c>CancelledByCustomer</c> (<see cref="Casazen.Core.Suppliers.ServiceRequestCancellationReasons"/>).
+    /// </summary>
     public string? Reason { get; set; }
 
     internal static ServiceRequestHistoryEntryDto From(ServiceRequestHistoryEntry entry) => new()

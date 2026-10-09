@@ -100,6 +100,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:PublicSupplierQuote:PermitLimit"] = "1000",
                 ["RateLimiting:PublicSupplierBookingCreate:PermitLimit"] = "1000",
                 ["RateLimiting:SupplierBookingCreatePerEmail:PermitLimit"] = "1000",
+                ["RateLimiting:SupplierBookingManagePerEmail:PermitLimit"] = "1000",
                 // SP-10: with Features:SupplierShowcaseBooking on, the version of the privacy notice is required at startup (the
                 // booking records it); the key of the e-mail index is required outside Development and Testing and is set here so
                 // the tests index the addresses the way a real environment does.

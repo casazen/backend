@@ -596,6 +596,29 @@ public partial class ServiceRequestService(
                 "ServiceRequest {Id}: {Operation} refused, its payment was created by another call", request.Id, operation);
             throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
         }
+        catch (DbUpdateException ex) when (IsLockConflict(ex))
+        {
+            // A deadlock or a serialization failure of the database is the same thing for the caller as a request that changed under
+            // it: the other operation won, nothing of this one was saved (SP-11: the customer and the supplier act on one request).
+            logger.LogInformation(
+                "ServiceRequest {Id}: {Operation} refused, the database stopped it ({SqlState})", request.Id, operation, PostgresStateOf(ex));
+            throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
+        }
+    }
+
+    /// <summary>True for the errors PostgreSQL raises when two transactions get in each other's way: a deadlock and a serialization failure.</summary>
+    private static bool IsLockConflict(Exception ex) =>
+        PostgresStateOf(ex) is Npgsql.PostgresErrorCodes.DeadlockDetected or Npgsql.PostgresErrorCodes.SerializationFailure;
+
+    private static string? PostgresStateOf(Exception? ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is Npgsql.PostgresException postgres)
+                return postgres.SqlState;
+        }
+
+        return null;
     }
 
     /// <summary>The time the supplier proposed is dropped when the request moves on (taken, rejected, cancelled).</summary>

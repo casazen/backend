@@ -71,6 +71,26 @@ public static partial class EmailTemplates
             ServiceCategoryLabel(culture, category),
             comune);
 
+    /// <summary>The customer of the public showcase cancelled its request (SP-11), to the supplier (comune only).</summary>
+    public static PushText ShowcaseCancelledByCustomerPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ShowcaseCancelledByCustomer", ServiceCategoryLabel(culture, category), comune);
+
+    /// <summary>The customer of the public showcase moved a new request to another time (SP-11), to the supplier (comune only).</summary>
+    public static PushText ShowcaseRescheduledByCustomerPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ShowcaseRescheduledByCustomer", ServiceCategoryLabel(culture, category), comune);
+
+    /// <summary>The customer of the public showcase accepted or turned down the proposed time (SP-11), to the supplier (comune only).</summary>
+    public static PushText ShowcaseProposalAnsweredPush(CultureInfo culture, string category, string comune, bool accepted) =>
+        Push(
+            culture,
+            accepted ? "Push_ShowcaseProposalAccepted" : "Push_ShowcaseProposalRejected",
+            ServiceCategoryLabel(culture, category),
+            comune);
+
+    /// <summary>The customer of the public showcase did not answer the proposed time and the request was cancelled (SP-11), to the supplier.</summary>
+    public static PushText ShowcaseProposalLapsedPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ShowcaseProposalLapsed", ServiceCategoryLabel(culture, category), comune);
+
     /// <summary>Service request marked as paid by the host, to the supplier (SU-09).</summary>
     public static PushText ServiceRequestPaidPush(CultureInfo culture, string category, string propertyName) =>
         Push(culture, "Push_ServiceRequestPaid", ServiceCategoryLabel(culture, category), propertyName);

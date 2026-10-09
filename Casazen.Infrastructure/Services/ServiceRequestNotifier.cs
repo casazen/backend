@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -200,6 +201,21 @@ public sealed class ServiceRequestNotifier(
         if (request.CancelledBy is not { } cancelledBy || cancelledBy == ServiceRequestActorParty.Supplier)
             return;
 
+        // A showcase request that lapsed because its customer did not answer the time the supplier proposed (SP-11): the supplier did
+        // answer, so it is not told it did not (decision D24). The customer's own cancellation has its own notification.
+        if (request.RentalContext == ServiceRequestRentalContext.Showcase
+            && cancelledBy == ServiceRequestActorParty.System
+            && request.CancellationReason == ServiceRequestCancellationReasons.ProposalNotAnswered)
+        {
+            await showcase.NotifySupplierOfLapsedProposalAsync(request, cancellationToken);
+            return;
+        }
+
+        // The customer's own cancellation tells the supplier and the customer in one go (NotifyShowcaseCancelledByCustomerAsync): the
+        // host texts below would call it "the host".
+        if (cancelledBy == ServiceRequestActorParty.Customer)
+            return;
+
         try
         {
             var supplier = await FindSupplierAsync(request, cancellationToken);
@@ -228,6 +244,28 @@ public sealed class ServiceRequestNotifier(
             logger.LogError(ex, "Supplier notification for cancelled service request {Id} could not be queued", request.Id);
         }
     }
+
+    // ─── What the customer of a public showcase does (SP-11): the supplier, and the customer's receipt ───────────────
+
+    /// <summary>The customer cancelled its showcase request: the supplier is told, and the customer gets the receipt.</summary>
+    public Task NotifyShowcaseCancelledByCustomerAsync(ServiceRequest request, CancellationToken cancellationToken) =>
+        showcase.NotifyCancelledByCustomerAsync(request, cancellationToken);
+
+    /// <summary>The customer moved its new showcase request to another time: the supplier is told.</summary>
+    public Task NotifyShowcaseRescheduledAsync(
+        ServiceRequest request,
+        DateTime previousStartUtc,
+        bool proposalDropped,
+        CancellationToken cancellationToken) =>
+        showcase.NotifyRescheduledByCustomerAsync(request, previousStartUtc, proposalDropped, cancellationToken);
+
+    /// <summary>The customer accepted or turned down the time the supplier proposed: the supplier is told (and the customer, on acceptance).</summary>
+    public Task NotifyShowcaseProposalAnsweredAsync(
+        ServiceRequest request,
+        bool accepted,
+        DateTime proposedAt,
+        CancellationToken cancellationToken) =>
+        showcase.NotifyProposalAnsweredByCustomerAsync(request, accepted, proposedAt, cancellationToken);
 
     /// <summary>The host reminds the supplier to answer (SP-04): email and push. One key per reminder, so a retry sends nothing twice.</summary>
     public async Task NotifyReminderAsync(ServiceRequest request, CancellationToken cancellationToken)

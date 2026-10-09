@@ -443,7 +443,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierPaymentsOptions>, Casazen.Core.Options.SupplierPaymentsOptionsValidator>();
         services.AddSingleton<ISupplierPaymentGateway, StripeSupplierPaymentGateway>();
         services.AddScoped<ISupplierPaymentService, SupplierPaymentService>();
-        services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        // One instance per request for both doors (SP-11): the hosts' and the suppliers' operations, and the narrow set of what the
+        // customer of a public showcase does to its own request, which only the customer's area (IShowcaseBookingManager) uses.
+        services.AddScoped<ServiceRequestService>();
+        services.AddScoped<IServiceRequestService>(provider => provider.GetRequiredService<ServiceRequestService>());
+        services.AddScoped<IShowcaseRequestCustomerActions>(provider => provider.GetRequiredService<ServiceRequestService>());
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
 
@@ -466,6 +470,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceCustomerReader, ServiceCustomerReader>();
         services.AddScoped<ShowcaseBookingNotifier>();
         services.AddScoped<IShowcaseBookingService, ShowcaseBookingService>();
+        // The customer's own area of a booking (SP-11): find it with the code and the e-mail, cancel it, move it, answer a proposed time.
+        services.AddScoped<IShowcaseBookingManager, ShowcaseBookingManager>();
         // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the
         // customers' data: their recurring jobs are registered whatever the flags say.
         services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
