@@ -1086,6 +1086,84 @@
   <data name="Push_ShowcaseProposalLapsed_Body" xml:space="preserve">
     <value>{0} a {1}: il cliente non ha risposto in tempo al nuovo orario.</value>
   </data>
+  <data name="OrgRole_Owner" xml:space="preserve">
+    <value>Titolare</value>
+  </data>
+  <data name="OrgRole_Admin" xml:space="preserve">
+    <value>Amministratore</value>
+  </data>
+  <data name="OrgRole_PropertyManager" xml:space="preserve">
+    <value>Property manager</value>
+  </data>
+  <data name="OrgRole_Collaborator" xml:space="preserve">
+    <value>Collaboratore</value>
+  </data>
+  <data name="OrgRole_Accountant" xml:space="preserve">
+    <value>Contabile</value>
+  </data>
+  <data name="OrgArea_ShortRent" xml:space="preserve">
+    <value>Affitti brevi</value>
+  </data>
+  <data name="OrgArea_LongRent" xml:space="preserve">
+    <value>Affitti lunghi</value>
+  </data>
+  <data name="OrgInvitation_Subject" xml:space="preserve">
+    <value>{0} ti invita a lavorare con {1} su CasaZen</value>
+  </data>
+  <data name="OrgInvitation_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="OrgInvitation_Body" xml:space="preserve">
+    <value>{0} ti ha invitato su CasaZen come &lt;strong&gt;{1}&lt;/strong&gt; di &lt;strong&gt;{2}&lt;/strong&gt;. Potrai lavorare in: {3}.</value>
+  </data>
+  <data name="OrgInvitation_EmailHint" xml:space="preserve">
+    <value>Accedi o registrati con l'email &lt;strong&gt;{0}&lt;/strong&gt;: l'invito vale solo per questo indirizzo e si può usare una sola volta. La password la scegli tu.</value>
+  </data>
+  <data name="OrgInvitation_Cta" xml:space="preserve">
+    <value>Accetta l'invito</value>
+  </data>
+  <data name="OrgInvitation_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OrgInvitation_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana). Se non conosci {1}, puoi ignorare questa email.</value>
+  </data>
+  <data name="OrgInvitationReminder_Subject" xml:space="preserve">
+    <value>Promemoria: l'invito a lavorare con {0} scade il {1}</value>
+  </data>
+  <data name="OrgInvitationReminder_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="OrgInvitationReminder_Body" xml:space="preserve">
+    <value>Hai ancora un invito per entrare in &lt;strong&gt;{0}&lt;/strong&gt; su CasaZen come &lt;strong&gt;{1}&lt;/strong&gt;: non lo hai ancora accettato.</value>
+  </data>
+  <data name="OrgInvitationReminder_Cta" xml:space="preserve">
+    <value>Accetta l'invito</value>
+  </data>
+  <data name="OrgInvitationReminder_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OrgInvitationReminder_NewLink" xml:space="preserve">
+    <value>Questo link sostituisce quello dell'email precedente, che non funziona più.</value>
+  </data>
+  <data name="OrgInvitationReminder_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana).</value>
+  </data>
+  <data name="OrgInvitationExpired_Subject" xml:space="preserve">
+    <value>Invito scaduto: {0}</value>
+  </data>
+  <data name="OrgInvitationExpired_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="OrgInvitationExpired_Body" xml:space="preserve">
+    <value>L'invito a &lt;strong&gt;{0}&lt;/strong&gt; ({1}) è scaduto senza essere accettato. Il posto nel piano è di nuovo libero.</value>
+  </data>
+  <data name="OrgInvitationExpired_Hint" xml:space="preserve">
+    <value>Se la persona vuole ancora entrare, puoi mandarle un nuovo invito da Persone e permessi.</value>
+  </data>
+  <data name="OrgInvitationExpired_Cta" xml:space="preserve">
+    <value>Apri Persone e permessi</value>
+  </data>
   <data name="ServicePaymentRequest_Subject" xml:space="preserve">
     <value>Da pagare: {0} ({1})</value>
   </data>
@@ -1208,83 +1286,5 @@
   </data>
   <data name="ServicePaymentAlert_Detail" xml:space="preserve">
     <value>Dettaglio: {0}</value>
-  </data>
-  <data name="OrgRole_Owner" xml:space="preserve">
-    <value>Titolare</value>
-  </data>
-  <data name="OrgRole_Admin" xml:space="preserve">
-    <value>Amministratore</value>
-  </data>
-  <data name="OrgRole_PropertyManager" xml:space="preserve">
-    <value>Property manager</value>
-  </data>
-  <data name="OrgRole_Collaborator" xml:space="preserve">
-    <value>Collaboratore</value>
-  </data>
-  <data name="OrgRole_Accountant" xml:space="preserve">
-    <value>Contabile</value>
-  </data>
-  <data name="OrgArea_ShortRent" xml:space="preserve">
-    <value>Affitti brevi</value>
-  </data>
-  <data name="OrgArea_LongRent" xml:space="preserve">
-    <value>Affitti lunghi</value>
-  </data>
-  <data name="OrgInvitation_Subject" xml:space="preserve">
-    <value>{0} ti invita a lavorare con {1} su CasaZen</value>
-  </data>
-  <data name="OrgInvitation_Greeting" xml:space="preserve">
-    <value>Ciao {0},</value>
-  </data>
-  <data name="OrgInvitation_Body" xml:space="preserve">
-    <value>{0} ti ha invitato su CasaZen come &lt;strong&gt;{1}&lt;/strong&gt; di &lt;strong&gt;{2}&lt;/strong&gt;. Potrai lavorare in: {3}.</value>
-  </data>
-  <data name="OrgInvitation_EmailHint" xml:space="preserve">
-    <value>Accedi o registrati con l'email &lt;strong&gt;{0}&lt;/strong&gt;: l'invito vale solo per questo indirizzo e si può usare una sola volta. La password la scegli tu.</value>
-  </data>
-  <data name="OrgInvitation_Cta" xml:space="preserve">
-    <value>Accetta l'invito</value>
-  </data>
-  <data name="OrgInvitation_LinkFallback" xml:space="preserve">
-    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
-  </data>
-  <data name="OrgInvitation_Expires" xml:space="preserve">
-    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana). Se non conosci {1}, puoi ignorare questa email.</value>
-  </data>
-  <data name="OrgInvitationReminder_Subject" xml:space="preserve">
-    <value>Promemoria: l'invito a lavorare con {0} scade il {1}</value>
-  </data>
-  <data name="OrgInvitationReminder_Greeting" xml:space="preserve">
-    <value>Ciao {0},</value>
-  </data>
-  <data name="OrgInvitationReminder_Body" xml:space="preserve">
-    <value>Hai ancora un invito per entrare in &lt;strong&gt;{0}&lt;/strong&gt; su CasaZen come &lt;strong&gt;{1}&lt;/strong&gt;: non lo hai ancora accettato.</value>
-  </data>
-  <data name="OrgInvitationReminder_Cta" xml:space="preserve">
-    <value>Accetta l'invito</value>
-  </data>
-  <data name="OrgInvitationReminder_LinkFallback" xml:space="preserve">
-    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
-  </data>
-  <data name="OrgInvitationReminder_NewLink" xml:space="preserve">
-    <value>Questo link sostituisce quello dell'email precedente, che non funziona più.</value>
-  </data>
-  <data name="OrgInvitationReminder_Expires" xml:space="preserve">
-    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana).</value>
-  </data>
-  <data name="OrgInvitationExpired_Subject" xml:space="preserve">
-    <value>Invito scaduto: {0}</value>
-  </data>
-  <data name="OrgInvitationExpired_Greeting" xml:space="preserve">
-    <value>Ciao {0},</value>
-  </data>
-  <data name="OrgInvitationExpired_Body" xml:space="preserve">
-    <value>L'invito a &lt;strong&gt;{0}&lt;/strong&gt; ({1}) è scaduto senza essere accettato. Il posto nel piano è di nuovo libero.</value>
-  </data>
-  <data name="OrgInvitationExpired_Hint" xml:space="preserve">
-    <value>Se la persona vuole ancora entrare, puoi mandarle un nuovo invito da Persone e permessi.</value>
-  </data>
-  <data name="OrgInvitationExpired_Cta" xml:space="preserve">
-    <value>Apri Persone e permessi</value>
   </data>
 </root>
