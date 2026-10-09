@@ -11,8 +11,6 @@ using Casazen.Tests.Integration.Postgres;
 using Hangfire.Common;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -139,9 +137,9 @@ public class ServiceRequestAutoCancelPostgresTests(AutoCancelEnabledFactory fact
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var id = await factory.CreateRequestAsync(world);
         await factory.ChangeRequestAsync(id, r => r.ResponseDueAt = DateTime.UtcNow.AddMinutes(-1));
-        var rendezvous = new SaveRendezvous(parties: 2);
+        // The run and the take read the request as unanswered and are held before saving until both got there.
         await using var app = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-            services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(rendezvous))));
+            SaveRendezvous.HoldParallelSaves(services, parties: 2)));
 
         await using var scope = app.Services.CreateAsyncScope();
         var job = scope.ServiceProvider.GetRequiredService<IServiceRequestAutoCancelService>();
@@ -195,29 +193,5 @@ public class ServiceRequestAutoCancelPostgresTests(AutoCancelEnabledFactory fact
         client.DefaultRequestHeaders.Add("X-Test-User", world.SupplierUserId);
         client.DefaultRequestHeaders.Add("X-Test-Roles", "Supplier");
         return client;
-    }
-
-    /// <summary>Holds every save that modifies a service request until <c>parties</c> of them arrived, so they all read the same state before any writes.</summary>
-    private sealed class SaveRendezvous(int parties) : SaveChangesInterceptor
-    {
-        private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _arrived;
-
-        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
-            DbContextEventData eventData,
-            InterceptionResult<int> result,
-            CancellationToken cancellationToken = default)
-        {
-            var transition = eventData.Context?.ChangeTracker.Entries<ServiceRequest>().Any(e => e.State == EntityState.Modified) == true;
-            if (transition)
-            {
-                if (Interlocked.Increment(ref _arrived) >= parties)
-                    _allArrived.TrySetResult();
-
-                await _allArrived.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
-            }
-
-            return result;
-        }
     }
 }

@@ -14,7 +14,6 @@ using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Email;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
@@ -45,17 +44,9 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
 
         // Both requests read the request as "Richiesto" and are held before saving until both got there: the race of
         // two supplier members (or two tabs) clicking "take" and "reject" together, made deterministic.
-        var rendezvous = new TransitionRendezvous(parties: 2);
         var emails = new RecordingEmailQueue();
         var pushes = new RecordingPushNotifications();
-        await using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-        {
-            services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(rendezvous));
-            services.RemoveAll<IEmailQueue>();
-            services.AddSingleton<IEmailQueue>(emails);
-            services.RemoveAll<IPushNotificationService>();
-            services.AddSingleton<IPushNotificationService>(pushes);
-        }));
+        await using var app = AppHoldingParallelSaves(emails, pushes);
         using var member1 = CreateClient(app, w.SupplierUserId, Supplier);
         using var member2 = CreateClient(app, w.SecondSupplierUserId, Supplier);
 
@@ -92,14 +83,8 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
     {
         var w = await SeedWorldAsync();
         var id = await CreateRequestAsync(w);
-        var rendezvous = new TransitionRendezvous(parties: 2);
         var emails = new RecordingEmailQueue();
-        await using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-        {
-            services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(rendezvous));
-            services.RemoveAll<IEmailQueue>();
-            services.AddSingleton<IEmailQueue>(emails);
-        }));
+        await using var app = AppHoldingParallelSaves(emails);
         using var member1 = CreateClient(app, w.SupplierUserId, Supplier);
         using var member2 = CreateClient(app, w.SecondSupplierUserId, Supplier);
 
@@ -530,14 +515,7 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         var id = await CreateRequestAsync(w);
         var emails = new RecordingEmailQueue();
         var pushes = new RecordingPushNotifications();
-        await using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-        {
-            services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(new TransitionRendezvous(parties: 2)));
-            services.RemoveAll<IEmailQueue>();
-            services.AddSingleton<IEmailQueue>(emails);
-            services.RemoveAll<IPushNotificationService>();
-            services.AddSingleton<IPushNotificationService>(pushes);
-        }));
+        await using var app = AppHoldingParallelSaves(emails, pushes);
         using var host1 = CreateClient(app, w.OwnerId, Host);
         using var host2 = CreateClient(app, w.OwnerId, Host);
 
@@ -570,13 +548,23 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
 
     // ─── helpers ───
 
-    /// <summary>The app with every save of a request held until two of them arrived, and the email queue recording what is sent.</summary>
-    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> AppHoldingParallelSaves(RecordingEmailQueue emails) =>
+    /// <summary>
+    /// The app with every save of a request held until two of them arrived (<see cref="SaveRendezvous"/>: ONE rendezvous for the
+    /// host, shared by the requests of every scope), the email queue recording what is sent and, when given, the push service too.
+    /// </summary>
+    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> AppHoldingParallelSaves(
+        RecordingEmailQueue emails,
+        RecordingPushNotifications? pushes = null) =>
         _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
-            services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(new TransitionRendezvous(parties: 2)));
+            SaveRendezvous.HoldParallelSaves(services, parties: 2);
             services.RemoveAll<IEmailQueue>();
             services.AddSingleton<IEmailQueue>(emails);
+            if (pushes is not null)
+            {
+                services.RemoveAll<IPushNotificationService>();
+                services.AddSingleton<IPushNotificationService>(pushes);
+            }
         }));
 
     /// <summary>A request the supplier took, through the API (its emails go to the queue of the factory, not to the test's).</summary>
@@ -597,33 +585,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         Guid SupplierOrgId,
         string SupplierUserId,
         string SecondSupplierUserId);
-
-    /// <summary>
-    /// Holds every save that modifies a service request until <c>parties</c> of them arrived, so they all read the
-    /// same state before any of them writes.
-    /// </summary>
-    private sealed class TransitionRendezvous(int parties) : SaveChangesInterceptor
-    {
-        private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _arrived;
-
-        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
-            DbContextEventData eventData,
-            InterceptionResult<int> result,
-            CancellationToken cancellationToken = default)
-        {
-            var transition = eventData.Context?.ChangeTracker.Entries<ServiceRequest>()
-                .Any(e => e.State == EntityState.Modified) == true;
-            if (transition)
-            {
-                if (Interlocked.Increment(ref _arrived) >= parties)
-                    _allArrived.TrySetResult();
-                await _allArrived.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
-            }
-
-            return result;
-        }
-    }
 
     private sealed class RecordingPushNotifications : IPushNotificationService
     {
