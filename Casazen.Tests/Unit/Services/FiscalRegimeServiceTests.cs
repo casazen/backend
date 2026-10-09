@@ -185,7 +185,8 @@ public class FiscalRegimeServiceTests
         Assert.True(taxpayer.ThresholdExceeded);
         Assert.All(snapshot.Properties, p =>
         {
-            Assert.Null(p.RecommendedRegime);
+            Assert.Equal(StrFiscalRegime.RegimeOrdinario, p.RecommendedRegime);
+            Assert.False(p.RegimeConfirmed);
             Assert.Equal(FiscalTaxNotes.ThresholdExceeded, p.TaxNote);
         });
 

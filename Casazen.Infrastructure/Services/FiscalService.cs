@@ -607,7 +607,7 @@ public partial class FiscalService(
             return new FiscalPropertyRow(
                 property.Id,
                 property.Name,
-                Recommend(property, taxpayer),
+                Recommend(property, taxpayer, orgHasPartitaIva),
                 assigned,
                 assignment?.IsPrimaryForCedolare == true,
                 property.ShortStay,
@@ -619,11 +619,14 @@ public partial class FiscalService(
         }
 
         /// <summary>
-        /// Informative only (the regime is the taxpayer's choice): within the threshold, 21% for the designated unit (or the
-        /// only apartment), 26% for the others; nothing beyond it, where the accountant decides (fiscale.md C2, C3).
+        /// Informative only (the regime is the taxpayer's choice and is never applied until AssignRegimeAsync): within
+        /// the threshold, 21% for the designated unit (or the only apartment), 26% for the others; past it, impresa
+        /// (regime ordinario) when a partita IVA is available (PO 2026-10-08).
         /// </summary>
-        private StrFiscalRegime? Recommend(YearProperty property, TaxpayerYear taxpayer)
+        private StrFiscalRegime? Recommend(YearProperty property, TaxpayerYear taxpayer, bool orgHasPartitaIva)
         {
+            if (taxpayer.ThresholdExceeded)
+                return ImpresaAvailable(taxpayer, orgHasPartitaIva) ? StrFiscalRegime.RegimeOrdinario : null;
             if (WouldExceedThreshold(property))
                 return null;
             if (taxpayer.ReducedRatePropertyId is Guid reduced)
