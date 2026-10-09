@@ -243,6 +243,27 @@
   <data name="PropertyResponsibleInvalid" xml:space="preserve">
     <value>The person in charge must be an active person of the organization who can see this property.</value>
   </data>
+  <data name="AccessRequestAreaRequired" xml:space="preserve">
+    <value>Choose what you want access to.</value>
+  </data>
+  <data name="AccessRequestAreaUnknown" xml:space="preserve">
+    <value>You cannot ask for access to this area or page.</value>
+  </data>
+  <data name="AccessRequestNoteTooLong" xml:space="preserve">
+    <value>The message is too long (200 characters at most).</value>
+  </data>
+  <data name="AccessRequestLimitReached" xml:space="preserve">
+    <value>You already sent several requests today and the administrators have been told. Try again tomorrow.</value>
+  </data>
+  <data name="OrgActivityTypeUnknown" xml:space="preserve">
+    <value>Unknown activity type.</value>
+  </data>
+  <data name="OrgActivityAreaUnknown" xml:space="preserve">
+    <value>Unknown area.</value>
+  </data>
+  <data name="OrgActivityRangeInvalid" xml:space="preserve">
+    <value>The start date must be before the end date.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
   </data>
