@@ -14,4 +14,10 @@ public enum ServiceRequestActorParty
 
     /// <summary>CasaZen itself: the automatic cancellation of a request nobody answered in time (decision D8).</summary>
     System = 2,
+
+    /// <summary>
+    /// A private customer of the supplier's public showcase (SP-10): the one who asked for the work, with no account, by checking
+    /// its e-mail. It is the party of the first step of the history of a showcase request; its own cancellation arrives with SP-11.
+    /// </summary>
+    Customer = 3,
 }

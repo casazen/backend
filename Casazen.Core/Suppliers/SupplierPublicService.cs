@@ -44,3 +44,11 @@ public sealed record SupplierPublicService(
     public SupplierSlotQuery? ToSlotQuery() =>
         DurationMinutes is > 0 ? new SupplierSlotQuery(DurationMinutes.Value, MinNoticeHours, WeekdaysMask) : null;
 }
+
+/// <summary>
+/// A published service of an active supplier with the id of the catalog row, for the one use that needs it (SP-10): the booking
+/// keeps the id on the request it creates (<c>ServiceRequest.ServiceListingId</c>). The public reads never carry the id
+/// (<see cref="SupplierPublicService"/> has none); this is found by the same statement as the public service, with the same
+/// rules (<c>Active</c> service of an <c>Active</c> supplier, not deleted), and is handed only to the booking service.
+/// </summary>
+public sealed record SupplierBookableService(Guid ListingId, SupplierPublicService Service);

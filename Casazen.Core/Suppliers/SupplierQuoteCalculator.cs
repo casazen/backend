@@ -4,7 +4,7 @@ namespace Casazen.Core.Suppliers;
 
 /// <summary>
 /// The price estimate of a service for what the customer chose (SP-09, <c>gap/05</c> §4.1-§4.2): a <b>pure function</b>, no
-/// clock, no database, so every rule below is a table of cases. The same function will price the booking (SP-10), so the
+/// clock, no database, so every rule below is a table of cases. The same function prices the booking (SP-10), so the
 /// total the customer saw is the total the request carries.
 /// </summary>
 /// <remarks>
@@ -120,6 +120,44 @@ public static class SupplierQuoteCalculator
         durationMinutes is > 0
             ? Math.Clamp((durationMinutes.Value + 59) / 60, 1, PublicShowcaseLimits.QuoteMaxQuantity)
             : 1;
+
+    /// <summary>
+    /// What a booking keeps of the customer's choices on its request (<c>ServiceRequest.OptionsJson</c>, SP-10): a snapshot, so a
+    /// later change of the price list does not rewrite what was booked. Independent of the outcome of the estimate: a service on
+    /// quote has no total, but the customer still chose its options. First the quantity of a price per hour, set or square meter
+    /// (<see cref="ServiceRequestOptionCodes.Quantity"/>), then every supplement that has units (the picked ones and the 30 m²
+    /// blocks of the surface), in the order of the price list.
+    /// </summary>
+    public static IReadOnlyList<ServiceRequestOption> SnapshotOptions(SupplierPublicService service, SupplierQuoteChoices choices)
+    {
+        ArgumentNullException.ThrowIfNull(service);
+        ArgumentNullException.ThrowIfNull(choices);
+
+        var options = new List<ServiceRequestOption>();
+        if (service.PriceUnit != SupplierServicePriceUnit.PerJob)
+        {
+            options.Add(new ServiceRequestOption(
+                ServiceRequestOptionCodes.Quantity,
+                service.Name,
+                service.PriceFromCents ?? 0,
+                service.PriceUnit switch
+                {
+                    SupplierServicePriceUnit.PerHour => SupplierServiceSupplementUnits.Hour,
+                    SupplierServicePriceUnit.PerSet => SupplierServiceSupplementUnits.Set,
+                    _ => ServiceRequestOptionCodes.SquareMeter,
+                },
+                BaseQuantity(service, choices)));
+        }
+
+        foreach (var supplement in service.Supplements)
+        {
+            var units = UnitsOf(supplement, choices);
+            if (units > 0)
+                options.Add(new ServiceRequestOption(supplement.Code, supplement.Label, supplement.AmountCents, supplement.Per, units));
+        }
+
+        return options;
+    }
 
     private static SupplierQuote Declined(SupplierQuoteOutcome outcome, SupplierQuoteReason reason, bool pricesIncludeVat) =>
         new(outcome, reason, null, [], pricesIncludeVat);

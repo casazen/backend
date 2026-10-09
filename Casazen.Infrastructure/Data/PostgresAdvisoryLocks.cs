@@ -145,6 +145,25 @@ internal static class PostgresAdvisoryLocks
         /// whole run): two runs never cancel and notify the same requests at once, even outside Hangfire's own lock (SP-04, D8).
         /// </summary>
         ServiceRequestAutoCancelRun = 1_310,
+
+        /// <summary>
+        /// One run of the upkeep of the bookings from the public showcases (single key, session lock held for the whole run): the
+        /// holds past their expiry are deleted and the showcase requests nobody answered are cancelled and told once, even
+        /// outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceRequestExpiryRun = 1_311,
+
+        /// <summary>
+        /// One run of the reminders of the day before to the customers of the public showcases (single key, session lock held for
+        /// the whole run): two runs never send the same reminder at once, even outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceRequestRemindersRun = 1_312,
+
+        /// <summary>
+        /// One run of the retention of the data of the private customers of the suppliers (single key, session lock held for the
+        /// whole run): two nights' runs never anonymize the same rows at once, even outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceCustomerRetentionRun = 1_313,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
