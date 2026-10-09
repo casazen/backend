@@ -52,7 +52,7 @@ public class SupplierMergeWindowsTests
         var ids = await MovingAsync();
 
         Assert.DoesNotContain(sameUidAndStart.Id, ids);
-        Assert.Equal([otherStart.Id, otherUid.Id], ids.Order());
+        Assert.Equal(new[] { otherStart.Id, otherUid.Id }.Order(), ids.Order());
     }
 
     [Fact]
