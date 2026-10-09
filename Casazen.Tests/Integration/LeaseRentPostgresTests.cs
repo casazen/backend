@@ -248,6 +248,46 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     }
 
     [PostgresFact]
+    public async Task Webhook_RentEventBeforePaymentSessionFromAnotherAccount_LeavesTheInstallmentUnpaid()
+    {
+        var seeded = await SignedLeaseAsync("foreign-before-session", connect: true);
+        var installmentId = await FirstInstallmentIdAsync(seeded);
+
+        await HandleWebhookAsync(RentEvent(
+            "payment_intent.succeeded",
+            $"pi_foreign_{Guid.NewGuid():N}",
+            installmentId,
+            "acct_someone_else"));
+
+        var installment = await InstallmentAsync(installmentId);
+        Assert.Equal(RentLedgerStatus.Scheduled, installment.Status);
+        Assert.Null(installment.StripePaymentIntentId);
+        Assert.Null(installment.PaidVia);
+    }
+
+    [PostgresFact]
+    public async Task Webhook_RentEventWithWrongAmount_LeavesTheInstallmentUnpaid()
+    {
+        var seeded = await SignedLeaseAsync("wrong-amount", connect: true);
+        var installmentId = await FirstInstallmentIdAsync(seeded);
+        var token = await SendPaymentRequestAsync(seeded, installmentId);
+        using var tenant = factory.CreateClient();
+        (await tenant.PostAsJsonAsync($"/api/public/rent-payments/{installmentId}/payment-session", new { token })).EnsureSuccessStatusCode();
+        var paymentIntentId = (await InstallmentAsync(installmentId)).StripePaymentIntentId!;
+
+        await HandleWebhookAsync(RentEvent(
+            "payment_intent.succeeded",
+            paymentIntentId,
+            installmentId,
+            seeded.Account,
+            amount: 1));
+
+        var installment = await InstallmentAsync(installmentId);
+        Assert.Equal(RentLedgerStatus.Scheduled, installment.Status);
+        Assert.Null(installment.PaidVia);
+    }
+
+    [PostgresFact]
     public async Task DisableSchedule_CancelsUnpaidInstallmentsAndKeepsThePaidOnes()
     {
         var seeded = await SignedLeaseAsync("disable");
@@ -376,7 +416,13 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         await scope.ServiceProvider.GetRequiredService<StripeWebhookHandler>().HandleEventAsync(stripeEvent, source);
     }
 
-    private static Event RentEvent(string type, string paymentIntentId, Guid installmentId, string? account, string? failureCode = null) => new()
+    private static Event RentEvent(
+        string type,
+        string paymentIntentId,
+        Guid installmentId,
+        string? account,
+        string? failureCode = null,
+        long amount = 120_000) => new()
     {
         Id = $"evt_lt06_{Guid.NewGuid():N}",
         Type = type,
@@ -386,7 +432,7 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
             Object = new PaymentIntent
             {
                 Id = paymentIntentId,
-                Amount = 120_000,
+                Amount = amount,
                 Status = type switch
                 {
                     "payment_intent.succeeded" => "succeeded",

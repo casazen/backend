@@ -464,14 +464,31 @@ public sealed class RentBillingService(
 
         var entry = await db.RentLedgerEntries.SingleAsync(e => e.Id == installmentId, cancellationToken);
         await db.Entry(entry).ReloadAsync(cancellationToken);
-        if (entry.ConnectedAccountId is { } expected &&
-            !string.Equals(expected, paymentEvent.AccountId, StringComparison.Ordinal))
+        var expectedAccount = entry.ConnectedAccountId
+            ?? await db.Orgs
+                .Where(o => o.Id == entry.OrgId)
+                .Select(o => o.StripeConnectedAccountId)
+                .SingleOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(expectedAccount) ||
+            !string.Equals(expectedAccount, paymentEvent.AccountId, StringComparison.Ordinal))
         {
             logger.LogWarning(
                 "Rent payment intent {PaymentIntentId} reported by account {EventAccount}, expected {ExpectedAccount}: ignored",
                 paymentEvent.PaymentIntentId,
                 paymentEvent.AccountId,
-                expected);
+                expectedAccount ?? "none");
+            return null;
+        }
+
+        var expectedAmount = RentCharges.ToCents(entry.AmountDue);
+        if (paymentEvent.AmountCents != expectedAmount)
+        {
+            logger.LogError(
+                "Rent payment intent {PaymentIntentId} of installment {InstallmentId} reported amount {AmountCents}, expected {ExpectedAmountCents}: ignored",
+                paymentEvent.PaymentIntentId,
+                entry.Id,
+                paymentEvent.AmountCents,
+                expectedAmount);
             return null;
         }
 
