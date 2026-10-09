@@ -27,6 +27,14 @@ public interface IStripeConnectGateway
         string returnUrl,
         string refreshUrl,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Single-use login link to the Express Dashboard of the connected account (SP-14): where the owner of the account sees
+    /// balance, payouts and bank details on Stripe. Stripe refuses it (<see cref="Casazen.Core.Exceptions.StripeConnectFailure.Rejected"/>)
+    /// for an account that is not eligible, e.g. one that has not completed the onboarding. The URL is a credential: never
+    /// log it nor store it.
+    /// </summary>
+    Task<string> CreateDashboardLoginLinkAsync(string connectedAccountId, CancellationToken cancellationToken = default);
 }
 
 public record ConnectStatus(

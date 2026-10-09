@@ -98,6 +98,8 @@ builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
 builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
 builder.Services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
+// The supplier's Connect account on top of the same onboarding (SP-14): status, links and "Verificato"; no payment yet (SP-15).
+builder.Services.AddScoped<ISupplierPaymentsAccountService, SupplierPaymentsAccountService>();
 builder.Services.AddCasazenAuth0Management();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();

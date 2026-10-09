@@ -129,6 +129,9 @@
   <data name="ConnectReturnUrlNotConfigured" xml:space="preserve">
     <value>L'indirizzo pubblico dell'app non è configurato sul server: il collegamento con Stripe non può essere avviato.</value>
   </data>
+  <data name="SupplierPaymentsNotReady" xml:space="preserve">
+    <value>Il conto per ricevere i pagamenti non è ancora pronto: collega Stripe o completa la configurazione dalle impostazioni, poi riprova.</value>
+  </data>
   <data name="RequestFailed" xml:space="preserve">
     <value>Richiesta non riuscita</value>
   </data>

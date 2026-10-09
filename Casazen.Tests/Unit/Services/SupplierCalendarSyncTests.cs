@@ -97,6 +97,9 @@ public class SupplierCalendarSyncTests
         Assert.Equal(ICalErrorCodes.InvalidFormat, profile.CalendarSyncError);
     }
 
+    // SP-05: the event of this test used to be a timed one (10 July 10:00Z to 11 July 10:00Z), which closed both days it
+    // touched. A timed event is now a window of those hours and closes no day (SupplierCalendarSyncHoursTests), so the flow
+    // under test - busy dates marked, error cleared - uses a whole-day event, which behaves exactly as before.
     [Fact]
     public async Task SyncIcalFeedAsync_ValidFeed_MarksBusyDatesAndClearsError()
     {
@@ -105,8 +108,8 @@ public class SupplierCalendarSyncTests
             VERSION:2.0
             BEGIN:VEVENT
             UID:busy-1
-            DTSTART:20260710T100000Z
-            DTEND:20260711T100000Z
+            DTSTART;VALUE=DATE:20260710
+            DTEND;VALUE=DATE:20260712
             SUMMARY:Busy
             END:VEVENT
             END:VCALENDAR
@@ -120,11 +123,12 @@ public class SupplierCalendarSyncTests
         var profile = await db.SupplierProfiles.SingleAsync();
         Assert.Null(profile.CalendarSyncError);
         Assert.Equal(SupplierCalendarSyncStatus.Success, profile.CalendarSyncStatus);
-        // 10 July 10:00Z → 11 July 10:00Z: the supplier is busy on both days it touches.
+        // 10 and 11 July (DTEND is exclusive): the supplier is busy on both days.
         Assert.Equal(
             [(new DateOnly(2026, 7, 10), false, SupplierAvailabilitySource.ICalFeed),
              (new DateOnly(2026, 7, 11), false, SupplierAvailabilitySource.ICalFeed)],
             await DaysAsync(db));
+        Assert.Empty(await db.SupplierBusyWindows.ToListAsync());
     }
 
     // PC-10 (A9-13): a valid calendar without events is a successful sync, not "invalid feed".
