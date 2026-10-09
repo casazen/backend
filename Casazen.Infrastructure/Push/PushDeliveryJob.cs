@@ -253,7 +253,7 @@ public sealed class PushDeliveryJob(
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(b => b.Id == bookingId)
-            .Select(b => new { b.OrgId, b.Property.OwnerId, b.Property.ResponsibleUserId })
+            .Select(b => new { b.OrgId, b.PropertyId, b.Property.OwnerId, b.Property.ResponsibleUserId })
             .FirstOrDefaultAsync(cancellationToken);
         if (booking is null)
         {
@@ -261,7 +261,7 @@ public sealed class PushDeliveryJob(
             return [];
         }
 
-        return await HostDevicesAsync(booking.OrgId, booking.ResponsibleUserId, booking.OwnerId, cancellationToken);
+        return await HostDevicesAsync(booking.OrgId, booking.PropertyId, booking.ResponsibleUserId, booking.OwnerId, cancellationToken);
     }
 
     private async Task<List<DeviceRegistration>> PropertyHostDevicesAsync(Guid propertyId, CancellationToken cancellationToken)
@@ -279,23 +279,25 @@ public sealed class PushDeliveryJob(
             return [];
         }
 
-        return await HostDevicesAsync(property.OrgId, property.ResponsibleUserId, property.OwnerId, cancellationToken);
+        return await HostDevicesAsync(property.OrgId, propertyId, property.ResponsibleUserId, property.OwnerId, cancellationToken);
     }
 
     /// <summary>
     /// Hosts of a property (AM-03): the member in charge of it (its creator while nobody is named) and the org's administrators
     /// (<see cref="HostNotificationAudience"/>), active, with devices registered in that org (a phone registered under another
-    /// org does not get this org's pushes). No longer the users whose <c>User.Role</c> is Admin or PropertyManager.
+    /// org does not get this org's pushes). No longer the users whose <c>User.Role</c> is Admin or PropertyManager. The person in
+    /// charge is told only while they still reach the property (AM-03b).
     /// </summary>
     private Task<List<DeviceRegistration>> HostDevicesAsync(
         Guid orgId,
+        Guid propertyId,
         string? responsibleUserId,
         string ownerId,
         CancellationToken cancellationToken) =>
         db.DeviceRegistrations
             .AsNoTracking()
             .Join(
-                HostNotificationAudience.UsersToTell(db, orgId, responsibleUserId, ownerId),
+                HostNotificationAudience.UsersToTell(db, orgId, propertyId, responsibleUserId, ownerId),
                 device => device.UserId,
                 user => user.Id,
                 (device, user) => device)
