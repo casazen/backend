@@ -151,6 +151,10 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `DELETE` | `/api/users/{id}` | Admin | Delete user |
 | `POST` | `/api/devices` | JWT | Register iOS/Android push device |
 | `DELETE` | `/api/devices/{deviceId}` | JWT | Unregister device |
+| `GET` | `/api/me/notifications?unread=&page=&pageSize=` | JWT, flag `InAppNotifications` | UI-12a: the caller's in-app notifications (the bell), newest first, paged (`pageSize` 1–50, default 20): `{ items: [{ id, type, entityId, createdAt, readAt }], totalCount, page, pageSize }`. No text: the client writes it from `type` |
+| `GET` | `/api/me/notifications/unread-count` | same | `{ count }` |
+| `POST` | `/api/me/notifications/{id}/read` | same | 204, idempotent; 404 for a notification that is not the caller's (another user's, another org's, deleted, unknown), never 403 |
+| `POST` | `/api/me/notifications/read-all` | same | 204 |
 
 #### Multi-tenancy (orgs & workspace)
 
@@ -278,7 +282,7 @@ property is not found; any other failure is a 500.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/leases` | lease.read | List leases (own properties; whole org for org-wide roles) |
+| `GET` | `/api/leases` | lease.read | List leases (the properties the caller reaches, AM-03; whole org for org-wide roles), newest first. LR-01: `?view=All\|Active\|InPreparation\|Expiring\|Ended` (derived from status and end date; 400 `validation_error` otherwise), `?q=` (property or tenant name), `?propertyId=`; each row carries the first tenant by name only (null once anonymized), `nextRentDueDate`, `overdueRentCount`, `overdueRentAmount`, `overdueDays` from the rent ledger, all in one SQL statement. The legacy `status` parameter is still ignored ([`long-rent-aggregates.md`](runbooks/long-rent-aggregates.md)) |
 | `GET` | `/api/leases/{id}` | lease.read | Get lease (property owner or org-wide role of its org) |
 | `POST` | `/api/leases` | lease.create | Create lease (property owner or org-wide role of its org, e.g. PropertyManager) |
 | `GET` | `/api/leases/{id}/contract.pdf` | lease.sign | Final contract to sign offline (approved template only, LT-02/LT-03) |
@@ -294,6 +298,11 @@ property is not found; any other failure is a 500.
 | `PUT` | `/api/leases/{id}/rli/questura/delivery-date` | lease.register | Delivery date of the property (48 hours of the Questura communication count from it; null = start date, LT-07) |
 | `POST` | `/api/leases/{id}/rli/questura/mark-done` | lease.register | Landlord declares the Questura communication for an extra-EU tenant: date + optional receipt PDF (LT-07) |
 | `GET` | `/api/leases/{id}/rli/questura/receipt` | lease.read | Receipt of the Questura communication (private bucket) |
+| `GET` | `/api/long-rent/rents?month=&status=&page=&pageSize=` | lease.read | LR-01. Rent register of the area: the installments due in `month` (`yyyy-MM`, default the current one in Rome) of the leases the caller reaches, `status` `All\|Paid\|Pending\|Overdue`, ordered by due date then id; `counters` = expected, collected, pending and overdue of the whole month. 400 `rent_register_month_invalid` / `rent_register_status_unknown` |
+| `POST` | `/api/long-rent/rents/{id}/reminder` | lease.create | LR-01. Email reminder of an unpaid installment with an optional note (300 characters), with the payment link when the org has Stripe Connect. One per installment every `RentBilling__ReminderIntervalHours` (default 24): 422 `rent_reminder_too_soon`; 422 `rent_no_tenant_email`, `rent_reminder_not_sent`; 409 `rent_installment_not_payable`, `rent_installment_in_flight` |
+| `POST` | `/api/long-rent/rents/reminders` | lease.create | LR-01. The reminder of 1 to 50 installments with one note: 200 with `sent` and `skipped` (each with its error code); 400 `rent_reminder_batch_invalid` |
+| `GET` | `/api/long-rent/deadlines?from=&to=&type=` | lease.read | LR-01. Agenda in date order: RLI registration, Questura, end of the lease, last day of notice (end − 6 months, 4+4 and 3+2 only) and unpaid installments; what is past and still open comes first when the window contains today. Default today + 90 days, at most 366 days; 400 `long_rent_deadlines_range_invalid` / `long_rent_deadlines_type_unknown` |
+| `GET` | `/api/long-rent/overview` | lease.read | LR-01. Numbers of the area (leases by view, rent of the current month), checklist (overdue rent, leases to register, Questura, leases to sign) and the next deadline |
 
 #### Payments & Stripe Connect
 
@@ -734,6 +743,19 @@ erDiagram
 `Property.ResponsibleUserId` (`string?`, max 255, FK `Users` SET NULL, indexed): the member in charge of the property, told about it with the
 administrators (`docs/runbooks/org-team.md` § 24).
 
+#### `InAppNotification` (UI-12a)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (CASCADE), tenant key (`ITenantOwned`) | The org the event belongs to: the host org, or the supplier org for the supplier's inbox |
+| `UserId` | `string` (255) | FK `Users` (CASCADE) | The user who is told |
+| `Type` | `string` (64) | — | A value of `PushTypes`; the client writes the text from it. No guest or property name, no free text |
+| `EntityId` | `Guid?` | not a key | The service request (`service-request-*` types) or the booking the event is about |
+| `DeliveryKey` | `string` (200) | — | The key of the push of the same event |
+| | | **unique** `(DeliveryKey, UserId)` (`UIX_InAppNotifications_DeliveryKey_UserId`), indexes on `(UserId, ReadAt, CreatedAt)`, `CreatedAt`, `OrgId` | Once per event and user |
+| `CreatedAt`, `ReadAt` | `DateTime`, `DateTime?` | — | The instant of the event (UTC, microseconds); `null` while unread. Deleted 90 days after `CreatedAt` (`docs/runbooks/in-app-notifications.md`) |
+
 ---
 
 ## Design Patterns
@@ -773,6 +795,8 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
 | `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
 | `OrgInvitationMaintenanceJob` | Hourly at :10 UTC | AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days (`docs/runbooks/org-team.md` § 15) |
+| `InAppNotificationJob` | On push queued (`IPushNotificationService`), flag `InAppNotifications` on | UI-12a: writes one in-app notification per user of the push's audience, once per event and user (`docs/runbooks/in-app-notifications.md`) |
+| `InAppNotificationRetentionJob` | Daily at 03:45 UTC | UI-12a: deletes the in-app notifications older than 90 days; registered whatever the flag says |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment

@@ -1232,6 +1232,57 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("HighTensionAreaComuni");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.InAppNotification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeliveryKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_InAppNotifications_CreatedAt");
+
+                    b.HasIndex("OrgId")
+                        .HasDatabaseName("IX_InAppNotifications_OrgId");
+
+                    b.HasIndex("DeliveryKey", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_InAppNotifications_DeliveryKey_UserId");
+
+                    b.HasIndex("UserId", "ReadAt", "CreatedAt")
+                        .HasDatabaseName("IX_InAppNotifications_UserId_ReadAt_CreatedAt");
+
+                    b.ToTable("InAppNotifications");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.LeaseContract", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3374,6 +3425,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("LastFailedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LastReminderAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("LeaseContractId")
                         .HasColumnType("uuid");
 
@@ -3417,6 +3471,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<int>("ReminderCount")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("RentScheduleId")
                         .HasColumnType("uuid");
 
@@ -3442,6 +3499,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("LeaseContractId", "PeriodStart")
                         .IsUnique();
+
+                    b.HasIndex("OrgId", "DueDate");
 
                     b.ToTable("RentLedgerEntries");
                 });
@@ -6241,6 +6300,21 @@ namespace Casazen.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.InAppNotification", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

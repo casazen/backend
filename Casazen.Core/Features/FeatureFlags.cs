@@ -110,6 +110,18 @@ public static class FeatureFlags
     /// </summary>
     public const string PropertyModeChange = "PropertyModeChange";
 
+    /// <summary>
+    /// UI-12a (redesign wave): the in-app notifications of the user (the bell of the shell). With the flag on, every push the
+    /// backend queues (<c>IPushNotificationService</c>) also queues a job that writes one <c>InAppNotification</c> per user of
+    /// the push's audience, and <c>GET api/me/notifications</c>, <c>GET …/unread-count</c>, <c>POST …/{id}/read</c> and
+    /// <c>POST …/read-all</c> answer. Off (the default): the decorator of the push service only forwards the push, nothing is
+    /// written, and the four endpoints answer 404 before authentication like a route that does not exist. Rows already written
+    /// are not read while it is off and are deleted by the daily retention job (<c>in-app-notification-retention</c>, 90 days),
+    /// which is registered whatever the flag says. The screens (bell and drawer) are UI-12b, which reads the key
+    /// <c>inAppNotifications</c> of <c>GET /api/public/features</c>. Runbook: <c>docs/runbooks/in-app-notifications.md</c>.
+    /// </summary>
+    public const string InAppNotifications = "InAppNotifications";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -123,5 +135,6 @@ public static class FeatureFlags
         UiRedesign,
         OrgTeam,
         PropertyModeChange,
+        InAppNotifications,
     ];
 }

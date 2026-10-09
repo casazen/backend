@@ -2089,6 +2089,33 @@
   <data name="RentBillingDayRange" xml:space="preserve">
     <value>The due day must be between 1 and 28.</value>
   </data>
+  <data name="RentReminderTooSoon" xml:space="preserve">
+    <value>You already reminded the tenants of this rent: you can send one reminder every {0} hours at most.</value>
+  </data>
+  <data name="RentReminderNotSent" xml:space="preserve">
+    <value>The reminder was not sent: the email service is not available. Try again later.</value>
+  </data>
+  <data name="RentReminderNoteTooLong" xml:space="preserve">
+    <value>The note can have at most 300 characters.</value>
+  </data>
+  <data name="RentReminderBatchInvalid" xml:space="preserve">
+    <value>Select from 1 to 50 rents to remind.</value>
+  </data>
+  <data name="RentRegisterMonthInvalid" xml:space="preserve">
+    <value>Enter the month as yyyy-MM, for example 2026-10.</value>
+  </data>
+  <data name="RentRegisterStatusUnknown" xml:space="preserve">
+    <value>The rent status is not valid: use All, Paid, Pending or Overdue.</value>
+  </data>
+  <data name="LeaseListViewUnknown" xml:space="preserve">
+    <value>The lease view is not valid: use All, Active, InPreparation, Expiring or Ended.</value>
+  </data>
+  <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
+    <value>Enter a valid period: dates as yyyy-MM-dd, the end not before the start and at most 366 days.</value>
+  </data>
+  <data name="LongRentDeadlinesTypeUnknown" xml:space="preserve">
+    <value>The deadline type is not valid: use RliRegistration, Questura, LeaseEnd, Notice or Rent.</value>
+  </data>
   <data name="SupplierActivationBlocked" xml:space="preserve">
     <value>The profile cannot be activated: some required items are missing.</value>
   </data>

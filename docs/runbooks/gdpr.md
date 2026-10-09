@@ -220,3 +220,17 @@ Full description in [`org-team.md`](org-team.md) §§ 15, 16.
 | Org export and the activity log | The answer of `GET /api/gdpr/org/export` gains `activity` (the same lines as the endpoint of the log) **only for who holds `org.activity.read`** (the owner and the administrators): the export is the holder's since AM-03b (`OrgBillingAdmin`), and the log keeps its own permission on top, so nobody reads through the export what it cannot read in the log | `GdprController.ExportOrgFiscal` |
 | Access request (personal data) | The note a member writes to the administrators (200 characters) is in the email and nowhere else: not stored, not logged, not in the activity log. The log keeps the id of the member and the code of the area | `OrgAccessRequestService` |
 | Privacy notice (activity log) | Must mention the activity log of the org (ids of the people who act, kept 12 months, visible to the owner and the administrators) and the requests for access. Belongs to the legal owner ([legal-documents.md](legal-documents.md)); **not changed by AM-02b**, to do before `Features__OrgTeam` is turned on | — |
+
+## 10. In-app notifications of the users (UI-12a)
+
+Full description in [`in-app-notifications.md`](in-app-notifications.md) (behind `Features__InAppNotifications`, off by default).
+
+| Concern | Behaviour | Code |
+|---|---|---|
+| What is kept | `InAppNotifications`: the user id, the kind of event (a value of `PushTypes`), the id of the booking or service request it is about, the key of the event and two instants. **No name, no text, no address**: the guest, the property and the sentence are never copied from the push; the client writes the sentence from the kind | `InAppNotification` (a test fails if a column is added) |
+| Retention | **90 days** from the event, read or not, nightly (`in-app-notification-retention`, 03:45 UTC), idempotent. The job runs with the flag off too, so rows written while it was on do not outlive it | `InAppNotificationService.PurgeExpiredAsync` |
+| Erasure of the account | The row goes with the user (foreign key `ON DELETE CASCADE`), as the member row does. Nothing in the code deletes an account yet: the key is proved by `InAppNotificationsPostgresTests` | `InAppNotification` |
+| Erasure of the org | The row goes with the org (foreign key `ON DELETE CASCADE`), so the one place an org is deleted (the merge of two duplicate supplier orgs) is not stopped by it | `InAppNotification` |
+| Who reads | Only the user, only its own rows, only in the orgs it belongs to: another user's id is a 404, never a 403. The owner and the administrators of the org do not read the notifications of its people | `InAppNotificationService.OwnNotifications` |
+| Org export | Not part of `GET /api/gdpr/org/export` (the fiscal export of the org): the notifications are the user's | — |
+| Privacy notice | Should mention that CasaZen keeps for 90 days the list of the events that concerned the user (kind of event and reference, no content). Belongs to the legal owner ([legal-documents.md](legal-documents.md)); **not changed by UI-12a**, to do before `Features__InAppNotifications` is turned on in production | — |
