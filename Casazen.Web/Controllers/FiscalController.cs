@@ -43,6 +43,11 @@ public class FiscalController(
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
             return Unauthorized();
+
+        var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
+        if (resource is null || !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
+            return NotFound();
+
         try
         {
             var row = await fiscalRegime.AssignRegimeAsync(
