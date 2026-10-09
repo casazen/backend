@@ -1032,8 +1032,8 @@ until then they show the raw code `electrical` (the web falls back to the value,
 `Features:SupplierShowcaseBooking` (booking from the public showcase, decision D34, SP-09/SP-10) and
 `Features:SupplierOnlinePayments` (payment of the supplier's work inside CasaZen, decision D2, SP-15): both **off by default**
 (`appsettings.json`), listed in `FeatureFlags.All` and therefore exposed by `GET /api/public/features` as
-`supplierShowcaseBooking` and `supplierOnlinePayments`. Nothing consumes them yet: the catalog does not depend on them. See
-`feature-flags.md`.
+`supplierShowcaseBooking` and `supplierOnlinePayments`. The catalog does not depend on them. `SupplierOnlinePayments` is consumed
+since SP-14 (the supplier's Stripe account, section 25). See `feature-flags.md`.
 
 ### 19.10 After a deploy
 
@@ -1044,6 +1044,48 @@ until then they show the raw code `electrical` (the web falls back to the value,
       `POST .../publish` → 422 until a duration and a price (or `requiresQuote`) are set; then 200 `Active`; `.../pause`,
       `.../duplicate` and `DELETE` answer as above; another supplier's `GET {id}` is 404.
 - [ ] `GET /api/service-categories` returns 11 codes, the last one `electrical`.
+
+## 25. The supplier's Stripe Connect account — SP-14
+
+Redesign wave task SP-14 (branch `feature/rd-supplier-payments-account`, backend only: no screen yet, the console screens are
+SP-16), stacked on SP-02. Gap report 05 §4.3, decisions D2 (direct charge on the supplier's own Stripe account), D3 (commission,
+SP-15) and D11 ("Verificato"). The flow, the endpoints, the Stripe settings and the checks are in
+[`stripe.md`](stripe.md) § "Connect onboarding of the suppliers (SP-14)"; this section is what is specific to the suppliers.
+
+### 25.1 What a supplier can do now
+
+| | |
+|---|---|
+| Connect its Stripe account (Express) | `POST api/supplier/payments/onboarding-link` (creates the account when missing) → the supplier completes the form **on Stripe** and comes back to `/app/supplier/settings?stripe_return=1` (`?stripe_refresh=1` when the link expired). CasaZen stores no identity document and no bank detail, only whether Stripe enabled charges and payouts and the names of the fields Stripe still needs |
+| See the state | `GET api/supplier/payments/account` (database) or `…?refresh=true` (Stripe first): `hasAccount`, `chargesEnabled`, `payoutsEnabled`, `detailsSubmitted`, `requirementsDue`, `canReceivePayments`, `verified`, `verificationMissing` |
+| Open its Express Dashboard | `POST api/supplier/payments/dashboard-link`: balance, payouts and bank details on Stripe. Needs an existing account (422 `supplier_payments_not_ready` otherwise) |
+
+Nothing is paid through CasaZen yet: no PaymentIntent, commission, payment page or refund (SP-15, SP-17). "Segna pagato" by the host
+(`mark-paid`, section 15) is still the only way a request becomes paid.
+
+### 25.2 Rules
+
+- The routes are behind `Features:SupplierOnlinePayments` (**off by default**: 404 before authentication) and the policy
+  `RequireSupplier`. The org is the caller's own supplier link, never provisioned; a **suspended** or still `Pending` supplier can
+  connect its account and read its state like it can edit its profile (section 14.2), but it is not "Verificato".
+- **"Verificato"** (D11, `SupplierVerification`): `Active` profile + a linked account with charges **and** payouts enabled + a VAT
+  number (`SupplierProfiles.VatNumber`, not blank). It is a read-only rule: the activation (section 16) is **not** changed and does
+  not wait for Stripe. `verificationMissing` lists `profile_not_active`, `payments_not_enabled`, `vat_number_missing`. The public
+  showcase does not show it yet and stays `noindex` (section 18).
+- One account per supplier org, created under the advisory lock `OrgConnectAccount` with the Stripe idempotency key
+  `connect-account:{orgId}`, exactly like the host's. A host that is also a supplier has two accounts, one per org.
+- The webhook `account.updated` of a supplier's account is processed by the existing handler whatever the flag says, and updates only
+  the org that holds that account id.
+- `GET api/supplier/checklist` (SP-04, stacked elsewhere) still answers `paymentsActive: null`: with this task merged it can read
+  `SupplierVerification.CanReceivePayments` through `ISupplierPaymentsAccountService` (follow-up).
+
+### 25.3 After a deploy
+
+- [ ] `GET /api/public/features` has `supplierOnlinePayments: false` (leave it off in production until the supplier legal texts, D-C,
+      and the tax treatment of the commission, D4, are approved).
+- [ ] Test environment with `Features__SupplierOnlinePayments=true` and Stripe test keys: the checks of `stripe.md` § "Connect onboarding
+      of the suppliers (SP-14)" → Verification, point 2.
+- [ ] With the flag off, `GET /api/supplier/payments/account` answers 404 `not_found` also with a valid supplier token.
 
 ## Known limits (other tasks)
 
