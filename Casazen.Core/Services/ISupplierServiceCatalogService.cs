@@ -30,6 +30,40 @@ public interface ISupplierServiceCatalogService
     Task<SupplierServiceListing> GetAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The service as a service request needs it (SP-04), whatever its status; <c>null</c> when it is not one of the supplier's
+    /// or was deleted. The caller decides what a draft or paused service means (<see cref="SupplierServiceForRequest.IsRequestable"/>).
+    /// Read-only.
+    /// </summary>
+    Task<SupplierServiceForRequest?> FindForRequestAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>How many published (<c>Active</c>) services the supplier has: a step of the console checklist (SP-04). Read-only.</summary>
+    Task<int> CountActiveAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The services the public may see (SP-09): the <c>Active</c> ones, not deleted, of <paramref name="supplierOrgId"/> <b>when
+    /// that supplier is itself <c>Active</c></b> (the supplier's status is part of the same statement: an org that is not an
+    /// active supplier has none, whatever the caller checked). By position then creation date. Only
+    /// <see cref="SupplierPublicService"/>, which carries nothing the console keeps to itself. Read-only; for the anonymous
+    /// reads, the org having been found from an active supplier's showcase slug.
+    /// </summary>
+    Task<IReadOnlyList<SupplierPublicService>> ListPublicAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One service the public may see (<see cref="ListPublicAsync"/> rules) by its slug (lowercase, as stored); <c>null</c> for
+    /// an unknown slug, a draft, a paused, a deleted service, a service of another supplier and a supplier that is not active.
+    /// Read-only.
+    /// </summary>
+    Task<SupplierPublicService?> FindPublicAsync(Guid supplierOrgId, string serviceSlug, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same service as <see cref="FindPublicAsync"/>, found by the same statement and under the same rules, with the id of
+    /// the catalog row (SP-10: the booking from the showcase keeps it on the request). <c>null</c> for an unknown slug, a draft,
+    /// a paused, a deleted service, a service of another supplier and a supplier that is not active. Read-only. Only the booking
+    /// service asks for it: a public read never carries an id.
+    /// </summary>
+    Task<SupplierBookableService?> FindBookableAsync(Guid supplierOrgId, string serviceSlug, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a service as a draft: the slug comes from the name (unique among the supplier's services), the position is
     /// the last one unless the input gives it. Photos are not part of it (<see cref="AddPhotosAsync"/>).
     /// </summary>

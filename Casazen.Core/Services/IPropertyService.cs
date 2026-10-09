@@ -1,6 +1,7 @@
 ﻿using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
@@ -20,6 +21,12 @@ public interface IPropertyService
 
     /// <summary>Active properties of <paramref name="scope"/> (built by the web layer from the caller, TN-3).</summary>
     Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope);
+
+    /// <summary>
+    /// Active properties of <paramref name="scope"/> in <paramref name="mode"/> only (PM-01, <c>GET /api/properties?mode=</c>);
+    /// without the filter use <see cref="GetPropertiesAsync(HostScope)"/>, which lists them all.
+    /// </summary>
+    Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope, RentalMode mode);
     Task<Property> CreatePropertyAsync(Property property);
 
     /// <summary>

@@ -50,9 +50,12 @@ public static class FeatureFlags
 
     /// <summary>
     /// SP-02 (redesign wave, decision D34): booking from the public showcase of a supplier (<c>/fornitori/{slug}</c>), off
-    /// until the product owner turns it on. It will gate the public booking endpoints of the showcase (404 when off, SP-09
-    /// and SP-10); nothing consumes it yet, SP-02 only introduces and exposes it. The service catalog
-    /// (<c>api/supplier/services</c>) does not depend on it: every supplier has one.
+    /// until the product owner turns it on. It gates the public reads of the showcase (services, slots, estimate: SP-09) and
+    /// the booking endpoints (hold and e-mail check: SP-10), 404 when off. <b>On, the application needs
+    /// <c>Suppliers:Showcase:PrivacyNoticeVersion</c> and, outside Development and Testing, <c>Suppliers:CustomerIndexKey</c></b>
+    /// or it does not start (<see cref="Casazen.Core.Options.ShowcaseBookingOptionsValidator"/>). The upkeep jobs of the
+    /// bookings are registered whatever the flag says. The service catalog (<c>api/supplier/services</c>) does not depend on
+    /// it: every supplier has one.
     /// </summary>
     public const string SupplierShowcaseBooking = "SupplierShowcaseBooking";
 
@@ -66,7 +69,25 @@ public static class FeatureFlags
     /// </summary>
     public const string SupplierOnlinePayments = "SupplierOnlinePayments";
 
+    /// <summary>
+    /// SP-04 (redesign wave, decision D8): automatic cancellation of the service requests nobody answered. Every request now
+    /// gets a deadline (<c>ResponseDueAt</c>, 120 minutes after its creation for a host's request); with the flag on, the
+    /// recurring job <c>service-request-auto-cancel</c> (every 10 minutes) moves the new requests past their deadline to
+    /// <c>Annullato</c> (reason <c>NoResponse</c>) and tells the host and the supplier. <b>Off by default</b>: it changes what
+    /// happens to the requests that exist, so the product owner turns it on when the console and the apps show the new
+    /// status. Off: the job is not scheduled (an earlier schedule is removed) and nothing is ever cancelled by time.
+    /// </summary>
+    public const string SupplierRequestAutoCancel = "SupplierRequestAutoCancel";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
-        [OtaPartnerApi, AiSupplierDiscovery, RliProvider, ESignProvider, SupplierShowcaseBooking, SupplierOnlinePayments];
+    [
+        OtaPartnerApi,
+        AiSupplierDiscovery,
+        RliProvider,
+        ESignProvider,
+        SupplierShowcaseBooking,
+        SupplierOnlinePayments,
+        SupplierRequestAutoCancel,
+    ];
 }

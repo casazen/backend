@@ -1,6 +1,7 @@
 ﻿using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Pricing;
@@ -65,6 +66,12 @@ public class PropertyService(
     {
         ArgumentNullException.ThrowIfNull(scope);
         return await repository.GetByScopeAsync(scope);
+    }
+
+    public async Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope, RentalMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        return await repository.GetByScopeAsync(scope, mode);
     }
 
     public async Task<IEnumerable<Property>> GetAllPropertiesAsync()
@@ -393,6 +400,7 @@ public class PropertyService(
             IsActive = property.IsActive,
             IsPaused = property.IsPaused,
             PausedAt = property.PausedAt,
+            RentalMode = property.RentalMode,
             CreatedAt = property.CreatedAt,
             UpdatedAt = property.UpdatedAt,
             Documents = property.PropertyDocuments.Select(MapDocument).ToList(),

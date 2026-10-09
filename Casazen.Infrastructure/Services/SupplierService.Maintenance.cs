@@ -17,7 +17,8 @@ namespace Casazen.Infrastructure.Services;
 /// without ever losing their service requests or leaving accounts linked to a deleted org, and never links an account
 /// by email (A4-23). Runbook: <c>docs/runbooks/suppliers.md</c> section 9. The migration <c>SupplierProfileEmailUnique</c>
 /// applies the same merge rules in SQL before creating the unique email index: keep the two in step. (The price catalog
-/// of SP-02 is created by a later migration, so that SQL has nothing to move for it: only this code does, section 19.7.)
+/// of SP-02 and the agenda of SP-03 are created by later migrations, so that SQL has nothing to move for them: only this
+/// code does, sections 19.7 and 20.8.)
 /// </summary>
 public partial class SupplierService
 {
@@ -217,7 +218,7 @@ public partial class SupplierService
                 "availabilityMoved={AvailabilityMoved}, " +
                 "availabilityDropped={AvailabilityDropped}, categoriesAdded={CategoriesAdded}, comuniAdded={ComuniAdded}, " +
                 "supplierLinks={SupplierLinks}, orgMembers={OrgMembers}, devices={Devices}, " +
-                "serviceListings={ServiceListings}, duplicateOrgDeleted={DuplicateOrgDeleted}",
+                "serviceListings={ServiceListings}, agendaRows={AgendaRows}, showcaseRows={ShowcaseRows}, duplicateOrgDeleted={DuplicateOrgDeleted}",
                 merge.DuplicateOrgId,
                 dryRun ? "would be merged (dry run)" : "merged",
                 merge.KeeperOrgId,
@@ -230,6 +231,8 @@ public partial class SupplierService
                 merge.OrgMembersMoved,
                 merge.DevicesMoved,
                 merge.ServiceListingsMoved,
+                merge.AgendaRowsMoved,
+                merge.ShowcaseRowsMoved,
                 merge.DuplicateOrgDeleted);
         }
     }
@@ -248,6 +251,10 @@ public partial class SupplierService
             .Where(sr => sr.SupplierOrgId == duplicateId)
             .ExecuteUpdateAsync(set => set.SetProperty(sr => sr.SupplierOrgId, keeperId), cancellationToken);
 
+        // The public showcase (SP-10): its requests belong to the supplier org itself (OrgId = SupplierOrgId, not a host org), so
+        // they move with the supplier; its customers and unverified holds are children of the profile like the agenda.
+        var showcaseRowsMoved = await MoveShowcaseAsync(keeperId, duplicateId, cancellationToken);
+
         // A day the keeper already has keeps the keeper's value: the keeper is the profile in use.
         var daysMoved = await db.SupplierAvailability
             .Where(a => a.OrgId == duplicateId
@@ -258,6 +265,9 @@ public partial class SupplierService
         // The price catalog (SP-02) is a child of the profile like the availability days, but nothing of it is dropped: every
         // service moves before the profile is deleted (the cascade would take what stayed).
         var listingsMoved = await MoveServiceListingsAsync(keeperId, duplicateId, now, cancellationToken);
+
+        // The agenda (SP-03) is a child of the profile too: hours, time off, blocks and settings move before the profile goes.
+        var agendaRowsMoved = await MoveAgendaAsync(keeperId, duplicateId, now, cancellationToken);
 
         var keeper = await db.SupplierProfiles.FirstAsync(sp => sp.OrgId == keeperId, cancellationToken);
         var duplicate = await db.SupplierProfiles.AsNoTracking().FirstAsync(sp => sp.OrgId == duplicateId, cancellationToken);
@@ -300,7 +310,74 @@ public partial class SupplierService
             orgMembers,
             devices,
             orgDeleted,
-            listingsMoved);
+            listingsMoved,
+            agendaRowsMoved,
+            showcaseRowsMoved);
+    }
+
+    /// <summary>
+    /// Moves the public showcase of the duplicate (SP-10) to the keeper and returns the rows moved: the requests of its showcase
+    /// (their <c>OrgId</c> is the duplicate supplier org, which would stay behind and keep the org alive) and its private
+    /// customers. The keeper's rows stay as they are: a customer of the duplicate whose e-mail the keeper already has
+    /// (the same person booked both) is merged into the keeper's customer, with its requests, and its row goes; any other moves
+    /// with its requests. The unverified holds of the duplicate are dropped: they wait for an e-mail check for 30 minutes, hold
+    /// the slots of a calendar that is being merged, and would only collide with the keeper's (client request id, code).
+    /// </summary>
+    private async Task<int> MoveShowcaseAsync(Guid keeperId, Guid duplicateId, CancellationToken cancellationToken)
+    {
+        // The booking takes the supplier's calendar lock (both suppliers', here): it waits for the merge and then finds its rows
+        // where they belong. Taken inside the repair's transaction.
+        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db,
+            cancellationToken,
+            CalendarSyncService.AvailabilityLock(keeperId),
+            CalendarSyncService.AvailabilityLock(duplicateId));
+
+        // ServiceCustomers and ShowcaseBookingHolds are keyed by the supplier org and not tenant-filtered (TN-2 allow-list): both
+        // orgs are explicit, as in every query of these tables.
+        var moved = await db.ServiceRequests
+            .Where(sr => sr.OrgId == duplicateId && sr.RentalContext == ServiceRequestRentalContext.Showcase)
+            .ExecuteUpdateAsync(set => set.SetProperty(sr => sr.OrgId, keeperId), cancellationToken);
+
+        var duplicateCustomers = await db.ServiceCustomers
+            .AsNoTracking()
+            .Where(c => c.OrgId == duplicateId)
+            .Select(c => new { c.Id, c.EmailHash })
+            .ToListAsync(cancellationToken);
+        var keeperCustomers = (await db.ServiceCustomers
+                .AsNoTracking()
+                .Where(c => c.OrgId == keeperId)
+                .Select(c => new { c.Id, c.EmailHash })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(c => c.EmailHash, c => c.Id, StringComparer.Ordinal);
+
+        foreach (var customer in duplicateCustomers)
+        {
+            var id = customer.Id;
+            if (keeperCustomers.TryGetValue(customer.EmailHash, out var keeperCustomerId))
+            {
+                await db.ServiceRequests
+                    .Where(sr => sr.CustomerId == id)
+                    .ExecuteUpdateAsync(set => set.SetProperty(sr => sr.CustomerId, keeperCustomerId), cancellationToken);
+                await db.ServiceCustomers
+                    .Where(c => c.OrgId == duplicateId && c.Id == id)
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
+            else
+            {
+                await db.ServiceCustomers
+                    .Where(c => c.OrgId == duplicateId && c.Id == id)
+                    .ExecuteUpdateAsync(set => set.SetProperty(c => c.OrgId, keeperId), cancellationToken);
+            }
+
+            moved++;
+        }
+
+        await db.ShowcaseBookingHolds
+            .Where(h => h.OrgId == duplicateId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        return moved;
     }
 
     /// <summary>
@@ -363,6 +440,76 @@ public partial class SupplierService
         }
 
         return duplicateListings.Count;
+    }
+
+    /// <summary>
+    /// Moves the agenda of the duplicate (SP-03) to the keeper and returns the rows moved. The keeper is the profile in use:
+    /// <list type="bullet">
+    /// <item>its weekly hours stay as they are; the duplicate's hours move only when the keeper has none (two weeks are
+    /// never mixed band by band), and then the keeper's <c>HoursConfiguredAt</c> follows;</item>
+    /// <item>its settings (the rules) stay; the duplicate's settings row moves only when the keeper has none;</item>
+    /// <item>the duplicate's time off, blocks, extra openings and calendar engagements all move: dropping a closure would
+    /// offer a slot the supplier had closed.</item>
+    /// </list>
+    /// What did not move goes with the duplicate profile (cascade).
+    /// </summary>
+    private async Task<int> MoveAgendaAsync(Guid keeperId, Guid duplicateId, DateTime now, CancellationToken cancellationToken)
+    {
+        // The agenda writes (the supplier's own, the iCal sync) take this lock per supplier: they wait for the merge and then
+        // find their rows where they belong. Taken inside the repair's transaction, for both suppliers.
+        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db,
+            cancellationToken,
+            CalendarSyncService.AvailabilityLock(keeperId),
+            CalendarSyncService.AvailabilityLock(duplicateId));
+
+        // SupplierWorkingHours, SupplierTimeOff, SupplierBusyWindows and SupplierSettings are keyed by the supplier org and not
+        // tenant-filtered (TN-2 allow-list): both orgs are explicit, as in every query of these tables.
+        var moved = 0;
+
+        var hoursMoved = 0;
+        if (!await db.SupplierWorkingHours.Where(h => h.OrgId == keeperId).AnyAsync(cancellationToken))
+        {
+            hoursMoved = await db.SupplierWorkingHours
+                .Where(h => h.OrgId == duplicateId)
+                .ExecuteUpdateAsync(set => set.SetProperty(h => h.OrgId, keeperId), cancellationToken);
+            moved += hoursMoved;
+        }
+
+        moved += await db.SupplierTimeOff
+            .Where(t => t.OrgId == duplicateId)
+            .ExecuteUpdateAsync(set => set.SetProperty(t => t.OrgId, keeperId), cancellationToken);
+        moved += await db.SupplierBusyWindows
+            .Where(w => w.OrgId == duplicateId)
+            .ExecuteUpdateAsync(set => set.SetProperty(w => w.OrgId, keeperId), cancellationToken);
+
+        var duplicateSettings = await db.SupplierSettings
+            .AsNoTracking()
+            .Where(s => s.OrgId == duplicateId)
+            .Select(s => new { s.HoursConfiguredAt })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (duplicateSettings is not null)
+        {
+            var keeperSettings = await db.SupplierSettings
+                .Where(s => s.OrgId == keeperId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (keeperSettings is null)
+            {
+                // The key of the row is the org, which an entity update cannot change: one statement, both orgs explicit.
+                moved += await db.Database.ExecuteSqlAsync(
+                    $"UPDATE \"SupplierSettings\" SET \"OrgId\" = {keeperId}, \"UpdatedAt\" = {now} WHERE \"OrgId\" = {duplicateId}",
+                    cancellationToken);
+            }
+            else if (hoursMoved > 0 && keeperSettings.HoursConfiguredAt is null)
+            {
+                // The hours that came over are the keeper's now: the checklist must see them as configured.
+                keeperSettings.HoursConfiguredAt = duplicateSettings.HoursConfiguredAt ?? now;
+                keeperSettings.UpdatedAt = now;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        return moved;
     }
 
     /// <summary>

@@ -284,12 +284,18 @@ public class SupplierProfileController(
     // ─── Inbox ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// A page of the service requests sent to the caller's supplier org (SU-08, A4-14), server-side paginated.
-    /// <c>status</c>: <c>open</c> (default: waiting, taken, in progress), <c>history</c> (completed, paid, rejected),
-    /// <c>all</c>, or one status name; <c>from</c>/<c>to</c>: Europe/Rome days (<c>YYYY-MM-DD</c>, both included) on the
-    /// activity date of each request (<see cref="SupplierInboxStatusFilter"/>). 400 <c>validation_error</c> for another
-    /// status or <c>from</c> after <c>to</c>. Items carry comune, date and stay dates; street address and host contact
-    /// only for the requests the supplier took; never the guest.
+    /// A page of the service requests sent to the caller's supplier org (SU-08, A4-14; SP-04), server-side paginated.
+    /// <c>tab</c>: the console's own way to pick the requests, <c>nuove</c> (waiting for the answer, the one to answer first on
+    /// top), <c>programmate</c> (taken or in progress, the next job on top), <c>da-incassare</c> (completed, not paid) or
+    /// <c>archivio</c> (paid, rejected, cancelled); when it is sent, <c>status</c> is ignored. <c>status</c>: <c>open</c>
+    /// (default: waiting, taken, in progress), <c>history</c> (completed, paid, rejected, cancelled), <c>all</c>, or one status
+    /// name. Filters: <c>service</c> (a service of the catalog by id, or a category code), <c>comune</c> (ISTAT code or name),
+    /// <c>when</c> (<c>oggi</c>, <c>settimana</c> = the next 7 days, <c>mese</c> = this month: the day of the job), <c>clientId</c>
+    /// (the host org, the <c>clientId</c> of the items); <c>from</c>/<c>to</c>: Europe/Rome days (<c>YYYY-MM-DD</c>, both
+    /// included) on the activity date of each request (<see cref="SupplierInboxStatusFilter"/>). 400 <c>validation_error</c>
+    /// for another tab, status or <c>when</c>, or <c>from</c> after <c>to</c>. Items carry comune, postal code, day and time,
+    /// price, <c>source</c> and <c>respondBy</c>; the name of the property, the host's notes, the street address and the
+    /// host contact only for the requests the supplier took (decision D9); never the guest.
     /// </summary>
     [HttpGet("inbox")]
     [ProducesResponseType(typeof(SupplierInboxResponse), StatusCodes.Status200OK)]
@@ -302,10 +308,37 @@ public class SupplierProfileController(
         [FromQuery] DateOnly? to = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] string? tab = null,
+        [FromQuery] string? service = null,
+        [FromQuery] string? comune = null,
+        [FromQuery] string? when = null,
+        [FromQuery] Guid? clientId = null,
         CancellationToken cancellationToken = default)
     {
-        if (!SupplierInboxStatusFilter.TryParse(status, out var statuses))
+        IReadOnlyCollection<ServiceRequestStatus> statuses;
+        var sort = SupplierInboxSort.Activity;
+        if (!string.IsNullOrWhiteSpace(tab))
+        {
+            // The tab says which requests and in which order; the status is left out.
+            if (!SupplierInboxTabs.TryParse(tab, out var inboxTab))
+                return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxTabInvalid");
+
+            statuses = SupplierInboxTabs.StatusesOf(inboxTab);
+            sort = SupplierInboxTabs.SortOf(inboxTab);
+        }
+        else if (!SupplierInboxStatusFilter.TryParse(status, out statuses))
+        {
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxStatusInvalid");
+        }
+
+        SupplierInboxWhen? inboxWhen = null;
+        if (!string.IsNullOrWhiteSpace(when))
+        {
+            if (!SupplierInboxWhens.TryParse(when, out var parsedWhen))
+                return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxWhenInvalid");
+
+            inboxWhen = parsedWhen;
+        }
 
         if (from is { } start && to is { } end && start > end)
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxPeriodInvalid");
@@ -318,9 +351,21 @@ public class SupplierProfileController(
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var (items, total) = await reader.ListAsync(
-            orgId.Value, new SupplierInboxQuery(statuses, from, to, page, pageSize), cancellationToken);
+            orgId.Value,
+            new SupplierInboxQuery(
+                statuses,
+                from,
+                to,
+                page,
+                pageSize,
+                sort,
+                Truncate(service, ServiceRequestLimits.InboxFilterMaxLength),
+                Truncate(comune, ServiceRequestLimits.InboxFilterMaxLength),
+                inboxWhen,
+                clientId),
+            cancellationToken);
 
-        logger.LogDebug("Supplier inbox: status={Status}, page={Page}, total={Total}", status, page, total);
+        logger.LogDebug("Supplier inbox: tab={Tab}, status={Status}, page={Page}, total={Total}", tab, status, page, total);
 
         return Ok(new SupplierInboxResponse
         {
@@ -353,6 +398,10 @@ public class SupplierProfileController(
 
         return Ok(SupplierServiceRequestMapper.ToDetailDto(request));
     }
+
+    /// <summary>A filter of the inbox cut to <paramref name="maxLength"/> characters: a longer value matches nothing anyway.</summary>
+    private static string? Truncate(string? value, int maxLength) =>
+        value is { Length: > 0 } && value.Length > maxLength ? value[..maxLength] : value;
 
     // ─── Availability ─────────────────────────────────────────────────────────
 

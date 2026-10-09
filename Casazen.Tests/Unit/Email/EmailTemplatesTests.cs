@@ -23,7 +23,8 @@ public class EmailTemplatesTests
 
     public static TheoryData<string> TemplateNames => new()
     {
-        "created", "taken", "completed", "rejected", "paid", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
+        "created", "taken", "started", "completed", "rejected", "cancelled-by-supplier", "cancelled-no-response", "cancelled-to-supplier", "expired", "reminder",
+        "time-proposed", "proposal-accepted", "proposal-rejected", "paid", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
         "late-payment-refunded", "rli-reminder", "rli-overdue", "questura-reminder", "questura-overdue", "onsite-received", "onsite-to-host",
         "onsite-declined", "onsite-expired", "booking-cancelled", "booking-confirmed-paid", "booking-confirmed-late",
         "booking-confirmed-deferred", "booking-confirmed-onsite", "host-booking-confirmed", "host-booking-confirmed-deferred",
@@ -64,17 +65,48 @@ public class EmailTemplatesTests
     }
 
     [Fact]
-    public void ServiceRequestCreated_Italian_KeepsTheInformationOfThePreviousEmail()
+    public void ServiceRequestCreated_Italian_NamesTheComuneTheTimeAndTheAmountButNeverThePropertyNorTheNotes()
     {
+        // Decision D9 (SP-04): before the take the supplier knows the comune, not the name of the property nor the host's notes.
         var content = EmailTemplates.ServiceRequestCreated(
-            EmailTemplates.DefaultCulture, "Pulizie Srl", "cleaning", "Villa Rosa", "Chiavi in portineria", Link);
+            EmailTemplates.DefaultCulture,
+            "Pulizie Srl",
+            "cleaning",
+            "Roma",
+            Link,
+            new DateTime(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc),
+            6000);
 
-        Assert.Equal("Nuova richiesta di servizio — Villa Rosa", content.Subject);
+        Assert.Equal("Nuova richiesta di servizio — Roma", content.Subject);
         Assert.Contains("Ciao Pulizie Srl,", content.HtmlBody);
-        Assert.Contains("Hai ricevuto una nuova richiesta di <strong>Pulizie</strong> per la proprietà <strong>Villa Rosa</strong>.", content.HtmlBody);
-        Assert.Contains("Note:</strong><br />Chiavi in portineria", content.HtmlBody);
+        Assert.Contains("Hai ricevuto una nuova richiesta di <strong>Pulizie</strong> a <strong>Roma</strong>.", content.HtmlBody);
+        Assert.Contains("Quando: <strong>12/10/2026 10:00</strong>.", content.HtmlBody);
+        Assert.Contains("Importo: <strong>60,00 €</strong>.", content.HtmlBody);
+        Assert.Contains("si vedono dopo che prendi in carico la richiesta", content.HtmlBody);
+        Assert.DoesNotContain("Note:", content.HtmlBody);
         Assert.Contains($"href=\"{Link}\"", content.HtmlBody);
         Assert.Contains("Apri la console fornitore", content.HtmlBody);
+    }
+
+    [Fact]
+    public void ServiceRequestCreated_NoTimeAndNoAmount_SaysNothingAboutThem()
+    {
+        var content = EmailTemplates.ServiceRequestCreated(EmailTemplates.DefaultCulture, "S", "cleaning", "Roma", Link);
+
+        Assert.DoesNotContain("Quando:", content.HtmlBody);
+        Assert.DoesNotContain("Importo:", content.HtmlBody);
+    }
+
+    [Fact]
+    public void ServiceRequestCreated_English_ShowsTheTimeInItalianTimeAndTheAmountInEuro()
+    {
+        var content = EmailTemplates.ServiceRequestCreated(
+            CultureInfo.GetCultureInfo("en"), "Cleaners Ltd", "cleaning", "Rome", Link, new DateTime(2026, 1, 12, 8, 0, 0, DateTimeKind.Utc), 12345);
+
+        Assert.Equal("New service request — Rome", content.Subject);
+        Assert.Contains("You have received a new <strong>Cleaning</strong> request in <strong>Rome</strong>.", content.HtmlBody);
+        Assert.Contains("When: <strong>12 January 2026, 09:00</strong>.", content.HtmlBody);
+        Assert.Contains("Amount: <strong>123.45 €</strong>.", content.HtmlBody);
     }
 
     [Fact]
@@ -100,23 +132,17 @@ public class EmailTemplatesTests
         var content = EmailTemplates.ServiceRequestStatusChanged(
             CultureInfo.GetCultureInfo("en"), ServiceRequestStatus.Completato, "Idraulica <b>speciale</b>", "Villa");
 
+        Assert.NotNull(content);
         Assert.Contains("Idraulica &lt;b&gt;speciale&lt;/b&gt;", content.HtmlBody);
     }
 
     [Fact]
-    public void ServiceRequestCreated_EmptyNotes_OmitsNotesBlock()
+    public void Quote_MultilineReason_KeepsLineBreaksAndEncodesEachLine()
     {
-        var content = EmailTemplates.ServiceRequestCreated(EmailTemplates.DefaultCulture, "S", "cleaning", "Villa", "  ", Link);
+        var content = EmailTemplates.ServiceRequestStatusChanged(
+            EmailTemplates.DefaultCulture, ServiceRequestStatus.Rifiutato, "cleaning", "Villa", "riga 1\r\n<b>riga 2</b>");
 
-        Assert.DoesNotContain("Note:", content.HtmlBody);
-    }
-
-    [Fact]
-    public void Quote_MultilineNotes_KeepsLineBreaksAndEncodesEachLine()
-    {
-        var content = EmailTemplates.ServiceRequestCreated(
-            EmailTemplates.DefaultCulture, "S", "cleaning", "Villa", "riga 1\r\n<b>riga 2</b>", Link);
-
+        Assert.NotNull(content);
         Assert.Contains("riga 1<br />&lt;b&gt;riga 2&lt;/b&gt;", content.HtmlBody);
     }
 
@@ -124,7 +150,7 @@ public class EmailTemplatesTests
     public void Subject_ValueWithLineBreaks_IsSingleLine()
     {
         var content = EmailTemplates.ServiceRequestCreated(
-            EmailTemplates.DefaultCulture, "S", "cleaning", "Villa\r\nBcc: attacker@example.com", null, Link);
+            EmailTemplates.DefaultCulture, "S", "cleaning", "Villa\r\nBcc: attacker@example.com", Link);
 
         Assert.DoesNotContain('\n', content.Subject);
         Assert.DoesNotContain('\r', content.Subject);
@@ -497,7 +523,7 @@ public class EmailTemplatesTests
     public void Button_NonHttpUrl_IsRejected(string url)
     {
         Assert.Throws<ArgumentException>(() =>
-            EmailTemplates.ServiceRequestCreated(EmailTemplates.DefaultCulture, "S", "cleaning", "Villa", null, url));
+            EmailTemplates.ServiceRequestCreated(EmailTemplates.DefaultCulture, "S", "cleaning", "Villa", url));
     }
 
     [Fact]
@@ -537,12 +563,158 @@ public class EmailTemplatesTests
         Assert.Equal("Cleaning at Villa Rosa: the host marked the service as paid.", english.Body);
     }
 
-    [Fact]
-    public void ServiceRequestStatusChanged_StatusWithoutEmail_Throws()
+    [Theory]
+    [InlineData(ServiceRequestStatus.Richiesto, null)]
+    [InlineData(ServiceRequestStatus.Pagato, null)]
+    [InlineData(ServiceRequestStatus.Annullato, null)]
+    [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.Host)]
+    [InlineData((ServiceRequestStatus)99, null)]
+    public void ServiceRequestStatusChanged_StatusWithoutEmailToTheHost_ReturnsNullInsteadOfThrowing(
+        ServiceRequestStatus status,
+        ServiceRequestActorParty? cancelledBy)
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            EmailTemplates.ServiceRequestStatusChanged(
-                EmailTemplates.DefaultCulture, ServiceRequestStatus.Pagato, "cleaning", "Villa"));
+        // SP-04 (D4): an unknown status sends nothing; before, it threw and was logged as an error. A request the host
+        // cancelled is not told back to the host.
+        Assert.Null(EmailTemplates.ServiceRequestStatusChanged(
+            EmailTemplates.DefaultCulture, status, "cleaning", "Villa", cancelledBy: cancelledBy));
+        Assert.Null(EmailTemplates.ServiceRequestStatusPush(
+            EmailTemplates.DefaultCulture, status, "cleaning", "Villa", cancelledBy));
+    }
+
+    [Theory]
+    [InlineData(ServiceRequestStatus.PresoInCarico, null, "Richiesta fornitore presa in carico — Villa Rosa")]
+    [InlineData(ServiceRequestStatus.InCorso, null, "Intervento avviato — Villa Rosa")]
+    [InlineData(ServiceRequestStatus.Completato, null, "Richiesta fornitore completata — Villa Rosa")]
+    [InlineData(ServiceRequestStatus.Rifiutato, null, "Richiesta fornitore rifiutata — Villa Rosa")]
+    [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.Supplier, "Richiesta fornitore annullata dal fornitore — Villa Rosa")]
+    [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.System, "Richiesta fornitore annullata: nessuna risposta — Villa Rosa")]
+    public void ServiceRequestStatusChanged_EveryStatusTheHostIsToldAbout_HasItsOwnTemplate(
+        ServiceRequestStatus status,
+        ServiceRequestActorParty? cancelledBy,
+        string subject)
+    {
+        var content = EmailTemplates.ServiceRequestStatusChanged(
+            EmailTemplates.DefaultCulture, status, "cleaning", "Villa Rosa", cancelledBy: cancelledBy);
+        var push = EmailTemplates.ServiceRequestStatusPush(EmailTemplates.DefaultCulture, status, "cleaning", "Villa Rosa", cancelledBy);
+
+        Assert.NotNull(content);
+        Assert.Equal(subject, content.Subject);
+        Assert.NotNull(push);
+        Assert.NotNull(PushTypes.ForServiceRequestStatus(status));
+    }
+
+    [Fact]
+    public void ServiceRequestStatusChanged_Completed_GivesTheFinalAmountTheNotesAndWhenItIsOverTheQuote()
+    {
+        var content = EmailTemplates.ServiceRequestStatusChanged(
+            EmailTemplates.DefaultCulture,
+            ServiceRequestStatus.Completato,
+            "cleaning",
+            "Villa Rosa",
+            completion: new EmailTemplates.ServiceRequestCompletionEmail(7800, true, 20, "Manca il detersivo"));
+        var within = EmailTemplates.ServiceRequestStatusChanged(
+            EmailTemplates.DefaultCulture,
+            ServiceRequestStatus.Completato,
+            "cleaning",
+            "Villa Rosa",
+            completion: new EmailTemplates.ServiceRequestCompletionEmail(6000, false, 20, null));
+
+        Assert.NotNull(content);
+        Assert.Contains("Importo finale: <strong>78,00 €</strong>.", content.HtmlBody);
+        Assert.Contains("L'importo supera il preventivo di oltre il 20%.", content.HtmlBody);
+        Assert.Contains("Note del fornitore:</strong><br />Manca il detersivo", content.HtmlBody);
+        Assert.NotNull(within);
+        Assert.Contains("Importo finale: <strong>60,00 €</strong>.", within.HtmlBody);
+        Assert.DoesNotContain("supera il preventivo", within.HtmlBody);
+        Assert.DoesNotContain("Note del fornitore", within.HtmlBody);
+    }
+
+    [Fact]
+    public void ServiceRequestCancelledToSupplier_NamesOnlyTheComune_AndTheReasonOnlyWhenTheHostGaveOne()
+    {
+        var byHost = EmailTemplates.ServiceRequestCancelledToSupplier(
+            EmailTemplates.DefaultCulture, "Pulizie Srl", "cleaning", "Roma", ServiceRequestActorParty.Host, "Ospiti partiti prima", Link);
+        var expired = EmailTemplates.ServiceRequestCancelledToSupplier(
+            EmailTemplates.DefaultCulture, "Pulizie Srl", "cleaning", "Roma", ServiceRequestActorParty.System, "NoResponse", Link);
+
+        Assert.Equal("Richiesta annullata dall'host — Roma", byHost.Subject);
+        Assert.Contains("L'host ha <strong>annullato</strong> la richiesta di <strong>Pulizie</strong> a <strong>Roma</strong>.", byHost.HtmlBody);
+        Assert.Contains("Motivo:</strong><br />Ospiti partiti prima", byHost.HtmlBody);
+        Assert.Equal("Richiesta scaduta — Roma", expired.Subject);
+        Assert.Contains("non hai risposto entro il termine", expired.HtmlBody);
+        // The code of the automatic cancellation is not a sentence: it is never printed.
+        Assert.DoesNotContain("NoResponse", expired.HtmlBody);
+    }
+
+    [Fact]
+    public void ServiceRequestTimeProposed_GivesTheProposedIntervalInItalianTimeAndTheMessageAndALinkWhenThereIsOne()
+    {
+        var withLink = EmailTemplates.ServiceRequestTimeProposed(
+            EmailTemplates.DefaultCulture,
+            "cleaning",
+            "Villa Rosa",
+            new DateTime(2026, 10, 15, 8, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 10, 15, 10, 30, 0, DateTimeKind.Utc),
+            "Il 14 sono pieno",
+            Link);
+        var withoutLink = EmailTemplates.ServiceRequestTimeProposed(
+            EmailTemplates.DefaultCulture,
+            "cleaning",
+            "Villa Rosa",
+            new DateTime(2026, 10, 15, 8, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 10, 15, 10, 30, 0, DateTimeKind.Utc),
+            null,
+            null);
+
+        Assert.Equal("Il fornitore propone un altro orario — Villa Rosa", withLink.Subject);
+        Assert.Contains("il fornitore propone <strong>15/10/2026 10:00–12:30</strong>", withLink.HtmlBody);
+        Assert.Contains("Messaggio del fornitore:</strong><br />Il 14 sono pieno", withLink.HtmlBody);
+        Assert.Contains($"href=\"{Link}\"", withLink.HtmlBody);
+        Assert.DoesNotContain("<a href", withoutLink.HtmlBody);
+        Assert.DoesNotContain("Messaggio del fornitore", withoutLink.HtmlBody);
+    }
+
+    [Fact]
+    public void ServiceRequestTexts_ToTheSupplier_NeverNameThePropertyBecauseTheyOnlyGetTheComune()
+    {
+        // Every email and push that can reach the supplier before the take takes the comune and has no parameter for the
+        // property name: this guards the signatures against a regression of decision D9.
+        var parameterNames = new[]
+        {
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestCreated)),
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestCancelledToSupplier)),
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestReminder)),
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestProposalAnswered)),
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestCreatedPush)),
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestCancelledToSupplierPush)),
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestReminderPush)),
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestProposalAnsweredPush)),
+        }.SelectMany(method => method!.GetParameters().Select(parameter => parameter.Name)).ToList();
+
+        Assert.DoesNotContain("propertyName", parameterNames);
+        Assert.DoesNotContain("notes", parameterNames);
+        Assert.Contains("comune", parameterNames);
+    }
+
+    [Fact]
+    public void ServiceRequestPushes_ToTheSupplier_NameCategoryAndComune()
+    {
+        var created = EmailTemplates.ServiceRequestCreatedPush(EmailTemplates.DefaultCulture, "cleaning", "Roma");
+        var reminder = EmailTemplates.ServiceRequestReminderPush(CultureInfo.GetCultureInfo("en"), "cleaning", "Rome");
+        var cancelled = EmailTemplates.ServiceRequestCancelledToSupplierPush(
+            EmailTemplates.DefaultCulture, "cleaning", "Roma", ServiceRequestActorParty.Host);
+        var expired = EmailTemplates.ServiceRequestCancelledToSupplierPush(
+            EmailTemplates.DefaultCulture, "cleaning", "Roma", ServiceRequestActorParty.System);
+        var accepted = EmailTemplates.ServiceRequestProposalAnsweredPush(EmailTemplates.DefaultCulture, "cleaning", "Roma", accepted: true);
+        var rejected = EmailTemplates.ServiceRequestProposalAnsweredPush(EmailTemplates.DefaultCulture, "cleaning", "Roma", accepted: false);
+
+        Assert.Equal("Pulizie a Roma: accetta o rifiuta la richiesta dalla tua area fornitore.", created.Body);
+        Assert.Equal("Request waiting for your answer", reminder.Title);
+        Assert.Equal("Cleaning in Rome: the host reminds you to answer.", reminder.Body);
+        Assert.Equal("Richiesta annullata dall'host", cancelled.Title);
+        Assert.Equal("Richiesta scaduta", expired.Title);
+        Assert.Equal("Proposta accettata", accepted.Title);
+        Assert.Equal("Proposta rifiutata", rejected.Title);
     }
 
     [Fact]
@@ -639,10 +811,29 @@ public class EmailTemplatesTests
         var culture = CultureInfo.GetCultureInfo(cultureName);
         return template switch
         {
-            "created" => EmailTemplates.ServiceRequestCreated(culture, value, value, value, value, Link),
-            "taken" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.PresoInCarico, value, value),
-            "completed" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.Completato, value, value),
-            "rejected" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.Rifiutato, value, value, value),
+            "created" => EmailTemplates.ServiceRequestCreated(culture, value, value, value, Link, CheckIn, 6000),
+            "taken" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.PresoInCarico, value, value, scheduledStartUtc: CheckIn)!,
+            "started" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.InCorso, value, value)!,
+            "completed" => EmailTemplates.ServiceRequestStatusChanged(
+                culture,
+                ServiceRequestStatus.Completato,
+                value,
+                value,
+                completion: new EmailTemplates.ServiceRequestCompletionEmail(7800, true, 20, value))!,
+            "rejected" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.Rifiutato, value, value, value)!,
+            "cancelled-by-supplier" => EmailTemplates.ServiceRequestStatusChanged(
+                culture, ServiceRequestStatus.Annullato, value, value, value, ServiceRequestActorParty.Supplier)!,
+            "cancelled-no-response" => EmailTemplates.ServiceRequestStatusChanged(
+                culture, ServiceRequestStatus.Annullato, value, value, null, ServiceRequestActorParty.System)!,
+            "cancelled-to-supplier" => EmailTemplates.ServiceRequestCancelledToSupplier(
+                culture, value, value, value, ServiceRequestActorParty.Host, value, Link),
+            "expired" => EmailTemplates.ServiceRequestCancelledToSupplier(
+                culture, value, value, value, ServiceRequestActorParty.System, null, Link),
+            "reminder" => EmailTemplates.ServiceRequestReminder(culture, value, value, value, Link),
+            "time-proposed" => EmailTemplates.ServiceRequestTimeProposed(
+                culture, value, value, CheckIn.AddHours(9), CheckIn.AddHours(11), value, Link),
+            "proposal-accepted" => EmailTemplates.ServiceRequestProposalAnswered(culture, value, value, value, accepted: true, Link),
+            "proposal-rejected" => EmailTemplates.ServiceRequestProposalAnswered(culture, value, value, value, accepted: false, Link),
             "paid" => EmailTemplates.ServiceRequestPaid(culture, value, value, value, Link),
             "invite" => EmailTemplates.SupplierInvite(culture, value, value, value, Link, DateTime.UtcNow),
             "checkin-link" => EmailTemplates.GuestCheckInLink(culture, value, value, CheckIn, Link, CheckIn.AddDays(-1)),

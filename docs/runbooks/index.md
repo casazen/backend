@@ -48,6 +48,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | Runbook | Argomento | Task |
 |---|---|---|
 | [`property-address.md`](property-address.md) | property address uniqueness, unit and coordinates | PC-03, PC-05, PC-06 |
+| [`property-rental-mode.md`](property-rental-mode.md) | rental mode of a property (short or long): rules, backfill with its dry run, predicates that ignore long-term properties, rollback | PM-01 |
 | [`ical.md`](ical.md) | iCal import and export (property OTA calendars, supplier calendars) | BK-02, BK-04, BK-05, BK-06, BK-21, CO-04, CO-08, CO-09 |
 | [`seasonal-suggestions.md`](seasonal-suggestions.md) | Suggerimenti stagionali (seasonal price suggestions) | BK-03, BK-07, FD-20, PC-15 |
 | [`direct-booking.md`](direct-booking.md) | direct booking — "Paga in struttura" requests, checkout outcome page, payment options | BK-02, BK-03, BK-04, BK-06, BK-07, BK-08, BK-10, BK-11 |
@@ -78,7 +79,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | Runbook | Argomento | Task |
 |---|---|---|
 | [`rli.md`](rli.md) | RLI registration of lease contracts | FD-06, FD-07, LT-01, LT-02, LT-03, LT-04, LT-07, LT-08 |
-| [`lease-contract-templates.md`](lease-contract-templates.md) | lease contract templates (approval gate, clause texts from the product owner) | FD-02, LT-02, LT-03, LT-09, LT-10 |
+| [`lease-contract-templates.md`](lease-contract-templates.md) | lease contract templates (approval gate, clause texts from the product owner, draft templates 2026-11 not approved) | FD-02, LG-02, LT-02, LT-03, LT-09, LT-10 |
 | [`canone-concordato.md`](canone-concordato.md) | Canone concordato: range, dati dell'accordo, tipo di contratto (LT-10, LT-13) | LT-08, LT-10, LT-13 |
 
 ## SEO e siti pubblici

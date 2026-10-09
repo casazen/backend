@@ -144,6 +144,9 @@
   <data name="NoOrganizationAssigned" xml:space="preserve">
     <value>Nessuna organizzazione assegnata all'utente corrente</value>
   </data>
+  <data name="MemberCannotOnboard" xml:space="preserve">
+    <value>Fai già parte di un'organizzazione come collaboratore: non puoi attivare un nuovo account né cambiare il tuo ruolo. Se ti serve un altro ruolo, chiedilo al titolare dell'organizzazione.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
@@ -1466,7 +1469,7 @@
     <value>La proprietà non è ancora stata dichiarata pronta per il prossimo ospite.</value>
   </data>
   <data name="SupplierInboxStatusInvalid" xml:space="preserve">
-    <value>Stato non valido: usa open, history, all oppure uno stato della richiesta (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato).</value>
+    <value>Stato non valido: usa open, history, all oppure uno stato della richiesta (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato, Annullato).</value>
   </data>
   <data name="SupplierInboxPeriodInvalid" xml:space="preserve">
     <value>Periodo non valido: la data di inizio (from) non può essere successiva alla data di fine (to).</value>
@@ -1978,6 +1981,30 @@
   <data name="SupplierServiceCopySuffix" xml:space="preserve">
     <value> (copia)</value>
   </data>
+  <data name="SupplierHoursInvalid" xml:space="preserve">
+    <value>Gli orari non sono validi (campi: {0}). Controlla le fasce: ogni giorno ne ha al massimo 3, non possono sovrapporsi e ognuna deve finire dopo il suo inizio (in minuti dalla mezzanotte, da 0 a 1440).</value>
+  </data>
+  <data name="SupplierTimeOffInvalid" xml:space="preserve">
+    <value>Le ferie non sono valide (campi: {0}). Il primo e l'ultimo giorno sono obbligatori, l'ultimo non può essere prima del primo né già passato, e il periodo dura al massimo 366 giorni.</value>
+  </data>
+  <data name="SupplierTimeOffLimitReached" xml:space="preserve">
+    <value>Puoi avere al massimo {0} periodi di ferie in programma: elimina uno di quelli che non ti servono prima di aggiungerne un altro.</value>
+  </data>
+  <data name="SupplierTimeOffNotFound" xml:space="preserve">
+    <value>Periodo di ferie non trovato: potrebbe essere già stato eliminato.</value>
+  </data>
+  <data name="SupplierBlockInvalid" xml:space="preserve">
+    <value>Il blocco di orario non è valido (campi: {0}). La fine deve essere dopo l'inizio e non già passata, la durata almeno 15 minuti (al massimo 31 giorni per un blocco) e un'apertura extra deve restare dentro un solo giorno.</value>
+  </data>
+  <data name="SupplierBlockLimitReached" xml:space="preserve">
+    <value>Puoi avere al massimo {0} blocchi e aperture extra in programma: elimina quelli che non ti servono prima di aggiungerne altri.</value>
+  </data>
+  <data name="SupplierBlockNotFound" xml:space="preserve">
+    <value>Blocco non trovato: potrebbe essere già stato eliminato, oppure arriva dal tuo calendario collegato e si toglie da lì.</value>
+  </data>
+  <data name="SupplierRulesInvalid" xml:space="preserve">
+    <value>Le regole non sono valide (campi: {0}). Servono tutte e cinque: pausa tra i lavori (da 0 a 240 minuti, a passi di 5), massimo lavori al giorno (da 1 a 50), preavviso (da 0 a 720 ore), orizzonte (da 1 a 365 giorni) e passo degli orari (da 15 a 240 minuti, a passi di 5).</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Indica il comune oppure l'immobile per cercare i fornitori.</value>
   </data>
@@ -2104,6 +2131,15 @@
   <data name="PropertyCityLockedByLease" xml:space="preserve">
     <value>La città dell'immobile non può essere modificata dopo l'invio di un contratto a canone concordato per la registrazione.</value>
   </data>
+  <data name="PropertyNotBookableInLongMode" xml:space="preserve">
+    <value>Questo immobile è in modalità affitto lungo: non è pubblicato sul sito di prenotazione e non accetta prenotazioni di soggiorni brevi.</value>
+  </data>
+  <data name="PropertyRentalModeChangeNotAllowed" xml:space="preserve">
+    <value>La modalità di affitto (breve o lungo) di un immobile già creato non può essere modificata con questo salvataggio.</value>
+  </data>
+  <data name="PropertyListModeInvalid" xml:space="preserve">
+    <value>Modalità non valida: usa «short» (affitto breve) o «long» (affitto lungo).</value>
+  </data>
   <data name="DocumentTypeInvalid" xml:space="preserve">
     <value>Tipo di documento non valido.</value>
   </data>
@@ -2160,5 +2196,137 @@
   </data>
   <data name="ActivationIcalRecommended" xml:space="preserve">
     <value>Consigliato: collega un feed iCal delle OTA.</value>
+  </data>
+  <data name="ServiceRequestCannotStart" xml:space="preserve">
+    <value>La richiesta non può essere avviata nello stato attuale: va prima presa in carico e non ancora avviata.</value>
+  </data>
+  <data name="ServiceRequestCannotCancel" xml:space="preserve">
+    <value>La richiesta non può essere annullata nello stato attuale: l'host può annullarla finché il lavoro non è concluso, il fornitore solo prima dell'avvio.</value>
+  </data>
+  <data name="ServiceRequestCannotPropose" xml:space="preserve">
+    <value>Si può proporre un altro orario solo per una richiesta nuova.</value>
+  </data>
+  <data name="ServiceRequestCannotRemind" xml:space="preserve">
+    <value>Si può sollecitare solo una richiesta nuova che aspetta ancora la risposta del fornitore.</value>
+  </data>
+  <data name="ServiceRequestCannotAddPhotos" xml:space="preserve">
+    <value>Le foto del lavoro si aggiungono mentre il lavoro è in corso, prima di completare la richiesta.</value>
+  </data>
+  <data name="SupplierSlotUnavailable" xml:space="preserve">
+    <value>L'orario scelto non è più libero: scegline un altro.</value>
+  </data>
+  <data name="ServiceRequestServiceUnavailable" xml:space="preserve">
+    <value>Il servizio scelto non è disponibile: il fornitore lo ha messo in pausa o non lo ha ancora pubblicato.</value>
+  </data>
+  <data name="ServiceRequestServiceCategoryMismatch" xml:space="preserve">
+    <value>La categoria della richiesta non è quella del servizio scelto.</value>
+  </data>
+  <data name="ServiceRequestTimeNeedsService" xml:space="preserve">
+    <value>Per scegliere un orario serve il servizio del fornitore: la sua durata dà la fine del lavoro.</value>
+  </data>
+  <data name="ServiceRequestTimeInvalid" xml:space="preserve">
+    <value>L'orario non è valido: indica la fine del lavoro, dopo l'inizio e in minuti interi, oppure scegli un servizio che ha una durata.</value>
+  </data>
+  <data name="ServiceRequestTimeAlreadySet" xml:space="preserve">
+    <value>La richiesta ha già un orario: per cambiarlo proponi un altro orario all'host.</value>
+  </data>
+  <data name="ServiceRequestAmountInvalid" xml:space="preserve">
+    <value>Importo non valido: deve essere maggiore di zero e al massimo {0} euro; gli extra sono al massimo {1}, ciascuno con una descrizione di al massimo {2} caratteri.</value>
+  </data>
+  <data name="ServiceRequestFinalAmountInvalid" xml:space="preserve">
+    <value>L'importo finale non può essere inferiore agli extra che comprende.</value>
+  </data>
+  <data name="ServiceRequestRemindTooSoon" xml:space="preserve">
+    <value>Hai già sollecitato questa richiesta da poco: potrai farlo di nuovo dopo {0} ore dall'ultimo sollecito.</value>
+  </data>
+  <data name="ServiceRequestNoProposal" xml:space="preserve">
+    <value>Non c'è nessuna proposta di orario a cui rispondere per questa richiesta.</value>
+  </data>
+  <data name="ServiceRequestPhotoInvalid" xml:space="preserve">
+    <value>Foto non valida: {0}. Formati accettati: JPEG, PNG, WebP. Dimensione massima: 10 MB.</value>
+  </data>
+  <data name="ServiceRequestPhotoLimit" xml:space="preserve">
+    <value>Una richiesta può avere al massimo {0} foto: ne ha già {1} e ne stai caricando {2}.</value>
+  </data>
+  <data name="ServiceRequestPhotoNotFound" xml:space="preserve">
+    <value>Foto non trovata.</value>
+  </data>
+  <data name="ServiceRequestServiceInvalid" xml:space="preserve">
+    <value>Il servizio indicato non è valido.</value>
+  </data>
+  <data name="ServiceRequestAmountOutOfRange" xml:space="preserve">
+    <value>L'importo deve essere compreso tra {1} e {2} centesimi di euro.</value>
+  </data>
+  <data name="ServiceRequestExtraLabelRequired" xml:space="preserve">
+    <value>Indica per cosa è l'extra.</value>
+  </data>
+  <data name="ServiceRequestExtraLabelTooLong" xml:space="preserve">
+    <value>La descrizione dell'extra può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestExtrasTooMany" xml:space="preserve">
+    <value>Puoi aggiungere al massimo {1} extra.</value>
+  </data>
+  <data name="ServiceRequestCancelReasonRequired" xml:space="preserve">
+    <value>Indica il motivo dell'annullamento.</value>
+  </data>
+  <data name="ServiceRequestCancelReasonTooLong" xml:space="preserve">
+    <value>Il motivo dell'annullamento può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestProposalStartRequired" xml:space="preserve">
+    <value>Indica l'inizio dell'orario proposto.</value>
+  </data>
+  <data name="ServiceRequestProposalMessageTooLong" xml:space="preserve">
+    <value>Il messaggio può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestIdsRequired" xml:space="preserve">
+    <value>Indica le richieste da accettare: almeno una.</value>
+  </data>
+  <data name="ServiceRequestIdsTooMany" xml:space="preserve">
+    <value>Puoi accettare al massimo {1} richieste alla volta.</value>
+  </data>
+  <data name="ServiceRequestPhotosRequired" xml:space="preserve">
+    <value>Carica almeno una foto (campo photos).</value>
+  </data>
+  <data name="SupplierInboxTabInvalid" xml:space="preserve">
+    <value>Scheda non valida: usa nuove, programmate, da-incassare oppure archivio.</value>
+  </data>
+  <data name="SupplierInboxWhenInvalid" xml:space="preserve">
+    <value>Periodo non valido: usa oggi, settimana oppure mese.</value>
+  </data>
+  <data name="SupplierSlotsServiceRequired" xml:space="preserve">
+    <value>Indica il servizio di cui vuoi vedere gli orari (parametro service).</value>
+  </data>
+  <data name="SupplierSlotsDaysInvalid" xml:space="preserve">
+    <value>Il numero di giorni (parametro days) deve essere compreso tra 1 e {0}.</value>
+  </data>
+  <data name="SupplierQuoteInvalid" xml:space="preserve">
+    <value>Alcuni dati della richiesta di stima non sono validi (campi: {0}). Controllali e riprova.</value>
+  </data>
+  <data name="SupplierBookingInvalid" xml:space="preserve">
+    <value>Alcuni dati della prenotazione non sono validi (campi: {0}). Controllali e riprova.</value>
+  </data>
+  <data name="SupplierBookingOffline" xml:space="preserve">
+    <value>Questo fornitore non accetta prenotazioni online in questo momento: puoi chiedere un preventivo.</value>
+  </data>
+  <data name="SupplierBookingOutsideZone" xml:space="preserve">
+    <value>Il fornitore non lavora in questo comune: puoi comunque chiedere un preventivo.</value>
+  </data>
+  <data name="SupplierBookingConsentRequired" xml:space="preserve">
+    <value>Per inviare la richiesta serve accettare l'informativa sulla privacy.</value>
+  </data>
+  <data name="SupplierBookingConsentOutdated" xml:space="preserve">
+    <value>L'informativa sulla privacy è stata aggiornata: leggi la versione attuale e accettala di nuovo.</value>
+  </data>
+  <data name="SupplierBookingLinkInvalid" xml:space="preserve">
+    <value>Link di conferma non valido: apri il link ricevuto via email.</value>
+  </data>
+  <data name="SupplierBookingLinkExpired" xml:space="preserve">
+    <value>Il tempo per confermare la richiesta è scaduto e l'orario è tornato disponibile: invia una nuova richiesta dal sito del fornitore.</value>
+  </data>
+  <data name="SupplierBookingSupplierUnavailable" xml:space="preserve">
+    <value>Il fornitore non può ricevere richieste in questo momento. Riprova più tardi.</value>
+  </data>
+  <data name="SupplierBookingTokenRequired" xml:space="preserve">
+    <value>Apri il link ricevuto via email: il codice di conferma manca o non è valido.</value>
   </data>
 </root>
