@@ -4,6 +4,8 @@ Task FD-20 (defects A2-09, A9-17, R-10 webhook part, A8-16 OTA part, A9-15 OTA j
 Task FD-21 adds `AiSupplierDiscovery` (defects A8-01, A8-14, A8-15, A4-26, A8-16 AI part; decision D11).
 Task LT-01 adds `RliProvider` (defects A7-01, A7-21; decision D15; `docs/runbooks/rli.md`).
 Task LT-02 adds `ESignProvider` (defects A7-02, A7-16, A7-20; decision D15; `docs/runbooks/rli.md` § Contract signature).
+Task BL-01 (redesign wave) adds `UiRedesign` (decision 01-D8; the same task adds the "accesso aperto" switch,
+`docs/runbooks/open-access.md`, which is **not** a feature flag).
 
 ## How it works
 
@@ -23,6 +25,7 @@ Task LT-02 adds `ESignProvider` (defects A7-02, A7-16, A7-20; decision D15; `doc
 | `AiSupplierDiscovery` | `Features__AiSupplierDiscovery` | `false` (D11: AI supplier discovery, US-014 in freeze) | `POST /api/service-requests/match-supplier` (404 when off, before authentication); inside the services, with the flag off: no web search (`IWebSearchClient`), no LLM extraction of "nearby businesses", no AI match reason, so **nothing reaches the AI provider**. Frontend: key `aiSupplierDiscovery` with no consumer: the web AI match flow ("Raccomandazione AI", "più votati su Google") was unreachable and has been removed. **The manual service request** (`POST /api/service-requests` with the supplier chosen in the marketplace) **is not behind this flag.** |
 | `RliProvider` | `Features__RliProvider` | `false` (D15: RLI filing through a provider needs a real provider client, the legal opinion and the cost approval, `docs/integrations/rli-esign.md` §5) | `POST /api/leases/{id}/registration` (404 when off); recurring job `lease-registration-status-poll` (not registered, removed with `RemoveIfExists`); in the service, nothing reaches the provider. **On is not enough**: the provider must also be configured (`ILeaseRegistrationProvider.IsConfigured`), and today the only one registered is `UnconfiguredLeaseRegistrationProvider`, so the path stays unavailable (409 `rli_provider_unavailable`). Frontend: key `rliProvider` with no direct consumer; the lease page reads `providerFilingAvailable` from the RLI checklist. **Manual registration** (`POST /api/leases/{id}/registration/manual`) **is not behind this flag** and is the default. |
 | `ESignProvider` | `Features__ESignProvider` | `false` (D15: a lease signed electronically needs at least the FEA; no provider client is written and the budget and the legal opinion are open, `docs/integrations/rli-esign.md` §3–§5) | `POST /api/leases/{id}/signing` and `POST /webhooks/esign` (404 when off, before anything is read); recurring job `lease-sign-status-poll` (not registered, removed with `RemoveIfExists`); queued webhook events are dropped. **On is not enough**: the provider must also be configured (`ILeaseESignService.IsConfigured`), and today the only one registered is `UnconfiguredLeaseESignService`, so the path stays unavailable (409 `esign_provider_unavailable`). **On requires `ESign__WebhookSecret`** (at least 16 characters, no placeholder): otherwise the service does not start (`ESignOptionsValidator`). Frontend: key `eSignProvider` with no direct consumer; the lease page reads `providerSigningAvailable` from `GET /api/leases/{id}/signers`. **The offline signature** (`GET contract.pdf`, `POST signed-document`, `POST stipula`) **is not behind this flag** and is the default. |
+| `UiRedesign` | `Features__UiRedesign` | `false` (01-D8: gradual rollout of the new interface; the product owner turns it on when the frontend work is deployed and reviewed) | **Nothing in the backend**: BL-01 only introduces and exposes the flag, no endpoint, service or job reads it. Frontend: key `uiRedesign` (to add to `src/config/feature-flags.ts`, UI-01), which switches the new design tokens, shell and navigation on (`html[data-ui='v2']`) or off for everybody. It changes what **every** user sees, so there is no per-org or per-user switch in this flag. |
 
 ### Before turning `AiSupplierDiscovery` on
 
@@ -40,6 +43,15 @@ The flag only hides code that is still in freeze; turning it on brings back the 
 `/ota/{id}/validate`). Removed for good by FD-20 (they do not come back with the flag): `PUT /api/ota/pricing`
 (rewrote `NightlyRate` without validation), `POST /api/ota/validate?apiKey=` (API key in the query string),
 `POST /api/ota/sync-platform` (no ownership check, A9-17).
+
+### Before turning `UiRedesign` on
+
+Nothing to do now: the default is off, and until the frontend ships the new interface (UI-01 onwards) the flag has no
+consumer, so turning it on changes nothing. When it does have one, turn it on **on `test` first**, look at the main
+journeys on a phone and on a desktop, and only then on `production` (`Features__UiRedesign=true`; delete the variable or set
+`false` to go back: by design of 01-D8 the new tokens live under `html[data-ui='v2']` only, so the old look comes back at
+once). It is one value for everybody: `GET /api/public/features` is anonymous and global, there is no per-org or per-user
+value. It is independent of the "accesso aperto" switch ([`open-access.md`](open-access.md)).
 
 ## Adding a flag
 
