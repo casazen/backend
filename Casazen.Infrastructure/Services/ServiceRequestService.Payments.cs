@@ -13,6 +13,18 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public partial class ServiceRequestService
 {
+    /// <summary>
+    /// How a request is paid from now on, decided when it is taken. A request from a supplier's public showcase (SP-10) is always
+    /// <see cref="ServiceRequestPaymentMode.Manual"/>: its customer is a private person with no account, no org and no address on file
+    /// for a payment link, and its <c>OrgId</c> is the supplier's own, so a payment request would reach the supplier itself. The
+    /// supplier records the payment it received outside CasaZen (<c>payment/offline</c>); paying a showcase customer online is a
+    /// decision of its own and is not made here.
+    /// </summary>
+    private async Task<ServiceRequestPaymentMode> ResolvePaymentModeAsync(ServiceRequest request, CancellationToken cancellationToken) =>
+        request.RentalContext == ServiceRequestRentalContext.Showcase
+            ? ServiceRequestPaymentMode.Manual
+            : await payments.ResolveModeAsync(request.SupplierOrgId, cancellationToken);
+
     public async Task<ServiceRequest> ConfirmFinalAmountAsync(
         Guid id,
         Guid hostOrgId,

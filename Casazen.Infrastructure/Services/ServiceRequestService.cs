@@ -284,7 +284,7 @@ public partial class ServiceRequestService(
 
         // SP-15a: how the request is paid is decided now and kept (Online only if the flag is on and the supplier's Stripe account
         // can take charges and payouts: no payment before the KYC).
-        var paymentMode = await payments.ResolveModeAsync(supplierOrgId, cancellationToken);
+        var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
         IDbContextTransaction? transaction = schedule is null ? null : await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
         await using (transaction)

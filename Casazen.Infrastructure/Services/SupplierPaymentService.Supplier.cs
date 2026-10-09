@@ -28,7 +28,7 @@ public sealed partial class SupplierPaymentService
         if (!supplier.CanReceivePayments)
             throw new DomainRuleException(SupplierPaymentsErrors.NotReady, SupplierPaymentsErrors.NotReadyMessageKey);
 
-        if (string.IsNullOrWhiteSpace(await ReadPayerEmailAsync(request.OrgId, cancellationToken)))
+        if (string.IsNullOrWhiteSpace(await ReadPayerEmailAsync(PayerOf(request).OrgId, cancellationToken)))
             throw new DomainRuleException(ServicePaymentErrors.NoRecipient, ServicePaymentErrors.NoRecipientMessageKey);
 
         ServiceRequestPayment payment;
@@ -147,6 +147,7 @@ public sealed partial class SupplierPaymentService
             EnsureCanBePaid(request);
 
             var now = Now();
+            var (payerKind, payerOrgId) = PayerOf(request);
             var live = await LivePaymentOf(request.Id).ToListAsync(cancellationToken);
             foreach (var open in live)
             {
@@ -198,8 +199,8 @@ public sealed partial class SupplierPaymentService
             {
                 ServiceRequestId = request.Id,
                 SupplierOrgId = request.SupplierOrgId,
-                PayerKind = ServicePayerKind.Host,
-                PayerOrgId = request.OrgId,
+                PayerKind = payerKind,
+                PayerOrgId = payerOrgId,
                 AmountCents = amount,
                 Currency = ServiceCharges.Currency,
 

@@ -2031,6 +2031,13 @@ jobs, refunds, the admin tools and the monthly export of the commission) is anot
   the guests' bookings or on the rent** (`StripeServiceApplicationFeeTests`, `ApplicationFeeArchitectureTests`).
 - **The host cannot mark an `Online` request as paid**: `mark-paid` (section 15.2) is 422 `service_request_online_payment`. The supplier
   declares a payment received outside CasaZen, with a reason. Every `Manual` request works as before (section 15.2).
+- **A request from the supplier's public showcase (section 23) is not paid inside CasaZen yet.** Its `OrgId` is the supplier's own and its
+  customer is a private person with no account and no address on file for a payment link, so it is taken as `Manual` whatever the flag
+  says (`ServiceRequestService.ResolvePaymentModeAsync`; `SupplierPaymentService.PlanAsync` completes one that is `Online` by mistake as a
+  manual one, without a payment or a link). The supplier records the payment it received outside CasaZen (`payment/offline`): the payment
+  is kept with a **private payer** (`PayerKind = Private`, no `PayerOrgId`) and no commission, the history credits it to the supplier, and
+  nobody is emailed (there is no host). Charging a showcase customer online, with a page of its own and the address of its
+  `ServiceCustomers` row, is a decision and a task of its own (follow-up SP-15c).
 - **The flag stops only the creation** of payments (a request is taken as `Manual`; `payment-request` is a 404 before authentication). The
   payer's page and sessions, the host's session and the supplier's offline record are **not** behind it: money in flight, and the way out
   when online payments are not available.
@@ -2098,8 +2105,8 @@ Section `SupplierPayments` (validated at startup, `appsettings.json` has the def
 ## Known limits (other tasks)
 
 - Booking from the showcase (SP-10): the customer cannot yet find, cancel, move or answer a proposed time of its request
-  (SP-11); until then the flag `SupplierShowcaseBooking` must stay off (section 23.8). Nobody is paid through a showcase request
-  (SP-15). `SupplierSettings.OnlineBookingEnabled` has no endpoint that writes it yet (SP-13 / SP-16).
+  (SP-11); until then the flag `SupplierShowcaseBooking` must stay off (section 23.8). A showcase request is not paid inside CasaZen
+  (section 26.2, SP-15c): the supplier records the payment it received outside it. `SupplierSettings.OnlineBookingEnabled` has no endpoint that writes it yet (SP-13 / SP-16).
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.

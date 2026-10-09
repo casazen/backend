@@ -204,7 +204,7 @@ public partial class ServiceRequestService
         var proposedBy = request.ProposedByUserId;
 
         // SP-15a: accepting the proposal is a take, so the request is paid the way the supplier can be paid right now.
-        var paymentMode = await payments.ResolveModeAsync(request.SupplierOrgId, cancellationToken);
+        var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(request.SupplierOrgId, cancellationToken);
         await using (transaction)
