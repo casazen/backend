@@ -52,6 +52,77 @@ public class ConfigurationFeatureFlagsTests
         Assert.Contains(FeatureFlags.OtaPartnerApi, FeatureFlags.All);
     }
 
+    // ─── SP-02: the two flags of the supplier showcase and payments ──────────────
+
+    [Fact]
+    public void All_SupplierFlags_AreListedLastInTheOrderExposedToTheFrontend()
+    {
+        // The supplier flags keep their order; a flag added after them (AM-01: OrgTeam) is appended at the end.
+        Assert.Equal("SupplierShowcaseBooking", FeatureFlags.SupplierShowcaseBooking);
+        Assert.Equal("SupplierOnlinePayments", FeatureFlags.SupplierOnlinePayments);
+        Assert.Equal("SupplierRequestAutoCancel", FeatureFlags.SupplierRequestAutoCancel);
+        Assert.Equal(
+            new[]
+            {
+                "OtaPartnerApi",
+                "AiSupplierDiscovery",
+                "RliProvider",
+                "ESignProvider",
+                "SupplierShowcaseBooking",
+                "SupplierOnlinePayments",
+                "SupplierRequestAutoCancel",
+                "OrgTeam",
+            },
+            FeatureFlags.All);
+    }
+
+    [Theory]
+    [InlineData(FeatureFlags.SupplierShowcaseBooking)]
+    [InlineData(FeatureFlags.SupplierOnlinePayments)]
+    [InlineData(FeatureFlags.SupplierRequestAutoCancel)]
+    public void IsEnabled_SupplierFlagNotConfigured_IsOff(string flag)
+    {
+        Assert.False(Flags(new Dictionary<string, string?>()).IsEnabled(flag));
+    }
+
+    [Theory]
+    [InlineData(FeatureFlags.SupplierShowcaseBooking, FeatureFlags.SupplierOnlinePayments)]
+    [InlineData(FeatureFlags.SupplierOnlinePayments, FeatureFlags.SupplierShowcaseBooking)]
+    [InlineData(FeatureFlags.SupplierRequestAutoCancel, FeatureFlags.SupplierOnlinePayments)]
+    [InlineData(FeatureFlags.SupplierOnlinePayments, FeatureFlags.SupplierRequestAutoCancel)]
+    public void IsEnabled_OneSupplierFlagOn_DoesNotTurnTheOtherOn(string on, string other)
+    {
+        var flags = Flags(new Dictionary<string, string?> { [$"Features:{on}"] = "true" });
+
+        Assert.True(flags.IsEnabled(on));
+        Assert.False(flags.IsEnabled(other));
+    }
+
+    [Fact]
+    public void AppSettings_EveryFlagIsListedAndOffByDefault()
+    {
+        // The documented default of each flag (a missing value is off anyway): appsettings.json of the web project.
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"), optional: false)
+            .Build();
+        var flags = new ConfigurationFeatureFlags(configuration);
+
+        Assert.All(FeatureFlags.All, flag =>
+        {
+            Assert.Equal("False", configuration[$"{FeatureFlags.SectionName}:{flag}"]);
+            Assert.False(flags.IsEnabled(flag), $"{flag} must be off by default");
+        });
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Casazen.sln")))
+            directory = directory.Parent;
+
+        return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
+    }
+
     // ─── AM-01: the org team flag ───────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -73,13 +144,8 @@ public class ConfigurationFeatureFlagsTests
     [Fact]
     public void OrgTeam_AppSettingsDefault_IsOff()
     {
-        var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (root is not null && !File.Exists(Path.Combine(root.FullName, "Casazen.sln")))
-            root = root.Parent;
-        Assert.NotNull(root);
-
         var configuration = new ConfigurationBuilder()
-            .AddJsonFile(Path.Combine(root.FullName, "Casazen.Web", "appsettings.json"))
+            .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"))
             .Build();
 
         Assert.Equal("False", configuration["Features:OrgTeam"], ignoreCase: true);

@@ -8,6 +8,12 @@ Before LT-03 the base `appsettings.json`, valid in production too, marked every 
 `VersionId: dev-stub`, and the "contract" sent to signature was a 13-line draft that wrote "3+2" whatever the dates
 and, for cedolare secca / regime ordinario, did not even name the parties.
 
+> **Update 2026-10-08 (task LG-02).** The product owner decided that, **for now**, the agent writes the legal texts
+> and the contract templates, as drafts that a lawyer reviews before any use. The repository therefore now holds three
+> **draft, not approved** templates (`2026-11-bozza-v1`) and nothing approves or switches them on: see
+> [Bozze 2026-11](#bozze-2026-11-draft-templates-task-lg-02), with the list of what the lawyer must check first.
+> Everything else in this runbook (format, approval steps, behaviour) is unchanged.
+
 ## Behaviour
 
 | Template state (per fiscal regime) | Final contract: `GET /api/leases/{id}/contract.pdf`, `POST signed-document` (offline signature, LT-02), `POST signing` (provider, off) | `GET /api/leases/{id}/contract/preview` |
@@ -104,7 +110,9 @@ template is missing, the final contract answers `422 contract_data_missing` and 
 
 **Transitorio leases** (LT-10): the contract type exists (1-18 months) but has no template, whatever the tax regime:
 the final contract answers `422 contract_template_not_approved` and the preview is a BOZZA. The template of a
-regime is a 4+4 or 3+2 contract and must not be used for them. Student leases are not modelled.
+regime is a 4+4 or 3+2 contract and must not be used for them. Student leases are not modelled. The 2026-10-08
+drafts of the transitorio and student contracts are kept as reference only, outside `LeaseTemplates/`, in
+`docs/legal-drafts/leases/` (see [Bozze 2026-11](#bozze-2026-11-draft-templates-task-lg-02)).
 
 ### Required sections (checklist)
 
@@ -261,3 +269,140 @@ fonts. For the RLI the Agenzia wants the **signed** copy in PDF/A-1a/1b or TIFF 
 
 LT-09 is integrated: the contract is laid out on as many A4 pages as it needs, without truncation. Before approving,
 download the preview of the real template and check page count, headings and the absence of `[DATO MANCANTE: …]`.
+
+## Bozze 2026-11: draft templates (task LG-02)
+
+> **Bozza redatta da un agente AI su incarico del PO: richiede revisione di un legale prima dell'uso in produzione.**
+
+Written on 2026-10-09 (task LG-02, decision D27 of the wave spec) after the product owner's decision of 2026-10-08: the
+legal texts and the contract templates are written by the agent **for now**, as drafts that a lawyer reviews before any
+use. The texts derive from the four demo drafts of 2026-10-08 (`contratto-libero`, `contratto-concordato`,
+`contratto-transitorio`, `contratto-studenti`; same clauses, same wording). **Nothing is approved and nothing is
+switched on**: the committed `appsettings.json` keeps every variant `Approved: false` with no `VersionId`.
+
+### What exists
+
+| File (`Casazen.Web/LeaseTemplates/…/2026-11-bozza-v1.md`) | Regime | Derived from | What differs |
+|---|---|---|---|
+| `CedolareSecca/` | `CedolareSecca` | `contratto-libero` (4+4) | art. 17 `opzione_cedolare` (the option, the waiver of rent updates, the revocation); art. 7 no ISTAT update while the option lasts; art. 16 no registration tax or stamp duty |
+| `RegimeOrdinario/` | `RegimeOrdinario` | `contratto-libero` (4+4) | art. 7 ISTAT update with a percentage to fill in; art. 16 registration tax and stamp duty split between the parties; art. 17 ordinary regime, with the cedolare option as a possibility for later years |
+| `CanoneConcordato/` | `CanoneConcordato` | `contratto-concordato` (3+2) | art. 1 `accordo_territoriale`, art. 8 `attestazione_conformita` (both required for this regime); the tax regime (cedolare secca or ordinary) is chosen by hand in art. 19 |
+
+Every file is complete: all the required sections of its regime with text and required placeholders, only the 12 known
+placeholders, no format problem. Its state is therefore `NotApproved`, and the product behaves as in the third row of
+the table "Behaviour": the preview is the full contract marked `BOZZA - template non approvato` (watermark `BOZZA` on
+every page) and the final contract (download, signed upload, signing) still answers `422 contract_template_not_approved`.
+
+The two drafts that have no pipeline are **not** in `LeaseTemplates/` (a file there for `Transitorio` or `Studenti`
+would be ignored by the catalog and could mislead): they are kept as reference in `docs/legal-drafts/leases/`
+(`contratto-transitorio.md`, `contratto-studenti.md`), with the notice "Bozza non approvata: nessuna pipeline di
+prodotto", the variables with their examples and the product placeholder that would cover each, and their own points
+for the lawyer.
+
+### How the demo drafts were adapted to the product format
+
+- **Articles.** The format does not number articles: they are numbered by hand (`## id | Art. N · Title`), as are the
+  internal references ("articolo N") and the list "Clausole approvate specificamente" (arts. 1341-1342 c.c.). If an
+  article is added or removed, renumber all three. `LeaseTemplateDraftsTests` checks that numbers are consecutive, that
+  every reference points to the right section and that the list matches the headings.
+- **Required sections.** Where the demo had one article for two required sections (term and renewal) they are split;
+  the data of the agreement moved from the recitals to its own article in the concordato.
+- **Data the product has** are placeholders: parties (`locatori`, `conduttori`), address, comune and cadastral data
+  (`immobile_indirizzo`, `immobile_comune`, `dati_catastali`), APE (`ape_estremi`), term and dates (`durata`,
+  `data_decorrenza`, `data_scadenza`), rent (`canone_mensile`, `canone_annuo`), deposit (`deposito_cauzionale`). The
+  term is always the one computed from the dates, never "quattro anni" written by hand.
+- **Data the product does not have** are **not invented**: they are blank fields to fill in by hand on the printed
+  contract (`__________`), or the clause is worded so as not to need them. Every choice has a `<!-- LEGALE: … -->`
+  comment in the file (comments are not printed).
+
+| Datum asked by the 2026-10-08 draft | In the templates | Where |
+|---|---|---|
+| Residence of landlord and tenant, citizenship of the tenant | blank | `parti` |
+| Floor, composition, surface, furnishing | blank; furnishing is a choice to strike out | `immobile` |
+| Months of notice of the contractual withdrawal | blank | `recesso` (free-rent templates) |
+| Rent in words | dropped; the yearly rent computed by the product is printed instead | `canone` |
+| Payment day, landlord's IBAN | blank | `canone` |
+| ISTAT percentage | blank in the free-rent templates (the concordato states the 75% of the agreement) | `aggiornamento_canone` |
+| Monthly advance on charges | blank | `oneri_accessori` |
+| Details and deposit date of the agreement, rent band, body that attests | blank | concordato: `accordo_territoriale`, `canone`, `attestazione_conformita` |
+| Tax regime | from the template (free rent); a choice to strike out (concordato) | `regime_fiscale` / `opzione_cedolare` |
+| Email of the parties | blank | `comunicazioni` |
+| Place and date of the signature | blank | `firme` |
+
+**Consequence of the blanks.** The printed contract has fields to complete by hand, so it can only be signed offline
+(LT-02: download, complete and sign on paper, upload the signed copy). The provider signature path (flag
+`ESignProvider`, off) would send the PDF with the blanks empty. Turning blanks into placeholders needs new data in the
+product and new entries in `LeaseContractPlaceholders` (task proposed in the PR: LG-02b).
+
+### Try the preview on a test environment
+
+1. On the **test** environment set only the version, for the regimes to look at (never `Approved`):
+   `LeaseTemplates__Variants__CedolareSecca__VersionId=2026-11-bozza-v1`, and the same for `RegimeOrdinario` and
+   `CanoneConcordato`. Redeploy (the files are read once per process).
+2. Open a draft lease of that regime and download `GET /api/leases/{id}/contract/preview`. The first lines must say
+   `stato: modello completo ma non approvato` with no "Sezioni senza testo" and no "Problemi di formato", and every page
+   must carry the `BOZZA` watermark. `[DATO MANCANTE: …]` appears only for data the lease lacks: the cadastral data
+   (`PUT /api/properties/{id}/cadastral`), the APE code and class (`PUT /api/properties/{id}/documents/{docId}/ape`)
+   and the deposit.
+3. The final contract keeps answering `422 contract_template_not_approved` (download, upload of the signed copy,
+   signing). On production leave the variables unset.
+
+**Approving.** A lawyer reviews this exact text (the PDF of the preview and the file). Even when nothing changes,
+publish the reviewed text as a **new version** without "bozza" in its name and without the draft notice, and then follow
+"Approving a template" above; never set `Approved=true` on `2026-11-bozza-v1`.
+
+### Points for the lawyer, first
+
+1. **The concordato, transitorio and studenti texts are rephrased and are not the official model contracts of the
+   D.M. 16 January 2017** (Allegati A, B and C). Differences may put at risk the attestation of conformity and the tax
+   benefits. Compare first: the tenant's withdrawal (concordato art. 6; transitorio art. 5 and studenti art. 5 of the
+   reference drafts), the passage of the transitorio to a 4+4 when the need is not confirmed or ceases (transitorio
+   art. 3), extension and renewal (concordato art. 5), and what the attestation needs (concordato art. 8). The free-rent
+   drafts have no official model to compare with.
+2. **Citations.** An earlier wording (and the task brief) cited "art. 7 D.L. 59/1978", which is wrong: the *cessione di fabbricato* is
+   art. 12 of D.L. 59/1978 (absorbed by the registration of the contract) and the communication within 48 hours for
+   non-EU citizens is art. 7 of D.Lgs. 286/1998 (the registration does not replace it). The drafts write "secondo la
+   normativa vigente" and name no article: decide whether to cite them (free-rent art. 18, concordato art. 20). All the
+   other statutory citations were copied from the 2026-10-08 drafts and **not re-read on Normattiva** (not reachable
+   from here): check each one.
+3. **Fiscal clauses.** (a) Whether a clause of the contract can replace the registered letter by which the landlord
+   waives the rent updates when opting for the cedolare secca (D.Lgs. 23/2011 art. 3). (b) Whether the ISTAT updates of
+   the cedolare years are lost after a revocation of the option, as the drafts say (free-rent art. 7 and 17, concordato
+   art. 9 and 19). (c) The cedolare rate that applies to student and transitory leases (the drafts print no rate; the
+   concordato draft states the 10% "where the conditions apply", valid only in the municipalities with a housing
+   shortage). From 1 January 2027 the registration tax and the cedolare move to new codes (D.Lgs. 123/2025 and
+   D.Lgs. 117/2026): the references to D.P.R. 131/1986 and to D.Lgs. 23/2011 will need updating.
+
+### Points for the lawyer, then
+
+4. **Clauses approved in writing (arts. 1341-1342 c.c.).** The list is the one of the demo drafts: term, renewal and
+   notice, withdrawal, deposit, use and ban on sublease, innovations, access. Check it, whether to add the clause on
+   default (free-rent art. 6, concordato art. 7) and the waiver of updates, and whether one specific approval at the end
+   is enough.
+5. **Withdrawal and notice.** The rule cited for withdrawal for serious reasons (the drafts say art. 3 of L. 431/1998),
+   the minimum notice of the contractual withdrawal (a blank in the free-rent drafts) and what counts as a serious reason.
+6. **Several landlords or tenants.** The product supports them (LT-14); the drafts do not regulate joint liability
+   (only the student draft has an optional clause). Decide.
+7. **Payment.** Bank transfer is the only method written: check it against the rules on traceable payment of rents, and
+   the default rule (twenty days; two months of charges).
+8. **Deposit.** Three months, legal interest and return within thirty days (the thirty days are a proposal of the draft).
+9. **Registration.** The deadlines (thirty days; communication within sixty days to the tenant and the condominium
+   administrator) and the split in equal parts of registration tax and stamp duty.
+10. **APE.** The clause follows D.Lgs. 192/2005 art. 6 c. 3, checked so far only on third-party pages (see the table of
+    required sections).
+11. **Concordato.** Where the agreement of Monza e Brianza requires the attestation to be issued jointly by a landlords'
+    and a tenants' body, the draft refers to "the number and the forms the agreement requires"; the 75% of the ISTAT
+    update is the maximum of that agreement; the *allegato di calcolo* and the attestation are not produced by the
+    product.
+12. **Data the product does not have** (table above): whether some of them should become placeholders (task proposed
+    in the PR: LG-02b), rather than blanks to fill in by hand.
+
+### Tests
+
+`Casazen.Tests/Unit/Services/LeaseContracts/LeaseTemplateDraftsTests.cs`: each draft loads as `NotApproved` with no
+missing section and no issue; every file under `LeaseTemplates/` is in the right folder, uses only known placeholders and
+is `NotApproved`; the committed `appsettings*.json` name no version and approve nothing; the preview PDF of a test
+lease with complete data has the `BOZZA` watermark on every page, no `[TESTO DELLA CLAUSOLA NON FORNITO]` and no
+`[DATO MANCANTE: …]`; the final contract still answers 422; numbering, internal references and the list of the clauses
+approved in writing agree; no example datum (email, IBAN, amount) slipped in where the product has none; the reference
+drafts exist in `docs/legal-drafts/leases/`.

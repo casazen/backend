@@ -90,7 +90,7 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 
 | Policy | Endpoints | Default | Limit key (legacy key still honoured) |
 |---|---|---|---|
-| `PublicRead` | `GET api/public/orgs/{slug}`, `…/properties`, `…/properties/{id}`; `GET api/properties/search`, `GET api/properties/{id}/public`; `GET api/public/bookings/property/{id}/availability`; `GET api/public/suppliers/{slug}`; `POST api/suppliers/invites/lookup`, `GET api/suppliers/registration-options` (SU-01) | 120 / min | `RateLimiting__PublicRead__PermitLimit` |
+| `PublicRead` | `GET api/public/orgs/{slug}`, `…/properties`, `…/properties/{id}`; `GET api/properties/search`, `GET api/properties/{id}/public`; `GET api/public/bookings/property/{id}/availability`; `GET api/public/suppliers/{slug}`, `…/services`, `…/services/{serviceSlug}` (SP-09); `POST api/suppliers/invites/lookup`, `GET api/suppliers/registration-options` (SU-01) | 120 / min | `RateLimiting__PublicRead__PermitLimit` |
 | `PublicBookingCreate` | `POST api/public/bookings` | 10 / min | `RateLimiting__PublicBookingCreate__PermitLimit` (`DirectBooking__RateLimitPermitLimit`) |
 | `PublicBookingLookup` | `POST api/public/bookings/{id}/outcome` and `…/payment-session` (the outcome page polls it, BK-07), `POST api/public/bookings/{id}/confirm-email` ("pay at the property" link, BK-06) | 30 / min | `RateLimiting__PublicBookingLookup__PermitLimit` |
 | `PublicGuestBookingLookup` | `POST api/public/bookings/lookup` and `…/lookup/check-in-link` ("Le mie prenotazioni", BK-11); plus a per-email limit `GuestBookingLookupPerEmail` (5 / 15 min, `RateLimiting__GuestBookingLookupPerEmail__PermitLimit`) | 10 / 5 min | `RateLimiting__PublicGuestBookingLookup__PermitLimit` |
@@ -101,8 +101,11 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 | `PublicResolveHost` | `GET api/public/resolve-host` | 60 / min | `RateLimiting__PublicResolveHost__PermitLimit` (`PublicHost__RateLimitPermitLimit`) |
 | `PublicIcal` | `GET api/public/ical/{token}` (polled by the OTAs from their servers) | 60 / min | `RateLimiting__PublicIcal__PermitLimit` |
 | `PublicRegistration` | `POST api/suppliers/register` | 5 / 10 min | `RateLimiting__PublicRegistration__PermitLimit` |
+| `PublicSupplierSlots` | `GET api/public/suppliers/{slug}/slots` (free slots of a supplier's service, each read runs the planner, cached 30 s, SP-09) | 60 / min | `RateLimiting__PublicSupplierSlots__PermitLimit` |
+| `PublicSupplierQuote` | `POST api/public/suppliers/{slug}/quote` (price estimate, SP-09) | 30 / min | `RateLimiting__PublicSupplierQuote__PermitLimit` |
+| `PublicSupplierBookingCreate` | `POST api/public/suppliers/{slug}/bookings` (holds a slot of the supplier's agenda for the minutes of the e-mail check, SP-10); plus a per-address-and-supplier limit `SupplierBookingCreatePerEmail` (3 / h, a hash of slug and address, `RateLimiting__SupplierBookingCreatePerEmail__PermitLimit`) and the cap of three unchecked bookings of one address (database, no variable). The three answer the same 429. The check of the e-mail (`…/bookings/{id}/confirm-email`) uses `PublicBookingLookup` | 5 / 10 min | `RateLimiting__PublicSupplierBookingCreate__PermitLimit` |
 
-The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration`).
+The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration` and `PublicSupplierBookingCreate`, 3600 for `SupplierBookingCreatePerEmail`).
 
 Notes:
 

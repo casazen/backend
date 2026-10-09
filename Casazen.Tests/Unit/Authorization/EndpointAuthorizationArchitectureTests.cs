@@ -1,10 +1,15 @@
 using System.Reflection;
+using Casazen.Core.Features;
+using Casazen.Core.Suppliers;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.Extensions;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -46,7 +51,158 @@ public class EndpointAuthorizationArchitectureTests
         // Endpoints shared by two roles: the action evaluates the policy of the branch it takes.
         ["ServiceRequestsController.List"] = "Host list (PropertyRead + HostScope) or supplier inbox with view=supplier (RequireSupplier), each checked with IAuthorizationService inside the action.",
         ["ServiceRequestsController.GetById"] = "Supplier branch (RequireSupplier + linked supplier org) or host branch (PropertyRead + HostScope), each checked with IAuthorizationService inside the action.",
+        ["ServiceRequestsController.Cancel"] = "SP-04: the supplier it was sent to cancels before the work starts (RequireSupplier + linked supplier org), or the host up to the work in progress (PropertyWrite + HostResource); each branch is checked with IAuthorizationService inside the action.",
+        ["ServiceRequestsController.GetPhoto"] = "SP-04: a photo of the work, private file: the supplier it was sent to (RequireSupplier + linked supplier org) or the host (PropertyRead + HostScope), each checked with IAuthorizationService inside the action.",
     };
+
+    /// <summary>
+    /// The anonymous endpoints of the supplier showcase (SP-09), each with the reason it is public. The showcase is read by
+    /// customers who have no account: they publish only what the supplier chose to publish, never a person, never the
+    /// supplier's private calendar; every one is rate limited, never indexable, and (but the page) behind a feature flag.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> PublicSupplierShowcase = new Dictionary<string, string>
+    {
+        ["PublicSupplierController.GetBySlug"] = "The public page of an active supplier (SU-13): the supplier's choice to be found by a customer without an account; unknown, pending and suspended answer the same 404.",
+        ["PublicSupplierController.ListServices"] = "The published services and prices of an active supplier: the price list the supplier chose to show (SP-09, behind SupplierShowcaseBooking).",
+        ["PublicSupplierController.GetService"] = "One published service with its supplements: what the customer needs to price a booking (SP-09, behind SupplierShowcaseBooking).",
+        ["PublicSupplierController.GetSlots"] = "The free slots of a published service, with no reason and no detail of the supplier's agenda: what a customer needs to pick a time (SP-09, behind SupplierShowcaseBooking).",
+        ["PublicSupplierController.Quote"] = "The price estimate of a published service: computed from the supplier's own price list, nothing stored, nothing personal (SP-09, behind SupplierShowcaseBooking).",
+    };
+
+    /// <summary>
+    /// The anonymous endpoints of the booking from the supplier showcase (SP-10), each with the reason it is public: the customer
+    /// has no account, and the first call only holds a slot until the customer's e-mail is checked.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> PublicSupplierBooking = new Dictionary<string, string>
+    {
+        ["PublicSupplierBookingController.Create"] = "A customer without an account holds a slot of an active supplier and leaves the data of the request; nothing reaches the supplier until the e-mail is checked (SP-10, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingController.ConfirmEmail"] = "The customer follows the link of the verification e-mail: the token in the body is the secret, and only then the request exists (SP-10, behind SupplierShowcaseBooking, rate limited).",
+    };
+
+    private static IEnumerable<MethodInfo> PublicBookingActions() =>
+        typeof(PublicSupplierBookingController)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => !m.IsSpecialName && m.GetCustomAttributes(inherit: true).OfType<IActionHttpMethodProvider>().Any());
+
+    [Fact]
+    public void PublicSupplierBooking_EveryAnonymousAction_IsListedWithItsReason()
+    {
+        var anonymous = Actions()
+            .Where(a => a.IsAnonymous && a.Key.StartsWith(nameof(PublicSupplierBookingController) + ".", StringComparison.Ordinal))
+            .Select(a => a.Key)
+            .Order()
+            .ToList();
+
+        Assert.Equal(PublicSupplierBooking.Keys.Order(), anonymous);
+        Assert.All(PublicSupplierBooking, entry => Assert.True(entry.Value.Length >= 40, $"{entry.Key}: say why it is public"));
+    }
+
+    [Fact]
+    public void PublicSupplierBooking_EveryAction_IsBehindTheFlag_RateLimited_AndBoundedInSize()
+    {
+        var registered = RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(PublicSupplierBooking.Count, PublicBookingActions().Count());
+        foreach (var action in PublicBookingActions())
+        {
+            var gates = action.GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag).ToList();
+            Assert.Equal(new[] { FeatureFlags.SupplierShowcaseBooking }, gates);
+
+            var policy = RateLimitPolicyOf(action);
+            Assert.False(string.IsNullOrEmpty(policy), $"{action.Name} has no rate limit");
+            Assert.Contains(policy!, registered);
+
+            var limit = action.GetCustomAttribute<RequestSizeLimitAttribute>();
+            Assert.NotNull(limit);
+            Assert.True(GetBytes(limit) <= 64 * 1024, $"{action.Name}: the body of an anonymous call is small");
+        }
+    }
+
+    [Fact]
+    public void PublicSupplierBooking_TheCreateHasTheTightestLimitsOfThePublicSite_TheCheckUsesTheLookupOne()
+    {
+        var create = typeof(PublicSupplierBookingController).GetMethod(nameof(PublicSupplierBookingController.Create))!;
+        var confirm = typeof(PublicSupplierBookingController).GetMethod(nameof(PublicSupplierBookingController.ConfirmEmail))!;
+
+        Assert.Equal(RateLimitPolicies.PublicSupplierBookingCreate, RateLimitPolicyOf(create));
+        // The second limit, per e-mail address and supplier, runs next to the one per IP.
+        Assert.Single(create.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
+        Assert.Equal(RateLimitPolicies.PublicBookingLookup, RateLimitPolicyOf(confirm));
+        Assert.Empty(confirm.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
+    }
+
+    [Fact]
+    public void PublicSupplierBooking_TheRoutesAreUnderThePublicSuppliersPrefix_SoTheProxyAndTheRobotsRulesCoverThem()
+    {
+        var route = typeof(PublicSupplierBookingController).GetCustomAttribute<RouteAttribute>();
+
+        Assert.Equal("api/public/suppliers/{slug}/bookings", route?.Template);
+        Assert.NotNull(typeof(PublicSupplierBookingController).GetCustomAttribute<AllowAnonymousAttribute>());
+    }
+
+    [Fact]
+    public void PublicSupplierShowcase_EveryAnonymousAction_IsListedWithItsReason()
+    {
+        var anonymous = Actions()
+            .Where(a => a.IsAnonymous && a.Key.StartsWith(nameof(PublicSupplierController) + ".", StringComparison.Ordinal))
+            .Select(a => a.Key)
+            .Order()
+            .ToList();
+
+        Assert.Equal(PublicSupplierShowcase.Keys.Order(), anonymous);
+        Assert.All(PublicSupplierShowcase, entry => Assert.True(entry.Value.Length >= 40, $"{entry.Key}: say why it is public"));
+    }
+
+    [Fact]
+    public void PublicSupplierShowcase_EveryAction_IsRateLimited_WithAPolicyOfTheRegistry()
+    {
+        var registered = RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var (name, policy) in PublicSupplierActions().Select(m => (m.Name, Policy: RateLimitPolicyOf(m))))
+        {
+            Assert.False(string.IsNullOrEmpty(policy), $"{name} has no rate limit");
+            Assert.Contains(policy!, registered);
+        }
+    }
+
+    [Fact]
+    public void PublicSupplierShowcase_TheSlotsAndTheEstimate_HaveALimitOfTheirOwn_TheReadsShareThePublicOne()
+    {
+        var policies = PublicSupplierActions().ToDictionary(m => m.Name, RateLimitPolicyOf);
+
+        Assert.Equal(RateLimitPolicies.PublicSupplierSlots, policies[nameof(PublicSupplierController.GetSlots)]);
+        Assert.Equal(RateLimitPolicies.PublicSupplierQuote, policies[nameof(PublicSupplierController.Quote)]);
+        Assert.Equal(RateLimitPolicies.PublicRead, policies[nameof(PublicSupplierController.GetBySlug)]);
+        Assert.Equal(RateLimitPolicies.PublicRead, policies[nameof(PublicSupplierController.ListServices)]);
+        Assert.Equal(RateLimitPolicies.PublicRead, policies[nameof(PublicSupplierController.GetService)]);
+    }
+
+    [Fact]
+    public void PublicSupplierShowcase_TheEndpointsOfSp09_AreBehindTheFlag_ThePageIsNot()
+    {
+        foreach (var action in PublicSupplierActions())
+        {
+            var gates = action.GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag).ToList();
+            if (action.Name == nameof(PublicSupplierController.GetBySlug))
+                Assert.Empty(gates);
+            else
+                Assert.Equal(new[] { FeatureFlags.SupplierShowcaseBooking }, gates);
+        }
+
+        // Nothing at the class level either: the flag gates the new endpoints one by one, and the page keeps answering.
+        Assert.Empty(typeof(PublicSupplierController).GetCustomAttributes<FeatureGateAttribute>(inherit: true));
+    }
+
+    [Fact]
+    public void PublicSupplierShowcase_TheEstimateBody_HasASmallSizeLimit()
+    {
+        var limit = typeof(PublicSupplierController).GetMethod(nameof(PublicSupplierController.Quote))!
+            .GetCustomAttribute<RequestSizeLimitAttribute>();
+
+        Assert.NotNull(limit);
+        Assert.Equal((long?)PublicShowcaseLimits.QuoteMaxBodyBytes, GetBytes(limit));
+        Assert.True(PublicShowcaseLimits.QuoteMaxBodyBytes <= 16 * 1024);
+    }
 
     [Fact]
     public void EveryAction_IsAnonymousOrHasAnAuthorizationDecision()
@@ -122,6 +278,20 @@ public class EndpointAuthorizationArchitectureTests
     }
 
     private const string RolesPrefix = "roles:";
+
+    /// <summary>The routed actions declared by the public supplier controller.</summary>
+    private static IEnumerable<MethodInfo> PublicSupplierActions() =>
+        typeof(PublicSupplierController)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => !m.IsSpecialName && m.GetCustomAttributes(inherit: true).OfType<IActionHttpMethodProvider>().Any());
+
+    /// <summary>The rate limit of an action: its own attribute, else the controller's.</summary>
+    private static string? RateLimitPolicyOf(MethodInfo action) =>
+        (action.GetCustomAttribute<EnableRateLimitingAttribute>()
+         ?? action.DeclaringType!.GetCustomAttribute<EnableRateLimitingAttribute>())?.PolicyName;
+
+    /// <summary>The limit a <see cref="RequestSizeLimitAttribute"/> sets, as the endpoint metadata says it.</summary>
+    private static long? GetBytes(RequestSizeLimitAttribute attribute) => ((IRequestSizeLimitMetadata)attribute).MaxRequestBodySize;
 
     private static bool IsAuthenticatedOnly(string? policy) =>
         policy is null || policy == CasazenPolicies.Authenticated;

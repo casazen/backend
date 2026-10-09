@@ -80,6 +80,9 @@ public class LongRentPropertyAccessIntegrationTests : IClassFixture<CasazenWebAp
         Assert.Equal("Bilocale Monza centro", saved.Name);
         Assert.Equal(0m, saved.NightlyRate);
         Assert.Equal(Casazen.Core.Entities.Enums.PropertyComplianceStatus.Pending, saved.ComplianceStatus);
+        // PM-01: the long-rent form sends no mode, no guests and no rate; the compatibility rule makes it a long-term
+        // property and the update that follows (no mode in the body) keeps it so.
+        Assert.Equal(Casazen.Core.Entities.Enums.RentalMode.Long, saved.RentalMode);
     }
 
     [PostgresTheory]

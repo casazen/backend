@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
+using Casazen.Core.Services;
 using Casazen.Core.Validation;
 
 namespace Casazen.Web.DTOs;
@@ -89,6 +91,15 @@ public class CreatePropertyRequest
     [Range(0, 100000, ErrorMessage = "PropertyNightlyRateRange")]
     public decimal NightlyRate { get; set; }
 
+    /// <summary>
+    /// How the property is let (PM-01, D19): <c>Short</c> (short stays) or <c>Long</c> (long-term leases), exclusive.
+    /// Optional. <b>Compatibility rule</b> (<see cref="PropertyRentalModeRules.ResolveForCreation"/>): without it, a request
+    /// with no guests (<c>maxGuests: 0</c>) <b>and</b> no rate (<c>nightlyRate: 0</c>) — what the long-rent form has always
+    /// sent (A7-06) — creates a <c>Long</c> property; any other request creates a <c>Short</c> one. A mode that is sent
+    /// is always used as it is.
+    /// </summary>
+    public RentalMode? RentalMode { get; set; }
+
     /// <summary>One-time cleaning fee in euros (€0–€10,000).</summary>
     [Range(0, 10000, ErrorMessage = "PropertyCleaningFeeRange")]
     public decimal CleaningFee { get; set; }
@@ -150,6 +161,7 @@ public class CreatePropertyRequest
         Bathrooms = Bathrooms,
         MaxGuests = MaxGuests,
         NightlyRate = NightlyRate,
+        RentalMode = PropertyRentalModeRules.ResolveForCreation(RentalMode, MaxGuests, NightlyRate),
         CleaningFee = CleaningFee,
         DamageDeposit = DamageDeposit,
         Amenities = Amenities,

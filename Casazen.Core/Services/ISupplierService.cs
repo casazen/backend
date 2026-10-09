@@ -367,6 +367,20 @@ public record FixOrphanedSupplierOrgsReport(
 /// <param name="DuplicateOrgDeleted">
 /// False when the duplicate org also holds host data (properties, consents, ...): only its supplier profile is removed.
 /// </param>
+/// <param name="ServiceListingsMoved">
+/// Services of the duplicate's price catalog (SP-02) that moved to the keeper, the deleted ones too (a slug the keeper
+/// already uses gets the next free suffix).
+/// </param>
+/// <param name="AgendaRowsMoved">
+/// Rows of the duplicate's agenda (SP-03) that moved to the keeper: its time off, blocks and extra openings, and its
+/// weekly hours and settings when the keeper had none (the keeper's own stay as they are).
+/// </param>
+/// <param name="ShowcaseRowsMoved">
+/// Rows of the duplicate's public showcase (SP-10) that went to the keeper: its showcase requests (whose <c>OrgId</c> is the
+/// supplier org itself, so it moves with the supplier) and its private customers; a customer the keeper already has (the same
+/// e-mail) is merged into the keeper's, with its requests. The duplicate's holds are dropped, not moved: they wait for the
+/// customer's e-mail check for 30 minutes and would only collide with the keeper's.
+/// </param>
 public record SupplierDuplicateMerge(
     Guid KeeperOrgId,
     Guid DuplicateOrgId,
@@ -378,7 +392,10 @@ public record SupplierDuplicateMerge(
     int SupplierLinksMoved,
     int OrgMembersMoved,
     int DevicesMoved,
-    bool DuplicateOrgDeleted);
+    bool DuplicateOrgDeleted,
+    int ServiceListingsMoved = 0,
+    int AgendaRowsMoved = 0,
+    int ShowcaseRowsMoved = 0);
 
 /// <summary>A case left untouched for an admin decision (<see cref="Code"/>: see <c>docs/runbooks/suppliers.md</c>).</summary>
 public record SupplierManualIntervention(string Code, IReadOnlyList<Guid> OrgIds, IReadOnlyList<string> UserIds);
