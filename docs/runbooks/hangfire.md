@@ -282,8 +282,8 @@ checks: `Pending` + source `Direct` and either
   `Processing`/`Completed` + created more than the TTL ago;
 - or a **"pay at the property" request** (`OnSite`, BK-06, decision D5) past its own deadline `RequestExpiresAt`: the
   email confirmation window (`DirectBooking:OnSiteEmailVerificationMinutes`, default the checkout TTL), then, once the
-  guest has confirmed the email, the host's answer deadline (`DirectBooking:OnSiteApprovalHours`, **provisional**
-  default 24). A request created before BK-06 without a deadline expires with the checkout TTL. Details:
+  guest has confirmed the email, the host's answer deadline (`DirectBooking:OnSiteApprovalHours`, **24 hours**,
+  PO 2026-10-08). A request created before BK-06 without a deadline expires with the checkout TTL. Details:
   [direct-booking.md](direct-booking.md).
 
 - **Reads** (availability, calendar, iCal export) leave expired holds out at once, before the job runs. They never
