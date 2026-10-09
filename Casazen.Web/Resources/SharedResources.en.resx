@@ -144,6 +144,9 @@
   <data name="NoOrganizationAssigned" xml:space="preserve">
     <value>No organization assigned to the current user</value>
   </data>
+  <data name="MemberCannotOnboard" xml:space="preserve">
+    <value>You already belong to an organization as a collaborator: you cannot set up a new account or change your own role. If you need a different role, ask the owner of the organization.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
   </data>
@@ -2128,6 +2131,15 @@
   <data name="PropertyCityLockedByLease" xml:space="preserve">
     <value>The property city cannot be changed after a canone concordato lease has been submitted for registration.</value>
   </data>
+  <data name="PropertyNotBookableInLongMode" xml:space="preserve">
+    <value>This property is set to long-term rental: it is not published on the booking site and does not take short-stay bookings.</value>
+  </data>
+  <data name="PropertyRentalModeChangeNotAllowed" xml:space="preserve">
+    <value>The rental mode (short or long) of an existing property cannot be changed with this save.</value>
+  </data>
+  <data name="PropertyListModeInvalid" xml:space="preserve">
+    <value>Invalid mode: use "short" (short-term rental) or "long" (long-term rental).</value>
+  </data>
   <data name="DocumentTypeInvalid" xml:space="preserve">
     <value>Invalid document type.</value>
   </data>
@@ -2280,6 +2292,42 @@
   </data>
   <data name="SupplierInboxWhenInvalid" xml:space="preserve">
     <value>Invalid period: use oggi, settimana or mese.</value>
+  </data>
+  <data name="SupplierSlotsServiceRequired" xml:space="preserve">
+    <value>Specify the service whose times you want to see (service parameter).</value>
+  </data>
+  <data name="SupplierSlotsDaysInvalid" xml:space="preserve">
+    <value>The number of days (days parameter) must be between 1 and {0}.</value>
+  </data>
+  <data name="SupplierQuoteInvalid" xml:space="preserve">
+    <value>Some details of the estimate request are not valid (fields: {0}). Check them and try again.</value>
+  </data>
+  <data name="SupplierBookingInvalid" xml:space="preserve">
+    <value>Some details of the booking are not valid (fields: {0}). Check them and try again.</value>
+  </data>
+  <data name="SupplierBookingOffline" xml:space="preserve">
+    <value>This supplier is not taking online bookings right now: you can ask for a quote.</value>
+  </data>
+  <data name="SupplierBookingOutsideZone" xml:space="preserve">
+    <value>The supplier does not work in this comune: you can still ask for a quote.</value>
+  </data>
+  <data name="SupplierBookingConsentRequired" xml:space="preserve">
+    <value>To send the request you need to accept the privacy notice.</value>
+  </data>
+  <data name="SupplierBookingConsentOutdated" xml:space="preserve">
+    <value>The privacy notice has been updated: read the current version and accept it again.</value>
+  </data>
+  <data name="SupplierBookingLinkInvalid" xml:space="preserve">
+    <value>Invalid confirmation link: open the link you received by email.</value>
+  </data>
+  <data name="SupplierBookingLinkExpired" xml:space="preserve">
+    <value>The time to confirm the request has passed and the time is available again: send a new request from the supplier's site.</value>
+  </data>
+  <data name="SupplierBookingSupplierUnavailable" xml:space="preserve">
+    <value>The supplier cannot receive requests right now. Please try again later.</value>
+  </data>
+  <data name="SupplierBookingTokenRequired" xml:space="preserve">
+    <value>Open the link you received by email: the confirmation code is missing or not valid.</value>
   </data>
   <data name="ServicePaymentLinkInvalid" xml:space="preserve">
     <value>The payment link is not valid or has expired. Ask the supplier to send you a new one.</value>

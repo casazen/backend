@@ -50,9 +50,12 @@ public static class FeatureFlags
 
     /// <summary>
     /// SP-02 (redesign wave, decision D34): booking from the public showcase of a supplier (<c>/fornitori/{slug}</c>), off
-    /// until the product owner turns it on. It will gate the public booking endpoints of the showcase (404 when off, SP-09
-    /// and SP-10); nothing consumes it yet, SP-02 only introduces and exposes it. The service catalog
-    /// (<c>api/supplier/services</c>) does not depend on it: every supplier has one.
+    /// until the product owner turns it on. It gates the public reads of the showcase (services, slots, estimate: SP-09) and
+    /// the booking endpoints (hold and e-mail check: SP-10), 404 when off. <b>On, the application needs
+    /// <c>Suppliers:Showcase:PrivacyNoticeVersion</c> and, outside Development and Testing, <c>Suppliers:CustomerIndexKey</c></b>
+    /// or it does not start (<see cref="Casazen.Core.Options.ShowcaseBookingOptionsValidator"/>). The upkeep jobs of the
+    /// bookings are registered whatever the flag says. The service catalog (<c>api/supplier/services</c>) does not depend on
+    /// it: every supplier has one.
     /// </summary>
     public const string SupplierShowcaseBooking = "SupplierShowcaseBooking";
 

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Validation;
@@ -101,6 +102,15 @@ public class UpdatePropertyRequest
     [Range(typeof(decimal), "0", "100000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyNightlyRateRange")]
     public decimal? NightlyRate { get; set; }
+
+    /// <summary>
+    /// How the property is let (PM-01): <c>Short</c> or <c>Long</c>. Accepted so that a form that sends the whole record
+    /// back keeps working, but it must be the <b>stored</b> mode: the mode of an existing property is not changed by this
+    /// save, a different value is refused with 422 <c>property_rental_mode_change_not_allowed</c> and
+    /// <see cref="ApplyTo"/> never touches it. The change itself is the scheduled mode change of PM-02, which checks the
+    /// stays and the leases of the property under its lock.
+    /// </summary>
+    public RentalMode? RentalMode { get; set; }
 
     /// <summary>One-time cleaning fee in euros (€0–€10,000), charged by the checkout.</summary>
     [Range(typeof(decimal), "0", "10000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,

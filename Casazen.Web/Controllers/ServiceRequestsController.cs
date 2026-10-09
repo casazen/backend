@@ -723,11 +723,12 @@ public class ServiceRequestsController(
                         r.CancelledAt,
                         r.CancellationReason,
                         r.CancelledBy,
-                        r.PaidBy),
+                        PaidBy: r.PaidBy,
+                        Requester: r.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host),
                     takenByName: null)
                 .Select(h => ServiceRequestHistoryEntryDto.From(h))
                 .ToList(),
-            Source = SupplierRequestSources.CasaZen,
+            Source = SupplierRequestSources.Of(r.Source),
             ServiceListingId = r.ServiceListingId,
             ServiceName = r.ServiceNameSnapshot,
             ScheduledStart = r.ScheduledStartUtc,

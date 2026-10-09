@@ -11,7 +11,13 @@ namespace Casazen.Core.Suppliers;
 /// <param name="CancelledAt">When the request was cancelled (SP-04).</param>
 /// <param name="CancellationReason">The reason of the cancellation: the text of the host or the supplier, or <c>NoResponse</c>.</param>
 /// <param name="CancelledBy">Who cancelled it (SP-04).</param>
-/// <param name="PaidBy">Who made the request paid (SP-15a); <c>null</c> is the host, who did before SP-15a.</param>
+/// <param name="PaidBy">
+/// Who made the request paid (SP-15a); <c>null</c> is the party that asked (<paramref name="Requester"/>), who did before SP-15a.
+/// </param>
+/// <param name="Requester">
+/// Who asked for the work: the host for a host's request (the default), the customer for a request from the supplier's public
+/// showcase (SP-10). It is the party of the first step and, unless <paramref name="PaidBy"/> says otherwise, of the payment.
+/// </param>
 public sealed record ServiceRequestMilestones(
     ServiceRequestStatus Status,
     DateTime CreatedAt,
@@ -24,14 +30,16 @@ public sealed record ServiceRequestMilestones(
     DateTime? CancelledAt = null,
     string? CancellationReason = null,
     ServiceRequestActorParty? CancelledBy = null,
-    ServiceRequestActorParty? PaidBy = null);
+    ServiceRequestActorParty? PaidBy = null,
+    ServiceRequestActorParty Requester = ServiceRequestActorParty.Host);
 
 /// <summary>
 /// The history of a service request (SU-08): one step per transition of <see cref="ServiceRequestStateMachine"/>, with
 /// its date and the party that made it, rebuilt from the dates the request keeps. Requested (host), taken (supplier,
-/// with the member who took it), started (supplier), completed (supplier), paid (the host, or the supplier that recorded a
-/// payment received outside CasaZen: <see cref="ServiceRequestMilestones.PaidBy"/>), rejected (supplier, with the
-/// reason) or cancelled (the host, the supplier or CasaZen, with the reason).
+/// with the member who took it), started (supplier), completed (supplier), paid (the party that asked, or the supplier that
+/// recorded a payment received outside CasaZen: <see cref="ServiceRequestMilestones.PaidBy"/>), rejected (supplier, with the
+/// reason) or cancelled (the host, the supplier or CasaZen, with the reason). For a request from the supplier's public showcase
+/// (SP-10) the party that asked, and would pay, is the customer (<see cref="ServiceRequestMilestones.Requester"/>).
 /// </summary>
 public static class ServiceRequestHistory
 {
@@ -43,7 +51,7 @@ public static class ServiceRequestHistory
 
         var steps = new List<ServiceRequestHistoryEntry>
         {
-            new(ServiceRequestStatus.Richiesto, request.CreatedAt, ServiceRequestActorParty.Host, null, null),
+            new(ServiceRequestStatus.Richiesto, request.CreatedAt, request.Requester, null, null),
         };
 
         if (request.TakenAt is { } takenAt)
@@ -71,7 +79,7 @@ public static class ServiceRequestHistory
         if (request.PaidAt is { } paidAt)
         {
             steps.Add(new ServiceRequestHistoryEntry(
-                ServiceRequestStatus.Pagato, paidAt, request.PaidBy ?? ServiceRequestActorParty.Host, null, null));
+                ServiceRequestStatus.Pagato, paidAt, request.PaidBy ?? request.Requester, null, null));
         }
 
         if (request.Status == ServiceRequestStatus.Rifiutato)
@@ -89,7 +97,7 @@ public static class ServiceRequestHistory
             steps.Add(new ServiceRequestHistoryEntry(
                 ServiceRequestStatus.Annullato,
                 request.CancelledAt ?? request.UpdatedAt,
-                request.CancelledBy ?? ServiceRequestActorParty.Host,
+                request.CancelledBy ?? request.Requester,
                 null,
                 string.IsNullOrWhiteSpace(request.CancellationReason) ? null : request.CancellationReason));
         }

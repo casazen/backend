@@ -80,6 +80,41 @@ public class SupplierServiceCatalogService(
     public async Task<int> CountActiveAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
         await Listings(supplierOrgId).CountAsync(l => l.Status == SupplierServiceListingStatus.Active, cancellationToken);
 
+    public async Task<IReadOnlyList<SupplierPublicService>> ListPublicAsync(
+        Guid supplierOrgId,
+        CancellationToken cancellationToken = default) =>
+        (await PublicListingsOf(db, supplierOrgId)
+            .AsNoTracking()
+            .OrderBy(l => l.SortOrder)
+            .ThenBy(l => l.CreatedAt)
+            .ThenBy(l => l.Id)
+            .ToListAsync(cancellationToken))
+        .Select(ToPublic)
+        .ToList();
+
+    public async Task<SupplierPublicService?> FindPublicAsync(
+        Guid supplierOrgId,
+        string serviceSlug,
+        CancellationToken cancellationToken = default)
+    {
+        var listing = await PublicListingsOf(db, supplierOrgId)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Slug == serviceSlug, cancellationToken);
+        return listing is null ? null : ToPublic(listing);
+    }
+
+    public async Task<SupplierBookableService?> FindBookableAsync(
+        Guid supplierOrgId,
+        string serviceSlug,
+        CancellationToken cancellationToken = default)
+    {
+        // The same statement as FindPublicAsync: the booking may use only what the public may see, with the id it needs to keep.
+        var listing = await PublicListingsOf(db, supplierOrgId)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Slug == serviceSlug, cancellationToken);
+        return listing is null ? null : new SupplierBookableService(listing.Id, ToPublic(listing));
+    }
+
     public async Task<SupplierServiceListing> CreateAsync(
         Guid supplierOrgId,
         SupplierServiceListingInput input,
@@ -335,6 +370,36 @@ public class SupplierServiceCatalogService(
     /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
     internal static IQueryable<SupplierServiceListing> ListingsOf(AppDbContext db, Guid orgId) =>
         db.SupplierServiceListings.Where(l => l.OrgId == orgId && l.DeletedAt == null);
+
+    /// <summary>
+    /// The services the public may see (SP-09): <see cref="ListingsOf"/> (the supplier org, not deleted) that are <c>Active</c>,
+    /// of a supplier whose profile is itself <c>Active</c> (one statement, a join on the profile of the same org): the
+    /// anonymous reads can never reach a draft, a paused service, a deleted one, another supplier's or a pending or suspended
+    /// supplier's, even when the caller passes a wrong org.
+    /// </summary>
+    internal static IQueryable<SupplierServiceListing> PublicListingsOf(AppDbContext db, Guid orgId) =>
+        ListingsOf(db, orgId).Where(l =>
+            l.Status == SupplierServiceListingStatus.Active && l.SupplierProfile.Status == SupplierStatus.Active);
+
+    /// <summary>The public form of a service: the only type that leaves the catalog toward an anonymous read.</summary>
+    internal static SupplierPublicService ToPublic(SupplierServiceListing listing) =>
+        new(
+            listing.Slug,
+            listing.Name,
+            listing.Category,
+            listing.Summary,
+            listing.Description,
+            listing.PriceFromCents,
+            listing.PriceUnit,
+            listing.PricesIncludeVat,
+            listing.RequiresQuote,
+            listing.DurationMinutes,
+            SupplierServiceListingJson.ReadSupplements(listing.SupplementsJson),
+            SupplierServiceListingJson.ReadStrings(listing.IncludedJson),
+            SupplierServiceListingJson.ReadStrings(listing.ExcludedJson),
+            SupplierServiceListingJson.ReadStrings(listing.PhotoUrlsJson),
+            listing.MinNoticeHours,
+            listing.WeekdaysMask);
 
     /// <summary>The slugs, among <paramref name="listings"/> other than <paramref name="except"/>, that start with <paramref name="baseSlug"/>.</summary>
     internal static IQueryable<string> SlugsStartingWith(IQueryable<SupplierServiceListing> listings, string baseSlug, Guid except) =>

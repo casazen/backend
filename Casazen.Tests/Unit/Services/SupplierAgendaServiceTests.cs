@@ -721,7 +721,7 @@ public class SupplierAgendaServiceTests
     private SupplierAgendaService Service()
     {
         var db = CreateDb();
-        return new SupplierAgendaService(db, new SupplierServiceRequestReader(db), NullLogger<SupplierAgendaService>.Instance, _clock);
+        return new SupplierAgendaService(db, new SupplierServiceRequestReader(db), new ShowcaseHoldReader(db), NullLogger<SupplierAgendaService>.Instance, _clock);
     }
 
     private AppDbContext CreateDb() =>

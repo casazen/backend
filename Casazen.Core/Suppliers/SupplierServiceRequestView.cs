@@ -9,11 +9,13 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 /// <param name="Notes">
 /// The host's notes for the supplier: <b>null until the supplier takes the request</b> (decision D9, they may name a person or
-/// a door code), like the street address and the contact.
+/// a door code), like the street address and the contact. A request from the public showcase (SP-10) has no host notes: the
+/// note of its customer for the access is <see cref="SupplierJobLocation.AccessNotes"/>, disclosed the same way.
 /// </param>
 /// <param name="Location">
 /// The property: comune and postal code always; the name of the property and the street address only when
-/// <see cref="ContactDisclosed"/> (decision D9).
+/// <see cref="ContactDisclosed"/> (decision D9). For a request from the public showcase (SP-10) the place is the one the
+/// customer wrote on the request: comune and postal code always, street address, floor and access notes once taken.
 /// </param>
 /// <param name="ScheduledFor">
 /// Europe/Rome calendar date of the job: the day of the scheduled time when the request has one (SP-04), otherwise the
@@ -25,15 +27,21 @@ namespace Casazen.Core.Suppliers;
 /// True once the supplier took the request (<see cref="SupplierJobDisclosure.IsDisclosed"/>): street address and host
 /// contact are shown from then on.
 /// </param>
-/// <param name="HostContact">The host contact, only when <see cref="ContactDisclosed"/>.</param>
+/// <param name="HostContact">
+/// The host contact, only when <see cref="ContactDisclosed"/>. For a request from the public showcase (SP-10) it is the contact of
+/// the private customer who asked (name, e-mail, phone): the same block of the console, filled by the party that asked.
+/// </param>
 /// <param name="History">The transitions, oldest first; only in the detail (null in lists).</param>
-/// <param name="Source">Where the request comes from: <see cref="SupplierRequestSources.CasaZen"/> for a host (the showcase booking arrives with SP-10).</param>
+/// <param name="Source">Where the request comes from: <see cref="SupplierRequestSources.CasaZen"/> for a host, <see cref="SupplierRequestSources.Showcase"/> for a customer of the public showcase (SP-10).</param>
 /// <param name="ServiceListingId">The catalog service the request is for, when it is for one.</param>
 /// <param name="ServiceName">The name of the service at the time of the request (a snapshot), when it is for a catalog service.</param>
 /// <param name="Schedule">When the work is, and the deadlines of the request.</param>
 /// <param name="Price">The price of the work.</param>
-/// <param name="Client">The customer: for a host's request, the host org (decision D9: its name is shown before the take).</param>
-/// <param name="Proposal">The time the supplier proposed and the host has not answered yet.</param>
+/// <param name="Client">
+/// The customer: for a host's request, the host org (decision D9: its name is shown before the take); for a request from the
+/// public showcase, the private customer, shown as "Nome C." until the supplier takes the request (decision D9).
+/// </param>
+/// <param name="Proposal">The time the supplier proposed and the host (or the customer) has not answered yet.</param>
 /// <param name="Cancellation">When, by whom and why the request was cancelled.</param>
 /// <param name="CompletionNotes">What the supplier wrote when it completed the work.</param>
 /// <param name="WorkPhotos">The photos of the work, in the private bucket (the ids the download endpoint takes).</param>
@@ -75,19 +83,31 @@ public static class SupplierRequestSources
     /// <summary>A request of a CasaZen host (short-rent or long-rent).</summary>
     public const string CasaZen = "casazen";
 
-    /// <summary>A booking from the supplier's public showcase (SP-10): not produced yet.</summary>
+    /// <summary>A booking from the supplier's public showcase (SP-10): a customer with no account, e-mail checked.</summary>
     public const string Showcase = "showcase";
+
+    /// <summary>The value of <see cref="SupplierServiceRequestView.Source"/> for a request of <paramref name="source"/>.</summary>
+    public static string Of(Entities.Enums.ServiceRequestSource source) =>
+        source == Entities.Enums.ServiceRequestSource.Showcase ? Showcase : CasaZen;
 }
 
-/// <summary>Where the job is. <paramref name="PropertyName"/> and <paramref name="Address"/> are null until the supplier takes the request.</summary>
-/// <param name="City">The comune of the property, as the host wrote it.</param>
+/// <summary>
+/// Where the job is. <paramref name="PropertyName"/>, <paramref name="Address"/>, <paramref name="Floor"/> and
+/// <paramref name="AccessNotes"/> are null until the supplier takes the request.
+/// </summary>
+/// <param name="PropertyId">The host's property; <c>null</c> for a request from the public showcase (it has no property).</param>
+/// <param name="City">The comune of the property, as the host wrote it (for a showcase request, as the customer wrote it).</param>
 /// <param name="PostalCode">The postal code (the zone within the comune), null when the host left it empty.</param>
+/// <param name="Floor">Floor and apartment, for a request from the public showcase.</param>
+/// <param name="AccessNotes">The customer's note for the access (doorbell, keys), for a request from the public showcase.</param>
 public sealed record SupplierJobLocation(
-    Guid PropertyId,
+    Guid? PropertyId,
     string? PropertyName,
     string City,
     string? PostalCode,
-    string? Address);
+    string? Address,
+    string? Floor = null,
+    string? AccessNotes = null);
 
 /// <summary>The stay a short-rent request is for: its id and its Europe/Rome dates, never the guest.</summary>
 public sealed record SupplierJobStay(Guid BookingId, DateOnly CheckIn, DateOnly CheckOut);
@@ -122,7 +142,9 @@ public sealed record SupplierJobPrice(
 /// <summary>
 /// The customer of a request. For a host it is the org the request belongs to: <paramref name="Id"/> filters the inbox
 /// (<c>clientId</c>) and the name is the org's display name, which decision D9 shows before the take (the property, the
-/// address and the contact are not).
+/// address and the contact are not). For a private customer of the public showcase (SP-10) it is the
+/// <c>ServiceCustomer</c>: its id filters the inbox too, and the name is <c>Nome C.</c> until the request is taken
+/// (<see cref="SupplierJobDisclosure.CustomerName"/>).
 /// </summary>
 public sealed record SupplierJobClient(Guid Id, string Name);
 
@@ -155,6 +177,12 @@ public sealed record ServiceRequestHistoryEntry(
 /// the job. A request the supplier rejected, or that was cancelled, shows none of them: the first was never taken, and
 /// the second has no job to do anymore.
 /// </summary>
+/// <remarks>
+/// <b>A private customer of the public showcase (SP-10)</b> follows the same line: before the take the supplier knows the comune,
+/// the postal code, the day and time, the price and the name as <c>Nome C.</c> (first name and the initial of the last one,
+/// <see cref="CustomerName"/>); from the take on, the full name, the e-mail, the phone, the street address, the floor and the
+/// access notes.
+/// </remarks>
 public static class SupplierJobDisclosure
 {
     /// <summary>True when the property, the notes, the street address and the host contact are shown for a request in <paramref name="status"/>.</summary>
@@ -163,4 +191,12 @@ public static class SupplierJobDisclosure
         or ServiceRequestStatus.InCorso
         or ServiceRequestStatus.Completato
         or ServiceRequestStatus.Pagato;
+
+    /// <summary>
+    /// The name of a private customer as the supplier sees it for a request in <paramref name="status"/> (decision D9): the full
+    /// name once the request is taken, <c>Nome C.</c> before and for a request that was rejected or cancelled
+    /// (<see cref="ShowcaseBookingRules.AbbreviateName"/>).
+    /// </summary>
+    public static string CustomerName(ServiceRequestStatus status, string? fullName) =>
+        IsDisclosed(status) ? (fullName ?? string.Empty).Trim() : ShowcaseBookingRules.AbbreviateName(fullName);
 }

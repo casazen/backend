@@ -206,9 +206,11 @@ public class ServiceRequestDto
     public Guid OrgId { get; set; }
     public Guid? BookingId { get; set; }
 
-    /// <summary><c>ShortRent</c> (per stay) or <c>LongRent</c> (per property), decision D2.</summary>
+    /// <summary><c>ShortRent</c> (per stay), <c>LongRent</c> (per property), decision D2, or <c>Showcase</c> (a customer of the supplier's public showcase, SP-10).</summary>
     public string RentalContext { get; set; } = string.Empty;
-    public Guid PropertyId { get; set; }
+
+    /// <summary>The host's property; <c>null</c> for a request from the supplier's public showcase (SP-10), which has none.</summary>
+    public Guid? PropertyId { get; set; }
     public string? PropertyName { get; set; }
     public Guid SupplierOrgId { get; set; }
     public string? SupplierName { get; set; }
@@ -235,7 +237,7 @@ public class ServiceRequestDto
 
     // ─── Schedule, price and lifecycle (SP-04) ───
 
-    /// <summary>Where the request comes from: <c>casazen</c> (a host's request; <c>showcase</c> arrives with SP-10).</summary>
+    /// <summary>Where the request comes from: <c>casazen</c> (a host's request) or <c>showcase</c> (a customer of the supplier's public showcase, SP-10).</summary>
     public string Source { get; set; } = SupplierRequestSources.CasaZen;
 
     /// <summary>The service of the supplier's catalog the request is for, when it is for one.</summary>

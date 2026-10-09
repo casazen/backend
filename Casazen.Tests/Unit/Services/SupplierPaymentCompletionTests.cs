@@ -337,7 +337,7 @@ public class SupplierPaymentCompletionTests
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnablePaymentsAsync();
         var taken = await s.TakenAsync();
-        s.Emails.Accepting = false;
+        s.Emails.Refuse = true;
 
         var completed = await s.Service.CompleteAsync(taken.Id, s.SupplierOrgId);
 
@@ -350,7 +350,7 @@ public class SupplierPaymentCompletionTests
         Assert.Null(payment.LastSentAt);
         Assert.Equal(0, payment.SentCount);
 
-        s.Emails.Accepting = true;
+        s.Emails.Refuse = false;
         var sent = await s.Service.RequestPaymentAsync(completed.Id, s.SupplierOrgId);
         Assert.Equal(1, sent.SentCount);
         Assert.Single(s.Emails.RequestEmails());

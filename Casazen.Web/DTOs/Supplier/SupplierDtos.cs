@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
 
 namespace Casazen.Web.DTOs.Supplier;
@@ -419,6 +420,9 @@ public class SupplierDuplicateMergeDto
     /// </summary>
     public int AgendaRowsMoved { get; set; }
 
+    /// <summary>Showcase requests and private customers of the duplicate that went to the keeper (SP-10); its unverified holds are dropped.</summary>
+    public int ShowcaseRowsMoved { get; set; }
+
     /// <summary>False when the duplicate org also holds host data: only its supplier profile was removed.</summary>
     public bool DuplicateOrgDeleted { get; set; }
 }
@@ -540,6 +544,22 @@ public class SupplierShowcaseDto
 
     /// <summary>The next 14 days (Europe/Rome) the supplier saved an availability for.</summary>
     public IReadOnlyList<AvailabilityEntryDto> Availability { get; set; } = [];
+
+    /// <summary>
+    /// SP-09: the published services with their "from" price, unit and VAT declaration (<see cref="PublicSupplierServiceDto"/>).
+    /// <b>Left out of the answer (not an empty list) while the feature flag <c>SupplierShowcaseBooking</c> is off</b> and in the
+    /// owner's preview: the page then reads exactly as it did before SP-09. Present and possibly empty once the flag is on.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<PublicSupplierServiceDto>? Services { get; set; }
+
+    /// <summary>
+    /// SP-09: the typical time the supplier takes to answer, in minutes: the <b>median</b> over the requests it really took in
+    /// the last 90 days, shown only when there are at least 5 (never written by hand). Left out of the answer when not
+    /// measured, while the flag is off, and in the owner's preview.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MedianResponseMinutes { get; set; }
 }
 
 /// <summary>The owner's preview of the public showcase and where it will be (or is) published.</summary>

@@ -15,7 +15,7 @@ public class SupplierServiceRequestDto
 {
     public Guid Id { get; set; }
 
-    /// <summary><c>ShortRent</c> (for a stay) or <c>LongRent</c> (for the property), decision D2.</summary>
+    /// <summary><c>ShortRent</c> (for a stay), <c>LongRent</c> (for the property), decision D2, or <c>Showcase</c> (a customer of the public showcase, SP-10).</summary>
     public string RentalContext { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
@@ -30,19 +30,26 @@ public class SupplierServiceRequestDto
     public DateTime? CompletedAt { get; set; }
     public DateTime? PaidAt { get; set; }
 
-    public Guid PropertyId { get; set; }
+    /// <summary>The host's property; <c>null</c> for a request from the public showcase (SP-10), which has none.</summary>
+    public Guid? PropertyId { get; set; }
 
     /// <summary>The name of the property: <b>null until the supplier takes the request</b> (decision D9).</summary>
     public string? PropertyName { get; set; }
 
-    /// <summary>Comune of the property: always shown.</summary>
+    /// <summary>Comune of the property (of the work, for a showcase request): always shown.</summary>
     public string City { get; set; } = string.Empty;
 
-    /// <summary>Postal code (zone within the comune): always shown when the host entered it.</summary>
+    /// <summary>Postal code (zone within the comune): always shown when the host or the customer entered it.</summary>
     public string? PostalCode { get; set; }
 
     /// <summary>Street address: only once the supplier took the request (<see cref="ContactDisclosed"/>).</summary>
     public string? Address { get; set; }
+
+    /// <summary>Floor and apartment of a showcase request (SP-10): only once the supplier took the request.</summary>
+    public string? Floor { get; set; }
+
+    /// <summary>The customer's note for the access (doorbell, keys) of a showcase request (SP-10): only once the supplier took the request.</summary>
+    public string? AccessNotes { get; set; }
 
     /// <summary>
     /// Europe/Rome calendar date of the job (<c>YYYY-MM-DD</c>): the day of <see cref="ScheduledStart"/> when the request has a
@@ -57,18 +64,24 @@ public class SupplierServiceRequestDto
     /// <summary>True once the supplier took the request: name of the property, notes, address and host contact are shown.</summary>
     public bool ContactDisclosed { get; set; }
 
-    /// <summary>The host contact: only when <see cref="ContactDisclosed"/>.</summary>
+    /// <summary>
+    /// The host contact: only when <see cref="ContactDisclosed"/>. For a request from the public showcase (SP-10) it is the contact
+    /// of the private customer who asked (name, e-mail, phone): the same block, filled by the party that asked.
+    /// </summary>
     public SupplierHostContactDto? HostContact { get; set; }
 
     // ─── Schedule, price and lifecycle (SP-04) ───
 
-    /// <summary>Where the request comes from: <c>casazen</c> (a host's request); <c>showcase</c> arrives with SP-10.</summary>
+    /// <summary>Where the request comes from: <c>casazen</c> (a host's request) or <c>showcase</c> (a customer of the public showcase, SP-10).</summary>
     public string Source { get; set; } = SupplierRequestSources.CasaZen;
 
-    /// <summary>The customer: for a host's request the host org, whose name decision D9 shows before the take. Filter the inbox with <c>clientId</c>.</summary>
+    /// <summary>
+    /// The customer: for a host's request the host org, whose name decision D9 shows before the take; for a showcase request the
+    /// private customer. Filter the inbox with <c>clientId</c>.
+    /// </summary>
     public Guid ClientId { get; set; }
 
-    /// <summary>The name of the customer (the host org's display name).</summary>
+    /// <summary>The name of the customer: the host org's display name, or for a private customer "Nome C." until the supplier takes the request (decision D9).</summary>
     public string ClientName { get; set; } = string.Empty;
 
     /// <summary>The service of the catalog the request is for, when it is for one.</summary>
@@ -162,7 +175,7 @@ public class ServiceRequestHistoryEntryDto
     /// <summary>UTC instant of the transition.</summary>
     public DateTime At { get; set; }
 
-    /// <summary><c>Host</c>, <c>Supplier</c> or <c>System</c> (the automatic cancellation).</summary>
+    /// <summary><c>Host</c>, <c>Supplier</c>, <c>System</c> (the automatic cancellation) or <c>Customer</c> (a private customer of the public showcase, SP-10).</summary>
     public string Actor { get; set; } = string.Empty;
 
     /// <summary>The supplier member who took the request, when known; host members are never named.</summary>
@@ -375,6 +388,8 @@ public static class SupplierServiceRequestMapper
         dto.City = view.Location.City;
         dto.PostalCode = view.Location.PostalCode;
         dto.Address = view.Location.Address;
+        dto.Floor = view.Location.Floor;
+        dto.AccessNotes = view.Location.AccessNotes;
         dto.ScheduledFor = view.ScheduledFor;
         dto.Stay = view.Stay is null
             ? null

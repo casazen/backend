@@ -82,14 +82,30 @@ public class Property : ITenantOwned
     [Range(1, 50, ErrorMessage = "PropertyBathroomsRange")]
     public int Bathrooms { get; set; }
 
-    /// <summary>Short-stay guests; <c>0</c> = not set (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
+    /// <summary>
+    /// Short-stay guests; <c>0</c> = not set. Before PM-01 this and <see cref="NightlyRate"/> at <c>0</c> were the only,
+    /// implicit marker of a long-term property (A7-06); the marker is now <see cref="RentalMode"/>.
+    /// </summary>
     [Range(0, 100, ErrorMessage = "PropertyMaxGuestsRange")]
     public int MaxGuests { get; set; }
 
-    /// <summary>Short-stay nightly rate; <c>0</c> = none (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
+    /// <summary>Short-stay nightly rate; <c>0</c> = none (see <see cref="MaxGuests"/>).</summary>
     [Precision(18, 2)]
     [Range(0, 100000, ErrorMessage = "PropertyNightlyRateRange")]
     public decimal NightlyRate { get; set; }
+
+    /// <summary>
+    /// How the property is let (PM-01, D16 and D19): <see cref="Casazen.Core.Entities.Enums.RentalMode.Short"/> (short
+    /// stays, the default: every row that existed before the column keeps working) or
+    /// <see cref="Casazen.Core.Entities.Enums.RentalMode.Long"/> (long-term leases). The
+    /// mode is exclusive. A <c>Long</c> property is never published (<c>PublicListing.IsPublished</c>), cannot be booked
+    /// (422 <c>property_not_bookable_in_long_mode</c>) and is left out of the compliance status, the CIN alerts and
+    /// summaries and the compliance cockpit; the plan limit (<c>MaxProperties</c>) still counts it. Set when the property
+    /// is created (<see cref="Casazen.Core.Services.PropertyRentalModeRules.ResolveForCreation"/>) and by the scheduled
+    /// mode change of PM-02, never by the generic update (<c>PropertyRepository.UpdateAsync</c> does not write it).
+    /// Stored as an integer, append only.
+    /// </summary>
+    public RentalMode RentalMode { get; set; } = RentalMode.Short;
 
     [Precision(18, 2)]
     [Range(0, 10000, ErrorMessage = "PropertyCleaningFeeRange")]

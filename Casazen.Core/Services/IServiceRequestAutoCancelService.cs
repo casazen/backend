@@ -13,11 +13,23 @@ namespace Casazen.Core.Services;
 /// <para><b>One run at a time.</b> A PostgreSQL session lock
 /// (<c>PostgresAdvisoryLocks.Scope.ServiceRequestAutoCancelRun</c>) on top of Hangfire's own; a run that finds it taken does nothing.</para>
 /// <para>A request with a time proposed by the supplier is not cancelled: the supplier did answer, the host has to.</para>
+/// <para><b>The requests of the hosts only.</b> Since SP-10 this run leaves alone the requests born from a supplier's public
+/// showcase (<c>ServiceRequestRentalContext.Showcase</c>): they have a customer, not a host, and lapse in the same way through
+/// <see cref="CancelUnansweredShowcaseAsync"/>, which the always-on <c>service-request-expiry</c> job runs.</para>
 /// </remarks>
 public interface IServiceRequestAutoCancelService
 {
     /// <summary>One run: the due requests are cancelled and their parties told. Never throws for a request it cannot handle: it counts it.</summary>
     Task<ServiceRequestAutoCancelRun> CancelUnansweredAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same cancellation for the requests of the public showcase (SP-10): the new ones past <c>ResponseDueAt</c> move to
+    /// <c>Annullato</c> (reason <c>NoResponse</c>, by CasaZen), and the <b>customer</b> and the supplier are told. <b>Not behind</b>
+    /// <c>SupplierRequestAutoCancel</c> (the showcase booking has its own flag and the requests that exist must lapse whatever the
+    /// flags are), and a pending proposal of another time does not stop it: the proposal re-armed the deadline when it was made.
+    /// Called with the lock of the expiry run already held by the caller, which is why it does not take one itself.
+    /// </summary>
+    Task<ServiceRequestAutoCancelRun> CancelUnansweredShowcaseAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of one run of <see cref="IServiceRequestAutoCancelService"/>.</summary>

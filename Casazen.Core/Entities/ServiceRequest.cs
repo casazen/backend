@@ -12,18 +12,28 @@ public class ServiceRequest
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// The org the request belongs to: the <b>host</b> org for a host's request (short-rent or long-rent context) and the
+    /// <b>supplier</b> org for a request born from the supplier's public showcase (<see cref="ServiceRequestRentalContext.Showcase"/>,
+    /// SP-10): the data belongs to the supplier, never to a host org.
+    /// </summary>
     public Guid OrgId { get; set; }
 
     /// <summary>
     /// The stay the request is for: set for every short-rent request created since SU-07 (D2), null for long-rent
-    /// requests and for older short-rent requests that could not be traced to a single stay.
+    /// requests, for older short-rent requests that could not be traced to a single stay and for showcase requests.
     /// </summary>
     public Guid? BookingId { get; set; }
 
-    /// <summary>Rental context the request was opened in (D2): short-rent (per stay) or long-rent (per property).</summary>
+    /// <summary>
+    /// Rental context the request was opened in (D2): short-rent (per stay), long-rent (per property) or, since SP-10, the
+    /// supplier's public showcase. <c>CK_ServiceRequests_Context</c> ties it to <see cref="PropertyId"/>, <see cref="BookingId"/>,
+    /// <see cref="Source"/>, <see cref="CustomerId"/>, <see cref="PublicCode"/> and the <c>Location*</c> columns.
+    /// </summary>
     public ServiceRequestRentalContext RentalContext { get; set; } = ServiceRequestRentalContext.ShortRent;
 
-    public Guid PropertyId { get; set; }
+    /// <summary>The host's property: always set for a short-rent or long-rent request, <c>null</c> for a showcase request (SP-10).</summary>
+    public Guid? PropertyId { get; set; }
 
     public Guid SupplierOrgId { get; set; }
 
@@ -202,9 +212,59 @@ public class ServiceRequest
     [MaxLength(255)]
     public string? ProposedByUserId { get; set; }
 
-    /// <summary>An optional message to the host.</summary>
+    /// <summary>An optional message to the host (or, for a showcase request, to the customer).</summary>
     [MaxLength(ServiceRequestLimits.ProposalMessageMaxLength)]
     public string? ProposalMessage { get; set; }
+
+    // ─── Booking from the supplier's public showcase (SP-10) ─────────────────────────────────────────────────────────
+    // Every column below is new in SP-10 and empty on the requests of a host: they are set together, and only, on a request of
+    // the Showcase context (CK_ServiceRequests_Context).
+
+    /// <summary>Where the request comes from (kept with <see cref="RentalContext"/> by a database check).</summary>
+    public ServiceRequestSource Source { get; set; } = ServiceRequestSource.Host;
+
+    /// <summary>
+    /// The code the customer reads in the e-mails and types, with the e-mail address, to manage the booking (SP-11):
+    /// <see cref="Services.BookingCodes"/>, 10 characters, unique for the supplier. Set on a showcase request only.
+    /// </summary>
+    [MaxLength(Services.BookingCodes.Length)]
+    public string? PublicCode { get; set; }
+
+    /// <summary>
+    /// The private customer who booked (<see cref="ServiceCustomer"/>): set on a showcase request only. A host's request has
+    /// its host org as the customer.
+    /// </summary>
+    public Guid? CustomerId { get; set; }
+
+    /// <summary>ISTAT code (6 digits) of the comune of the work, when the customer chose it from the official list.</summary>
+    [MaxLength(6)]
+    public string? LocationComuneIstat { get; set; }
+
+    /// <summary>Comune of the work as the customer wrote it. Always shown to the supplier (decision D9). Showcase requests only.</summary>
+    [MaxLength(ShowcaseBookingLimits.CityMaxLength)]
+    public string? LocationCity { get; set; }
+
+    /// <summary>Postal code (CAP) of the work. Always shown to the supplier (decision D9).</summary>
+    [MaxLength(10)]
+    public string? LocationPostalCode { get; set; }
+
+    /// <summary>
+    /// Street address of the work. <b>Encrypted at rest</b> (<c>EncryptedColumns</c>, purpose <c>Casazen.ServiceRequest.Location</c>);
+    /// shown to the supplier only once it took the request (decision D9).
+    /// </summary>
+    public string? LocationAddress { get; set; }
+
+    /// <summary>Floor and apartment. Encrypted at rest like <see cref="LocationAddress"/>.</summary>
+    public string? LocationFloor { get; set; }
+
+    /// <summary>The customer's note for the access (doorbell, keys). Encrypted at rest like <see cref="LocationAddress"/>.</summary>
+    public string? LocationAccessNotes { get; set; }
+
+    /// <summary>
+    /// When the reminder of the day before was e-mailed to the customer (job <c>service-request-reminders</c>, 18:00 Europe/Rome):
+    /// once per request.
+    /// </summary>
+    public DateTime? ReminderSentAt { get; set; }
 
     /// <summary>
     /// Optimistic concurrency token (A4-19): mapped to PostgreSQL's <c>xmin</c> system column, which changes with every
@@ -219,9 +279,14 @@ public class ServiceRequest
     [ForeignKey(nameof(BookingId))]
     public Booking? Booking { get; set; }
 
+    /// <summary>The host's property; <c>null</c> for a showcase request (its place is in the <c>Location*</c> columns).</summary>
     [ForeignKey(nameof(PropertyId))]
-    public Property Property { get; set; } = null!;
+    public Property? Property { get; set; }
 
     [ForeignKey(nameof(SupplierOrgId))]
     public Org SupplierOrg { get; set; } = null!;
+
+    /// <summary>The private customer of a showcase request; <c>null</c> for a host's request.</summary>
+    [ForeignKey(nameof(CustomerId))]
+    public ServiceCustomer? Customer { get; set; }
 }
