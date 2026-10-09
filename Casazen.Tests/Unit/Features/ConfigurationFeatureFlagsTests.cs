@@ -59,14 +59,25 @@ public class ConfigurationFeatureFlagsTests
     {
         Assert.Equal("SupplierShowcaseBooking", FeatureFlags.SupplierShowcaseBooking);
         Assert.Equal("SupplierOnlinePayments", FeatureFlags.SupplierOnlinePayments);
+        Assert.Equal("SupplierRequestAutoCancel", FeatureFlags.SupplierRequestAutoCancel);
         Assert.Equal(
-            new[] { "OtaPartnerApi", "AiSupplierDiscovery", "RliProvider", "ESignProvider", "SupplierShowcaseBooking", "SupplierOnlinePayments" },
+            new[]
+            {
+                "OtaPartnerApi",
+                "AiSupplierDiscovery",
+                "RliProvider",
+                "ESignProvider",
+                "SupplierShowcaseBooking",
+                "SupplierOnlinePayments",
+                "SupplierRequestAutoCancel",
+            },
             FeatureFlags.All);
     }
 
     [Theory]
     [InlineData(FeatureFlags.SupplierShowcaseBooking)]
     [InlineData(FeatureFlags.SupplierOnlinePayments)]
+    [InlineData(FeatureFlags.SupplierRequestAutoCancel)]
     public void IsEnabled_SupplierFlagNotConfigured_IsOff(string flag)
     {
         Assert.False(Flags(new Dictionary<string, string?>()).IsEnabled(flag));
@@ -75,6 +86,8 @@ public class ConfigurationFeatureFlagsTests
     [Theory]
     [InlineData(FeatureFlags.SupplierShowcaseBooking, FeatureFlags.SupplierOnlinePayments)]
     [InlineData(FeatureFlags.SupplierOnlinePayments, FeatureFlags.SupplierShowcaseBooking)]
+    [InlineData(FeatureFlags.SupplierRequestAutoCancel, FeatureFlags.SupplierOnlinePayments)]
+    [InlineData(FeatureFlags.SupplierOnlinePayments, FeatureFlags.SupplierRequestAutoCancel)]
     public void IsEnabled_OneSupplierFlagOn_DoesNotTurnTheOtherOn(string on, string other)
     {
         var flags = Flags(new Dictionary<string, string?> { [$"Features:{on}"] = "true" });

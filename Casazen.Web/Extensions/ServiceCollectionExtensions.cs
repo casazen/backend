@@ -402,6 +402,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
         // The supplier's catalog of services with prices (SP-02): rows keyed by the supplier org, not tenant-filtered.
         services.AddScoped<ISupplierServiceCatalogService, SupplierServiceCatalogService>();
+        // The supplier's agenda (SP-03): hours, time off, blocks, rules, calendar and the input of the slot planner. Rows keyed
+        // by the supplier org, not tenant-filtered; every write under the SupplierCalendarSync lock.
+        services.AddScoped<ISupplierAgendaService, SupplierAgendaService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
 
@@ -420,9 +423,20 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<SupplierRegistrationOptions>, SupplierRegistrationOptionsValidator>();
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
+        // Service requests with their time and price (SP-04): the emails and pushes to the two parties, the lifecycle after the
+        // take, the photos of the work; the times and the tolerance are configuration (Suppliers:ServiceRequests), validated at startup.
+        services.AddOptions<Casazen.Core.Options.ServiceRequestOptions>()
+            .BindConfiguration(Casazen.Core.Options.ServiceRequestOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.ServiceRequestOptions>, Casazen.Core.Options.ServiceRequestOptionsValidator>();
+        services.AddScoped<ServiceRequestNotifier>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
-        // Supplier dashboard KPIs from the service requests (SU-11, A4-15).
+        // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
+        services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
+        // Supplier dashboard KPIs from the service requests (SU-11, A4-15) and the money of the console home (SP-04).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
+        // The home ("Oggi") and the activation checklist of the supplier console (SP-04).
+        services.AddScoped<ISupplierTodayService, SupplierTodayService>();
         // Supplier inbox, history and request detail: address, date and host contact after the take (SU-08, A4-14).
         services.AddScoped<ISupplierServiceRequestReader, SupplierServiceRequestReader>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();

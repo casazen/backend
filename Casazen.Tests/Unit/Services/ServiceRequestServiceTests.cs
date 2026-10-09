@@ -385,7 +385,7 @@ public class ServiceRequestServiceTests
             "cleaning", ServiceRequestUrgency.Normal, null, false));
         await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
 
-        var completed = await service.CompleteAsync(created.Id, supplierOrgId, "Done");
+        var completed = await service.CompleteAsync(created.Id, supplierOrgId, new CompleteServiceRequestCommand("Done"));
 
         Assert.Equal(ServiceRequestStatus.Completato, completed.Status);
         Assert.NotNull(completed.CompletedAt);
@@ -542,7 +542,7 @@ public class ServiceRequestServiceTests
             hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
 
-        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => service.CompleteAsync(created.Id, supplierOrgId, "Fatto"));
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => service.CompleteAsync(created.Id, supplierOrgId, new CompleteServiceRequestCommand("Fatto")));
 
         Assert.Equal(ServiceRequestErrorCodes.InvalidTransition, ex.Code);
         Assert.Equal(ServiceRequestErrorCodes.CannotCompleteMessageKey, ex.MessageKey);
@@ -733,14 +733,16 @@ public class ServiceRequestServiceTests
         var (to, content, template) = Assert.Single(queue.Queued);
         Assert.Equal("supplier@test.com", to);
         Assert.Equal(EmailTemplates.Names.ServiceRequestCreated, template);
-        Assert.Equal("Nuova richiesta di servizio — Test Property", content.Subject);
+        Assert.Equal("Nuova richiesta di servizio — H501", content.Subject);
         Assert.Contains($"href=\"{EmailTestHelpers.PublicSiteBaseUrl}/app/supplier/inbox\"", content.HtmlBody);
-        Assert.Contains("Turnover", content.HtmlBody);
+        // Decision D9 (SP-04): the supplier gets the comune, not the name of the property nor the host's notes.
+        Assert.DoesNotContain("Test Property", content.HtmlBody);
+        Assert.DoesNotContain("Turnover", content.HtmlBody);
         Assert.DoesNotContain("casazen.it", content.HtmlBody);
     }
 
     [Fact]
-    public async Task CreateAsync_NotesWithMarkup_AreHtmlEncodedInSupplierEmail()
+    public async Task CreateAsync_NotesWithMarkup_NeverReachTheSupplierEmailBeforeTheTake()
     {
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
@@ -752,11 +754,31 @@ public class ServiceRequestServiceTests
             "cleaning", ServiceRequestUrgency.Normal,
             "<a href=\"https://phish.example\">Conferma IBAN</a><script>alert(1)</script>", false));
 
+        // Decision D9 (SP-04): the host's notes are shown to the supplier only after the take, so the email does not carry them.
         var html = Assert.Single(queue.Queued).Content.HtmlBody;
-        Assert.DoesNotContain("<a href=\"https://phish.example\"", html);
+        Assert.DoesNotContain("phish.example", html);
         Assert.DoesNotContain("<script>", html);
-        Assert.Contains("&lt;a href=&quot;https://phish.example&quot;&gt;Conferma IBAN&lt;/a&gt;", html);
+        Assert.DoesNotContain("Conferma IBAN", html);
         Assert.Contains("richiesta di <strong>Pulizie</strong>", html);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ComuneWithMarkup_IsHtmlEncodedInSupplierEmail()
+    {
+        // The comune is text the host typed: it is the one host-written value the supplier's email still carries.
+        const string comune = "<script>alert(1)</script>";
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, comune, SupplierStatus.Active, comune);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+
+        await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+
+        var html = Assert.Single(queue.Queued).Content.HtmlBody;
+        Assert.DoesNotContain("<script>", html);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt;", html);
     }
 
     [Theory]
@@ -957,7 +979,7 @@ public class ServiceRequestServiceTests
         Assert.Equal(PushAudience.SupplierOrg(supplierOrgId), toSupplier.Audience);
         Assert.Equal(PushTypes.ServiceRequestCreated, toSupplier.Payload.Type);
         Assert.Equal("Nuova richiesta di servizio", toSupplier.Payload.Title);
-        Assert.Equal("Pulizie presso Test Property: accetta o rifiuta la richiesta dalla tua area fornitore.", toSupplier.Payload.Body);
+        Assert.Equal("Pulizie a H501: accetta o rifiuta la richiesta dalla tua area fornitore.", toSupplier.Payload.Body);
         // The stay is the host's: the supplier's push carries no booking and opens a screen the app has.
         Assert.Null(toSupplier.Payload.BookingId);
         Assert.Equal(PushRoutes.Properties, toSupplier.Payload.Route);
@@ -1026,20 +1048,8 @@ public class ServiceRequestServiceTests
         AppDbContext db,
         IEmailQueue? queue = null,
         string? publicSiteBaseUrl = EmailTestHelpers.PublicSiteBaseUrl,
-        IPushNotificationService? push = null)
-    {
-        var repo = new ServiceRequestRepository(db);
-
-        return new ServiceRequestService(
-            db,
-            repo,
-            queue ?? new RecordingEmailQueue(),
-            EmailTestHelpers.Links(publicSiteBaseUrl),
-            push ?? Mock.Of<IPushNotificationService>(),
-            ComuneTestServices.Matcher(db),
-            LegalTestServices.Legal(),
-            NullLogger<ServiceRequestService>.Instance);
-    }
+        IPushNotificationService? push = null) =>
+        new ServiceRequestTestKit(db, queue, push, publicSiteBaseUrl: publicSiteBaseUrl).Service;
 
     private static AppDbContext CreateDb()
     {

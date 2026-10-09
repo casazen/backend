@@ -10,7 +10,10 @@ host contact), request detail page and inbox history (SU-08, A4-14). Section 12:
 the platform admin's supplier list, suspension and invites (SU-12, A4-29).
 Section 15: what the host sees of a request (timeline, rejection reason, "Segna pagato" with confirmation, asking another supplier)
 and the payment notification to the supplier (SU-09, A4-28). Section 19: the supplier's catalog of services with prices
-and the category `electrical` (SP-02, redesign wave).
+and the category `electrical` (SP-02, redesign wave). Section 20: the supplier's agenda (weekly hours, time off, blocks, the
+rules, the calendar) and the slot planner (SP-03, redesign wave). Section 21: the service request with a time and a price (start,
+cancel, propose another time, reminder, final amount, photos), the inbox filters, the batch accept, `today` and `checklist`, the
+automatic cancellation of the requests nobody answers, and what the supplier sees before the take (SP-04, redesign wave).
 
 ## 1. How a supplier joins
 
@@ -275,8 +278,10 @@ shape (`code` + localized `detail`, IT default, EN with `Accept-Language: en`); 
 ### 8.1 States and errors
 
 Allowed transitions (`Casazen.Core/Suppliers/ServiceRequestStateMachine.cs`, the only table):
-`Richiesto → PresoInCarico` (take), `Richiesto → Rifiutato` (reject), `PresoInCarico/InCorso → Completato`
-(complete), `Completato → Pagato` (mark-paid). `Rifiutato` and `Pagato` are final.
+`Richiesto → PresoInCarico` (take), `Richiesto → Rifiutato` (reject), `PresoInCarico → InCorso` (start, SP-04),
+`PresoInCarico/InCorso → Completato` (complete), `Completato → Pagato` (mark-paid) and, since SP-04,
+`Richiesto/PresoInCarico/InCorso → Annullato` (cancel). `Rifiutato`, `Pagato` and `Annullato` are final. Who may cancel, the new
+error codes and the new endpoints are in section 21.2.
 
 | Status | `code` | When |
 |---|---|---|
@@ -384,6 +389,8 @@ the migration there are no duplicate emails left, so a run normally only does th
      move to the keeper before the profile is deleted (the cascade would take what stayed); a slug the keeper already
      uses gets the next free suffix (`pulizie` → `pulizie-2`); the keeper may end up above the 30 services limit, which
      only stops it from creating more (`serviceListingsMoved`);
+   - the duplicate's agenda (SP-03, section 20.8): its time off, blocks, extra openings and calendar engagements move; its
+     weekly hours and its settings move only when the keeper has none (`agendaRowsMoved`);
    - the duplicate's categories and comuni the keeper lacks are appended (bio, photos, VAT, calendar settings of the
      duplicate are not copied: the keeper's profile is the one in use);
    - accounts: `SupplierOrgId` = duplicate → keeper; a supplier-only account (`OrgId` = duplicate, no `SupplierOrgId`)
@@ -403,7 +410,7 @@ the migration there are no duplicate emails left, so a run normally only does th
 Response (200): `dryRun`, `profilesScanned`, `duplicateGroups`, `duplicatesMerged`, `serviceRequestsMoved`, `merges[]`
 (`keeperOrgId`, `duplicateOrgId`, `serviceRequestsMoved`, `availabilityDaysMoved`,
 `availabilityDaysDropped`, `categoriesAdded`, `comuniAdded`, `supplierLinksMoved`, `orgMembersMoved`, `devicesMoved`,
-`serviceListingsMoved`, `duplicateOrgDeleted`), `danglingLinksCleared[]` and `supplierLinksBackfilled[]` (user ids), `orphanProfiles[]`,
+`serviceListingsMoved`, `agendaRowsMoved`, `duplicateOrgDeleted`), `danglingLinksCleared[]` and `supplierLinksBackfilled[]` (user ids), `orphanProfiles[]`,
 `manualInterventions[]` (`code`, `orgIds`, `userIds`). Ids and counts only: no email, no name.
 
 Errors: 409 `supplier_maintenance_conflict` when a concurrent change stops the run (nothing saved: run it again); 403
@@ -507,7 +514,8 @@ needs to know where roughly and when; the exact place and the host's contact onl
 
 | Field (JSON) | New (`Richiesto`) | Taken, in progress, completed, paid | Rejected (`Rifiutato`) |
 |---|---|---|---|
-| `propertyName`, `category`, `urgency`, `notes` (host's notes), dates of the request | yes | yes | yes |
+| `category`, `urgency`, dates of the request | yes | yes | yes |
+| `propertyName`, `notes` (host's notes) — **SP-04, decision D9: not before the take** | **no** (null) | yes | **no** (null) |
 | `city` (comune, as the host wrote it), `postalCode` (the zone) | yes | yes | yes |
 | `scheduledFor`: day of the job, `YYYY-MM-DD` Europe/Rome | yes | yes | yes |
 | `stay`: `bookingId`, `checkIn`, `checkOut` (Europe/Rome days) | yes | yes | yes |
@@ -519,7 +527,9 @@ needs to know where roughly and when; the exact place and the host's contact onl
 - `scheduledFor` of a short-rent request is the **check-out day** of its stay (the turnover). A request has no date of
   its own: long-rent requests (per property) and older short-rent requests not traced to a stay (section 7.3) have
   `scheduledFor` and `stay` null: the page shows "da concordare con l'host".
-- The host's notes are free text written by the host: the supplier sees them as written.
+- The host's notes are free text written by the host: the supplier sees them as written, **once it has taken the request** (SP-04,
+  section 21.6: until then neither the notes nor the name of the property are shown, and the emails and pushes to the supplier name only the
+  comune). The client (the host org) is named from the start, with `clientId`/`clientName`.
 - A rejected request never shows address and contact: it can only be rejected before the take (section 8.1).
 - The old `GET /api/service-requests/{id}` and `?view=supplier` still answer the supplier with the host-shaped DTO
   (no address, no contact, no guest data); the web console does not use them.
@@ -528,7 +538,7 @@ needs to know where roughly and when; the exact place and the host's contact onl
 
 | Endpoint | Notes |
 |---|---|
-| `GET /api/supplier/inbox?status=&from=&to=&page=&pageSize=` | `status`: `open` (default: `Richiesto`, `PresoInCarico`, `InCorso`), `history` (`Completato`, `Pagato`, `Rifiutato`), `all`, or one status name (any case). `from`/`to`: Europe/Rome days `YYYY-MM-DD`, both included, each optional. `pageSize` 1–100 (default 20). Answer `{ items, total, page, pageSize }`, newest activity first. 400 `validation_error` for another status (`SupplierInboxStatusInvalid`) or `from` after `to` (`SupplierInboxPeriodInvalid`). |
+| `GET /api/supplier/inbox?status=&from=&to=&page=&pageSize=` (SP-04 adds `tab`, `service`, `comune`, `when`, `clientId`: section 21.7) | `status`: `open` (default: `Richiesto`, `PresoInCarico`, `InCorso`), `history` (`Completato`, `Pagato`, `Rifiutato`, `Annullato`), `all`, or one status name (any case). `from`/`to`: Europe/Rome days `YYYY-MM-DD`, both included, each optional. `pageSize` 1–100 (default 20). Answer `{ items, total, page, pageSize }`, newest activity first. 400 `validation_error` for another status (`SupplierInboxStatusInvalid`) or `from` after `to` (`SupplierInboxPeriodInvalid`). |
 | `GET /api/supplier/inbox/{id}` | the request with `history`; 404 `service_request_not_found` when it does not exist **or was sent to another supplier** (same answer). |
 | `POST /api/service-requests/{id}/take` \| `complete` \| `reject` | unchanged (section 8): the page calls them and reloads the request; on 409/422 it reloads too. |
 
@@ -547,9 +557,11 @@ instant, shown in Europe/Rome) and `actor` (`Host` or `Supplier`). It is rebuilt
 |---|---|---|
 | `Richiesto` | `CreatedAt` | `Host` |
 | `PresoInCarico` | `TakenAt` | `Supplier`, with `actorName` = first and last name of the member who took it (only a user of the same supplier org is named) |
+| `InCorso` (SP-04) | `StartedAt` | `Supplier` |
 | `Completato` | `CompletedAt` | `Supplier` |
 | `Pagato` | `PaidAt` | `Host` |
 | `Rifiutato` | `UpdatedAt` (final status, nothing updates it later) | `Supplier`, with `reason` |
+| `Annullato` (SP-04) | `CancelledAt` (else `UpdatedAt`) | `CancelledBy` (`Host`, `Supplier` or `System`; `Host` for a request cancelled before the column existed), with `reason` |
 
 Host members are never named to the supplier; the host is identified by the host contact. Completion and rejection
 record no member (the request keeps no user for them): the page shows "Il tuo team".
@@ -1044,6 +1056,435 @@ since SP-14 (the supplier's Stripe account, section 25). See `feature-flags.md`.
       `POST .../publish` → 422 until a duration and a price (or `requiresQuote`) are set; then 200 `Active`; `.../pause`,
       `.../duplicate` and `DELETE` answer as above; another supplier's `GET {id}` is 404.
 - [ ] `GET /api/service-categories` returns 11 codes, the last one `electrical`.
+
+## 20. The supplier's agenda: hours, time off, blocks, rules and the slot planner — SP-03
+
+Redesign wave task SP-03 (branch `feature/rd-supplier-agenda`, backend only: no screen yet, the console screens are SP-07;
+stacked on SP-02). Gap report 05 §4.1 and decisions D10 and D34 of `redesign/docs/wave/WAVE-SPEC.md`. Before this a
+supplier only had `SupplierAvailability`, a yes/no per day. Stacked on this branch, and **not part of it**: the time and
+price on a service request (SP-04), iCal events by the hour (SP-05), the public slots and the estimate (SP-09), the booking
+from the showcase with its holds (SP-10), the endpoint of the supplier's settings (`api/supplier/settings`, SP-16). No public
+endpoint, no feature flag, nothing new in the configuration.
+
+### 20.1 What the agenda is
+
+| Table (entity) | One row is |
+|---|---|
+| `SupplierWorkingHours` | a band of the **weekly** hours: `Weekday` (the number of `DayOfWeek`, Sunday is 0), `StartMinute` and `EndMinute` as **minutes after midnight on the wall clock of Rome** (`EndMinute` up to 1440, midnight). A supplier has up to **3 bands a day**; a weekday with none is a rest day. Unique on supplier + weekday + start |
+| `SupplierTimeOff` | days the supplier does not work: `FromDate` to `ToDate`, both included (calendar days of Rome), a `Reason` (`Vacation`, `Holiday`, `Illness`, `Other`: only a label) and an optional `Label` (≤ 80 characters, only the supplier's console shows it) |
+| `SupplierBusyWindow` (table `SupplierBusyWindows`) | hours in UTC: `StartUtc`, `EndUtc`, a `Kind` — `Block` (the supplier blocks them), `ExtraOpening` (opened on top of the weekly hours) or `External` (an engagement of the supplier's own calendar) — a `Source` (`Manual` or `ICalFeed`), a `Label` (≤ 80, **never public**) and the `ExternalUid` of an iCal event |
+| `SupplierSettings` | **one row per supplier** (the key is the supplier org): the five rules (below), `ParallelJobs` (decision D10: **1**, not editable from the console), `HoursConfiguredAt`, and the columns the next tasks use (`RespondWithinMinutes` 180, `OnlineBookingEnabled` false, `AutoAcceptRegulars`, three notification switches): no endpoint changes those yet |
+
+`SupplierAvailability` (one row per day) **stays as it was** and is now read as the *override of the day*: `Available = false`
+closes the whole day (by hand, or by an all-day event of the calendar feed), `true` is no override. There is no backfill:
+a supplier with no hours has no slot until it saves some. The migration is `AddSupplierAgenda` (four new tables, applied at
+startup): every agenda starts empty.
+
+The settings row is **lazy**: a supplier has none until it saves a rule or its hours. A read without a row answers the
+defaults and writes nothing; the first write creates the row (under the lock, so two first writes never make two). The
+defaults are in `SupplierAgendaDefaults`: buffer **30** minutes, **3** jobs a day, notice **24** hours, horizon **35** days,
+slot step **60** minutes. `HoursConfiguredAt` is the moment of the last save of the hours that left at least one band
+(`null` while there is none): the supplier's checklist (SP-04) reads it.
+
+### 20.2 Endpoints (policy `RequireSupplier`, supplier org from the caller's own link, not behind a feature flag)
+
+The org comes from `ISupplierOrgContextResolver.GetLinkedSupplierOrgIdAsync`, like the catalog (section 19.2): the agenda is
+business data and never provisions a supplier org; a `Supplier` account with no link is 404 `not_found`.
+
+| Method and path | Answer |
+|---|---|
+| `GET api/supplier/availability/hours` | `{ days[], configuredAt }`: **seven** days, Monday first, each `{ weekday, bands[{ startMinute, endMinute }] }` (a rest day has no band) |
+| `PUT api/supplier/availability/hours` | replaces the week with the body `{ days: [{ weekday, bands: [{ startMinute, endMinute }] }] }` (a weekday that is not sent becomes a rest day; `days: []` clears the hours); answers like the `GET`. A band that stays keeps its row |
+| `GET api/supplier/availability/time-off` | `{ items[], total, limit }`: the time off that has **not ended** (last day today or later), by first day; `limit` 100 |
+| `POST api/supplier/availability/time-off` | 201 + `Location`, body `{ fromDate, toDate, reason?, label? }` (`reason` left out is `Vacation`) |
+| `DELETE api/supplier/availability/time-off/{id}` | 204 |
+| `GET api/supplier/availability/blocks` | `{ items[], total, limit }`: the blocks and extra openings the supplier set **by hand** that have not ended, by start; `limit` 200 |
+| `POST api/supplier/availability/blocks` | 201 + `Location`, body `{ kind, startUtc, endUtc, label? }` with `kind` `Block` or `ExtraOpening` |
+| `DELETE api/supplier/availability/blocks/{id}` | 204; only a manual window |
+| `GET api/supplier/availability/rules` | `{ bufferMinutes, maxJobsPerDay, minNoticeHours, horizonDays, slotStepMinutes }` (the defaults while none was saved) |
+| `PUT api/supplier/availability/rules` | replaces the five rules; **all five are needed** (a missing one is a 422 naming it, never silently reset to its default); answers like the `GET` |
+| `GET api/supplier/calendar?from&to` | what the console calendar draws, see 20.3 |
+
+The endpoints that already existed **do not change**: `GET/PUT api/supplier/availability` (the override of the day),
+`calendar/status`, `calendar/ical` and `calendar/sync` (section 12 and `ical.md`).
+
+Errors (ProblemDetails `code`): 404 `supplier_time_off_not_found` and `supplier_block_not_found` (another supplier's entry,
+a deleted one, and — for a block — an engagement of the calendar feed, all answer the same: it does not exist for the
+caller); 400 `validation_error` for a malformed body (a weekday, a reason or a date that is not one) and for a calendar range
+that is reversed or longer than 62 days; 422 with **`fields`** (the JSON names of what is wrong, a day or a band by its
+position: `days[1].bands[0].endMinute`) `supplier_hours_invalid`, `supplier_time_off_invalid`, `supplier_block_invalid`,
+`supplier_rules_invalid`; 422 `supplier_time_off_limit_reached` and `supplier_block_limit_reached` (the limit is the
+message argument). The messages are keys of `SharedResources` (Italian and English); the list is
+`SupplierAgendaErrors.MessageKeys`.
+
+What is refused (the limits are constants in `Casazen.Core/Suppliers/SupplierAgendaLimits.cs`, technical bounds rather than
+product rules, checked by `SupplierAgendaRules`; the database mirrors them with check constraints):
+
+| Value | Rule |
+|---|---|
+| Weekly hours | up to **3 bands** a day; a start 0 to 1439, an end 1 to 1440 **after its start**; two bands of a day must not overlap (bands that only touch are accepted: the planner joins them); a weekday at most once; `days` is required |
+| Time off | both dates; last day not before the first, **at most 366 days**, not already over; first day at most 730 days ahead; `reason` one of the four; label ≤ 80 characters without control characters; at most **100** entries that have not ended |
+| Block / extra opening | `kind` `Block` or `ExtraOpening` (`External` is written only by the calendar sync); both instants (UTC); the end after the start, **at least 15 minutes**; a block at most 31 days; an **extra opening inside one day of Rome** (it may end at the midnight that closes the day); not already over; start at most 730 days ahead; label as above; at most **200** that have not ended |
+| Rules | buffer 0 to 240 minutes in **steps of 5**; jobs a day 1 to 50; notice 0 to 720 hours; horizon 1 to 365 days; slot step 15 to 240 minutes in **steps of 5** |
+
+### 20.3 The calendar
+
+`GET api/supplier/calendar?from=2026-10-01&to=2026-10-31` (dates `yyyy-MM-dd`, Rome days, both included; **at most 62
+days**; left out: from today, and 30 days after `from`) answers, for the supplier's own agenda only:
+
+- `workingHours`: the weekly hours, as the `GET hours` (seven days);
+- `closedDays[]`: `{ date, source }` for the days of the range closed by hand or by the calendar feed (`Available = false`);
+- `timeOff[]`: the time off that touches the range;
+- `blocks[]`: the blocks, extra openings **and calendar engagements** that touch the range (`kind`, `source`, `startUtc`, `endUtc`,
+  `label`), by start;
+- `requests[]`: the supplier's service requests that have a day, as **whole-day items**: `{ id, date, status, category }`.
+  The day of a request is, today, the check-out day of the stay of a short-rent request (what the inbox calls `scheduledFor`);
+  a long-rent request, or an old one not tied to a stay, has no day and is not here until it gets a time (SP-04). Every status
+  except `Rifiutato`. Nothing else of the request: **no property, address, host or guest** (those are the request's detail, and the
+  supplier sees them only after taking it, section 11).
+- `timeZone`: `Europe/Rome`.
+
+### 20.4 The slot planner
+
+`SupplierSlotPlanner` (`Casazen.Core/Suppliers`) is a **pure function**: it reads no clock, no database, no configuration. The
+input is a `SupplierPlanningInput` (the instant "now", the rules, the weekly hours, the time off, the closed days, the extra
+openings and the list of what takes the supplier's time) and a `SupplierSlotQuery` (the duration of the service, and
+optionally the service's own notice and the weekdays it is offered on). `PlanDay` and `PlanRange` (at most 366 days) answer,
+for each Europe/Rome day, either **why it has no slot** (`SupplierDayClosure`) or its free slots as UTC instants.
+
+A day has **no slot** when, in this order: it is before today (`Past`); the supplier is off (`TimeOff`); the day is closed by
+hand or by the feed (`DayClosed`); the service is not offered on that weekday (`ServiceNotOffered`: the days of a service restrict
+the supplier's hours, never replace them, so an extra opening does not open them); there is no weekly band for that weekday
+and no extra opening that day (`NoHours`); `MaxJobsPerDay` is reached (`MaxJobsReached`); the **whole day** is inside the notice,
+that is it ends before `now + notice` (`WithinNotice`); it is later than `today + HorizonDays` (`BeyondHorizon`: the horizon is
+inclusive, 35 days means the 35th day after today can still be booked; the gap report lists it among the rules, not among
+the closed days). An open day can still have no *free* slot (everything is taken): that is a day that is full of work, not a
+closed one.
+
+On an open day the weekly bands (wall clock of Rome, turned into UTC for that date) and the extra openings of the day are
+**joined into continuous bands** (bands that touch or overlap are one: an extra hour that fills the lunch break makes one band,
+and a 90-minute service can then cross it). In each band a slot starts at the beginning of the band and then every
+`SlotStepMinutes` of real time, as long as `start + duration ≤ end of the band`. A slot is **free** when:
+
+- it starts no earlier than `now + notice` (the notice of the service when it has one, otherwise the supplier's);
+- it does not overlap anything that takes the supplier's time, each stretch **widened by `BufferMinutes` before and after**:
+  requests with hours (also the ones not accepted yet), **holds** that have not expired, blocks and calendar engagements. The
+  buffer applies to all of them alike. It does not apply to the edges of a working band (nothing is before the first slot);
+- with `ParallelJobs` above 1 (not offered by the console, decision D10), it is enough that the widened stretches are **never as
+  many as the capacity at any one instant** of the slot: two jobs one after the other need one place, not two. With 1 this is
+  "nothing overlaps".
+
+`SupplierOccupancy` is **the input door for everything that takes the supplier's time**: `TimedRequest(start, end)`,
+`DatedRequest(day)`, `Hold(start, end, expiresAt)`, `Block(start, end)` and `External(start, end)`. A request that only has a
+day (the host's requests today: the day is the check-out) takes **no hour** but counts for `MaxJobsPerDay`. Requests and holds count
+for the daily maximum on the Europe/Rome day of their start (or of their date); blocks and engagements never do. A hold is a
+request waiting for its e-mail check: it counts, so that two customers cannot take the last place of a day at the same time (this
+goes one step beyond the gap report, which names only the requests; the planner ignores a hold altogether once it expired, the
+instant "now" being part of its input).
+
+### 20.5 Daylight saving time
+
+Working hours are **wall-clock times of Rome**: 09:00 stays 09:00 all year, so on 28 March (CET) it is 08:00 UTC and on 29 March
+(CEST) 07:00 UTC. `RomeCalendar.ToUtc(date, time)` (and `ToUtc(date, minutesAfterMidnight)`, 0 to 1440) does the conversion
+and has a **rule for the two days a year the clock changes**, so a time never has two answers or none:
+
+| Case | Rule | Example (2026) |
+|---|---|---|
+| a time that **does not exist** (the hour skipped when summer time starts: 02:00-02:59 on the last Sunday of March) | read with the offset in force **before** the change (+01:00): it lands one hour later on the clock | 29 March 02:30 → 03:30 CEST = 01:30 UTC; 02:00 and 03:00 are the same instant |
+| a time that **happens twice** (the hour repeated when summer time ends: 02:00-02:59 on the last Sunday of October) | its **first** occurrence, in summer time (+02:00) | 25 October 02:30 → 00:30 UTC, not 01:30 UTC |
+
+(`TimezoneHelper.ConvertLocalToUtc` is not used for this: it throws for a time that does not exist and takes the second
+occurrence of a repeated one.) Nothing else moves a slot: the planner turns the bands into UTC instants **first** and then walks
+the grid in real elapsed minutes. So 29 March is a 23-hour day, with nothing offered in the skipped hour (hours 00:00-06:00 give
+five hourly slots, at 00:00, 01:00, 03:00, 04:00 and 05:00 on the clock), and 25 October is a 25-hour day on which the repeated
+hour offers its slots twice, once per pass (hours 00:00-06:00 give seven). A band that starts in the skipped hour and ends right
+after it has no real length and is dropped. The notice and the end of a day use the real length of the day too. All of this has
+tests (`RomeCalendarTests`, `SupplierSlotPlannerTests`).
+
+### 20.6 Tenancy: keyed by the supplier org, not `ITenantOwned`
+
+The four tables follow `SupplierProfile`, `SupplierAvailability` and the catalog (section 19.4): `OrgId` is the **supplier** org
+(foreign key to `SupplierProfiles`, in cascade). They are **not** `ITenantOwned` (a supplier-only account has no `User.OrgId`,
+PL-05, so the global host-org filter would give it zero rows), each is in the allow-list of `TenantQueryFilterArchitectureTests`
+with its reason, and **every read and write carries an explicit `OrgId` predicate**: they all go through `HoursOf`,
+`TimeOffOf`, `WindowsOf` and `SettingsOf` of `SupplierAgendaService` (or are inserts of a row that has its `OrgId`).
+`SupplierAgendaTenancyTests` guards the model, the SQL of those queries and that **no other file** reads the tables (the repair,
+`SupplierService.Maintenance.cs`, and the context are the only others, each statement with the predicate): whoever adds a reader
+(SP-05 writes the windows of the iCal feed, SP-09 reads the slots) must add the file to `AllowedFiles` with its reason and the
+predicate; a public read also needs the supplier to be `Active` and must never expose a `Label`. The tests
+`SupplierAgendaPostgresTests` prove the isolation between two suppliers on PostgreSQL. The service request of a supplier is read
+through `ISupplierServiceRequestReader.ListForAgendaAsync`, which keeps the guarantee of section 11 (columns of the request only,
+the guest is never read).
+
+### 20.7 Concurrency: the lock
+
+**Every write of the agenda takes the advisory lock `SupplierCalendarSync` (scope 1_065, key = the supplier org id, the same lock
+as the iCal sync and the manual days, section 12) in a READ COMMITTED transaction and reads after taking it**: so a limit
+(100 time off, 200 blocks) is never decided on a stale read, two first writes never create two settings rows, two saves of the hours
+never mix their bands, and a sync never writes the same rows at once. A save of the hours is by difference (the bands that stay keep their row,
+one that only changes its end is updated), so the unique index never sees a row leave and come back. One lock per supplier: another
+supplier is never held back. The lock only exists on PostgreSQL: the tests that prove it (`SupplierAgendaPostgresTests`: every
+write waits for the lock held by another connection, parallel writes at the limit, parallel first writes) are `[PostgresFact]`
+(they run on CI, not on a laptop without a database). There is **no optimistic version**: `PUT` is a replacement and the last
+writer wins (the console saves the whole section it shows).
+
+### 20.8 Merge of duplicate profiles (`fix-orphaned`)
+
+The agenda of a duplicate profile moves to the keeper before the profile is deleted (section 9.3; the foreign keys cascade, so
+what stayed would be deleted with it), under the `SupplierCalendarSync` lock of both suppliers and in the repair's transaction
+(a dry run rolls it back): its **time off, blocks, extra openings and engagements always move** (dropping a closure would offer a
+slot the supplier had closed); its **weekly hours move only when the keeper has none**, and then the keeper's `HoursConfiguredAt`
+follows; its **settings row moves only when the keeper has none** (the keeper's rules are the ones in use). The report has
+`agendaRowsMoved` per merge (what moved: time off + windows + the bands and the settings row when they came over).
+
+### 20.9 For the tasks stacked on this one
+
+- **SP-04** (requests with hours) — **done, see section 21**: add `SupplierOccupancy.TimedRequest(startUtc, endUtc)` to the list of
+  `ISupplierAgendaService.BuildPlanningInputAsync` for the requests `Richiesto`, `PresoInCarico` and `InCorso` that have hours
+  (and keep `DatedRequest(day)` for the ones that do not), and use `PlanAsync` under the lock before taking a slot. The
+  planner does not change. `ISupplierServiceRequestReader.ListForAgendaAsync` gets the hours too.
+- **SP-05** (iCal by the hour): write the events as `SupplierBusyWindow` with `Kind = External`, `Source = ICalFeed` and the
+  `ExternalUid`, under the same lock (`CalendarSyncService.AvailabilityLock`), freeing only the windows of the feed; add its own
+  unique index on the event and its file to the allow-list of `SupplierAgendaTenancyTests`. `BuildPlanningInputAsync` already
+  turns `External` windows into occupancies, and the calendar already lists them.
+- **SP-09** (public slots): `PlanAsync(orgId, from, to, new SupplierSlotQuery(durationMinutes, service.MinNoticeHours, service.WeekdaysMask))`
+  for a published service of an `Active` supplier; show only the slot instants (never a label, a kind or a reason of closure).
+- **SP-10** (holds): add `SupplierOccupancy.Hold(startUtc, endUtc, expiresAtUtc)` and recompute under the lock before creating the hold.
+
+### 20.10 After a deploy
+
+- [ ] Migration `AddSupplierAgenda` applied (tables `SupplierWorkingHours`, `SupplierTimeOff`, `SupplierBusyWindows`,
+      `SupplierSettings`; unique index `UIX_SupplierWorkingHours_OrgId_Weekday_StartMinute`; the `CK_Supplier*` checks).
+- [ ] As a supplier (test environment): `GET /api/supplier/availability/hours` → seven rest days and `configuredAt: null`;
+      `PUT .../hours` with a Monday band `{ startMinute: 480, endMinute: 780 }` → 200 and `configuredAt` set; a fourth band in a
+      day → 422 `supplier_hours_invalid` with `fields`; `GET .../rules` → 30, 3, 24, 35, 60.
+- [ ] `POST .../time-off` and `POST .../blocks` answer 201, their `DELETE` 204, and `GET /api/supplier/calendar` lists them;
+      another supplier's `DELETE` of the same id is 404.
+- [ ] The existing `GET/PUT /api/supplier/availability` and `GET /api/supplier/calendar/status` still answer as before.
+
+## 21. Service requests with a time and a price: lifecycle, inbox, today and checklist — SP-04
+
+Redesign wave task SP-04 (branch `feature/rd-supplier-requests`, backend only: the console screens are SP-06/07/08; stacked on
+SP-03, which is stacked on SP-02). Gap report 05 §4–§4.1 and decisions D7, D8 and D9 of `redesign/docs/wave/WAVE-SPEC.md`.
+Before this a request had no time of its own (its day was the check-out of the stay), no price, no way to be started or
+cancelled, and completing it **replaced the host's notes** with the supplier's. Not part of it: the booking from the public
+showcase and `Showcase` requests (SP-10), the payment and the customer's confirmation of the final amount (SP-15), iCal events by
+the hour (SP-05), and the fields of #466/#467 (`SupplierOrgId?`, `OpenedBy`, `LeaseContractId`). `PropertyId` and `BookingId` are
+**not** nullable (decision D2: a host's request is tied to a stay or a property). `mark-paid` ("Segna pagato") is unchanged.
+
+### 21.1 What a request carries now
+
+One migration, `AddServiceRequestSchedule` (columns added to `ServiceRequests`, nothing rewritten, **no backfill**: a request that
+exists keeps no time and no price, "da concordare"):
+
+| Group | Columns | Notes |
+|---|---|---|
+| Time | `ScheduledStartUtc`, `ScheduledEndUtc` | both or none (`CK_ServiceRequests_ScheduledInterval`: end after start). Index `(SupplierOrgId, ScheduledStartUtc)` |
+| Service | `ServiceListingId` (catalog of SP-02, `ON DELETE SET NULL`), `ServiceNameSnapshot` (≤ 60), `OptionsJson` | the snapshot keeps the name when the service is deleted; `OptionsJson` (`[]`) is reserved for the options of SP-10 |
+| Price | `EstimatedAmountCents`, `QuotedAmountCents`, `FinalAmountCents` (1 to 10,000,000, `CK_ServiceRequests_Amounts`), `PriceLinesJson`, `FinalAmountNeedsConfirmation` | decision D7, section 21.4 |
+| Life | `ResponseDueAt`, `StartedAt`, `LastRemindedAt`, `CancelledAt`, `CancelledBy`, `CancellationReason` (≤ 500), `CompletionNotes` (≤ 1000), `WorkPhotosJson` | `CancelledBy`: 0 `Host`, 1 `Supplier`, 2 `System` (`ServiceRequestActorParty`, explicit integers) |
+| Proposal | `ProposedStartUtc`, `ProposedEndUtc`, `ProposedAt`, `ProposedByUserId`, `ProposalMessage` | all together or none (`CK_ServiceRequests_ProposedInterval`) |
+
+The three JSON lists are `jsonb NOT NULL DEFAULT '[]'` and the boolean `DEFAULT FALSE`: a row written by the previous release while
+the migration is applied still gets valid values. The status **`Annullato` is `6`** (explicit integer, after `Rifiutato = 5`).
+
+### 21.2 States, who may do what, and what refuses
+
+`Casazen.Core/Suppliers/ServiceRequestStateMachine.cs` is the only table:
+
+| From | To | Who | Endpoint |
+|---|---|---|---|
+| `Richiesto` | `PresoInCarico` | the supplier | `POST api/service-requests/{id}/take` (optional body: time, end, quote) |
+| `Richiesto` | `Rifiutato` | the supplier | `POST …/{id}/reject` (reason required) |
+| `PresoInCarico` | `InCorso` | the supplier | `POST …/{id}/start` |
+| `PresoInCarico`, `InCorso` | `Completato` | the supplier | `POST …/{id}/complete` (optional body: notes, final amount, extras) |
+| `Completato` | `Pagato` | the host | `POST …/{id}/mark-paid` (unchanged) |
+| `Richiesto`, `PresoInCarico`, `InCorso` | `Annullato` | see below | `POST …/{id}/cancel` (reason required, ≤ 500) |
+
+`Rifiutato`, `Pagato` and `Annullato` are final. **Who may cancel** (`ServiceRequestStateMachine.CanCancel`): the **host** up to and
+including `InCorso` (the work in progress); the **supplier** only before the start (`Richiesto`, `PresoInCarico`); **CasaZen** (the
+job of section 21.8) only a `Richiesto` request. `POST api/service-requests/{id}/cancel` serves both people and evaluates the policy of the
+branch it takes (the supplier it was sent to, else the host with `property.write`); the long-rent route is
+`POST api/long-rent/service-requests/{id}/cancel`.
+
+Besides these, two things that are **not** transitions: `POST …/{id}/remind` (the host, section 21.5) and `POST …/{id}/propose-time` with the
+host's two answers `…/proposal/accept` and `…/proposal/reject` (section 21.5). Refusals (ProblemDetails `code`, localized `detail` IT/EN):
+
+| Status | `code` | When |
+|---|---|---|
+| 422 | `service_request_invalid_transition` | the state machine refuses; the message says which action (`ServiceRequestCannotStart`, `…CannotCancel`, `…CannotPropose`, `…CannotRemind`, `…CannotAddPhotos`, plus the old ones) |
+| 409 | `service_request_state_changed` | another change got there first (`xmin`, section 8.2); the loser saves nothing and notifies nobody. Valid for every new transition too |
+| 409 | `supplier_slot_unavailable` | the time is not one of the slots the supplier offers any more (section 21.3) |
+| 422 | `service_request_time_needs_service` | a time without a service of the catalog (or a service with no duration) |
+| 422 | `service_request_time_invalid` | the end is not after the start, not whole minutes, over 24 hours, or an end without a start; or a time for a request whose length is unknown |
+| 422 | `service_request_time_already_set` | `take` with a time other than the one the request already has |
+| 404 / 422 | `supplier_service_not_found` / `service_request_service_unavailable` / `service_request_service_category_mismatch` | the service is not the supplier's (or was deleted) / is a draft or paused / is of another category |
+| 422 | `service_request_amount_invalid` / `service_request_final_amount_invalid` | an amount outside 1 cent and 100,000 euro, more than 10 extras, an extra without a label; a declared total lower than its extras |
+| 422 | `service_request_remind_too_soon` | the host reminded this request less than 6 hours ago (the message names the hours) |
+| 422 | `service_request_no_proposal` | the host answers a proposal the request does not have |
+| 422 / 404 | `service_request_photo_invalid` / `service_request_photo_limit_reached` / `service_request_photo_not_found` | section 21.9 |
+
+### 21.3 Time: the host picks a slot, the supplier sets or proposes one
+
+- **From the host.** `POST api/service-requests` (and `api/long-rent/service-requests`) accept `serviceListingId?` and `scheduledStartUtc?`.
+  With the time, the end is the start plus the duration of the service, and the slot is checked with the **planner of SP-03**
+  (`SupplierSlotPlanner`: weekly hours, time off, closed days, notice, daily maximum, buffer, what the supplier already has, the
+  weekdays of the service) **under the supplier's advisory lock `SupplierCalendarSync`**, read after taking it: two requests for the
+  same hour never both get it (409 `supplier_slot_unavailable` for the second). The time must be **one of the slots the planner offers**
+  (not just inside the hours): a quarter past is refused when the supplier works in steps of an hour. Without the time the request stays
+  "to agree", as before; the deadline `ResponseDueAt` is set either way. The estimate is the "from" price of the service when it is
+  priced **per job** and not on quote; per hour, per set, per square meter and on-quote services have no estimate (the quantity is unknown).
+- **From the supplier at the take.** `POST …/take` takes an optional body `{ scheduledStartUtc?, scheduledEndUtc?, quotedAmountCents? }`; no
+  body (or `{}`) takes the request as it is, as before. A request that has no time gets one (the end is the one given, else start +
+  duration of its service, else 422 `service_request_time_invalid`) after the same slot check under the lock. A request that already has a
+  time keeps it: sending that time again is not a change, another time is 422 `service_request_time_already_set` (the supplier proposes
+  it instead). **Outside the working hours there is no slot**: the supplier opens an extra opening in its agenda first (SP-03).
+- **Proposing another time** (the semantics chosen for this task). `POST …/{id}/propose-time { startUtc, endUtc?, message? }`, only on a
+  `Richiesto` request, stores the proposal (a new proposal replaces the old one), checks the slot like a take does and tells the host. The
+  request stays `Richiesto` and **the proposal holds no slot** (an offer, not a reservation). The host answers with
+  `POST …/proposal/accept`: it **takes the request on the supplier's behalf at that time** (`PresoInCarico`, `TakenByUserId` = who proposed),
+  after checking the slot again under the lock (409 if it went meanwhile, the proposal stays) and only if the supplier is still active;
+  `…/proposal/reject` clears the proposal and the request stays `Richiesto`, still waiting for the supplier's answer. A request with a
+  proposal is **not** cancelled for no answer (section 21.8) and cannot be reminded. A `take`, a `reject` or a cancellation drops the proposal.
+- A cancelled or rejected request **frees its slot**; a completed or paid one is no longer a job. Short-rent and long-rent requests of one
+  supplier share its calendar.
+
+### 21.4 Price and completion
+
+- `take` may set `quotedAmountCents` (the agreed price); `EstimatedAmountCents` is the service's "from" price (above).
+- `complete` takes `{ notes?, finalAmountCents?, extras?: [{ label, amountCents }] }` (all optional; photos are uploaded first, section 21.9).
+  The **reference** is the quote, else the estimate. The final price is: the declared total when `finalAmountCents` is given (it must cover
+  the extras, the base line is what the extras leave), else the reference plus the extras; with no reference, no total and no extras there is
+  **no final amount**. `price.lines` lists a `base` line (named after the service) and one `extra` line per extra, and they always add up to
+  the total. `price.amountCents` is the final amount, else the quote, else the estimate, and `price.basis` says which (`final`,
+  `quoted`, `estimated`).
+- **Decision D7: a final amount more than the tolerance (20 %, `Suppliers__ServiceRequests__FinalAmountTolerancePercent`) above the reference
+  is flagged** (`price.needsCustomerConfirmation`, `FinalAmountNeedsConfirmation`), and the request is `Completato` all the same. **Only the
+  data and the flag are in this task**: the customer's confirmation flow arrives with SP-15. Exactly 20 % is not over the tolerance.
+- **The supplier's closing notes are `CompletionNotes`**, a field of their own (≤ 1000). They no longer replace `Notes`, the host's words.
+  The host reads both.
+
+### 21.5 Reminder
+
+`POST api/service-requests/{id}/remind` (long-rent: `api/long-rent/service-requests/{id}/remind`), the host, `property.write`: only on a `Richiesto`
+request without a pending proposal, **at most once every 6 hours** (`Suppliers__ServiceRequests__RemindIntervalHours`), recorded in
+`LastRemindedAt`. It tells the supplier by email and push and **does not move the deadline**. Two reminders at once: one wins, the other
+gets 409 `service_request_state_changed`.
+
+### 21.6 What the supplier sees before the take (decision D9)
+
+Before the take the supplier sees only what it needs to decide, **in the inbox, in the detail, in the legacy host-shaped DTO
+(`GET api/service-requests/{id}`, `?view=supplier`, the answers of its own actions) and in the emails and pushes**:
+
+| Field | `Richiesto`, `Rifiutato`, `Annullato` | `PresoInCarico`, `InCorso`, `Completato`, `Pagato` |
+|---|---|---|
+| `city` (comune), `postalCode`, `scheduledFor`, `scheduledStart/End`, `respondBy`, `price` | yes | yes |
+| `clientId`, `clientName` (the host org, D9: "host: nome org") | yes | yes |
+| **`propertyName`, `notes`** (host's notes) | **no** (null) — **changed by this task** | yes |
+| `address`, `hostContact` (name, email, phone) | no (null) | yes |
+| guest of the stay | never | never |
+
+A request cancelled before the take **keeps hiding the property and the notes**. The messages to the supplier name the **comune**, never
+the property or the street. `propertyName` of the inbox DTO is now nullable: the console must not assume it.
+
+### 21.7 The inbox, the batch accept, `today` and `checklist` (policy `RequireSupplier`, supplier org from the caller's own link)
+
+`GET /api/supplier/inbox?tab=&service=&comune=&when=&clientId=&status=&from=&to=&page=&pageSize=`:
+
+| Parameter | Values |
+|---|---|
+| `tab` | `nuove` (`Richiesto`, the earliest `respondBy` first), `programmate` (`PresoInCarico`, `InCorso`, the next job first, the ones to agree last), `da-incassare` (`Completato`), `archivio` (`Pagato`, `Rifiutato`, `Annullato`), latest activity first. Any case, `_` or `-`. When it is sent, `status` is ignored. Another value: 400 `validation_error` (`SupplierInboxTabInvalid`) |
+| `service` | the id of a service of the catalog, or a category code |
+| `comune` | ISTAT code of the property's comune, or its name (case-insensitive, exact) |
+| `when` | `oggi`, `settimana` (the next 7 days), `mese` (this month): the **day of the job** in Europe/Rome, the scheduled start, else the check-out day of the stay (a request with neither never matches). Another value: 400 (`SupplierInboxWhenInvalid`) |
+| `clientId` | the host org (the `clientId` of the items) |
+| `status`, `from`, `to`, `page`, `pageSize` | as in section 11.2 (`history` now includes `Annullato`) |
+
+Each item adds `price`, `scheduledStart`, `scheduledEnd`, `source` (`casazen`; `showcase` is reserved for SP-10), `respondBy` (only while `Richiesto`),
+`startedAt`, `clientId`/`clientName`, `serviceListingId`/`serviceName`, `proposal`, `cancelledAt`/`cancelledBy`/`cancellationReason`,
+`completionNotes` and `workPhotos`; the detail adds `history`.
+
+`POST /api/supplier/inbox/accept { ids: [up to 20] }` takes the requests one by one **as a `take` without a time** (the same rules, terms of
+service and active-supplier check) and answers `{ results: [{ id, accepted, status, code, message }], accepted, failed }` with the
+**localized** message of each refused row; a request of another supplier or an unknown id answers `service_request_not_found`, as if it did not
+exist. Over 20 ids, none, or an empty body: 400.
+
+`GET /api/supplier/today`: `date` and `timeZone` (Europe/Rome), `jobs` (the requests taken, started, completed or paid whose day is today, by time),
+`newRequests` (up to 10, by deadline) with `newRequestsTotal`, `earnings` (the month's final amounts of the completed and paid jobs, the amount still to
+collect and its jobs, `estimated: true` **until the payments of SP-15 exist**) and `averageResponseMinutes` (`TakenAt − CreatedAt` of the requests
+taken in the last 90 days, null when there are none).
+
+`GET /api/supplier/checklist`: `profileCompletionPercent`, `profileComplete`, `activeServices`, `hoursConfigured` and `hoursConfiguredAt`,
+`showcasePublished` (an `Active` supplier with its address), `firstRequestAnswered` (a request taken or rejected) and `paymentsActive`, which is
+**always `null` for now**: the payments of the suppliers are not available yet, and "not yet" is not a "no".
+
+### 21.8 The request nobody answers: automatic cancellation (decision D8)
+
+A host's request gets `ResponseDueAt = creation + 120 minutes` (`Suppliers__ServiceRequests__HostResponseMinutes`; the 180 minutes of the showcase
+are SP-10's). The recurring job **`service-request-auto-cancel`** (every 10 minutes UTC, `ServiceRequestAutoCancelJob` →
+`ServiceRequestAutoCancelService`) moves to `Annullato` the `Richiesto` requests past their deadline that have no proposal: `CancelledBy = System`,
+`CancellationReason = NoResponse`, and it tells the host ("nessuna risposta") and the supplier. It is **idempotent** (a cancelled request leaves the
+set it reads; the change is saved under the `xmin` check, so a supplier that takes the request at the same moment wins and the run counts a conflict),
+it runs one at a time (a PostgreSQL session lock, scope `ServiceRequestAutoCancelRun` 1_310, on top of Hangfire's), and a run handles at most **500**
+requests, oldest deadline first.
+
+It is **behind the flag `Features__SupplierRequestAutoCancel`, off by default**: it changes what happens to the requests that exist. With the flag off the
+job is not scheduled (an earlier schedule is removed) and the service refuses to run if triggered by hand; nothing is ever cancelled by time. Requests
+created **before** this task have no `ResponseDueAt` and are never cancelled by it. **Before turning it on** check that the console and the mobile app
+know `Annullato` (section 21.11), and expect that the first run cancels every open request that is already overdue (up to 500 every 10 minutes until
+none is left).
+
+### 21.9 Photos of the work
+
+`POST api/service-requests/{id}/photos` (multipart, field `photos`; the supplier, while the request is `PresoInCarico` or `InCorso`): JPEG, PNG or WebP
+checked **on their content**, up to 10 MB each and **6 per request**, all or none (400 for no file, 422 `service_request_photo_invalid` for a bad one,
+422 `service_request_photo_limit_reached`). They are stored in the **private** bucket under `service-requests/{requestId}/photos/` (never served as
+static files) and listed in `workPhotos[]` with a `url`. They are read, one at a time, at `GET api/service-requests/{id}/photos/{photoId}` by the supplier it
+was sent to and by the host (the host of a long-rent request at `api/long-rent/service-requests/{id}/photos/{photoId}`), with `Cache-Control: private,
+no-store`; another org gets 404. A save that fails removes the objects it stored.
+
+### 21.10 Emails and pushes
+
+Queued **after** the change is saved, by the winner of a race only; a queue that fails never undoes the change. Italian and English.
+
+| Event | To | Email | Push `type` |
+|---|---|---|---|
+| New request | the supplier | comune, time, amount, link to the inbox | `service-request-created` |
+| Taken, started, completed (with final amount, the over-quote note and the supplier's notes), rejected | the host | status email | `service-request-taken`, `-started`, `-completed`, `-rejected` |
+| Cancelled by the supplier / by CasaZen (no answer) | the host | status email | `service-request-cancelled` |
+| Cancelled by the host / by CasaZen (no answer) | the supplier | comune, reason | `service-request-cancelled` |
+| Reminder | the supplier | reminder | `service-request-reminder` |
+| Another time proposed | the host | the interval and the message | `service-request-time-proposed` |
+| Proposal accepted / turned down | the supplier | answer | `service-request-proposal-accepted` / `-rejected` |
+| Marked as paid | the supplier | unchanged | `service-request-paid` |
+
+A status that has no message (a new request, a paid one, a request the host cancelled itself, **a status the code does not know**) sends
+**nothing**, and it is not an error: before this task `EmailTemplates.ServiceRequestStatusChanged` threw for any status other than taken, completed and rejected, and the error was only logged.
+
+### 21.11 Mobile app
+
+Statuses travel **by name**. **`Annullato` is new** and a client that does not know it may fail to read the request or show it badly; the new push
+`type`s above are new too. The mobile repository is not in this task's worktree and was not checked: verify it before turning
+`Features__SupplierRequestAutoCancel` on (and before a host cancels in production).
+
+### 21.12 Configuration
+
+Section `Suppliers:ServiceRequests` (validated at startup, `appsettings.json` has the defaults): `Suppliers__ServiceRequests__HostResponseMinutes` (120,
+10 to 4320), `…__FinalAmountTolerancePercent` (20, 0 to 100), `…__RemindIntervalHours` (6, 1 to 72). Flag: `Features__SupplierRequestAutoCancel`
+(`feature-flags.md`, `deploy-checklist.md` § 2.11). Hangfire: `hangfire.md`.
+
+### 21.13 After a deploy
+
+- [ ] Migration `AddServiceRequestSchedule` applied (columns of section 21.1; index `IX_ServiceRequests_SupplierOrgId_ScheduledStartUtc`; checks
+      `CK_ServiceRequests_ScheduledInterval`, `…_ProposedInterval`, `…_Amounts`; foreign key to `SupplierServiceListings` `ON DELETE SET NULL`).
+- [ ] `GET /api/public/features` has `supplierRequestAutoCancel: false`; `service-request-auto-cancel` is **not** in the Hangfire recurring jobs.
+- [ ] As a host (test environment): create a request with `serviceListingId` and `scheduledStartUtc` of a free slot → 201 with `scheduledStart/End`,
+      `respondBy` and `price`; the same slot again → 409 `supplier_slot_unavailable`.
+- [ ] As the supplier: `GET /api/supplier/inbox?tab=nuove` lists it with the comune and the price and **without** the property name and the notes;
+      `POST …/take` with no body → 200 and now the property name and the notes are there; `start`, `complete` with an extra → 200 and `price.lines`.
+- [ ] As the host: `cancel` with a reason → 200; `remind` twice → the second is 422 `service_request_remind_too_soon`.
+- [ ] `GET /api/supplier/today` and `GET /api/supplier/checklist` answer for a supplier with and without requests (`paymentsActive: null`).
+- [ ] An old request (created before the deploy) still opens everywhere with no time and no price.
 
 ## 25. The supplier's Stripe Connect account — SP-14
 

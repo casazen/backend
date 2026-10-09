@@ -14,7 +14,6 @@ using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Email;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
@@ -45,17 +44,9 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
 
         // Both requests read the request as "Richiesto" and are held before saving until both got there: the race of
         // two supplier members (or two tabs) clicking "take" and "reject" together, made deterministic.
-        var rendezvous = new TransitionRendezvous(parties: 2);
         var emails = new RecordingEmailQueue();
         var pushes = new RecordingPushNotifications();
-        await using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-        {
-            services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(rendezvous));
-            services.RemoveAll<IEmailQueue>();
-            services.AddSingleton<IEmailQueue>(emails);
-            services.RemoveAll<IPushNotificationService>();
-            services.AddSingleton<IPushNotificationService>(pushes);
-        }));
+        await using var app = AppHoldingParallelSaves(emails, pushes);
         using var member1 = CreateClient(app, w.SupplierUserId, Supplier);
         using var member2 = CreateClient(app, w.SecondSupplierUserId, Supplier);
 
@@ -92,14 +83,8 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
     {
         var w = await SeedWorldAsync();
         var id = await CreateRequestAsync(w);
-        var rendezvous = new TransitionRendezvous(parties: 2);
         var emails = new RecordingEmailQueue();
-        await using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-        {
-            services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(rendezvous));
-            services.RemoveAll<IEmailQueue>();
-            services.AddSingleton<IEmailQueue>(emails);
-        }));
+        await using var app = AppHoldingParallelSaves(emails);
         using var member1 = CreateClient(app, w.SupplierUserId, Supplier);
         using var member2 = CreateClient(app, w.SecondSupplierUserId, Supplier);
 
@@ -163,6 +148,11 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
     [InlineData(ServiceRequestStatus.Pagato, "reject")]
     [InlineData(ServiceRequestStatus.Pagato, "complete")]
     [InlineData(ServiceRequestStatus.Pagato, "mark-paid")]
+    // SP-04: a cancelled request is final.
+    [InlineData(ServiceRequestStatus.Annullato, "take")]
+    [InlineData(ServiceRequestStatus.Annullato, "complete")]
+    [InlineData(ServiceRequestStatus.Annullato, "reject")]
+    [InlineData(ServiceRequestStatus.Annullato, "mark-paid")]
     public async Task Transition_NotAllowedFromTheCurrentStatus_Returns422AndChangesNothing(
         ServiceRequestStatus current,
         string action)
@@ -178,6 +168,51 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
 
         await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, ServiceRequestErrorCodes.InvalidTransition);
         Assert.Equal(current, (await ReadAsync(id)).Status);
+    }
+
+    [PostgresTheory]
+    [InlineData(ServiceRequestStatus.Richiesto, "start", Supplier)]
+    [InlineData(ServiceRequestStatus.InCorso, "start", Supplier)]
+    [InlineData(ServiceRequestStatus.Completato, "start", Supplier)]
+    [InlineData(ServiceRequestStatus.Pagato, "start", Supplier)]
+    [InlineData(ServiceRequestStatus.Rifiutato, "start", Supplier)]
+    [InlineData(ServiceRequestStatus.Annullato, "start", Supplier)]
+    [InlineData(ServiceRequestStatus.Completato, "cancel", Host)]
+    [InlineData(ServiceRequestStatus.Pagato, "cancel", Host)]
+    [InlineData(ServiceRequestStatus.Rifiutato, "cancel", Host)]
+    [InlineData(ServiceRequestStatus.Annullato, "cancel", Host)]
+    [InlineData(ServiceRequestStatus.InCorso, "cancel", Supplier)]
+    [InlineData(ServiceRequestStatus.Completato, "cancel", Supplier)]
+    [InlineData(ServiceRequestStatus.Rifiutato, "cancel", Supplier)]
+    [InlineData(ServiceRequestStatus.Annullato, "cancel", Supplier)]
+    [InlineData(ServiceRequestStatus.PresoInCarico, "remind", Host)]
+    [InlineData(ServiceRequestStatus.Completato, "remind", Host)]
+    [InlineData(ServiceRequestStatus.Annullato, "remind", Host)]
+    [InlineData(ServiceRequestStatus.PresoInCarico, "propose-time", Supplier)]
+    [InlineData(ServiceRequestStatus.Rifiutato, "propose-time", Supplier)]
+    [InlineData(ServiceRequestStatus.Annullato, "propose-time", Supplier)]
+    public async Task NewTransition_NotAllowedFromTheCurrentStatus_Returns422AndChangesNothing(
+        ServiceRequestStatus current,
+        string action,
+        string actor)
+    {
+        var w = await SeedWorldAsync();
+        var id = await CreateRequestAsync(w);
+        await SetStatusAsync(id, current);
+        using var client = actor == Host
+            ? _factory.CreateAuthenticatedClient(w.OwnerId, Host)
+            : _factory.CreateAuthenticatedClient(w.SupplierUserId, Supplier);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/service-requests/{id}/{action}", new { reason = "Prova", startUtc = DateTime.UtcNow.AddDays(3) });
+
+        await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, ServiceRequestErrorCodes.InvalidTransition);
+        var stored = await ReadAsync(id);
+        Assert.Equal(current, stored.Status);
+        Assert.Null(stored.StartedAt);
+        Assert.Null(stored.CancelledAt);
+        Assert.Null(stored.LastRemindedAt);
+        Assert.Null(stored.ProposedStartUtc);
     }
 
     [PostgresFact]
@@ -367,7 +402,180 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         Assert.Equal(ServiceRequestStatus.PresoInCarico, (await ReadAsync(id)).Status);
     }
 
+    // ─── SP-04: the new transitions under concurrency (xmin) ───
+
+    [PostgresFact]
+    public async Task StartAndHostCancel_InParallel_OneWinsTheOtherGets409AndOnlyTheWinnerNotifies()
+    {
+        var w = await SeedWorldAsync();
+        var id = await CreateTakenRequestAsync(w);
+        var emails = new RecordingEmailQueue();
+        await using var app = AppHoldingParallelSaves(emails);
+        using var supplier = CreateClient(app, w.SupplierUserId, Supplier);
+        using var host = CreateClient(app, w.OwnerId, Host);
+
+        var responses = await Task.WhenAll(
+            supplier.PostAsync($"/api/service-requests/{id}/start", null),
+            host.PostAsJsonAsync($"/api/service-requests/{id}/cancel", new { reason = "Cambio programma" }));
+
+        var startWon = responses[0].StatusCode == HttpStatusCode.OK;
+        Assert.Equal(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, responses.Select(r => r.StatusCode).Order().ToArray());
+        await AssertProblemAsync(responses.Single(r => r.StatusCode == HttpStatusCode.Conflict), HttpStatusCode.Conflict, ServiceRequestErrorCodes.StateChanged);
+        var stored = await ReadAsync(id);
+        Assert.Equal(startWon ? ServiceRequestStatus.InCorso : ServiceRequestStatus.Annullato, stored.Status);
+        // Nothing of the losing transition was saved.
+        Assert.Equal(startWon, stored.StartedAt is not null);
+        Assert.Equal(!startWon, stored.CancelledAt is not null);
+        Assert.Equal(!startWon, stored.CancellationReason is not null);
+        // One email, for the winner: the host hears of the start, the supplier of the cancellation.
+        var email = Assert.Single(emails.Snapshot());
+        Assert.Equal(
+            startWon ? EmailTemplates.Names.ServiceRequestStatusChanged : EmailTemplates.Names.ServiceRequestCancelledToSupplier,
+            email.Template);
+    }
+
+    [PostgresFact]
+    public async Task HostAndSupplierCancel_InParallel_OneWinsAndTheReasonIsTheWinners()
+    {
+        var w = await SeedWorldAsync();
+        var id = await CreateRequestAsync(w);
+        var emails = new RecordingEmailQueue();
+        await using var app = AppHoldingParallelSaves(emails);
+        using var supplier = CreateClient(app, w.SupplierUserId, Supplier);
+        using var host = CreateClient(app, w.OwnerId, Host);
+
+        var responses = await Task.WhenAll(
+            supplier.PostAsJsonAsync($"/api/service-requests/{id}/cancel", new { reason = "Furgone in panne" }),
+            host.PostAsJsonAsync($"/api/service-requests/{id}/cancel", new { reason = "Cambio programma" }));
+
+        Assert.Equal(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, responses.Select(r => r.StatusCode).Order().ToArray());
+        var supplierWon = responses[0].StatusCode == HttpStatusCode.OK;
+        var stored = await ReadAsync(id);
+        Assert.Equal(ServiceRequestStatus.Annullato, stored.Status);
+        Assert.Equal(supplierWon ? ServiceRequestActorParty.Supplier : ServiceRequestActorParty.Host, stored.CancelledBy);
+        Assert.Equal(supplierWon ? "Furgone in panne" : "Cambio programma", stored.CancellationReason);
+        Assert.Single(emails.Snapshot());
+    }
+
+    [PostgresFact]
+    public async Task TakeAndHostCancel_InParallel_OneWins()
+    {
+        var w = await SeedWorldAsync();
+        var id = await CreateRequestAsync(w);
+        var emails = new RecordingEmailQueue();
+        await using var app = AppHoldingParallelSaves(emails);
+        using var supplier = CreateClient(app, w.SupplierUserId, Supplier);
+        using var host = CreateClient(app, w.OwnerId, Host);
+
+        var responses = await Task.WhenAll(
+            supplier.PostAsJsonAsync($"/api/service-requests/{id}/take", new { }),
+            host.PostAsJsonAsync($"/api/service-requests/{id}/cancel", new { reason = "Cambio programma" }));
+
+        Assert.Equal(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, responses.Select(r => r.StatusCode).Order().ToArray());
+        var takeWon = responses[0].StatusCode == HttpStatusCode.OK;
+        var stored = await ReadAsync(id);
+        Assert.Equal(takeWon ? ServiceRequestStatus.PresoInCarico : ServiceRequestStatus.Annullato, stored.Status);
+        Assert.Equal(takeWon, stored.TakenAt is not null);
+        Assert.Single(emails.Snapshot());
+    }
+
+    [PostgresFact]
+    public async Task CompleteAndHostCancel_InParallel_OneWinsAndACompletedRequestIsNeverCancelled()
+    {
+        var w = await SeedWorldAsync();
+        var id = await CreateTakenRequestAsync(w);
+        var emails = new RecordingEmailQueue();
+        await using var app = AppHoldingParallelSaves(emails);
+        using var supplier = CreateClient(app, w.SupplierUserId, Supplier);
+        using var host = CreateClient(app, w.OwnerId, Host);
+
+        var responses = await Task.WhenAll(
+            supplier.PostAsJsonAsync($"/api/service-requests/{id}/complete", new { finalAmountCents = 5000 }),
+            host.PostAsJsonAsync($"/api/service-requests/{id}/cancel", new { reason = "Cambio programma" }));
+
+        Assert.Equal(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, responses.Select(r => r.StatusCode).Order().ToArray());
+        var completeWon = responses[0].StatusCode == HttpStatusCode.OK;
+        var stored = await ReadAsync(id);
+        Assert.Equal(completeWon ? ServiceRequestStatus.Completato : ServiceRequestStatus.Annullato, stored.Status);
+        Assert.Equal(completeWon ? 5000 : null, stored.FinalAmountCents);
+        Assert.Equal(!completeWon, stored.CancelledAt is not null);
+
+        // Whoever lost, a completed request cannot be cancelled afterwards.
+        if (completeWon)
+        {
+            var late = await host.PostAsJsonAsync($"/api/service-requests/{id}/cancel", new { reason = "Troppo tardi" });
+            await AssertProblemAsync(late, HttpStatusCode.UnprocessableEntity, ServiceRequestErrorCodes.InvalidTransition);
+        }
+    }
+
+    [PostgresFact]
+    public async Task Remind_TwiceInParallel_OneWinsTheOtherGets409AndTheSupplierIsRemindedOnce()
+    {
+        var w = await SeedWorldAsync();
+        var id = await CreateRequestAsync(w);
+        var emails = new RecordingEmailQueue();
+        var pushes = new RecordingPushNotifications();
+        await using var app = AppHoldingParallelSaves(emails, pushes);
+        using var host1 = CreateClient(app, w.OwnerId, Host);
+        using var host2 = CreateClient(app, w.OwnerId, Host);
+
+        var responses = await Task.WhenAll(
+            host1.PostAsync($"/api/service-requests/{id}/remind", null),
+            host2.PostAsync($"/api/service-requests/{id}/remind", null));
+
+        Assert.Equal(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, responses.Select(r => r.StatusCode).Order().ToArray());
+        await AssertProblemAsync(responses.Single(r => r.StatusCode == HttpStatusCode.Conflict), HttpStatusCode.Conflict, ServiceRequestErrorCodes.StateChanged);
+        Assert.NotNull((await ReadAsync(id)).LastRemindedAt);
+        var email = Assert.Single(emails.Snapshot());
+        Assert.Equal(EmailTemplates.Names.ServiceRequestReminder, email.Template);
+        Assert.Equal(PushTypes.ServiceRequestReminder, Assert.Single(pushes.Sent).Type);
+    }
+
+    [PostgresFact]
+    public async Task Take_AfterAReminder_StillWorksAndTheReminderStaysOnTheRequest()
+    {
+        var w = await SeedWorldAsync();
+        var id = await CreateRequestAsync(w);
+        using var host = _factory.CreateAuthenticatedClient(w.OwnerId, Host);
+        using var supplier = _factory.CreateAuthenticatedClient(w.SupplierUserId, Supplier);
+        Assert.Equal(HttpStatusCode.OK, (await host.PostAsync($"/api/service-requests/{id}/remind", null)).StatusCode);
+
+        var taken = await supplier.PostAsJsonAsync($"/api/service-requests/{id}/take", new { });
+
+        Assert.Equal(HttpStatusCode.OK, taken.StatusCode);
+        Assert.NotNull((await ReadAsync(id)).LastRemindedAt);
+    }
+
     // ─── helpers ───
+
+    /// <summary>
+    /// The app with every save of a request held until two of them arrived (<see cref="SaveRendezvous"/>: ONE rendezvous for the
+    /// host, shared by the requests of every scope), the email queue recording what is sent and, when given, the push service too.
+    /// </summary>
+    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> AppHoldingParallelSaves(
+        RecordingEmailQueue emails,
+        RecordingPushNotifications? pushes = null) =>
+        _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            SaveRendezvous.HoldParallelSaves(services, parties: 2);
+            services.RemoveAll<IEmailQueue>();
+            services.AddSingleton<IEmailQueue>(emails);
+            if (pushes is not null)
+            {
+                services.RemoveAll<IPushNotificationService>();
+                services.AddSingleton<IPushNotificationService>(pushes);
+            }
+        }));
+
+    /// <summary>A request the supplier took, through the API (its emails go to the queue of the factory, not to the test's).</summary>
+    private async Task<Guid> CreateTakenRequestAsync(World w)
+    {
+        var id = await CreateRequestAsync(w);
+        using var supplier = _factory.CreateAuthenticatedClient(w.SupplierUserId, Supplier);
+        var take = await supplier.PostAsJsonAsync($"/api/service-requests/{id}/take", new { });
+        Assert.True(take.StatusCode == HttpStatusCode.OK, await take.Content.ReadAsStringAsync());
+        return id;
+    }
 
     private sealed record World(
         string OwnerId,
@@ -377,33 +585,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         Guid SupplierOrgId,
         string SupplierUserId,
         string SecondSupplierUserId);
-
-    /// <summary>
-    /// Holds every save that modifies a service request until <c>parties</c> of them arrived, so they all read the
-    /// same state before any of them writes.
-    /// </summary>
-    private sealed class TransitionRendezvous(int parties) : SaveChangesInterceptor
-    {
-        private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _arrived;
-
-        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
-            DbContextEventData eventData,
-            InterceptionResult<int> result,
-            CancellationToken cancellationToken = default)
-        {
-            var transition = eventData.Context?.ChangeTracker.Entries<ServiceRequest>()
-                .Any(e => e.State == EntityState.Modified) == true;
-            if (transition)
-            {
-                if (Interlocked.Increment(ref _arrived) >= parties)
-                    _allArrived.TrySetResult();
-                await _allArrived.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
-            }
-
-            return result;
-        }
-    }
 
     private sealed class RecordingPushNotifications : IPushNotificationService
     {

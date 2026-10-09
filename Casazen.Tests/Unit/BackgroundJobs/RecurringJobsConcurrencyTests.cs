@@ -24,6 +24,7 @@ public class RecurringJobsConcurrencyTests
         "dynamic-pricing-adaptation",
         "lease-registration-status-poll",
         "domain-recheck",
+        "service-request-auto-cancel",
     ];
 
     [Fact]
@@ -53,7 +54,7 @@ public class RecurringJobsConcurrencyTests
     {
         var jobs = RegisteredJobs();
 
-        foreach (var id in new[] { "ical-supplier-sync", "property-ical-sync", "booking-pull-all", "lease-sign-status-poll", "lease-registration-status-poll", "checkout-hold-expiry", "domain-recheck" })
+        foreach (var id in new[] { "ical-supplier-sync", "property-ical-sync", "booking-pull-all", "lease-sign-status-poll", "lease-registration-status-poll", "checkout-hold-expiry", "domain-recheck", "service-request-auto-cancel" })
         {
             var attribute = ConcurrencyAttribute(jobs[id].Method)!;
             Assert.True(attribute.TimeoutSec < 5 * 60, $"{id} waits {attribute.TimeoutSec}s for its previous run");
@@ -104,7 +105,8 @@ public class RecurringJobsConcurrencyTests
 
         // Every flag on: the jobs behind a feature flag must be lock-protected too (FD-20).
         RecurringJobsRegistration.Configure(
-            manager.Object, RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true));
+            manager.Object,
+            RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true, supplierRequestAutoCancel: true));
 
         return jobs;
     }

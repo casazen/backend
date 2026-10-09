@@ -2,6 +2,7 @@ using System.Reflection;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
@@ -97,6 +98,16 @@ public class AppDbContext(
     /// <c>OrgId</c> predicate.
     /// </summary>
     public DbSet<SupplierServiceListing> SupplierServiceListings { get; set; } = null!;
+
+    /// <summary>
+    /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
+    /// keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list): only <c>SupplierAgendaService</c>
+    /// (and the supplier repair) reads and writes them, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<SupplierWorkingHours> SupplierWorkingHours { get; set; } = null!;
+    public DbSet<SupplierTimeOff> SupplierTimeOff { get; set; } = null!;
+    public DbSet<SupplierBusyWindow> SupplierBusyWindows { get; set; } = null!;
+    public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
@@ -984,6 +995,94 @@ public class AppDbContext(
             });
         });
 
+        // SP-03: the supplier's agenda. Children of the supplier profile in cascade, like the availability days and the
+        // catalog: the repair moves them to the keeper before it deletes a duplicate profile. The checks mirror
+        // SupplierAgendaRules / SupplierAgendaLimits (the rules refuse first; the database is the last guard).
+        modelBuilder.Entity<SupplierWorkingHours>(entity =>
+        {
+            entity.HasOne(h => h.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(h => h.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One band per weekday and start: the same band twice is never meant. The overlap of two bands and the limit of
+            // three a day need more than a unique index: the service decides both under the agenda lock.
+            entity.HasIndex(h => new { h.OrgId, h.Weekday, h.StartMinute })
+                .IsUnique()
+                .HasDatabaseName("UIX_SupplierWorkingHours_OrgId_Weekday_StartMinute");
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_SupplierWorkingHours_Weekday", "\"Weekday\" BETWEEN 0 AND 6");
+                t.HasCheckConstraint(
+                    "CK_SupplierWorkingHours_Minutes",
+                    $"\"StartMinute\" >= 0 AND \"StartMinute\" < \"EndMinute\" AND \"EndMinute\" <= {SupplierAgendaLimits.MinutesPerDay}");
+            });
+        });
+
+        modelBuilder.Entity<SupplierTimeOff>(entity =>
+        {
+            entity.HasOne(t => t.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(t => t.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(t => new { t.OrgId, t.FromDate })
+                .HasDatabaseName("IX_SupplierTimeOff_OrgId_FromDate");
+
+            entity.ToTable(t => t.HasCheckConstraint("CK_SupplierTimeOff_Dates", "\"FromDate\" <= \"ToDate\""));
+        });
+
+        modelBuilder.Entity<SupplierBusyWindow>(entity =>
+        {
+            entity.HasOne(w => w.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(w => w.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The planner and the calendar read the windows of one supplier by time; the iCal sync (SP-05) adds its own
+            // unique index on the event it writes.
+            entity.HasIndex(w => new { w.OrgId, w.StartUtc })
+                .HasDatabaseName("IX_SupplierBusyWindows_OrgId_StartUtc");
+
+            entity.ToTable(t => t.HasCheckConstraint("CK_SupplierBusyWindows_Interval", "\"StartUtc\" < \"EndUtc\""));
+        });
+
+        modelBuilder.Entity<SupplierSettings>(entity =>
+        {
+            // One row per supplier: the key is the supplier org, which is also the foreign key.
+            entity.HasOne(s => s.SupplierProfile)
+                .WithOne()
+                .HasForeignKey<SupplierSettings>(s => s.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The bounds are the ones of SupplierAgendaLimits (a constant, so the rules and the database cannot drift).
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_BufferMinutes",
+                    $"\"BufferMinutes\" BETWEEN {SupplierAgendaLimits.MinBufferMinutes} AND {SupplierAgendaLimits.MaxBufferMinutes}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_MaxJobsPerDay",
+                    $"\"MaxJobsPerDay\" BETWEEN {SupplierAgendaLimits.MinJobsPerDay} AND {SupplierAgendaLimits.MaxJobsPerDayLimit}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_MinNoticeHours",
+                    $"\"MinNoticeHours\" BETWEEN {SupplierAgendaLimits.MinNoticeHours} AND {SupplierAgendaLimits.MaxNoticeHours}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_HorizonDays",
+                    $"\"HorizonDays\" BETWEEN {SupplierAgendaLimits.MinHorizonDays} AND {SupplierAgendaLimits.MaxHorizonDays}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_SlotStepMinutes",
+                    $"\"SlotStepMinutes\" BETWEEN {SupplierAgendaLimits.MinSlotStepMinutes} AND {SupplierAgendaLimits.MaxSlotStepMinutes}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_ParallelJobs",
+                    $"\"ParallelJobs\" BETWEEN {SupplierAgendaLimits.MinParallelJobs} AND {SupplierAgendaLimits.MaxParallelJobs}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_RespondWithinMinutes",
+                    $"\"RespondWithinMinutes\" BETWEEN {SupplierAgendaLimits.MinRespondWithinMinutes} AND {SupplierAgendaLimits.MaxRespondWithinMinutes}");
+            });
+        });
+
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => i.Email);
 
@@ -1036,6 +1135,47 @@ public class AppDbContext(
         modelBuilder.Entity<ServiceRequest>()
             .Property(sr => sr.Version)
             .IsRowVersion();
+
+        // SP-04: a request has an optional catalog service (set to null if the service is ever removed for good; the catalog
+        // deletes softly and the request keeps its own copy of the name), and the planner and the console read a supplier's
+        // requests by the time of the work.
+        modelBuilder.Entity<ServiceRequest>()
+            .HasOne<SupplierServiceListing>()
+            .WithMany()
+            .HasForeignKey(sr => sr.ServiceListingId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ServiceRequest>()
+            .HasIndex(sr => new { sr.SupplierOrgId, sr.ScheduledStartUtc });
+
+        // The JSON columns are added to a table that already has rows: the database gives those the empty list (an empty string
+        // is not valid jsonb), the entity gives it to the new ones.
+        modelBuilder.Entity<ServiceRequest>(entity =>
+        {
+            entity.Property(sr => sr.OptionsJson).HasDefaultValue("[]");
+            entity.Property(sr => sr.PriceLinesJson).HasDefaultValue("[]");
+            entity.Property(sr => sr.WorkPhotosJson).HasDefaultValue("[]");
+        });
+
+        // The checks mirror ServiceRequestLimits and the rules of the service: a bad row is refused by the database too. A
+        // time has both ends or none, a proposal has its start, end and instant or none, an amount is from 1 cent to the bound.
+        modelBuilder.Entity<ServiceRequest>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_ServiceRequests_ScheduledInterval",
+                "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR "
+                + "(\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
+            t.HasCheckConstraint(
+                "CK_ServiceRequests_ProposedInterval",
+                "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR "
+                + "(\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL "
+                + "AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
+            t.HasCheckConstraint(
+                "CK_ServiceRequests_Amounts",
+                $"(\"EstimatedAmountCents\" IS NULL OR \"EstimatedAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents}) AND "
+                + $"(\"QuotedAmountCents\" IS NULL OR \"QuotedAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents}) AND "
+                + $"(\"FinalAmountCents\" IS NULL OR \"FinalAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents})");
+        });
 
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         modelBuilder.Entity<CalendarBlock>()

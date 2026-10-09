@@ -44,6 +44,24 @@ public class OtaRecurringJobsPostgresTests : IAsyncLifetime
         Assert.Contains("property-ical-sync", ids);
     }
 
+    [PostgresFact]
+    public void Configure_SupplierRequestAutoCancelTurnedOff_DeletesTheJobOfAnEarlierDeployFromStorage()
+    {
+        // SP-04 (D8): the job that cancels the requests nobody answered is scheduled only with the flag on.
+        var storage = CreateStorage();
+        var manager = new RecurringJobManager(storage);
+
+        RecurringJobsRegistration.Configure(manager, RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: false, supplierRequestAutoCancel: true));
+        var scheduled = RecurringJobs(storage).Single(job => job.Id == ServiceRequestAutoCancelJob.RecurringJobId);
+        Assert.Equal(ServiceRequestAutoCancelJob.Cron, scheduled.Cron);
+
+        RecurringJobsRegistration.Configure(manager, RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: false, supplierRequestAutoCancel: false));
+
+        var ids = RecurringJobIds(storage);
+        Assert.DoesNotContain(ServiceRequestAutoCancelJob.RecurringJobId, ids);
+        Assert.Contains("property-ical-sync", ids);
+    }
+
     private PostgreSqlStorage CreateStorage()
     {
         var settings = new HangfireStorageSettings("hangfire_fd20", HangfireStorageSettings.DefaultDistributedLockTimeout);
@@ -51,9 +69,11 @@ public class OtaRecurringJobsPostgresTests : IAsyncLifetime
         return new PostgreSqlStorage(new NpgsqlConnectionFactory(_database!.ConnectionString, options, null), options);
     }
 
-    private static List<string> RecurringJobIds(JobStorage storage)
+    private static List<string> RecurringJobIds(JobStorage storage) => RecurringJobs(storage).Select(job => job.Id).ToList();
+
+    private static List<RecurringJobDto> RecurringJobs(JobStorage storage)
     {
         using var connection = storage.GetConnection();
-        return connection.GetRecurringJobs().Select(job => job.Id).ToList();
+        return connection.GetRecurringJobs();
     }
 }

@@ -30,6 +30,16 @@ public interface ISupplierServiceCatalogService
     Task<SupplierServiceListing> GetAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The service as a service request needs it (SP-04), whatever its status; <c>null</c> when it is not one of the supplier's
+    /// or was deleted. The caller decides what a draft or paused service means (<see cref="SupplierServiceForRequest.IsRequestable"/>).
+    /// Read-only.
+    /// </summary>
+    Task<SupplierServiceForRequest?> FindForRequestAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>How many published (<c>Active</c>) services the supplier has: a step of the console checklist (SP-04). Read-only.</summary>
+    Task<int> CountActiveAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a service as a draft: the slug comes from the name (unique among the supplier's services), the position is
     /// the last one unless the input gives it. Photos are not part of it (<see cref="AddPhotosAsync"/>).
     /// </summary>

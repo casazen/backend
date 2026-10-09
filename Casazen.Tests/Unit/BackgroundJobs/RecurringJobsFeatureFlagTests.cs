@@ -106,12 +106,61 @@ public class RecurringJobsFeatureFlagTests
         manager.Verify(m => m.RemoveIfExists(LeaseSignStatusPollingJob.RecurringJobId), Times.Never);
     }
 
-    internal static IFeatureFlags Flags(bool otaPartnerApi, bool rliProvider = false, bool eSignProvider = false)
+    // ─── SP-04 (D8): the automatic cancellation of the requests nobody answered ───
+
+    [Fact]
+    public void Configure_SupplierRequestAutoCancelOff_DoesNotScheduleTheJobAndRemovesTheScheduleOfAnEarlierDeploy()
+    {
+        var (manager, registered) = Manager();
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false));
+
+        Assert.Equal("service-request-auto-cancel", ServiceRequestAutoCancelJob.RecurringJobId);
+        Assert.DoesNotContain(ServiceRequestAutoCancelJob.RecurringJobId, registered);
+        manager.Verify(m => m.RemoveIfExists(ServiceRequestAutoCancelJob.RecurringJobId), Times.Once);
+        // The rest of the schedule is not touched by the flag.
+        Assert.Contains("ical-supplier-sync", registered);
+    }
+
+    [Fact]
+    public void Configure_SupplierRequestAutoCancelOn_SchedulesTheJobEveryTenMinutesInUtc()
+    {
+        var manager = new Mock<IRecurringJobManager>();
+        var scheduled = new Dictionary<string, (string Cron, RecurringJobOptions Options)>();
+        manager
+            .Setup(m => m.AddOrUpdate(It.IsAny<string>(), It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<RecurringJobOptions>()))
+            .Callback<string, Job, string, RecurringJobOptions>((id, _, cron, options) => scheduled[id] = (cron, options));
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false, supplierRequestAutoCancel: true));
+
+        var job = scheduled[ServiceRequestAutoCancelJob.RecurringJobId];
+        Assert.Equal("*/10 * * * *", job.Cron);
+        Assert.Equal(TimeZoneInfo.Utc, job.Options.TimeZone);
+        manager.Verify(m => m.RemoveIfExists(ServiceRequestAutoCancelJob.RecurringJobId), Times.Never);
+    }
+
+    [Fact]
+    public void Configure_OtherFlagsOn_DoNotTurnTheAutoCancelOn()
+    {
+        var (manager, registered) = Manager();
+
+        RecurringJobsRegistration.Configure(
+            manager.Object, Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true));
+
+        Assert.DoesNotContain(ServiceRequestAutoCancelJob.RecurringJobId, registered);
+    }
+
+    internal static IFeatureFlags Flags(
+        bool otaPartnerApi,
+        bool rliProvider = false,
+        bool eSignProvider = false,
+        bool supplierRequestAutoCancel = false)
     {
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.OtaPartnerApi)).Returns(otaPartnerApi);
         flags.Setup(f => f.IsEnabled(FeatureFlags.RliProvider)).Returns(rliProvider);
         flags.Setup(f => f.IsEnabled(FeatureFlags.ESignProvider)).Returns(eSignProvider);
+        flags.Setup(f => f.IsEnabled(FeatureFlags.SupplierRequestAutoCancel)).Returns(supplierRequestAutoCancel);
         return flags.Object;
     }
 

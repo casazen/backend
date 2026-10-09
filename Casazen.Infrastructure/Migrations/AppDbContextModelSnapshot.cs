@@ -3583,6 +3583,16 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CancelledBy")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -3594,7 +3604,23 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CompletionNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("EstimatedAmountCents")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("FinalAmountCents")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("FinalAmountNeedsConfirmation")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastRemindedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Notes")
@@ -3602,14 +3628,46 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("OptionsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PriceLinesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ProposalMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("ProposedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProposedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("ProposedEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ProposedStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("QuotedAmountCents")
+                        .HasColumnType("integer");
 
                     b.Property<string>("RejectionReason")
                         .HasMaxLength(500)
@@ -3617,6 +3675,25 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("RentalContext")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ResponseDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ScheduledEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ScheduledStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ServiceListingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ServiceNameSnapshot")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -3643,17 +3720,34 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
+                    b.Property<string>("WorkPhotosJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BookingId");
 
                     b.HasIndex("PropertyId");
 
+                    b.HasIndex("ServiceListingId");
+
                     b.HasIndex("OrgId", "Status");
+
+                    b.HasIndex("SupplierOrgId", "ScheduledStartUtc");
 
                     b.HasIndex("SupplierOrgId", "Status");
 
-                    b.ToTable("ServiceRequests");
+                    b.ToTable("ServiceRequests", t =>
+                        {
+                            t.HasCheckConstraint("CK_ServiceRequests_Amounts", "(\"EstimatedAmountCents\" IS NULL OR \"EstimatedAmountCents\" BETWEEN 1 AND 10000000) AND (\"QuotedAmountCents\" IS NULL OR \"QuotedAmountCents\" BETWEEN 1 AND 10000000) AND (\"FinalAmountCents\" IS NULL OR \"FinalAmountCents\" BETWEEN 1 AND 10000000)");
+
+                            t.HasCheckConstraint("CK_ServiceRequests_ProposedInterval", "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR (\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
+
+                            t.HasCheckConstraint("CK_ServiceRequests_ScheduledInterval", "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR (\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SignupAttribution", b =>
@@ -4004,6 +4098,49 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SupplierAvailability");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierBusyWindow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("EndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalUid")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "StartUtc")
+                        .HasDatabaseName("IX_SupplierBusyWindows_OrgId_StartUtc");
+
+                    b.ToTable("SupplierBusyWindows", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplierBusyWindows_Interval", "\"StartUtc\" < \"EndUtc\"");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.SupplierInviteRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4282,6 +4419,144 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_SupplierServiceListings_PriceFromCents", "\"PriceFromCents\" IS NULL OR \"PriceFromCents\" > 0");
 
                             t.HasCheckConstraint("CK_SupplierServiceListings_WeekdaysMask", "\"WeekdaysMask\" BETWEEN 0 AND 127");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierSettings", b =>
+                {
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoAcceptRegulars")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("BufferMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("HorizonDays")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("HoursConfiguredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MaxJobsPerDay")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MinNoticeHours")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("NotifyDayBeforeReminder")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("NotifyNewRequests")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("NotifyPaymentMarked")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("OnlineBookingEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ParallelJobs")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RespondWithinMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SlotStepMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("OrgId");
+
+                    b.ToTable("SupplierSettings", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplierSettings_BufferMinutes", "\"BufferMinutes\" BETWEEN 0 AND 240");
+
+                            t.HasCheckConstraint("CK_SupplierSettings_HorizonDays", "\"HorizonDays\" BETWEEN 1 AND 365");
+
+                            t.HasCheckConstraint("CK_SupplierSettings_MaxJobsPerDay", "\"MaxJobsPerDay\" BETWEEN 1 AND 50");
+
+                            t.HasCheckConstraint("CK_SupplierSettings_MinNoticeHours", "\"MinNoticeHours\" BETWEEN 0 AND 720");
+
+                            t.HasCheckConstraint("CK_SupplierSettings_ParallelJobs", "\"ParallelJobs\" BETWEEN 1 AND 10");
+
+                            t.HasCheckConstraint("CK_SupplierSettings_RespondWithinMinutes", "\"RespondWithinMinutes\" BETWEEN 15 AND 10080");
+
+                            t.HasCheckConstraint("CK_SupplierSettings_SlotStepMinutes", "\"SlotStepMinutes\" BETWEEN 15 AND 240");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierTimeOff", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("FromDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("ToDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "FromDate")
+                        .HasDatabaseName("IX_SupplierTimeOff_OrgId_FromDate");
+
+                    b.ToTable("SupplierTimeOff", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplierTimeOff_Dates", "\"FromDate\" <= \"ToDate\"");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierWorkingHours", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("EndMinute")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("StartMinute")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Weekday")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "Weekday", "StartMinute")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierWorkingHours_OrgId_Weekday_StartMinute");
+
+                    b.ToTable("SupplierWorkingHours", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplierWorkingHours_Minutes", "\"StartMinute\" >= 0 AND \"StartMinute\" < \"EndMinute\" AND \"EndMinute\" <= 1440");
+
+                            t.HasCheckConstraint("CK_SupplierWorkingHours_Weekday", "\"Weekday\" BETWEEN 0 AND 6");
                         });
                 });
 
@@ -5488,6 +5763,11 @@ namespace Casazen.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Casazen.Core.Entities.SupplierServiceListing", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceListingId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Casazen.Core.Entities.Org", "SupplierOrg")
                         .WithMany()
                         .HasForeignKey("SupplierOrgId")
@@ -5576,6 +5856,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("SupplierProfile");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierBusyWindow", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.SupplierProfile", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
@@ -5588,6 +5879,39 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SupplierServiceListing", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierSettings", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithOne()
+                        .HasForeignKey("Casazen.Core.Entities.SupplierSettings", "OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierTimeOff", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierWorkingHours", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithMany()

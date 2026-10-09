@@ -169,6 +169,8 @@ builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.AddScoped<SeoEventRetentionJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
+// SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
+builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
 builder.Services.AddScoped<DomainRecheckJob>();
 builder.Services.AddScoped<PropertyComplianceCheckJob>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();
