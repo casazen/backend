@@ -14,7 +14,8 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     /// <summary>
     /// Percent added to <see cref="PublicPropertyDto.NightlyRate"/> on the weekend nights (DB-03, <c>Property.WeekendSurchargePercent</c>),
     /// 0 when the host charges none. A weekend night is the night of a Friday or a Saturday, by its Europe/Rome calendar date;
-    /// a night costs the nightly rate plus the percentage, rounded to the cent. The quote is the only authority on a total.
+    /// a night costs the nightly rate plus the percentage, rounded to the cent, unless the host priced that date by hand (a
+    /// seasonal price the host confirmed costs exactly that price). The quote is the only authority on a total.
     /// </summary>
     public decimal WeekendSurchargePercent { get; set; }
 

@@ -39,6 +39,13 @@ public class ShortStayFiscalOptions
 
     public string OtaWithholdingSource { get; set; } = "art. 4 c. 5 D.L. 50/2017";
 
+    /// <summary>
+    /// Disclaimer shown on every fiscal report (CO-18, PO 2026-10-08): CasaZen is not an accountant, data are informative
+    /// only. Configurable so operators can adjust wording without a deploy; the default is the PO-approved text.
+    /// </summary>
+    public string Disclaimer { get; set; } =
+        "Questi dati sono forniti a titolo informativo. CasaZen non è un consulente fiscale. Verificare con un commercialista abilitato.";
+
     public bool IsValid() =>
         MaxApartmentsPerTaxpayer > 0
         && ThresholdFromTaxYear > 0
@@ -49,7 +56,8 @@ public class ShortStayFiscalOptions
         && !string.IsNullOrWhiteSpace(ThresholdSource)
         && !string.IsNullOrWhiteSpace(ShortStaySource)
         && !string.IsNullOrWhiteSpace(CedolareSource)
-        && !string.IsNullOrWhiteSpace(OtaWithholdingSource);
+        && !string.IsNullOrWhiteSpace(OtaWithholdingSource)
+        && !string.IsNullOrWhiteSpace(Disclaimer);
 
     private static bool IsRate(decimal rate) => rate is > 0m and < 1m;
 }

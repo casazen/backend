@@ -449,9 +449,9 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         };
         // Plain SQL for the rows that have columns added by later migrations: the first test runs at the schema before this
         // migration, and saving the entities through the model would write the columns that do not exist there yet (42703). The
-        // orgs use LegacyOrgRows (DB-03: HostName, PublicPhone, Subtitle, and the next ones) and the property LegacyPropertyRows
-        // (AM-03: ResponsibleUserId, and the next ones); the profile, its own statement (SP-15a: the supplier payments columns).
-        // The parents need no CIN.
+        // orgs use LegacyOrgRows (DB-03: HostName, PublicPhone, Subtitle, and the next ones), the property LegacyPropertyRows
+        // (AM-03: ResponsibleUserId; Wave 3: CancellationFullRefundHours; DB-03: MinNights and the next ones) and the profile its
+        // own statement (SP-15a: the supplier payments columns). The parents need no CIN.
         await LegacyOrgRows.InsertAsync(db, hostOrg);
         await LegacyOrgRows.InsertAsync(db, supplierOrg);
         await db.Database.ExecuteSqlAsync($"""UPDATE "Orgs" SET "OrgType" = {(int)supplierOrg.OrgType} WHERE "Id" = {supplierOrg.Id}""");

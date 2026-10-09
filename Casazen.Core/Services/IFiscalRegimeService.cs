@@ -67,6 +67,12 @@ public static class FiscalTaxNotes
 /// with this apartment; the impresa regimes when the partita IVA is recorded (always for a taxpayer other than the org tax
 /// profile, of whom CasaZen has no such data). The same rules <see cref="IFiscalRegimeService.AssignRegimeAsync"/> enforces.
 /// </param>
+/// <param name="RegimeConfirmed">
+/// True when the host has explicitly assigned a regime via <see cref="IFiscalRegimeService.AssignRegimeAsync"/>
+/// (<see cref="AssignedRegime"/> is set); false when only the auto-detected <see cref="RecommendedRegime"/> is available
+/// and the user has not yet confirmed it (CO-18, PO 2026-10-08: the regime is never applied silently).
+/// </param>
+// CO-18: CasaZen considers a single owner; co-ownership quota is not calculated (PO 2026-10-08)
 public record FiscalPropertyRow(
     Guid PropertyId,
     string Name,
@@ -77,7 +83,8 @@ public record FiscalPropertyRow(
     int TaxpayerIndex,
     decimal? CedolareRate,
     string? TaxNote,
-    IReadOnlyList<StrFiscalRegime> AvailableRegimes);
+    IReadOnlyList<StrFiscalRegime> AvailableRegimes,
+    bool RegimeConfirmed);
 
 /// <summary>One taxpayer (titolare fiscale) of the org's properties and its short-rental threshold for the tax year.</summary>
 /// <param name="FiscalCodeMasked">Masked codice fiscale; null for the org tax profile without a codice fiscale.</param>

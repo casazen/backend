@@ -26,6 +26,7 @@ public class BookingServiceTests
     private readonly Mock<IOrgService> _mockOrgService = new();
     private readonly Mock<ITouristTaxQuoteService> _mockTouristTax = new();
     private readonly Mock<IStripeService> _mockStripe = new();
+    private readonly Mock<IPricingAdapterService> _mockPricing = new();
     private readonly RecordingEmailQueue _emails = new();
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -58,7 +59,11 @@ public class BookingServiceTests
             new Mock<ILogger<BookingService>>().Object,
             _mockHoldExpiry.Object,
             new OnSiteRequestNotifier(
-                _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()));
+                _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
+            _mockPricing.Object);
+        _mockPricing
+            .Setup(s => s.GetAppliedNightlyPricesAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<DateOnly, decimal>());
     }
 
     private static PropertyICalSyncService CreatePropertyICalSyncService(AppDbContext db, IConfiguration configuration)
@@ -522,6 +527,45 @@ public class BookingServiceTests
     }
 
     [Fact]
+    public async Task QuoteDirectBookingAsync_PriceTheHostConfirmedForADate_IsThePriceOfThatNightAndTheSurchargeDoesNotRaiseIt()
+    {
+        var property = ConnectReadyProperty();
+        property.NightlyRate = 100m;
+        property.CleaningFee = 40m;
+        property.WeekendSurchargePercent = 15m;
+        TouristTaxStay? taxStay = null;
+        _mockTouristTax
+            .Setup(x => x.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()))
+            .Callback<TouristTaxComune, TouristTaxStay, CancellationToken>((_, stay, _) => taxStay = stay)
+            .ReturnsAsync(new TouristTaxQuote(TouristTaxQuoteStatus.Calculated, 10m, 4, 4, false, [], []));
+        // Thursday to Monday; the host confirmed 180 for the Friday and 90 for the Sunday (PC-15).
+        var checkIn = FridayOnOrAfter(TimeProvider.System.TodayInRome().AddDays(30)).AddDays(-1);
+        var friday = DateOnly.FromDateTime(checkIn).AddDays(1);
+        var sunday = DateOnly.FromDateTime(checkIn).AddDays(3);
+        DateOnly? askedFrom = null;
+        DateOnly? askedTo = null;
+        _mockPricing
+            .Setup(s => s.GetAppliedNightlyPricesAsync(property.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, DateOnly, DateOnly, CancellationToken>((_, from, to, _) => (askedFrom, askedTo) = (from, to))
+            .ReturnsAsync(new Dictionary<DateOnly, decimal> { [friday] = 180m, [sunday] = 90m });
+
+        var quote = await _service.QuoteDirectBookingAsync(
+            new DirectBookingQuoteInput(property.Id, checkIn, checkIn.AddDays(4), 2, 0));
+
+        // Thursday 100, Friday 180 (the host's price, no surcharge on top), Saturday 115 (rate + 15 %), Sunday 90.
+        Assert.Equal(DateOnly.FromDateTime(checkIn), askedFrom);
+        Assert.Equal(DateOnly.FromDateTime(checkIn).AddDays(4), askedTo);
+        Assert.Equal(100m + 180m + 115m + 90m, quote.Lodging.Total);
+        Assert.Equal((1, 1, 4), (quote.Lodging.WeekdayNights, quote.Lodging.WeekendNights, quote.Lodging.Nights));
+        Assert.Equal(quote.Lodging.Total + 40m, quote.BasePrice);
+        Assert.Equal(quote.BasePrice + 10m, quote.TotalPrice);
+        Assert.Equal([100m, 180m, 115m, 90m], taxStay!.NightlyPrices);
+        var lines = StayPricing.Lines(quote);
+        Assert.Equal(quote.TotalPrice, lines[^1].AmountCents / 100m);
+        Assert.Equal(lines[^1].AmountCents, lines.Take(lines.Count - 1).Sum(l => l.AmountCents));
+    }
+
+    [Fact]
     public async Task QuoteDirectBookingAsync_NoSurcharge_GivesTheTaxEngineTheOneNightlyRateAsBefore()
     {
         var property = ConnectReadyProperty();
@@ -686,7 +730,8 @@ public class BookingServiceTests
             new Mock<ILogger<BookingService>>().Object,
             _mockHoldExpiry.Object,
             new OnSiteRequestNotifier(
-                _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()));
+                _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
+            _mockPricing.Object);
     }
 
     private Property ConnectReadyProperty()

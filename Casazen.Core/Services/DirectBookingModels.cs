@@ -72,8 +72,9 @@ public record DirectBookingQuote(
 /// <summary>
 /// The lodging part of a quote (DB-03, D20): <see cref="WeekdayNights"/> nights at <see cref="NightlyRate"/> and
 /// <see cref="WeekendNights"/> nights at <see cref="WeekendNightlyRate"/>, the rate with the property's weekend surcharge
-/// (<see cref="StayPricing.Lodging"/>). Without a surcharge there are no weekend nights: every night, Friday and Saturday
-/// included, is a weekday night at the nightly rate, so the lodging is what it has always been.
+/// (<see cref="StayPricing.Lodging"/>), and the <see cref="PricedNights"/> that the host priced one by one. Without a surcharge
+/// and without priced nights there are no weekend nights: every night, Friday and Saturday included, is a weekday night at
+/// the nightly rate, so the lodging is what it has always been.
 /// </summary>
 /// <param name="WeekdayNights">Nights charged at <paramref name="NightlyRate"/> (all of them when the property has no surcharge).</param>
 /// <param name="WeekendNights">Friday and Saturday nights charged at <paramref name="WeekendNightlyRate"/>; 0 without a surcharge.</param>
@@ -87,14 +88,28 @@ public sealed record StayLodging(
     decimal WeekendNightlyRate,
     decimal Total)
 {
+    /// <summary>
+    /// The nights of the stay whose price the host set for their date (a seasonal price the host confirmed, PC-15), in date
+    /// order. Each costs that price: the weekend surcharge is not added to it, and these nights are in neither
+    /// <see cref="WeekdayNights"/> nor <see cref="WeekendNights"/>.
+    /// </summary>
+    public IReadOnlyList<PricedNight> PricedNights { get; init; } = [];
+
     /// <summary>Every night of the stay.</summary>
-    public int Nights => WeekdayNights + WeekendNights;
+    public int Nights => WeekdayNights + WeekendNights + PricedNights.Count;
 }
+
+/// <summary>One night whose price the host set for its date: the Europe/Rome calendar date the night starts and its price.</summary>
+public sealed record PricedNight(DateOnly Date, decimal Price);
 
 /// <summary>What a line of the quote is. Serialized by name: never rename or reorder a member the frontend reads.</summary>
 public enum QuoteLineKind
 {
-    /// <summary>Nights at the ordinary nightly rate (the "notti feriali"; every night when there is no weekend surcharge).</summary>
+    /// <summary>
+    /// Nights at the ordinary nightly rate (the "notti feriali"; every night when there is no weekend surcharge). There is one
+    /// more line of this kind, in the order of the nights, for each other price that the host set for dates of the stay (a
+    /// confirmed seasonal price): the quantity and the unit price of each line say which nights it is.
+    /// </summary>
     Nights = 0,
 
     /// <summary>Friday and Saturday nights at the rate with the weekend surcharge; present only when there are such nights.</summary>

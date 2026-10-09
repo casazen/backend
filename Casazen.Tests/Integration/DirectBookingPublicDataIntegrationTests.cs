@@ -110,6 +110,29 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
     }
 
     [Fact]
+    public async Task Quote_PriceTheHostConfirmedForAWeekendNight_IsNotRaisedByTheSurchargeAndHasItsOwnLine()
+    {
+        var (org, property) = await SeedAsync(p => p.WeekendSurchargePercent = 15m);
+        using var client = _factory.CreateClient();
+        var checkIn = NextFriday(40);
+        // The host confirmed 200 for the Friday (PC-15); the Saturday has no price of its own, the Sunday is an ordinary night.
+        await SeedConfirmedPriceAsync(org.Id, property.Id, DateOnly.FromDateTime(checkIn), 200m);
+
+        var quote = await ReadAsync(await PostQuoteAsync(client, property.Id, checkIn, checkIn.AddDays(3)));
+
+        // Friday 200 (the host's price, no surcharge on top) + Saturday 172.50 + Sunday 150 + cleaning 50.
+        Assert.Equal(522.50m, quote.GetProperty("lodgingTotal").GetDecimal());
+        Assert.Equal(572.50m, quote.GetProperty("totalPrice").GetDecimal());
+        var lines = quote.GetProperty("lines").EnumerateArray().ToList();
+        Assert.Equal(["Nights", "Nights", "WeekendNights", "CleaningFee", "Total"], lines.Select(l => l.GetProperty("kind").GetString()));
+        Assert.Equal((1, 15000L, 15000L), Triple(lines[0]));
+        Assert.Equal((1, 20000L, 20000L), Triple(lines[1]));
+        Assert.Equal((1, 17250L, 17250L), Triple(lines[2]));
+        Assert.Equal(57250L, lines[^1].GetProperty("amountCents").GetInt64());
+        Assert.Equal(57250L, lines.Take(lines.Count - 1).Sum(l => l.GetProperty("amountCents").GetInt64()));
+    }
+
+    [Fact]
     public async Task BookingAfterTheQuote_RecordsAndChargesTheQuotedTotalWithTheWeekendSurcharge()
     {
         var (_, property) = await SeedAsync(p => p.WeekendSurchargePercent = 15m);
@@ -423,6 +446,27 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
             day = day.AddDays(1);
 
         return day;
+    }
+
+    /// <summary>A seasonal price that the host confirmed for one date of the property (what the pricing adapter stores, PC-15).</summary>
+    private async Task SeedConfirmedPriceAsync(Guid orgId, Guid propertyId, DateOnly date, decimal price)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.SeasonalPriceSuggestions.Add(new SeasonalPriceSuggestion
+        {
+            OrgId = orgId,
+            PropertyId = propertyId,
+            StayDate = date,
+            BasePrice = 150m,
+            SuggestedPrice = price,
+            Multiplier = 1.33m,
+            Rule = Casazen.Core.Pricing.SeasonalPriceRule.HighSeason,
+            ComputedAt = DateTime.UtcNow,
+            AppliedPrice = price,
+            AppliedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
     }
 
     private static (int Quantity, long Unit, long Amount) Triple(JsonElement line) =>

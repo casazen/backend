@@ -124,7 +124,8 @@ public class Property : ITenantOwned
     /// of Friday and Saturday, by their Europe/Rome calendar date (<see cref="PropertyStayRules.IsWeekendNight"/>).
     /// <c>0</c> = no surcharge, the default of every property: each night costs <see cref="NightlyRate"/> and the price of a
     /// stay is what it has always been. The host chooses the value (the +15 % of the demo is an example, never imposed):
-    /// 0 to <see cref="PropertyStayRules.MaxWeekendSurchargePercent"/>, two decimals.
+    /// 0 to <see cref="PropertyStayRules.MaxWeekendSurchargePercent"/>, two decimals. It does not apply to a night whose price
+    /// the host confirmed for its date (a seasonal price, PC-15): that night costs that price (<see cref="Casazen.Core.Services.StayPricing"/>).
     /// </summary>
     [Precision(5, 2)]
     [Range(typeof(decimal), "0", "100", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
@@ -202,6 +203,19 @@ public class Property : ITenantOwned
     [ForeignKey("CancellationPolicy")]
     public Guid? CancellationPolicyId { get; set; }
     public virtual CancellationPolicy? CancellationPolicy { get; set; }
+
+    /// <summary>Host override of the catalog full-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
+    public int? CancellationFullRefundHours { get; set; }
+
+    /// <summary>Host override of the catalog partial-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
+    public int? CancellationPartialRefundHours { get; set; }
+
+    /// <summary>Host override of the catalog partial-refund percent. Null = catalog. Ignored for stays of 28+ nights.</summary>
+    [Precision(18, 2)]
+    public decimal? CancellationPartialRefundPercent { get; set; }
+
+    /// <summary>Host refund type (percent of stay vs non-refundable). Ignored for stays of 28+ nights.</summary>
+    public HostCancellationRefundType CancellationRefundType { get; set; } = HostCancellationRefundType.Percent;
 
     public bool IsActive { get; set; } = true;
 

@@ -64,7 +64,8 @@ public class DirectBookingQuoteResponse
 
     /// <summary>
     /// The price breakdown in cents (DB-03), in order: <c>Nights</c> (the ordinary nights; every night when there is no
-    /// weekend surcharge), <c>WeekendNights</c> (Friday and Saturday nights at the rate with the surcharge, only when there
+    /// weekend surcharge; one more line for each other price that the host confirmed for dates of the stay, so the list may
+    /// hold several), <c>WeekendNights</c> (Friday and Saturday nights at the rate with the surcharge, only when there
     /// are such nights), <c>CleaningFee</c> (only when not zero), <c>TouristTax</c> (only when its amount is known: see
     /// <see cref="TouristTax"/> otherwise) and <c>Total</c>. The lines before the total add up to it, to the cent. The
     /// numbers above (<see cref="TotalPrice"/> and the others) are unchanged.

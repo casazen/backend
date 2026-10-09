@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -30,11 +31,6 @@ public partial class FiscalService(
 {
     /// <summary>Taxpayer key of the org tax profile when it has no codice fiscale.</summary>
     private const string OrgProfileKey = "";
-
-    private static readonly Regex TaxpayerFiscalCodePattern = new("^[A-Z0-9]{16}$", RegexOptions.Compiled);
-
-    /// <summary>Codice fiscale of the org: 16 characters for a person, 11 digits for an entity.</summary>
-    private static readonly Regex OrgFiscalCodePattern = new("^([A-Z0-9]{16}|[0-9]{11})$", RegexOptions.Compiled);
 
     private static readonly Regex PartitaIvaPattern = new("^[0-9]{11}$", RegexOptions.Compiled);
 
@@ -143,7 +139,7 @@ public partial class FiscalService(
         CancellationToken cancellationToken = default)
     {
         var normalized = NormalizeFiscalCode(fiscalCode);
-        if (normalized is not null && !TaxpayerFiscalCodePattern.IsMatch(normalized))
+        if (normalized is not null && !ItalianFiscalCode.IsValidPersonCode(normalized))
             throw new DomainRuleException("invalid_taxpayer_fiscal_code", "FiscalTaxpayerCodeInvalid");
 
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
@@ -208,7 +204,7 @@ public partial class FiscalService(
         if (update.FiscalCode is not null)
         {
             var cf = NormalizeFiscalCode(update.FiscalCode);
-            if (cf is not null && !OrgFiscalCodePattern.IsMatch(cf))
+            if (cf is not null && !ItalianFiscalCode.IsValid(cf))
                 throw new FiscalValidationException("fiscal_tax_identifier_invalid", "FiscalTaxIdentifierInvalid");
             org.FiscalCode = cf;
         }
@@ -599,6 +595,11 @@ public partial class FiscalService(
         public static bool ImpresaAvailable(TaxpayerYear taxpayer, bool orgHasPartitaIva) =>
             !taxpayer.IsOrgTaxProfile || orgHasPartitaIva;
 
+        /// <summary>
+        /// Builds the row for the property. The regime is never applied automatically; the user must confirm it by calling
+        /// AssignRegimeAsync. <c>RegimeConfirmed</c> is set only when an explicit assignment exists in the database.
+        /// CO-18: CasaZen considers a single owner; co-ownership quota is not calculated (PO 2026-10-08).
+        /// </summary>
         public FiscalPropertyRow BuildRow(YearProperty property, bool orgHasPartitaIva)
         {
             var taxpayer = TaxpayerOf(property);
@@ -627,22 +628,26 @@ public partial class FiscalService(
             return new FiscalPropertyRow(
                 property.Id,
                 property.Name,
-                Recommend(property, taxpayer),
+                Recommend(property, taxpayer, orgHasPartitaIva),
                 assigned,
                 assignment?.IsPrimaryForCedolare == true,
                 property.ShortStay,
                 taxpayer.Index,
                 cedolareRate,
                 taxNote,
-                available);
+                available,
+                RegimeConfirmed: assignment is not null);
         }
 
         /// <summary>
-        /// Informative only (the regime is the taxpayer's choice): within the threshold, 21% for the designated unit (or the
-        /// only apartment), 26% for the others; nothing beyond it, where the accountant decides (fiscale.md C2, C3).
+        /// Informative only (the regime is the taxpayer's choice and is never applied until AssignRegimeAsync): within
+        /// the threshold, 21% for the designated unit (or the only apartment), 26% for the others; past it, impresa
+        /// (regime ordinario) when a partita IVA is available (PO 2026-10-08).
         /// </summary>
-        private StrFiscalRegime? Recommend(YearProperty property, TaxpayerYear taxpayer)
+        private StrFiscalRegime? Recommend(YearProperty property, TaxpayerYear taxpayer, bool orgHasPartitaIva)
         {
+            if (taxpayer.ThresholdExceeded)
+                return ImpresaAvailable(taxpayer, orgHasPartitaIva) ? StrFiscalRegime.RegimeOrdinario : null;
             if (WouldExceedThreshold(property))
                 return null;
             if (taxpayer.ReducedRatePropertyId is Guid reduced)

@@ -257,6 +257,113 @@ public class StayPricingTests
         }
     }
 
+    // ─── Prices the host set for dates (a confirmed seasonal price, PC-15) ───
+
+    [Fact]
+    public void Lines_HostPricedNights_GetALineOfTheirOwnAndTheLinesStillAddUp()
+    {
+        // Wednesday to Monday at 100 with 25 %: Wed 100, Thu 130 (host), Fri 125, Sat 130 (host), Sun 100.
+        var hostPrices = new Dictionary<DateOnly, decimal> { [Day(3)] = 130m, [Day(5)] = 130m };
+        var quote = Quote(Day(2), 5, rate: 100m, cleaning: 40m, surcharge: 25m, tax: Tax(9m), hostPrices);
+
+        var lines = StayPricing.Lines(quote);
+
+        Assert.Equal(
+            [
+                (QuoteLineKind.Nights, 2, 10_000L, 20_000L),
+                (QuoteLineKind.Nights, 2, 13_000L, 26_000L),
+                (QuoteLineKind.WeekendNights, 1, 12_500L, 12_500L),
+            ],
+            lines.Take(3).Select(l => (l.Kind, l.Quantity!.Value, l.UnitAmountCents!.Value, l.AmountCents)));
+        Assert.Equal(20_000L + 26_000L + 12_500L + 4_000L + 900L, lines[^1].AmountCents);
+        AssertLinesAddUp(lines);
+    }
+
+    [Fact]
+    public void Lines_HostPriceEqualToTheRate_IsOneLineWithTheOrdinaryNights()
+    {
+        var hostPrices = new Dictionary<DateOnly, decimal> { [Day(1)] = 100m };
+        var quote = Quote(Day(0), 3, rate: 100m, cleaning: 0m, surcharge: 0m, tax: new TouristTaxQuote(TouristTaxQuoteStatus.RateUnavailable, 0m, 0, 0, false, [], []), hostPrices);
+
+        var lines = StayPricing.Lines(quote);
+
+        Assert.Equal(
+            [(QuoteLineKind.Nights, 3, 10_000L, 30_000L)],
+            lines.Where(l => l.Kind == QuoteLineKind.Nights).Select(l => (l.Kind, l.Quantity!.Value, l.UnitAmountCents!.Value, l.AmountCents)));
+        AssertLinesAddUp(lines);
+    }
+
+    [Fact]
+    public void Lines_EveryNightPricedByTheHost_HasNoLineAtTheRate()
+    {
+        var hostPrices = Enumerable.Range(0, 3).ToDictionary(i => Day(i), i => 120m + i);
+        var quote = Quote(Day(0), 3, rate: 100m, cleaning: 0m, surcharge: 10m, tax: Tax(0m), hostPrices);
+
+        var lines = StayPricing.Lines(quote);
+
+        Assert.Equal([120m, 121m, 122m], lines.Where(l => l.Kind == QuoteLineKind.Nights).Select(l => l.UnitAmountCents!.Value / 100m));
+        Assert.DoesNotContain(lines, l => l.Kind == QuoteLineKind.WeekendNights);
+        AssertLinesAddUp(lines);
+    }
+
+    [Fact]
+    public void Lodging_NightWithAPriceTheHostSet_CostsThatPriceAndNothingElse()
+    {
+        var hostPrices = new Dictionary<DateOnly, decimal> { [Day(1)] = 180m };
+
+        var lodging = StayPricing.Lodging(Day(0), 3, nightlyRate: 100m, weekendSurchargePercent: 0m, hostPrices);
+
+        Assert.Equal(380m, lodging.Total);
+        Assert.Equal((2, 0, 3), (lodging.WeekdayNights, lodging.WeekendNights, lodging.Nights));
+        Assert.Equal([new PricedNight(Day(1), 180m)], lodging.PricedNights);
+    }
+
+    [Fact]
+    public void Lodging_HostPriceOnAWeekendNight_IsNotRaisedByTheSurcharge()
+    {
+        // Thursday to Monday at 100 with 25 %: Thursday 100, Friday 90 (the host's price), Saturday 125, Sunday 100.
+        var hostPrices = new Dictionary<DateOnly, decimal> { [Day(4)] = 90m };
+
+        var lodging = StayPricing.Lodging(Day(3), 4, nightlyRate: 100m, weekendSurchargePercent: 25m, hostPrices);
+
+        Assert.Equal(415m, lodging.Total);
+        Assert.Equal((2, 1, 4), (lodging.WeekdayNights, lodging.WeekendNights, lodging.Nights));
+        Assert.Equal([new PricedNight(Day(4), 90m)], lodging.PricedNights);
+    }
+
+    [Fact]
+    public void Lodging_NoHostPricesOrOnlyOnesOutsideTheStay_IsThePriceWithoutThem()
+    {
+        var outside = new Dictionary<DateOnly, decimal> { [Day(-1)] = 10m, [Day(3)] = 10m };
+
+        foreach (var hostPrices in new IReadOnlyDictionary<DateOnly, decimal>?[] { null, new Dictionary<DateOnly, decimal>(), outside })
+        {
+            var lodging = StayPricing.Lodging(Day(0), 3, nightlyRate: 100m, weekendSurchargePercent: 25m, hostPrices);
+
+            Assert.Equal(300m, lodging.Total);
+            Assert.Empty(lodging.PricedNights);
+        }
+    }
+
+    [Fact]
+    public void NightPrices_WithHostPrices_GivesThePriceOfEachNightInOrder()
+    {
+        var hostPrices = new Dictionary<DateOnly, decimal> { [Day(4)] = 90m };
+        var lodging = StayPricing.Lodging(Day(3), 4, nightlyRate: 100m, weekendSurchargePercent: 25m, hostPrices);
+
+        var prices = StayPricing.NightPrices(Day(3), lodging);
+
+        Assert.Equal([100m, 90m, 125m, 100m], prices);
+        Assert.Equal(lodging.Total, prices!.Sum());
+    }
+
+    [Fact]
+    public void NightPrices_NoWeekendNightsAndNoHostPrices_IsNull()
+    {
+        Assert.Null(StayPricing.NightPrices(Day(0), StayPricing.Lodging(Day(0), 3, 100m, 0m)));
+        Assert.Null(StayPricing.NightPrices(Day(0), StayPricing.Lodging(Day(0), 3, 100m, 25m)));
+    }
+
     private static void AssertLinesAddUp(IReadOnlyList<QuoteLine> lines)
     {
         var total = Assert.Single(lines, l => l.Kind == QuoteLineKind.Total);
@@ -269,9 +376,16 @@ public class StayPricingTests
     private static TouristTaxQuote Tax(decimal amount) =>
         new(TouristTaxQuoteStatus.Calculated, amount, 3, 3, false, [], []);
 
-    private static DirectBookingQuote Quote(DateOnly checkIn, int nights, decimal rate, decimal cleaning, decimal surcharge, TouristTaxQuote tax)
+    private static DirectBookingQuote Quote(
+        DateOnly checkIn,
+        int nights,
+        decimal rate,
+        decimal cleaning,
+        decimal surcharge,
+        TouristTaxQuote tax,
+        IReadOnlyDictionary<DateOnly, decimal>? hostPrices = null)
     {
-        var lodging = StayPricing.Lodging(checkIn, nights, rate, surcharge);
+        var lodging = StayPricing.Lodging(checkIn, nights, rate, surcharge, hostPrices);
         var basePrice = lodging.Total + cleaning;
         var start = checkIn.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         return new DirectBookingQuote(

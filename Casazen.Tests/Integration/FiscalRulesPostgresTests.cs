@@ -18,7 +18,7 @@ namespace Casazen.Tests.Integration;
 public class FiscalRulesPostgresTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const int TaxYear = 2026;
-    private static readonly string[] OwnerCodes = ["RSSMRA80A01H501U", "VRDLGU75B12F205X", "BNCGNN90C41L219K"];
+    private static readonly string[] OwnerCodes = ["RSSMRA80A01H501U", "VRDLGU85B02F205C", "VRDGLI85B42F205E"];
 
     private readonly CasazenWebApplicationFactory _factory;
 

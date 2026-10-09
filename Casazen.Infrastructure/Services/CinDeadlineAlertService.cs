@@ -63,7 +63,10 @@ public sealed class CinDeadlineAlertService(
 
         var now = _clock.GetUtcNow().UtcDateTime;
         // Background run: no tenant context, every org's properties.
+        // CO-20: short-rent properties only (PM-01 / PropertyRentalMode), plus owners who
+        // registered exclusively as long-term landlords (RentalType.LongTerm) stay out.
         var candidates = (await CandidateProperties(db.Properties.AsNoTracking())
+                .Where(p => !db.Users.Any(u => u.Id == p.OwnerId && u.RentalType == RentalType.LongTerm))
                 .OrderBy(p => p.Id)
                 .Select(p => new { p.Id, p.OrgId, p.CinCode, p.ComplianceStatus })
                 .ToListAsync(cancellationToken))

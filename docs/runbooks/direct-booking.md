@@ -38,9 +38,9 @@ panel "Richieste da approvare" and badges in the bookings list.
 
 | Variable | Meaning | Default | Status |
 |---|---|---|---|
-| `DirectBooking__OnSiteApprovalHours` | Hours the host has to accept or decline, from the guest's email confirmation | **24** | **PROVISIONAL technical default** so that no request holds dates forever. Not a product rule: the product owner decides it (DUBBI BK-06) |
+| `DirectBooking__OnSiteApprovalHours` | Hours the host has to accept or decline, from the guest's email confirmation | **24** | Product rule (PO 2026-10-08): 24 hours, not a provisional default |
 | `DirectBooking__OnSiteEmailVerificationMinutes` | Minutes the guest has to confirm the email; meanwhile the dates are held | the checkout TTL (`DirectBooking__PendingTtlMinutes`, 30) | Same time the guest has to pay online. Raise it if guests report expired links |
-| `DirectBooking__OnSiteMaxNights` | Longest stay of a "pay at the property" request (anti-abuse, A3-06): longer requests get 422 `onsite_request_too_many_nights` | **30** | **PROVISIONAL**: no spec defines it; aligned with the "locazione breve" of art. 4 D.L. 50/2017 (contracts up to 30 days, `.claude/context/regulations/fiscale.md` C1). The product owner decides it |
+| `DirectBooking__OnSiteMaxNights` | Longest stay of a "pay at the property" request (anti-abuse, A3-06): longer requests get 422 `onsite_request_too_many_nights` | **30** | Product rule (PO 2026-10-08): max 30 nights |
 | `DirectBooking__PendingTtlMinutes` | Checkout hold of online payments (BK-21, BK-04) | 30 | unchanged |
 | `RateLimiting__PublicBookingCreate__PermitLimit` | Checkouts per client IP per minute (FD-10) | 10 | applies to "pay at the property" too |
 | `RateLimiting__PublicBookingLookup__PermitLimit` | Includes `confirm-email` | 30 | |
@@ -559,9 +559,15 @@ what the code did before, and the migration rewrites no data.
   `QuoteDirectBookingAsync_DefaultRules_*`).
 - **Where it applies.** The guests' quote and booking, and the host's quote and manual booking, because they share one
   calculation (`BookingService.PriceStayAsync`). The booking records the price of the quote; the payment is for it.
+- **A price the host confirmed for a date wins.** A seasonal price that the host confirmed for a night (the pricing adapter,
+  PC-15: `GetAppliedNightlyPricesAsync`) is the price of that night, as it already was: the weekend surcharge is **not** added
+  on top of it, even on a Friday or a Saturday. The surcharge is a rule about the nights the host priced no other way (the
+  most specific statement wins). Such a night is in neither count of weekday and weekend nights; it is a `PricedNight` of the
+  lodging (`StayPricing.Lodging`, `hostPrices`). If the PO wants the surcharge to compound on seasonal prices, it is one
+  line in that method and the tests that name this rule (`StayPricingTests`, `BookingServiceTests`).
 - **Tourist tax.** A percentage rate (some comuni tax a share of the price of the night) reads the price of each night
-  (`TouristTaxStay.NightlyPrices`), the surcharge included; fixed rates and a property without weekend nights are
-  calculated as before (the single `NightlyPrice` is passed alone).
+  (`TouristTaxStay.NightlyPrices`), the surcharge and the prices the host confirmed included; fixed rates and a stay whose
+  nights all cost the rate are calculated as before (the single `NightlyPrice` is passed alone).
 
 Example, 3 nights from Friday at 150 EUR with a cleaning fee of 50 EUR, surcharge 15 %: Friday and Saturday 172.50 each,
 Sunday 150, total 545.00.
@@ -584,7 +590,12 @@ nights, which is `nightlyRate x nights` without a surcharge) and adds `lines`, t
 
 - Order: ordinary nights, weekend nights, cleaning, tourist tax, total. A line that does not apply is **left out**: no zero
   nights, no cleaning fee of 0, no tax that could not be calculated (`touristTax.status` says why; a tax calculated at 0
-  because everyone is exempt is kept). Without a surcharge there is a single `Nights` line with every night.
+  because everyone is exempt is kept). Without a surcharge and without prices confirmed by the host there is a single
+  `Nights` line with every night.
+- **`Nights` can repeat.** When the host confirmed a seasonal price for some dates of the stay (PC-15), those nights are not
+  at the rate: there is one more `Nights` line for each other price, after the line at the rate, in the order of the nights
+  (`quantity` and `unitAmountCents` say which nights it is). Nights at a confirmed price equal to the rate are in the line
+  at the rate. A client must render the list as it comes and never assume one `Nights` line.
 - The lines before `Total` add up to it, to the cent (`StayPricingTests`, `DirectBookingPublicDataIntegrationTests`). The
   frontend shows them and never adds euros itself.
 

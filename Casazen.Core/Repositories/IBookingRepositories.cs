@@ -19,6 +19,19 @@ public interface IBookingRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Paged version of <see cref="GetByScopeAsync"/> (PC-14): returns the matching bookings for the requested
+    /// <paramref name="page"/> (1-indexed) and <paramref name="pageSize"/>, together with the total count for pagination
+    /// controls. Same filters and ordering as the non-paged overload.
+    /// </summary>
+    Task<(IReadOnlyList<Booking> Items, int TotalCount)> GetPagedByScopeAsync(
+        HostScope scope,
+        int page,
+        int pageSize,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Bookings of the property shown by the host calendar from <paramref name="startDate"/> to <paramref name="endDate"/>
     /// (stay dates, both included: <see cref="Services.HostCalendarRange.BookingShownIn"/>) that take their dates: not cancelled and, when
     /// <paramref name="directPendingTtlMinutes"/> is given, not expired checkout holds

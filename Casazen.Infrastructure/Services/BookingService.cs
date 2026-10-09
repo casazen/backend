@@ -28,6 +28,7 @@ public class BookingService(
     ILogger<BookingService> logger,
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     OnSiteRequestNotifier onSiteNotifier,
+    IPricingAdapterService pricingAdapterService,
     TimeProvider? timeProvider = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -43,6 +44,15 @@ public class BookingService(
         Guid? guestId = null,
         CancellationToken cancellationToken = default) =>
         repository.GetByScopeAsync(scope, propertyId, guestId, cancellationToken);
+
+    public Task<(IReadOnlyList<Booking> Items, int TotalCount)> GetPagedBookingsAsync(
+        HostScope scope,
+        int page,
+        int pageSize,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default) =>
+        repository.GetPagedByScopeAsync(scope, page, pageSize, propertyId, guestId, cancellationToken);
 
     public async Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest)
     {
@@ -418,7 +428,12 @@ public class BookingService(
     {
         var nights = (checkOut - checkIn).Days;
         var checkInDate = RomeCalendar.DateInRome(checkIn);
-        var lodging = StayPricing.Lodging(checkInDate, nights, property.NightlyRate, property.WeekendSurchargePercent);
+
+        // PC-15: a price the host confirmed for a date is the price of that night (neither the rate nor the weekend surcharge
+        // of DB-03 applies to it); the nights without one cost the rate, plus the surcharge on a Friday or a Saturday.
+        var hostPrices = await pricingAdapterService.GetAppliedNightlyPricesAsync(
+            property.Id, checkInDate, checkInDate.AddDays(nights), cancellationToken);
+        var lodging = StayPricing.Lodging(checkInDate, nights, property.NightlyRate, property.WeekendSurchargePercent, hostPrices);
         var basePrice = lodging.Total + property.CleaningFee;
         var touristTax = await touristTaxQuoteService.QuoteAsync(
             TouristTaxComune.ForProperty(property),
