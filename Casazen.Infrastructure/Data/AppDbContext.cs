@@ -90,6 +90,13 @@ public class AppDbContext(
     // Supplier console (US-022 / #292)
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
+
+    /// <summary>
+    /// Price catalog of the suppliers (SP-02). Keyed by the supplier org, <b>not</b> tenant-filtered (see the TN-2
+    /// allow-list): only <c>SupplierServiceCatalogService</c> reads and writes it, always with an explicit
+    /// <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<SupplierServiceListing> SupplierServiceListings { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
@@ -945,6 +952,37 @@ public class AppDbContext(
         modelBuilder.Entity<SupplierAvailability>()
             .HasIndex(sa => new { sa.OrgId, sa.Date })
             .IsUnique();
+
+        // SP-02: the supplier's service catalog. Children of the supplier profile (cascade, like the availability days: the
+        // repair moves them to the keeper before it deletes a duplicate profile). The slug is unique among the services
+        // that are not deleted, so a deleted one frees it; xmin is the concurrency token. The checks mirror
+        // SupplierServiceListingRules (looser where the rule is a product bound, e.g. the shortest duration).
+        modelBuilder.Entity<SupplierServiceListing>(entity =>
+        {
+            entity.HasOne(l => l.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(l => l.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(l => l.Version).IsRowVersion();
+
+            entity.HasIndex(l => new { l.OrgId, l.Slug })
+                .IsUnique()
+                .HasFilter("\"DeletedAt\" IS NULL")
+                .HasDatabaseName("UIX_SupplierServiceListings_OrgId_Slug");
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_SupplierServiceListings_PriceFromCents", "\"PriceFromCents\" IS NULL OR \"PriceFromCents\" > 0");
+                t.HasCheckConstraint(
+                    "CK_SupplierServiceListings_DurationMinutes", "\"DurationMinutes\" IS NULL OR \"DurationMinutes\" > 0");
+                t.HasCheckConstraint(
+                    "CK_SupplierServiceListings_MinNoticeHours", "\"MinNoticeHours\" IS NULL OR \"MinNoticeHours\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_SupplierServiceListings_WeekdaysMask", "\"WeekdaysMask\" BETWEEN 0 AND 127");
+            });
+        });
 
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => i.Email);

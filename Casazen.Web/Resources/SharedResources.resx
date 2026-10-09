@@ -1942,6 +1942,39 @@
   <data name="SupplierPhotoUploadFailed" xml:space="preserve">
     <value>Caricamento delle foto non riuscito. Riprova tra poco.</value>
   </data>
+  <data name="SupplierServiceNotFound" xml:space="preserve">
+    <value>Servizio non trovato: potrebbe essere stato eliminato.</value>
+  </data>
+  <data name="SupplierServiceInvalid" xml:space="preserve">
+    <value>Alcuni dati del servizio non sono validi (campi: {0}). Controllali e riprova.</value>
+  </data>
+  <data name="SupplierServiceNotPublishable" xml:space="preserve">
+    <value>Un servizio pubblicato ha sempre nome, categoria, durata e un prezzo (oppure «su preventivo»). Manca: {0}.</value>
+  </data>
+  <data name="SupplierServiceLimitReached" xml:space="preserve">
+    <value>Puoi avere al massimo {0} servizi: elimina o riutilizza un servizio esistente prima di crearne un altro.</value>
+  </data>
+  <data name="SupplierServiceCannotPause" xml:space="preserve">
+    <value>Solo un servizio pubblicato può essere messo in pausa: questo è ancora una bozza.</value>
+  </data>
+  <data name="SupplierServiceChanged" xml:space="preserve">
+    <value>Il servizio è stato modificato da un'altra scheda o da un altro utente: ricarica la pagina e applica di nuovo la modifica.</value>
+  </data>
+  <data name="SupplierServicePhotoNone" xml:space="preserve">
+    <value>Seleziona almeno una foto da caricare.</value>
+  </data>
+  <data name="SupplierServicePhotoInvalidType" xml:space="preserve">
+    <value>Il file "{0}" non è una foto valida: sono ammesse solo immagini JPEG, PNG o WebP.</value>
+  </data>
+  <data name="SupplierServicePhotoInvalidSize" xml:space="preserve">
+    <value>Il file "{0}" è vuoto o supera la dimensione massima di {1} MB.</value>
+  </data>
+  <data name="SupplierServicePhotoLimitReached" xml:space="preserve">
+    <value>Un servizio può avere al massimo {0} foto (ne ha già {1}): togline una prima di caricarne altre.</value>
+  </data>
+  <data name="SupplierServiceCopySuffix" xml:space="preserve">
+    <value> (copia)</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Indica il comune oppure l'immobile per cercare i fornitori.</value>
   </data>

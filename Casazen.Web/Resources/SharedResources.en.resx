@@ -1942,6 +1942,39 @@
   <data name="SupplierPhotoUploadFailed" xml:space="preserve">
     <value>The photo upload failed. Try again shortly.</value>
   </data>
+  <data name="SupplierServiceNotFound" xml:space="preserve">
+    <value>Service not found: it may have been deleted.</value>
+  </data>
+  <data name="SupplierServiceInvalid" xml:space="preserve">
+    <value>Some details of the service are not valid (fields: {0}). Check them and try again.</value>
+  </data>
+  <data name="SupplierServiceNotPublishable" xml:space="preserve">
+    <value>A published service always has a name, a category, a duration and a price (or "on quote"). Missing: {0}.</value>
+  </data>
+  <data name="SupplierServiceLimitReached" xml:space="preserve">
+    <value>You can have at most {0} services: delete or reuse an existing one before creating another.</value>
+  </data>
+  <data name="SupplierServiceCannotPause" xml:space="preserve">
+    <value>Only a published service can be paused: this one is still a draft.</value>
+  </data>
+  <data name="SupplierServiceChanged" xml:space="preserve">
+    <value>The service was changed from another tab or by another user: reload the page and apply your change again.</value>
+  </data>
+  <data name="SupplierServicePhotoNone" xml:space="preserve">
+    <value>Select at least one photo to upload.</value>
+  </data>
+  <data name="SupplierServicePhotoInvalidType" xml:space="preserve">
+    <value>The file "{0}" is not a valid photo: only JPEG, PNG or WebP images are accepted.</value>
+  </data>
+  <data name="SupplierServicePhotoInvalidSize" xml:space="preserve">
+    <value>The file "{0}" is empty or larger than the maximum size of {1} MB.</value>
+  </data>
+  <data name="SupplierServicePhotoLimitReached" xml:space="preserve">
+    <value>A service can have at most {0} photos (it already has {1}): remove one before uploading more.</value>
+  </data>
+  <data name="SupplierServiceCopySuffix" xml:space="preserve">
+    <value> (copy)</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Provide the municipality or the property to search for suppliers.</value>
   </data>

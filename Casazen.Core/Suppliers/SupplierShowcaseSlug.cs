@@ -20,8 +20,10 @@ public static class SupplierShowcaseSlug
     /// <summary>
     /// <paramref name="name"/> as a slug: accents removed (<c>Pulizie Città</c> → <c>pulizie-citta</c>), anything that is not a
     /// letter or digit becomes one hyphen, no hyphen at the ends, cut at <see cref="MaxBaseLength"/> characters.
+    /// <paramref name="fallback"/> (default <see cref="Fallback"/>) is the slug of a name without a usable character; the
+    /// slugs of the supplier's services (SP-02) use the same rules with a fallback of their own.
     /// </summary>
-    public static string FromName(string? name)
+    public static string FromName(string? name, string fallback = Fallback)
     {
         var decomposed = (name ?? string.Empty).Normalize(NormalizationForm.FormD);
         var builder = new StringBuilder(decomposed.Length);
@@ -48,7 +50,7 @@ public static class SupplierShowcaseSlug
         }
 
         var slug = builder.Length > MaxBaseLength ? builder.ToString(0, MaxBaseLength).TrimEnd('-') : builder.ToString();
-        return slug.Length == 0 ? Fallback : slug;
+        return slug.Length == 0 ? fallback : slug;
     }
 
     /// <summary>The form a slug from the address bar is looked up in: trimmed and lowercase.</summary>

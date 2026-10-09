@@ -131,6 +131,14 @@ internal static class PostgresAdvisoryLocks
         /// photo list at the same time, so no photo is lost (PC-04).
         /// </summary>
         PropertyPhotos = 1_074,
+
+        /// <summary>
+        /// Service catalog of one supplier (key: supplier org id, <c>orgId.ToString("N")</c>): the changes of a supplier's
+        /// services (create, duplicate, edit, delete, publish, pause, photos) and the merge of duplicate supplier profiles
+        /// (<c>fix-orphaned</c>) run one at a time, so the limit of services, the free slug and the photo list are never
+        /// decided on a stale read (SP-02).
+        /// </summary>
+        SupplierServiceCatalog = 1_302,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

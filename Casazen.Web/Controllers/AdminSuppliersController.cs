@@ -196,7 +196,8 @@ public class AdminSuppliersController(
 
     /// <summary>
     /// Repairs supplier profiles (SU-14, A4-22): merges the profiles that share an email into one keeper (service
-    /// requests, availability, categories, comuni and accounts move, nothing answers 500), unlinks accounts from deleted
+    /// requests, availability, the price catalog of SP-02, categories, comuni and accounts move, nothing answers 500),
+    /// unlinks accounts from deleted
     /// supplier orgs and reports the profiles no account holds. Nothing is ever linked by email (A4-23).
     /// <paramref name="dryRun"/> defaults to true: the report shows what would change and nothing is saved; send
     /// <c>dryRun=false</c> to apply. Idempotent. Runbook <c>docs/runbooks/suppliers.md</c> section 9.
@@ -236,6 +237,7 @@ public class AdminSuppliersController(
                     SupplierLinksMoved = m.SupplierLinksMoved,
                     OrgMembersMoved = m.OrgMembersMoved,
                     DevicesMoved = m.DevicesMoved,
+                    ServiceListingsMoved = m.ServiceListingsMoved,
                     DuplicateOrgDeleted = m.DuplicateOrgDeleted,
                 })
                 .ToList(),

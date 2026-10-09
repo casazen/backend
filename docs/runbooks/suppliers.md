@@ -9,7 +9,8 @@ KPIs from the service requests (SU-11, decision D12). Section 11: what the suppl
 host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15). Section 14:
 the platform admin's supplier list, suspension and invites (SU-12, A4-29).
 Section 15: what the host sees of a request (timeline, rejection reason, "Segna pagato" with confirmation, asking another supplier)
-and the payment notification to the supplier (SU-09, A4-28).
+and the payment notification to the supplier (SU-09, A4-28). Section 19: the supplier's catalog of services with prices
+and the category `electrical` (SP-02, redesign wave).
 
 ## 1. How a supplier joins
 
@@ -379,6 +380,10 @@ the migration there are no duplicate emails left, so a run normally only does th
    - service requests (`ServiceRequests.SupplierOrgId`, any state) move to the keeper (the legacy supplier jobs were
      removed by SU-11, section 10);
    - availability days move; a day the keeper already has keeps the keeper's value (the duplicate's is dropped);
+   - the services of the duplicate's price catalog (`SupplierServiceListings`, SP-02, section 19), the deleted ones too,
+     move to the keeper before the profile is deleted (the cascade would take what stayed); a slug the keeper already
+     uses gets the next free suffix (`pulizie` → `pulizie-2`); the keeper may end up above the 30 services limit, which
+     only stops it from creating more (`serviceListingsMoved`);
    - the duplicate's categories and comuni the keeper lacks are appended (bio, photos, VAT, calendar settings of the
      duplicate are not copied: the keeper's profile is the one in use);
    - accounts: `SupplierOrgId` = duplicate → keeper; a supplier-only account (`OrgId` = duplicate, no `SupplierOrgId`)
@@ -398,7 +403,7 @@ the migration there are no duplicate emails left, so a run normally only does th
 Response (200): `dryRun`, `profilesScanned`, `duplicateGroups`, `duplicatesMerged`, `serviceRequestsMoved`, `merges[]`
 (`keeperOrgId`, `duplicateOrgId`, `serviceRequestsMoved`, `availabilityDaysMoved`,
 `availabilityDaysDropped`, `categoriesAdded`, `comuniAdded`, `supplierLinksMoved`, `orgMembersMoved`, `devicesMoved`,
-`duplicateOrgDeleted`), `danglingLinksCleared[]` and `supplierLinksBackfilled[]` (user ids), `orphanProfiles[]`,
+`serviceListingsMoved`, `duplicateOrgDeleted`), `danglingLinksCleared[]` and `supplierLinksBackfilled[]` (user ids), `orphanProfiles[]`,
 `manualInterventions[]` (`code`, `orgIds`, `userIds`). Ids and counts only: no email, no name.
 
 Errors: 409 `supplier_maintenance_conflict` when a concurrent change stops the run (nothing saved: run it again); 403
@@ -909,6 +914,136 @@ crawler page and the sitemap entry of BK-15's pattern and the removal of these t
 - [ ] Open `/fornitori/{slug}` signed out: the page shows the supplier in the public shell; `/fornitori/non-esiste` says
       "Fornitore non trovato"; with the API down it shows an error with *Riprova*, not "not found".
 - [ ] `https://<domain>/robots.txt` (production build) has `Disallow: /fornitori/`.
+
+## 19. The supplier's service catalog with prices — SP-02
+
+Redesign wave task SP-02 (branch `feature/rd-supplier-catalog`, backend only: no screen yet; the console screens are SP-06).
+Gap report 05 §4.1 and decisions D2-D11 of `redesign/docs/wave/WAVE-SPEC.md`. Before this, a supplier only had its
+categories (`SupplierProfiles.CategoriesJson`) and no prices. Stacked on this branch, and **not part of it**: the agenda and
+slot planner (SP-03), the time and price on a service request (SP-04), iCal by the hour (SP-05), the public reads and the booking
+from the showcase (SP-09, SP-10) and the payments (SP-15). `ServiceRequest` is not touched.
+
+### 19.1 What a service is
+
+Table `SupplierServiceListings` (entity `SupplierServiceListing`, migration `AddSupplierServiceCatalog`, applied at startup,
+a new table: no backfill, every catalog starts empty).
+
+| Field | Meaning |
+|---|---|
+| `id`, `slug` | `slug` is unique **per supplier** among the services that are not deleted (partial unique index `UIX_SupplierServiceListings_OrgId_Slug`): it comes from the name when the service is created (`Pulizia città` → `pulizia-citta`, `-2`, `-3` on a collision, `servizio` when the name has no usable character) and then never changes, except that a **draft** follows a change of its name (a draft was never public). It will be the last part of `/fornitori/{supplierSlug}/servizi/{slug}` (SP-09) |
+| `name` (≤ 60), `category`, `summary` (≤ 200), `description` (≤ 2000) | `category` is a code of `GET /api/service-categories` (anything else: 422 `invalid_service_category`) |
+| `priceFromCents`, `priceUnit`, `pricesIncludeVat`, `requiresQuote` | "from" price in euro cents (1 to 10,000,000); `null` is **on quote**. `priceUnit`: `PerJob`, `PerHour`, `PerSet`, `PerSquareMeter`. `pricesIncludeVat` (decision D4: one price with a flag) is **false until the supplier says so**: CasaZen promises nothing about VAT on its behalf (the legal and tax wording is `[CONSULENTE FISCALE]`). `requiresQuote`: the customer waits for the supplier's offer |
+| `durationMinutes` (5 to 1,440), `minNoticeHours` (0 to 720, `null` = the supplier's default notice, SP-03), `weekdays` | `weekdays` are `Monday` ... `Sunday` (stored as the bit mask `WeekdaysMask`, bit 0 Monday ... bit 6 Sunday; left out = every day, an empty list = no day). They restrict the supplier's working hours (SP-03), never replace them |
+| `supplements` (≤ 10) | `[{ code, label, amountCents, per, max }]`, structured because the booking's price estimate (SP-09) is computed from them. `code`: lowercase letters, digits and single hyphens (≤ 40), unique in the service; `label` ≤ 80; `amountCents` 1 to 10,000,000; `per`: `flat`, `bathroom`, `sqm30`, `set`, `hour`; `max`: 1 to 99 or `null` |
+| `included`, `excluded` | lists of lines (≤ 10 each, ≤ 100 characters each; blank and repeated lines are dropped) |
+| `photoUrls` (≤ 6) | absolute URLs of objects in the public bucket under `suppliers/{orgId}/photos/`, the first is the cover |
+| `status` | `Draft` → `Active` (publish) ⇄ `Paused`; never back to `Draft` |
+| `sortOrder` | position (0 to 9,999), then creation date; a new service goes last |
+| `publishable`, `missingForPublication` | computed on read: what the service still lacks to be published (below) |
+| `version` | PostgreSQL `xmin`, see 19.5 |
+
+The limits are constants in `Casazen.Core/Suppliers/SupplierServiceCatalogLimits.cs`: technical bounds against typos and
+oversized bodies, not product rules. **30 services per supplier** (the deleted ones do not count): checked when one is
+created or duplicated, under the catalog lock.
+
+### 19.2 Endpoints (policy `RequireSupplier`, supplier org from the caller's own link, not behind a feature flag)
+
+| Method and path | Answer |
+|---|---|
+| `GET api/supplier/services` | `{ items[], total, limit }`: the supplier's services that are not deleted |
+| `POST api/supplier/services` | 201 + `Location`: a **draft** (may be incomplete: the wizard saves a draft at every step). Only `name` and `category` are needed |
+| `GET api/supplier/services/{id}` | the service |
+| `PUT api/supplier/services/{id}` | a **replacement** of the content with the `version` the client read (a field left out takes its default); `photoUrls` and `sortOrder` stay when the body does not carry them. `photoUrls`, when sent, are the photos to **keep, in the new order**: a subset of the service's own (anything else: 422); the others leave the list and their objects are deleted when nothing else uses them. The status and the slug do not change (a draft's slug follows its name) |
+| `DELETE api/supplier/services/{id}` | 204, **soft** delete (`DeletedAt`): hidden from every read, the slug is free again, the photo objects stay |
+| `POST .../{id}/publish` | 200, `Draft` or `Paused` → `Active`; an active one is returned as it is |
+| `POST .../{id}/pause` | 200, `Active` → `Paused`; a paused one is returned as it is |
+| `POST .../{id}/duplicate` | 201: a **draft** copy (same content and photos, a new slug, " (copia)" / " (copy)" after the name, last position) |
+| `POST .../{id}/photos` | 200, multipart field `photos` (up to 6 files of 10 MB, JPEG, PNG or WebP checked on their **content**, 6 photos per service, all or none): the service with its new `version` |
+
+Errors (ProblemDetails `code`): 404 `supplier_service_not_found` (also another supplier's service and a deleted one; `not_found`
+when the caller has no linked supplier org: the catalog never provisions one); 400 `validation_error` for a text or a list over
+its limit; 422 `invalid_service_category`; 422 `supplier_service_invalid` and `supplier_service_not_publishable`, both with
+`fields` (the JSON names of the fields at fault, `supplements[1].amountCents` for a supplement); 422
+`supplier_service_limit_reached`, `supplier_service_cannot_pause` (a draft is not published), `supplier_service_photo_none`,
+`supplier_service_photo_invalid_type`, `supplier_service_photo_invalid_size`, `supplier_service_photo_limit_reached`; 409
+`supplier_service_changed`. Messages are keys of `SharedResources` (Italian and English); the list of the catalog's keys is
+`SupplierServiceCatalogErrors.MessageKeys`.
+
+### 19.3 When a service can be published
+
+`Name`, a known `category`, a `durationMinutes` and a price (`priceFromCents`) **or** `requiresQuote`. Publishing a draft or a
+paused service checks it (422 `supplier_service_not_publishable`, `fields` says what is missing: `name`, `category`,
+`durationMinutes`, `priceFromCents`). A **published service stays complete**: a `PUT` that would take one of these away is the
+same 422 (the same rule the profile has, SU-05). A draft and a paused service may be incomplete. The supplier's own status
+(`Pending`, `Active`, `Suspended`) does not limit the catalog: like the profile, it can be edited by a suspended supplier;
+whether a service is **shown** will also depend on the supplier being `Active` (public reads, SP-09).
+
+### 19.4 Tenancy: keyed by the supplier org, not `ITenantOwned`
+
+The table follows `SupplierProfile` and `SupplierAvailability`: `OrgId` is the **supplier** org (`SupplierProfile.OrgId`,
+foreign key in cascade). It is **not** `ITenantOwned`: a supplier acts as `User.SupplierOrgId` and a supplier-only account has
+no `User.OrgId` (PL-05, section 13), so the global tenant filter (host org) would give it zero rows, and a dual-role host would
+get the wrong org. It is in the allow-list of `TenantQueryFilterArchitectureTests` with the reason, and **every read and write
+carries an explicit `OrgId` predicate**: they all go through `SupplierServiceCatalogService.Listings(orgId)`. Guards:
+`SupplierServiceListingTenancyTests` (no other file may use the table; every statement of the two allowed files carries the
+predicate or is an insert), `SupplierServiceCatalogServiceTests` and `SupplierServiceCatalogIntegrationTests` (another
+supplier's service is 404 on every endpoint), and `SupplierServiceCatalogPostgresTests` on PostgreSQL. Whoever adds a reader
+(the public reads of SP-09) must add the file to that allow-list, filter by the supplier org **and** require the supplier to be
+`Active`.
+
+### 19.5 Concurrency
+
+- **Optimistic**: `version` is `xmin`. `PUT` must carry the version the client read; another one is 409
+  `supplier_service_changed` (reload and apply the change again). Every update changes it, a **photo upload too**: use the
+  `version` in the answer of the upload for the next `PUT`.
+- **Serialized**: every change of one supplier's catalog (create, duplicate, edit, delete, publish, pause, photos) takes the
+  PostgreSQL advisory lock `SupplierServiceCatalog` (scope 1_302, key = the supplier org id) and reads the row after taking it,
+  so two requests never both see room for the 30th service, never choose the same slug and never overwrite each other's
+  photo list. The unique slug index is the guarantee behind the lock (23505 is answered with the same 409).
+- The lock only exists on PostgreSQL: the tests that prove it are `[PostgresFact]` (they run on CI, not on a laptop without
+  a database).
+
+### 19.6 Photos
+
+`IImageStorageService.UploadSupplierPhotoAsync` (public bucket, `suppliers/{orgId}/photos/{random}.{ext}`). The file is validated
+entirely before anything is stored (type by extension, declared type **and** first bytes, size, count), the objects of a failed or
+over-limit upload are removed again. A photo that leaves a service (a `PUT` with a shorter `photoUrls`) is deleted from the
+bucket after the commit **only if** it is in the supplier's own folder and no other service of the supplier, deleted ones
+included, still lists it (a duplicate shares the objects with its original). Deleting a service keeps its objects.
+
+### 19.7 Merge of duplicate profiles (`fix-orphaned`)
+
+The services of a duplicate profile move to the keeper (section 9.3), under the catalog lock of both suppliers and in the
+repair's transaction (a dry run rolls it back). The report has `serviceListingsMoved`.
+
+### 19.8 Category `electrical`
+
+`ServiceCategories.Electrical = "electrical"`, appended **last** to `ServiceCategories.All` (the order is the one the clients
+show; never reorder or rename). `GET /api/service-categories` returns it, the supplier profile, the invites and the service
+requests accept it, and the e-mails label it (`ServiceCategory_electrical`: *Elettricista* / *Electrician*). The demo's
+mapping: pulizie → `cleaning`, manutenzione → `maintenance`, idraulico → `plumbing`, lavanderia → `laundry`, checkin →
+`check-in`, giardinaggio → `gardening`, elettricista → `electrical`. **The web and the app still need the label**
+(`serviceRequest.categories.electrical` in the web `it.json` / `en.json` and `i18n.test.ts`, the app's `it.ts` / `en.ts`):
+until then they show the raw code `electrical` (the web falls back to the value, it does not break).
+`docs/runbooks/service-categories.md` lists the codes.
+
+### 19.9 Feature flags introduced here
+
+`Features:SupplierShowcaseBooking` (booking from the public showcase, decision D34, SP-09/SP-10) and
+`Features:SupplierOnlinePayments` (payment of the supplier's work inside CasaZen, decision D2, SP-15): both **off by default**
+(`appsettings.json`), listed in `FeatureFlags.All` and therefore exposed by `GET /api/public/features` as
+`supplierShowcaseBooking` and `supplierOnlinePayments`. Nothing consumes them yet: the catalog does not depend on them. See
+`feature-flags.md`.
+
+### 19.10 After a deploy
+
+- [ ] Migration `AddSupplierServiceCatalog` applied (table `SupplierServiceListings`, index `UIX_SupplierServiceListings_OrgId_Slug`
+      with `WHERE "DeletedAt" IS NULL`, four `CK_SupplierServiceListings_*` checks).
+- [ ] `GET /api/public/features` has `supplierShowcaseBooking: false` and `supplierOnlinePayments: false`.
+- [ ] As a supplier (test environment): `POST /api/supplier/services` with a name and a category → 201 `Draft`;
+      `POST .../publish` → 422 until a duration and a price (or `requiresQuote`) are set; then 200 `Active`; `.../pause`,
+      `.../duplicate` and `DELETE` answer as above; another supplier's `GET {id}` is 404.
+- [ ] `GET /api/service-categories` returns 11 codes, the last one `electrical`.
 
 ## Known limits (other tasks)
 

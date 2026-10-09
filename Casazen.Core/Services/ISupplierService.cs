@@ -367,6 +367,10 @@ public record FixOrphanedSupplierOrgsReport(
 /// <param name="DuplicateOrgDeleted">
 /// False when the duplicate org also holds host data (properties, consents, ...): only its supplier profile is removed.
 /// </param>
+/// <param name="ServiceListingsMoved">
+/// Services of the duplicate's price catalog (SP-02) that moved to the keeper, the deleted ones too (a slug the keeper
+/// already uses gets the next free suffix).
+/// </param>
 public record SupplierDuplicateMerge(
     Guid KeeperOrgId,
     Guid DuplicateOrgId,
@@ -378,7 +382,8 @@ public record SupplierDuplicateMerge(
     int SupplierLinksMoved,
     int OrgMembersMoved,
     int DevicesMoved,
-    bool DuplicateOrgDeleted);
+    bool DuplicateOrgDeleted,
+    int ServiceListingsMoved = 0);
 
 /// <summary>A case left untouched for an admin decision (<see cref="Code"/>: see <c>docs/runbooks/suppliers.md</c>).</summary>
 public record SupplierManualIntervention(string Code, IReadOnlyList<Guid> OrgIds, IReadOnlyList<string> UserIds);

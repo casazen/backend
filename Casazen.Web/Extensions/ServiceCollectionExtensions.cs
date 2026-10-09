@@ -400,6 +400,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISeoEventService, SeoEventService>();
         services.AddScoped<ISeoFeaturedPropertiesService, SeoFeaturedPropertiesService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
+        // The supplier's catalog of services with prices (SP-02): rows keyed by the supplier org, not tenant-filtered.
+        services.AddScoped<ISupplierServiceCatalogService, SupplierServiceCatalogService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
 

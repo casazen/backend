@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -15,7 +16,8 @@ namespace Casazen.Infrastructure.Services;
 /// Admin repair <c>POST /api/admin/suppliers/fix-orphaned</c> (SU-14, A4-22): merges supplier profiles that share an email
 /// without ever losing their service requests or leaving accounts linked to a deleted org, and never links an account
 /// by email (A4-23). Runbook: <c>docs/runbooks/suppliers.md</c> section 9. The migration <c>SupplierProfileEmailUnique</c>
-/// applies the same merge rules in SQL before creating the unique email index: keep the two in step.
+/// applies the same merge rules in SQL before creating the unique email index: keep the two in step. (The price catalog
+/// of SP-02 is created by a later migration, so that SQL has nothing to move for it: only this code does, section 19.7.)
 /// </summary>
 public partial class SupplierService
 {
@@ -215,7 +217,7 @@ public partial class SupplierService
                 "availabilityMoved={AvailabilityMoved}, " +
                 "availabilityDropped={AvailabilityDropped}, categoriesAdded={CategoriesAdded}, comuniAdded={ComuniAdded}, " +
                 "supplierLinks={SupplierLinks}, orgMembers={OrgMembers}, devices={Devices}, " +
-                "duplicateOrgDeleted={DuplicateOrgDeleted}",
+                "serviceListings={ServiceListings}, duplicateOrgDeleted={DuplicateOrgDeleted}",
                 merge.DuplicateOrgId,
                 dryRun ? "would be merged (dry run)" : "merged",
                 merge.KeeperOrgId,
@@ -227,6 +229,7 @@ public partial class SupplierService
                 merge.SupplierLinksMoved,
                 merge.OrgMembersMoved,
                 merge.DevicesMoved,
+                merge.ServiceListingsMoved,
                 merge.DuplicateOrgDeleted);
         }
     }
@@ -251,6 +254,10 @@ public partial class SupplierService
                         && !db.SupplierAvailability.Any(k => k.OrgId == keeperId && k.Date == a.Date))
             .ExecuteUpdateAsync(set => set.SetProperty(a => a.OrgId, keeperId), cancellationToken);
         var daysDropped = await db.SupplierAvailability.CountAsync(a => a.OrgId == duplicateId, cancellationToken);
+
+        // The price catalog (SP-02) is a child of the profile like the availability days, but nothing of it is dropped: every
+        // service moves before the profile is deleted (the cascade would take what stayed).
+        var listingsMoved = await MoveServiceListingsAsync(keeperId, duplicateId, now, cancellationToken);
 
         var keeper = await db.SupplierProfiles.FirstAsync(sp => sp.OrgId == keeperId, cancellationToken);
         var duplicate = await db.SupplierProfiles.AsNoTracking().FirstAsync(sp => sp.OrgId == duplicateId, cancellationToken);
@@ -292,7 +299,70 @@ public partial class SupplierService
             supplierLinks,
             orgMembers,
             devices,
-            orgDeleted);
+            orgDeleted,
+            listingsMoved);
+    }
+
+    /// <summary>
+    /// Moves the services of the duplicate's price catalog (SP-02) to the keeper, the deleted ones too. A service whose
+    /// slug the keeper already uses gets the next free suffix (<c>pulizie</c> → <c>pulizie-2</c>); a deleted service keeps
+    /// its slug, which no unique index covers. The keeper can end up with more services than the usual limit: nothing is
+    /// dropped, and it cannot add a new one until it is under the limit again.
+    /// </summary>
+    private async Task<int> MoveServiceListingsAsync(
+        Guid keeperId,
+        Guid duplicateId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        // The lock of the catalog changes of both suppliers, taken inside the repair's transaction: a service being created
+        // or edited meanwhile waits for the merge and then finds its supplier's catalog where it belongs.
+        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db,
+            cancellationToken,
+            (PostgresAdvisoryLocks.Scope.SupplierServiceCatalog, keeperId.ToString("N")),
+            (PostgresAdvisoryLocks.Scope.SupplierServiceCatalog, duplicateId.ToString("N")));
+
+        // SupplierServiceListings is keyed by the supplier org and not tenant-filtered (TN-2 allow-list): both orgs are
+        // explicit, as in every query of this table.
+        var duplicateListings = await db.SupplierServiceListings
+            .AsNoTracking()
+            .Where(l => l.OrgId == duplicateId)
+            .OrderBy(l => l.CreatedAt)
+            .ThenBy(l => l.Id)
+            .Select(l => new { l.Id, l.Slug, l.DeletedAt })
+            .ToListAsync(cancellationToken);
+        if (duplicateListings.Count == 0)
+            return 0;
+
+        var taken = (await db.SupplierServiceListings
+                .AsNoTracking()
+                .Where(l => l.OrgId == keeperId && l.DeletedAt == null)
+                .Select(l => l.Slug)
+                .ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var listing in duplicateListings)
+        {
+            var slug = listing.Slug;
+            if (listing.DeletedAt is null)
+            {
+                slug = SupplierServiceListingRules.NextFreeSlug(slug, taken);
+                taken.Add(slug);
+            }
+
+            var id = listing.Id;
+            await db.SupplierServiceListings
+                .Where(l => l.OrgId == duplicateId && l.Id == id)
+                .ExecuteUpdateAsync(
+                    set => set
+                        .SetProperty(l => l.OrgId, keeperId)
+                        .SetProperty(l => l.Slug, slug)
+                        .SetProperty(l => l.UpdatedAt, now),
+                    cancellationToken);
+        }
+
+        return duplicateListings.Count;
     }
 
     /// <summary>

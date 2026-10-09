@@ -291,6 +291,9 @@
   <data name="ServiceCategory_excursions" xml:space="preserve">
     <value>Escursioni</value>
   </data>
+  <data name="ServiceCategory_electrical" xml:space="preserve">
+    <value>Elettricista</value>
+  </data>
   <data name="Booking_LinkFallback" xml:space="preserve">
     <value>Se il pulsante non funziona, copia questo link nel browser:</value>
   </data>
