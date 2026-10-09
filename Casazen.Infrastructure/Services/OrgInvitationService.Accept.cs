@@ -153,6 +153,13 @@ public sealed partial class OrgInvitationService
             if (!consents.Success)
                 throw ConsentsRefused(consents.Error);
 
+            // In the org joined (not the one the request's tenant may still be), in the save that closes the invitation.
+            activityLog.Record(OrgActivity.Of(
+                invitation.OrgId,
+                OrgActivityType.InvitationAccepted,
+                user.Id,
+                invitation.Id.ToString(),
+                (OrgActivityDetailKeys.Role, invitation.Role.ToString())));
             await db.SaveChangesAsync(cancellationToken);
 
             if (transaction is not null)

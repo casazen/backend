@@ -395,6 +395,7 @@ public class HostNotificationAudienceReachTests : IDisposable
         private OrgPropertyAccessService Access() => new(
             db,
             new Mock<IUserAuthorizationCache>().Object,
+            new Mock<IActivityLog>().Object,
             NullLogger<OrgPropertyAccessService>.Instance);
 
         public async Task SetResponsibleAsync(Guid orgId, Guid propertyId, string name)

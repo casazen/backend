@@ -49,8 +49,7 @@ public class OrgScopeHardeningPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    private OrgPropertyAccessService Access(AppDbContext db) =>
-        new(db, _kit.Cache.Object, NullLogger<OrgPropertyAccessService>.Instance, _kit.Clock);
+    private OrgPropertyAccessService Access(AppDbContext db) => _kit.PropertyAccess(db);
 
     private async Task<Guid> AddPropertyAsync(Guid orgId, string name, string creator = OwnerId, string? taxpayer = null)
     {

@@ -174,6 +174,9 @@ public class AppDbContext(
     public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
     public DbSet<PropertyMemberAccess> PropertyMemberAccesses { get; set; } = null!;
 
+    // Who did what in an org, as ids and codes (AM-02b)
+    public DbSet<OrgActivityEntry> OrgActivityEntries { get; set; } = null!;
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -1003,6 +1006,29 @@ public class AppDbContext(
                 .HasDatabaseName("IX_PropertyMemberAccesses_PropertyId");
             entity.HasIndex(a => new { a.OrgId, a.UserId })
                 .HasDatabaseName("IX_PropertyMemberAccesses_OrgId_UserId");
+        });
+
+        // ─── Activity log of the org (AM-02b) ───────────────────────────────────────────────────────────────
+        modelBuilder.Entity<OrgActivityEntry>(entity =>
+        {
+            // The log of an org goes with it. No foreign key to the account: the history outlives it and holds ids only.
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(e => e.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The page of the people who administer the org: the newest lines of one org (the tenant filter reads OrgId too).
+            entity.HasIndex(e => new { e.OrgId, e.When })
+                .IsDescending(false, true)
+                .HasDatabaseName("IX_OrgActivityEntries_OrgId_When");
+
+            // The filter by event, and the count of the access requests of one person.
+            entity.HasIndex(e => new { e.OrgId, e.Type })
+                .HasDatabaseName("IX_OrgActivityEntries_OrgId_Type");
+
+            // The retention deletes across every org what is older than the cutoff.
+            entity.HasIndex(e => e.When)
+                .HasDatabaseName("IX_OrgActivityEntries_When");
         });
 
         // The member in charge of a property (AM-03): notified together with the org's administrators. The account can go;

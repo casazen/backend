@@ -28,6 +28,7 @@ public class GdprControllerOrgExportTests
     private readonly Mock<IGdprService> _gdpr = new();
     private readonly Mock<IOrgContextResolver> _org = new();
     private readonly Mock<IHostScopeResolver> _scopes = new();
+    private readonly Mock<IAuthorizationService> _authorization = new();
     private readonly GdprController _controller;
 
     public GdprControllerOrgExportTests()
@@ -36,8 +37,9 @@ public class GdprControllerOrgExportTests
             _gdpr.Object,
             _org.Object,
             Mock.Of<IGuestAccessService>(),
-            Mock.Of<IAuthorizationService>(),
+            _authorization.Object,
             _scopes.Object,
+            Mock.Of<IOrgActivityService>(),
             Mock.Of<ILogger<GdprController>>())
         {
             ControllerContext = new ControllerContext
@@ -49,6 +51,11 @@ public class GdprControllerOrgExportTests
             },
         };
         _org.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgId);
+
+        // The activity log keeps its own permission inside the export (AM-02b): not held here, so the log stays out of these tests.
+        _authorization
+            .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<string>()))
+            .ReturnsAsync(AuthorizationResult.Failed());
     }
 
     private void CallerReaches(HostScope? scope) =>

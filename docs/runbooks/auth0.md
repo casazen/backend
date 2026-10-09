@@ -511,4 +511,4 @@ The 60 s authorization cache and the role-id cache are per process. A role chang
 the instance that made it and within `Authorization__UserCacheSeconds` on the other instances. The deactivation is not
 cached: every instance refuses the user from its next request. For the org team (AM-03b): a role or a property scope that was just
 narrowed is old on the other instances for up to that time; before `Features__OrgTeam` is turned on in production with several
-instances, run one instance or set `Authorization__UserCacheSeconds` to 0-5 (`org-team.md` § 31).
+instances, run one instance or set `Authorization__UserCacheSeconds` to 0-5 (`org-team.md` § 42).

@@ -1,10 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.OrgTeam;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -24,8 +24,7 @@ public class PropertyResponsibilityReleaseTests
 
     private readonly OrgInvitationTestKit _kit = new();
 
-    private OrgPropertyAccessService Access(AppDbContext db) =>
-        new(db, _kit.Cache.Object, NullLogger<OrgPropertyAccessService>.Instance, _kit.Clock);
+    private OrgPropertyAccessService Access(AppDbContext db) => _kit.PropertyAccess(db);
 
     private sealed record World(Guid OrgId, Guid AnnaMemberId, Guid A, Guid B);
 
@@ -197,6 +196,67 @@ public class PropertyResponsibilityReleaseTests
         await Assert.ThrowsAsync<DomainRuleException>(() => SetAsync(world, PropertyScope.Selected, world.B, Guid.NewGuid()));
 
         Assert.Equal(Anna, await ResponsibleAsync(world.A));
+    }
+
+    // --- The activity log says it (AM-02b) -------------------------------------------------------------
+
+    private async Task<List<Dictionary<string, string>>> AccessLinesAsync(Guid orgId) =>
+        (await _kit.ReadActivityAsync(orgId))
+        .Where(line => line.Type == OrgActivityType.MemberPropertyAccessChanged)
+        .Select(line => OrgActivityDetails.Parse(line.DetailsJson).ToDictionary(d => d.Key, d => d.Value))
+        .ToList();
+
+    [Fact]
+    public async Task SetAsync_ReleasingAResponsibility_SaysSoOnTheLineOfTheAccess_AsACount()
+    {
+        var world = await SeedAsync();
+        await SetAsync(world, PropertyScope.Selected, world.A, world.B);
+        await PutInChargeAsync(world, world.A, Anna);
+        await PutInChargeAsync(world, world.B, Anna);
+        _kit.Clock.Advance(TimeSpan.FromMinutes(1));
+
+        await SetAsync(world, PropertyScope.Selected, world.B);
+
+        var lines = await AccessLinesAsync(world.OrgId);
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(new Dictionary<string, string> { ["scope"] = "Selected", ["granted"] = "2", ["revoked"] = "0" }, lines[0]);
+        Assert.Equal(
+            new Dictionary<string, string> { ["scope"] = "Selected", ["granted"] = "0", ["revoked"] = "1", ["released"] = "1" },
+            lines[1]);
+    }
+
+    [Fact]
+    public async Task SetAsync_WithNothingToRelease_LeavesTheDetailsOfTheLineAsTheyWere()
+    {
+        var world = await SeedAsync();
+        await SetAsync(world, PropertyScope.Selected, world.A, world.B);
+
+        await SetAsync(world, PropertyScope.Selected, world.B);
+
+        var lines = await AccessLinesAsync(world.OrgId);
+        Assert.DoesNotContain(lines, details => details.ContainsKey("released"));
+    }
+
+    [Fact]
+    public async Task SetAsync_AStaleNameOnAPropertyNotGiven_IsReleasedAndTraced_EvenWhenNoGrantChanges()
+    {
+        var world = await SeedAsync();
+        await SetAsync(world, PropertyScope.Selected, world.A);
+        // A name that should not be there (a write that raced with an older build, a row changed by hand).
+        await using (var db = _kit.NewDb())
+        {
+            (await db.Properties.SingleAsync(p => p.Id == world.B)).ResponsibleUserId = Anna;
+            await db.SaveChangesAsync();
+        }
+
+        _kit.Clock.Advance(TimeSpan.FromMinutes(1));
+        await SetAsync(world, PropertyScope.Selected, world.A);
+
+        Assert.Null(await ResponsibleAsync(world.B));
+        var last = (await AccessLinesAsync(world.OrgId)).Last();
+        Assert.Equal(
+            new Dictionary<string, string> { ["scope"] = "Selected", ["granted"] = "0", ["revoked"] = "0", ["released"] = "1" },
+            last);
     }
 
     // --- The person leaves, changes role or is suspended -----------------------------------------------

@@ -24,6 +24,7 @@ public sealed class OrgTeamService(
     IOrgSeatService seats,
     IOrgMembershipService membership,
     IUserAuthorizationCache authorizationCache,
+    IActivityLog activityLog,
     ILogger<OrgTeamService> logger) : IOrgTeamService
 {
     public async Task<OrgTeamView> ListAsync(Guid orgId, CancellationToken cancellationToken = default)
@@ -55,6 +56,19 @@ public sealed class OrgTeamService(
 
             await membership.ChangeRoleAsync(target.UserId, role, cancellationToken);
 
+            // Same transaction as the change; nothing to say when the person already had the role.
+            if (target.Role != role)
+            {
+                await RecordAsync(
+                    OrgActivityType.MemberRoleChanged,
+                    orgId,
+                    actorUserId,
+                    target.UserId,
+                    cancellationToken,
+                    (OrgActivityDetailKeys.FromRole, target.Role.ToString()),
+                    (OrgActivityDetailKeys.ToRole, role.ToString()));
+            }
+
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
         }
@@ -82,6 +96,18 @@ public sealed class OrgTeamService(
             EnsureCanAct(actor, target);
 
             await membership.DeactivateAsync(target.UserId, cancellationToken);
+
+            // Idempotent: deactivating who is already deactivated changes, and says, nothing.
+            if (target.Status == OrgMemberStatus.Active)
+            {
+                await RecordAsync(
+                    OrgActivityType.MemberDeactivated,
+                    orgId,
+                    actorUserId,
+                    target.UserId,
+                    cancellationToken,
+                    (OrgActivityDetailKeys.Role, target.Role.ToString()));
+            }
 
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -115,6 +141,17 @@ public sealed class OrgTeamService(
 
             await membership.ReactivateAsync(target.UserId, cancellationToken);
 
+            if (target.Status == OrgMemberStatus.Deactivated)
+            {
+                await RecordAsync(
+                    OrgActivityType.MemberReactivated,
+                    orgId,
+                    actorUserId,
+                    target.UserId,
+                    cancellationToken,
+                    (OrgActivityDetailKeys.Role, target.Role.ToString()));
+            }
+
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
         }
@@ -143,6 +180,14 @@ public sealed class OrgTeamService(
 
             await membership.RemoveAsync(target.UserId, cancellationToken);
 
+            await RecordAsync(
+                OrgActivityType.MemberRemoved,
+                orgId,
+                actorUserId,
+                target.UserId,
+                cancellationToken,
+                (OrgActivityDetailKeys.Role, target.Role.ToString()));
+
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
         }
@@ -154,6 +199,23 @@ public sealed class OrgTeamService(
     }
 
     // ─── Rules and reads ────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Writes the line of the activity log for what the membership service has just done, <b>inside the transaction that is
+    /// still open</b>: the change was saved by the membership service, the line is saved here, and the caller commits both or,
+    /// if this save fails, neither (the transaction is disposed without a commit).
+    /// </summary>
+    private async Task RecordAsync(
+        OrgActivityType type,
+        Guid orgId,
+        string actorUserId,
+        string subjectUserId,
+        CancellationToken cancellationToken,
+        params (string Key, string Value)[] details)
+    {
+        activityLog.Record(OrgActivity.Of(orgId, type, actorUserId, subjectUserId, details));
+        await db.SaveChangesAsync(cancellationToken);
+    }
 
     /// <summary>The caller and the member it acts on, both from their rows (read under the lock), or 404 for a member of another org.</summary>
     private async Task<(OrgMember Actor, OrgMember Target)> LoadAsync(

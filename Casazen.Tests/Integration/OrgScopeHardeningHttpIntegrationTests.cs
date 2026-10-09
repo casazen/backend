@@ -148,8 +148,9 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
 
         var export = await JsonAsync(await owner.GetAsync("/api/gdpr/org/export"));
 
+        // The keys it always had; the owner also gets the activity log (AM-02b).
         Assert.Equal(
-            ["exportedAt", "fiscalCode", "fiscalDataRetentionUntil", "hasPartitaIva", "members", "partitaIvaNumber", "propertyFiscalYears", "propertyTaxpayers"],
+            ["activity", "exportedAt", "fiscalCode", "fiscalDataRetentionUntil", "hasPartitaIva", "members", "partitaIvaNumber", "propertyFiscalYears", "propertyTaxpayers"],
             export.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         Assert.Equal(OrgFiscalCode, export.GetProperty("fiscalCode").GetString());
         Assert.True(export.GetProperty("hasPartitaIva").GetBoolean());

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -21,6 +22,7 @@ namespace Casazen.Infrastructure.Services;
 public sealed class OrgPropertyAccessService(
     AppDbContext db,
     IUserAuthorizationCache authorizationCache,
+    IActivityLog activityLog,
     ILogger<OrgPropertyAccessService> logger,
     TimeProvider? timeProvider = null) : IOrgPropertyAccessService
 {
@@ -78,9 +80,11 @@ public sealed class OrgPropertyAccessService(
                 .Where(a => a.OrgId == orgId && a.UserId == target.UserId)
                 .ToListAsync(cancellationToken);
 
-            db.PropertyMemberAccesses.RemoveRange(grants.Where(g => !wanted.Contains(g.PropertyId)));
+            var taken = grants.Where(g => !wanted.Contains(g.PropertyId)).ToList();
+            db.PropertyMemberAccesses.RemoveRange(taken);
             var now = _clock.GetUtcNow().UtcDateTime;
-            foreach (var propertyId in wanted.Where(id => grants.All(g => g.PropertyId != id)))
+            var given = wanted.Where(id => grants.All(g => g.PropertyId != id)).ToList();
+            foreach (var propertyId in given)
             {
                 db.PropertyMemberAccesses.Add(new PropertyMemberAccess
                 {
@@ -92,14 +96,38 @@ public sealed class OrgPropertyAccessService(
                 });
             }
 
-            target.PropertyScope = target.Role == OrgRole.Collaborator ? scope : PropertyScope.All;
+            var newScope = target.Role == OrgRole.Collaborator ? scope : PropertyScope.All;
 
             // A person who no longer reaches a property cannot stay in charge of it (AM-03b): the properties of "Solo alcuni" that
             // are not in the new set lose their person in charge, in the same save as the grants that were taken away. With every
             // property nothing was taken away, so nothing is released.
-            released = target.PropertyScope == PropertyScope.Selected
+            released = newScope == PropertyScope.Selected
                 ? await PropertyResponsibility.ReleaseAsync(db, orgId, target.UserId, wanted, now, cancellationToken)
                 : [];
+
+            // Who gave what to whom (AM-02b): one line for the change, in the save that writes it, and none when nothing changed.
+            // The properties themselves are not named: the line says the scope the member now has and how many were given or taken,
+            // and (AM-03b) how many lost their person in charge with it, only when some did.
+            if (given.Count + taken.Count + released.Count > 0 || newScope != target.PropertyScope)
+            {
+                var details = new List<(string Key, string Value)>
+                {
+                    (OrgActivityDetailKeys.Scope, newScope.ToString()),
+                    (OrgActivityDetailKeys.Granted, given.Count.ToString(CultureInfo.InvariantCulture)),
+                    (OrgActivityDetailKeys.Revoked, taken.Count.ToString(CultureInfo.InvariantCulture)),
+                };
+                if (released.Count > 0)
+                    details.Add((OrgActivityDetailKeys.Released, released.Count.ToString(CultureInfo.InvariantCulture)));
+
+                activityLog.Record(OrgActivity.Of(
+                    orgId,
+                    OrgActivityType.MemberPropertyAccessChanged,
+                    actor.UserId,
+                    target.UserId,
+                    [.. details]));
+            }
+
+            target.PropertyScope = newScope;
 
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)

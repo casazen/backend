@@ -4,11 +4,12 @@ Task AM-01 of the wave spec (org team, step 1: who belongs to which org and as w
 backend only) is described in sections 1 to 9. Task AM-02 (step 2: invitations, members and seats; decisions D13, D14,
 D15, D35; backend only) is described in sections 10 to 19. Task AM-03 (step 3: the properties each member reaches, read
 from the database, and the finer permissions; stakes S3 and S5 of the wave spec; backend only) is described in
-sections 20 to 28. Task AM-03b (the two findings of the security review of AM-03, the limit of the authorization cache with more
-than one API instance, and the crossing of the property scope with the payments of the suppliers; backend only) is described in sections
-29 to 33. The activity log and the access requests come with AM-02b, the screens with AM-04: **nothing here
-changes what a user sees today, but for a collaborator limited to "Solo alcuni" (section 20), which nobody is yet**. The
-flag `OrgTeam` is off by default and gates every endpoint of the team (sections 18 and 26).
+sections 20 to 28. Task AM-02b (step 4: the activity log, with its CSV and its 12-month retention, and the requests for
+access to the administrators; decision D17; backend only) is described in sections 29 to 39. Task AM-03b (the two findings of the
+security review of AM-03, the limit of the authorization cache with more than one API instance, and the crossing of the property
+scope with the payments of the suppliers; backend only) is described in sections 40 to 44. The screens come with AM-04:
+**nothing here changes what a user sees today, but for a collaborator limited to "Solo alcuni" (section 20), which nobody is
+yet**. The flag `OrgTeam` is off by default and gates every endpoint of the team (sections 18, 26 and 37).
 
 ## 1. What exists after AM-01
 
@@ -453,8 +454,8 @@ nowhere: the database has only its hash.
 - **Consents**: the person who accepts records the four consents (Terms, Privacy, DPA, subprocessors) for the org it joins
   (D14) with the version and the IP. An empty org that is left keeps its consents (history).
 - **Org export** (`GET /api/gdpr/org/export`): the new `members` list, with `UserId`, role, status, property scope and the dates
-  of each member of the org. **No names, no emails**: the export is reachable with property permissions until #461 moves it
-  under the owner's, and the names are on the people page. The invitations are not exported (temporary, closed ones are deleted).
+  of each member of the org. **No names, no emails**: the names are on the people page (the export is the holder's since AM-03b,
+  section 40). The invitations are not exported (temporary, closed ones are deleted).
 - **Logs** never carry the token, and carry the email only masked (`m***@example.com`).
 - **Privacy notice (legal text).** It must say that the name and the email of the invitee are processed to send the
   invitation and kept until 30 days after it closed, and that the people of an org are visible to its owner and
@@ -627,7 +628,7 @@ checks every code in both languages.
   What may be late on them is the decision (is the member limited at all) and the single-resource checks; the lists read the
   grants in SQL. Consequence to know: when the owner *narrows* a collaborator from "all" to "some", an instance that still holds the
   old snapshot treats it as org-wide for up to a minute. Deactivating a member is not affected: that is read from the database
-  on every request (`member_inactive`, section 5). What to do about it before the team is used in production: section 31.
+  on every request (`member_inactive`, section 5). What to do about it before the team is used in production: section 42.
 
 ## 24. Who is told
 
@@ -636,7 +637,7 @@ the **member in charge of the property and the administrators of the org** (the 
 contact address of the org as before. While nobody is named, **the creator of the property stands in** (a manager who added a
 property keeps hearing about it until someone is put in charge). A deactivated member, an inactive account and a user of another
 org are never told. One rule for the push (`PushDeliveryJob`) and for the emails (`BookingNotifier`): `HostNotificationAudience`.
-**The person in charge is told only while they still reach the property (AM-03b, section 30)**: a collaborator "Solo alcuni" who lost the property
+**The person in charge is told only while they still reach the property (AM-03b, section 41)**: a collaborator "Solo alcuni" who lost the property
 is no longer told even if a stale name is still on it.
 The old rule read `User.Role` (`Admin` or `PropertyManager`), which says nothing about the team: a platform admin was in every
 org, a property manager of the team in none. The tests are `PushDeliveryJobTests` and `BookingNotifierHostAudienceTests`.
@@ -671,7 +672,7 @@ invitation or the `PUT`). With the flag off nobody is limited, so nothing change
 and the S5 rule (section 25) apply from the deploy.
 
 **Order.** (1) Deploy (flag off). (2) Check with the queries of section 27 that no member has `PropertyScope = 2` (there should be none).
-(3) With more than one API instance, apply the advice of section 31 (one instance, or `Authorization__UserCacheSeconds` 0 to 5).
+(3) With more than one API instance, apply the advice of section 42 (one instance, or `Authorization__UserCacheSeconds` 0 to 5).
 (4) AM-04 (the screens) and then `Features__OrgTeam=true`, as in section 18.
 
 | Level | How | Effect |
@@ -752,10 +753,257 @@ number of commands does not grow with the number of properties, cascade and set 
   property).
 - **FU3.** The contact shown to a supplier is still the creator of the property and the host email of the service request is still
   the contact of the org (section 24 covers the push and the booking emails).
-- **FU4.** The activity log of the grants (who gave what to whom) is AM-02b's; `PropertyMemberAccesses.CreatedByUserId` and `CreatedAt`
-  are the raw material.
+- **FU4.** The activity log of the grants (who gave what to whom) is AM-02b's (done: the event `MemberPropertyAccessChanged`, section 30);
+  `PropertyMemberAccesses.CreatedByUserId` and `CreatedAt` were the raw material.
 
-## 29. The export of the org is the holder's (AM-03b)
+---
+
+# Part 4 - AM-02b: the activity log and the requests for access
+
+## 29. What AM-02b adds
+
+The people who administer the org see **who did what** in a short list with no personal data, and a member who cannot do
+something **asks the administrators for access**. Backend only; the screens are AM-04's. Behind the flag `OrgTeam`.
+
+| Piece | Where | What it does |
+|---|---|---|
+| `OrgActivityEntry` | table `OrgActivityEntries`, `Casazen.Core/Entities/OrgActivityEntry.cs` | One line: when, who (an id or nobody), the area, the event, what it is about (an id) and a few codes. `ITenantOwned`. **Ids and codes only.** |
+| `OrgActivityCatalog` | `Casazen.Core/OrgTeam/OrgActivityCatalog.cs` | The whole perimeter: every event, its area, what its id is, the details it may carry. It refuses anything else. |
+| `IActivityLog` | `Casazen.Infrastructure/Services/ActivityLog.cs` | `Record(...)` stages a line in the unit of work of the service that calls it (section 32). |
+| `IOrgActivityService` | `OrgActivityService.cs` | Reads the log: filters, pages, and the stream behind the CSV (section 33). |
+| `OrgActivityController` | `Casazen.Web/Controllers` | `GET /api/orgs/me/activity` and `GET /api/orgs/me/activity.csv`, policy `RequireContext:account:org.activity.read` (`CasazenPolicies.OrgActivityRead`). |
+| `IOrgAccessRequestService`, `OrgAccessRequestsController` | `OrgAccessRequestService.cs` | `POST /api/orgs/me/access-requests` (section 36). |
+| `IOrgActivityRetentionService`, `OrgActivityRetentionJob` | `OrgActivityRetentionService.cs` | The nightly deletion of the lines older than 12 months (section 34). |
+
+## 30. The events (the whole perimeter)
+
+Seventeen events, **twelve written today and five reserved**. The runbook, `OrgActivityCatalog` and `OrgActivityType` list the
+same ones: a test fails if they disagree, and another one if an event that is not reserved is recorded by nobody or a reserved
+one by somebody. A new event is an enum value (integers in groups of ten, never reused), an entry of the catalog, a row here and
+a test; the limit is about twenty.
+
+| Event (`Type`) | Value | Area | Subject (`SubjectId`) | Details | Written by, and when |
+|---|---|---|---|---|---|
+| `MemberInvited` | 1 | `account` | the invitation | `role` | `OrgInvitationService.CreateAsync`, in the save of the invitation |
+| `InvitationRevoked` | 2 | `account` | the invitation | `role` | `RevokeAsync`; a second revoke writes nothing |
+| `InvitationAccepted` | 3 | `account` | the invitation | `role` | `AcceptAsync`, in the save that closes the invitation, **in the org joined**; the actor is the person who accepted |
+| `MemberRoleChanged` | 4 | `account` | the member's account | `fromRole`, `toRole` | `OrgTeamService.ChangeRoleAsync`; the same role writes nothing |
+| `MemberDeactivated` | 5 | `account` | the member's account | `role` | `OrgTeamService.DeactivateAsync`; deactivating who is already deactivated writes nothing |
+| `MemberReactivated` | 6 | `account` | the member's account | `role` | `ReactivateAsync`, same rule |
+| `MemberRemoved` | 7 | `account` | the member's account | `role` | `RemoveAsync` |
+| `MemberPropertyAccessChanged` | 8 | `account` | the member's account | `scope`, `granted`, `revoked`, `released` | `OrgPropertyAccessService.SetAsync`: **who gave what to whom** (AM-03-FU5). One line for the change: the scope the member now has and how many properties were given and taken away; none when nothing changed. AM-03b: `released` is how many properties lost their person in charge with it (section 41), written only when some did |
+| `AccessRequested` | 9 | `account` | the org | `requestedArea` | `OrgAccessRequestService` (section 36); the actor is the member who asked |
+| `PlanChanged` | 20 | `account` | the org | `fromTier`, `toTier`, `source` | `OrgService.UpdatePlanTierAsync` (`source` `org` for the billing administrator, `staff` for CasaZen staff), the Stripe webhook and `EntitlementService.SyncFromSubscriptionAsync` (`subscription`, **no actor**) |
+| `OrgNameChanged` | 21 | `account` | the org | none | `OrgService.UpdateSettingsAsync`; **the name itself is never recorded** |
+| `OrgSlugChanged` | 22 | `account` | the org | none | same; **the slug itself is never recorded** |
+| `PropertyModeChangeScheduled` | 40 | the property's | the property | `fromMode`, `toMode`, `effectiveOn` | *reserved*: PM-02 (the area is passed by the caller, `ShortRent` by default) |
+| `PropertyModeChangeCancelled` | 41 | the property's | the property | `fromMode`, `toMode` | *reserved*: PM-02 |
+| `PropertyModeChanged` | 42 | the property's | the property | `fromMode`, `toMode` | *reserved*: PM-02 (the daily job: no actor) |
+| `TrustedSupplierAdded` | 60 | `supplier` | the supplier | none | *reserved*: the trusted suppliers of the host (wave spec P10) |
+| `TrustedSupplierRemoved` | 61 | `supplier` | the supplier | none | *reserved*: same |
+
+The area is one of `account`, `short-rent`, `long-rent`, `supplier` (the keys of the contexts of the web app). A reserved event is
+**not written by anything yet**: its code and its details are fixed now so that the integers do not change when the task that builds
+the feature arrives.
+
+**Not instrumented on purpose** (the task says: nothing else): sending an invitation again or copying its link, the person in
+charge of a property, the contact email and the publication of the org, the billing profile, prices and bookings (other areas and
+tasks), the owner's creation at the onboarding, the reconcile, a person leaving an empty org, logins and security (Auth0).
+
+## 31. What a line holds, and what never
+
+`OrgActivityEntries`: `Id`, `OrgId` (FK `Orgs`, **cascade**), `When` (UTC, to the microsecond), `ActorUserId` (255, nullable: nobody when
+a job or a webhook did it), `Area`, `Type`, `SubjectType` (all three integers, explicit), `SubjectId` (255), `DetailsJson` (`jsonb`, an
+object of a few keys). Indexes: `IX_OrgActivityEntries_OrgId_When` (`OrgId`, `When` descending: the page), `IX_OrgActivityEntries_OrgId_Type`
+(the filter by event and the count of the access requests of a person), `IX_OrgActivityEntries_When` (the retention).
+
+**The log is poor on purpose.** It is read by people other than the one who acted and kept for 12 months, so:
+
+- the actor and the subject are **opaque ids** (`User.Id`, a GUID); the client resolves them with what it can already see, so a name
+  is never stored. **No foreign key to the account**: erasing an account leaves an id that nobody can resolve (as `InvitedByUserId`).
+- the details are **codes**: an org role, a plan tier, a count, a date, the code of an area. Only the keys the event allows
+  (`OrgActivityDetailKeys`, a closed list), and every value must be a short code (letters, digits, `. _ -`, 40 characters at most:
+  no space, no `@`, no sentence). `IActivityLog.Record` throws `ArgumentException` otherwise, so a mistake of a service shows up in
+  its tests and not in production.
+- the **name and the slug of the org** are not in the log: the event says that they changed. The **note** of an access request is
+  not in the log either: it goes in the email and nowhere else.
+- `OrgActivityCatalogTests` pins the shape of the row (a new column, a note or a name, fails it) and the integers of every
+  enumeration; `OrgActivityEventsTests` runs a whole journey with names, emails and a slug that must not appear in any column.
+
+## 32. Written inside the transaction
+
+`IActivityLog.Record` **does not save**: it adds the line to the `AppDbContext` of the request, the very instance the service saves
+with. The line is written by the `SaveChanges` of the change it records, in its transaction:
+
+- **one save**: the invitation and its line (`CreateAsync`), the revocation, the plan, the name and the slug, the properties given to
+  a member, the webhook that sets the tier, the acceptance (the line is staged right before the save that closes the invitation);
+- **two saves in the transaction the service opened**: the role, the deactivation, the reactivation and the removal are saved by
+  `IOrgMembershipService` (it joins the transaction of `OrgTeamService`) and the line right after, before the commit. If the line cannot
+  be saved the transaction is not committed and the change goes with it.
+
+Hence a change that is rolled back leaves no line, and a line is never written for a change that did not happen. A refusal (409, 403,
+422) writes nothing, and **an idempotent repeat writes nothing** (the same role, an already deactivated member, the same set of
+properties, the same tier). The line is staged **after** the checks and only when something really changes.
+
+**While `Features__OrgTeam` is off `Record` collects nothing** (it still checks the event against the catalog): a deploy with the
+flag off starts no new processing of personal data and the plan, the name and the slug of an org change exactly as before. The
+retention job runs anyway. `OrgActivityPostgresTests` proves the transaction on PostgreSQL (an outer transaction rolled back takes the
+change and the line away; a line for an org that does not exist makes the save fail and the change is undone, for the team, the
+invitation, its acceptance, the plan and the property access).
+
+## 33. Endpoints
+
+Both need the permission `org.activity.read` of the `account` context (the owner and the administrators) and answer **404 to
+everybody, before the authentication, while `Features__OrgTeam` is off**. The org is always the caller's own.
+
+| Endpoint | Answer |
+|---|---|
+| `GET /api/orgs/me/activity?from&to&type&area&actor&page&pageSize` | 200 `{ items, totalCount, page, pageSize }`, newest first (then by id: a page never repeats or skips a line). Each item: `id`, `when` (UTC), `actorUserId` (null: nobody), `area` (the code), `type`, `subjectType`, `subjectId`, `details`. `from` and `to` are both included. `type` is one or more events (repeat the parameter or separate the names with commas, any case). `actor` is an account id, or `system` for what no person did. `page` from 1, `pageSize` 50 (1 to 100). **The text of a line is composed by the client from its `type` and its ids** (the demo's "Giulia Rinaldi ha cambiato il ruolo di Sara Conti"). |
+| `GET /api/orgs/me/activity.csv` (the same filters, no paging) | 200 `text/csv`, an attachment `activity-yyyyMMdd.csv`, `Cache-Control: no-store`. Fixed header `id,when,actor,area,type,subjectType,subjectId,details`; `when` is `yyyy-MM-ddTHH:mm:ss.ffffffZ`; `details` is `key=value;key=value` in key order; RFC 4180 escaping, CRLF, and a cell that a spreadsheet would run as a formula (it starts with `=`, `+`, `-`, `@` or a tab) gets a leading apostrophe. A log with nothing in it, or a filter that matches nothing, is the header alone. The file is streamed from the database, not held in memory. |
+
+Errors: 400 (validation) for an unknown event, an unknown area, a `from` after the `to` or a date that is not a date; the message is in the
+language of `Accept-Language` (`OrgActivityTypeUnknown`, `OrgActivityAreaUnknown`, `OrgActivityRangeInvalid`). The global tenant filter stays
+on next to the explicit `OrgId` of every query, so a caller handed another org's id by mistake finds nothing.
+
+## 34. Retention (12 months)
+
+Decision D17: **12 months, to be confirmed with the legal advisor** (gap/06, decisions 9 and 10). The nightly job
+`org-activity-retention` (03:40 UTC, [`hangfire.md`](hangfire.md)) deletes, for every org, the lines **older** than
+`OrgTeam__ActivityRetentionMonths` calendar months back from now (a whole number from 1 to 120; anything else is ignored and 12
+applies, so a typo never empties the log nor keeps it for ever). A line exactly at the limit stays.
+
+It deletes in batches of 500, oldest first, each batch in a transaction, at most 100 batches a run (a backlog is taken in several
+nights). **Idempotent**: a second run finds nothing. One run at a time: a session advisory lock (`OrgActivityRetention`, 1405) on top of
+the lock of Hangfire; a run that finds it taken logs `Org activity retention skipped` and does nothing. It runs with the `OrgTeam`
+flag off too. Only this service deletes; nobody updates a line (`OrgActivityArchitectureTests`).
+
+## 35. GDPR
+
+- **Export of the org** (`GET /api/gdpr/org/export`): the answer gains `activity`, the same lines as the endpoint of the log, **only
+  for who holds `org.activity.read`**. The export is the holder's since AM-03b (section 40: `OrgBillingAdmin`, the owner and the
+  administrators; a collaborator gets 403), and the log keeps its own permission on top, so nobody reads through the export what it
+  cannot read in the log. The export is of what is stored, whatever the flag says.
+- **Erasure of an account**: the log keeps only ids, with no foreign key; what is left of the person is an id that nobody can resolve,
+  for at most 12 months. No name, no email, nothing to anonymize.
+- **Privacy notice (legal text)**: it must mention the activity log (the ids of the people who act, 12 months, visible to the owner and the
+  administrators) and the requests for access. **Not changed by AM-02b**: to do, with AM-02-FU3, before `Features__OrgTeam` is turned on.
+- [`gdpr.md`](gdpr.md) has the same rows.
+
+## 36. Access requests
+
+`POST /api/orgs/me/access-requests` (any **active member** of the org, whatever its role: policy `Authenticated`, the service checks
+the member row; a deactivated member is already refused by `member_inactive`, a signed-in account with no org gets 404). Body:
+`{ "area": "billing", "note": "..." }`.
+
+- **What can be asked**: `area` is one code of a closed list, `OrgAccessRequestRules.Areas`: the four areas (`account`, `short-rent`,
+  `long-rent`, `supplier`) and the pages `people`, `properties`, `suppliers`, `billing`, `organization`, `activity`, `integrations`,
+  `security`, `payments`, `reports`, `prices`. Anything else is 422 `access_request_area_unknown`. A closed list because the request is
+  written in the log, which holds no free text, and the email names the area in the language of the reader (`OrgAccessArea_*` in
+  `EmailTexts`). A new page is one line and two labels. The `note` is 200 characters at most (400 above), read once into the email as one line
+  with no control or invisible character, HTML-encoded, **never stored, never logged**.
+- **Who is told**: the active owner and the administrators of the org (the holders of `org.members.manage`: a test ties `OrgTeamRules.CanManageTeam`
+  to the permission of the seeded roles) whose account is active and has an email, **but the person who asks**. One email each (`org-access-request`,
+  Italian or English by `Accept-Language`, Italian otherwise), queued **after the commit**, with the name and the role of the requester, the area, the
+  note and the link to the people page. The answer is 202 `{ "notified": n }`; 0 when there was nobody to tell or the queue refused every email: the
+  request is recorded all the same.
+- **What is kept**: the line `AccessRequested` (the requester, the org, the code of the area). **No other state**: no request table, no status.
+  The answer is an administrator changing the role or the properties of the person, as it always could.
+- **Limits**: the endpoint is rate limited **per person** (`OrgAccessRequest`, 5 in 10 minutes, [`proxy-ip.md`](proxy-ip.md)), and on top of it a person
+  sends at most **three requests in 24 hours** (`OrgTeam__AccessRequestDailyLimit`), counted from the activity log under a lock per person, so it holds
+  across API instances and when requests arrive together: the next is 409 `access_request_limit_reached`. A refused request writes nothing and tells
+  nobody.
+
+## 37. Deploy, flag and rollback of AM-02b
+
+**Configuration.** Nothing is required. Optional: `OrgTeam__ActivityRetentionMonths` (12), `OrgTeam__AccessRequestDailyLimit` (3),
+`RateLimiting__OrgAccessRequest__PermitLimit` / `__WindowSeconds` (5 / 600). `App__PublicSiteBaseUrl` and the email provider are the
+ones the invitations already need.
+
+**The migration** `20261009095131_AddOrgActivityLog` is additive: one table, three indexes and the cascade from the org; nothing that exists is
+touched and the previous build ignores the table. It is applied at startup like the others. It follows `AddPropertyMemberAccess` on the AM
+chain: whoever merges after it regenerates its own migration on the updated snapshot (delete its migration files, take the snapshot of the updated base, then `dotnet ef migrations add` again; `migrations remove` only takes off the last migration by id), never a merge
+by hand of the snapshot.
+
+**Order.** (1) Deploy with `Features__OrgTeam` unset: the three endpoints answer 404, the log collects nothing, the retention job runs and finds
+nothing. (2) The privacy notice (section 35) and the confirmation of the 12 months with the legal advisor. (3) AM-04 (the screens) and then
+`Features__OrgTeam=true` as in sections 18 and 26.
+
+| Level | How | Effect |
+|---|---|---|
+| Stop the feature | unset `Features__OrgTeam` | the endpoints answer 404 and nothing more is collected; **what is already there stays** until the retention deletes it |
+| Keep less | lower `OrgTeam__ActivityRetentionMonths` | the next nightly run deletes the older lines |
+| Delete the log now | `DELETE FROM "OrgActivityEntries" WHERE "OrgId" = '<org id>'` (an operator, with a record of why) | the org's log is empty; nothing else changes |
+| Redeploy the previous build | nothing to undo: the table is ignored | no endpoint, no line; the table keeps its lines until it is dropped |
+| Undo the migration | `dotnet ef database update 20261009091620_AddPropertyMemberAccess`, with the previous build deployed | drops `OrgActivityEntries` and nothing else; the log is lost |
+
+## 38. Operating it
+
+| Situation | What to do |
+|---|---|
+| "The log is empty" | `Features__OrgTeam` was off (nothing is collected while it is off), or the event is one of the reserved ones, or the changes were made before the first deploy with the flag on. |
+| A change is not in the log | Check the event is one of the twelve of section 30 and that the change really changed something (the same role, plan or properties write nothing). A refused change writes nothing. |
+| 409 `access_request_limit_reached` | The person already sent three requests in 24 hours; the administrators were told. The limit frees up 24 hours after the first of them. Raise `OrgTeam__AccessRequestDailyLimit` only if the product decides so. |
+| 429 on `access-requests` | Five requests in ten minutes for that person (`RateLimiting__OrgAccessRequest__PermitLimit`); `Retry-After` says when. |
+| `notified: 0` | No active owner or administrator with an email other than the requester, or the email queue refused them (`The org access request of org ... was not queued` in the log; `docs/runbooks/email.md`). The request is in the log all the same. |
+| "The administrator did not get the email" | `Email org-access-request` in the delivery log of `EmailDeliveryJob`; the spam folder; an administrator whose account is blocked or whose email is empty is skipped. |
+
+Read-only queries for support (never write by hand):
+
+```sql
+-- lines per event for one org, the last 30 days
+SELECT "Type", count(*) FROM "OrgActivityEntries"
+WHERE "OrgId" = '<org id>' AND "When" > now() - interval '30 days'
+GROUP BY "Type" ORDER BY "Type";
+
+-- what is about to be deleted by the retention (older than the configured months, 12 by default)
+SELECT count(*), min("When") FROM "OrgActivityEntries" WHERE "When" < now() - interval '12 months';
+
+-- the access requests of one person in the last 24 hours (what the daily limit counts)
+SELECT count(*) FROM "OrgActivityEntries"
+WHERE "OrgId" = '<org id>' AND "Type" = 9 AND "ActorUserId" = '<user id>' AND "When" > now() - interval '24 hours';
+```
+
+## 39. Tests of AM-02b
+
+Unit and in-memory (they run everywhere): `OrgActivityCatalogTests` (the integers pinned, the closed list of details, the shape of the row,
+`Validate`, the runbook lists every event), `OrgAccessRequestRulesTests`, `ActivityLogTests` (staged and not saved, the instant, the
+flag, the catalog), `OrgActivityEventsTests` (every event with its line, ids and codes, a refusal or a repeat writes nothing, a whole
+journey with no name, email or slug in any column, the flag off), `StripeWebhookPlanActivityTests`, `OrgActivityServiceTests` (filters,
+paging, order, other orgs, the tenant filter), `OrgActivityCsvTests` (header, escaping, formulas, the download), `OrgActivityRetentionServiceTests`
+(12 months, the limit, idempotent, batches, configuration), `OrgAccessRequestServiceTests` (who is told, language, the note, the line, the daily
+limit, every refusal), `OrgAccessRequestEmailTemplatesTests`, `OrgActivityControllersTests`, `GdprControllerTests` (the export carries the log only for who may
+read it), `OrgActivityArchitectureTests` (one way in, append-only, no controller writes, reserved events), `AddOrgActivityLogMigrationSqlTests`,
+`OrgTeamLocalizationTests` (every code and message in both languages), `EndpointAuthorizationArchitectureTests` (the one authenticated-only action says why).
+HTTP (in-memory locally, PostgreSQL in CI): `OrgActivityHttpIntegrationTests` (the whole journey and the CSV, plan and org, filters and paging,
+400s, who reads it, tenant isolation, the export of the org, the access requests) and `OrgAccessRequestRateLimitIntegrationTests` (429 per
+person), plus the three new endpoints in `OrgInvitationsFlagOffIntegrationTests` (404 with the flag off).
+`[PostgresFact]` (CI only): `OrgActivityPostgresTests` (indexes, jsonb, cascade, no key to the account, the instant to the microsecond, tenant
+filter, **a rollback takes the change and its line away and a line that cannot be written takes the change with it**, filters and paging on
+real SQL, retention in batches and its run lock, **six access requests at once from one person: three work**),
+`AddOrgActivityLogMigrationPostgresTests`.
+
+## Decisions and follow-ups of AM-02b
+
+- **The log is dormant while `OrgTeam` is off** (section 32): a deploy starts no new processing of personal data. The price: the changes made while
+  the flag is off are not in the log.
+- **The CSV is streamed with the connection open** until the last line is written; fine for a log of 12 months of administrative events. If a
+  log ever grows large, page it by instant.
+- **Daily limit of the access requests (3)** counted from the log: a decision of this task (the spec asked for a rate limit), configurable.
+- **Not decided here (legal)**: the 12 months (D17) and the privacy notice (section 35).
+- **FU1 (AM-04).** The screen composes the sentence from `type` and the ids; for `PlanChanged` with no actor and `source` `subscription` it
+  can say that the plan changed with the subscription, with `staff` that CasaZen support changed it (the actor is then a staff account the org
+  cannot resolve).
+- **FU2.** A resolver of ids for the client if it cannot get the name of a person who left the org (today the client shows "ex membro").
+- **FU3.** The responsible of a property (AM-03) and the contact email of the org are not in the log; add the events (and the rows here) if the
+  product wants them.
+- **FU4 (PM-02 and the trusted suppliers).** The reserved events are written by their tasks: `PropertyModeChangeScheduled`, `PropertyModeChangeCancelled`,
+  `PropertyModeChanged` (area of the property) and `TrustedSupplierAdded`, `TrustedSupplierRemoved`.
+
+---
+
+# Part 5 - AM-03b: the findings of the review of AM-03
+
+## 40. The export of the org is the holder's (AM-03b)
 
 `GET /api/gdpr/org/export` returns the Partita IVA and the codice fiscale of the org, the taxpayer recorded on every property, the
 fiscal year and regime of every property and (since AM-02) the people with their role and scope. It needed `property.read`, which
@@ -781,7 +1029,7 @@ Tests: `GdprControllerOrgExportTests`, `OrgExportScopeTests`, `OrgScopeHardening
 `OrgBillingAdminPolicyCoverageTests` and `OrgBillingAdminMembershipAccessTests` (they find the action by reflection: under the policy, a
 member of the org is refused and the owner is not), `OrgScopeHardeningHttpIntegrationTests` (the real pipeline), `OrgScopeHardeningPostgresTests` (CI).
 
-## 30. The person in charge goes with the access (AM-03b)
+## 41. The person in charge goes with the access (AM-03b)
 
 The review also found that `Property.ResponsibleUserId` stayed after the access to the property was taken away, so the push and the
 emails of a booking (name and email of the guest, dates, prices) kept going to a person who could no longer open it. Two levels, so a
@@ -802,15 +1050,16 @@ stale name never tells anybody:
    write on another instance, a row changed by hand), a member row of another org, a user with no row who is not the creator: nobody but the
    owner and the administrators hears. This is the rule that lets a person be put in charge (`EnsureCanBeInChargeAsync`), read again at the moment of telling.
 
-The activity log of AM-02b is not in `develop` yet. The release is logged (`Property responsibility released with the access`, counts only,
-no personal data); when the log exists, the entry "responsibility released" goes next to the one of the grants in
-`OrgPropertyAccessService.SetAsync` and `OrgMembershipService.RemoveAsync` (the ids of the properties are returned by `ReleaseAsync`).
+**The activity log (AM-02b, section 30).** The line of the change of the access (`MemberPropertyAccessChanged`: scope, `granted`,
+`revoked`) gets one more detail, `released`, the number of properties that lost their person in charge with it; it is written only when there
+were some, so every other line is as it was, and (like the rest of the log) only with the `OrgTeam` flag on. A removal is already the line
+`MemberRemoved`, which says the rest; the release is also logged (`Property responsibility released with the access`, counts only, no personal data).
 
 Tests: `PropertyResponsibilityReleaseTests`, `HostNotificationAudienceReachTests` (the query, the emails and the push, and the whole journey),
 `PropertyResponsibleSaveTests`, `OrgScopeHardeningSqlShapeTests`, `OrgScopeHardeningHttpIntegrationTests`; on PostgreSQL (CI)
 `OrgScopeHardeningPostgresTests` (the real SQL, and an appointment against a revocation, eight rounds, never ends with a name and no access).
 
-## 31. The authorization cache with more than one API instance (AM-03b)
+## 42. The authorization cache with more than one API instance (AM-03b)
 
 The authorization data of a person (its role, its memberships, its property scope and grants: `UserAuthorizationSnapshot`) is read once
 per request and kept for `Authorization__UserCacheSeconds` seconds (default **60**) in the memory of the API process (`IMemoryCache`). A
@@ -833,7 +1082,7 @@ off, because nobody can be limited or changed. A small, trusted team may accept 
 The proper cure is a channel between the instances that invalidates the copies (a version counter read from the database with each request,
 or a pub/sub): a task of its own (AM-03b-FU2). The row of `Features__OrgTeam` in [`deploy-checklist.md`](deploy-checklist.md) says the same.
 
-## 32. The payments of the interventions and the scope (AM-03b)
+## 43. The payments of the interventions and the scope (AM-03b)
 
 SP-15a gave the host three actions that move money for an intervention, and AM-03 the finer permission `servicerequest.write`. They cross
 like this (short-rent; the long-rent twins under `api/long-rent/service-requests` are the same with `property.write` held in long-rent):
@@ -861,7 +1110,7 @@ Tests: `ServiceRequestPaymentScopeTests` (the six actions, short and long rent, 
 `HostResourceArchitectureTests`, `OrgScopeHardeningHttpIntegrationTests` (the real pipeline, also with `property.write` given to the collaborator's role),
 and the existing `ServicePaymentsIntegrationTests` for the rest of the payment.
 
-## 33. Decisions and follow-ups of AM-03b
+## 44. Decisions and follow-ups of AM-03b
 
 - **The export is the holder's** (`OrgBillingAdmin`, no new policy): it is the policy that already means "owner or administrator of the org", the
   billing and the domain use it, and the audit tests find the action by reflection. No change of shape for the holder.
@@ -869,11 +1118,12 @@ and the existing `ServicePaymentsIntegrationTests` for the rest of the payment.
   administrators are told in any case, the creator stands in while it reaches the property. Naming the owner would put a person on the property that
   can leave or be replaced, and needs one more read. If the product owner prefers an explicit owner, it is one line in `PropertyResponsibility.ReleaseAsync`.
 - **A deactivation keeps the name** (the audience skips a deactivated member); only a removal and a narrowing of the access release it.
-- **The activity log**: no entry yet (AM-02b is not in `develop`); the release is logged with counts only.
+- **The activity log**: no new event (the catalog is a closed list): the release is the detail `released` of the line of the access, written
+  only when some property lost its person in charge.
 - **AM-03b-FU1 - `POST /api/gdpr/org/anonymize`** is still `property.write`: a property manager can erase the fiscal identifiers of the whole org
   (irreversible). It is not a scope leak (a manager reaches every property) but the same kind of act as the export. Moving it under `OrgBillingAdmin` is
   one line in `GdprController`; the draft PR #461 ("restrict org fiscal GDPR actions", 2026-10-05) predates AM-03, uses `HasOrgWideHostAccess` (removed) and can be closed.
-- **AM-03b-FU2 - the cache of the authorization between instances** (section 31): a version counter or a channel to invalidate the copies on every instance.
-- **AM-03b-FU3 - a collaborator and the payment**: the product owner decides whether a collaborator may confirm a final amount and pay online (section 32).
+- **AM-03b-FU2 - the cache of the authorization between instances** (section 42): a version counter or a channel to invalidate the copies on every instance.
+- **AM-03b-FU3 - a collaborator and the payment**: the product owner decides whether a collaborator may confirm a final amount and pay online (section 43).
 - **Other recipients, not changed**: the email of a service request to the host still goes to the contact of the org (AM-03-FU3); the guests of the org
   are still listed to every member with `guest.read` (AM-03-FU2).
