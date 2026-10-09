@@ -914,9 +914,9 @@ the member row; a deactivated member is already refused by `member_inactive`, a 
 `RateLimiting__OrgAccessRequest__PermitLimit` / `__WindowSeconds` (5 / 600). `App__PublicSiteBaseUrl` and the email provider are the
 ones the invitations already need.
 
-**The migration** `20261009053739_AddOrgActivityLog` is additive: one table, three indexes and the cascade from the org; nothing that exists is
+**The migration** `20261009090030_AddOrgActivityLog` is additive: one table, three indexes and the cascade from the org; nothing that exists is
 touched and the previous build ignores the table. It is applied at startup like the others. It follows `AddPropertyMemberAccess` on the AM
-chain: whoever merges after it regenerates its own migration on the updated snapshot (`dotnet ef migrations remove`, then `add`), never a merge
+chain: whoever merges after it regenerates its own migration on the updated snapshot (delete its migration files, take the snapshot of the updated base, then `dotnet ef migrations add` again; `migrations remove` only takes off the last migration by id), never a merge
 by hand of the snapshot.
 
 **Order.** (1) Deploy with `Features__OrgTeam` unset: the three endpoints answer 404, the log collects nothing, the retention job runs and finds
@@ -929,7 +929,7 @@ nothing. (2) The privacy notice (section 35) and the confirmation of the 12 mont
 | Keep less | lower `OrgTeam__ActivityRetentionMonths` | the next nightly run deletes the older lines |
 | Delete the log now | `DELETE FROM "OrgActivityEntries" WHERE "OrgId" = '<org id>'` (an operator, with a record of why) | the org's log is empty; nothing else changes |
 | Redeploy the previous build | nothing to undo: the table is ignored | no endpoint, no line; the table keeps its lines until it is dropped |
-| Undo the migration | `dotnet ef database update 20261009025651_AddPropertyMemberAccess`, with the previous build deployed | drops `OrgActivityEntries` and nothing else; the log is lost |
+| Undo the migration | `dotnet ef database update 20261009082524_AddPropertyMemberAccess`, with the previous build deployed | drops `OrgActivityEntries` and nothing else; the log is lost |
 
 ## 38. Operating it
 
