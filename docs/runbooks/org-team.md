@@ -657,7 +657,7 @@ the holder only for an account in **no** org team, as it always was. `RliRegistr
 instances (section 23); lower it only if narrowing an access must propagate faster, at the price of one more query per instance and
 user every that many seconds.
 
-**The migration** `20261009082524_AddPropertyMemberAccess` is additive: one nullable column, one table with three indexes, seven
+**The migration** `20261009091620_AddPropertyMemberAccess` is additive: one nullable column, one table with three indexes, seven
 rows of `RolePermissions`. No existing row is changed; the previous build ignores the table and the column. It is applied at
 startup like the others.
 

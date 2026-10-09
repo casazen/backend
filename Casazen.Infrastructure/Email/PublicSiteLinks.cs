@@ -199,11 +199,29 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/rent/pay/{installmentId:D}?token={Uri.EscapeDataString(token)}");
     }
 
+    /// <summary>
+    /// Public page where the payer pays a service a supplier completed (route <c>/service/pay/:paymentId</c>, SP-15a). Only the
+    /// payment id and the random token are in the link, no personal data. The page itself is a frontend task (SP-15b).
+    /// </summary>
+    public string ServicePayment(Guid paymentId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build($"/service/pay/{paymentId:D}?token={Uri.EscapeDataString(token)}");
+    }
+
     /// <summary>Host console: detail page of one lease (route <c>/app/long-rent/leases/:id</c>, LT-06).</summary>
     public string HostLease(Guid leaseId) => Build($"/app/long-rent/leases/{leaseId:D}");
 
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
+
+    /// <summary>
+    /// Host console: the page of one property in the area of its rental mode (routes <c>/app/short-rent/properties/:id</c> for
+    /// <see cref="Core.Entities.Enums.RentalMode.Short"/>, <c>/app/long-rent/properties/:id</c> for
+    /// <see cref="Core.Entities.Enums.RentalMode.Long"/>, PM-02).
+    /// </summary>
+    public string HostProperty(Guid propertyId, Core.Entities.Enums.RentalMode mode) =>
+        Build($"/app/{(mode == Core.Entities.Enums.RentalMode.Long ? "long-rent" : "short-rent")}/properties/{propertyId:D}");
 
     /// <summary>Host console: activation wizard of one property (route <c>/app/short-rent/properties/:id/activation</c>, CO-06).</summary>
     public string HostPropertyActivation(Guid propertyId) => Build($"/app/short-rent/properties/{propertyId:D}/activation");

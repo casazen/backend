@@ -306,8 +306,11 @@ These are the choices the code cannot make. Each has a conservative default in t
 - **Starter plan.** Without a subscription the organization has the Starter limits (3.2); the plans page lists Starter
   at a price. Say whether Starter is free until a subscription is bought.
 - **VAT** on the plan prices (3.1) and the electronic invoicing flow (the SDI integration is a stub, PL-13).
-- **No fee on transactions** (4.2): true in the code today (no application fee on the direct charges); a future fee needs
-  the notice of ToS 15.1.
+- **No fee on transactions** (4.2): true in the code today for the hosts' bookings and rent (no application fee on those direct
+  charges: `StripeServiceApplicationFeeTests`). Since SP-15a CasaZen **does** keep a commission on the services of the suppliers paid inside
+  CasaZen (`stripe.md` § "Services of the suppliers (SP-15)"; configurable, provisional 10 %): 4.2 must say that it concerns the hosts'
+  transactions, and the supplier texts (`fornitori`, `servizi`, LG-01) must describe the commission before the flag
+  `SupplierOnlinePayments` goes on in production. A future fee on the hosts' transactions needs the notice of ToS 15.1.
 - **Statements tied to flags** (2.2): the API integrations with portals and the AI supplier search are off (D10, D11).
 - **Sign-up attribution storage** (Privacy 11.3): UTM, landing page and referrer host are written to the browser (tab,
   then up to 30 days) and sent after the onboarding. The notice describes it and bases it on legitimate interest;

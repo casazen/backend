@@ -2317,6 +2317,45 @@
   <data name="ActivationIcalRecommended" xml:space="preserve">
     <value>Recommended: connect an OTA iCal feed.</value>
   </data>
+  <data name="PropertyModeAlreadySet" xml:space="preserve">
+    <value>The property is already in this mode: there is nothing to change.</value>
+  </data>
+  <data name="PropertyModeDateTooEarly" xml:space="preserve">
+    <value>The switch takes place at midnight (Italian time): the first possible day is {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeDateTooFar" xml:space="preserve">
+    <value>The date is too far away: choose a day by {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByBookings" xml:space="preserve">
+    <value>There are stays, bookings or calendar blocks imported from the portals that end after the chosen date: the switch to long-term rental never overlaps a stay. The first possible day is {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByLease" xml:space="preserve">
+    <value>A lease ends after the chosen date: the switch to short-stay rental never overlaps a lease. The first possible day is {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByDraftLease" xml:space="preserve">
+    <value>The property has a draft lease: delete it before switching to short-stay rental.</value>
+  </data>
+  <data name="PropertyModeChangeExists" xml:space="preserve">
+    <value>A switch is already scheduled for this property: cancel it before scheduling another one.</value>
+  </data>
+  <data name="PropertyModeChangeNotFound" xml:space="preserve">
+    <value>Switch not found.</value>
+  </data>
+  <data name="PropertyModeChangeNotScheduled" xml:space="preserve">
+    <value>The switch is no longer scheduled (it has already happened, was cancelled or failed): it cannot be cancelled.</value>
+  </data>
+  <data name="PropertyModeTargetInvalid" xml:space="preserve">
+    <value>Invalid target mode: use "short" (short-term rental) or "long" (long-term rental).</value>
+  </data>
+  <data name="PropertyModeTargetRequired" xml:space="preserve">
+    <value>Choose the target mode: "short" (short-term rental) or "long" (long-term rental).</value>
+  </data>
+  <data name="PropertyModeDateRequired" xml:space="preserve">
+    <value>Choose the day the property changes mode.</value>
+  </data>
+  <data name="CalendarBlockHeldByModeChange" xml:space="preserve">
+    <value>This block closes the dates because the property is in long-term rental: it goes away by itself when you switch the property back to short-term rental.</value>
+  </data>
   <data name="ServiceRequestCannotStart" xml:space="preserve">
     <value>The request cannot be started in its current status: it must be taken first and not started yet.</value>
   </data>
@@ -2469,5 +2508,59 @@
   </data>
   <data name="SupplierBookingStartRequired" xml:space="preserve">
     <value>Give the chosen time (startUtc).</value>
+  </data>
+  <data name="ServicePaymentLinkInvalid" xml:space="preserve">
+    <value>The payment link is not valid or has expired. Ask the supplier to send you a new one.</value>
+  </data>
+  <data name="ServicePaymentNotFound" xml:space="preserve">
+    <value>There is no payment to make for this request.</value>
+  </data>
+  <data name="ServicePaymentNotPayable" xml:space="preserve">
+    <value>This payment can no longer be made online. Contact the supplier.</value>
+  </data>
+  <data name="ServicePaymentAlreadyPaid" xml:space="preserve">
+    <value>This service is already paid.</value>
+  </data>
+  <data name="ServicePaymentInFlight" xml:space="preserve">
+    <value>A payment for this service is already being processed: do not pay again and check back shortly.</value>
+  </data>
+  <data name="ServicePaymentSupplierNotReady" xml:space="preserve">
+    <value>The supplier cannot receive online payments at the moment. Try again later or contact them.</value>
+  </data>
+  <data name="ServicePaymentNotOnline" xml:space="preserve">
+    <value>This request is not paid through CasaZen: there is no payment to request.</value>
+  </data>
+  <data name="ServicePaymentNotRequestable" xml:space="preserve">
+    <value>You can ask for the payment only for a job that is completed and not paid yet.</value>
+  </data>
+  <data name="ServicePaymentAmountUnconfirmed" xml:space="preserve">
+    <value>The final amount is above the quote: the host has to confirm it first. You can ask for the payment after the confirmation.</value>
+  </data>
+  <data name="ServicePaymentAmountRequired" xml:space="preserve">
+    <value>This job has no valid final amount to be paid.</value>
+  </data>
+  <data name="ServicePaymentRequestTooSoon" xml:space="preserve">
+    <value>You have already sent the payment request recently: you can send it again {0} hours after the last one.</value>
+  </data>
+  <data name="ServicePaymentNoRecipient" xml:space="preserve">
+    <value>There is no email address to send the payment request to.</value>
+  </data>
+  <data name="ServicePaymentRequestNotSent" xml:space="preserve">
+    <value>The payment request email could not be sent: nothing has changed, try again shortly.</value>
+  </data>
+  <data name="ServicePaymentOfflineReasonRequired" xml:space="preserve">
+    <value>This request is paid through CasaZen: to record a payment received outside CasaZen, give the reason.</value>
+  </data>
+  <data name="ServicePaymentOfflineReasonTooLong" xml:space="preserve">
+    <value>The reason can have at most {1} characters.</value>
+  </data>
+  <data name="ServicePaymentStateChanged" xml:space="preserve">
+    <value>The payment was just changed by another operation: reload the page and check its current state.</value>
+  </data>
+  <data name="ServiceRequestNoConfirmationNeeded" xml:space="preserve">
+    <value>There is no amount to confirm for this request.</value>
+  </data>
+  <data name="ServiceRequestOnlinePayment" xml:space="preserve">
+    <value>This request is paid through CasaZen with the link sent by email: you cannot mark it as paid by hand.</value>
   </data>
 </root>

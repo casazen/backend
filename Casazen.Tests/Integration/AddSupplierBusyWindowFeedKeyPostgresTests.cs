@@ -129,7 +129,11 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
             PlanTier = PlanTier.Starter,
         };
         db.Orgs.Add(org);
-        db.SupplierProfiles.Add(new SupplierProfile
+        await db.SaveChangesAsync();
+
+        // Plain SQL: the first test seeds on the schema of the migration before this one, which lacks the columns that later
+        // migrations add to the profile (the current model would write them).
+        await SupplierProfileSql.InsertAsync(db, new SupplierProfile
         {
             OrgId = org.Id,
             Email = email,
@@ -138,7 +142,6 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
             CategoriesJson = "[]",
             ComuniJson = """["H501"]""",
         });
-        await db.SaveChangesAsync();
         return org.Id;
     }
 

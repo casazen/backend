@@ -2317,6 +2317,45 @@
   <data name="ActivationIcalRecommended" xml:space="preserve">
     <value>Consigliato: collega un feed iCal delle OTA.</value>
   </data>
+  <data name="PropertyModeAlreadySet" xml:space="preserve">
+    <value>L'immobile è già in questa modalità: non c'è niente da cambiare.</value>
+  </data>
+  <data name="PropertyModeDateTooEarly" xml:space="preserve">
+    <value>Il passaggio avviene a mezzanotte (ora italiana): il primo giorno possibile è il {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeDateTooFar" xml:space="preserve">
+    <value>La data è troppo lontana: scegli un giorno entro il {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByBookings" xml:space="preserve">
+    <value>Ci sono soggiorni, prenotazioni o blocchi importati dai portali che finiscono dopo la data scelta: il passaggio ad affitto lungo non si sovrappone mai a un soggiorno. Il primo giorno possibile è il {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByLease" xml:space="preserve">
+    <value>C'è un contratto di locazione che termina dopo la data scelta: il passaggio ad affitto breve non si sovrappone mai a un contratto. Il primo giorno possibile è il {0:d MMMM yyyy}.</value>
+  </data>
+  <data name="PropertyModeBlockedByDraftLease" xml:space="preserve">
+    <value>Sull'immobile c'è una bozza di contratto: eliminala prima di passare ad affitto breve.</value>
+  </data>
+  <data name="PropertyModeChangeExists" xml:space="preserve">
+    <value>C'è già un passaggio programmato per questo immobile: annullalo prima di programmarne un altro.</value>
+  </data>
+  <data name="PropertyModeChangeNotFound" xml:space="preserve">
+    <value>Passaggio non trovato.</value>
+  </data>
+  <data name="PropertyModeChangeNotScheduled" xml:space="preserve">
+    <value>Il passaggio non è più in programma (è già avvenuto, è stato annullato o non è riuscito): non si può annullare.</value>
+  </data>
+  <data name="PropertyModeTargetInvalid" xml:space="preserve">
+    <value>Modalità di destinazione non valida: usa «short» (affitto breve) o «long» (affitto lungo).</value>
+  </data>
+  <data name="PropertyModeTargetRequired" xml:space="preserve">
+    <value>Indica la modalità di destinazione: «short» (affitto breve) o «long» (affitto lungo).</value>
+  </data>
+  <data name="PropertyModeDateRequired" xml:space="preserve">
+    <value>Indica il giorno da cui l'immobile cambia modalità.</value>
+  </data>
+  <data name="CalendarBlockHeldByModeChange" xml:space="preserve">
+    <value>Questo blocco chiude le date perché l'immobile è in affitto lungo: si toglie da solo quando lo riporti in affitto breve.</value>
+  </data>
   <data name="ServiceRequestCannotStart" xml:space="preserve">
     <value>La richiesta non può essere avviata nello stato attuale: va prima presa in carico e non ancora avviata.</value>
   </data>
@@ -2469,5 +2508,59 @@
   </data>
   <data name="SupplierBookingStartRequired" xml:space="preserve">
     <value>Indica l'orario scelto (startUtc).</value>
+  </data>
+  <data name="ServicePaymentLinkInvalid" xml:space="preserve">
+    <value>Il link di pagamento non è valido o è scaduto. Chiedi al fornitore di inviartene uno nuovo.</value>
+  </data>
+  <data name="ServicePaymentNotFound" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun pagamento da effettuare.</value>
+  </data>
+  <data name="ServicePaymentNotPayable" xml:space="preserve">
+    <value>Questo pagamento non si può più effettuare online. Contatta il fornitore.</value>
+  </data>
+  <data name="ServicePaymentAlreadyPaid" xml:space="preserve">
+    <value>Questo servizio risulta già pagato.</value>
+  </data>
+  <data name="ServicePaymentInFlight" xml:space="preserve">
+    <value>Un pagamento di questo servizio è già in elaborazione: non pagare di nuovo e ricontrolla tra poco.</value>
+  </data>
+  <data name="ServicePaymentSupplierNotReady" xml:space="preserve">
+    <value>Il fornitore non può ricevere pagamenti online in questo momento. Riprova più tardi o contattalo.</value>
+  </data>
+  <data name="ServicePaymentNotOnline" xml:space="preserve">
+    <value>Questa richiesta non si paga in CasaZen: non c'è nessun pagamento da richiedere.</value>
+  </data>
+  <data name="ServicePaymentNotRequestable" xml:space="preserve">
+    <value>Puoi chiedere il pagamento solo per un lavoro completato e non ancora pagato.</value>
+  </data>
+  <data name="ServicePaymentAmountUnconfirmed" xml:space="preserve">
+    <value>L'importo finale supera il preventivo: l'host deve prima confermarlo. Potrai chiedere il pagamento dopo la conferma.</value>
+  </data>
+  <data name="ServicePaymentAmountRequired" xml:space="preserve">
+    <value>Manca un importo finale valido per il pagamento di questo lavoro.</value>
+  </data>
+  <data name="ServicePaymentRequestTooSoon" xml:space="preserve">
+    <value>Hai già inviato la richiesta di pagamento da poco: potrai inviarla di nuovo dopo {0} ore dall'ultimo invio.</value>
+  </data>
+  <data name="ServicePaymentNoRecipient" xml:space="preserve">
+    <value>Non c'è un indirizzo email a cui inviare la richiesta di pagamento.</value>
+  </data>
+  <data name="ServicePaymentRequestNotSent" xml:space="preserve">
+    <value>Non è stato possibile inviare l'email di richiesta di pagamento: non è cambiato nulla, riprova tra poco.</value>
+  </data>
+  <data name="ServicePaymentOfflineReasonRequired" xml:space="preserve">
+    <value>Questa richiesta si paga in CasaZen: per registrare un pagamento ricevuto fuori da CasaZen indica il motivo.</value>
+  </data>
+  <data name="ServicePaymentOfflineReasonTooLong" xml:space="preserve">
+    <value>Il motivo può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServicePaymentStateChanged" xml:space="preserve">
+    <value>Il pagamento è stato appena modificato da un'altra operazione: ricarica la pagina e verifica lo stato attuale.</value>
+  </data>
+  <data name="ServiceRequestNoConfirmationNeeded" xml:space="preserve">
+    <value>Non c'è nessun importo da confermare per questa richiesta.</value>
+  </data>
+  <data name="ServiceRequestOnlinePayment" xml:space="preserve">
+    <value>Questa richiesta si paga in CasaZen con il link inviato per email: non puoi segnarla come pagata a mano.</value>
   </data>
 </root>
