@@ -45,6 +45,7 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicSupplierSlots, 60, OneMinute),
         new(RateLimitPolicies.PublicSupplierQuote, 30, OneMinute),
         new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

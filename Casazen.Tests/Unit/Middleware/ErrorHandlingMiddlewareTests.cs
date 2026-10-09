@@ -96,6 +96,37 @@ public class ErrorHandlingMiddlewareTests
     }
 
     [Fact]
+    public async Task InvokeAsync_DomainForbiddenException_Returns403WithItsOwnCodeAndLocalizedMessage()
+    {
+        // AM-02: the signed-in account is not the one the invitation was written for.
+        var response = await InvokeAsync(new DomainForbiddenException("invitation_email_mismatch", "InvitationEmailMismatch"));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, response.Status);
+        Assert.Equal("invitation_email_mismatch", response.Code);
+        Assert.StartsWith("L'invito è per un altro indirizzo email", response.Detail);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_DomainGoneException_Returns410WithItsOwnCodeAndLocalizedMessage()
+    {
+        var response = await InvokeAsync(new DomainGoneException("invitation_expired", "InvitationExpired"));
+
+        Assert.Equal(StatusCodes.Status410Gone, response.Status);
+        Assert.Equal("invitation_expired", response.Code);
+        Assert.StartsWith("L'invito è scaduto", response.Detail);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_DomainForbiddenAndGone_EnglishUiCulture_ReturnEnglishDetail()
+    {
+        var forbidden = await InvokeAsync(new DomainForbiddenException("org_owner_required", "OrgOwnerRequired"), culture: "en");
+        var gone = await InvokeAsync(new DomainGoneException("invitation_used", "InvitationUsed"), culture: "en");
+
+        Assert.Equal("Only the owner of the organization can create and manage administrators.", forbidden.Detail);
+        Assert.Equal("This invitation has already been accepted.", gone.Detail);
+    }
+
+    [Fact]
     public async Task InvokeAsync_DomainExceptionWithUnknownMessageKey_ReturnsGenericDetailNotRawKey()
     {
         var response = await InvokeAsync(new DomainRuleException("some_rule", "KeyMissingFromResources"));

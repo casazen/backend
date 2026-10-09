@@ -65,6 +65,15 @@ public interface IEntitlementService
     PlanTier ResolveEffectiveTier(Org org);
 
     /// <summary>
+    /// How many people (active members plus pending invitations) an org on <paramref name="tier"/> may have (AM-02,
+    /// decisions D13 and D35): <see cref="PlanCatalog.MaxSeatsFor"/> unless <c>Entitlement:Tiers:{Tier}:MaxSeats</c> sets a
+    /// positive number; <see cref="int.MaxValue"/> = unlimited. Pass the <b>effective</b> tier
+    /// (<see cref="ResolveEffectiveTier"/>): with a subscription not in good standing it is Starter, so the members stay
+    /// and the new invitations are blocked.
+    /// </summary>
+    int ResolveMaxSeats(PlanTier tier);
+
+    /// <summary>
     /// <c>true</c> when the org's effective plan tier (Pro or Scale) unlocks custom-domain
     /// booking sites (#298 / US-024). Starter — and Pro/Scale downgraded to Starter by
     /// <c>ResolveEffectiveTier</c> past-due logic — return <c>false</c>.

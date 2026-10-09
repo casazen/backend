@@ -168,6 +168,69 @@
   <data name="OrgMembershipMaintenanceConflict" xml:space="preserve">
     <value>Another change interrupted the members reconciliation: nothing was saved. Try again.</value>
   </data>
+  <data name="OrgInvitationEmailRequired" xml:space="preserve">
+    <value>Enter the email of the person to invite.</value>
+  </data>
+  <data name="OrgInvitationEmailTooLong" xml:space="preserve">
+    <value>The email is too long (255 characters at most).</value>
+  </data>
+  <data name="OrgInvitationNameRequired" xml:space="preserve">
+    <value>Enter the name of the person to invite.</value>
+  </data>
+  <data name="OrgInvitationNameTooLong" xml:space="preserve">
+    <value>The name is too long (200 characters at most).</value>
+  </data>
+  <data name="OrgInvitationNameInvalid" xml:space="preserve">
+    <value>The name cannot contain addresses, links or symbols such as &lt; &gt; @ /.</value>
+  </data>
+  <data name="OrgInvitationLanguageInvalid" xml:space="preserve">
+    <value>Unsupported language: choose Italian (it) or English (en).</value>
+  </data>
+  <data name="InvitationTokenRequired" xml:space="preserve">
+    <value>The invitation code is missing.</value>
+  </data>
+  <data name="InvitationInvalid" xml:space="preserve">
+    <value>This invitation is not valid, has expired or has already been used. Ask whoever invited you to send you a new one.</value>
+  </data>
+  <data name="InvitationExpired" xml:space="preserve">
+    <value>The invitation has expired. Ask whoever invited you to send you a new one.</value>
+  </data>
+  <data name="InvitationUsed" xml:space="preserve">
+    <value>This invitation has already been accepted.</value>
+  </data>
+  <data name="InvitationRevoked" xml:space="preserve">
+    <value>This invitation was withdrawn by whoever sent it.</value>
+  </data>
+  <data name="InvitationEmailMismatch" xml:space="preserve">
+    <value>The invitation is for a different email address. Sign in with the email the invitation was sent to.</value>
+  </data>
+  <data name="InvitationEmailNotVerified" xml:space="preserve">
+    <value>Confirm your email address first (we sent you a message), then accept the invitation.</value>
+  </data>
+  <data name="InvitationPlatformAdmin" xml:space="preserve">
+    <value>A CasaZen staff account cannot join a customer's organization: use another account.</value>
+  </data>
+  <data name="InvitationUserHasOrganization" xml:space="preserve">
+    <value>This account already has an organization in use: we cannot merge it with the one that invited you. To join, sign in with another account and accept the invitation.</value>
+  </data>
+  <data name="OrgInvitationAlreadyPending" xml:space="preserve">
+    <value>There is already a pending invitation for this email: you can send it again from the invitations list.</value>
+  </data>
+  <data name="OrgInvitationNotPending" xml:space="preserve">
+    <value>The invitation is no longer pending: it was already accepted or withdrawn.</value>
+  </data>
+  <data name="OrgInvitationNotFound" xml:space="preserve">
+    <value>Invitation not found.</value>
+  </data>
+  <data name="OrgMemberNotFound" xml:space="preserve">
+    <value>Person not found in the organization.</value>
+  </data>
+  <data name="OrgSeatLimitReached" xml:space="preserve">
+    <value>You have used all the seats of your plan. Deactivate or remove someone, withdraw a pending invitation or move to a larger plan.</value>
+  </data>
+  <data name="OrgOwnerRequired" xml:space="preserve">
+    <value>Only the owner of the organization can create and manage administrators.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
   </data>

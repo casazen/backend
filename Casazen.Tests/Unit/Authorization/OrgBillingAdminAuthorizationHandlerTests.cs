@@ -173,11 +173,12 @@ public class OrgBillingAdminAuthorizationHandlerTests
             Memberships: [Access(contextKey, roleKey)],
             OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), role, OrgMemberStatus.Active));
         var handler = CreateHandler(snapshot);
+        // The platform admin role is not an org role and always counts (AM-02, tested below): it is left out here.
         var context = Context(
         [
             new Claim(ClaimTypes.Role, "PropertyOwner"),
+            new Claim(ClaimTypes.Role, "LongTermLandlord"),
             new Claim(ClaimTypes.Role, "PropertyManager"),
-            new Claim(ClaimTypes.Role, "Admin"),
         ]);
 
         await handler.HandleAsync(context);
@@ -215,6 +216,96 @@ public class OrgBillingAdminAuthorizationHandlerTests
             OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), OrgRole.Admin, OrgMemberStatus.Active));
         var handler = CreateHandler(snapshot);
         var context = Context([]);
+
+        await handler.HandleAsync(context);
+
+        Assert.True(context.HasSucceeded);
+    }
+
+    // ─── AM-02: a token role left over by the move to another org ──────────────────────────────────────
+
+    private static UserAuthorizationSnapshot MemberSnapshot(OrgRole role, params string[] memberships) => new(
+        Exists: true,
+        IsActive: true,
+        Role: UserRole.None,
+        SupplierOrgId: null,
+        Memberships: memberships.Select(m => m.Split('/')).Select(parts => Access(parts[0], parts[1])).ToList(),
+        OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), role, OrgMemberStatus.Active));
+
+    /// <summary>
+    /// A person who left an empty org of its own for another keeps the Auth0 roles of the onboarding until they are removed
+    /// (they are, right after the acceptance, and by an operator if Auth0 failed): a role left in the token must never make
+    /// a collaborator the billing administrator of the org it joined.
+    /// </summary>
+    [Theory]
+    [InlineData("PropertyOwner", OrgRole.Collaborator, "short-rent/staff")]
+    [InlineData("LongTermLandlord", OrgRole.Collaborator, "long-rent/staff")]
+    [InlineData("PropertyOwner", OrgRole.PropertyManager, "short-rent/property_manager")]
+    [InlineData("PropertyOwner", OrgRole.Accountant, "account/org_accountant")]
+    public async Task HandleAsync_AMemberWhoIsNotTheOwner_IsNotMadeBillingAdminByAnOwnerRoleLeftInTheToken(
+        string tokenRole,
+        OrgRole memberRole,
+        string membership)
+    {
+        var handler = CreateHandler(MemberSnapshot(memberRole, membership));
+        var context = Context([new Claim(ClaimTypes.Role, tokenRole)]);
+
+        await handler.HandleAsync(context);
+
+        Assert.False(context.HasSucceeded);
+    }
+
+    [Theory]
+    [InlineData(ClaimTypes.Role)]
+    [InlineData("https://casazen.app/roles")]
+    public async Task HandleAsync_TheLeftOverOwnerRoleIsRefusedInEitherClaimType(string claimType)
+    {
+        var handler = CreateHandler(MemberSnapshot(OrgRole.Collaborator, "short-rent/staff"));
+        var context = Context([new Claim(claimType, "PropertyOwner")]);
+
+        await handler.HandleAsync(context);
+
+        Assert.False(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task HandleAsync_TheOwnerWithItsMemberRow_StillPassesWithItsTokenRole()
+    {
+        var handler = CreateHandler(MemberSnapshot(OrgRole.Owner, "account/org_owner"));
+        var context = Context([new Claim(ClaimTypes.Role, "PropertyOwner")]);
+
+        await handler.HandleAsync(context);
+
+        Assert.True(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task HandleAsync_AnAdminMemberWithALeftOverOwnerRole_PassesThroughItsAccountMembershipNotTheToken()
+    {
+        var handler = CreateHandler(MemberSnapshot(OrgRole.Admin, "account/org_admin"));
+        var context = Context([new Claim(ClaimTypes.Role, "PropertyOwner")]);
+
+        await handler.HandleAsync(context);
+
+        Assert.True(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ThePlatformAdminRole_IsNotAnOrgRoleAndAlwaysCounts()
+    {
+        var handler = CreateHandler(MemberSnapshot(OrgRole.Collaborator, "short-rent/staff"));
+        var context = Context([new Claim(ClaimTypes.Role, "Admin")]);
+
+        await handler.HandleAsync(context);
+
+        Assert.True(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task HandleAsync_AUserWithNoMemberRow_KeepsTheTokenRoleAsBefore()
+    {
+        var handler = CreateHandler(Snapshot(UserRole.None, ["short-rent/staff"]));
+        var context = Context([new Claim(ClaimTypes.Role, "PropertyOwner")]);
 
         await handler.HandleAsync(context);
 

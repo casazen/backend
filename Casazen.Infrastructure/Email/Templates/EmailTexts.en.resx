@@ -1086,6 +1086,84 @@
   <data name="Push_ShowcaseProposalLapsed_Body" xml:space="preserve">
     <value>{0} in {1}: the customer did not answer the new time in time.</value>
   </data>
+  <data name="OrgRole_Owner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="OrgRole_Admin" xml:space="preserve">
+    <value>Administrator</value>
+  </data>
+  <data name="OrgRole_PropertyManager" xml:space="preserve">
+    <value>Property Manager</value>
+  </data>
+  <data name="OrgRole_Collaborator" xml:space="preserve">
+    <value>Collaborator</value>
+  </data>
+  <data name="OrgRole_Accountant" xml:space="preserve">
+    <value>Accountant</value>
+  </data>
+  <data name="OrgArea_ShortRent" xml:space="preserve">
+    <value>Short-term rentals</value>
+  </data>
+  <data name="OrgArea_LongRent" xml:space="preserve">
+    <value>Long-term rentals</value>
+  </data>
+  <data name="OrgInvitation_Subject" xml:space="preserve">
+    <value>{0} invites you to work with {1} on CasaZen</value>
+  </data>
+  <data name="OrgInvitation_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="OrgInvitation_Body" xml:space="preserve">
+    <value>{0} invited you to CasaZen as &lt;strong&gt;{1}&lt;/strong&gt; of &lt;strong&gt;{2}&lt;/strong&gt;. You will work in: {3}.</value>
+  </data>
+  <data name="OrgInvitation_EmailHint" xml:space="preserve">
+    <value>Sign in or register with the email &lt;strong&gt;{0}&lt;/strong&gt;: the invitation is valid only for this address and can be used once. You choose your own password.</value>
+  </data>
+  <data name="OrgInvitation_Cta" xml:space="preserve">
+    <value>Accept the invitation</value>
+  </data>
+  <data name="OrgInvitation_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy and paste this link into your browser:</value>
+  </data>
+  <data name="OrgInvitation_Expires" xml:space="preserve">
+    <value>The invitation expires on &lt;strong&gt;{0}&lt;/strong&gt; (Italian time). If you do not know {1}, you can ignore this email.</value>
+  </data>
+  <data name="OrgInvitationReminder_Subject" xml:space="preserve">
+    <value>Reminder: your invitation to work with {0} expires on {1}</value>
+  </data>
+  <data name="OrgInvitationReminder_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="OrgInvitationReminder_Body" xml:space="preserve">
+    <value>You still have an invitation to join &lt;strong&gt;{0}&lt;/strong&gt; on CasaZen as &lt;strong&gt;{1}&lt;/strong&gt;: you have not accepted it yet.</value>
+  </data>
+  <data name="OrgInvitationReminder_Cta" xml:space="preserve">
+    <value>Accept the invitation</value>
+  </data>
+  <data name="OrgInvitationReminder_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy and paste this link into your browser:</value>
+  </data>
+  <data name="OrgInvitationReminder_NewLink" xml:space="preserve">
+    <value>This link replaces the one in the previous email, which no longer works.</value>
+  </data>
+  <data name="OrgInvitationReminder_Expires" xml:space="preserve">
+    <value>The invitation expires on &lt;strong&gt;{0}&lt;/strong&gt; (Italian time).</value>
+  </data>
+  <data name="OrgInvitationExpired_Subject" xml:space="preserve">
+    <value>Invitation expired: {0}</value>
+  </data>
+  <data name="OrgInvitationExpired_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="OrgInvitationExpired_Body" xml:space="preserve">
+    <value>The invitation to &lt;strong&gt;{0}&lt;/strong&gt; ({1}) expired without being accepted. The seat in your plan is free again.</value>
+  </data>
+  <data name="OrgInvitationExpired_Hint" xml:space="preserve">
+    <value>If the person still wants to join, you can send a new invitation from People and permissions.</value>
+  </data>
+  <data name="OrgInvitationExpired_Cta" xml:space="preserve">
+    <value>Open People and permissions</value>
+  </data>
   <data name="ServicePaymentRequest_Subject" xml:space="preserve">
     <value>To pay: {0} ({1})</value>
   </data>

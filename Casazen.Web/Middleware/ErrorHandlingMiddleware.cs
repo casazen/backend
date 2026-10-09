@@ -13,7 +13,8 @@ namespace Casazen.Web.Middleware;
 /// <remarks>
 /// Exception → response:
 /// <list type="bullet">
-/// <item><see cref="DomainConflictException"/> → 409, <see cref="DomainException"/> → 422: its code and localized message;</item>
+/// <item><see cref="DomainConflictException"/> → 409, <see cref="DomainForbiddenException"/> → 403,
+/// <see cref="DomainGoneException"/> → 410, any other <see cref="DomainException"/> → 422: its code and localized message;</item>
 /// <item><see cref="NotFoundException"/> → 404: its code/message, or the generic <c>not_found</c>;</item>
 /// <item><see cref="Casazen.Core.Exceptions.ValidationException"/> → 422 with <c>errors</c>;</item>
 /// <item><see cref="UnauthorizedAccessException"/> → 403 <c>forbidden</c> (the caller is authenticated but may not act
@@ -70,9 +71,13 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
         switch (exception)
         {
             case DomainException domain:
-                var status = domain is DomainConflictException
-                    ? StatusCodes.Status409Conflict
-                    : StatusCodes.Status422UnprocessableEntity;
+                var status = domain switch
+                {
+                    DomainConflictException => StatusCodes.Status409Conflict,
+                    DomainForbiddenException => StatusCodes.Status403Forbidden,
+                    DomainGoneException => StatusCodes.Status410Gone,
+                    _ => StatusCodes.Status422UnprocessableEntity,
+                };
                 problem = ApiProblemDetails.Create(context, status, domain.Code, domain.MessageKey, domain.MessageArgs);
                 LogRejected(context, exception, status, domain.Code);
                 break;

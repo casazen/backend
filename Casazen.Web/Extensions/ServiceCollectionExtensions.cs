@@ -397,6 +397,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
+        // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly
+        // maintenance (reminders, expiry, deletion of the closed ones). All behind the OrgTeam flag at the endpoints.
+        services.AddScoped<IOrgSeatService, OrgSeatService>();
+        services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
+        services.AddScoped<IOrgInvitationService, OrgInvitationService>();
+        services.AddScoped<IOrgTeamService, OrgTeamService>();
+        services.AddScoped<IOrgInvitationMaintenanceService, OrgInvitationMaintenanceService>();
+        services.AddScoped<IAccountEmailResolver, AccountEmailResolver>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         // SE-04: events of the SEO funnel (no personal data) and the featured properties of a comune.
         services.AddScoped<ISeoEventService, SeoEventService>();

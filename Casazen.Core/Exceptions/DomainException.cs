@@ -4,8 +4,9 @@ namespace Casazen.Core.Exceptions;
 /// A business rule stopped the operation. The API turns it into a ProblemDetails response with the
 /// stable <see cref="Code"/> and the localized text of <see cref="MessageKey"/> (a key of
 /// <c>Casazen.Web/Resources/SharedResources.resx</c>, formatted with <see cref="MessageArgs"/>).
-/// Throw one of the concrete types: <see cref="DomainRuleException"/> (HTTP 422) or
-/// <see cref="DomainConflictException"/> (HTTP 409).
+/// Throw one of the concrete types: <see cref="DomainRuleException"/> (HTTP 422),
+/// <see cref="DomainConflictException"/> (HTTP 409), <see cref="DomainForbiddenException"/> (HTTP 403) or
+/// <see cref="DomainGoneException"/> (HTTP 410).
 /// </summary>
 /// <remarks>
 /// <see cref="Exception.Message"/> is only for logs and is never sent to clients: keep it free of
@@ -43,4 +44,19 @@ public class DomainRuleException(string code, string messageKey, params object[]
 /// The request conflicts with the current state of a resource (duplicate, already taken, overlapping). HTTP 409.
 /// </summary>
 public class DomainConflictException(string code, string messageKey, params object[] messageArgs)
+    : DomainException(code, messageKey, messageArgs);
+
+/// <summary>
+/// The caller is signed in but a rule of the domain does not let it do this, with a code of its own that the client
+/// translates (e.g. <c>invitation_email_mismatch</c>: the account is not the one the invitation was written for). HTTP 403.
+/// Not for a missing permission: that is the job of the authorization policies (<c>CasazenPolicies</c>).
+/// </summary>
+public class DomainForbiddenException(string code, string messageKey, params object[] messageArgs)
+    : DomainException(code, messageKey, messageArgs);
+
+/// <summary>
+/// What the request names existed and cannot be used any more, for good (an invitation link that expired, was used or was
+/// revoked). HTTP 410. Unlike a 404 it says "it was here", so use it only where that tells nothing a stranger could use.
+/// </summary>
+public class DomainGoneException(string code, string messageKey, params object[] messageArgs)
     : DomainException(code, messageKey, messageArgs);
