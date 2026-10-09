@@ -39,7 +39,29 @@ public class OrgTeamLocalizationTests
         { OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported" },
         { OrgMembershipErrors.PropertyUnknown, "OrgMemberPropertyUnknown" },
         { PropertyResponsibleErrors.Invalid, "PropertyResponsibleInvalid" },
+        { OrgAccessRequestErrors.AreaUnknown, "AccessRequestAreaUnknown" },
+        { OrgAccessRequestErrors.LimitReached, "AccessRequestLimitReached" },
     };
+
+    /// <summary>The messages of the 400 the activity log answers for a filter that makes no sense (no code of their own: the generic validation code).</summary>
+    public static TheoryData<string> ActivityFilterKeys => new()
+    {
+        "OrgActivityTypeUnknown",
+        "OrgActivityAreaUnknown",
+        "OrgActivityRangeInvalid",
+    };
+
+    [Theory]
+    [MemberData(nameof(ActivityFilterKeys))]
+    public void EveryFilterOfTheActivityLog_HasAMessageInItalianAndADifferentOneInEnglish(string key)
+    {
+        var italian = Resources(english: false);
+        var english = Resources(english: true);
+
+        Assert.True(italian.TryGetValue(key, out var it) && !string.IsNullOrWhiteSpace(it), $"no Italian message '{key}'");
+        Assert.True(english.TryGetValue(key, out var en) && !string.IsNullOrWhiteSpace(en), $"no English message '{key}'");
+        Assert.NotEqual(it, en);
+    }
 
     [Theory]
     [MemberData(nameof(CodesAndKeys))]
@@ -62,6 +84,7 @@ public class OrgTeamLocalizationTests
         var declared = new[]
             {
                 typeof(OrgInvitationErrors), typeof(OrgSeatErrors), typeof(OrgMembershipErrors), typeof(PropertyResponsibleErrors),
+                typeof(OrgAccessRequestErrors),
             }
             .SelectMany(t => t.GetFields(BindingFlags.Public | BindingFlags.Static))
             .Where(f => f is { IsLiteral: true, FieldType.Name: nameof(String) })
@@ -87,6 +110,7 @@ public class OrgTeamLocalizationTests
             {
                 typeof(CreateOrgInvitationRequest), typeof(OrgInvitationLookupRequest), typeof(AcceptOrgInvitationRequest),
                 typeof(SetOrgMemberPropertiesRequest), typeof(Casazen.Web.Controllers.SetPropertyResponsibleRequest),
+                typeof(RequestOrgAccessRequest),
             }
             .SelectMany(t => t.GetProperties())
             .SelectMany(p => p.GetCustomAttributes<ValidationAttribute>())

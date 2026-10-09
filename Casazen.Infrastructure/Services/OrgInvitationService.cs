@@ -35,6 +35,7 @@ public sealed partial class OrgInvitationService(
     IUserAuthorizationCache authorizationCache,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
+    IActivityLog activityLog,
     ILogger<OrgInvitationService> logger,
     TimeProvider? timeProvider = null) : IOrgInvitationService
 {
@@ -100,7 +101,14 @@ public sealed partial class OrgInvitationService(
 
             await seats.EnsureSeatAvailableAsync(request.OrgId, cancellationToken);
 
+            // The line of the activity log goes in the same save as the invitation: no invitation without its line, no line without it.
             db.OrgInvitations.Add(invitation);
+            activityLog.Record(OrgActivity.Of(
+                request.OrgId,
+                OrgActivityType.MemberInvited,
+                actor.UserId,
+                invitation.Id.ToString(),
+                (OrgActivityDetailKeys.Role, request.Role.ToString())));
             await SaveInvitationAsync(cancellationToken);
 
             if (transaction is not null)
@@ -205,6 +213,12 @@ public sealed partial class OrgInvitationService(
         invitation.Status = OrgInvitationStatus.Revoked;
         invitation.ClosedAt ??= now;
         invitation.UpdatedAt = now;
+        activityLog.Record(OrgActivity.Of(
+            orgId,
+            OrgActivityType.InvitationRevoked,
+            actor.UserId,
+            invitation.Id.ToString(),
+            (OrgActivityDetailKeys.Role, invitation.Role.ToString())));
         await db.SaveChangesAsync(cancellationToken);
 
         if (transaction is not null)

@@ -508,7 +508,7 @@ Stripe Dashboard → Developers → Webhooks (Workbench → Event destinations) 
 | Events from | **Your account** | **Connected accounts** |
 | URL | `https://<Railway URL of the environment>/webhooks/stripe` | `https://<Railway URL of the environment>/webhooks/stripe/connect` |
 | API version | `2025-12-15.clover` | `2025-12-15.clover` |
-| Events | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled` | `account.updated`, `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `setup_intent.succeeded`, `charge.refunded`, `refund.created`, `refund.updated`, `refund.failed` |
+| Events | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled` | `account.updated`, `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `setup_intent.succeeded`, `charge.refunded`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created` (SP-15b: a dispute on a supplier's service payment reaches the platform admins) |
 | Signing secret (`whsec_…`, "Reveal") | `Stripe__WebhookSecret` | `Stripe__ConnectWebhookSecret` |
 
 The event lists are the ones handled by `Casazen.Infrastructure/External/StripeWebhookHandler.cs`; other events are acknowledged and ignored. Same result with the API (the `secret` is returned only in the creation response), once per endpoint and mode:
@@ -527,7 +527,8 @@ curl https://api.stripe.com/v1/webhook_endpoints -u "<secret key of the mode>:" 
   -d "enabled_events[]=charge.refunded" \
   -d "enabled_events[]=refund.created" \
   -d "enabled_events[]=refund.updated" \
-  -d "enabled_events[]=refund.failed"
+  -d "enabled_events[]=refund.failed" \
+  -d "enabled_events[]=charge.dispute.created"
 # platform endpoint: url …/webhooks/stripe, no connect=true, platform event list
 ```
 

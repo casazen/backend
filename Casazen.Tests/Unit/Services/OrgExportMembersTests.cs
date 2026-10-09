@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Repositories;
@@ -14,8 +15,8 @@ namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
 /// AM-02 (GDPR): the export of the org (<c>GET /api/gdpr/org/export</c>) includes the people who have access: opaque ids, role,
-/// status, scope and dates. No names and no emails: the export is reachable with property permissions until #461 moves it under
-/// the owner's, and the names are on the people page, where whoever manages them already sees them.
+/// status, scope and dates. No names and no emails: the names are on the people page, where whoever manages them already sees
+/// them. The export is the holder's (AM-03b, <c>OrgBillingAdmin</c>); here it runs with the whole-org scope of the holder.
 /// </summary>
 public class OrgExportMembersTests
 {
@@ -37,7 +38,7 @@ public class OrgExportMembersTests
         await _kit.SeedMemberAsync(org.Id, "auth0|bruno", OrgRole.Collaborator, status: OrgMemberStatus.Deactivated);
 
         await using var db = _kit.NewDb();
-        var export = await Service(db).ExportOrgFiscalDataAsync(org.Id);
+        var export = await Service(db).ExportOrgFiscalDataAsync(org.Id, new HostScope(org.Id));
 
         var json = JsonSerializer.Serialize(export);
         var members = JsonDocument.Parse(json).RootElement.GetProperty("members").EnumerateArray().ToList();
@@ -68,7 +69,7 @@ public class OrgExportMembersTests
         }
 
         await using var read = _kit.NewDb();
-        var export = await Service(read).ExportOrgFiscalDataAsync(org.Id);
+        var export = await Service(read).ExportOrgFiscalDataAsync(org.Id, new HostScope(org.Id));
 
         Assert.Equal("RSSMRA80A01H501U", export["fiscalCode"]);
         Assert.True((bool)export["hasPartitaIva"]);
@@ -84,7 +85,7 @@ public class OrgExportMembersTests
         await _kit.SeedMemberAsync(other.Id, "auth0|stranger", OrgRole.Admin);
 
         await using var db = _kit.NewDb();
-        var export = await Service(db).ExportOrgFiscalDataAsync(org.Id);
+        var export = await Service(db).ExportOrgFiscalDataAsync(org.Id, new HostScope(org.Id));
 
         var json = JsonSerializer.Serialize(export);
         Assert.Contains("auth0|owner-a", json);

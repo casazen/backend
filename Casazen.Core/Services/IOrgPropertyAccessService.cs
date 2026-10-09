@@ -44,7 +44,9 @@ public interface IOrgPropertyAccessService
     /// <summary>
     /// Sets the scope of the member: <see cref="PropertyScope.All"/> (every property, the ones added later too; the rows go) or
     /// <see cref="PropertyScope.Selected"/> with exactly <paramref name="propertyIds"/> (none = it sees nothing). The ids are
-    /// ignored for <see cref="PropertyScope.All"/>.
+    /// ignored for <see cref="PropertyScope.All"/>. Since AM-03b a collaborator who is no longer given a property it was in
+    /// charge of (<see cref="Casazen.Core.Entities.Property.ResponsibleUserId"/>) is put out of charge of it, in the same save:
+    /// the property goes back to nobody. Widening the access releases nothing.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><c>org_member_not_found</c>.</exception>
     /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException"><c>org_owner_required</c>: only the owner touches an administrator.</exception>
@@ -63,6 +65,8 @@ public interface IOrgPropertyAccessService
     /// <summary>
     /// Puts <paramref name="responsibleUserId"/> in charge of the property (or nobody, <c>null</c>): the person who is told, with
     /// the org's administrators, when something happens on it. It must be an active member of the org who reaches the property.
+    /// It takes the org's people lock like the writes of the access (AM-03b), so a person cannot be put in charge in the middle of
+    /// the revocation of its access.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The property is not in the org.</exception>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException"><see cref="PropertyResponsibleErrors.Invalid"/>.</exception>

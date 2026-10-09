@@ -34,10 +34,11 @@ public static class CasazenPolicies
 
     /// <summary>
     /// Administrator of the caller's org, in whichever rental context it works (PL-16): plan, entitlement, billing,
-    /// Connect, branding, domain, site documents. An org policy, not a context one: the org's owner (<c>PropertyOwner</c>
-    /// or <c>LongTermLandlord</c>, as JWT role or as DB membership of the owner's role key) or a platform admin; never a
-    /// <c>Staff</c> collaborator, a <c>PropertyManager</c> (D12) or the holder of any other member role
-    /// (<c>OrgBillingAdminAuthorizationHandler</c>, <see cref="Casazen.Core.Authorization.OrgOwnerRoles"/>).
+    /// Connect, branding, domain, site documents and, since AM-03b, the export of the org's fiscal data and team
+    /// (<c>GET api/gdpr/org/export</c>). An org policy, not a context one: the org's owner (<c>PropertyOwner</c>
+    /// or <c>LongTermLandlord</c>, as JWT role or as DB membership of the owner's role key), an administrator of the org team
+    /// or a platform admin; never a <c>Staff</c> collaborator, a <c>PropertyManager</c> (D12) or the holder of any other member
+    /// role (<c>OrgBillingAdminAuthorizationHandler</c>, <see cref="Casazen.Core.Authorization.OrgOwnerRoles"/>).
     /// </summary>
     public const string OrgBillingAdmin = "RequireOrgBillingAdmin";
 
@@ -122,6 +123,13 @@ public static class CasazenPolicies
     /// </summary>
     public const string OrgMembersManage = ContextPolicyPrefix + AccountContext.Key + ":" + AccountContext.Permissions.MembersManage;
 
+    /// <summary>
+    /// Read the activity log of the caller's org (AM-02b): the list and the CSV of who did what. The permission
+    /// <c>org.activity.read</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody else
+    /// (AM-01 seeds it). Like the host contexts it waits for the onboarding and the consents.
+    /// </summary>
+    public const string OrgActivityRead = ContextPolicyPrefix + AccountContext.Key + ":" + AccountContext.Permissions.ActivityRead;
+
     /// <summary>Prefix of the context policies; the rest is <c>{context}:{permission}</c>.</summary>
     public const string ContextPolicyPrefix = "RequireContext:";
 
@@ -137,7 +145,7 @@ public static class CasazenPolicies
         ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
-        OrgMembersManage,
+        OrgMembersManage, OrgActivityRead,
     ];
 
     /// <summary>

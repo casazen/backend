@@ -246,6 +246,27 @@
   <data name="PropertyResponsibleInvalid" xml:space="preserve">
     <value>Il responsabile deve essere una persona attiva dell'organizzazione che può vedere questo immobile.</value>
   </data>
+  <data name="AccessRequestAreaRequired" xml:space="preserve">
+    <value>Scegli a cosa vuoi accedere.</value>
+  </data>
+  <data name="AccessRequestAreaUnknown" xml:space="preserve">
+    <value>Non puoi chiedere l'accesso a questa area o pagina.</value>
+  </data>
+  <data name="AccessRequestNoteTooLong" xml:space="preserve">
+    <value>Il messaggio è troppo lungo (al massimo 200 caratteri).</value>
+  </data>
+  <data name="AccessRequestLimitReached" xml:space="preserve">
+    <value>Hai già inviato diverse richieste oggi e gli amministratori sono stati avvisati. Riprova domani.</value>
+  </data>
+  <data name="OrgActivityTypeUnknown" xml:space="preserve">
+    <value>Tipo di attività non riconosciuto.</value>
+  </data>
+  <data name="OrgActivityAreaUnknown" xml:space="preserve">
+    <value>Area non riconosciuta.</value>
+  </data>
+  <data name="OrgActivityRangeInvalid" xml:space="preserve">
+    <value>La data di inizio deve essere precedente alla data di fine.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
@@ -2541,5 +2562,35 @@
   </data>
   <data name="ServiceRequestOnlinePayment" xml:space="preserve">
     <value>Questa richiesta si paga in CasaZen con il link inviato per email: non puoi segnarla come pagata a mano.</value>
+  </data>
+  <data name="ServicePaymentNotRefundable" xml:space="preserve">
+    <value>Questo pagamento non si può rimborsare da qui: non risulta pagato online con successo.</value>
+  </data>
+  <data name="ServicePaymentRefundOffline" xml:space="preserve">
+    <value>Questo pagamento è stato registrato come ricevuto fuori da CasaZen: nessun importo è passato da CasaZen, quindi non c'è nulla da rimborsare da qui.</value>
+  </data>
+  <data name="ServicePaymentNothingToRefund" xml:space="preserve">
+    <value>Non c'è più nulla da rimborsare su questo pagamento.</value>
+  </data>
+  <data name="ServicePaymentRefundAmountInvalid" xml:space="preserve">
+    <value>L'importo da rimborsare deve essere un numero positivo di centesimi.</value>
+  </data>
+  <data name="ServicePaymentRefundAmountExceeds" xml:space="preserve">
+    <value>L'importo supera quanto si può ancora rimborsare ({0:N2} €).</value>
+  </data>
+  <data name="ServicePaymentRefundReasonTooLong" xml:space="preserve">
+    <value>La nota può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="SupplierCommissionInvalid" xml:space="preserve">
+    <value>La commissione deve essere una percentuale da 0 a {0}, con al massimo due decimali.</value>
+  </data>
+  <data name="SupplierCommissionUntilInvalid" xml:space="preserve">
+    <value>La fine del periodo richiede una percentuale e deve essere una data futura.</value>
+  </data>
+  <data name="SupplierCommissionReasonInvalid" xml:space="preserve">
+    <value>Indica il motivo della modifica (al massimo 500 caratteri).</value>
+  </data>
+  <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
+    <value>Indica un mese passato o in corso nel formato aaaa-mm (ad esempio 2026-10).</value>
   </data>
 </root>

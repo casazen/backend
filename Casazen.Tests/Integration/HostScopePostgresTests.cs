@@ -265,7 +265,7 @@ public class HostScopePostgresTests : IAsyncLifetime
         {
             await gate.Task;
             await using var db = kit.NewDb();
-            var service = new OrgPropertyAccessService(db, kit.Cache.Object, NullLogger<OrgPropertyAccessService>.Instance, kit.Clock);
+            var service = kit.PropertyAccess(db);
             await service.SetAsync(org.Id, member.Id, "auth0|owner", PropertyScope.Selected, set);
         }).ToList();
         gate.SetResult();
@@ -309,7 +309,7 @@ public class HostScopePostgresTests : IAsyncLifetime
         async Task SetAsync(PropertyScope scope, params Guid[] ids)
         {
             await using var db = _database!.CreateContext();
-            var service = new OrgPropertyAccessService(db, kit.Cache.Object, NullLogger<OrgPropertyAccessService>.Instance, kit.Clock);
+            var service = kit.PropertyAccess(db);
             await service.SetAsync(org.Id, member.Id, "auth0|owner", scope, ids);
         }
 
