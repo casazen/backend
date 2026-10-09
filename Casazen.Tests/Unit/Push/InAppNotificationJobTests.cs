@@ -110,6 +110,33 @@ public class InAppNotificationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAsync_ACollaboratorInChargeWhoDoesNotReachTheProperty_IsNotTold_UntilItIsGivenTheProperty()
+    {
+        // AM-03b: the person in charge is told only while they can open the property; the push and the bell share the rule.
+        var world = await _kit.SeedWorldAsync();
+        var member = await _kit.Db.OrgMembers.SingleAsync(m => m.UserId == World.ManagerId);
+        member.Role = OrgRole.Collaborator;
+        member.PropertyScope = PropertyScope.Selected;
+        await _kit.Db.SaveChangesAsync();
+        _kit.Db.ChangeTracker.Clear();
+        var audience = Queued(PushAudience.PropertyHosts(world.PropertyId));
+
+        await _kit.Job().CreateAsync("property:abc:before", audience, CancellationToken.None);
+
+        Assert.Equal([World.OwnerId], (await _kit.RowsAsync()).Select(r => r.UserId));
+
+        _kit.Db.PropertyMemberAccesses.Add(new PropertyMemberAccess { OrgId = world.OrgId, UserId = World.ManagerId, PropertyId = world.PropertyId });
+        await _kit.Db.SaveChangesAsync();
+        _kit.Db.ChangeTracker.Clear();
+
+        await _kit.Job().CreateAsync("property:abc:after", audience, CancellationToken.None);
+
+        Assert.Equal(
+            [World.ManagerId, World.OwnerId],
+            (await _kit.RowsAsync()).Where(r => r.DeliveryKey == "property:abc:after").Select(r => r.UserId));
+    }
+
+    [Fact]
     public async Task CreateAsync_UnknownBookingOrProperty_WritesNothingAndDoesNotThrow()
     {
         await _kit.SeedWorldAsync();

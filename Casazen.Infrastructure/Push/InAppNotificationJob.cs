@@ -202,7 +202,7 @@ public sealed class InAppNotificationJob(
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(b => b.Id == bookingId)
-            .Select(b => new { b.OrgId, b.Property.OwnerId, b.Property.ResponsibleUserId })
+            .Select(b => new { b.OrgId, b.PropertyId, b.Property.OwnerId, b.Property.ResponsibleUserId })
             .FirstOrDefaultAsync(cancellationToken);
         if (booking is null)
         {
@@ -210,7 +210,7 @@ public sealed class InAppNotificationJob(
             return Recipients.None;
         }
 
-        return await HostsAsync(booking.OrgId, booking.ResponsibleUserId, booking.OwnerId, cancellationToken);
+        return await HostsAsync(booking.OrgId, booking.PropertyId, booking.ResponsibleUserId, booking.OwnerId, cancellationToken);
     }
 
     private async Task<Recipients> PropertyHostsAsync(Guid propertyId, CancellationToken cancellationToken)
@@ -228,16 +228,22 @@ public sealed class InAppNotificationJob(
             return Recipients.None;
         }
 
-        return await HostsAsync(property.OrgId, property.ResponsibleUserId, property.OwnerId, cancellationToken);
+        return await HostsAsync(property.OrgId, propertyId, property.ResponsibleUserId, property.OwnerId, cancellationToken);
     }
 
     /// <summary>
-    /// The people the push tells about a property of the org (AM-03): the member in charge and the org's administrators, active
-    /// and not deactivated (<see cref="HostNotificationAudience"/>), the same query the delivery job joins to the devices.
+    /// The people the push tells about a property of the org (AM-03, AM-03b): the member in charge, while they still reach the
+    /// property, and the org's administrators, active and not deactivated (<see cref="HostNotificationAudience"/>), the same query
+    /// the delivery job joins to the devices.
     /// </summary>
-    private async Task<Recipients> HostsAsync(Guid orgId, string? responsibleUserId, string ownerId, CancellationToken cancellationToken)
+    private async Task<Recipients> HostsAsync(
+        Guid orgId,
+        Guid propertyId,
+        string? responsibleUserId,
+        string ownerId,
+        CancellationToken cancellationToken)
     {
-        var users = await HostNotificationAudience.UsersToTell(db, orgId, responsibleUserId, ownerId)
+        var users = await HostNotificationAudience.UsersToTell(db, orgId, propertyId, responsibleUserId, ownerId)
             .Select(u => u.Id)
             .ToListAsync(cancellationToken);
         return new Recipients(orgId, users.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList());
