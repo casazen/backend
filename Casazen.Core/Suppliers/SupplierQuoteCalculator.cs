@@ -156,8 +156,9 @@ public static class SupplierQuoteCalculator
                 return null;
 
             case SupplierServicePriceUnit.PerSquareMeter:
-                // The surface to price is the quantity: it has to be said.
-                if (requested is not { } surface || !InQuantityRange(surface))
+                // The surface to price is the quantity: it has to be said, and it may be as large as a surface can be (a big
+                // villa is an estimate or "on quote", not a refusal).
+                if (requested is not { } surface || surface is < 1 or > PublicShowcaseLimits.QuoteMaxSurfaceSqm)
                     AddOnce(invalid, SupplierQuoteFields.Quantity);
                 return requested;
 

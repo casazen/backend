@@ -50,7 +50,10 @@ public static class PublicShowcaseLimits
     /// <summary>Size, in square meters, of the unit of a <c>sqm30</c> supplement; a started block counts as a whole one.</summary>
     public const int QuoteSurfaceStepSqm = 30;
 
-    /// <summary>Most units of the main price (hours, sets, square meters) one estimate takes.</summary>
+    /// <summary>
+    /// Most units of the main price (hours, sets) and of a supplement (bathrooms, sets, hours) one estimate takes. A price per
+    /// square meter takes as many units as a surface can have (<see cref="QuoteMaxSurfaceSqm"/>).
+    /// </summary>
     public const int QuoteMaxQuantity = 1_000;
 
     /// <summary>Largest surface, in square meters, an estimate takes: a guard against a typo, not a rule of the business.</summary>

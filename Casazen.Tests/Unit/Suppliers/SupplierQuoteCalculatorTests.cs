@@ -121,7 +121,6 @@ public class SupplierQuoteCalculatorTests
     [Theory]
     [InlineData(SupplierServicePriceUnit.PerHour)]
     [InlineData(SupplierServicePriceUnit.PerSet)]
-    [InlineData(SupplierServicePriceUnit.PerSquareMeter)]
     public void Validate_TheQuantity_IsBetween1AndTheMostOneEstimateTakes(SupplierServicePriceUnit unit)
     {
         var service = Service(unit: unit);
@@ -133,6 +132,31 @@ public class SupplierQuoteCalculatorTests
             var ex = Assert.Throws<SupplierQuoteRuleException>(() => SupplierQuoteCalculator.Validate(service, Request(quantity: bad)));
             Assert.Equal(new[] { "quantity" }, ex.Fields);
         }
+    }
+
+    [Fact]
+    public void Validate_ThePriceUnitPerSquareMeter_TakesAsManySquareMetersAsASurfaceCanHave()
+    {
+        var service = Service(unit: SupplierServicePriceUnit.PerSquareMeter, price: 350);
+
+        // A 1,200 m2 villa is an estimate (or "on quote"), not a refusal.
+        Assert.Equal(1200, SupplierQuoteCalculator.Validate(service, Request(quantity: 1200)).Quantity);
+        Assert.Equal(10_000, SupplierQuoteCalculator.Validate(service, Request(quantity: 10_000)).Quantity);
+        Assert.Equal(420_000, Quote(service, Request(quantity: 1200)).TotalCents);
+        foreach (var bad in new[] { 0, -3, 10_001 })
+        {
+            var ex = Assert.Throws<SupplierQuoteRuleException>(() => SupplierQuoteCalculator.Validate(service, Request(quantity: bad)));
+            Assert.Equal(new[] { "quantity" }, ex.Fields);
+        }
+    }
+
+    [Fact]
+    public void Calculate_TenThousandSquareMetersAtTheHighestPrice_IsOnQuote_AndDoesNotOverflow()
+    {
+        var quote = Quote(Service(unit: SupplierServicePriceUnit.PerSquareMeter, price: 10_000_000), Request(quantity: 10_000));
+
+        Assert.Equal(SupplierQuoteOutcome.OnQuote, quote.Outcome);
+        Assert.Equal(SupplierQuoteReason.AmountOverLimit, quote.Reason);
     }
 
     // ─── The supplements, one unit at a time ─────────────────────────────────────
