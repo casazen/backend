@@ -1,4 +1,5 @@
-﻿using Casazen.Core.Services;
+﻿using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -183,5 +184,84 @@ public class NotificationService(
             logger.LogWarning(
                 "OTA stay review push of booking {BookingId} not queued (org {OrgId})", booking.Id, booking.OrgId);
         }
+    }
+
+    public async Task<bool> SendPropertyModeChangeAsync(PropertyModeNotice notice, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(notice);
+
+        // Called by the mode change service after its commit (a request, or the hourly job without a tenant context): the
+        // change id is its own. The property's soft delete filter applies: nobody is told about a property that is gone.
+        var change = await db.PropertyModeChanges
+            .AsNoTracking()
+            .Where(c => c.Id == notice.ChangeId)
+            .Select(c => new
+            {
+                c.OrgId,
+                c.PropertyId,
+                c.FromMode,
+                c.ToMode,
+                c.EffectiveDate,
+                c.FailureReason,
+                PropertyName = c.Property.Name,
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (change is null)
+        {
+            logger.LogWarning("Mode change notice {Kind} skipped because change {ChangeId} was not found", notice.Kind, notice.ChangeId);
+            return false;
+        }
+
+        var contactEmail = await db.Orgs
+            .AsNoTracking()
+            .Where(o => o.Id == change.OrgId)
+            .Select(o => o.ContactEmail)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
+        var culture = EmailTemplates.DefaultCulture;
+        var (template, email) = notice.Kind switch
+        {
+            PropertyModeNoticeKind.Scheduled => (
+                EmailTemplates.Names.PropertyModeChangeScheduled,
+                EmailTemplates.PropertyModeChangeScheduled(
+                    culture,
+                    change.PropertyName,
+                    change.ToMode,
+                    change.EffectiveDate,
+                    links.IsConfigured ? links.HostProperty(change.PropertyId, change.FromMode) : null)),
+            PropertyModeNoticeKind.Applied => (
+                EmailTemplates.Names.PropertyModeChangeApplied,
+                EmailTemplates.PropertyModeChangeApplied(
+                    culture,
+                    change.PropertyName,
+                    change.ToMode,
+                    change.ToMode == RentalMode.Long ? PropertyModeRules.CalendarBlockEnd(change.EffectiveDate) : null,
+                    !links.IsConfigured
+                        ? null
+                        : change.ToMode == RentalMode.Short
+                            ? links.HostPropertyActivation(change.PropertyId)
+                            : links.HostProperty(change.PropertyId, change.ToMode))),
+            PropertyModeNoticeKind.Failed => (
+                EmailTemplates.Names.PropertyModeChangeFailed,
+                EmailTemplates.PropertyModeChangeFailed(
+                    culture,
+                    change.PropertyName,
+                    change.ToMode,
+                    change.EffectiveDate,
+                    change.FailureReason,
+                    notice.EarliestDate,
+                    links.IsConfigured ? links.HostProperty(change.PropertyId, change.FromMode) : null)),
+            _ => throw new ArgumentOutOfRangeException(nameof(notice), notice.Kind, "Unknown property mode notice"),
+        };
+
+        // Delivered by EmailDeliveryJob (retries on transient provider errors); a missing address or provider is logged by
+        // the queue.
+        if (emailQueue.Enqueue(contactEmail, email, template))
+            return true;
+
+        logger.LogWarning(
+            "Mode change {Kind} email of change {ChangeId} not queued (org {OrgId})", notice.Kind, notice.ChangeId, change.OrgId);
+        return false;
     }
 }

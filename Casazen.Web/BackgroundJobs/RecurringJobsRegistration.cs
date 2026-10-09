@@ -77,6 +77,8 @@ public static class RecurringJobsRegistration
 
         ConfigureRliProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.RliProvider));
 
+        ConfigurePropertyModeJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.PropertyModeChange));
+
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
             job => job.ExecuteAsync(),
@@ -172,6 +174,26 @@ public static class RecurringJobsRegistration
             ServiceRequestAutoCancelJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ServiceRequestAutoCancelJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// Application of the scheduled changes of rental mode (PM-02): only with <see cref="FeatureFlags.PropertyModeChange"/> on.
+    /// With the flag off nothing can be scheduled and the endpoints answer 404, so there is nothing to apply: the schedule of
+    /// an earlier deploy is removed, and a change already programmed waits until the flag is turned on again.
+    /// </summary>
+    private static void ConfigurePropertyModeJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(PropertyModeChangeJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<PropertyModeChangeJob>(
+            PropertyModeChangeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            PropertyModeChangeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

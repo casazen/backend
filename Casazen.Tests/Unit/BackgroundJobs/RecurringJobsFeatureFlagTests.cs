@@ -197,13 +197,15 @@ public class RecurringJobsFeatureFlagTests
         bool otaPartnerApi,
         bool rliProvider = false,
         bool eSignProvider = false,
-        bool supplierRequestAutoCancel = false)
+        bool supplierRequestAutoCancel = false,
+        bool propertyModeChange = false)
     {
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.OtaPartnerApi)).Returns(otaPartnerApi);
         flags.Setup(f => f.IsEnabled(FeatureFlags.RliProvider)).Returns(rliProvider);
         flags.Setup(f => f.IsEnabled(FeatureFlags.ESignProvider)).Returns(eSignProvider);
         flags.Setup(f => f.IsEnabled(FeatureFlags.SupplierRequestAutoCancel)).Returns(supplierRequestAutoCancel);
+        flags.Setup(f => f.IsEnabled(FeatureFlags.PropertyModeChange)).Returns(propertyModeChange);
         return flags.Object;
     }
 

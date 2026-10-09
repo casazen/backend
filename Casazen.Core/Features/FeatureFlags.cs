@@ -100,6 +100,15 @@ public static class FeatureFlags
     /// </summary>
     public const string OrgTeam = "OrgTeam";
 
+    /// <summary>
+    /// PM-02 / D16: the scheduled change of rental mode of a property (short stays to long-term leases and back). Off:
+    /// <c>GET api/properties/{id}/mode</c>, <c>GET …/mode/preview</c>, <c>POST …/mode/change</c> and
+    /// <c>DELETE …/mode/change/{changeId}</c> answer 404 before anything is read, and the hourly <c>property-mode-change</c>
+    /// job is not registered (removed with <c>RemoveIfExists</c>): a change already programmed waits, untouched, until the
+    /// flag is turned on again. The mode itself (PM-01) and everything that reads it are not behind this flag.
+    /// </summary>
+    public const string PropertyModeChange = "PropertyModeChange";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -112,5 +121,6 @@ public static class FeatureFlags
         SupplierRequestAutoCancel,
         UiRedesign,
         OrgTeam,
+        PropertyModeChange,
     ];
 }
