@@ -1661,6 +1661,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
 
+                    b.Property<string>("HostName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -1689,6 +1693,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("PublicHostMode")
                         .HasColumnType("integer");
 
+                    b.Property<string>("PublicPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("PublicThemeId")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -1716,6 +1724,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("SubscriptionStatus")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Subtitle")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Tagline")
                         .HasMaxLength(500)
@@ -2747,6 +2759,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("MaxGuests")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("MinNights")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -2807,6 +2822,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal>("WeekendSurchargePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CancellationPolicyId");
@@ -2832,7 +2851,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("UIX_Properties_OrgId_Slug")
                         .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false");
 
-                    b.ToTable("Properties");
+                    b.ToTable("Properties", t =>
+                        {
+                            t.HasCheckConstraint("CK_Properties_MinNights", "\"MinNights\" IS NULL OR \"MinNights\" BETWEEN 1 AND 30");
+
+                            t.HasCheckConstraint("CK_Properties_WeekendSurchargePercent", "\"WeekendSurchargePercent\" BETWEEN 0 AND 100");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyDocument", b =>
@@ -3401,6 +3425,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("LastFailedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LastReminderAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("LeaseContractId")
                         .HasColumnType("uuid");
 
@@ -3444,6 +3471,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<int>("ReminderCount")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("RentScheduleId")
                         .HasColumnType("uuid");
 
@@ -3469,6 +3499,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("LeaseContractId", "PeriodStart")
                         .IsUnique();
+
+                    b.HasIndex("OrgId", "DueDate");
 
                     b.ToTable("RentLedgerEntries");
                 });

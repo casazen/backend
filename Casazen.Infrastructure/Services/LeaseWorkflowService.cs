@@ -102,13 +102,26 @@ public class LeaseWorkflowService(
         // The deadline of a lease not signed yet depends on today (LT-04): resolved here, not stored.
         var today = _clock.TodayInRome();
         var summaries = await leaseRepository.GetSummariesAsync(scope, propertyId);
-        return summaries
+        return WithResolvedDeadline(summaries, today);
+    }
+
+    public async Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, LeaseListQuery query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        // The views, the overdue installments and the deadline of a lease not signed yet all depend on today (Rome).
+        var today = _clock.TodayInRome();
+        var summaries = await leaseRepository.GetSummariesAsync(scope, query, today);
+        return WithResolvedDeadline(summaries, today);
+    }
+
+    private static IReadOnlyList<LeaseSummaryDto> WithResolvedDeadline(IReadOnlyList<LeaseSummaryDto> summaries, DateTime today) =>
+        summaries
             .Select(s => s with
             {
                 RegistrationDeadline = RliRegistrationDeadline.Resolve(s.Status, s.StipulaDate, s.StartDate, today),
             })
             .ToList();
-    }
 
     public Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId)
         => leaseRepository.GetByIdWithDetailsAsync(leaseId);

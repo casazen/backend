@@ -394,6 +394,19 @@ public class AppDbContext(
             .Property(p => p.Longitude)
             .HasPrecision(9, PropertyAddress.CoordinateScale);
 
+        // DB-03: the stay rules the public quote and checkout read (minimum stay, weekend surcharge). The host forms and the
+        // property service validate them; the constraints keep any other writer honest. Both columns are nullable or 0 for
+        // every row that existed before them, so the migration changes no behavior (docs/runbooks/direct-booking.md § 11).
+        modelBuilder.Entity<Property>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_Properties_MinNights",
+                $"\"MinNights\" IS NULL OR \"MinNights\" BETWEEN {PropertyStayRules.MinMinNights} AND {PropertyStayRules.MaxMinNights}");
+            t.HasCheckConstraint(
+                "CK_Properties_WeekendSurchargePercent",
+                $"\"WeekendSurchargePercent\" BETWEEN 0 AND {(int)PropertyStayRules.MaxWeekendSurchargePercent}");
+        });
+
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
@@ -727,6 +740,10 @@ public class AppDbContext(
 
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => e.OrgId);
+
+        // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasIndex(e => new { e.OrgId, e.DueDate });
 
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).

@@ -10,6 +10,7 @@ public static partial class EmailTemplates
         public const string RentPaymentRequest = "rent-payment-request";
         public const string RentPaymentFailed = "rent-payment-failed";
         public const string RentPaymentReceived = "rent-payment-received";
+        public const string RentReminder = "rent-reminder";
     }
 
     /// <summary>
@@ -83,6 +84,52 @@ public static partial class EmailTemplates
             .Paragraph("RentPaymentReceived_Payout")
             .Button("RentPaymentReceived_Cta", leaseUrl)
             .Build("RentPaymentReceived_Subject", propertyName, AsDate(periodStart));
+
+    /// <summary>
+    /// The landlord reminds a tenant that an installment is not paid (LR-01, B1): amount, property, period and due date (with the
+    /// wording of "overdue" once it has passed), the landlord's optional short note quoted as written (HTML-encoded, never
+    /// markup), and either the personal payment link, when the org accepts rent online, or the invitation to pay the way the
+    /// tenant agreed with the landlord.
+    /// </summary>
+    public static EmailContent RentReminder(
+        CultureInfo culture,
+        string tenantName,
+        string propertyName,
+        string landlordName,
+        DateOnly periodStart,
+        DateOnly periodEnd,
+        DateOnly dueDate,
+        decimal amount,
+        bool overdue,
+        string? note,
+        string? payUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("Rent_Greeting", tenantName)
+            .Paragraph(
+                overdue ? "RentReminder_BodyOverdue" : "RentReminder_BodyDue",
+                Amount(amount, culture),
+                propertyName,
+                AsDate(periodStart),
+                AsDate(periodEnd),
+                AsDate(dueDate))
+            .Quote("RentReminder_NoteLabel", note);
+
+        if (payUrl is null)
+        {
+            builder.Paragraph("RentReminder_NoLink", landlordName).Muted("RentReminder_AlreadyPaid");
+        }
+        else
+        {
+            builder
+                .Paragraph("RentPaymentRequest_Landlord", landlordName)
+                .Button("RentPayment_Cta", payUrl)
+                .LinkFallback("Rent_LinkFallback", payUrl)
+                .Muted("Rent_Personal");
+        }
+
+        return builder.Build("RentReminder_Subject", propertyName, AsDate(dueDate));
+    }
 
     /// <summary>Date-only values are formatted as dates (midnight UTC of the day, no time zone conversion).</summary>
     private static DateTime AsDate(DateOnly day) => day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);

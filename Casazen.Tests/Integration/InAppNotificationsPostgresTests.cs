@@ -305,8 +305,8 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
             ("auth0|u1", true, true), ("auth0|u2", true, true), ("auth0|u3", true, true), ("auth0|u4", true, true));
         var queued = Queued(PushAudienceKind.SupplierOrg, supplierOrgId, PushTypes.ServiceRequestCreated, Guid.NewGuid());
 
-        // Every run reads "nobody told yet" before any of them writes: the first INSERT wins, the others get 23505, read again
-        // and find everything written. None of them fails.
+        // Every run reads "nobody told yet" before any of them writes: for each user the first INSERT wins and the others get 23505
+        // and go on with the next user. None of them fails or deadlocks.
         const int runs = 4;
         var rendezvous = new InsertRendezvous(runs);
         var options = new DbContextOptionsBuilder<AppDbContext>(_database!.CreateOptions()).AddInterceptors(rendezvous).Options;
@@ -318,7 +318,8 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
 
         await Task.WhenAll(tasks);
 
-        Assert.Equal(runs, rendezvous.Arrived);
+        // Every run reached its first INSERT before any wrote; the saves of the users that follow are counted too.
+        Assert.True(rendezvous.Arrived >= runs);
         var rows = await RowsAsync();
         Assert.Equal(["auth0|u1", "auth0|u2", "auth0|u3", "auth0|u4"], rows.Select(r => r.UserId).Order(StringComparer.Ordinal));
         Assert.All(rows, row => Assert.Equal("service-request:race:created", row.DeliveryKey));

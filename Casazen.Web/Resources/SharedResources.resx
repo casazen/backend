@@ -570,6 +570,21 @@
   <data name="OrgBrandingTaglineTooLongInput" xml:space="preserve">
     <value>Lo slogan è troppo lungo.</value>
   </data>
+  <data name="OrgBrandingSubtitleTooLong" xml:space="preserve">
+    <value>Il sottotitolo non può superare i {0} caratteri.</value>
+  </data>
+  <data name="OrgBrandingSubtitleTooLongInput" xml:space="preserve">
+    <value>Il sottotitolo è troppo lungo.</value>
+  </data>
+  <data name="OrgBrandingHostNameTooLong" xml:space="preserve">
+    <value>Il nome dell'host non può superare i {0} caratteri.</value>
+  </data>
+  <data name="OrgBrandingHostNameTooLongInput" xml:space="preserve">
+    <value>Il nome dell'host è troppo lungo.</value>
+  </data>
+  <data name="OrgBrandingPhoneInvalid" xml:space="preserve">
+    <value>Il numero di telefono non è valido: usa solo cifre, con un + iniziale facoltativo (da 6 a 15 cifre).</value>
+  </data>
   <data name="OrgBrandingImageEmpty" xml:space="preserve">
     <value>Seleziona un'immagine da caricare.</value>
   </data>
@@ -958,6 +973,12 @@
   <data name="DirectBookingInvalidPaymentOption" xml:space="preserve">
     <value>Metodo di pagamento non valido.</value>
   </data>
+  <data name="DirectBookingMinNightsNotMet" xml:space="preserve">
+    <value>Il soggiorno minimo per questa casa è di {0} notti.</value>
+  </data>
+  <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
+    <value>Il consenso a ricevere offerte non è disponibile in questo momento: riprova senza selezionarlo.</value>
+  </data>
   <data name="SupplierClaimInvalid" xml:space="preserve">
     <value>Il collegamento non è valido: registra di nuovo la tua attività o accedi con l'account già collegato.</value>
   </data>
@@ -1245,6 +1266,18 @@
   </data>
   <data name="PropertyCleaningFeeRange" xml:space="preserve">
     <value>Il costo delle pulizie deve essere tra {1} e {2} euro.</value>
+  </data>
+  <data name="PropertyMinNightsRange" xml:space="preserve">
+    <value>Il soggiorno minimo deve essere tra {1} e {2} notti (lascia vuoto per nessun minimo).</value>
+  </data>
+  <data name="PropertyMinNightsInvalid" xml:space="preserve">
+    <value>Il soggiorno minimo non è valido: indica da 1 a 30 notti, oppure nessun minimo.</value>
+  </data>
+  <data name="PropertyWeekendSurchargeRange" xml:space="preserve">
+    <value>La maggiorazione del weekend deve essere tra {1} e {2} per cento.</value>
+  </data>
+  <data name="PropertyWeekendSurchargeInvalid" xml:space="preserve">
+    <value>La maggiorazione del weekend non è valida: indica una percentuale da 0 a 100.</value>
   </data>
   <data name="PropertyDamageDepositRange" xml:space="preserve">
     <value>Il deposito cauzionale deve essere tra {1} e {2} euro.</value>
@@ -2055,6 +2088,33 @@
   </data>
   <data name="RentBillingDayRange" xml:space="preserve">
     <value>Il giorno di scadenza deve essere compreso tra 1 e 28.</value>
+  </data>
+  <data name="RentReminderTooSoon" xml:space="preserve">
+    <value>Hai già sollecitato questo canone: puoi inviare un sollecito ogni {0} ore al massimo.</value>
+  </data>
+  <data name="RentReminderNotSent" xml:space="preserve">
+    <value>Il sollecito non è stato inviato: il servizio email non è disponibile. Riprova più tardi.</value>
+  </data>
+  <data name="RentReminderNoteTooLong" xml:space="preserve">
+    <value>La nota può contenere al massimo 300 caratteri.</value>
+  </data>
+  <data name="RentReminderBatchInvalid" xml:space="preserve">
+    <value>Seleziona da 1 a 50 canoni da sollecitare.</value>
+  </data>
+  <data name="RentRegisterMonthInvalid" xml:space="preserve">
+    <value>Indica il mese nel formato aaaa-mm, per esempio 2026-10.</value>
+  </data>
+  <data name="RentRegisterStatusUnknown" xml:space="preserve">
+    <value>Lo stato dei canoni non è valido: usa All, Paid, Pending oppure Overdue.</value>
+  </data>
+  <data name="LeaseListViewUnknown" xml:space="preserve">
+    <value>La vista dei contratti non è valida: usa All, Active, InPreparation, Expiring oppure Ended.</value>
+  </data>
+  <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
+    <value>Indica un periodo valido: date nel formato aaaa-mm-gg, con la fine non prima dell'inizio e al massimo 366 giorni.</value>
+  </data>
+  <data name="LongRentDeadlinesTypeUnknown" xml:space="preserve">
+    <value>Il tipo di scadenza non è valido: usa RliRegistration, Questura, LeaseEnd, Notice oppure Rent.</value>
   </data>
   <data name="SupplierActivationBlocked" xml:space="preserve">
     <value>Il profilo non può essere attivato: mancano alcuni requisiti obbligatori.</value>

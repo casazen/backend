@@ -15,8 +15,9 @@ namespace Casazen.Web.DTOs;
 /// validated and applied.
 /// </summary>
 /// <remarks>
-/// <para>The nullable fields <see cref="CinCode"/>, <see cref="Slug"/> and <see cref="CancellationPolicyId"/> are
-/// cleared by sending them explicitly as <c>null</c> (or, for the text ones, blank); leaving them out keeps them.</para>
+/// <para>The nullable fields <see cref="CinCode"/>, <see cref="Slug"/>, <see cref="CancellationPolicyId"/> and
+/// <see cref="MinNights"/> (DB-03) are cleared by sending them explicitly as <c>null</c> (or, for the text ones, blank);
+/// leaving them out keeps them.</para>
 /// <para>Server-managed fields (<c>Id</c>, <c>OwnerId</c>, <c>OrgId</c>, <c>CreatedAt</c>, <c>UpdatedAt</c>, the
 /// compliance status) are not part of the request. Validation messages are SharedResources keys.</para>
 /// <para>The photo gallery is not part of the request (PC-04, A2-26): photos are uploaded, deleted, ordered and chosen as
@@ -102,6 +103,30 @@ public class UpdatePropertyRequest
     [Range(typeof(decimal), "0", "100000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyNightlyRateRange")]
     public decimal? NightlyRate { get; set; }
+
+    /// <summary>
+    /// Fewest nights the public booking site accepts (DB-03), 1 to 30. <c>null</c> removes the minimum (no minimum); leaving
+    /// it out keeps it. The guests' quote and checkout refuse a shorter stay (422 <c>direct_booking_min_nights_not_met</c>);
+    /// the host can still enter one by hand.
+    /// </summary>
+    [Range(PropertyStayRules.MinMinNights, PropertyStayRules.MaxMinNights, ErrorMessage = "PropertyMinNightsRange")]
+    public int? MinNights
+    {
+        get;
+        set
+        {
+            field = value;
+            MinNightsSent = true;
+        }
+    }
+
+    /// <summary>
+    /// Percent added to the nightly rate on the Friday and Saturday nights of a stay (DB-03), 0 to 100 with two decimals;
+    /// <c>0</c> turns the surcharge off, leaving it out (or <c>null</c>) keeps the stored value.
+    /// </summary>
+    [Range(typeof(decimal), "0", "100", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyWeekendSurchargeRange")]
+    public decimal? WeekendSurchargePercent { get; set; }
 
     /// <summary>
     /// How the property is let (PM-01): <c>Short</c> or <c>Long</c>. Accepted so that a form that sends the whole record
@@ -231,6 +256,10 @@ public class UpdatePropertyRequest
     [JsonIgnore]
     public bool SlugSent { get; private set; }
 
+    /// <summary>True when the body carries <see cref="MinNights"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool MinNightsSent { get; private set; }
+
     /// <summary>
     /// Applies the fields present in the request to a tracked <see cref="Property"/> in place and leaves the others
     /// untouched. <c>Id</c>, <c>OwnerId</c>, <c>OrgId</c> and <c>CreatedAt</c> are never touched; <c>UpdatedAt</c> is
@@ -265,6 +294,10 @@ public class UpdatePropertyRequest
             property.MaxGuests = maxGuests;
         if (NightlyRate is { } nightlyRate)
             property.NightlyRate = nightlyRate;
+        if (MinNightsSent)
+            property.MinNights = MinNights;
+        if (WeekendSurchargePercent is { } weekendSurcharge)
+            property.WeekendSurchargePercent = weekendSurcharge;
         if (CleaningFee is { } cleaningFee)
             property.CleaningFee = cleaningFee;
         if (DamageDeposit is { } damageDeposit)

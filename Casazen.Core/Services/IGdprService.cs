@@ -35,7 +35,7 @@ public interface IGdprService
 
     /// <summary>
     /// Change of the marketing consent asked by the host. The host can never grant it (only the guest can, on the
-    /// check-in portal): <paramref name="marketingConsent"/> true raises <c>DomainRuleException</c>
+    /// check-in portal or at the checkout of the booking site): <paramref name="marketingConsent"/> true raises <c>DomainRuleException</c>
     /// (<c>gdpr_marketing_consent_host_grant_forbidden</c>, 422). A withdrawal needs the guest's documented request in
     /// <paramref name="note"/> (<c>gdpr_marketing_withdrawal_note_required</c>); withdrawing a consent that is not in
     /// force changes nothing.
