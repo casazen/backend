@@ -295,8 +295,18 @@ public sealed class ShowcaseBookingNotifier(
     /// </summary>
     public async Task NotifyCancelledByCustomerAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
-        var supplier = await TryFindSupplierAsync(request, cancellationToken);
-        var contact = await TryFindCustomerAsync(request, cancellationToken);
+        SupplierContact? supplier;
+        ServiceCustomerContact? contact;
+        try
+        {
+            supplier = await TryFindSupplierAsync(request, cancellationToken);
+            contact = await TryFindCustomerAsync(request, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The parties of the showcase request {Id} cancelled by its customer could not be read", request.Id);
+            return;
+        }
 
         try
         {

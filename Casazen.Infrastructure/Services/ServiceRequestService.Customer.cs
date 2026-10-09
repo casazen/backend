@@ -35,8 +35,13 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
                 return request;
 
             var now = NowToTheMicrosecond();
-            if (!ShowcaseBookingManagementRules.CanCancel(request.Status, request.ScheduledStartUtc, now))
+
+            // The rule the lookup shows `canCancel` from, and the state machine's: a customer may cancel what a supplier may.
+            if (!ShowcaseBookingManagementRules.CanCancel(request.Status, request.ScheduledStartUtc, now)
+                || !ServiceRequestStateMachine.CanCancel(request.Status, ServiceRequestActorParty.Customer))
+            {
                 throw ShowcaseBookingManagementErrors.CancelRefused();
+            }
 
             await TransitionAsync(
                 request,
@@ -56,7 +61,9 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
 
         logger.LogInformation("ServiceRequest {Id}: cancelled by its customer", request.Id);
 
-        await notifier.NotifyShowcaseCancelledByCustomerAsync(request, cancellationToken);
+        // Committed: the notifications do not go with the request. A customer who closes the tab after the cancellation is saved is
+        // still heard by the supplier, and a retry (which finds it cancelled and does nothing) would never tell it.
+        await notifier.NotifyShowcaseCancelledByCustomerAsync(request, CancellationToken.None);
         return request;
     }
 
@@ -88,14 +95,21 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
                 throw ShowcaseBookingManagementErrors.RescheduleRefused();
             }
 
-            await EnsureSupplierActiveForCustomerAsync(supplierOrgId, cancellationToken);
+            // A supplier that is not active takes no work (422 of its own). The service has to be published still: it gives the rules the
+            // planner applies (notice, days), and the page needs its slots. In the end it is the rule the lookup shows `canReschedule`
+            // from that decides, so the page and the API cannot disagree.
+            var supplierActive = await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
+            if (!supplierActive)
+                throw ShowcaseBookingErrors.InactiveSupplier();
 
-            // The service has to be published still: it gives the rules the planner applies (notice, days), and the page needs its slots.
             var service = request.ServiceListingId is { } listingId
                 ? await catalog.FindForRequestAsync(supplierOrgId, listingId, cancellationToken)
                 : null;
-            if (service is not { IsRequestable: true })
+            if (service is null
+                || !ShowcaseBookingManagementRules.CanReschedule(request.Status, hasTime: true, supplierActive, service.IsRequestable))
+            {
                 throw ShowcaseBookingManagementErrors.RescheduleRefused();
+            }
 
             // The time it already has: a retry after a lost answer, or a double click. Nothing is moved, nobody is told again.
             if (start == currentStart)
@@ -133,7 +147,8 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
 
         logger.LogInformation("ServiceRequest {Id}: its customer moved it to another time", request.Id);
 
-        await notifier.NotifyShowcaseRescheduledAsync(request, previousStart, proposalDropped, cancellationToken);
+        // Committed: the supplier is told even if the customer has gone.
+        await notifier.NotifyShowcaseRescheduledAsync(request, previousStart, proposalDropped, CancellationToken.None);
         return request;
     }
 
@@ -148,10 +163,9 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         {
             request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
             var now = NowToTheMicrosecond();
-            var (proposedStart, proposedEnd, madeAt) = RequireProposalToAnswer(request, now);
 
             // Accepting takes the request on the supplier's behalf: a supplier suspended meanwhile cannot take work.
-            await EnsureSupplierActiveForCustomerAsync(supplierOrgId, cancellationToken);
+            var (proposedStart, proposedEnd, madeAt) = await RequireProposalToAnswerAsync(request, supplierOrgId, now, cancellationToken);
 
             var service = request.ServiceListingId is { } listingId
                 ? await catalog.FindForRequestAsync(supplierOrgId, listingId, cancellationToken)
@@ -187,7 +201,8 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
 
         logger.LogInformation("ServiceRequest {Id}: its customer accepted the time the supplier proposed", request.Id);
 
-        await notifier.NotifyShowcaseProposalAnsweredAsync(request, accepted: true, proposedAt, cancellationToken);
+        // Committed: both parties are told even if the customer has gone.
+        await notifier.NotifyShowcaseProposalAnsweredAsync(request, accepted: true, proposedAt, CancellationToken.None);
         return request;
     }
 
@@ -198,8 +213,7 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
     {
         var request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
         var now = NowToTheMicrosecond();
-        var (_, _, proposedAt) = RequireProposalToAnswer(request, now);
-        await EnsureSupplierActiveForCustomerAsync(supplierOrgId, cancellationToken);
+        var (_, _, proposedAt) = await RequireProposalToAnswerAsync(request, supplierOrgId, now, cancellationToken);
 
         // The request goes back to being a new one at its own time: the deadline that stood on it was the customer's, and the supplier
         // has its whole time to answer again. Nothing is held or released: no lock, the check of the row version is enough.
@@ -211,7 +225,8 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
 
         logger.LogInformation("ServiceRequest {Id}: its customer turned the proposed time down", request.Id);
 
-        await notifier.NotifyShowcaseProposalAnsweredAsync(request, accepted: false, proposedAt, cancellationToken);
+        // Committed: the supplier is told even if the customer has gone.
+        await notifier.NotifyShowcaseProposalAnsweredAsync(request, accepted: false, proposedAt, CancellationToken.None);
         return request;
     }
 
@@ -219,17 +234,32 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
     /// The proposal a new showcase request is waiting for its customer to answer, while there is still time to: 422
     /// <see cref="ShowcaseBookingManagementErrors.NoProposal"/> when there is none (never made, answered, or the request moved on),
     /// 422 <see cref="ShowcaseBookingManagementErrors.ProposalExpired"/> once its deadline (<c>ResponseDueAt</c>, which a proposal of a
-    /// showcase request moves to the customer's time) has passed: the upkeep job cancels the request on its next run.
+    /// showcase request moves to the customer's time) has passed: the upkeep job cancels the request on its next run; 422
+    /// <c>supplier_booking_supplier_unavailable</c> when the supplier is not active. In the end it is the rule the lookup shows
+    /// <c>canRespondToProposal</c> from that decides (<see cref="ShowcaseBookingManagementRules.CanRespondToProposal"/>), so the page and
+    /// the API cannot disagree.
     /// </summary>
-    private static (DateTime Start, DateTime End, DateTime ProposedAt) RequireProposalToAnswer(ServiceRequest request, DateTime now)
+    private async Task<(DateTime Start, DateTime End, DateTime ProposedAt)> RequireProposalToAnswerAsync(
+        ServiceRequest request,
+        Guid supplierOrgId,
+        DateTime now,
+        CancellationToken cancellationToken)
     {
-        if (request is not { Status: ServiceRequestStatus.Richiesto, ProposedStartUtc: { } start, ProposedEndUtc: { } end, ProposedAt: { } proposedAt })
+        var pending = request is { ProposedStartUtc: not null, ProposedEndUtc: not null, ProposedAt: not null };
+        if (request.Status != ServiceRequestStatus.Richiesto || !pending)
             throw ShowcaseBookingManagementErrors.ProposalMissing();
 
         if (request.ResponseDueAt is not { } answerBy || answerBy <= now)
             throw ShowcaseBookingManagementErrors.ProposalLapsed();
 
-        return (start, end, proposedAt);
+        var supplierActive = await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
+        if (!supplierActive)
+            throw ShowcaseBookingErrors.InactiveSupplier();
+
+        if (!ShowcaseBookingManagementRules.CanRespondToProposal(request.Status, pending, answerBy, now, supplierActive))
+            throw ShowcaseBookingManagementErrors.ProposalMissing();
+
+        return (request.ProposedStartUtc!.Value, request.ProposedEndUtc!.Value, request.ProposedAt!.Value);
     }
 
     /// <summary>
@@ -247,13 +277,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         }
 
         return request;
-    }
-
-    /// <summary>422 <c>supplier_booking_supplier_unavailable</c> unless the supplier is active: a suspended one answers nothing.</summary>
-    private async Task EnsureSupplierActiveForCustomerAsync(Guid supplierOrgId, CancellationToken cancellationToken)
-    {
-        if (await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) != SupplierStatus.Active)
-            throw ShowcaseBookingErrors.InactiveSupplier();
     }
 
     private static DomainConflictException SlotUnavailable() =>

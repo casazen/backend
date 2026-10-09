@@ -22,7 +22,7 @@ public sealed record ShowcaseBookingAccessKey(string Slug, string Code, string E
 /// <summary>
 /// The booking as its customer sees it (SP-11): what <c>POST api/public/supplier-bookings/lookup</c> and every action of the
 /// customer answer. <b>Built only from the fields listed here</b>: the notes the supplier left for itself (how the work went), the
-/// photos, the member who took the request, the customer's own name, address and phone, and anything of another customer are
+/// photos, the member who took the request, the customer's own name, e-mail address and phone, and anything of another customer are
 /// not in it, whatever the request has. The exact address, the floor and the notes for the access come back only once the
 /// supplier took the request (<see cref="SupplierJobDisclosure.IsDisclosed"/>), as for the supplier.
 /// </summary>
