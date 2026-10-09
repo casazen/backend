@@ -195,6 +195,7 @@ its own translation of the code (`apiErrors.codes.*`, `getProblemMessage`). `Boo
 | 409 | `direct_booking_payments_not_ready` | the host has not completed Stripe Connect |
 | 422 | `direct_booking_invalid_stay` | check-in in the past, check-out not after check-in, too long (quote too; it used to answer `booking_invalid_dates`) |
 | 422 | `booking_too_many_guests` | over the capacity |
+| 422 | `property_not_bookable_in_long_mode` | the property is let long-term (`RentalMode.Long`, PM-01): never published, never bookable ([property-rental-mode.md](property-rental-mode.md)) |
 | 422 | `direct_booking_consent_outdated` | consent text changed |
 | 422 | `direct_booking_invalid_payment_option` | unknown option |
 | 422 | **`direct_booking_deferred_payment_unavailable`** | "Paga alla scadenza" for a stay whose charge day is not after today (§ 7.5) |

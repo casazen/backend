@@ -32,8 +32,10 @@ public static class CasazenPolicies
 
     /// <summary>
     /// Administrator of the caller's org, in whichever rental context it works (PL-16): plan, entitlement, billing,
-    /// domain. An org policy, not a context one: the org's owner (<c>PropertyOwner</c> or <c>LongTermLandlord</c>), a
-    /// <c>PropertyManager</c> or a platform admin; never a <c>Staff</c> collaborator (<c>OrgBillingAdminAuthorizationHandler</c>).
+    /// Connect, branding, domain, site documents. An org policy, not a context one: the org's owner (<c>PropertyOwner</c>
+    /// or <c>LongTermLandlord</c>, as JWT role or as DB membership of the owner's role key) or a platform admin; never a
+    /// <c>Staff</c> collaborator, a <c>PropertyManager</c> (D12) or the holder of any other member role
+    /// (<c>OrgBillingAdminAuthorizationHandler</c>, <see cref="Casazen.Core.Authorization.OrgOwnerRoles"/>).
     /// </summary>
     public const string OrgBillingAdmin = "RequireOrgBillingAdmin";
 

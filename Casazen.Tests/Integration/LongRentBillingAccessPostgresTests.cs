@@ -97,6 +97,82 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/orgs/me/entitlement")).StatusCode);
     }
 
+    /// <summary>
+    /// AM-00 (S1): the case <see cref="BillingEndpoints_AsStaffCollaboratorOfTheOrg_Return403WithoutCheckout"/> does not
+    /// prove. A member of the org with a DB membership of a role other than the owner's, whatever its permissions, and
+    /// <b>no</b> <c>Staff</c> claim (not even a JWT role) used to pass: plan, Stripe portal and billing profile of the org.
+    /// </summary>
+    [PostgresTheory]
+    [InlineData("short-rent", "bk09_collaborator")]
+    [InlineData("short-rent", "property_manager")]
+    [InlineData("short-rent", "accountant")]
+    [InlineData("long-rent", "staff")]
+    [InlineData("long-rent", "property_manager")]
+    public async Task BillingEndpoints_AsDbOnlyMemberWithoutStaffClaim_Return403WithoutCheckout(string contextKey, string roleKey)
+    {
+        var (landlord, org) = await NewLongTermLandlordAsync();
+        var member = await AddMemberAsync(org.Id, contextKey, roleKey);
+        using var client = factory.CreateAuthenticatedClient(member);
+
+        var responses = await SendBillingRequestsAsync(client);
+
+        AssertAllForbidden(responses, "a member of the org with a DB membership and no Staff claim");
+        await AssertOrgBillingUntouchedAsync(org);
+
+        // The owner of the same org is not affected.
+        using var owner = factory.CreateAuthenticatedClient(landlord, "LongTermLandlord");
+        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/orgs/me/entitlement")).StatusCode);
+    }
+
+    /// <summary>
+    /// AM-00 (D12): a property manager runs the properties but does not manage plan and invoices, as a JWT role (with and
+    /// without the membership of its role) and as a membership alone.
+    /// </summary>
+    [PostgresTheory]
+    [InlineData(null, null, "PropertyManager")]
+    [InlineData("short-rent", "property_manager", "PropertyManager")]
+    [InlineData("long-rent", "property_manager", "PropertyManager")]
+    [InlineData("short-rent", "property_manager", null)]
+    public async Task BillingEndpoints_AsPropertyManagerOfTheOrg_Return403WithoutCheckout(
+        string? contextKey,
+        string? roleKey,
+        string? jwtRoles)
+    {
+        var (landlord, org) = await NewLongTermLandlordAsync();
+        var manager = await AddMemberAsync(org.Id, contextKey, roleKey, UserRole.PropertyManager);
+        using var client = factory.CreateAuthenticatedClient(manager, jwtRoles);
+
+        var responses = await SendBillingRequestsAsync(client);
+
+        AssertAllForbidden(responses, "a PropertyManager");
+        await AssertOrgBillingUntouchedAsync(org);
+
+        using var owner = factory.CreateAuthenticatedClient(landlord, "LongTermLandlord");
+        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/orgs/me/entitlement")).StatusCode);
+    }
+
+    /// <summary>
+    /// AM-00: the owner is not locked out by the stricter rules, with the JWT role or with the owner's membership alone,
+    /// and a user who is both the owner and (by an Auth0 role) a property manager keeps the access of the owner.
+    /// </summary>
+    [PostgresTheory]
+    [InlineData("LongTermLandlord")]
+    [InlineData("LongTermLandlord,PropertyManager")]
+    [InlineData(null)]
+    public async Task BillingEndpoints_AsOwnerOfTheOrg_ReturnOkAndTheCheckoutStarts(string? jwtRoles)
+    {
+        var (landlord, org) = await NewLongTermLandlordAsync();
+        using var client = factory.CreateAuthenticatedClient(landlord, jwtRoles);
+
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/orgs/me/entitlement")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/billing/subscription")).StatusCode);
+        var checkout = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new { planTier = "Pro", billingCountry = "IT", returnPath = LongRentPlanPage });
+        Assert.Equal(HttpStatusCode.OK, checkout.StatusCode);
+        Assert.Single(StripeFake.SessionsOf(FakeStripeBillingService.CustomerIdFor(org.Id)));
+    }
+
     [PostgresFact]
     public async Task CreateCheckoutSession_LongRentReturnPath_ReturnsToTheLongRentPlanPage()
     {
@@ -222,6 +298,77 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
         await HostOnboardingSeed.MarkOnboardedAsync(db, user, orgId, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
         return collaborator;
+    }
+
+    /// <summary>
+    /// A member of the org (AM-00): a user of the org who completed the onboarding for it (PL-02), with no JWT role of its
+    /// own and, when a context is given, a DB membership of a custom role with the permissions a collaborator could get
+    /// (<c>property.write</c>, <c>payment.write</c>…): enough for every context policy, not the owner's role key. The role
+    /// key gets a suffix: it is unique per context.
+    /// </summary>
+    private async Task<string> AddMemberAsync(Guid orgId, string? contextKey, string? roleKey, UserRole dbRole = UserRole.None)
+    {
+        var member = $"auth0|am00-member-{Guid.NewGuid():N}";
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = new User
+        {
+            Id = member,
+            Email = $"{Guid.NewGuid():N}@example.com",
+            FirstName = "Membro",
+            LastName = "Org",
+            OrgId = orgId,
+            Role = dbRole,
+            IsActive = true,
+        };
+        db.Users.Add(user);
+        await HostOnboardingSeed.MarkOnboardedAsync(db, user, orgId, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
+
+        if (contextKey is not null && roleKey is not null)
+        {
+            var role = new Role
+            {
+                Id = Random.Shared.Next(100_000, int.MaxValue),
+                ContextKey = contextKey,
+                RoleKey = $"{roleKey}_{Guid.NewGuid():N}",
+            };
+            foreach (var permission in new[] { "property.read", "property.write", "booking.read", "booking.write", "payment.read", "payment.write", "lease.read" })
+                role.Permissions.Add(new RolePermission { PermissionKey = permission });
+
+            db.Roles.Add(role);
+            db.UserContextMemberships.Add(new UserContextMembership { UserId = member, ContextKey = contextKey, RoleId = role.Id });
+        }
+
+        await db.SaveChangesAsync();
+        return member;
+    }
+
+    /// <summary>The billing, plan and entitlement endpoints of the org (the ones the org policy protects), with empty-ish bodies.</summary>
+    private static async Task<HttpResponseMessage[]> SendBillingRequestsAsync(HttpClient client) =>
+    [
+        await client.GetAsync("/api/orgs/me/entitlement"),
+        await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new { planTier = "Pro", billingCountry = "IT", returnPath = LongRentPlanPage }),
+        await client.GetAsync("/api/billing/subscription"),
+        await client.PostAsync("/api/billing/portal-session", null),
+        await client.PutAsJsonAsync("/api/billing/profile", new { billingCountry = "IT" }),
+        await client.PutAsJsonAsync("/api/orgs/me/plan", new { planTier = "Starter" }),
+    ];
+
+    private static void AssertAllForbidden(IEnumerable<HttpResponseMessage> responses, string caller) =>
+        Assert.All(responses, r => Assert.True(
+            r.StatusCode == HttpStatusCode.Forbidden,
+            $"{r.RequestMessage!.Method} {r.RequestMessage.RequestUri} answered {(int)r.StatusCode} to {caller}."));
+
+    /// <summary>No checkout started, nothing written on the org: the refusals happened before any action ran.</summary>
+    private async Task AssertOrgBillingUntouchedAsync(OrgEntity org)
+    {
+        Assert.Empty(StripeFake.SessionsOf(FakeStripeBillingService.CustomerIdFor(org.Id)));
+        var stored = await ReadOrgAsync(org.Id);
+        Assert.Null(stored.BillingCountry);
+        Assert.Null(stored.StripeCustomerId);
+        Assert.Equal(org.PlanTier, stored.PlanTier);
     }
 
     private async Task<OrgEntity> ReadOrgAsync(Guid orgId)

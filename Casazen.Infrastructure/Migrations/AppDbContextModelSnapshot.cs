@@ -2507,6 +2507,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<int>("RentalMode")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Slug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -2541,6 +2544,8 @@ namespace Casazen.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("UIX_Properties_OrgId_AddressKey")
                         .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
+
+                    b.HasIndex("OrgId", "RentalMode");
 
                     b.HasIndex("OrgId", "Slug")
                         .IsUnique()

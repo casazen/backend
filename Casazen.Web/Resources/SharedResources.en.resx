@@ -141,6 +141,9 @@
   <data name="NoOrganizationAssigned" xml:space="preserve">
     <value>No organization assigned to the current user</value>
   </data>
+  <data name="MemberCannotOnboard" xml:space="preserve">
+    <value>You already belong to an organization as a collaborator: you cannot set up a new account or change your own role. If you need a different role, ask the owner of the organization.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
   </data>
@@ -2124,6 +2127,15 @@
   </data>
   <data name="PropertyCityLockedByLease" xml:space="preserve">
     <value>The property city cannot be changed after a canone concordato lease has been submitted for registration.</value>
+  </data>
+  <data name="PropertyNotBookableInLongMode" xml:space="preserve">
+    <value>This property is set to long-term rental: it is not published on the booking site and does not take short-stay bookings.</value>
+  </data>
+  <data name="PropertyRentalModeChangeNotAllowed" xml:space="preserve">
+    <value>The rental mode (short or long) of an existing property cannot be changed with this save.</value>
+  </data>
+  <data name="PropertyListModeInvalid" xml:space="preserve">
+    <value>Invalid mode: use "short" (short-term rental) or "long" (long-term rental).</value>
   </data>
   <data name="DocumentTypeInvalid" xml:space="preserve">
     <value>Invalid document type.</value>
