@@ -270,6 +270,8 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
             {
                 var response = await Http.PostAsync(client, path, body);
                 Assert.True(response.StatusCode == HttpStatusCode.BadRequest, $"{path}: {(int)response.StatusCode} for {JsonSerializer.Serialize(body)}");
+                // The answers MVC gives on its own, before the action runs, are as private as the others.
+                Http.AssertPrivateAnswer(response);
             }
         }
 
@@ -277,6 +279,7 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         var notJson = await client.PostAsync(
             "/api/public/supplier-bookings/lookup", new StringContent("{ not json", Encoding.UTF8, "application/json"));
         Assert.Equal(HttpStatusCode.BadRequest, notJson.StatusCode);
+        Http.AssertPrivateAnswer(notJson);
     }
 
     [Fact]
@@ -638,6 +641,8 @@ public class PublicSupplierBookingManagementRateLimitIntegrationTests(
         Assert.Equal((HttpStatusCode)422, third.StatusCode);
         var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(limited);
         Assert.Equal("rate_limited", problem.GetProperty("code").GetString());
+        // The middleware answers before MVC, and the answer is as private as the ones of the controller.
+        Http.AssertPrivateAnswer(limited);
         Assert.Equal(HttpStatusCode.OK, otherIp.StatusCode);
 
         // The cancellation that was refused did not happen.
@@ -670,6 +675,7 @@ public class PublicSupplierBookingManagementRateLimitIntegrationTests(
         Assert.Equal(TimeSpan.FromMinutes(15), limited.Headers.RetryAfter?.Delta);
         Assert.Equal(15 * 60, problem.GetProperty("retryAfterSeconds").GetInt32());
         Http.AssertPrivateAnswer(first);
+        Http.AssertPrivateAnswer(limited);
 
         // Another address at the same supplier, and the same address at another supplier, have budgets of their own.
         var anotherAddress = await Http.PostAsync(client, "lookup", new { slug = supplier.Slug, code = booked.Code, email = "un.altro@example.com" }, "203.0.113.105");

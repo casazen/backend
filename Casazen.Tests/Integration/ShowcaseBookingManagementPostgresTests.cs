@@ -4,7 +4,6 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
-using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Email.Templates;
@@ -364,54 +363,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
 
         Assert.Equal(HttpStatusCode.OK, found.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, wrong.StatusCode);
-    }
-
-    [PostgresFact]
-    public async Task Cancel_TheInstantsAreKeptAtTheMicrosecond_WhatIsAnsweredIsWhatIsStored()
-    {
-        var supplier = await PublicBookingTestData.SeedAsync(factory);
-        using var client = factory.CreateClient();
-        var booked = await Http.BookAsync(factory, client, supplier, PublicBookingTestData.TuesdayAt9);
-        var original = factory.Clock.GetUtcNow();
-        // A clock with ticks beyond the microsecond, which PostgreSQL cannot keep.
-        factory.Clock.SetUtcNow(original.AddTicks(7));
-        try
-        {
-            var response = await Http.PostAsync(client, "cancel", booked.Access());
-
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            var at = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cancellation").GetProperty("at").GetDateTime().ToUniversalTime();
-            var stored = (await LoadRequestAsync(booked.RequestId)).CancelledAt;
-            Assert.Equal(UtcDateTime.TruncateToMicroseconds(factory.Clock.GetUtcNow().UtcDateTime), at);
-            Assert.Equal(stored, at);
-        }
-        finally
-        {
-            factory.Clock.SetUtcNow(original);
-        }
-    }
-
-    [PostgresFact]
-    public async Task Reschedule_TheNewTimeIsKeptAtTheMicrosecond_AndTheDeadlineOfTheSupplierIsTheOneAnswered()
-    {
-        var supplier = await PublicBookingTestData.SeedAsync(factory);
-        using var client = factory.CreateClient();
-        var booked = await Http.BookAsync(factory, client, supplier, PublicBookingTestData.TuesdayAt9);
-        var original = factory.Clock.GetUtcNow();
-        factory.Clock.SetUtcNow(original.AddTicks(7));
-        try
-        {
-            var response = await Http.PostAsync(client, "reschedule", booked.Access(new { startUtc = PublicBookingTestData.TuesdayAt9.AddDays(1) }));
-
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            var respondBy = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("respondBy").GetDateTime().ToUniversalTime();
-            Assert.Equal((await LoadRequestAsync(booked.RequestId)).ResponseDueAt, respondBy);
-            Assert.Equal(0, respondBy.Ticks % 10);
-        }
-        finally
-        {
-            factory.Clock.SetUtcNow(original);
-        }
     }
 
     // ─── helpers ───

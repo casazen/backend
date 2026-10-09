@@ -42,7 +42,8 @@ public class ShowcaseBookingManagerLookupTests
         Assert.Equal("20900", view.Place.PostalCode);
         Assert.Equal((6000, (int?)null, (int?)null), (view.Price.EstimatedAmountCents, view.Price.QuotedAmountCents, view.Price.FinalAmountCents));
         Assert.Equal((6000, "estimate"), (view.Price.AmountCents, view.Price.Basis));
-        Assert.Empty(view.Price.Lines);
+        // A flat price keeps no quantity among the choices of the booking: its base is the line of the service, so the lines add up.
+        Assert.Equal([new ShowcaseBookingPriceLine("service", ServiceRequestScenario.ServiceName, 1, 6000, 6000)], view.Price.Lines);
         // The supplier has its 180 minutes from the moment the address was checked.
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.AddMinutes(180), view.RespondBy);
         Assert.Null(view.Proposal);
@@ -109,10 +110,13 @@ public class ShowcaseBookingManagerLookupTests
         Assert.Equal(6000 + 2 * 1500 + 2000, view.Price.EstimatedAmountCents);
         Assert.Equal(
             [
+                new ShowcaseBookingPriceLine("service", ServiceRequestScenario.ServiceName, 1, 6000, 6000),
                 new ShowcaseBookingPriceLine("option", "Bagno in più", 2, 1500, 3000),
                 new ShowcaseBookingPriceLine("option", "Pulizie pesanti", 1, 2000, 2000),
             ],
             view.Price.Lines);
+        // The lines of the estimate add up to it, whatever the unit of the price.
+        Assert.Equal(view.Price.EstimatedAmountCents, view.Price.Lines.Sum(line => line.AmountCents));
     }
 
     [Fact]
@@ -128,6 +132,7 @@ public class ShowcaseBookingManagerLookupTests
 
         Assert.Equal(7500, view.Price.AmountCents);
         Assert.Equal([new ShowcaseBookingPriceLine("service", "A ore", 3, 2500, 7500)], view.Price.Lines);
+        Assert.Equal(view.Price.EstimatedAmountCents, view.Price.Lines.Sum(line => line.AmountCents));
         Assert.Equal(TimeSpan.FromHours(3), view.EndUtc - view.StartUtc);
     }
 
