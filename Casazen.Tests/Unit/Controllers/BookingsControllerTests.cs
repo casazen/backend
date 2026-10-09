@@ -108,7 +108,8 @@ public class BookingsControllerTests
             property.Id, checkIn.Date, checkOut.Date, nights, property.NightlyRate, property.CleaningFee, basePrice, tax,
             basePrice + tax.AmountOrZero, "EUR",
             DirectBookingPaymentRules.FreeRefundDeadline(checkIn, property.CancellationPolicy),
-            new DirectBookingPaymentOptions(DeferredPaymentAvailable: false, DeferredChargeDate: null, FreeCancellationUntil: null));
+            new DirectBookingPaymentOptions(DeferredPaymentAvailable: false, DeferredChargeDate: null, FreeCancellationUntil: null),
+            new StayLodging(nights, 0, property.NightlyRate, property.NightlyRate, property.NightlyRate * nights));
     }
 
     private static Property MakeProperty() => new()

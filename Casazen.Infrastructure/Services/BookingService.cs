@@ -346,7 +346,12 @@ public class BookingService(
             property, checkIn, checkOut, numberOfAdults, numberOfChildren, childrenAges, cancellationToken);
     }
 
-    /// <summary>Guests within the capacity and a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights.</summary>
+    /// <summary>
+    /// Guests within the capacity and a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights, not shorter than
+    /// the minimum stay of the property (DB-03, 422 <see cref="DirectBookingErrorCodes.MinNightsNotMet"/>). The minimum is a
+    /// rule of the guests' quote and checkout, the two callers of this method: the host's own prices and bookings
+    /// (<see cref="PriceHostStayAsync"/>, manual bookings) do not go through it, a stay entered by hand can be shorter.
+    /// </summary>
     private static (DateTime CheckIn, DateTime CheckOut) ValidateStay(
         Property property,
         DateTime checkInDate,
@@ -369,10 +374,12 @@ public class BookingService(
     }
 
     /// <summary>
-    /// Nightly rate x nights + cleaning fee, plus the tourist tax of <see cref="ITouristTaxQuoteService"/> when it can
+    /// The nights (<see cref="StayPricing.Lodging"/>: nightly rate, with the weekend surcharge of the property on its Friday
+    /// and Saturday nights) + the cleaning fee, plus the tourist tax of <see cref="ITouristTaxQuoteService"/> when it can
     /// be calculated. The property has no accommodation category (yet): only the rates for every accommodation of the
-    /// comune apply. The night price for percentage rates is the nightly rate, cleaning excluded. The payment options come
-    /// from the free refund deadline of the stay (<see cref="DirectBookingPaymentRules"/>, A3-16).
+    /// comune apply. The night price for percentage rates is the price of that night, cleaning excluded (the nightly rate,
+    /// or the rate with the surcharge on a weekend night). The payment options come from the free refund deadline of the
+    /// stay (<see cref="DirectBookingPaymentRules"/>, A3-16). With no surcharge, the default, the price is what it always was.
     /// </summary>
     private async Task<DirectBookingQuote> PriceStayAsync(
         Property property,
@@ -384,17 +391,25 @@ public class BookingService(
         CancellationToken cancellationToken = default)
     {
         var nights = (checkOut - checkIn).Days;
-        var basePrice = property.NightlyRate * nights + property.CleaningFee;
+        var checkInDate = RomeCalendar.DateInRome(checkIn);
+        var lodging = StayPricing.Lodging(checkInDate, nights, property.NightlyRate, property.WeekendSurchargePercent);
+        var basePrice = lodging.Total + property.CleaningFee;
         var touristTax = await touristTaxQuoteService.QuoteAsync(
+        if (property.MinNights is { } minNights && (checkOut - checkIn).Days < minNights)
+        {
+            throw new DomainRuleException(DirectBookingErrorCodes.MinNightsNotMet, "DirectBookingMinNightsNotMet", minNights);
+        }
+
             TouristTaxComune.ForProperty(property),
             new TouristTaxStay(
-                RomeCalendar.DateInRome(checkIn),
+                checkInDate,
                 RomeCalendar.DateInRome(checkOut),
                 adults,
                 children,
                 childrenAges,
                 AccommodationCategory: null,
-                NightlyPrice: property.NightlyRate),
+                NightlyPrice: property.NightlyRate,
+                NightlyPrices: StayPricing.NightPrices(checkInDate, lodging)),
             cancellationToken);
 
         var freeRefundDeadline = DirectBookingPaymentRules.FreeRefundDeadline(checkIn, property.CancellationPolicy);
@@ -411,7 +426,8 @@ public class BookingService(
             basePrice + touristTax.AmountOrZero,
             "EUR",
             freeRefundDeadline,
-            DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome()));
+            DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome()),
+            lodging);
     }
 
     private async Task<string> HandleImmediatePaymentAsync(

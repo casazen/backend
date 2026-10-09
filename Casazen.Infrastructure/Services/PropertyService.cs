@@ -84,6 +84,7 @@ public class PropertyService(
         logger.LogInformation("Creating property: {Name}", property.Name);
         property.CinCode = CinFormat.Normalize(property.CinCode);
         NormalizeLocation(property);
+        NormalizeStayRules(property);
         property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
         await EnsureCancellationPolicyExistsAsync(property);
         try
@@ -103,6 +104,7 @@ public class PropertyService(
         logger.LogInformation("Updating property: {Id}", property.Id);
         property.CinCode = CinFormat.Normalize(property.CinCode);
         NormalizeLocation(property);
+        NormalizeStayRules(property);
         if (!string.IsNullOrWhiteSpace(property.Slug))
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
@@ -140,6 +142,22 @@ public class PropertyService(
         property.Unit = PropertyAddress.NormalizeUnit(property.Unit);
         property.Latitude = PropertyAddress.RoundCoordinate(property.Latitude);
         property.Longitude = PropertyAddress.RoundCoordinate(property.Longitude);
+    }
+
+    /// <summary>
+    /// The minimum stay and the weekend surcharge as stored (DB-03): a value out of range is refused before it reaches the
+    /// database (422, the same message as the 400 of the forms), and the surcharge keeps the two decimals of its column, so
+    /// the percentage a quote applies is the one the host reads back. Protects every caller of the service, not only the API.
+    /// </summary>
+    private static void NormalizeStayRules(Property property)
+    {
+        if (!PropertyStayRules.IsValidMinNights(property.MinNights))
+            throw new DomainRuleException(PropertyStayRules.MinNightsInvalidCode, "PropertyMinNightsInvalid");
+
+        if (!PropertyStayRules.IsValidWeekendSurcharge(property.WeekendSurchargePercent))
+            throw new DomainRuleException(PropertyStayRules.WeekendSurchargeInvalidCode, "PropertyWeekendSurchargeInvalid");
+
+        property.WeekendSurchargePercent = PropertyStayRules.NormalizeWeekendSurcharge(property.WeekendSurchargePercent);
     }
 
     /// <summary>
@@ -323,6 +341,12 @@ public class PropertyService(
                 Timezone = p.Timezone,
                 HouseRules = p.HouseRules,
                 CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
+                MinNights = p.MinNights,
+                WeekendSurchargePercent = p.WeekendSurchargePercent,
+                OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
+                OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
+                OrgHostName = p.Org.HostName,
+                OrgPublicPhone = p.Org.PublicPhone,
             })
             .FirstOrDefaultAsync();
 
@@ -360,6 +384,12 @@ public class PropertyService(
                 Timezone = p.Timezone,
                 HouseRules = p.HouseRules,
                 CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
+                MinNights = p.MinNights,
+                WeekendSurchargePercent = p.WeekendSurchargePercent,
+                OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
+                OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
+                OrgHostName = p.Org.HostName,
+                OrgPublicPhone = p.Org.PublicPhone,
             })
             .FirstOrDefaultAsync();
 
@@ -386,6 +416,8 @@ public class PropertyService(
             Bathrooms = property.Bathrooms,
             MaxGuests = property.MaxGuests,
             NightlyRate = property.NightlyRate,
+            MinNights = property.MinNights,
+            WeekendSurchargePercent = property.WeekendSurchargePercent,
             CleaningFee = property.CleaningFee,
             DamageDeposit = property.DamageDeposit,
             CinCode = property.CinCode,
@@ -642,10 +674,14 @@ public class PropertyService(
         Timezone = row.Timezone,
         HouseRules = row.HouseRules,
         CancellationPolicySummary = row.CancellationPolicySummary,
-        MinNights = null,
+        MinNights = row.MinNights,
+        WeekendSurchargePercent = row.WeekendSurchargePercent,
         Currency = "EUR",
     };
 
+        AcceptsBookings = Org.AcceptsDirectPayments(row.OrgStripeConnectedAccountId, row.OrgConnectChargesEnabled),
+        HostName = row.OrgHostName,
+        PublicPhone = row.OrgPublicPhone,
     private class PublicPropertyRow
     {
         public Guid Id { get; init; }
@@ -673,4 +709,12 @@ public class PropertyService(
         public string HouseRules { get; init; } = string.Empty;
         public string CancellationPolicySummary { get; init; } = string.Empty;
     }
-}
+}        public int? MinNights { get; init; }
+        public decimal WeekendSurchargePercent { get; init; }
+
+        // The columns of the org the public page reads (DB-03): whether it can take a payment, how the host is named, the
+        // phone the host chose to publish.
+        public string? OrgStripeConnectedAccountId { get; init; }
+        public bool OrgConnectChargesEnabled { get; init; }
+        public string? OrgHostName { get; init; }
+        public string? OrgPublicPhone { get; init; }

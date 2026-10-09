@@ -157,7 +157,10 @@ public class PublicBookingsController(
     /// records the same amounts. A comune without rate answers 200 with <c>touristTax.status = RateUnavailable</c>
     /// (tax not included, checkout not blocked); <c>ChildAgesRequired</c> asks the ages of the minors.
     /// <c>paymentOptions</c> says whether "Paga alla scadenza" can be offered and whether a free cancellation can be
-    /// promised (A3-16). Errors: 422 <c>booking_too_many_guests</c>, <c>direct_booking_invalid_stay</c>,
+    /// promised (A3-16). <c>lines</c> (DB-03) is the breakdown in cents: the ordinary nights, the weekend nights when the
+    /// property charges a surcharge for them, the cleaning fee, the tourist tax when it could be calculated, and the total
+    /// that the lines before it add up to. Errors: 422 <c>booking_too_many_guests</c>, <c>direct_booking_invalid_stay</c>,
+    /// <c>direct_booking_min_nights_not_met</c> (shorter than the minimum stay of the property),
     /// <c>property_not_bookable_in_long_mode</c> (the property is let long-term, PM-01); 404.
     /// </summary>
     [HttpPost("quote")]

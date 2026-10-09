@@ -31,6 +31,12 @@ public sealed class PropertyResponse
     public int Bathrooms { get; init; }
     public int MaxGuests { get; init; }
     public decimal NightlyRate { get; init; }
+
+    /// <summary>Fewest nights the public site accepts (DB-03); null = no minimum.</summary>
+    public int? MinNights { get; init; }
+
+    /// <summary>Percent added to the nightly rate on the Friday and Saturday nights (DB-03); 0 = no surcharge.</summary>
+    public decimal WeekendSurchargePercent { get; init; }
     public decimal CleaningFee { get; init; }
     public decimal DamageDeposit { get; init; }
     public IReadOnlyList<PropertyAmenity> Amenities { get; init; } = [];
@@ -91,6 +97,8 @@ public sealed class PropertyResponse
             Bathrooms = property.Bathrooms,
             MaxGuests = property.MaxGuests,
             NightlyRate = property.NightlyRate,
+            MinNights = property.MinNights,
+            WeekendSurchargePercent = property.WeekendSurchargePercent,
             CleaningFee = property.CleaningFee,
             DamageDeposit = property.DamageDeposit,
             Amenities = [.. property.Amenities],
