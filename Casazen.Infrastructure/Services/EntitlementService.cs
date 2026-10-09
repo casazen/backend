@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -7,7 +8,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Infrastructure.Services;
 
-public class EntitlementService(AppDbContext dbContext, IConfiguration configuration) : IEntitlementService
+public class EntitlementService(AppDbContext dbContext, IConfiguration configuration, IActivityLog? activityLog = null) : IEntitlementService
 {
     private static readonly IReadOnlyDictionary<PlanTier, int> DefaultMaxProperties = new Dictionary<PlanTier, int>
     {
@@ -73,6 +74,17 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         var effectiveTier = ResolveEffectiveTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
         if (effectiveTier != org.PlanTier)
         {
+            // A subscription that no longer pays takes the plan back to Starter: nobody asked, so the line of the activity
+            // log (AM-02b) has no actor, and it is written in the save that changes the tier.
+            activityLog?.Record(OrgActivity.Of(
+                org.Id,
+                OrgActivityType.PlanChanged,
+                actorUserId: null,
+                org.Id.ToString(),
+                (OrgActivityDetailKeys.FromTier, org.PlanTier.ToString()),
+                (OrgActivityDetailKeys.ToTier, effectiveTier.ToString()),
+                (OrgActivityDetailKeys.Source, PlanChangeSource.Subscription.Code())));
+
             org.PlanTier = effectiveTier;
             org.UpdatedAt = DateTime.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);

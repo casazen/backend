@@ -1,6 +1,7 @@
 using Stripe;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.OrgTeam;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -24,7 +25,8 @@ public class StripeWebhookHandler(
     IPaymentRefundService paymentRefundService,
     CheckoutPaymentSettlementService checkoutPayments,
     DeferredChargeService deferredCharges,
-    ILogger<StripeWebhookHandler> logger)
+    ILogger<StripeWebhookHandler> logger,
+    IActivityLog? activityLog = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -269,6 +271,20 @@ public class StripeWebhookHandler(
             var tier = stripeBillingService.MapPriceIdToTier(priceId);
             if (tier.HasValue)
             {
+                // The activity log (AM-02b) hears of the plan change in the very save that writes it: nobody asked, the
+                // subscription did, so there is no actor.
+                if (org.PlanTier != tier.Value)
+                {
+                    activityLog?.Record(OrgActivity.Of(
+                        org.Id,
+                        OrgActivityType.PlanChanged,
+                        actorUserId: null,
+                        org.Id.ToString(),
+                        (OrgActivityDetailKeys.FromTier, org.PlanTier.ToString()),
+                        (OrgActivityDetailKeys.ToTier, tier.Value.ToString()),
+                        (OrgActivityDetailKeys.Source, PlanChangeSource.Subscription.Code())));
+                }
+
                 org.PlanTier = tier.Value;
             }
             else
