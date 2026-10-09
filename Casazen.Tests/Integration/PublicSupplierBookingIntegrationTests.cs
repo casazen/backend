@@ -299,6 +299,30 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
     }
 
     [Fact]
+    public async Task Create_ATimeNoSlotCanHave_IsTheSame409_TheEndsOfTheCalendarIncluded_NeverA500()
+    {
+        var supplier = await PublicBookingTestData.SeedAsync(factory);
+        using var client = factory.CreateClient();
+
+        // Whole minutes at the very ends of the calendar and far from today: anyone can send these dates, and the date arithmetic of
+        // the planner would overflow on them. They are refused like any slot that is not free.
+        foreach (var start in new[]
+                 {
+                     new DateTime(1, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                     new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                     new DateTime(2099, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                     new DateTime(9999, 12, 29, 7, 0, 0, DateTimeKind.Utc),
+                     new DateTime(9999, 12, 31, 22, 30, 0, DateTimeKind.Utc),
+                 })
+        {
+            var response = await client.PostAsJsonAsync(
+                $"/api/public/suppliers/{supplier.Slug}/bookings",
+                PublicBookingTestData.Body(supplier.Service, start, PublicBookingTestData.NewEmail()));
+            await AssertProblemAsync(response, HttpStatusCode.Conflict, "supplier_slot_unavailable");
+        }
+    }
+
+    [Fact]
     public async Task Create_AServiceThatIsNotPublished_OrIsAnotherSuppliers_IsTheSame404()
     {
         var supplier = await PublicBookingTestData.SeedAsync(factory);
@@ -611,6 +635,8 @@ public class PublicSupplierBookingRateLimitIntegrationTests(
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(limited);
         Assert.Equal("rate_limited", problem.GetProperty("code").GetString());
+        // The wait it names is the window of the limit, an hour: the cap of unchecked bookings answers the same (next test).
+        Assert.Equal(TimeSpan.FromHours(1), limited.Headers.RetryAfter?.Delta);
         Assert.Equal(HttpStatusCode.Created, otherAddress.StatusCode);
         // Nothing of the third attempt was held or sent.
         Assert.Equal(2, perEmail.EmailsTo(email, StringComparison.OrdinalIgnoreCase).Count);
@@ -633,9 +659,10 @@ public class PublicSupplierBookingRateLimitIntegrationTests(
         var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(fourth);
         Assert.Equal("rate_limited", problem.GetProperty("code").GetString());
         Assert.Equal(3, capped.EmailsTo(email).Count);
-        // The wait the answer names is the time until the oldest of the three lapses.
-        var seconds = int.Parse(fourth.Headers.GetValues("Retry-After").Single(), System.Globalization.CultureInfo.InvariantCulture);
-        Assert.InRange(seconds, 1, 30 * 60);
+        // The wait the answer names is the window of the limit per address, to the second — the same as that limit's own answer —
+        // and not the time until the oldest of the three lapses, which would tell when someone booked with this address.
+        Assert.Equal(TimeSpan.FromHours(1), fourth.Headers.RetryAfter?.Delta);
+        Assert.Equal(60 * 60, problem.GetProperty("retryAfterSeconds").GetInt32());
     }
 
     private static Task<HttpResponseMessage> PostAsync(

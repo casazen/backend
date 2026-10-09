@@ -91,6 +91,7 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Catalog,
             Agenda,
             Matcher,
+            ComuneTestServices.Directory(db),
             CustomerIndex,
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),

@@ -37,6 +37,7 @@ public sealed class ShowcaseBookingService(
     ISupplierServiceCatalogService catalog,
     ISupplierAgendaService agenda,
     ISupplierComuneMatcher comuneMatcher,
+    IComuneDirectory comuneDirectory,
     IServiceCustomerIndex customerIndex,
     ShowcaseBookingNotifier notifier,
     IOptions<ShowcaseBookingOptions> options,
@@ -81,10 +82,23 @@ public sealed class ShowcaseBookingService(
         if (!await comuneMatcher.CoversAsync(supplier, new ComuneTarget(content.ComuneIstat, content.City), cancellationToken))
             throw ShowcaseBookingErrors.OutsideSupplierZone();
 
+        // With the code of the comune the supplier reads the official name, not the text typed next to it, which decided nothing
+        // once the code covered the zone: it reaches the supplier before the take, in an e-mail sent by CasaZen.
+        var city = await ComuneNameAsync(content.ComuneIstat, content.City, cancellationToken);
+
         // The same function that priced the page prices the booking: the total the customer saw is the total the request carries.
         var quote = SupplierQuoteCalculator.Calculate(service, choices, insideArea: true);
         var query = service.ToSlotQuery() ?? throw ServiceNotFound();
         var start = content.StartUtc;
+
+        // A start the planner could never offer — in the past, beyond the largest horizon, or at an end of the calendar, where the
+        // date arithmetic of the planner would overflow — is a slot that is not free: the same 409, with nothing computed from it.
+        if (!ShowcaseBookingRules.IsWithinSlotWindow(start, _clock.GetUtcNow().UtcDateTime))
+        {
+            logger.LogInformation("Supplier {OrgId}: a showcase booking asked for a time no slot can have", orgId);
+            throw SlotUnavailable();
+        }
+
         var end = start.AddMinutes(query.DurationMinutes);
 
         var emailHash = customerIndex.HashEmail(content.Email);
@@ -103,7 +117,7 @@ public sealed class ShowcaseBookingService(
             content.Phone,
             content.Locale,
             content.ComuneIstat,
-            content.City,
+            city,
             content.PostalCode,
             content.Address,
             content.Floor,
@@ -350,6 +364,20 @@ public sealed class ShowcaseBookingService(
             throw ServiceNotFound();
 
         return await catalog.FindBookableAsync(orgId, normalized, cancellationToken) ?? throw ServiceNotFound();
+    }
+
+    /// <summary>
+    /// The name of the comune the supplier will read: the official name of the ISTAT code when the customer gave a code the list
+    /// knows, else the text the customer typed (without a code the name had to match one of the supplier's own comuni to cover the
+    /// zone, so it is not free text; a code the list does not know is the same as no code).
+    /// </summary>
+    private async Task<string> ComuneNameAsync(string? istatCode, string typed, CancellationToken cancellationToken)
+    {
+        if (istatCode is null)
+            return typed;
+
+        var comune = await comuneDirectory.FindByIstatCodeAsync(istatCode, activeOnly: false, cancellationToken);
+        return string.IsNullOrWhiteSpace(comune?.Name) ? typed : comune.Name;
     }
 
     /// <summary>The customer of this address for this supplier, created or brought up to date with what the customer just wrote.</summary>

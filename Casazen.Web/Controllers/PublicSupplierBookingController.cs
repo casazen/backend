@@ -32,6 +32,7 @@ namespace Casazen.Web.Controllers;
 public class PublicSupplierBookingController(
     IPublicSupplierShowcaseService showcase,
     IShowcaseBookingService bookings,
+    SupplierBookingEmailRateLimiter emailLimit,
     TimeProvider timeProvider,
     IOptions<ShowcaseBookingOptions> options) : ControllerBase
 {
@@ -95,9 +96,11 @@ public class PublicSupplierBookingController(
         {
             return RuleProblem(ex.Code, ex.MessageKey, ex.MessageArgs, ex.Fields);
         }
-        catch (ShowcaseBookingTooManyHoldsException ex)
+        catch (ShowcaseBookingTooManyHoldsException)
         {
-            return SupplierBookingEmailRateLimitFilter.RateLimitedResult(HttpContext, ex.RetryAfter);
+            // The same answer as the limit per address, to the second: the exact time the oldest booking of the address lapses
+            // (what the exception carries) would tell the client when someone booked with that address.
+            return SupplierBookingEmailRateLimitFilter.RateLimitedResult(HttpContext, emailLimit.Window);
         }
     }
 
@@ -107,7 +110,7 @@ public class PublicSupplierBookingController(
     /// again. 404 <c>supplier_booking_link_invalid</c> (unknown booking, another supplier's, wrong token: one answer); 409
     /// <c>supplier_booking_link_expired</c> (the 30 minutes have passed; the booking starts again); 422
     /// <c>supplier_booking_supplier_unavailable</c> (the supplier is not active anymore). The token is in the body, never in the
-    /// URL, so it is in no access log.
+    /// URL of the API, so it is in no access log of the API.
     /// </summary>
     [HttpPost("{id:guid}/confirm-email")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]

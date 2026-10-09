@@ -50,6 +50,19 @@ public static class ShowcaseBookingLimits
     /// </summary>
     public const int MaxUnverifiedHoldsPerEmail = 3;
 
+    /// <summary>
+    /// Days behind today a start can still be a slot of the planner (the notice is never negative; the day covers the difference
+    /// between UTC and Rome). Anything earlier is a slot that is not free, answered before any date arithmetic runs on it.
+    /// </summary>
+    public const int SlotWindowBehindDays = 1;
+
+    /// <summary>
+    /// Days ahead of today a start can still be a slot of the planner: the largest horizon a supplier can set
+    /// (<see cref="SupplierAgendaLimits.MaxHorizonDays"/>) and a day on each side for the time zones. Anything later is a slot that is
+    /// not free; the date at the end of the calendar that anyone can send would overflow the arithmetic of the planner.
+    /// </summary>
+    public const int SlotWindowAheadDays = SupplierAgendaLimits.MaxHorizonDays + 2;
+
     /// <summary>Largest body of a booking request, in bytes: a handful of short fields and one note, never a document.</summary>
     public const int CreateMaxBodyBytes = 16 * 1024;
 

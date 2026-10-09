@@ -129,6 +129,9 @@ public sealed class ShowcaseBookingRuleException : DomainRuleException
 public sealed class ShowcaseBookingTooManyHoldsException(TimeSpan retryAfter)
     : Exception("Too many showcase bookings waiting for the e-mail check")
 {
-    /// <summary>When the oldest of them lapses, at the latest: the earliest a new booking can be made.</summary>
+    /// <summary>
+    /// When the oldest of them lapses, at the latest: the earliest a new booking can be made. It is not given to the client — the
+    /// answer carries the window of the limit per address instead, so the exact time does not tell when someone booked with the address.
+    /// </summary>
     public TimeSpan RetryAfter { get; } = retryAfter;
 }

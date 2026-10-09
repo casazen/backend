@@ -71,6 +71,16 @@ public sealed record ShowcaseBookingContent(
 public static class ShowcaseBookingRules
 {
     /// <summary>
+    /// Whether <paramref name="startUtc"/> is a time the slot planner could offer at <paramref name="nowUtc"/> at all: not further
+    /// back than <see cref="ShowcaseBookingLimits.SlotWindowBehindDays"/> and not further ahead than
+    /// <see cref="ShowcaseBookingLimits.SlotWindowAheadDays"/>. It does not say the slot is free (the planner does, after the lock);
+    /// it keeps a date like 0001-01-01 or 9999-12-31, which anyone can send, out of the date arithmetic of the planner.
+    /// </summary>
+    public static bool IsWithinSlotWindow(DateTime startUtc, DateTime nowUtc) =>
+        startUtc >= nowUtc.AddDays(-ShowcaseBookingLimits.SlotWindowBehindDays)
+        && startUtc <= nowUtc.AddDays(ShowcaseBookingLimits.SlotWindowAheadDays);
+
+    /// <summary>
     /// Checks and trims <paramref name="input"/>. <paramref name="currentPrivacyVersion"/> is the version the notice has now
     /// (<c>Suppliers:Showcase:PrivacyNoticeVersion</c>): the consent has to name exactly it.
     /// </summary>

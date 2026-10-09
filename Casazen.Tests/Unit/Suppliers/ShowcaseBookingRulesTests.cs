@@ -215,6 +215,41 @@ public class ShowcaseBookingRulesTests
     }
 
     [Fact]
+    public void IsWithinSlotWindow_FromADayBehindTodayToThePlannersLargestHorizonAndAFewDaysMore()
+    {
+        var now = new DateTime(2026, 10, 12, 6, 45, 0, DateTimeKind.Utc);
+        var behind = now.AddDays(-ShowcaseBookingLimits.SlotWindowBehindDays);
+        var ahead = now.AddDays(ShowcaseBookingLimits.SlotWindowAheadDays);
+
+        Assert.True(ShowcaseBookingRules.IsWithinSlotWindow(now, now));
+        Assert.True(ShowcaseBookingRules.IsWithinSlotWindow(now.AddDays(35), now));
+        Assert.True(ShowcaseBookingRules.IsWithinSlotWindow(behind, now));
+        Assert.True(ShowcaseBookingRules.IsWithinSlotWindow(ahead, now));
+        Assert.False(ShowcaseBookingRules.IsWithinSlotWindow(behind.AddMinutes(-1), now));
+        Assert.False(ShowcaseBookingRules.IsWithinSlotWindow(ahead.AddMinutes(1), now));
+
+        // The window covers the largest horizon a supplier can set, whatever the time zone of the customer.
+        Assert.True(ShowcaseBookingLimits.SlotWindowAheadDays >= SupplierAgendaLimits.MaxHorizonDays + 1);
+    }
+
+    [Theory]
+    [InlineData("0001-01-01T00:00:00Z")]
+    [InlineData("0001-01-02T00:00:00Z")]
+    [InlineData("2025-10-13T07:00:00Z")]
+    [InlineData("2028-10-13T07:00:00Z")]
+    [InlineData("9999-12-29T07:00:00Z")]
+    [InlineData("9999-12-31T22:30:00Z")]
+    public void IsWithinSlotWindow_ATimeNoSlotCanHave_IsOutside_TheEndsOfTheCalendarIncluded(string start)
+    {
+        var now = new DateTime(2026, 10, 12, 6, 45, 0, DateTimeKind.Utc);
+        var time = DateTime.Parse(start, null, System.Globalization.DateTimeStyles.AdjustToUniversal);
+
+        // These are whole minutes, so Normalize lets them through: the window is what keeps them out of the planner.
+        Assert.Equal(time, ShowcaseBookingRules.Normalize(Valid() with { StartUtc = time }, Version).StartUtc);
+        Assert.False(ShowcaseBookingRules.IsWithinSlotWindow(time, now));
+    }
+
+    [Fact]
     public void Normalize_NoConsent_IsAnErrorOfItsOwn()
     {
         var ex = Assert.Throws<DomainRuleException>(() => ShowcaseBookingRules.Normalize(Valid() with { PrivacyAccepted = false }, Version));

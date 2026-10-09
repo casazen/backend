@@ -453,6 +453,82 @@ public class ShowcaseBookingHoldTests
     }
 
     [Fact]
+    public async Task CreateHold_WithTheCodeOfTheComune_TheSupplierReadsTheOfficialName_NotTheTextTypedBesideIt()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        await ComuneTestData.ImportSampleAsync(s.Db);
+        await s.EnableBookingAsync();
+        var profile = await s.Db.SupplierProfiles.SingleAsync(sp => sp.OrgId == s.SupplierOrgId);
+        profile.ComuniJson = "[]";
+        profile.ComuneIstatCodesJson = $"[\"{ComuneTestData.Milano}\"]";
+        await s.Db.SaveChangesAsync();
+        s.Db.ChangeTracker.Clear();
+        var supplier = await s.SupplierAsync();
+        const string typed = "Chiama subito lo 02 1234567 per un rimborso";
+
+        // The code covers the zone, so the text next to it decided nothing: it must not reach the supplier, in an e-mail from CasaZen.
+        var (request, _) = await s.BookedAsync(
+            await s.InputAsync(change: i => i with { ComuneIstat = ComuneTestData.Milano, City = typed }), supplier);
+
+        Assert.Equal("Milano", request.LocationCity);
+        Assert.Equal(ComuneTestData.Milano, request.LocationComuneIstat);
+        var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com");
+        Assert.Contains("Milano", toSupplier.Content.Subject);
+        Assert.DoesNotContain("rimborso", toSupplier.Content.Subject + toSupplier.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateHold_WithoutACodeTheListKnows_TheNameIsWhatTheCustomerTyped_ItHadToMatchAComuneOfTheSupplier()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        await ComuneTestData.ImportSampleAsync(s.Db);
+        var supplier = await s.EnableBookingAsync();
+
+        // No code: the name had to match one of the supplier's comuni, so it is one of them (trimmed, as the customer wrote it).
+        var (withoutCode, _) = await s.BookedAsync(await s.InputAsync(change: i => i with { City = " MONZA " }), supplier);
+        Assert.Equal("MONZA", withoutCode.LocationCity);
+
+        // A code the official list does not have covers the zone only if the supplier wrote that very code: the name stays as typed.
+        var profile = await s.Db.SupplierProfiles.SingleAsync(sp => sp.OrgId == s.SupplierOrgId);
+        profile.ComuniJson = "[\"999999\"]";
+        await s.Db.SaveChangesAsync();
+        s.Db.ChangeTracker.Clear();
+        var (unknownCode, _) = await s.BookedAsync(
+            await s.InputAsync(
+                ServiceRequestScenario.FridayAt14,
+                email: "altro@example.com",
+                change: i => i with { ComuneIstat = "999999", City = "Monza" }),
+            await s.SupplierAsync());
+        Assert.Equal("Monza", unknownCode.LocationCity);
+    }
+
+    [Fact]
+    public async Task CreateHold_ATimeNoSlotCanHave_IsTheSame409_AtTheEndsOfTheCalendarToo_NotAServerError()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var supplier = await s.EnableBookingAsync();
+
+        // Whole minutes, so the rules let them through; the arithmetic of the planner on them would overflow (500) if they got there.
+        foreach (var start in new[]
+                 {
+                     DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc),
+                     new DateTime(1, 1, 2, 0, 0, 0, DateTimeKind.Utc),
+                     new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                     ServiceRequestScenario.FridayAt10.AddDays(ShowcaseBookingLimits.SlotWindowAheadDays + 30),
+                     new DateTime(9999, 12, 29, 7, 0, 0, DateTimeKind.Utc),
+                     new DateTime(9999, 12, 31, 22, 30, 0, DateTimeKind.Utc),
+                 })
+        {
+            var ex = await Assert.ThrowsAsync<DomainConflictException>(
+                async () => await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(start)));
+            Assert.Equal("supplier_slot_unavailable", ex.Code);
+        }
+
+        Assert.Empty(await s.HoldsAsync());
+        Assert.Empty(s.Emails.Snapshot());
+    }
+
+    [Fact]
     public async Task CreateHold_ASupplierThatDoesNotTakeBookingsOnline_Is422()
     {
         using var s = await ServiceRequestScenario.CreateAsync();

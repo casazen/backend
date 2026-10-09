@@ -36,6 +36,13 @@ public sealed class SupplierBookingEmailRateLimiter : IDisposable
         _emails = PartitionedRateLimiter.Create<string, string>(key => RateLimitPartition.GetFixedWindowLimiter(key, _ => options));
     }
 
+    /// <summary>
+    /// The window of the limit, which is the <c>Retry-After</c> it answers with. The cap of unchecked bookings of one address answers
+    /// with the same value (never with the exact time its oldest booking lapses, which would tell when someone booked with that
+    /// address), so the two cannot be told apart.
+    /// </summary>
+    public TimeSpan Window => _window;
+
     /// <summary>Takes one permit for <paramref name="email"/> at the supplier <paramref name="supplierSlug"/>; the time to wait when there is none left.</summary>
     public bool TryAcquire(string supplierSlug, string email, out TimeSpan retryAfter)
     {

@@ -511,6 +511,7 @@ public class ShowcaseBookingConfirmTests
             s.Catalog,
             s.Agenda,
             s.Kit.Matcher,
+            ComuneTestServices.Directory(s.Db),
             s.Kit.CustomerIndex,
             s.Kit.ShowcaseNotifier,
             Options.Create(s.Kit.ShowcaseOptions),
