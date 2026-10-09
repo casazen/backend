@@ -407,6 +407,7 @@ public class ServiceRequestServiceTests
 
         Assert.Equal(ServiceRequestStatus.Pagato, paid.Status);
         Assert.NotNull(paid.PaidAt);
+        Assert.Equal(ServiceRequestActorParty.Host, paid.PaidBy);
     }
 
     // ─── SU-09: the supplier is told when the host marks a request as paid ───
