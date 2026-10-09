@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -157,5 +158,40 @@ public class PublicSupplierShowcasePostgresTests(PublicShowcaseFactory factory) 
         var profile = await db.SupplierProfiles.SingleAsync(p => p.OrgId == orgId);
         profile.Status = status;
         await db.SaveChangesAsync();
+    }
+}
+
+/// <summary>
+/// SP-09 on PostgreSQL with a hold: the request with hours of one customer and the hold of another (a booking waiting for its
+/// e-mail check, which SP-10 will create) take their slots together on real timestamps, and an expired hold takes none. The hold
+/// enters the planning input of the agenda the way SP-10 will put it there, so the public read needs no change when it exists.
+/// </summary>
+[Collection(SupplierCatalogHostsCollection.Name)]
+public class PublicSupplierShowcaseHoldsPostgresTests(PublicShowcaseWithHoldsFactory factory) : IClassFixture<PublicShowcaseWithHoldsFactory>
+{
+    [PostgresFact]
+    public async Task ARequestWithHoursAndAHoldOfAnotherCustomer_TakeTheirSlotsTogether_AnExpiredHoldTakesNone()
+    {
+        var supplier = await PublicShowcaseTestData.SeedSupplierAsync(factory);
+        var slug = await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
+        // Tuesday 13: the request of a host, 10:00-12:00 Rome. Wednesday 14: a hold, 10:00-12:00. Thursday 15: a hold that expired.
+        await PublicShowcaseTestData.SeedTimedRequestAsync(
+            factory, supplier.OrgId, new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 10, 0, 0, DateTimeKind.Utc));
+        var alive = PublicShowcaseFactory.Start.UtcDateTime.AddMinutes(30);
+        var expired = PublicShowcaseFactory.Start.UtcDateTime.AddMinutes(-1);
+        factory.Holds[supplier.OrgId] =
+        [
+            SupplierOccupancy.Hold(new DateTime(2026, 10, 14, 8, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 14, 10, 0, 0, DateTimeKind.Utc), alive),
+            SupplierOccupancy.Hold(new DateTime(2026, 10, 15, 8, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 15, 10, 0, 0, DateTimeKind.Utc), expired),
+        ];
+        using var client = factory.CreateClient();
+
+        var body = await client.GetFromJsonAsync<JsonElement>($"/api/public/suppliers/{supplier.Slug}/slots?service={slug}&from=2026-10-13&days=3");
+
+        var days = body.GetProperty("days").EnumerateArray().ToList();
+        Assert.Equal(new[] { 3, 3, 6 }, days.Select(d => d.GetProperty("slots").GetArrayLength()));
+        Assert.Equal(
+            new[] { "2026-10-13T12:00:00Z", "2026-10-13T13:00:00Z", "2026-10-13T14:00:00Z" },
+            days[0].GetProperty("slots").EnumerateArray().Select(s => s.GetProperty("startUtc").GetString()));
     }
 }
