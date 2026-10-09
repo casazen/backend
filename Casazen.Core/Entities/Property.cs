@@ -27,7 +27,9 @@ public class Property : ITenantOwned
     /// <summary>
     /// The member of the org in charge of the property (AM-03): the one who receives its notifications (new booking,
     /// supplier updates) together with the org's owner and administrators. <c>null</c> = nobody was named, and the creator
-    /// (<see cref="OwnerId"/>) is notified instead. Always a user of the same org (checked when it is set).
+    /// (<see cref="OwnerId"/>) is notified instead. Always a user of the same org who reaches the property (checked when it is
+    /// set), and back to <c>null</c> when that person loses the property or leaves the org (AM-03b); the notifications read the
+    /// reach again anyway (<c>HostNotificationAudience</c>).
     /// </summary>
     [MaxLength(255)]
     public string? ResponsibleUserId { get; set; }
@@ -178,6 +180,19 @@ public class Property : ITenantOwned
     [ForeignKey("CancellationPolicy")]
     public Guid? CancellationPolicyId { get; set; }
     public virtual CancellationPolicy? CancellationPolicy { get; set; }
+
+    /// <summary>Host override of the catalog full-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
+    public int? CancellationFullRefundHours { get; set; }
+
+    /// <summary>Host override of the catalog partial-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
+    public int? CancellationPartialRefundHours { get; set; }
+
+    /// <summary>Host override of the catalog partial-refund percent. Null = catalog. Ignored for stays of 28+ nights.</summary>
+    [Precision(18, 2)]
+    public decimal? CancellationPartialRefundPercent { get; set; }
+
+    /// <summary>Host refund type (percent of stay vs non-refundable). Ignored for stays of 28+ nights.</summary>
+    public HostCancellationRefundType CancellationRefundType { get; set; } = HostCancellationRefundType.Percent;
 
     public bool IsActive { get; set; } = true;
 

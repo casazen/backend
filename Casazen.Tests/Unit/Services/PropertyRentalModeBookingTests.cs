@@ -33,6 +33,7 @@ public class PropertyRentalModeBookingTests
     private readonly Mock<IPropertyRepository> _properties = new();
     private readonly Mock<IOrgService> _orgs = new();
     private readonly Mock<ICheckoutHoldExpiryService> _holdExpiry = new();
+    private readonly Mock<IPricingAdapterService> _pricing = new();
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString())
         .Options);
@@ -63,7 +64,11 @@ public class PropertyRentalModeBookingTests
             new Mock<ILogger<BookingService>>().Object,
             _holdExpiry.Object,
             new OnSiteRequestNotifier(
-                _db, new RecordingEmailQueue(), EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()));
+                _db, new RecordingEmailQueue(), EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
+            _pricing.Object);
+        _pricing
+            .Setup(s => s.GetAppliedNightlyPricesAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<DateOnly, decimal>());
     }
 
     [Theory]

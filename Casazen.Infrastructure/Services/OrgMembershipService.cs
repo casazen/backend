@@ -218,12 +218,18 @@ public sealed partial class OrgMembershipService(
         // Leave no link the onboarding can reuse: EnsureOrgForUserAsync would otherwise return this org and
         // EnsureOwnerAsync would insert a second Owner beside the one that cannot be removed (UnlinkOrgAsync).
         await ClearPropertyAccessAsync(member, cancellationToken);
+
+        // A person who leaves reaches nothing of the org, so it is in charge of nothing (AM-03b): the name goes in the same save,
+        // and does not wait for the person to come back with another invitation to be in charge again.
+        var released = await PropertyResponsibility.ReleaseAsync(
+            db, member.OrgId, userId, keep: [], _clock.GetUtcNow().UtcDateTime, cancellationToken);
         db.OrgMembers.Remove(member);
         await ProjectAsync(userId, [], ManagedContexts, cancellationToken);
         await UnlinkOrgAsync(userId, member.OrgId, cancellationToken);
         await SaveAsync(transaction, userId, cancellationToken);
 
-        logger.LogInformation("Org member removed: userId={UserId} orgId={OrgId}", userId, member.OrgId);
+        logger.LogInformation(
+            "Org member removed: userId={UserId} orgId={OrgId} responsibilitiesReleased={Released}", userId, member.OrgId, released.Count);
     }
 
     public async Task AbandonEmptyOrgAsync(string userId, Guid orgId, CancellationToken cancellationToken = default)

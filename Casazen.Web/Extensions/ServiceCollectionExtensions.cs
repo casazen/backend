@@ -285,6 +285,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PaymentRefundService>();
         services.AddScoped<IPaymentRefundService>(sp => sp.GetRequiredService<PaymentRefundService>());
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
+        // Guest self-service cancellation via signed link (BK-02, BK-07, PO 2026-10-08).
+        services.AddScoped<IGuestBookingCancellationService, GuestBookingCancellationService>();
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();
@@ -416,6 +418,12 @@ public static class ServiceCollectionExtensions
         // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
         services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();
         services.AddScoped<IOrgInvitationMaintenanceService, OrgInvitationMaintenanceService>();
+        // AM-02b: the activity log of the org (ids and codes only), written inside the unit of work of the services above and of
+        // the plan and settings of the org; its list and CSV; the requests for access to the administrators; its retention.
+        services.AddScoped<IActivityLog, ActivityLog>();
+        services.AddScoped<IOrgActivityService, OrgActivityService>();
+        services.AddScoped<IOrgAccessRequestService, OrgAccessRequestService>();
+        services.AddScoped<IOrgActivityRetentionService, OrgActivityRetentionService>();
         services.AddScoped<IAccountEmailResolver, AccountEmailResolver>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         // SE-04: events of the SEO funnel (no personal data) and the featured properties of a comune.

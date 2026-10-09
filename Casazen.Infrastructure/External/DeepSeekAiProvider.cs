@@ -31,6 +31,9 @@ public class DeepSeekAiProvider(
             return new AiGenerationResult(string.Empty, 0, 0, tier, FromCache: false, ProviderConfigured: false);
         }
 
+        // FD-21 (PO 2026-10-08): scrub PII from every prompt before sending to DeepSeek.
+        prompt = PiiScrubber.Scrub(prompt);
+
         var baseUrl = config.OpenAiBaseUrl.TrimEnd('/');
         var payload = new
         {

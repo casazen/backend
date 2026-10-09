@@ -31,6 +31,10 @@ public class EndpointAuthorizationArchitectureTests
         ["AuthController.GetProfile"] = "Profile of the caller, read from the token.",
         ["AuthController.Logout"] = "Ends the caller's own session.",
         ["MeController.GetContexts"] = "Lists the contexts the caller may enter (how the client picks host, landlord or supplier UI).",
+        ["MeNotificationsController.List"] = "UI-12a: the bell of the shell, in every context (host, landlord, supplier): the caller's own notifications, by the token's sub, in the orgs the caller belongs to (behind Features:InAppNotifications).",
+        ["MeNotificationsController.UnreadCount"] = "UI-12a: the number on the bell, the caller's own unread notifications (same reason as List).",
+        ["MeNotificationsController.MarkRead"] = "UI-12a: the caller marks one of its own notifications as read; the id of another user's is a 404 (same reason as List).",
+        ["MeNotificationsController.MarkAllRead"] = "UI-12a: the caller marks all of its own notifications as read (same reason as List).",
         ["MeController.PutLastContext"] = "UI-13a: remembers the area the caller entered last; it must be one of the contexts the caller can enter (422 otherwise) and it writes one column of the caller's own user row.",
         ["SearchController.Search"] = "UI-13a: the palette searches every area of the caller, so no single context policy fits; each group is returned only when the caller holds the permission of that group in its context (the policies of the endpoints that list the same objects, SearchAccessResolver), in the caller's org and, for a collaborator limited to some properties, only in those (HostScope, in SQL). Behind the GlobalSearch flag and rate limited per user.",
         ["OnboardingController.GetStatus"] = "Onboarding state of the caller, needed before any context exists.",
@@ -43,6 +47,7 @@ public class EndpointAuthorizationArchitectureTests
         ["DevicesController.Unregister"] = "Removes the caller's own push token.",
         ["SuppliersController.Claim"] = "Links the caller's own account to the supplier profile it registered (claim token or verified email, SU-02): the Supplier role does not exist yet.",
         ["OrgInvitationAcceptanceController.Accept"] = "The invited person joins the org that invited its own email (AM-02): it has no org, role or permission yet, so no context policy can exist. What decides is the secret token, a verified account email equal to the invited one, not being a platform admin, and the consents of the org it joins.",
+        ["OrgAccessRequestsController.Create"] = "A member asks the administrators of its org for access to something its role does not give it (AM-02b): by definition it lacks the permission of the thing, and any role may ask, so no context policy fits. The service decides: the caller must be an active member of the org (403 otherwise), at most three requests a day for each person, and the endpoint is rate limited per person.",
 
         // Catalogs without tenant data.
         ["BillingController.GetPlans"] = "Public plan catalog from configuration; every billing change is RequireOrgBillingAdmin.",

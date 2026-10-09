@@ -246,6 +246,27 @@
   <data name="PropertyResponsibleInvalid" xml:space="preserve">
     <value>Il responsabile deve essere una persona attiva dell'organizzazione che può vedere questo immobile.</value>
   </data>
+  <data name="AccessRequestAreaRequired" xml:space="preserve">
+    <value>Scegli a cosa vuoi accedere.</value>
+  </data>
+  <data name="AccessRequestAreaUnknown" xml:space="preserve">
+    <value>Non puoi chiedere l'accesso a questa area o pagina.</value>
+  </data>
+  <data name="AccessRequestNoteTooLong" xml:space="preserve">
+    <value>Il messaggio è troppo lungo (al massimo 200 caratteri).</value>
+  </data>
+  <data name="AccessRequestLimitReached" xml:space="preserve">
+    <value>Hai già inviato diverse richieste oggi e gli amministratori sono stati avvisati. Riprova domani.</value>
+  </data>
+  <data name="OrgActivityTypeUnknown" xml:space="preserve">
+    <value>Tipo di attività non riconosciuto.</value>
+  </data>
+  <data name="OrgActivityAreaUnknown" xml:space="preserve">
+    <value>Area non riconosciuta.</value>
+  </data>
+  <data name="OrgActivityRangeInvalid" xml:space="preserve">
+    <value>La data di inizio deve essere precedente alla data di fine.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
@@ -808,6 +829,18 @@
   <data name="BookingCancelPaymentPermissionRequired" xml:space="preserve">
     <value>Per cancellare una prenotazione con pagamenti serve il permesso di gestire i pagamenti.</value>
   </data>
+  <data name="GuestCancelTokenMissing" xml:space="preserve">
+    <value>Manca il token di cancellazione: apri il link ricevuto per email.</value>
+  </data>
+  <data name="GuestCancelTokenInvalid" xml:space="preserve">
+    <value>Il link di cancellazione non è valido o è già stato usato.</value>
+  </data>
+  <data name="GuestCancelTokenExpired" xml:space="preserve">
+    <value>Il link di cancellazione è scaduto. Chiedi all'host un nuovo link.</value>
+  </data>
+  <data name="BookingNotCancellableByGuest" xml:space="preserve">
+    <value>Questa prenotazione non può più essere cancellata in autonomia.</value>
+  </data>
   <data name="ServiceCategoryInvalid" xml:space="preserve">
     <value>La categoria di servizio «{0}» non è valida: scegline una dall'elenco delle categorie disponibili.</value>
   </data>
@@ -1227,6 +1260,12 @@
   </data>
   <data name="PropertyCancellationPolicyNotFound" xml:space="preserve">
     <value>La policy di cancellazione scelta non esiste: ricarica la pagina e scegline un'altra.</value>
+  </data>
+  <data name="PropertyCancellationHoursRange" xml:space="preserve">
+    <value>Le ore di preavviso per il rimborso devono essere un numero intero tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyCancellationPercentRange" xml:space="preserve">
+    <value>La percentuale di rimborso parziale deve essere tra {1} e {2}.</value>
   </data>
   <data name="PropertyActivationBlocked" xml:space="preserve">
     <value>L'immobile non può ancora essere attivato: completa i punti obbligatori elencati.</value>

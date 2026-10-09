@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Options;
+using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
@@ -109,7 +110,8 @@ public class OrgsController(
             dto.Slug,
             dto.ContactEmail,
             dto.ContactEmailPublic,
-            cancellationToken);
+            actorUserId: User.GetUserId(),
+            cancellationToken: cancellationToken);
         if (updated is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
@@ -194,7 +196,8 @@ public class OrgsController(
                 return this.ApiProblem(StatusCodes.Status403Forbidden, PlanProblemCodes.SubscriptionRequired, "SubscriptionRequired");
         }
 
-        var updated = await orgService.UpdatePlanTierAsync(orgId.Value, planTier, cancellationToken);
+        var updated = await orgService.UpdatePlanTierAsync(
+            orgId.Value, planTier, User.GetUserId(), PlanChangeSource.Org, cancellationToken);
         if (updated is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 

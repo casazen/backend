@@ -224,10 +224,10 @@ searched through it.
 
 ## 7. Rate limit
 
-Policy `GlobalSearch` (`RateLimitPolicies.GlobalSearch`): a fixed window of **60 requests per minute per user**, no queue. It is the
-only policy of an authenticated endpoint, so it is partitioned by user (a hash of the subject of the token) and not by IP: the
-palette asks at every pause in typing and the people of one office share an address. A call runs up to seven short queries, hence the
-limit of its own.
+Policy `GlobalSearch` (`RateLimitPolicies.GlobalSearch`): a fixed window of **60 requests per minute per user**, no queue. Like
+`OrgAccessRequest` (AM-02b) it is the policy of a signed-in endpoint, so it is partitioned by person (a hash of the subject of the
+token) and not by IP: the palette asks at every pause in typing and the people of one office share an address. A call runs up to
+seven short queries, hence the limit of its own.
 
 | Variable | Default | |
 |---|---|---|

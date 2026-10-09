@@ -146,6 +146,9 @@ public class AppDbContext(
     // Push messages per event and device, with their Expo ticket (MO-04)
     public DbSet<PushDelivery> PushDeliveries { get; set; } = null!;
 
+    // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
+    public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
+
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
     public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
@@ -174,6 +177,9 @@ public class AppDbContext(
     public DbSet<OrgMember> OrgMembers { get; set; } = null!;
     public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
     public DbSet<PropertyMemberAccess> PropertyMemberAccesses { get; set; } = null!;
+
+    // Who did what in an org, as ids and codes (AM-02b)
+    public DbSet<OrgActivityEntry> OrgActivityEntries { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -1006,6 +1012,29 @@ public class AppDbContext(
                 .HasDatabaseName("IX_PropertyMemberAccesses_OrgId_UserId");
         });
 
+        // ─── Activity log of the org (AM-02b) ───────────────────────────────────────────────────────────────
+        modelBuilder.Entity<OrgActivityEntry>(entity =>
+        {
+            // The log of an org goes with it. No foreign key to the account: the history outlives it and holds ids only.
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(e => e.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The page of the people who administer the org: the newest lines of one org (the tenant filter reads OrgId too).
+            entity.HasIndex(e => new { e.OrgId, e.When })
+                .IsDescending(false, true)
+                .HasDatabaseName("IX_OrgActivityEntries_OrgId_When");
+
+            // The filter by event, and the count of the access requests of one person.
+            entity.HasIndex(e => new { e.OrgId, e.Type })
+                .HasDatabaseName("IX_OrgActivityEntries_OrgId_Type");
+
+            // The retention deletes across every org what is older than the cutoff.
+            entity.HasIndex(e => e.When)
+                .HasDatabaseName("IX_OrgActivityEntries_When");
+        });
+
         // The member in charge of a property (AM-03): notified together with the org's administrators. The account can go;
         // the property keeps its history and is simply left without a named person.
         modelBuilder.Entity<Property>()
@@ -1718,6 +1747,39 @@ public class AppDbContext(
 
             entity.HasIndex(d => d.UserId)
                 .HasDatabaseName("IX_DeviceRegistrations_UserId");
+        });
+
+        // ─── In-app notifications (UI-12a) ──────────────────────────────────────
+        modelBuilder.Entity<InAppNotification>(entity =>
+        {
+            // The notifications of an org go with it (the one place an org is deleted, the merge of two duplicate supplier orgs,
+            // must not be stopped by them), and the ones of a person go with the account (erasure).
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(n => n.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Once per event and user: the job that writes them, retried by Hangfire or queued twice for the same event, loses
+            // the race on this index (23505) and re-reads. The key is the one of the push of the event.
+            entity.HasIndex(n => new { n.DeliveryKey, n.UserId })
+                .IsUnique()
+                .HasDatabaseName(InAppNotification.OncePerEventAndUserIndexName);
+
+            // The bell: the unread count of a user, and its list (newest first, optionally only the unread ones).
+            entity.HasIndex(n => new { n.UserId, n.ReadAt, n.CreatedAt })
+                .HasDatabaseName("IX_InAppNotifications_UserId_ReadAt_CreatedAt");
+
+            // The tenant filter of every read, and the cascade of an org.
+            entity.HasIndex(n => n.OrgId)
+                .HasDatabaseName("IX_InAppNotifications_OrgId");
+
+            // The daily retention deletes by age, whoever the user is.
+            entity.HasIndex(n => n.CreatedAt)
+                .HasDatabaseName("IX_InAppNotifications_CreatedAt");
         });
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the

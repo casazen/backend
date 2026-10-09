@@ -672,6 +672,30 @@
   <data name="RentPaymentReceived_Cta" xml:space="preserve">
     <value>Apri il contratto</value>
   </data>
+  <data name="GuestCancelLink_Subject" xml:space="preserve">
+    <value>Disdetta della prenotazione - {0}</value>
+  </data>
+  <data name="GuestCancelLink_Greeting" xml:space="preserve">
+    <value>Caro/a {0},</value>
+  </data>
+  <data name="GuestCancelLink_Body" xml:space="preserve">
+    <value>hai richiesto di disdire la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;. Clicca sul pulsante qui sotto per confermare la disdetta.</value>
+  </data>
+  <data name="GuestCancelLink_Policy" xml:space="preserve">
+    <value>L'eventuale rimborso verrà calcolato secondo la politica di cancellazione della struttura, applicata sull'importo del soggiorno al netto della tassa di soggiorno.</value>
+  </data>
+  <data name="GuestCancelLink_Cta" xml:space="preserve">
+    <value>Conferma la disdetta</value>
+  </data>
+  <data name="GuestCancelLink_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="GuestCancelLink_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0} (ora italiana).</value>
+  </data>
+  <data name="GuestCancelLink_NotYou" xml:space="preserve">
+    <value>Se non hai richiesto tu questa disdetta, ignora questa email: la tua prenotazione resta invariata.</value>
+  </data>
   <data name="PropertyModeLabel_Short" xml:space="preserve">
     <value>affitto breve</value>
   </data>
@@ -1262,6 +1286,69 @@
   </data>
   <data name="OrgInvitationExpired_Cta" xml:space="preserve">
     <value>Apri Persone e permessi</value>
+  </data>
+  <data name="OrgAccessRequest_Subject" xml:space="preserve">
+    <value>{0} chiede di accedere a «{1}»</value>
+  </data>
+  <data name="OrgAccessRequest_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="OrgAccessRequest_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ({1}) ha chiesto di accedere a &lt;strong&gt;{2}&lt;/strong&gt; su CasaZen.</value>
+  </data>
+  <data name="OrgAccessRequest_NoteLabel" xml:space="preserve">
+    <value>Il suo messaggio</value>
+  </data>
+  <data name="OrgAccessRequest_Hint" xml:space="preserve">
+    <value>Se sei d'accordo, cambia il ruolo o gli immobili della persona da Persone e permessi. Se non ti torna, ignora questa email: non cambia nulla finché non lo decidi tu.</value>
+  </data>
+  <data name="OrgAccessRequest_Cta" xml:space="preserve">
+    <value>Apri Persone e permessi</value>
+  </data>
+  <data name="OrgAccessArea_Account" xml:space="preserve">
+    <value>Amministrazione</value>
+  </data>
+  <data name="OrgAccessArea_ShortRent" xml:space="preserve">
+    <value>Affitti brevi</value>
+  </data>
+  <data name="OrgAccessArea_LongRent" xml:space="preserve">
+    <value>Affitti lunghi</value>
+  </data>
+  <data name="OrgAccessArea_Supplier" xml:space="preserve">
+    <value>Fornitori</value>
+  </data>
+  <data name="OrgAccessArea_People" xml:space="preserve">
+    <value>Persone e permessi</value>
+  </data>
+  <data name="OrgAccessArea_Properties" xml:space="preserve">
+    <value>Immobili</value>
+  </data>
+  <data name="OrgAccessArea_Suppliers" xml:space="preserve">
+    <value>Fornitori di fiducia</value>
+  </data>
+  <data name="OrgAccessArea_Billing" xml:space="preserve">
+    <value>Piano e fatturazione</value>
+  </data>
+  <data name="OrgAccessArea_Organization" xml:space="preserve">
+    <value>Organizzazione</value>
+  </data>
+  <data name="OrgAccessArea_Activity" xml:space="preserve">
+    <value>Registro attività</value>
+  </data>
+  <data name="OrgAccessArea_Integrations" xml:space="preserve">
+    <value>Integrazioni</value>
+  </data>
+  <data name="OrgAccessArea_Security" xml:space="preserve">
+    <value>Sicurezza</value>
+  </data>
+  <data name="OrgAccessArea_Payments" xml:space="preserve">
+    <value>Incassi</value>
+  </data>
+  <data name="OrgAccessArea_Reports" xml:space="preserve">
+    <value>Report</value>
+  </data>
+  <data name="OrgAccessArea_Prices" xml:space="preserve">
+    <value>Prezzi</value>
   </data>
   <data name="ServicePaymentRequest_Subject" xml:space="preserve">
     <value>Da pagare: {0} ({1})</value>
