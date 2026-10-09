@@ -1743,7 +1743,8 @@ is known), 400 `validation_error` for a body that is not JSON or an oversized te
 e-mail cannot be queued (the e-mail provider is not configured, the queue is down): the hold is **released** at once, so a booking
 nobody can check does not keep the slot, and the same attempt (same `clientRequestId`) works when the queue does.
 
-**23.2.2 The check of the e-mail.** The token is **in the body**, never in the URL (it is in no access log). `404`
+**23.2.2 The check of the e-mail.** The token is **in the body**, never in the URL of the API (so it is in no access log of the API;
+the link in the e-mail carries it in the query of the page, as the other links with a token of the product do). `404`
 `supplier_booking_link_invalid` is **one answer** for a booking that does not exist, one of another supplier and a wrong token;
 **409** `supplier_booking_link_expired` (the 30 minutes have passed: the booking starts again); 422 `supplier_booking_supplier_unavailable`
 (the supplier was suspended meanwhile). A second click on the link answers **200** with `alreadyConfirmed: true` and the status as it is by
@@ -1786,16 +1787,27 @@ stay, `Source = Showcase`, a customer, a code and a comune; a host's request has
 - Two clicks on one link at once: the second waits for the lock, finds the hold consumed and answers the replay.
 - A conflict the lock should have prevented (a unique index, a changed row version, a serialization failure, a deadlock) is still a
   **409**, never a 500.
+- A start that no slot can have — in the past, beyond the largest horizon a supplier can set (365 days) or at the ends of the
+  calendar, where the date arithmetic of the planner would overflow — is the same 409, answered before the planner runs on it.
 - Not covered on purpose: a supplier that adds time off or a block over a slot **after** a customer's hold. The hold was free when it was
   made; the supplier answers the request that follows.
+- Not covered on purpose: the clocks of the replicas. Each decides on its own clock whether a hold has expired (the planner when it
+  counts it, the check of the e-mail when it accepts the link), so with a skew of s seconds a link can be accepted up to s seconds
+  after another replica's planner freed the slot. With the clocks synchronized the skew is a few milliseconds; a margin would shorten
+  the 30 minutes the e-mail promises, so there is none.
 
 ### 23.5 Security and abuse
 
 - **Token**: 32 random bytes (256 bits), base64url, shown once in the e-mail; only its SHA-256 is stored; compared in constant time;
-  works once and only until the hold expires; in the body of the request, never in a URL.
+  works once and only until the hold expires; in the body of the request, never in a URL of the API.
 - **Three limits, one 429**: per IP (5 per 10 minutes), per address **and supplier** (3 per hour, in memory per replica, keyed by a hash,
   counting every attempt, successful or not), and the durable cap in the database (3 unchecked bookings of one address). The first two
-  are `RateLimiting__PublicSupplierBookingCreate__*` and `RateLimiting__SupplierBookingCreatePerEmail__*` (`proxy-ip.md`).
+  are `RateLimiting__PublicSupplierBookingCreate__*` and `RateLimiting__SupplierBookingCreatePerEmail__*` (`proxy-ip.md`). The cap
+  answers with the `Retry-After` of the limit per address (its window, an hour), never with the time its oldest booking lapses: that
+  would tell when someone booked with the address.
+- **Free text before the take**: the supplier reads, before it takes a request, the comune and the short name ("Nome C.") only. The
+  comune is the **official name** of the ISTAT code when the customer sent one the list knows (the text typed beside the code decides
+  nothing and is dropped); without a code the name had to match one of the supplier's own comuni to cover the zone.
 - **No CAPTCHA** (D9): the trap field `website`, the limits above and the check of the address.
 - **Nothing tells whether an address, a code or a booking exists**: uniform 404s and 429s (23.2).
 - Every answer is `noindex` and `no-store`; no answer carries a name, an address, an e-mail or a phone; **no log line does either** (ids,
@@ -1829,6 +1841,11 @@ supplier refused or cancelled shows what a new one shows. `GET api/supplier/inbo
 - **Retention** (`gdpr.md` § 8): `Gdpr__Retention__SupplierCustomers__{Years|Months|Days}` and `…__Source`, **off until both are set**.
 - The consent address is stored in clear like the other consent evidence of the product (`Guest.ConsentIpAddress`); it is cleared with the
   rest when the customer is anonymized.
+- **The e-mails are outside this encryption.** `IEmailQueue` hands Hangfire the recipient, the subject and the HTML (`email.md`, "Data
+  kept in Hangfire"), and a succeeded job stays for 24 hours: for that time the customer's address and first name, and in the
+  verification mail the link with the token (which can check a hold that is still within its 30 minutes, and nothing else), are in the
+  Hangfire tables in clear — as for every e-mail of the product. The supplier's "new request" mail carries only the comune and
+  "Nome C.". Whoever can read the Hangfire schema reads them; shortening that is a change of the queue for all the e-mails.
 
 ### 23.8 E-mails
 
@@ -1859,6 +1876,9 @@ languages for the phrases that must never appear. The proposal e-mail points to 
 | `service-request-expiry` | `*/5 * * * *` | yes | deletes the holds past their expiry (the checked ones are kept until then for the replay of the link), cancels the showcase requests past `ResponseDueAt` (also a proposal the customer did not answer) and tells the customer |
 | `service-request-reminders` | hourly | yes | the reminder of the day before 18:00 Rome, once (`ReminderSentAt`), only for a request taken before that time |
 | `gdpr-data-retention` | 03:00 | yes | + the customers of the suppliers (23.7), off until configured |
+
+The retention changes the customers of one supplier under that supplier's calendar lock and reads them again after taking it: a
+customer who checks the e-mail of a new booking while the job runs has an open request by then and keeps its data.
 
 Registered **whatever the flags say**: a booking made while the flag was on has to lapse and be reminded of also after it is turned
 off. Each has `[DisableConcurrentExecution]` and a **PostgreSQL session lock** for the run (a second run is skipped), is idempotent, and

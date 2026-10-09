@@ -144,8 +144,10 @@ texts `SupplierBooking*` in `EmailTexts.resx` and `EmailTexts.en.resx`. Details 
 - **Only what is true** (D24): no "guaranteed price", no "answers in an hour", nothing about payment. The reminder is promised in the e-mail of the take only
   when it will really be sent. A test searches every template, in both languages, for the phrases that must never appear.
 - **Links** (all built by `PublicSiteLinks`): `…/fornitori/{slug}/conferma?hold={id}&token={token}` (the token is single use and works for 30 minutes),
-  `…/fornitori/{slug}/richiesta?codice={code}` (the page of the request, SP-11), `…/fornitori/{slug}` and the supplier's inbox.
-- **What Hangfire keeps.** Like every queued e-mail the job carries the recipient, the subject and the HTML for 24 hours: the verification e-mail carries the token.
+  `…/fornitori/{slug}/richiesta?code={code}` (the page of the request, SP-11), `…/fornitori/{slug}` and the supplier's inbox.
+- **What Hangfire keeps.** Like every queued e-mail the job carries the recipient, the subject and the HTML for 24 hours: the customer's e-mails carry its first
+  name and the verification e-mail the link with the token (single use, valid for the minutes of the hold). It is outside the encryption at rest of the
+  booking ([suppliers.md § 23.7](suppliers.md#237-privacy-and-encryption)) and the same for every e-mail of the product.
 
 ## Adding a new email
 

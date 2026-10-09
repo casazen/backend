@@ -15,7 +15,7 @@ public class SupplierBookingEmailTemplatesTests
 {
     private const string Payload = "<a href=\"https://phish.example\">Paga qui</a>";
     private const string EncodedPayload = "&lt;a href=&quot;https://phish.example&quot;&gt;Paga qui&lt;/a&gt;";
-    private const string Link = "https://casazen-app.test/fornitori/vetrina-test/richiesta?codice=ABCDE-12345";
+    private const string Link = "https://casazen-app.test/fornitori/vetrina-test/richiesta?code=ABCDE-12345";
 
     /// <summary>Friday 9 October 2026, 10:00 in Rome.</summary>
     private static readonly DateTime Start = new(2026, 10, 9, 8, 0, 0, DateTimeKind.Utc);
