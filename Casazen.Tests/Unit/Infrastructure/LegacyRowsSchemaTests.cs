@@ -25,6 +25,7 @@ public class LegacyRowsSchemaTests
     private const string Co14 = "EncryptGuestDocumentAndQuesturaCredentials";
     private const string Lt14 = "LeaseMultipleParties";
     private const string Pm01 = "AddPropertyRentalMode";
+    private const string Db03 = "AddDirectBookingPublicData";
     private const string Latest = "*";
 
     private static readonly Regex InsertShape = new(
@@ -60,9 +61,11 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyOrgRows), Co14 },
         { nameof(LegacyOrgRows), Lt14 },
         { nameof(LegacyOrgRows), Pm01 },
+        { nameof(LegacyOrgRows), Db03 },
         { nameof(LegacyPropertyRows), Co14 },
         { nameof(LegacyPropertyRows), Lt14 },
         { nameof(LegacyPropertyRows), Pm01 },
+        { nameof(LegacyPropertyRows), Db03 },
         { nameof(LegacyPropertyRows), Latest },
         { nameof(LegacyLeaseRows), Lt14 },
         { nameof(LegacyLeaseRows), Pm01 },

@@ -95,6 +95,28 @@ public class Property : ITenantOwned
     public decimal NightlyRate { get; set; }
 
     /// <summary>
+    /// Fewest nights the public booking site accepts for a stay (DB-03): <c>null</c> = no minimum, which is what every
+    /// property had before the column existed. When set it is between <see cref="PropertyStayRules.MinMinNights"/> and
+    /// <see cref="PropertyStayRules.MaxMinNights"/> (30 nights is the longest short-term let). It is a rule of the guests'
+    /// quote and checkout (422 <c>direct_booking_min_nights_not_met</c>), not of the host: a stay the host enters by hand can
+    /// be shorter.
+    /// </summary>
+    [Range(PropertyStayRules.MinMinNights, PropertyStayRules.MaxMinNights, ErrorMessage = "PropertyMinNightsRange")]
+    public int? MinNights { get; set; }
+
+    /// <summary>
+    /// Surcharge, in percent of <see cref="NightlyRate"/>, charged on the weekend nights of a stay (DB-03, D20): the nights
+    /// of Friday and Saturday, by their Europe/Rome calendar date (<see cref="PropertyStayRules.IsWeekendNight"/>).
+    /// <c>0</c> = no surcharge, the default of every property: each night costs <see cref="NightlyRate"/> and the price of a
+    /// stay is what it has always been. The host chooses the value (the +15 % of the demo is an example, never imposed):
+    /// 0 to <see cref="PropertyStayRules.MaxWeekendSurchargePercent"/>, two decimals.
+    /// </summary>
+    [Precision(5, 2)]
+    [Range(typeof(decimal), "0", "100", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyWeekendSurchargeRange")]
+    public decimal WeekendSurchargePercent { get; set; }
+
+    /// <summary>
     /// How the property is let (PM-01, D16 and D19): <see cref="Casazen.Core.Entities.Enums.RentalMode.Short"/> (short
     /// stays, the default: every row that existed before the column keeps working) or
     /// <see cref="Casazen.Core.Entities.Enums.RentalMode.Long"/> (long-term leases). The

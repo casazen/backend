@@ -534,6 +534,21 @@
   <data name="OrgBrandingTaglineTooLongInput" xml:space="preserve">
     <value>Lo slogan è troppo lungo.</value>
   </data>
+  <data name="OrgBrandingSubtitleTooLong" xml:space="preserve">
+    <value>Il sottotitolo non può superare i {0} caratteri.</value>
+  </data>
+  <data name="OrgBrandingSubtitleTooLongInput" xml:space="preserve">
+    <value>Il sottotitolo è troppo lungo.</value>
+  </data>
+  <data name="OrgBrandingHostNameTooLong" xml:space="preserve">
+    <value>Il nome dell'host non può superare i {0} caratteri.</value>
+  </data>
+  <data name="OrgBrandingHostNameTooLongInput" xml:space="preserve">
+    <value>Il nome dell'host è troppo lungo.</value>
+  </data>
+  <data name="OrgBrandingPhoneInvalid" xml:space="preserve">
+    <value>Il numero di telefono non è valido: usa solo cifre, con un + iniziale facoltativo (da 6 a 15 cifre).</value>
+  </data>
   <data name="OrgBrandingImageEmpty" xml:space="preserve">
     <value>Seleziona un'immagine da caricare.</value>
   </data>
@@ -910,6 +925,12 @@
   <data name="DirectBookingInvalidPaymentOption" xml:space="preserve">
     <value>Metodo di pagamento non valido.</value>
   </data>
+  <data name="DirectBookingMinNightsNotMet" xml:space="preserve">
+    <value>Il soggiorno minimo per questa casa è di {0} notti.</value>
+  </data>
+  <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
+    <value>Il consenso a ricevere offerte non è disponibile in questo momento: riprova senza selezionarlo.</value>
+  </data>
   <data name="SupplierClaimInvalid" xml:space="preserve">
     <value>Il collegamento non è valido: registra di nuovo la tua attività o accedi con l'account già collegato.</value>
   </data>
@@ -1197,6 +1218,18 @@
   </data>
   <data name="PropertyCleaningFeeRange" xml:space="preserve">
     <value>Il costo delle pulizie deve essere tra {1} e {2} euro.</value>
+  </data>
+  <data name="PropertyMinNightsRange" xml:space="preserve">
+    <value>Il soggiorno minimo deve essere tra {1} e {2} notti (lascia vuoto per nessun minimo).</value>
+  </data>
+  <data name="PropertyMinNightsInvalid" xml:space="preserve">
+    <value>Il soggiorno minimo non è valido: indica da 1 a 30 notti, oppure nessun minimo.</value>
+  </data>
+  <data name="PropertyWeekendSurchargeRange" xml:space="preserve">
+    <value>La maggiorazione del weekend deve essere tra {1} e {2} per cento.</value>
+  </data>
+  <data name="PropertyWeekendSurchargeInvalid" xml:space="preserve">
+    <value>La maggiorazione del weekend non è valida: indica una percentuale da 0 a 100.</value>
   </data>
   <data name="PropertyDamageDepositRange" xml:space="preserve">
     <value>Il deposito cauzionale deve essere tra {1} e {2} euro.</value>
