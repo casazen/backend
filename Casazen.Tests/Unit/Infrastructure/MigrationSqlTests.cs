@@ -317,4 +317,23 @@ public class MigrationSqlTests
         Assert.Contains("DROP CONSTRAINT \"FK_PropertyDocuments_Orgs_OrgId\"", down3);
         Assert.Contains("DROP NOT NULL", down3);
     }
+
+    [Fact]
+    public void SeedCancellationPolicyCatalog_InsertsFiveShortStayPolicies()
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var index = keys.FindIndex(k => k.EndsWith("SeedCancellationPolicyCatalog", StringComparison.Ordinal));
+        Assert.True(index > 0);
+
+        var script = db.GetService<IMigrator>().GenerateScript(fromMigration: keys[index - 1], toMigration: keys[index]);
+
+        Assert.Contains("INSERT INTO \"CancellationPolicies\"", script);
+        Assert.Contains("'ampia'", script);
+        Assert.Contains("'intermedia'", script);
+        Assert.Contains("'contenuta'", script);
+        Assert.Contains("'anticipata'", script);
+        Assert.Contains("'non_rimborsabile'", script);
+        Assert.Equal(5, script.Split("INSERT INTO \"CancellationPolicies\"", StringSplitOptions.None).Length - 1);
+    }
 }
