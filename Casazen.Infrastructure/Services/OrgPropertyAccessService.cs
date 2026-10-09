@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -21,6 +22,7 @@ namespace Casazen.Infrastructure.Services;
 public sealed class OrgPropertyAccessService(
     AppDbContext db,
     IUserAuthorizationCache authorizationCache,
+    IActivityLog activityLog,
     ILogger<OrgPropertyAccessService> logger,
     TimeProvider? timeProvider = null) : IOrgPropertyAccessService
 {
@@ -77,9 +79,11 @@ public sealed class OrgPropertyAccessService(
                 .Where(a => a.OrgId == orgId && a.UserId == target.UserId)
                 .ToListAsync(cancellationToken);
 
-            db.PropertyMemberAccesses.RemoveRange(grants.Where(g => !wanted.Contains(g.PropertyId)));
+            var taken = grants.Where(g => !wanted.Contains(g.PropertyId)).ToList();
+            db.PropertyMemberAccesses.RemoveRange(taken);
             var now = _clock.GetUtcNow().UtcDateTime;
-            foreach (var propertyId in wanted.Where(id => grants.All(g => g.PropertyId != id)))
+            var given = wanted.Where(id => grants.All(g => g.PropertyId != id)).ToList();
+            foreach (var propertyId in given)
             {
                 db.PropertyMemberAccesses.Add(new PropertyMemberAccess
                 {
@@ -91,7 +95,23 @@ public sealed class OrgPropertyAccessService(
                 });
             }
 
-            target.PropertyScope = target.Role == OrgRole.Collaborator ? scope : PropertyScope.All;
+            var newScope = target.Role == OrgRole.Collaborator ? scope : PropertyScope.All;
+
+            // Who gave what to whom (AM-02b): one line for the change, in the save that writes it, and none when nothing changed.
+            // The properties themselves are not named: the line says the scope the member now has and how many were given or taken.
+            if (given.Count + taken.Count > 0 || newScope != target.PropertyScope)
+            {
+                activityLog.Record(OrgActivity.Of(
+                    orgId,
+                    OrgActivityType.MemberPropertyAccessChanged,
+                    actor.UserId,
+                    target.UserId,
+                    (OrgActivityDetailKeys.Scope, newScope.ToString()),
+                    (OrgActivityDetailKeys.Granted, given.Count.ToString(CultureInfo.InvariantCulture)),
+                    (OrgActivityDetailKeys.Revoked, taken.Count.ToString(CultureInfo.InvariantCulture))));
+            }
+
+            target.PropertyScope = newScope;
 
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)

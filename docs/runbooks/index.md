@@ -12,7 +12,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 |---|---|---|
 | [`auth0.md`](auth0.md) | Auth0 (tenants, Management API, Action, mobile client) | FD-05, FD-14, FN-04, MO-01, MO-03, MO-05, PL-01, PL-02 |
 | [`onboarding-consents.md`](onboarding-consents.md) | onboarding gate and legal consents | PL-02, PL-03, PL-14 |
-| [`org-team.md`](org-team.md) | org membership (`OrgMember`), org roles, the `account` context, owner backfill and reconcile, `member_inactive`, flag `OrgTeam`; invitations, members, seats, change of org, maintenance job (AM-02); the properties each member reaches ("Solo alcuni"), the fine permissions, who is told, the holder for RLI and IMU (AM-03) | AM-01, AM-02, AM-03 |
+| [`org-team.md`](org-team.md) | org membership (`OrgMember`), org roles, the `account` context, owner backfill and reconcile, `member_inactive`, flag `OrgTeam`; invitations, members, seats, change of org, maintenance job (AM-02); the properties each member reaches ("Solo alcuni"), the fine permissions, who is told, the holder for RLI and IMU (AM-03); the activity log (events, no personal data, CSV, 12-month retention) and the requests for access to the administrators (AM-02b) | AM-01, AM-02, AM-03, AM-02b |
 | [`activation-checklist.md`](activation-checklist.md) | activation checklist and "site published" flag | BK-07, BK-13, BK-16, PC-03, PC-05, PL-04, PL-15 |
 | [`stripe.md`](stripe.md) | Stripe webhooks and platform billing (idempotency, one subscription per org) | BK-02, BK-04, BK-07, BK-08, BK-09, BK-10, BK-19, BK-21 |
 | [`billing-tax.md`](billing-tax.md) | VAT on the CasaZen subscriptions (Stripe Tax) and Italian e-invoices (SDI) | PL-10, PL-11, PL-13, RS-5 |

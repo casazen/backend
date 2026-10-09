@@ -73,4 +73,11 @@ public static class RateLimitPolicies
     /// to ask often.
     /// </summary>
     public const string PublicInvitationLookup = "PublicInvitationLookup";
+
+    /// <summary>
+    /// A member's request for access to the administrators of its org (<c>POST api/orgs/me/access-requests</c>, AM-02b). The
+    /// only policy partitioned by <b>person</b> (the signed-in account) instead of by client IP: the request sends an email to
+    /// other people, so the bound that matters is how many one person can send, not how many one office network can.
+    /// </summary>
+    public const string OrgAccessRequest = "OrgAccessRequest";
 }
