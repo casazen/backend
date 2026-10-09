@@ -82,6 +82,14 @@ public static class FeatureFlags
     /// </summary>
     public const string SupplierRequestAutoCancel = "SupplierRequestAutoCancel";
 
+    /// <summary>
+    /// BL-01 (redesign wave, decision 01-D8): gradual rollout of the new interface (UI v2: design tokens, single shell, navigation
+    /// by area, in-app guide). Off by default, the product owner turns it on. The backend only introduces and exposes it: no
+    /// endpoint, service or job reads it. The frontend reads <c>uiRedesign</c> from <c>GET /api/public/features</c> and switches
+    /// the new look on or off (<c>html[data-ui='v2']</c>, UI-01).
+    /// </summary>
+    public const string UiRedesign = "UiRedesign";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -92,5 +100,6 @@ public static class FeatureFlags
         SupplierShowcaseBooking,
         SupplierOnlinePayments,
         SupplierRequestAutoCancel,
+        UiRedesign,
     ];
 }
