@@ -256,7 +256,9 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             && h.GetProperty("ipAddress").GetString() == "198.51.100.4");
         var retention = root.GetProperty("processing").GetProperty("retention").EnumerateArray().ToList();
         Assert.Equal(4, retention.Count);
-        Assert.All(retention, r => Assert.False(r.GetProperty("configured").GetBoolean()));
+        Assert.All(retention, r => Assert.True(r.GetProperty("configured").GetBoolean()));
+        Assert.Contains(retention, r => r.GetProperty("category").GetString() == "DocumentScans"
+            && r.GetProperty("years").GetInt32() == 5);
 
         await using var scope = NewScope(out var db);
         var audit = Assert.Single(await AuditAsync(db, seeded.GuestId));

@@ -448,11 +448,13 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
             CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
         };
-        db.AddRange(hostOrg, supplierOrg, property);
+        db.AddRange(hostOrg, supplierOrg);
         await db.SaveChangesAsync();
 
         // Plain SQL: this also runs on the schema of the migration before AddShowcaseBooking, which lacks the columns that later
-        // migrations add to the profile (the current model would write them).
+        // migrations add to Properties (CancellationFullRefundHours of Wave 3) and to the supplier profile (the current model
+        // would write them).
+        await LegacyPropertyRows.InsertAsync(db, property);
         await SupplierProfileSql.InsertAsync(db, NewSupplierProfile(supplierOrg.Id));
         return (hostOrg.Id, property.Id, supplierOrg.Id);
     }

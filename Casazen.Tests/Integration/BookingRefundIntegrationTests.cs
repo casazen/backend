@@ -86,13 +86,9 @@ public class BookingRefundIntegrationTests : IClassFixture<CasazenWebApplication
         var quote = await host.GetFromJsonAsync<JsonElement>($"/api/bookings/{seed.BookingId}/cancellation");
         Assert.True(quote.GetProperty("requiresRefundDecision").GetBoolean());
         Assert.Equal(400m, quote.GetProperty("refundableAmount").GetDecimal());
+        Assert.Equal(400m, quote.GetProperty("minimumRefundAmount").GetDecimal());
 
-        var missingDecision = await host.PostAsJsonAsync($"/api/bookings/{seed.BookingId}/cancel", new { });
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, missingDecision.StatusCode);
-        Assert.Equal(
-            "booking_cancel_refund_required",
-            (await missingDecision.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
-
+        // PO 2026-10-08: the host-chosen amount is ignored; the guest always gets the full refundable amount.
         var response = await host.PostAsJsonAsync($"/api/bookings/{seed.BookingId}/cancel", new { refundAmount = 250m });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -103,7 +99,7 @@ public class BookingRefundIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal("BookingCancellation", refund.GetProperty("origin").GetString());
         var request = Assert.Single(Stripe.RefundRequests, r => r.PaymentIntentId == seed.PaymentIntentId);
         Assert.Equal(Account, request.ConnectedAccountId);
-        Assert.Equal(25_000, request.AmountCents);
+        Assert.Equal(40_000, request.AmountCents);
     }
 
     [Fact]
