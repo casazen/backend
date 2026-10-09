@@ -383,6 +383,7 @@ public static class ServiceCollectionExtensions
             client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-official-reference-data/1.0");
         });
         services.AddScoped<IOfficialReferenceDataRefreshService, OfficialReferenceDataRefreshService>();
+        services.AddScoped<IComuneOfficialProfileService, ComuneOfficialProfileService>();
         services.AddOptions<OfficialReferenceDataOptions>()
             .BindConfiguration(OfficialReferenceDataOptions.SectionName);
         services.AddScoped<IStayGuestService, StayGuestService>();

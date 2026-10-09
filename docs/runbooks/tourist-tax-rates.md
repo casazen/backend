@@ -94,10 +94,22 @@ Values are frozen in `TouristTaxRateSeed`; `TouristTaxRateSeedTests` checks them
 The seeded rows have fixed ids (MD5 of ISTAT code + start date) and are inserted once, by the migration. An admin
 change or delete is never overwritten.
 
-There is no national open dataset of tourist-tax rates. The Hangfire job `official-reference-data-refresh` (04:30 UTC)
-re-reads only the institutional URLs already configured for the pilot comuni (`OfficialReferenceData:TouristTaxSources`).
-It never invents amounts: if the page is not a deterministic structured tariff, the attempt is stored in
-`OfficialSourceFetches` (`extract_failed`) and the stored rates stay unchanged.
+There is no national open dataset of tourist-tax rates. Two jobs, with different jobs:
+
+- **`official-reference-data-refresh`** (04:30 UTC daily): ISTAT comuni CSV, Alloggiati tables, and a deterministic
+  re-read of the institutional pages of the **pilot** comuni (`OfficialReferenceData:TouristTaxSources`). It overwrites
+  the matching seed rows in place when the page is readable. It never invents amounts.
+- **`comune-official-profile-refresh`** (05:00 UTC on the 1st of the month) and the Hangfire enqueue after a property
+  is created in a comune: MEF archive `nuova_at` (CSV index + PDF of the act). DeepSeek is used only as an extractor of
+  that already downloaded PDF, never as web search. Amounts are **inserted** as new `TouristTaxRates` rows and previous
+  rows of the same ISTAT code are **closed** (`EffectiveTo`); history is never deleted. `ValidFrom` is the first day of
+  the second month after the MEF publication date.
+
+CasaZen stores this as **reporting data, not legal value**. A PDF that cannot be read is logged (`unreadable` /
+`extract_failed`) with the URL and act id; no estimated amount is written. An extract without `actId` or without the
+HTTPS URL of the downloaded PDF is rejected and `TouristTaxRates` stays untouched.
+
+The daily ISTAT/Alloggiati job and the MEF agent do not call each other.
 
 ## Seed `UnifyTouristTaxOnTouristTaxRates` (BK-03)
 
