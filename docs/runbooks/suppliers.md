@@ -15,7 +15,7 @@ rules, the calendar) and the slot planner (SP-03, redesign wave). Section 21: th
 cancel, propose another time, reminder, final amount, photos), the inbox filters, the batch accept, `today` and `checklist`, the
 automatic cancellation of the requests nobody answers, and what the supplier sees before the take (SP-04, redesign wave).
 Section 25: the supplier's Stripe Connect account (SP-14). Section 26: paying the supplier inside CasaZen with the CasaZen commission (payment mode of a
-request, the payer's link, the host's confirmation of an amount above the quote, the supplier's payment request and offline record; SP-15a, redesign wave).
+request, the payer's link, the host's confirmation of an amount above the quote, the supplier's payment request and offline record; SP-15a, redesign wave; the webhook, the jobs, the refunds and the admin tools, 26.7, SP-15b).
 
 ## 1. How a supplier joins
 
@@ -1510,7 +1510,7 @@ SP-15) and D11 ("Verificato"). The flow, the endpoints, the Stripe settings and 
 | Open its Express Dashboard | `POST api/supplier/payments/dashboard-link`: balance, payouts and bank details on Stripe. Needs an existing account (422 `supplier_payments_not_ready` otherwise) |
 
 This section is the account only. The payment, the commission and the payer's page of a completed request are SP-15a (section 26); the webhook that
-records the money as received, the refunds and the earnings pages are SP-15b, SP-16 and SP-17. "Segna pagato" by the host (`mark-paid`, section 15)
+records the money as received, the refunds and the admin tools are SP-15b (section 26.7); the earnings pages are SP-16 and SP-17. "Segna pagato" by the host (`mark-paid`, section 15)
 stays the way a `Manual` request becomes paid.
 
 ### 25.2 Rules
@@ -1543,9 +1543,9 @@ Redesign wave task SP-15a (branch `feature/rd-supplier-payments`, backend only: 
 tasks), stacked on SP-14 and SP-04. Gap report 05 §4.3, decisions D2 (a direct charge on the supplier's own Stripe account, CasaZen holds
 no funds), D3 (the commission), D5 (the manual flow stays, as an exception), D7 (an amount above the quote) and D24 (the emails). The
 charge model, the endpoints, the statuses and the Stripe checks are in [`stripe.md`](stripe.md) § "Services of the suppliers (SP-15)";
-this section is what is specific to the suppliers' requests. **SP-15b** (the webhook that records a payment as paid, the reminder and sync
-jobs, refunds, the admin tools and the monthly export of the commission) is another pull request stacked after this one:
-**until it is deployed, keep `Features__SupplierOnlinePayments` off in production.**
+this section is what is specific to the suppliers' requests. **SP-15b** (the webhook that records a payment as paid, the sync, reminder and
+pending-request jobs, the refunds, the admin tools and the monthly export of the commission) is the pull request stacked on this one: 26.7.
+**Keep `Features__SupplierOnlinePayments` off in production** until the legal texts and the tax treatment of the commission are approved.
 
 ### 26.1 What changes for a request
 
@@ -1555,7 +1555,7 @@ jobs, refunds, the admin tools and the monthly export of the commission) is anot
 | The supplier completes it | An `Online` request with a final amount of at least `SupplierPayments__MinAmountCents` gets its payment (`ServiceRequestPayments`, status `Requested`, with the commission snapshot) in the same save, and the contact address of the host org gets the email with the link. With no final amount (or one below the minimum), or if the flag was switched off since, the request is completed as `Manual`: nothing is stuck and the host marks it paid as before |
 | The final amount is above the quote by more than the tolerance (D7, section 21.4) | The host confirms first: `POST api/service-requests/{id}/final-amount/confirm` (long-rent twin under `api/long-rent/service-requests`); it clears `price.needsCustomerConfirmation`, keeps `FinalAmountConfirmedAt`, creates the payment and sends the link. Until then there is no payment and no link, and `payment-request` is 422 `service_payment_amount_unconfirmed`. Confirming twice is not an error |
 | The supplier cannot be paid yet, or the host org has no email | The payment exists but is **pending** (no link, nothing sent). The supplier asks again when it can |
-| The payer pays | With the emailed link (`/service/pay/{paymentId}?token=…`, which calls `api/public/service-payments/*`) or, signed in, from the host console (`POST api/service-requests/{id}/payment-session`): a direct charge on the supplier's account with the commission as the application fee. The payment becomes `Paid` (and the request `Pagato`) with the webhook of SP-15b |
+| The payer pays | With the emailed link (`/service/pay/{paymentId}?token=…`, which calls `api/public/service-payments/*`) or, signed in, from the host console (`POST api/service-requests/{id}/payment-session`): a direct charge on the supplier's account with the commission as the application fee. The payment becomes `Paid` (and the request `Pagato`) with the webhook (26.7), only if what Stripe reports is what was asked for |
 | The payer did not pay | `POST api/supplier/requests/{id}/payment-request` sends a reminder with a new link (the old one stops working), at most once a day (422 `service_payment_request_too_soon`), and only while the flag is on |
 | The supplier was paid outside CasaZen | `POST api/supplier/requests/{id}/payment/offline` (D5): the request becomes `Pagato`, a payment still waiting is withdrawn (its PaymentIntent canceled) and a payment **without commission** is kept (`PaidVia = Offline`); the history of the request credits it to the supplier
 (`ServiceRequests.PaidBy`); the host is emailed (with the reason). For an `Online` request the `reason` is mandatory (422 `service_payment_offline_reason_required`) and a warning log marks the exception. A payment already paid, or being processed by Stripe, makes it a 409 |
@@ -1563,7 +1563,7 @@ jobs, refunds, the admin tools and the monthly export of the commission) is anot
 ### 26.2 Rules
 
 - **The commission is configuration, never code** (D3): `SupplierPayments__CommissionPercent` (provisional 10, `deploy-checklist.md` § 2.8) and,
-  per supplier, `SupplierProfiles.CommissionPercentOverride` (an admin sets it in SP-15b). It is computed once, when the payment is
+  per supplier, `SupplierProfiles.CommissionPercentOverride` (an admin sets it, 26.7). It is computed once, when the payment is
   created, and kept on the payment (`CommissionPercent`, `ApplicationFeeCents`, `NetCents`); the payer never sees it, the supplier sees
   "prezzo, commissione CasaZen, netto per te, prima delle commissioni di Stripe" and no text promises a payout time. **Never a commission on
   the guests' bookings or on the rent** (`StripeServiceApplicationFeeTests`, `ApplicationFeeArchitectureTests`).
@@ -1600,24 +1600,27 @@ jobs, refunds, the admin tools and the monthly export of the commission) is anot
 | `POST api/service-requests/{id}/final-amount/confirm`, `POST api/long-rent/service-requests/{id}/final-amount/confirm` | the host (`property.write`) | no |
 | `POST api/supplier/requests/{id}/payment-request` | the supplier | **yes** |
 | `POST api/supplier/requests/{id}/payment/offline` | the supplier | no |
+| `GET api/admin/supplier-payments`, `GET api/admin/service-payments/{id}`, `POST api/admin/service-payments/{id}/refund`, `GET`/`PUT api/admin/suppliers/{orgId}/commission`, `GET api/admin/supplier-payments/export?month=yyyy-MM` | a platform admin (SP-15b, 26.7) | no |
 
-The request answers carry `paymentMode`; the payment itself (status, split) is returned only by the two supplier routes. The earnings page
-and the payments list come with SP-15b and SP-16.
+The request answers carry `paymentMode`; the payment itself (status, split) is returned only by the two supplier routes and the admin
+routes. The earnings page and the payments list of the supplier come with SP-16.
 
 ### 26.4 Configuration
 
 Section `SupplierPayments` (validated at startup, `appsettings.json` has the defaults): `SupplierPayments__CommissionPercent` (**required**,
-0 to 50, provisional 10), `…__LateAfterDays` (7) and `…__ReminderDays__0`, `__1` (2 and 7; both used by the jobs of SP-15b), `…__PaymentLinkValidityDays`
-(30), `…__MinAmountCents` (50). Settings: `deploy-checklist.md` § 2.8. Flag: `Features__SupplierOnlinePayments` (`feature-flags.md`, `deploy-checklist.md` § 2.11). Emails:
-`EmailTexts.resx` (`ServicePaymentRequest`, `ServicePaymentReminder`, `ServicePaymentReceived`, `ServicePaymentOfflineRecorded`), see `email.md`.
+0 to 50, provisional 10), `…__LateAfterDays` (7) and `…__ReminderDays__0`, `__1` (2 and 7; both used by the daily job of SP-15b), `…__PaymentLinkValidityDays`
+(30), `…__MinAmountCents` (50), and `…__CommissionVatPercent` (SP-15b, optional, 0 to 100, **empty**: only repeated in the commission export). Settings: `deploy-checklist.md` § 2.8. Flag: `Features__SupplierOnlinePayments` (`feature-flags.md`, `deploy-checklist.md` § 2.11). Emails:
+`EmailTexts.resx` (`ServicePaymentRequest`, `ServicePaymentReminder`, `ServicePaymentReceived`, `ServicePaymentOfflineRecorded`; SP-15b: `ServicePaymentFailed`,
+`ServicePaymentRefundedPayer`, `ServicePaymentRefundedSupplier`, `ServicePaymentAdminAlert`), see `email.md`.
 
 ### 26.5 For the tasks stacked on this one
 
-- **SP-15b**: the webhook `kind=service-charge` (before the generic `payment_intent.succeeded`, comparing account, amount, currency and
+- **SP-15b** (26.7): the webhook `kind=service-charge` (before the generic `payment_intent.succeeded`, comparing account, amount, currency and
   fee with the payment), `SendPendingPaymentRequestsJob` (also from `account.updated`, BE-SP14-2), the reminders, the refunds, the admin tools
-  and the export. `ServicePaymentReceived` and the statuses `Failed`, `NeedsReview`, `PartiallyRefunded` and `Refunded` are ready for it.
+  and the export. Done.
 - **Frontend**: the page `/service/pay/:paymentId` (it only needs the two public routes), the host's "Paga ora" and the "Conferma importo"
-  button, the supplier's "Richiedi pagamento" / "Pagato fuori da CasaZen" and the split of the amounts.
+  button, the supplier's "Richiedi pagamento" / "Pagato fuori da CasaZen" and the split of the amounts; the admin screens of SP-15b (the list and
+  its `NeedsReview` queue, the detail, the refund, the commission of a supplier, the export).
 - **Checklist** (SP-04): `paymentsActive` is still always `null` (BE-SP14-3).
 
 ### 26.6 After a deploy
@@ -1625,13 +1628,62 @@ Section `SupplierPayments` (validated at startup, `appsettings.json` has the def
 - [ ] Migration `AddSupplierPayments` applied (columns `ServiceRequests.PaymentMode` default 0 = `Manual`, `FinalAmountConfirmedAt` and `PaidBy`,
       `SupplierProfiles.CommissionPercentOverride`; table `ServiceRequestPayments` with its checks and the two unique partial indexes).
 - [ ] `SupplierPayments__CommissionPercent` is the figure the product owner decided (the committed 10 is provisional).
-- [ ] `GET /api/public/features` has `supplierOnlinePayments: false` in production until SP-15b is deployed and the legal texts and the tax
+- [ ] `GET /api/public/features` has `supplierOnlinePayments: false` in production until the legal texts and the tax
       treatment of the commission are approved.
 - [ ] Test environment with `Features__SupplierOnlinePayments=true`, Stripe test keys and a supplier with a ready test account: take a
       request (`paymentMode: Online`), complete it with an amount, open the link of the email and `POST …/payment-session` (a client secret;
       the PaymentIntent on the supplier's account carries the application fee), pay it with the test card
       (`stripe.md` § "Services of the suppliers (SP-15)" → Verification, point 2). With the flag off a new request is `Manual`.
 - [ ] An old request (created before the deploy) still opens everywhere, with `paymentMode: Manual`, and "Segna pagato" still works.
+
+### 26.7 What SP-15b adds: the webhook, the jobs, the refunds and the admin tools
+
+SP-15b (branch `feature/rd-supplier-payments-webhook`, backend only, stacked on SP-15a) closes the chain. The model of the charge, the events,
+the jobs, the refunds and the export are in [`stripe.md`](stripe.md) § "Services of the suppliers (SP-15)", the schedule in
+[`hangfire.md`](hangfire.md) § 13; this is what changes for a request.
+
+| Moment | What happens |
+|---|---|
+| The payer pays | `payment_intent.succeeded` on the Connect endpoint (or `service-payment-sync`, if the event was lost): the payment is `Paid` (`PaidVia = Stripe`) and the request `Pagato` (`PaidBy = Host`) **only if** the account, the PaymentIntent, the amount received, the currency and the commission are the ones of the payment. The supplier gets "Pagamento ricevuto" (price, commission, net), once |
+| What arrived is not what was asked for | The payment becomes `NeedsReview` (`FailureCode = review:…`), the request stays `Completato` (**never** `Pagato`), an error is logged and the active platform admins are emailed. Nothing is refunded by itself: an admin looks at the charge on the Stripe Dashboard. The same email goes out when a charge succeeds for a payment the supplier had already withdrawn (a payment recorded as received outside CasaZen) |
+| A debit that was in flight fails | `Failed`, and the payer gets "Pagamento non riuscito" with a **new** link (the old one stops working) |
+| The payer does not pay | `service-payment-reminders` (daily, 07:30 UTC, flag on) sends the reminder at +2 and +7 days from the first request, while the payment has had fewer than three emails with a link, never two in 24 hours, and flags the payment late after `SupplierPayments__LateAfterDays` (7). The supplier can still ask with `payment-request` |
+| A supplier becomes ready (`account.updated`) | `SendPendingPaymentRequestsJob(orgId)` is queued after the commit and sends the pending first requests of that supplier; the daily job does it too, as a catch-up |
+| A refund | Only a platform admin (`POST api/admin/service-payments/{id}/refund`), in full or in part, for a payment paid through Stripe. It is created on the supplier's account (paid from its balance) with `refund_application_fee=true`: **the commission goes back in full for a full refund, in proportion for a partial one**. The payer and the supplier are emailed; the payment becomes `PartiallyRefunded` or `Refunded` and the request stays `Pagato`. A payment recorded as received outside CasaZen is not refundable here |
+| A dispute (`charge.dispute.created`) | An error in the log and an email to the platform admins; nothing changes in CasaZen. The admin answers on the Stripe Dashboard |
+
+**Rules**
+
+- **Money in flight is not behind the flag.** The webhook, `service-payment-sync` and the admin tools work with `Features__SupplierOnlinePayments`
+  off; the daily job then only flags the late payments and sends nothing.
+- **The webhook routes on `metadata.kind = service-charge` before the generic `payment_intent.succeeded` case** and never settles a request on
+  its own word: it compares what Stripe reports with the snapshot of the payment. A source-order test and the unit tests of the handler guard it.
+- **Order and repetition do not matter.** The state is derived from what the event says and from what the payment already is; the claim of the
+  event id and the update are one transaction; every change runs under the advisory lock `ServiceRequestPayment` (key: the request id).
+- **A refund is reserved before Stripe is called** (`ServiceRequestPaymentRefunds`, `Pending`, counted as refunded for the limit), with the key
+  `service-charge-refund:{payment}:{n}`: two admins at once, a retry or a lost answer never refund twice. The table is not `ITenantOwned` (it
+  belongs to a payment with two parties) and `ServiceRequestPaymentRefundTenancyTests` allows only the payments service and the admin service.
+- **The commission of a supplier** (`GET`/`PUT api/admin/suppliers/{orgId}/commission`): its own percentage, 0 to 50 (0 is a free period),
+  optionally until a date, with a mandatory reason; it applies to the payments created afterwards and the change is in the audit trail of the
+  supplier (`CommissionChanged`, `GET api/admin/suppliers/{orgId}/audit`).
+- **The monthly export** (`GET api/admin/supplier-payments/export?month=yyyy-MM`) is what the accountant needs to invoice the commission by hand:
+  one line per payment and per refund, with the supplier's P.IVA, the gross amount and the VAT rate only if `SupplierPayments__CommissionVatPercent`
+  is set (empty by default). **VAT on the commission and DAC7 stay open** (`[CONSULENTE FISCALE]`, D4); nothing is sent to the tax authority.
+- **Open points**: a payment in `NeedsReview` is resolved on the Stripe Dashboard (CasaZen has no "accept" or "refund this charge" action for it yet,
+  follow-up); there is no evidence-submission flow for disputes; who bears a refund or a lost dispute when the supplier's balance is short depends
+  on the liability settings of the Connect accounts (to be confirmed with Stripe); and the restricted key must be tried in test mode for the
+  application fee and the refunds (`stripe.md` → Stripe settings, Verification).
+
+**After a deploy of SP-15b**
+
+- [ ] Migration `AddSupplierPaymentRefunds` applied (table `ServiceRequestPaymentRefunds` with its two checks and three unique indexes;
+      `SupplierProfiles.CommissionOverrideUntil` and `CK_SupplierProfiles_CommissionOverrideUntil`).
+- [ ] The Connect webhook endpoint of the environment sends the events listed in [`INFRA.md`](../INFRA.md) § Stripe, in particular `charge.dispute.created`.
+- [ ] `service-payment-sync` (`*/15`) and `service-payment-reminders` (07:30) are among the recurring jobs (`GET api/admin/jobs`).
+- [ ] Test environment (flag on, Stripe test keys): pay a request and see it `Pagato` with the receipt to the supplier; refund half and then the rest from
+      the admin tool and check in the Stripe Dashboard that the refund came out of the supplier's balance and that the commission came back; set a
+      supplier's own commission and see the next payment carry it; download the export (`stripe.md` → Verification, points 2 and 3).
+- [ ] Production: `Features__SupplierOnlinePayments` still off until the legal texts and the tax treatment of the commission are approved.
 
 ## Known limits (other tasks)
 
