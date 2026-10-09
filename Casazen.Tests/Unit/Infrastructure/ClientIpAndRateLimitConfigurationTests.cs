@@ -147,6 +147,44 @@ public class ClientIpAndRateLimitConfigurationTests
     }
 
     [Fact]
+    public void Policies_TheBookingFromTheSupplierShowcase_IsTheTightestOfThePublicLimits_FivePerTenMinutes()
+    {
+        var create = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicSupplierBookingCreate), Configuration());
+        var quote = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicSupplierQuote), Configuration());
+
+        Assert.Equal(("PublicSupplierBookingCreate", 5, TimeSpan.FromMinutes(10)), (RateLimitPolicies.PublicSupplierBookingCreate, create.PermitLimit, create.Window));
+        Assert.Equal(0, create.QueueLimit);
+        // Five in ten minutes is well below the requests per minute of the other public limits.
+        Assert.True(create.PermitLimit / create.Window.TotalMinutes < quote.PermitLimit / quote.Window.TotalMinutes);
+    }
+
+    [Fact]
+    public void Policies_TheBookingLimits_AreSetByTheirOwnConfigurationKeys()
+    {
+        var configuration = Configuration(
+            ("RateLimiting:PublicSupplierBookingCreate:PermitLimit", "9"),
+            ("RateLimiting:PublicSupplierBookingCreate:WindowSeconds", "120"),
+            ("RateLimiting:SupplierBookingCreatePerEmail:PermitLimit", "2"),
+            ("RateLimiting:SupplierBookingCreatePerEmail:WindowSeconds", "600"));
+
+        var perIp = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicSupplierBookingCreate), configuration);
+        var perEmail = RateLimitingServiceCollectionExtensions.ResolveOptions(SupplierBookingEmailRateLimiter.Policy, configuration);
+
+        Assert.Equal((9, TimeSpan.FromMinutes(2)), (perIp.PermitLimit, perIp.Window));
+        Assert.Equal((2, TimeSpan.FromMinutes(10)), (perEmail.PermitLimit, perEmail.Window));
+    }
+
+    [Fact]
+    public void Policies_ThePerEmailLimitOfTheBooking_IsThreeAnHourByDefault_AndIsNotAPolicyOfThePipeline()
+    {
+        var perEmail = RateLimitingServiceCollectionExtensions.ResolveOptions(SupplierBookingEmailRateLimiter.Policy, Configuration());
+
+        Assert.Equal(("SupplierBookingCreatePerEmail", 3, TimeSpan.FromHours(1)), (SupplierBookingEmailRateLimiter.Policy.Name, perEmail.PermitLimit, perEmail.Window));
+        // It is applied by a filter, next to the per-IP policy, so it is not one of the policies the rate limiter middleware registers.
+        Assert.DoesNotContain(SupplierBookingEmailRateLimiter.Policy.Name, RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name));
+    }
+
+    [Fact]
     public void ConfigureForwardedHeaders_NothingConfigured_TrustsOneHopFromAnyPeer()
     {
         var options = new ForwardedHeadersOptions();

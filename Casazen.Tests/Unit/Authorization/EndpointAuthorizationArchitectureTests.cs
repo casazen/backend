@@ -69,6 +69,77 @@ public class EndpointAuthorizationArchitectureTests
         ["PublicSupplierController.Quote"] = "The price estimate of a published service: computed from the supplier's own price list, nothing stored, nothing personal (SP-09, behind SupplierShowcaseBooking).",
     };
 
+    /// <summary>
+    /// The anonymous endpoints of the booking from the supplier showcase (SP-10), each with the reason it is public: the customer
+    /// has no account, and the first call only holds a slot until the customer's e-mail is checked.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> PublicSupplierBooking = new Dictionary<string, string>
+    {
+        ["PublicSupplierBookingController.Create"] = "A customer without an account holds a slot of an active supplier and leaves the data of the request; nothing reaches the supplier until the e-mail is checked (SP-10, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingController.ConfirmEmail"] = "The customer follows the link of the verification e-mail: the token in the body is the secret, and only then the request exists (SP-10, behind SupplierShowcaseBooking, rate limited).",
+    };
+
+    private static IEnumerable<MethodInfo> PublicBookingActions() =>
+        typeof(PublicSupplierBookingController)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => !m.IsSpecialName && m.GetCustomAttributes(inherit: true).OfType<IActionHttpMethodProvider>().Any());
+
+    [Fact]
+    public void PublicSupplierBooking_EveryAnonymousAction_IsListedWithItsReason()
+    {
+        var anonymous = Actions()
+            .Where(a => a.IsAnonymous && a.Key.StartsWith(nameof(PublicSupplierBookingController) + ".", StringComparison.Ordinal))
+            .Select(a => a.Key)
+            .Order()
+            .ToList();
+
+        Assert.Equal(PublicSupplierBooking.Keys.Order(), anonymous);
+        Assert.All(PublicSupplierBooking, entry => Assert.True(entry.Value.Length >= 40, $"{entry.Key}: say why it is public"));
+    }
+
+    [Fact]
+    public void PublicSupplierBooking_EveryAction_IsBehindTheFlag_RateLimited_AndBoundedInSize()
+    {
+        var registered = RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(PublicSupplierBooking.Count, PublicBookingActions().Count());
+        foreach (var action in PublicBookingActions())
+        {
+            var gates = action.GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag).ToList();
+            Assert.Equal(new[] { FeatureFlags.SupplierShowcaseBooking }, gates);
+
+            var policy = RateLimitPolicyOf(action);
+            Assert.False(string.IsNullOrEmpty(policy), $"{action.Name} has no rate limit");
+            Assert.Contains(policy!, registered);
+
+            var limit = action.GetCustomAttribute<RequestSizeLimitAttribute>();
+            Assert.NotNull(limit);
+            Assert.True(GetBytes(limit) <= 64 * 1024, $"{action.Name}: the body of an anonymous call is small");
+        }
+    }
+
+    [Fact]
+    public void PublicSupplierBooking_TheCreateHasTheTightestLimitsOfThePublicSite_TheCheckUsesTheLookupOne()
+    {
+        var create = typeof(PublicSupplierBookingController).GetMethod(nameof(PublicSupplierBookingController.Create))!;
+        var confirm = typeof(PublicSupplierBookingController).GetMethod(nameof(PublicSupplierBookingController.ConfirmEmail))!;
+
+        Assert.Equal(RateLimitPolicies.PublicSupplierBookingCreate, RateLimitPolicyOf(create));
+        // The second limit, per e-mail address and supplier, runs next to the one per IP.
+        Assert.Single(create.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
+        Assert.Equal(RateLimitPolicies.PublicBookingLookup, RateLimitPolicyOf(confirm));
+        Assert.Empty(confirm.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
+    }
+
+    [Fact]
+    public void PublicSupplierBooking_TheRoutesAreUnderThePublicSuppliersPrefix_SoTheProxyAndTheRobotsRulesCoverThem()
+    {
+        var route = typeof(PublicSupplierBookingController).GetCustomAttribute<RouteAttribute>();
+
+        Assert.Equal("api/public/suppliers/{slug}/bookings", route?.Template);
+        Assert.NotNull(typeof(PublicSupplierBookingController).GetCustomAttribute<AllowAnonymousAttribute>());
+    }
+
     [Fact]
     public void PublicSupplierShowcase_EveryAnonymousAction_IsListedWithItsReason()
     {
