@@ -637,8 +637,9 @@ public class PropertyService(
         Description = row.Description,
         City = row.City,
         PostalCode = row.PostalCode,
-        Latitude = row.Latitude,
-        Longitude = row.Longitude,
+        // DB-03: the position leaves CasaZen rounded to about 1 km, never as the host typed it.
+        Latitude = PropertyAddress.ToPublicCoordinate(row.Latitude),
+        Longitude = PropertyAddress.ToPublicCoordinate(row.Longitude),
         Bedrooms = row.Bedrooms,
         Bathrooms = row.Bathrooms,
         MaxGuests = row.MaxGuests,
@@ -660,8 +661,9 @@ public class PropertyService(
         Description = row.Description,
         City = row.City,
         PostalCode = row.PostalCode,
-        Latitude = row.Latitude,
-        Longitude = row.Longitude,
+        // DB-03: the position leaves CasaZen rounded to about 1 km, never as the host typed it.
+        Latitude = PropertyAddress.ToPublicCoordinate(row.Latitude),
+        Longitude = PropertyAddress.ToPublicCoordinate(row.Longitude),
         Bedrooms = row.Bedrooms,
         Bathrooms = row.Bathrooms,
         MaxGuests = row.MaxGuests,
@@ -677,11 +679,11 @@ public class PropertyService(
         MinNights = row.MinNights,
         WeekendSurchargePercent = row.WeekendSurchargePercent,
         Currency = "EUR",
-    };
-
         AcceptsBookings = Org.AcceptsDirectPayments(row.OrgStripeConnectedAccountId, row.OrgConnectChargesEnabled),
         HostName = row.OrgHostName,
         PublicPhone = row.OrgPublicPhone,
+    };
+
     private class PublicPropertyRow
     {
         public Guid Id { get; init; }
@@ -708,8 +710,7 @@ public class PropertyService(
     {
         public string HouseRules { get; init; } = string.Empty;
         public string CancellationPolicySummary { get; init; } = string.Empty;
-    }
-}        public int? MinNights { get; init; }
+        public int? MinNights { get; init; }
         public decimal WeekendSurchargePercent { get; init; }
 
         // The columns of the org the public page reads (DB-03): whether it can take a payment, how the host is named, the
@@ -718,3 +719,5 @@ public class PropertyService(
         public bool OrgConnectChargesEnabled { get; init; }
         public string? OrgHostName { get; init; }
         public string? OrgPublicPhone { get; init; }
+    }
+}
