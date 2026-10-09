@@ -129,6 +129,17 @@ public sealed class UserContextMembershipService(
         authorizationCache.Invalidate(userId);
     }
 
+    public async Task<bool> IsHostMemberAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var memberships = await db.UserContextMemberships
+            .AsNoTracking()
+            .Where(m => m.UserId == userId)
+            .Select(m => new { m.ContextKey, m.Role.RoleKey })
+            .ToListAsync(cancellationToken);
+
+        return memberships.Any(m => OrgOwnerRoles.IsHostMemberRole(m.ContextKey, m.RoleKey));
+    }
+
     private sealed record RoleRow(int Id, string ContextKey, string RoleKey);
 
     private static IReadOnlyList<BootstrapContextMembership> MapToContexts(IEnumerable<UserRole> roles) =>

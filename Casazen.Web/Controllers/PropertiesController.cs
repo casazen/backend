@@ -56,12 +56,16 @@ public class PropertiesController(
     /// Properties of the caller's org the caller may handle (TN-3): every one for an org-wide role (a PropertyManager of
     /// the org sees the properties whose pushes it receives, MO-12, A6-20), otherwise the ones they own, filtered in SQL.
     /// Shared by short-rent hosts and long-term landlords (A7-06). Each row is the property record
-    /// (<see cref="PropertyResponse"/>), never the entity.
+    /// (<see cref="PropertyResponse"/>), never the entity. <c>?mode=short|long</c> (PM-01) lists the properties in that
+    /// rental mode only; without it the list is every property, as it has always been. The plan limit counts them all.
     /// </summary>
+    /// <param name="mode">Optional rental mode filter: <c>short</c> or <c>long</c> (case-insensitive).</param>
+    /// <response code="400"><c>validation_error</c>: <paramref name="mode"/> names no rental mode.</response>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<PropertyResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<IEnumerable<PropertyResponse>>> GetAll()
+    public async Task<ActionResult<IEnumerable<PropertyResponse>>> GetAll([FromQuery] string? mode = null)
     {
         // Never log the claims or the identity name: they carry email and name (FD-17, A2-32).
         var userId = GetAuthenticatedUserId();
@@ -71,11 +75,23 @@ public class PropertiesController(
             return Unauthorized();
         }
 
+        // A blank value is the same as no filter; a value that is not a mode is a 400, never a silent "every property".
+        RentalMode? modeFilter = null;
+        if (!string.IsNullOrWhiteSpace(mode))
+        {
+            if (!EnumNames.TryParseDefined<RentalMode>(mode, out var parsedMode))
+                return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "PropertyListModeInvalid");
+
+            modeFilter = parsedMode;
+        }
+
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
-        var properties = await propertyService.GetPropertiesAsync(scope);
+        var properties = modeFilter is { } wanted
+            ? await propertyService.GetPropertiesAsync(scope, wanted)
+            : await propertyService.GetPropertiesAsync(scope);
         return Ok(properties.Select(PropertyResponse.From).ToList());
     }
 
@@ -205,7 +221,8 @@ public class PropertiesController(
     /// <response code="403">The caller may not change this property.</response>
     /// <response code="404">No property with this id in the caller's org.</response>
     /// <response code="409">Slug already used in the org, or city change after a canone concordato registration.</response>
-    /// <response code="422"><c>cancellation_policy_not_found</c>: the cancellation policy does not exist.</response>
+    /// <response code="422"><c>cancellation_policy_not_found</c>: the cancellation policy does not exist;
+    /// <c>property_rental_mode_change_not_allowed</c>: <c>rentalMode</c> is not the stored one (PM-01).</response>
     [HttpPut("{id}")]
     [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -234,6 +251,17 @@ public class PropertiesController(
         }
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, roles, "Property.Update");
+
+        // PM-01: a rental mode in the body must be the stored one (a form that sends the whole record keeps working). The
+        // mode of an existing property is changed by the scheduled mode change, which checks its stays and leases under the
+        // property lock: a generic save would skip those checks (a leased property made bookable, a booked one hidden).
+        if (request.RentalMode is { } requestedMode && requestedMode != existing.RentalMode)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                PropertyRentalModeErrorCodes.ChangeNotAllowed,
+                "PropertyRentalModeChangeNotAllowed");
+        }
 
         if (request.City is { } city && IsCityChange(existing.City, city) && await HasSubmittedCanoneConcordatoLeaseAsync(id))
         {
@@ -1383,13 +1411,15 @@ public class PropertiesController(
     /// <c>safety_gas_detector_missing</c>); 409 <c>activation_tos_required</c> without the terms accepted. The safety
     /// checklist is saved with <see cref="SaveSafetyChecklist"/> (CO-07). Same evaluation as the re-evaluation after a
     /// change (CO-06): with blockers left an active property is suspended and a pending or suspended one keeps its status
-    /// (<c>complianceStatus</c> of the 409).
+    /// (<c>complianceStatus</c> of the 409). A property in long-term mode (PM-01) is never published: 422
+    /// <c>property_not_bookable_in_long_mode</c>.
     /// </summary>
     [HttpPost("{id:guid}/compliance/activation/complete")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(CompletePropertyActivationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<CompletePropertyActivationResponse>> CompleteComplianceActivation(
         Guid id,
         [FromBody] CompletePropertyActivationRequest request,

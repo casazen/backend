@@ -52,6 +52,76 @@ public class ConfigurationFeatureFlagsTests
         Assert.Contains(FeatureFlags.OtaPartnerApi, FeatureFlags.All);
     }
 
+    // ─── SP-02: the two flags of the supplier showcase and payments ──────────────
+
+    [Fact]
+    public void All_SupplierFlags_AreListedLastInTheOrderExposedToTheFrontend()
+    {
+        Assert.Equal("SupplierShowcaseBooking", FeatureFlags.SupplierShowcaseBooking);
+        Assert.Equal("SupplierOnlinePayments", FeatureFlags.SupplierOnlinePayments);
+        Assert.Equal("SupplierRequestAutoCancel", FeatureFlags.SupplierRequestAutoCancel);
+        Assert.Equal(
+            new[]
+            {
+                "OtaPartnerApi",
+                "AiSupplierDiscovery",
+                "RliProvider",
+                "ESignProvider",
+                "SupplierShowcaseBooking",
+                "SupplierOnlinePayments",
+                "SupplierRequestAutoCancel",
+                "UiRedesign",
+            },
+            FeatureFlags.All);
+    }
+
+    [Theory]
+    [InlineData(FeatureFlags.SupplierShowcaseBooking)]
+    [InlineData(FeatureFlags.SupplierOnlinePayments)]
+    [InlineData(FeatureFlags.SupplierRequestAutoCancel)]
+    public void IsEnabled_SupplierFlagNotConfigured_IsOff(string flag)
+    {
+        Assert.False(Flags(new Dictionary<string, string?>()).IsEnabled(flag));
+    }
+
+    [Theory]
+    [InlineData(FeatureFlags.SupplierShowcaseBooking, FeatureFlags.SupplierOnlinePayments)]
+    [InlineData(FeatureFlags.SupplierOnlinePayments, FeatureFlags.SupplierShowcaseBooking)]
+    [InlineData(FeatureFlags.SupplierRequestAutoCancel, FeatureFlags.SupplierOnlinePayments)]
+    [InlineData(FeatureFlags.SupplierOnlinePayments, FeatureFlags.SupplierRequestAutoCancel)]
+    public void IsEnabled_OneSupplierFlagOn_DoesNotTurnTheOtherOn(string on, string other)
+    {
+        var flags = Flags(new Dictionary<string, string?> { [$"Features:{on}"] = "true" });
+
+        Assert.True(flags.IsEnabled(on));
+        Assert.False(flags.IsEnabled(other));
+    }
+
+    [Fact]
+    public void AppSettings_EveryFlagIsListedAndOffByDefault()
+    {
+        // The documented default of each flag (a missing value is off anyway): appsettings.json of the web project.
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"), optional: false)
+            .Build();
+        var flags = new ConfigurationFeatureFlags(configuration);
+
+        Assert.All(FeatureFlags.All, flag =>
+        {
+            Assert.Equal("False", configuration[$"{FeatureFlags.SectionName}:{flag}"]);
+            Assert.False(flags.IsEnabled(flag), $"{flag} must be off by default");
+        });
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Casazen.sln")))
+            directory = directory.Parent;
+
+        return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
+    }
+
     private static ConfigurationFeatureFlags Flags(Dictionary<string, string?> values) =>
         new(new ConfigurationBuilder().AddInMemoryCollection(values).Build());
 
@@ -111,19 +181,10 @@ public class ConfigurationFeatureFlagsTests
     {
         // The documented default (a missing value is off anyway): appsettings.json of the web project.
         var configuration = new ConfigurationBuilder()
-            .AddJsonFile(Path.Combine(FindSolutionDirectory(), "Casazen.Web", "appsettings.json"), optional: false)
+            .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"), optional: false)
             .Build();
 
         Assert.Equal("False", configuration[$"{FeatureFlags.SectionName}:{FeatureFlags.UiRedesign}"]);
         Assert.False(new ConfigurationFeatureFlags(configuration).IsEnabled(FeatureFlags.UiRedesign));
-    }
-
-    private static string FindSolutionDirectory()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Casazen.sln")))
-            directory = directory.Parent;
-
-        return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
     }
 }
