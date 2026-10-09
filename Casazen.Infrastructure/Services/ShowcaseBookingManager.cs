@@ -200,12 +200,15 @@ public sealed class ShowcaseBookingManager(
 
     /// <summary>
     /// The price of the booking: the amounts, and the lines — the choices of the customer when it booked, or, once the supplier
-    /// completed the work, the lines of the final amount.
+    /// completed the work, the lines of the final amount. The lines of the estimate add up to it: a flat price (per job) keeps no
+    /// quantity among the choices of the booking, so its base is what the estimate has beyond the options, shown as the line of the
+    /// service.
     /// </summary>
     private static ShowcaseBookingPrice PriceOf(ShowcaseBookingRow row)
     {
         var final = ServiceRequestJson.ReadPriceLines(row.PriceLinesJson);
-        var lines = row.FinalAmountCents is not null && final.Count > 0
+        var finalLines = row.FinalAmountCents is not null && final.Count > 0;
+        var lines = finalLines
             ? final
                 .Select(line => new ShowcaseBookingPriceLine(
                     line.Kind == ServiceRequestPriceLineKinds.Extra ? "extra" : "service",
@@ -222,6 +225,16 @@ public sealed class ShowcaseBookingManager(
                     option.AmountCents,
                     (int)Math.Min(int.MaxValue, (long)option.AmountCents * option.Quantity)))
                 .ToList();
+
+        if (!finalLines && row.EstimatedAmountCents is { } estimate && !lines.Any(line => line.Kind == "service"))
+        {
+            var listed = lines.Sum(line => (long)line.AmountCents);
+            if (listed < estimate)
+            {
+                var baseAmount = (int)(estimate - listed);
+                lines.Insert(0, new ShowcaseBookingPriceLine("service", row.ServiceNameSnapshot ?? string.Empty, 1, baseAmount, baseAmount));
+            }
+        }
 
         return new ShowcaseBookingPrice(row.EstimatedAmountCents, row.QuotedAmountCents, row.FinalAmountCents, lines);
     }
