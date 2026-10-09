@@ -61,6 +61,10 @@ public static class RateLimitingServiceCollectionExtensions
         // its per-IP policy.
         services.AddSingleton<SupplierBookingEmailRateLimiter>();
 
+        // Per email and supplier limit of the customer's own area of a booking ([SupplierBookingManageRateLimit], SP-11), next to the
+        // per-IP policy PublicGuestBookingLookup.
+        services.AddSingleton<SupplierBookingManageEmailRateLimiter>();
+
         // Read from the final configuration (IConfiguration from DI), not while Program.cs is still building it.
         services.AddOptions<RateLimiterOptions>()
             .Configure<IConfiguration>((options, configuration) =>
