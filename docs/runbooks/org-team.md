@@ -4,7 +4,9 @@ Task AM-01 of the wave spec (org team, step 1: who belongs to which org and as w
 backend only) is described in sections 1 to 9. Task AM-02 (step 2: invitations, members and seats; decisions D13, D14,
 D15, D35; backend only) is described in sections 10 to 19. Task AM-03 (step 3: the properties each member reaches, read
 from the database, and the finer permissions; stakes S3 and S5 of the wave spec; backend only) is described in
-sections 20 to 28. The activity log and the access requests come with AM-02b, the screens with AM-04: **nothing here
+sections 20 to 28. Task AM-03b (the two findings of the security review of AM-03, the limit of the authorization cache with more
+than one API instance, and the crossing of the property scope with the payments of the suppliers; backend only) is described in sections
+29 to 33. The activity log and the access requests come with AM-02b, the screens with AM-04: **nothing here
 changes what a user sees today, but for a collaborator limited to "Solo alcuni" (section 20), which nobody is yet**. The
 flag `OrgTeam` is off by default and gates every endpoint of the team (sections 18 and 26).
 
@@ -625,7 +627,7 @@ checks every code in both languages.
   What may be late on them is the decision (is the member limited at all) and the single-resource checks; the lists read the
   grants in SQL. Consequence to know: when the owner *narrows* a collaborator from "all" to "some", an instance that still holds the
   old snapshot treats it as org-wide for up to a minute. Deactivating a member is not affected: that is read from the database
-  on every request (`member_inactive`, section 5).
+  on every request (`member_inactive`, section 5). What to do about it before the team is used in production: section 31.
 
 ## 24. Who is told
 
@@ -634,6 +636,8 @@ the **member in charge of the property and the administrators of the org** (the 
 contact address of the org as before. While nobody is named, **the creator of the property stands in** (a manager who added a
 property keeps hearing about it until someone is put in charge). A deactivated member, an inactive account and a user of another
 org are never told. One rule for the push (`PushDeliveryJob`) and for the emails (`BookingNotifier`): `HostNotificationAudience`.
+**The person in charge is told only while they still reach the property (AM-03b, section 30)**: a collaborator "Solo alcuni" who lost the property
+is no longer told even if a stale name is still on it.
 The old rule read `User.Role` (`Admin` or `PropertyManager`), which says nothing about the team: a platform admin was in every
 org, a property manager of the team in none. The tests are `PushDeliveryJobTests` and `BookingNotifierHostAudienceTests`.
 
@@ -667,7 +671,8 @@ invitation or the `PUT`). With the flag off nobody is limited, so nothing change
 and the S5 rule (section 25) apply from the deploy.
 
 **Order.** (1) Deploy (flag off). (2) Check with the queries of section 27 that no member has `PropertyScope = 2` (there should be none).
-(3) AM-04 (the screens) and then `Features__OrgTeam=true`, as in section 18.
+(3) With more than one API instance, apply the advice of section 31 (one instance, or `Authorization__UserCacheSeconds` 0 to 5).
+(4) AM-04 (the screens) and then `Features__OrgTeam=true`, as in section 18.
 
 | Level | How | Effect |
 |---|---|---|
@@ -749,3 +754,126 @@ number of commands does not grow with the number of properties, cascade and set 
   the contact of the org (section 24 covers the push and the booking emails).
 - **FU4.** The activity log of the grants (who gave what to whom) is AM-02b's; `PropertyMemberAccesses.CreatedByUserId` and `CreatedAt`
   are the raw material.
+
+## 29. The export of the org is the holder's (AM-03b)
+
+`GET /api/gdpr/org/export` returns the Partita IVA and the codice fiscale of the org, the taxpayer recorded on every property, the
+fiscal year and regime of every property and (since AM-02) the people with their role and scope. It needed `property.read`, which
+every member holds and which a collaborator limited to some properties ("Solo alcuni") keeps, and it applied no scope. The security
+review of AM-03 found that such a collaborator, who cannot open the fiscal area (`payment.read`), could still download all of it.
+
+| | Before | Now |
+|---|---|---|
+| Who may call it | anybody with `property.read` in short-rent | the policy `OrgBillingAdmin`: the owner and the administrators of the org (and the platform admin, for the org it works in). 403 `forbidden` for a collaborator (limited or not), a property manager and an accountant |
+| What the service returns | the whole org, whoever asked | the whole org, in the same shape, for the holder (an org-wide scope); for a narrower scope only the properties it reaches in `propertyFiscalYears` and `propertyTaxpayers` |
+
+The reach is the one of every list (section 20): `IHostScopeResolver`, read from the database. The two property sections are
+narrowed in the same statement as the rest (`GdprService.OrgPropertySections`, `InScope`: an `EXISTS` on the grants or on the creator,
+no list of ids loaded first); the soft-deleted properties are included, as they are for the holder. A caller with no scope (a deactivated
+member, a member of another org) gets 403 and exports nothing. After the policy, the only callers with a scope narrower than the org are
+the accounts of before the team that are the owner by their token but created only some of the properties of a multi-owner org (the case
+of the draft PR #461); the narrowing is the second level, so a later change of the policy cannot reopen the leak. The org's own Partita
+IVA and codice fiscale, and the people, stay in the answer for whoever passes the policy: they belong to the org, not to a property.
+
+Not changed: `POST /api/gdpr/org/anonymize` is still `property.write` (follow-up AM-03b-FU1 below).
+
+Tests: `GdprControllerOrgExportTests`, `OrgExportScopeTests`, `OrgScopeHardeningSqlShapeTests` (the SQL on Npgsql, no server),
+`OrgBillingAdminPolicyCoverageTests` and `OrgBillingAdminMembershipAccessTests` (they find the action by reflection: under the policy, a
+member of the org is refused and the owner is not), `OrgScopeHardeningHttpIntegrationTests` (the real pipeline), `OrgScopeHardeningPostgresTests` (CI).
+
+## 30. The person in charge goes with the access (AM-03b)
+
+The review also found that `Property.ResponsibleUserId` stayed after the access to the property was taken away, so the push and the
+emails of a booking (name and email of the guest, dates, prices) kept going to a person who could no longer open it. Two levels, so a
+stale name never tells anybody:
+
+1. **The name goes when the access goes** (`PropertyResponsibility.ReleaseAsync`, in the same `SaveChanges` and under the same people
+   lock as the change of the access). `PUT /api/orgs/me/members/{id}/properties` releases every property the collaborator was in charge
+   of and is no longer given; `DELETE /api/orgs/me/members/{id}` (a removal) releases all of them. The property goes back to **nobody**,
+   the state of a property no one was put in charge of (section 24: the creator stands in while it reaches the property, the owner and the
+   administrators are always told). Not released, on purpose: widening the access ("Tutti"), a change to a role that reaches every
+   property, a deactivation (reversible: the reactivation gives back the access and the responsibility, and a deactivated member is never
+   told meanwhile). `PUT /api/properties/{id}/responsible` takes the same lock, so a person cannot be put in charge in the middle of its
+   revocation (it reads the access and writes the name in one step). The generic save of a property (`PropertyRepository.UpdateAsync`)
+   never writes the column, so the host editing the record from an old copy cannot put an old name back, as for the photos and the rental mode.
+2. **The audience reads the reach again** (`HostNotificationAudience.UsersToTell`, one statement, used by the push job and by the booking
+   emails). The person in charge (the creator while nobody is named) is told only if they are an active member of the org who is not a
+   collaborator "Solo alcuni", or who was given this property; or, for an account in no team, if they created the property. A stale name (a
+   write on another instance, a row changed by hand), a member row of another org, a user with no row who is not the creator: nobody but the
+   owner and the administrators hears. This is the rule that lets a person be put in charge (`EnsureCanBeInChargeAsync`), read again at the moment of telling.
+
+The activity log of AM-02b is not in `develop` yet. The release is logged (`Property responsibility released with the access`, counts only,
+no personal data); when the log exists, the entry "responsibility released" goes next to the one of the grants in
+`OrgPropertyAccessService.SetAsync` and `OrgMembershipService.RemoveAsync` (the ids of the properties are returned by `ReleaseAsync`).
+
+Tests: `PropertyResponsibilityReleaseTests`, `HostNotificationAudienceReachTests` (the query, the emails and the push, and the whole journey),
+`PropertyResponsibleSaveTests`, `OrgScopeHardeningSqlShapeTests`, `OrgScopeHardeningHttpIntegrationTests`; on PostgreSQL (CI)
+`OrgScopeHardeningPostgresTests` (the real SQL, and an appointment against a revocation, eight rounds, never ends with a name and no access).
+
+## 31. The authorization cache with more than one API instance (AM-03b)
+
+The authorization data of a person (its role, its memberships, its property scope and grants: `UserAuthorizationSnapshot`) is read once
+per request and kept for `Authorization__UserCacheSeconds` seconds (default **60**) in the memory of the API process (`IMemoryCache`). A
+write invalidates the copy **of the instance that handles it**; the other instances do not hear of it and keep serving the old copy until
+it expires. The architecture is not changed by AM-03b; this is the limit to know before the team is used.
+
+| Change | The instance that makes it | Another instance |
+|---|---|---|
+| Deactivate or reactivate a member | next request | next request: the status is read from the database on every request (`member_inactive`) |
+| Remove a member from the org | next request | the person has no org at the next request (the tenant is read from the database on every request), so its permissions find no data; the cached permissions are old for up to 60 s |
+| Change of role | next request | **up to 60 s with the old role** |
+| Limit a collaborator ("Tutti" to "Solo alcuni") | next request | **up to 60 s treated as org-wide**: the restriction is late |
+| Fewer properties for a limited collaborator | next request | the lists at once (they read the grants in SQL); a single property opened by id, up to 60 s |
+| More properties, or back to "Tutti" | next request | up to 60 s (the single resources and the decision "limited or not"; until then the person may see less, never more) |
+
+So with several replicas a person whose role or scope was just narrowed can still do, for up to a minute, what it could before.
+**Before `Features__OrgTeam` is turned on in production**, either run **one** API instance, or set `Authorization__UserCacheSeconds` to
+**0 to 5** (0 disables the cache: one more read of the person per request; 5 keeps most of the saving). Nothing is needed while the flag is
+off, because nobody can be limited or changed. A small, trusted team may accept the minute: record the decision with the product owner.
+The proper cure is a channel between the instances that invalidates the copies (a version counter read from the database with each request,
+or a pub/sub): a task of its own (AM-03b-FU2). The row of `Features__OrgTeam` in [`deploy-checklist.md`](deploy-checklist.md) says the same.
+
+## 32. The payments of the interventions and the scope (AM-03b)
+
+SP-15a gave the host three actions that move money for an intervention, and AM-03 the finer permission `servicerequest.write`. They cross
+like this (short-rent; the long-rent twins under `api/long-rent/service-requests` are the same with `property.write` held in long-rent):
+
+| Action | Permission | Reach on the property |
+|---|---|---|
+| `POST api/service-requests` (send the request), `POST api/service-requests/match-supplier` | `servicerequest.write` | the property is authorized as a `HostResource` with its id |
+| `POST api/service-requests/{id}/mark-paid` | `servicerequest.write` | the request is read inside the caller's scope (404 outside it) and authorized as a `HostResource` with the id of its property |
+| `POST api/service-requests/{id}/final-amount/confirm` (accept a final amount above the quote) | **`property.write`** | same |
+| `POST api/service-requests/{id}/payment-session` (the host pays online) | **`property.write`** | same |
+
+The permission is evaluated first: a collaborator (no `property.write`) gets 403 on the last two for **every** request; one whose role also
+holds `property.write` gets 404 `service_request_not_found` on a request of a property it was not given, and the action on the others. The other
+host actions on a request (cancel, remind, accept or reject a proposed time) are `property.write` on the property, with the same reach. Two layers
+keep a limited collaborator inside its properties: `ServiceRequestService.GetByIdForHostAsync` filters with `InScope`, and the `HostResource` built from
+the request carries `PropertyId`, so `HostResourceAuthorizationHandler` refuses a limited member even if a service handed the row over (fail closed:
+without the id it is refused too). A request with no property is refused to everybody. `HostResourceArchitectureTests` fails if a resource is built
+without the property id, or with `ForOrg` outside the guests.
+
+**Open question for the product owner.** May a collaborator confirm a price above the quote and pay online for an intervention on a property it was
+given? Today it may not (the default of AM-03, prudent because it moves money): it marks the request paid when it was paid outside. If yes, it is a row of
+`RolePermissions` (or a finer permission next to `servicerequest.write`); the reach per property keeps working whatever the answer.
+
+Tests: `ServiceRequestPaymentScopeTests` (the six actions, short and long rent, over the real authorization handler and scope resolver),
+`HostResourceArchitectureTests`, `OrgScopeHardeningHttpIntegrationTests` (the real pipeline, also with `property.write` given to the collaborator's role),
+and the existing `ServicePaymentsIntegrationTests` for the rest of the payment.
+
+## 33. Decisions and follow-ups of AM-03b
+
+- **The export is the holder's** (`OrgBillingAdmin`, no new policy): it is the policy that already means "owner or administrator of the org", the
+  billing and the domain use it, and the audit tests find the action by reflection. No change of shape for the holder.
+- **Back to nobody, not to the owner.** A revoked responsibility returns to the state of a property no one was put in charge of: the owner and the
+  administrators are told in any case, the creator stands in while it reaches the property. Naming the owner would put a person on the property that
+  can leave or be replaced, and needs one more read. If the product owner prefers an explicit owner, it is one line in `PropertyResponsibility.ReleaseAsync`.
+- **A deactivation keeps the name** (the audience skips a deactivated member); only a removal and a narrowing of the access release it.
+- **The activity log**: no entry yet (AM-02b is not in `develop`); the release is logged with counts only.
+- **AM-03b-FU1 - `POST /api/gdpr/org/anonymize`** is still `property.write`: a property manager can erase the fiscal identifiers of the whole org
+  (irreversible). It is not a scope leak (a manager reaches every property) but the same kind of act as the export. Moving it under `OrgBillingAdmin` is
+  one line in `GdprController`; the draft PR #461 ("restrict org fiscal GDPR actions", 2026-10-05) predates AM-03, uses `HasOrgWideHostAccess` (removed) and can be closed.
+- **AM-03b-FU2 - the cache of the authorization between instances** (section 31): a version counter or a channel to invalidate the copies on every instance.
+- **AM-03b-FU3 - a collaborator and the payment**: the product owner decides whether a collaborator may confirm a final amount and pay online (section 32).
+- **Other recipients, not changed**: the email of a service request to the host still goes to the contact of the org (AM-03-FU3); the guests of the org
+  are still listed to every member with `guest.read` (AM-03-FU2).
