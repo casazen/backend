@@ -44,6 +44,7 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicComuni, 120, OneMinute),
         new(RateLimitPolicies.PublicSupplierSlots, 60, OneMinute),
         new(RateLimitPolicies.PublicSupplierQuote, 30, OneMinute),
+        new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)
@@ -55,6 +56,10 @@ public static class RateLimitingServiceCollectionExtensions
 
         // Per email limit of "Le mie prenotazioni" ([GuestBookingEmailRateLimit], BK-11), next to its per-IP policy.
         services.AddSingleton<GuestBookingEmailRateLimiter>();
+
+        // Per email and supplier limit of the booking from a supplier's showcase ([SupplierBookingEmailRateLimit], SP-10), next to
+        // its per-IP policy.
+        services.AddSingleton<SupplierBookingEmailRateLimiter>();
 
         // Read from the final configuration (IConfiguration from DI), not while Program.cs is still building it.
         services.AddOptions<RateLimiterOptions>()
