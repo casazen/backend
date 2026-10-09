@@ -16,4 +16,12 @@ public interface IUserContextMembershipService
 
     /// <summary>Deletes the membership of every context mapped by <paramref name="roles"/>.</summary>
     Task RevokeAsync(string userId, IEnumerable<UserRole> roles, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user holds a DB membership of a host context with a role other than the owner's
+    /// (<see cref="Casazen.Core.Authorization.OrgOwnerRoles.IsHostMemberRole"/>): it is a <b>member</b> of an org
+    /// (collaborator, property manager, accountant…), not its owner. Read from the database on every call, never from
+    /// the authorization cache: it guards a self-service action (the onboarding, AM-00).
+    /// </summary>
+    Task<bool> IsHostMemberAsync(string userId, CancellationToken cancellationToken = default);
 }

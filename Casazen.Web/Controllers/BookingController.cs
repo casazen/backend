@@ -122,7 +122,8 @@ public class BookingsController(
     /// Booking entered by the host (phone, walk-in, another channel): created <c>Confirmed</c> with source
     /// <c>Manual</c>, so it occupies its dates on the booking site and in the iCal export at once and is never
     /// cancelled by the expiry of abandoned checkout holds (PC-01, A2-01). Overlapping dates answer 409
-    /// <c>booking_dates_unavailable</c>.
+    /// <c>booking_dates_unavailable</c>; a property in long-term mode (PM-01) takes no stay: 422
+    /// <c>property_not_bookable_in_long_mode</c>.
     /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -150,6 +151,10 @@ public class BookingsController(
                 User.GetUserId(), request.PropertyId);
             return Forbid();
         }
+
+        // PM-01: a property in long-term mode takes no stay: 422 property_not_bookable_in_long_mode. Before the guests
+        // check, which would answer "too many guests (0)" for a property without guest capacity.
+        PropertyRentalModeRules.EnsureShortRent(property);
 
         if (request.NumberOfGuests > property.MaxGuests)
         {

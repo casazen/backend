@@ -33,7 +33,10 @@ public interface IBookingService
     /// Creates a booking entered by the host: always <see cref="BookingStatus.Confirmed"/> with source
     /// <see cref="BookingSource.Manual"/>, stored together with its guest snapshot (same org as the booking).
     /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">The booking breaks a rule (<see cref="BookingErrorCodes.CreateInvalid"/>).</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// The booking breaks a rule (<see cref="BookingErrorCodes.CreateInvalid"/>), or the property is in long-term mode
+    /// (<see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/>, PM-01).
+    /// </exception>
     /// <exception cref="Exceptions.DomainConflictException">The dates are taken (<see cref="BookingErrorCodes.DatesUnavailable"/>).</exception>
     Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest);
 
@@ -52,7 +55,8 @@ public interface IBookingService
     /// <exception cref="Exceptions.NotFoundException">The property does not exist or is not bookable.</exception>
     /// <exception cref="Exceptions.DomainRuleException">
     /// 422 with a code of <see cref="DirectBookingErrorCodes"/>, <see cref="BookingErrorCodes.TooManyGuests"/> or
-    /// <see cref="OnSiteRequestErrorCodes.TooManyNights"/>.
+    /// <see cref="OnSiteRequestErrorCodes.TooManyNights"/>; <see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/>
+    /// when the property is in long-term mode (PM-01).
     /// </exception>
     /// <exception cref="Exceptions.DomainConflictException">
     /// 409 <see cref="BookingErrorCodes.DatesUnavailable"/> or <see cref="DirectBookingErrorCodes.PaymentsNotReady"/>.
@@ -67,7 +71,8 @@ public interface IBookingService
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException">The property does not exist or is not bookable.</exception>
     /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="BookingErrorCodes.TooManyGuests"/> or <see cref="DirectBookingErrorCodes.InvalidStay"/>.
+    /// <see cref="BookingErrorCodes.TooManyGuests"/>, <see cref="DirectBookingErrorCodes.InvalidStay"/> or
+    /// <see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/> (the property is in long-term mode, PM-01).
     /// </exception>
     Task<DirectBookingQuote> QuoteDirectBookingAsync(DirectBookingQuoteInput input, CancellationToken cancellationToken = default);
 
@@ -77,7 +82,9 @@ public interface IBookingService
     /// without the checks of the public booking site (active listing, compliance). It does not check availability.
     /// </summary>
     /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="BookingErrorCodes.TooManyGuests"/> or <see cref="BookingErrorCodes.InvalidDates"/>.
+    /// <see cref="BookingErrorCodes.TooManyGuests"/>, <see cref="BookingErrorCodes.InvalidDates"/> or
+    /// <see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/> (checked first: the property is in long-term mode,
+    /// PM-01).
     /// </exception>
     Task<DirectBookingQuote> PriceHostStayAsync(
         Property property,

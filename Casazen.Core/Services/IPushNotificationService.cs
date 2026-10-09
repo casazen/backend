@@ -63,11 +63,33 @@ public static class PushDeliveryKeys
     public static string ServiceRequestCreated(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:created";
 
     /// <summary>
-    /// A service request reached <paramref name="status"/>, to the host. The state machine reaches every status at most
-    /// once (SU-10), so the key identifies the transition.
+    /// A service request reached <paramref name="status"/>, to the host (or, for a cancellation, to the other party). The
+    /// state machine reaches every status at most once (SU-10), so the key identifies the transition.
     /// </summary>
     public static string ServiceRequestStatus(Guid serviceRequestId, ServiceRequestStatus status) =>
         $"service-request:{serviceRequestId:N}:{status}";
+
+    /// <summary>
+    /// A reminder of the host to the supplier (SP-04). A request can be reminded again after a few hours, so the instant of
+    /// the reminder is part of the key: a retry of the job is one push, the next reminder is another.
+    /// </summary>
+    public static string ServiceRequestReminder(Guid serviceRequestId, DateTime remindedAtUtc) =>
+        $"service-request:{serviceRequestId:N}:reminder:{remindedAtUtc:yyyyMMddHHmmss}";
+
+    /// <summary>A time proposed by the supplier, to the host (SP-04); a new proposal has its own instant, so its own key.</summary>
+    public static string ServiceRequestTimeProposed(Guid serviceRequestId, DateTime proposedAtUtc) =>
+        $"service-request:{serviceRequestId:N}:proposed:{proposedAtUtc:yyyyMMddHHmmss}";
+
+    /// <summary>The host's answer to the proposal made at <paramref name="proposedAtUtc"/>, to the supplier (SP-04).</summary>
+    public static string ServiceRequestProposalAnswered(Guid serviceRequestId, DateTime proposedAtUtc, bool accepted) =>
+        $"service-request:{serviceRequestId:N}:proposal-{(accepted ? "accepted" : "rejected")}:{proposedAtUtc:yyyyMMddHHmmss}";
+
+    /// <summary>
+    /// The customer of a supplier's public showcase moved a new request to another time, to the supplier (SP-11). A request can be
+    /// moved more than once, so the instant is part of the key: a retry of the job is one push, the next move is another.
+    /// </summary>
+    public static string ServiceRequestRescheduled(Guid serviceRequestId, DateTime rescheduledAtUtc) =>
+        $"service-request:{serviceRequestId:N}:rescheduled:{rescheduledAtUtc:yyyyMMddHHmmss}";
 
     /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static string NewBooking(Guid bookingId) => $"booking:{bookingId:N}:new";
@@ -97,6 +119,27 @@ public static class PushTypes
 
     /// <summary>The host marked a completed service request as paid: pushed to the supplier org (SU-09).</summary>
     public const string ServiceRequestPaid = "service-request-paid";
+
+    /// <summary>The supplier started the work (SP-04): pushed to the host.</summary>
+    public const string ServiceRequestStarted = "service-request-started";
+
+    /// <summary>The request was cancelled (SP-04): pushed to the other party, and to the supplier too when nobody answered in time.</summary>
+    public const string ServiceRequestCancelled = "service-request-cancelled";
+
+    /// <summary>The host reminds the supplier to answer (SP-04): pushed to the supplier org.</summary>
+    public const string ServiceRequestReminder = "service-request-reminder";
+
+    /// <summary>The supplier proposes another time (SP-04): pushed to the host.</summary>
+    public const string ServiceRequestTimeProposed = "service-request-time-proposed";
+
+    /// <summary>The host (SP-04), or the customer of a showcase request (SP-11), accepted the proposed time: pushed to the supplier org.</summary>
+    public const string ServiceRequestProposalAccepted = "service-request-proposal-accepted";
+
+    /// <summary>The host (SP-04), or the customer of a showcase request (SP-11), turned the proposed time down: pushed to the supplier org.</summary>
+    public const string ServiceRequestProposalRejected = "service-request-proposal-rejected";
+
+    /// <summary>The customer of the public showcase moved a new request to another time (SP-11): pushed to the supplier org.</summary>
+    public const string ServiceRequestRescheduled = "service-request-rescheduled";
     public const string NewBooking = "new-booking";
     public const string GuestDataMissing = "guest-data-missing";
     public const string AlloggiatiDeadline = "alloggiati-deadline";
@@ -107,13 +150,18 @@ public static class PushTypes
     /// <summary>An OTA stay created from an iCal block is "da verificare" (CO-21): the app opens the booking from the route.</summary>
     public const string OtaStayReview = "ota-stay-review";
 
-    /// <summary>Type of the push to the host when a service request reaches <paramref name="status"/>.</summary>
-    public static string ForServiceRequestStatus(ServiceRequestStatus status) => status switch
+    /// <summary>
+    /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has
+    /// no push (a new request and a paid one are the host's own doing): the caller then sends nothing.
+    /// </summary>
+    public static string? ForServiceRequestStatus(ServiceRequestStatus status) => status switch
     {
         ServiceRequestStatus.PresoInCarico => ServiceRequestTaken,
+        ServiceRequestStatus.InCorso => ServiceRequestStarted,
         ServiceRequestStatus.Completato => ServiceRequestCompleted,
         ServiceRequestStatus.Rifiutato => ServiceRequestRejected,
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "No push for this service request status."),
+        ServiceRequestStatus.Annullato => ServiceRequestCancelled,
+        _ => null,
     };
 
     /// <summary>Type of the push of a stay alert.</summary>

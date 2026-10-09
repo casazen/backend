@@ -16,6 +16,7 @@ namespace Casazen.Core.Suppliers;
 /// <c>linen</c>, <c>check-in</c>) and the supplier wizard, which saved Italian labels (Pulizie, Manutenzione,
 /// Giardinaggio, Eventi, Noleggio, Escursioni; the migration <c>NormalizeServiceCategories</c> converts them). Doubtful
 /// synonyms stay distinct: <c>laundry</c> and <c>linen</c> are two categories, <c>check-in</c> is its own category.
+/// <c>electrical</c> was added by SP-02 (the redesign of the supplier console offers "Elettricista").
 /// Never rename a code: it is stored in the database and used as an i18n key by the clients. The AI paths accept only
 /// these codes too (FD-21, A8-01): free text never reaches a prompt or a cache key.
 /// </remarks>
@@ -31,6 +32,13 @@ public static class ServiceCategories
     public const string Events = "events";
     public const string Rental = "rental";
     public const string Excursions = "excursions";
+
+    /// <summary>
+    /// Electrician (SP-02): the demo of the supplier console offers it and the backend did not have it. Added last, because
+    /// the order of <see cref="All"/> is the order the clients show; the clients add its label
+    /// (<c>serviceRequest.categories.electrical</c>, <c>EmailTexts</c> <c>ServiceCategory_electrical</c>).
+    /// </summary>
+    public const string Electrical = "electrical";
 
     /// <summary>Stable error code (API <c>code</c>, HTTP 422) for a category that is not one of <see cref="All"/>.</summary>
     public const string InvalidCategoryCode = "invalid_service_category";
@@ -54,6 +62,7 @@ public static class ServiceCategories
         Events,
         Rental,
         Excursions,
+        Electrical,
     ];
 
     private static readonly FrozenSet<string> Known = All.ToFrozenSet(StringComparer.Ordinal);

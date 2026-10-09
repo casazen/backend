@@ -27,6 +27,13 @@ Error codes returned to clients: `auth0_management_not_configured`, `auth0_manag
 `auth0_role_not_found`, `auth0_rate_limited`, `auth0_management_error`. Deactivation (PL-03): `account_inactive` (403),
 `cannot_deactivate_self`, `last_active_admin`, `user_inactive` (422).
 
+Onboarding of a member of an org (AM-00): `PUT` / `POST /api/users/onboarding` from a user who already holds a DB
+membership of a host context (`short-rent`, `long-rent`) with a role other than the owner's (`OrgOwnerRoles`:
+`property_owner`, `long_term_landlord`) answers **409 `member_cannot_onboard`** and writes nothing: the onboarding grant
+overwrites the role of an existing membership and assigns `PropertyOwner` in Auth0, so a collaborator would have made
+itself the owner of the org it works for. The owner (no membership yet, or already the owner's) and a platform admin
+(the `admin` context is not a host context) onboard as before. A member's role changes only from the admin console.
+
 ## 1. Tenants: one for test, one for production
 
 Task PL-11 (audit defect A1-32). Until now the web app used **the same tenant** for Vercel Preview and Production

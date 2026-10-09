@@ -16,7 +16,8 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item>Which properties: active (<see cref="Property.IsActive"/>) with compliance status
+/// <item>Which properties: short-rent ones only (<see cref="RentalMode.Short"/>, PM-01: the hosts of long-term
+/// properties are never alerted), active (<see cref="Property.IsActive"/>) with compliance status
 /// <see cref="PropertyComplianceStatus.Pending"/> or <see cref="PropertyComplianceStatus.Active"/> and a CIN missing or
 /// not in the official format (<see cref="CinFormat"/>). A suspended property is never alerted: its host already got the
 /// suspension email of CO-06. A published (<see cref="PropertyComplianceStatus.Active"/>) property without a valid CIN is
@@ -62,16 +63,10 @@ public sealed class CinDeadlineAlertService(
 
         var now = _clock.GetUtcNow().UtcDateTime;
         // Background run: no tenant context, every org's properties.
-        var candidates = (await db.Properties
-                .AsNoTracking()
-                .Where(p => p.IsActive
-                    && (p.ComplianceStatus == PropertyComplianceStatus.Pending
-                        || p.ComplianceStatus == PropertyComplianceStatus.Active)
-                    // CO-20: CIN obligation applies only to short-rent (STR) properties. Exclude
-                    // properties whose owner registered exclusively as a long-term landlord
-                    // (RentalType.LongTerm). Owners with ShortTerm, Both, or no RentalType on
-                    // record are all eligible for CIN alerts.
-                    && !db.Users.Any(u => u.Id == p.OwnerId && u.RentalType == RentalType.LongTerm))
+        // CO-20: short-rent properties only (PM-01 / PropertyRentalMode), plus owners who
+        // registered exclusively as long-term landlords (RentalType.LongTerm) stay out.
+        var candidates = (await CandidateProperties(db.Properties.AsNoTracking())
+                .Where(p => !db.Users.Any(u => u.Id == p.OwnerId && u.RentalType == RentalType.LongTerm))
                 .OrderBy(p => p.Id)
                 .Select(p => new { p.Id, p.OrgId, p.CinCode, p.ComplianceStatus })
                 .ToListAsync(cancellationToken))
@@ -135,6 +130,19 @@ public sealed class CinDeadlineAlertService(
 
         return new CinDeadlineAlertRunResult(Skipped: false, Stage: stage, PropertiesAlerted: claimed.Count, EmailsQueued: emails);
     }
+
+    /// <summary>
+    /// The properties the alert looks at, before the CIN check: short-rent ones (PM-01: the CIN is an obligation of the
+    /// short stays, D.L. 145/2023, so a property in long-term mode is never alerted nor claimed), active, with compliance
+    /// <see cref="PropertyComplianceStatus.Pending"/> or <see cref="PropertyComplianceStatus.Active"/>. Internal for the
+    /// tests.
+    /// </summary>
+    internal static IQueryable<Property> CandidateProperties(IQueryable<Property> properties) =>
+        properties
+            .Where(PropertyRentalModeRules.IsShortRent)
+            .Where(p => p.IsActive
+                && (p.ComplianceStatus == PropertyComplianceStatus.Pending
+                    || p.ComplianceStatus == PropertyComplianceStatus.Active));
 
     /// <summary>
     /// A published property without a valid CIN is evaluated again by CO-06, which suspends it and emails the host

@@ -59,6 +59,13 @@ public class BookingService(
         if (booking.OrgId == Guid.Empty)
             throw new ArgumentException("A manual booking must carry the org of its property.", nameof(booking));
 
+        // PM-01: a property in long-term mode takes no stay (422). The host endpoint refuses it earlier, with the property
+        // it has already read; this is the check of the service that writes the booking. A property that is not found is
+        // left to the checks below and to the foreign key, as before.
+        var property = await propertyRepository.GetRecordAsync(booking.PropertyId);
+        if (property is not null)
+            PropertyRentalModeRules.EnsureShortRent(property);
+
         // A booking entered by the host is a confirmed stay from the start: it occupies its dates on the booking site
         // and in the iCal export, and the checkout hold expiry never cancels it (PC-01, A2-01).
         booking.Status = BookingStatus.Confirmed;
@@ -301,11 +308,21 @@ public class BookingService(
             cancellationToken);
     }
 
-    /// <summary>An active, unpaused property whose compliance allows public bookings; 404 otherwise (PC-03, A2-05).</summary>
+    /// <summary>
+    /// A short-rent, active, unpaused property whose compliance allows public bookings: the same rule as
+    /// <see cref="PublicListing.IsPublished"/>. 404 when it does not exist or is not published (PC-03, A2-05); a property in
+    /// long-term mode (PM-01) is answered with the reason, 422 <c>property_not_bookable_in_long_mode</c>, whatever its
+    /// other state: the public pages never lead to it, so this is a stale page or a hand-made request.
+    /// </summary>
     private async Task<Property> GetBookablePropertyAsync(Guid propertyId)
     {
         var property = await propertyRepository.GetByIdAsync(propertyId);
-        if (property is null || !property.IsActive || property.IsPaused || property.ComplianceStatus != PropertyComplianceStatus.Active)
+        if (property is null)
+            throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
+
+        PropertyRentalModeRules.EnsureShortRent(property);
+
+        if (!property.IsActive || property.IsPaused || property.ComplianceStatus != PropertyComplianceStatus.Active)
             throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
 
         return property;
@@ -321,6 +338,10 @@ public class BookingService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(property);
+
+        // PM-01: the stays of a property in long-term mode are not priced nor entered (host quote, new and changed manual
+        // booking). Before the guests check: a long-term property has no guest capacity, "0 guests" would hide the reason.
+        PropertyRentalModeRules.EnsureShortRent(property);
 
         if (numberOfAdults + numberOfChildren > property.MaxGuests)
             throw new DomainRuleException(BookingErrorCodes.TooManyGuests, "BookingTooManyGuests", property.MaxGuests);

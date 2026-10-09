@@ -48,6 +48,47 @@ public static class FeatureFlags
     /// </summary>
     public const string ESignProvider = "ESignProvider";
 
+    /// <summary>
+    /// SP-02 (redesign wave, decision D34): booking from the public showcase of a supplier (<c>/fornitori/{slug}</c>), off
+    /// until the product owner turns it on. It gates the public reads of the showcase (services, slots, estimate: SP-09) and
+    /// the booking endpoints (hold and e-mail check: SP-10) and the customer's own area of a booking (find it again, cancel it,
+    /// move it, answer a proposed time: SP-11, <c>api/public/supplier-bookings/*</c>), 404 when off. <b>SP-10 and SP-11 both have
+    /// to be deployed before it is turned on</b>: a customer who can book and cannot manage the booking is a promise the e-mails
+    /// make and the product does not keep. <b>On, the application needs
+    /// <c>Suppliers:Showcase:PrivacyNoticeVersion</c> and, outside Development and Testing, <c>Suppliers:CustomerIndexKey</c></b>
+    /// or it does not start (<see cref="Casazen.Core.Options.ShowcaseBookingOptionsValidator"/>). The upkeep jobs of the
+    /// bookings are registered whatever the flag says. The service catalog (<c>api/supplier/services</c>) does not depend on
+    /// it: every supplier has one.
+    /// </summary>
+    public const string SupplierShowcaseBooking = "SupplierShowcaseBooking";
+
+    /// <summary>
+    /// SP-02 (redesign wave, decision D2): payment of a supplier's work inside CasaZen (direct charge on the supplier's
+    /// Stripe account with the platform commission), off until the product owner turns it on. It will gate the creation of
+    /// the payment requests (SP-15); nothing consumes it yet, SP-02 only introduces and exposes it. Without it the
+    /// existing manual flow ("Segna pagato" by the host) stays the only one.
+    /// </summary>
+    public const string SupplierOnlinePayments = "SupplierOnlinePayments";
+
+    /// <summary>
+    /// SP-04 (redesign wave, decision D8): automatic cancellation of the service requests nobody answered. Every request now
+    /// gets a deadline (<c>ResponseDueAt</c>, 120 minutes after its creation for a host's request); with the flag on, the
+    /// recurring job <c>service-request-auto-cancel</c> (every 10 minutes) moves the new requests past their deadline to
+    /// <c>Annullato</c> (reason <c>NoResponse</c>) and tells the host and the supplier. <b>Off by default</b>: it changes what
+    /// happens to the requests that exist, so the product owner turns it on when the console and the apps show the new
+    /// status. Off: the job is not scheduled (an earlier schedule is removed) and nothing is ever cancelled by time.
+    /// </summary>
+    public const string SupplierRequestAutoCancel = "SupplierRequestAutoCancel";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
-    public static IReadOnlyList<string> All { get; } = [OtaPartnerApi, AiSupplierDiscovery, RliProvider, ESignProvider];
+    public static IReadOnlyList<string> All { get; } =
+    [
+        OtaPartnerApi,
+        AiSupplierDiscovery,
+        RliProvider,
+        ESignProvider,
+        SupplierShowcaseBooking,
+        SupplierOnlinePayments,
+        SupplierRequestAutoCancel,
+    ];
 }
