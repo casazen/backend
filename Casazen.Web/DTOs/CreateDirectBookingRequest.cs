@@ -73,6 +73,15 @@ public class CreateDirectBookingRequest : IValidatableObject
     /// </summary>
     public List<int>? ChildrenAges { get; set; }
 
+    /// <summary>
+    /// The guest ticked the optional "send me offers" box (DB-03). Optional, <c>false</c> when left out or <c>null</c>,
+    /// never required and never a condition of the booking; the box is never preselected. Offered only when the public org carries a
+    /// <c>marketingConsentVersion</c> (<c>Gdpr:MarketingConsentVersion</c>, CO-15), which is the version recorded with the
+    /// consent; <c>true</c> without one is refused with 422 <c>direct_booking_marketing_consent_unavailable</c>. Recorded on
+    /// the guest of the booking (<c>Guest.MarketingConsent</c>) and in the register of their consents.
+    /// </summary>
+    public bool? MarketingConsent { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         ChildrenAgesValidation.Validate(validationContext, ChildrenAges, NumberOfChildren);
 }

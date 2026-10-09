@@ -145,6 +145,9 @@ public class AppDbContext(
     // Push messages per event and device, with their Expo ticket (MO-04)
     public DbSet<PushDelivery> PushDeliveries { get; set; } = null!;
 
+    // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
+    public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
+
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
     public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
@@ -390,6 +393,19 @@ public class AppDbContext(
         modelBuilder.Entity<Property>()
             .Property(p => p.Longitude)
             .HasPrecision(9, PropertyAddress.CoordinateScale);
+
+        // DB-03: the stay rules the public quote and checkout read (minimum stay, weekend surcharge). The host forms and the
+        // property service validate them; the constraints keep any other writer honest. Both columns are nullable or 0 for
+        // every row that existed before them, so the migration changes no behavior (docs/runbooks/direct-booking.md § 11).
+        modelBuilder.Entity<Property>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_Properties_MinNights",
+                $"\"MinNights\" IS NULL OR \"MinNights\" BETWEEN {PropertyStayRules.MinMinNights} AND {PropertyStayRules.MaxMinNights}");
+            t.HasCheckConstraint(
+                "CK_Properties_WeekendSurchargePercent",
+                $"\"WeekendSurchargePercent\" BETWEEN 0 AND {(int)PropertyStayRules.MaxWeekendSurchargePercent}");
+        });
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
@@ -724,6 +740,10 @@ public class AppDbContext(
 
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => e.OrgId);
+
+        // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasIndex(e => new { e.OrgId, e.DueDate });
 
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).
@@ -1743,6 +1763,39 @@ public class AppDbContext(
 
             entity.HasIndex(d => d.UserId)
                 .HasDatabaseName("IX_DeviceRegistrations_UserId");
+        });
+
+        // ─── In-app notifications (UI-12a) ──────────────────────────────────────
+        modelBuilder.Entity<InAppNotification>(entity =>
+        {
+            // The notifications of an org go with it (the one place an org is deleted, the merge of two duplicate supplier orgs,
+            // must not be stopped by them), and the ones of a person go with the account (erasure).
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(n => n.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Once per event and user: the job that writes them, retried by Hangfire or queued twice for the same event, loses
+            // the race on this index (23505) and re-reads. The key is the one of the push of the event.
+            entity.HasIndex(n => new { n.DeliveryKey, n.UserId })
+                .IsUnique()
+                .HasDatabaseName(InAppNotification.OncePerEventAndUserIndexName);
+
+            // The bell: the unread count of a user, and its list (newest first, optionally only the unread ones).
+            entity.HasIndex(n => new { n.UserId, n.ReadAt, n.CreatedAt })
+                .HasDatabaseName("IX_InAppNotifications_UserId_ReadAt_CreatedAt");
+
+            // The tenant filter of every read, and the cascade of an org.
+            entity.HasIndex(n => n.OrgId)
+                .HasDatabaseName("IX_InAppNotifications_OrgId");
+
+            // The daily retention deletes by age, whoever the user is.
+            entity.HasIndex(n => n.CreatedAt)
+                .HasDatabaseName("IX_InAppNotifications_CreatedAt");
         });
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the

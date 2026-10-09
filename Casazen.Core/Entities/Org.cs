@@ -51,6 +51,32 @@ public class Org
     [MaxLength(500)]
     public string? Tagline { get; set; }
 
+    /// <summary>
+    /// The sentence under the slogan in the cover of the public site (DB-03, the "sottotitolo"): plain text, at most
+    /// <c>OrgBrandingRules.SubtitleMaxLength</c> characters once the whitespace is collapsed. Null = none: the cover shows the
+    /// slogan alone. Set by the branding endpoint, read anonymously through <c>PublicOrgDto</c>.
+    /// </summary>
+    [MaxLength(500)]
+    public string? Subtitle { get; set; }
+
+    /// <summary>
+    /// How the person who hosts is named on the public site (DB-03): the host row of the property page, "Scrivi a Giulia".
+    /// Free text chosen by the host, at most <c>OrgBrandingRules.HostNameMaxLength</c> characters; null = the site shows
+    /// <see cref="DisplayName"/> only. Never derived from the account of the owner.
+    /// </summary>
+    [MaxLength(100)]
+    public string? HostName { get; set; }
+
+    /// <summary>
+    /// Phone number the host chose to publish on the booking site (DB-03): <c>+</c> or digits only, 6 to 15 digits
+    /// (<c>OrgBrandingRules.NormalizePublicPhone</c>). Unlike <see cref="ContactEmail"/> it is not a datum the org already
+    /// had: it is entered on purpose in the public-site branding and exists for no other use, so a value here <b>is</b> the
+    /// host's choice to publish it (GDPR, <c>.claude/rules/compliance.md</c>) and an org that never entered one publishes
+    /// nothing. Null = no phone on the site. Read anonymously through <c>PublicOrgDto</c> and the property detail.
+    /// </summary>
+    [MaxLength(20)]
+    public string? PublicPhone { get; set; }
+
     [MaxLength(255)]
     public string ContactEmail { get; set; } = string.Empty;
 
@@ -120,12 +146,21 @@ public class Org
 
     /// <summary>
     /// The org can take a direct booking payment (PL-15, A3-26): a connected account is linked <b>and</b> Stripe reports
-    /// charges enabled. Having started the Connect onboarding is not enough. The checkout (<c>BookingService</c>) and the
-    /// activation checklist (<c>OnboardingService</c>) both read this one rule.
+    /// charges enabled. Having started the Connect onboarding is not enough. The checkout (<c>BookingService</c>), the
+    /// activation checklist (<c>OnboardingService</c>) and the <c>acceptsBookings</c> of the public DTOs (DB-03) all read this
+    /// one rule, <see cref="AcceptsDirectPayments"/>.
     /// </summary>
     [NotMapped]
-    public bool CanTakeDirectPayments =>
-        !string.IsNullOrWhiteSpace(StripeConnectedAccountId) && ConnectChargesEnabled;
+    public bool CanTakeDirectPayments => AcceptsDirectPayments(StripeConnectedAccountId, ConnectChargesEnabled);
+
+    /// <summary>
+    /// The rule of <see cref="CanTakeDirectPayments"/> on the two columns it reads, for the places that read them in a
+    /// projection without loading the org. A booking of the public site, whatever its payment option (card now, card at the
+    /// deadline, or a "pay at the property" request), needs a ready connected account: without it the checkout answers 409
+    /// <c>direct_booking_payments_not_ready</c>, so this is also the <c>acceptsBookings</c> the site shows.
+    /// </summary>
+    public static bool AcceptsDirectPayments(string? stripeConnectedAccountId, bool connectChargesEnabled) =>
+        !string.IsNullOrWhiteSpace(stripeConnectedAccountId) && connectChargesEnabled;
 
     public bool IsActive { get; set; } = true;
 

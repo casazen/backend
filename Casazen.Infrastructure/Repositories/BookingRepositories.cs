@@ -115,7 +115,20 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         return !conflicting;
     }
 
-    public async Task<Booking> AddAsync(Booking booking)
+    public Task<Booking> AddAsync(Booking booking) => AddCoreAsync(booking, guestConsent: null);
+
+    public Task<Booking> AddWithGuestConsentAsync(Booking booking, GuestConsentRecord consent)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentNullException.ThrowIfNull(consent);
+        // The record belongs to the guest snapshot written with the booking: a consent of another guest is a bug, not a row.
+        if (consent.GuestId != booking.GuestId)
+            throw new ArgumentException("The consent must belong to the guest of the booking.", nameof(consent));
+
+        return AddCoreAsync(booking, consent);
+    }
+
+    private async Task<Booking> AddCoreAsync(Booking booking, GuestConsentRecord? guestConsent)
     {
         await using var transaction = await BeginPropertyGuardTransactionAsync(booking.PropertyId);
 
@@ -127,6 +140,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         }
 
         context.Bookings.Add(booking);
+        if (guestConsent is not null)
+            context.GuestConsentRecords.Add(guestConsent);
         await context.SaveChangesAsync();
 
         if (transaction is not null)
