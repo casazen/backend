@@ -61,7 +61,6 @@ public class SupplierPaymentsController(
     [HttpPost("account")]
     [ProducesResponseType(typeof(SupplierPaymentsAccountDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status502BadGateway)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<SupplierPaymentsAccountDto>> EnsureAccount(CancellationToken cancellationToken) =>

@@ -691,10 +691,12 @@ never logged and never stored.
 
 Errors (ProblemDetails `code`): the Stripe ones are those of the host's onboarding, with the same texts: 503
 `stripe_connect_unavailable` (+ `Retry-After: 10`), 503 `stripe_connect_not_configured`, 502 `stripe_connect_failed`, 409
-`stripe_connect_account_unavailable` (the linked account is gone: the next onboarding link replaces it; a status read never
-answers it, it only clears the capabilities), 503 `connect_return_url_not_configured`. New: **422 `supplier_payments_not_ready`**
-(`SupplierPaymentsNotReady`, Italian and English) for a dashboard link without an account, **and** when Stripe refuses the login
-link because the onboarding is not complete (the account stays linked: the supplier finishes it with the onboarding link).
+`stripe_connect_account_unavailable` (only the two link routes: the linked account is gone, the next onboarding link replaces it; a
+status read never answers it, it only clears the capabilities), 503 `connect_return_url_not_configured` (onboarding link). New:
+**422 `supplier_payments_not_ready`** (`SupplierPaymentsNotReady`, Italian and English) for a dashboard link without an account,
+**and** when Stripe refuses the login link as a rejected request, which is how an account that has not completed the onboarding is
+expected to answer (the account stays linked: the supplier finishes it with the onboarding link). That last mapping is proved with a
+mocked Stripe only: check it once in test mode (Verification, point 2).
 
 ### Return pages (built by the server)
 

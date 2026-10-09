@@ -1076,8 +1076,8 @@ Nothing is paid through CasaZen yet: no PaymentIntent, commission, payment page 
   `connect-account:{orgId}`, exactly like the host's. A host that is also a supplier has two accounts, one per org.
 - The webhook `account.updated` of a supplier's account is processed by the existing handler whatever the flag says, and updates only
   the org that holds that account id.
-- `GET api/supplier/checklist` (SP-04, stacked elsewhere) still answers `paymentsActive: null`: with this task merged it can read
-  `SupplierVerification.CanReceivePayments` through `ISupplierPaymentsAccountService` (follow-up).
+- Follow-up for whoever merges SP-04 (the supplier checklist, a different branch) after this one: its `paymentsActive` can read
+  `SupplierVerification.CanReceivePayments` through `ISupplierPaymentsAccountService`.
 
 ### 25.3 After a deploy
 
