@@ -13,7 +13,7 @@ the property limit, the custom domain, the "Realizzato con" label (and, with AM-
 
 | Railway variable | Default | Effect |
 |---|---|---|
-| `Entitlement__OpenAccess__Enabled` | `false` (committed in `appsettings.json`; missing or empty = off) | `true` turns the open access on. Anything but `true`, `false` or empty **stops the startup** (see § 6). |
+| `Entitlement__OpenAccess__Enabled` | `false` (committed in `appsettings.json`; missing or empty = off) | `true` turns the open access on (`true` and `false` in any case). Anything else but an empty value **stops the startup** (see § 6). |
 | `Entitlement__OpenAccess__Tier` | `Scale` (missing or empty = `Scale`) | The tier every org gets **at least** while the switch is on: `Starter`, `Pro` or `Scale` (case does not matter). Any other value **stops the startup**. `Starter` changes nothing. |
 
 Both are read from the configuration at every use, and Railway redeploys the service when a variable changes: the new value
@@ -103,7 +103,7 @@ an upgrade button. Two things for the front-end work (not done here):
    | Properties | Nothing is deleted. Above the Starter limit the org keeps what it has and cannot create more (403 `plan_limit_reached`) until it is under the limit or subscribes. |
    | Custom domain | The domain is no longer served (the public site stays on its CasaZen address) and the periodic recheck skips it; the configuration is kept, so it works again as soon as the org pays Pro or Scale. |
    | "Realizzato con" | Back on the public booking site. |
-   | Seats (from AM-02) | The members stay; new invitations and reactivations are refused (409 `org_seat_limit_reached`) while the org is above the Starter number of seats. |
+   | Seats (from AM-02) | The members stay; new invitations and reactivations are refused (409 `org_seat_limit_reached`) while the org has as many people as the Starter plan allows, or more. |
 
 5. Orgs that pay see no change at all.
 
