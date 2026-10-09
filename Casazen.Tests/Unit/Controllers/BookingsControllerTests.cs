@@ -167,7 +167,7 @@ public class BookingsControllerTests
                 It.Is<HostScope>(s => s.OrgId == OrgId && s.OwnerId == OwnerId), null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync([booking]);
 
-        var result = await _controller.GetAll(OrgResolver(), HostAuthorization());
+        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver());
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var items = Assert.IsAssignableFrom<IEnumerable<BookingResponseDto>>(ok.Value);
@@ -188,7 +188,7 @@ public class BookingsControllerTests
         SetUser(OwnerId);
         _mockPropertyService.Setup(s => s.GetPropertyRecordAsync(PropertyId)).ReturnsAsync((Property?)null);
 
-        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), PropertyId);
+        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), PropertyId);
 
         var problem = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
@@ -205,7 +205,7 @@ public class BookingsControllerTests
         property.OwnerId = "auth0|other_member";
         _mockPropertyService.Setup(s => s.GetPropertyRecordAsync(PropertyId)).ReturnsAsync(property);
 
-        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), PropertyId);
+        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), PropertyId);
 
         Assert.IsType<ForbidResult>(result.Result);
         _mockBookingService.Verify(
@@ -222,7 +222,7 @@ public class BookingsControllerTests
             .Setup(b => b.GetBookingsAsync(It.IsAny<HostScope>(), null, guestId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), null, guestId);
+        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), null, guestId);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         Assert.Empty(Assert.IsAssignableFrom<IEnumerable<BookingResponseDto>>(ok.Value));

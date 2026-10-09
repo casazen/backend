@@ -38,6 +38,7 @@ public class LeasesController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     IStringLocalizer<SharedResources> localizer,
     TimeProvider? timeProvider = null) : ControllerBase
 {
@@ -58,14 +59,15 @@ public class LeasesController(
 
     private string? GetOwnerId() => User.GetUserId();
 
-    /// <summary>Lease list of the caller's org, restricted to the properties they own unless org-wide (TN-3).</summary>
+    /// <summary>Lease list of the caller's org, restricted to the properties the caller reaches unless org-wide (TN-3, AM-03).</summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<LeaseSummaryDto>>> GetAll(
         [FromQuery] Guid? propertyId = null, CancellationToken cancellationToken = default)
     {
-        // Org and ownership filter applied in SQL (HostScope), never the whole table filtered in memory.
+        // Org and property filter applied in SQL (HostScope), never the whole table filtered in memory.
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return Unauthorized();
 
         return Ok(await leaseService.GetLeasesAsync(scope, propertyId));

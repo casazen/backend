@@ -457,6 +457,7 @@ public class ComuneImuNotificationServiceTests
             Mock.Of<IHostResourceLookup>(),
             authorization.Object,
             Mock.Of<IOrgContextResolver>(),
+            Casazen.Tests.Unit.Authorization.HostAuthorizationTestHarness.ScopeResolver(),
             localizer.Object);
         controller.ControllerContext = new ControllerContext
         {

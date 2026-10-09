@@ -26,13 +26,14 @@ public partial class FiscalService
         ValidateTaxYear(taxYear);
         var range = ValidateYearPeriod(taxYear, period);
         var org = await LoadReportOrgAsync(scope.OrgId, cancellationToken);
-        var view = await LoadYearAsync(scope.OrgId, org.FiscalCode, taxYear, trackAssignments: false, cancellationToken);
+        var view = await LoadYearAsync(scope.OrgId, org.FiscalCode, taxYear, trackAssignments: false, cancellationToken, scope);
 
         var payments = await SettledIn(ScopedPayments(scope), range).ToListAsync(cancellationToken);
 
-        // Every property shown in the fiscal area for the year, plus any other one with income in the period.
+        // Every property shown in the fiscal area for the year (the ones the caller reaches), plus any other one with income
+        // in the period (the payments are already the caller's).
         var reportProperties = view.Candidates
-            .Where(p => scope.OwnerId is null || p.OwnerId == scope.OwnerId)
+            .Where(p => p.InScope)
             .ToDictionary(p => p.Id, p => p.Name);
         foreach (var property in payments.Select(p => p.Booking.Property))
             reportProperties.TryAdd(property.Id, property.Name);
@@ -156,8 +157,8 @@ public partial class FiscalService
         // tourist tax history of a stay stays reportable regardless.
         var stays = await db.Bookings.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .InScope(scope)
             .Where(b => b.OrgId == scope.OrgId
-                && (scope.OwnerId == null || b.Property.OwnerId == scope.OwnerId)
                 && b.CheckInDate >= from
                 && b.CheckInDate < toExclusive
                 && (b.Status == BookingStatus.Confirmed
@@ -356,7 +357,7 @@ public partial class FiscalService
     }
 
     /// <summary>
-    /// Payments of the scope: the org, and only the caller's own properties without org-wide access (TN-3).
+    /// Payments of the scope: the org, and only the properties the caller reaches without org-wide access (TN-3, AM-03).
     /// IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05): a payment's property may since have been soft-deleted —
     /// the fiscal history it is part of must stay reportable, so <c>p.Booking.Property</c> still resolves.
     /// </summary>
@@ -365,7 +366,8 @@ public partial class FiscalService
             .Include(p => p.Booking)
             .ThenInclude(b => b.Property)
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
-            .Where(p => p.OrgId == scope.OrgId && (scope.OwnerId == null || p.Booking.Property.OwnerId == scope.OwnerId));
+            .Where(p => p.OrgId == scope.OrgId)
+            .InScope(scope);
 
     /// <summary>
     /// Payments completed (or partially refunded) in <paramref name="period"/>: payment date (processing, else creation) in

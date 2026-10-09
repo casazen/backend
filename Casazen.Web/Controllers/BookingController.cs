@@ -39,6 +39,7 @@ public class BookingsController(
     public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll(
         [FromServices] IOrgContextResolver orgContextResolver,
         [FromServices] IAuthorizationService hostAuthorization,
+        [FromServices] IHostScopeResolver hostScopeResolver,
         [FromQuery] Guid? propertyId = null,
         [FromQuery] Guid? guestId = null)
     {
@@ -47,8 +48,9 @@ public class BookingsController(
 
         var cancellationToken = HttpContext.RequestAborted;
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        // No org yet: nothing of any org is visible (the tenant filter showed nothing either).
-        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+        // No org yet, or no reach on it: nothing of any org is visible (the tenant filter showed nothing either).
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return Ok(Array.Empty<BookingResponseDto>());
 
         if (propertyId is { } id)

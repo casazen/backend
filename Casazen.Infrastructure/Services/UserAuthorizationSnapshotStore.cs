@@ -52,7 +52,18 @@ public sealed record UserAuthorizationSnapshot(
 }
 
 /// <summary>What a user is in its org (<see cref="OrgMember"/>), as the authorization reads it.</summary>
-public sealed record OrgMemberSnapshot(Guid OrgId, OrgRole Role, OrgMemberStatus Status);
+/// <param name="PropertyScope">Every property of the org, or only the ones in <paramref name="GrantedPropertyIds"/> (AM-03).</param>
+/// <param name="GrantedPropertyIds">
+/// The properties a member «Solo alcuni» was given (<see cref="PropertyMemberAccess"/>), read with the member and cached with
+/// it (a single-resource check needs no query); <c>null</c> for everybody else, and for a member whose scope is not restricted.
+/// The lists never use it: they say <c>EXISTS</c> in SQL.
+/// </param>
+public sealed record OrgMemberSnapshot(
+    Guid OrgId,
+    OrgRole Role,
+    OrgMemberStatus Status,
+    PropertyScope PropertyScope = PropertyScope.All,
+    IReadOnlySet<Guid>? GrantedPropertyIds = null);
 
 public interface IUserAuthorizationSnapshotStore : IUserAuthorizationCache
 {
@@ -150,8 +161,21 @@ public sealed class UserAuthorizationSnapshotStore(
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(m => m.UserId == userId)
-            .Select(m => new OrgMemberSnapshot(m.OrgId, m.Role, m.Status))
+            .Select(m => new OrgMemberSnapshot(m.OrgId, m.Role, m.Status, m.PropertyScope, null))
             .FirstOrDefaultAsync(cancellationToken);
+
+        // AM-03: the properties of a member «Solo alcuni». Only a collaborator can be restricted (HostScopeResolver), so only
+        // its grants are read; IgnoreQueryFilters for the same reason as above, scoped to this user and its org explicitly.
+        if (orgMember is { Role: OrgRole.Collaborator, PropertyScope: PropertyScope.Selected })
+        {
+            var granted = await db.PropertyMemberAccesses
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(a => a.UserId == userId && a.OrgId == orgMember.OrgId)
+                .Select(a => a.PropertyId)
+                .ToListAsync(cancellationToken);
+            orgMember = orgMember with { GrantedPropertyIds = granted.ToHashSet() };
+        }
 
         // A deactivated member reaches nothing, whatever its memberships say: this closes the cached read while the
         // request tenant (member_inactive) already refuses the call itself.

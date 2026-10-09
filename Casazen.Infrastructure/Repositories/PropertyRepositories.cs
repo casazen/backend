@@ -38,9 +38,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        var query = context.Properties.Where(p => p.OrgId == scope.OrgId && p.IsActive);
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(p => p.OwnerId == ownerId);
+        var query = context.Properties.Where(p => p.OrgId == scope.OrgId && p.IsActive).InScope(scope);
 
         return await query.OrderBy(p => p.Name).ToListAsync();
     }
@@ -191,9 +189,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        var query = context.Properties.Where(p => p.OrgId == scope.OrgId);
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(p => p.OwnerId == ownerId);
+        var query = context.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope);
 
         return await query.OrderBy(p => p.Name).ToListAsync();
     }

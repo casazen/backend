@@ -70,8 +70,8 @@ public class OtaControllerTests
         SetUser(OwnerId);
         _propertyService.Setup(s => s.GetPropertyAsync(propertyId))
             .ReturnsAsync(new Property { Id = propertyId, OwnerId = OwnerId });
-        _authorizationService.Setup(s => s.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>()))
-            .Returns(true);
+        _authorizationService.Setup(s => s.CanAccessAsync(OwnerId, It.IsAny<Property>(), It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
         _otaIntegrationService.Setup(s => s.GetPropertyIntegrationsAsync(propertyId))
             .ReturnsAsync([integration]);
         _otaIntegrationService.Setup(s => s.MaskApiKey(integration.ApiKey))
