@@ -55,8 +55,8 @@ public abstract class PerEmailRateLimiter : IDisposable
     public bool TryAcquire(string? scope, string email, out TimeSpan retryAfter)
     {
         ArgumentNullException.ThrowIfNull(email);
-        var normalized = email.Trim().ToLowerInvariant();
-        var text = string.IsNullOrWhiteSpace(scope) ? normalized : $"{scope.Trim().ToLowerInvariant()}|{normalized}";
+        var normalized = NormalizeEmail(email);
+        var text = string.IsNullOrWhiteSpace(scope) ? normalized : $"{NormalizeScope(scope)}|{normalized}";
         var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)), 0, 16);
 
         using var lease = _emails.AttemptAcquire(key);
@@ -65,6 +65,12 @@ public abstract class PerEmailRateLimiter : IDisposable
             : lease.TryGetMetadata(MetadataName.RetryAfter, out var wait) ? wait : Window;
         return lease.IsAcquired;
     }
+
+    /// <summary>The form of an address a budget is counted under: trimmed and lowercase, as the guests' own area compares it.</summary>
+    protected virtual string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
+
+    /// <summary>The form of the scope (the supplier's slug) a budget is counted under: trimmed and lowercase.</summary>
+    protected virtual string NormalizeScope(string scope) => scope.Trim().ToLowerInvariant();
 
     public void Dispose() => _emails.Dispose();
 }

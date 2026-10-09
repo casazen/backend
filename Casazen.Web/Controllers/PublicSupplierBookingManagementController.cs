@@ -32,6 +32,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/public/supplier-bookings")]
 [AllowAnonymous]
+[PrivateAnswer]
 public class PublicSupplierBookingManagementController(IShowcaseBookingManager bookings) : ControllerBase
 {
     /// <summary>
@@ -53,7 +54,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         [FromBody] SupplierBookingAccessRequest request,
         CancellationToken ct)
     {
-        MarkPrivate();
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.LookupAsync(request.ToCredentials(), ct)));
     }
 
@@ -81,7 +81,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         [FromBody] SupplierBookingCancelRequest request,
         CancellationToken ct)
     {
-        MarkPrivate();
         try
         {
             return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.CancelAsync(request.ToCredentials(), request.Reason, ct)));
@@ -115,7 +114,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         [FromBody] SupplierBookingRescheduleRequest request,
         CancellationToken ct)
     {
-        MarkPrivate();
         try
         {
             return Ok(PublicSupplierBookingViewMapper.ToDto(
@@ -149,7 +147,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         [FromBody] SupplierBookingAccessRequest request,
         CancellationToken ct)
     {
-        MarkPrivate();
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.AcceptProposalAsync(request.ToCredentials(), ct)));
     }
 
@@ -172,15 +169,7 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         [FromBody] SupplierBookingAccessRequest request,
         CancellationToken ct)
     {
-        MarkPrivate();
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.RejectProposalAsync(request.ToCredentials(), ct)));
-    }
-
-    /// <summary>Not indexable, not cacheable: the answers belong to one customer.</summary>
-    private void MarkPrivate()
-    {
-        Response.Headers["X-Robots-Tag"] = "noindex";
-        Response.Headers.CacheControl = "no-store";
     }
 
     /// <summary>A 422 that names the fields at fault, as the booking does.</summary>

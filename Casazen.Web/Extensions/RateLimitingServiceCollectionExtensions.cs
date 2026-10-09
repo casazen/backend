@@ -146,6 +146,10 @@ public static class RateLimitingServiceCollectionExtensions
         httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         httpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
 
+        // The endpoints that answer privately (a customer's own area, SP-11) answer so when they are limited too.
+        if (httpContext.GetEndpoint()?.Metadata.GetMetadata<PrivateAnswerAttribute>() is not null)
+            PrivateAnswerAttribute.Apply(httpContext.Response);
+
         var problem = ApiProblemDetails.Create(
             httpContext,
             StatusCodes.Status429TooManyRequests,

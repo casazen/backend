@@ -1,3 +1,4 @@
+using Casazen.Core.Suppliers;
 using Casazen.Web.Extensions;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,6 +21,12 @@ public sealed class SupplierBookingManageEmailRateLimiter(IConfiguration configu
     public static RateLimitPolicyDefinition Policy { get; } = new("SupplierBookingManagePerEmail", 10, TimeSpan.FromMinutes(15));
 
     public override bool NamesTheWholeWindow => true;
+
+    // The budget is counted under the very forms the identification of a booking looks the address and the slug up in (Core), so that
+    // every spelling that finds a booking shares one budget, whatever those forms become.
+    protected override string NormalizeEmail(string email) => ShowcaseBookingRules.NormalizeEmail(email);
+
+    protected override string NormalizeScope(string scope) => SupplierShowcaseSlug.Normalize(scope);
 }
 
 /// <summary>
