@@ -102,8 +102,9 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 | `PublicIcal` | `GET api/public/ical/{token}` (polled by the OTAs from their servers) | 60 / min | `RateLimiting__PublicIcal__PermitLimit` |
 | `PublicRegistration` | `POST api/suppliers/register` | 5 / 10 min | `RateLimiting__PublicRegistration__PermitLimit` |
 | `PublicInvitationLookup` | `POST api/org-invitations/lookup` (what an invitation link is for, AM-02; every link that does not work gets the same 410) | 20 / min | `RateLimiting__PublicInvitationLookup__PermitLimit` |
+| `OrgAccessRequest` | `POST api/orgs/me/access-requests` (a member asks the administrators of its org for access, AM-02b). **Counted per signed-in person, not per client IP** (the request emails other people, so what matters is how many one person can send, not how many one office network can; the account id is hashed in the partition key) | 5 / 10 min | `RateLimiting__OrgAccessRequest__PermitLimit` |
 
-The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration`).
+The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration` and `OrgAccessRequest`).
 
 Notes:
 

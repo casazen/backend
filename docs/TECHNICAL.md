@@ -82,6 +82,7 @@ registered, registered but unused, or an action with neither).
 | `ServiceRequestWrite`, `GuestManage`, `AlloggiatiSubmit` | AM-03: short-rent permissions carved out of `property.write` (interventions), `guest.write` (erase, anonymize, consents of a guest) and `booking.write` (register the guests of a stay, declare the Alloggiati communication sent); the owner and the property manager hold them, the collaborator only the first (`docs/runbooks/org-team.md` § 21) |
 | `LeaseRead/Create/Sign/Register` | long-rent context permission |
 | `OrgMembersManage` (`RequireContext:account:org.members.manage`) | AM-02: the owner and the administrators of the org (permission of the `account` context); the invitations and the members endpoints, behind the flag `OrgTeam` |
+| `OrgActivityRead` (`RequireContext:account:org.activity.read`) | AM-02b: the owner and the administrators; the list and the CSV of the activity log, behind the flag `OrgTeam` |
 
 Context permissions come from the DB memberships (`UserContextMemberships` → `Roles` → `RolePermissions`) with the JWT
 roles as fallback (`ContextAuthorizationService`). A permission counts only in the context that grants it: the long-rent
@@ -107,6 +108,17 @@ is refused (409 `invitation_user_has_organization`). Seats per plan (Starter 2, 
 plus pending invitations and are decided under one advisory lock per org. Only the owner creates or touches an
 administrator; the owner is never touched. The hourly job `org-invitation-maintenance` reminds on the third day, expires
 and deletes the closed invitations 30 days after they closed.
+
+**Activity log and requests for access (AM-02b, `docs/runbooks/org-team.md` part 4, behind the flag `OrgTeam`).** The owner and
+the administrators (permission `org.activity.read`) read who did what in the org: a short list with ids and codes and no personal
+data (`OrgActivityEntry`, table `OrgActivityEntries`, events fixed in `OrgActivityCatalog`: the people, the properties given to
+a member, the plan, the name and the slug of the org). A service writes the line with `IActivityLog.Record` **inside the unit of
+work of the change it records** (the same `SaveChanges`, the same transaction: a rollback takes both away); nothing is collected
+while the flag is off. The list is paged and filtered (`from`, `to`, `type`, `area`, `actor`) and the CSV has a fixed header and no
+personal data; the lines are deleted after 12 months by the nightly job `org-activity-retention`. A member who cannot do
+something asks the administrators for access (`POST /api/orgs/me/access-requests`): an area or a page of a closed list and a
+note of up to 200 characters, an email in Italian or English to the owner and the administrators, a line in the log, nothing else
+stored; three requests a day for each person.
 
 The policy says what kind of operation a user may do; the row itself is checked with
 `IAuthorizationService.AuthorizeAsync(User, HostResource, operation)` (`PropertyOperations`, `SharedPropertyOperations`,
@@ -157,6 +169,9 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `DELETE` | `/api/orgs/me/members/{id}` | same | The person leaves the org; its account stays |
 | `GET` | `/api/orgs/me/members/{id}/properties` | same | AM-03: the active properties of the org with whether this member reaches each (`granted`) and how many people do (`peopleWithAccess`); `scopeSupported` false for a member who is not a collaborator |
 | `PUT` | `/api/orgs/me/members/{id}/properties` | same | AM-03: `{ propertyScope, propertyIds }` with `propertyScope` `All` or `Selected` ("Solo alcuni" is the collaborator only); 403 `org_owner_required`, 422 `org_member_scope_not_supported`, `org_member_property_unknown` |
+| `GET` | `/api/orgs/me/activity` | Policy `RequireContext:account:org.activity.read`, flag `OrgTeam` | AM-02b: the activity log, newest first, paged (`page`, `pageSize` 50/100) and filtered (`from`, `to`, `type` one or several, `area`, `actor` or `system`): `{ items, totalCount, page, pageSize }`, each item with ids and codes only; 400 for an unknown event or area or `from` after `to` |
+| `GET` | `/api/orgs/me/activity.csv` | same | AM-02b: the whole matching log as a CSV (fixed header `id,when,actor,area,type,subjectType,subjectId,details`, no personal data, never cached) |
+| `POST` | `/api/orgs/me/access-requests` | JWT (any active member), rate limited per person (`OrgAccessRequest`), flag `OrgTeam` | AM-02b: `{ area, note }`, 202 `{ notified }`: an email to the owner and the administrators and a line in the log; 409 `access_request_limit_reached` (three a day), 422 `access_request_area_unknown`, 429 |
 | `POST` | `/api/org-invitations/lookup` | Anonymous, rate limited (`PublicInvitationLookup`), flag `OrgTeam` | What a link is for; every link that does not work answers the same 410 `invitation_invalid` |
 | `POST` | `/api/org-invitations/accept` | JWT (any signed-in account), flag `OrgTeam` | Accept with the four consents: 200 `{ orgId, orgName, role, areas, leftEmptyOrg }`; 403 `invitation_email_mismatch`, `invitation_email_not_verified`, `invitation_platform_admin`; 409 `invitation_user_has_organization`; 410 `invitation_expired`, `invitation_used`, `invitation_revoked`, `invitation_invalid` |
 | `GET` | `/api/orgs/{orgId}/domain` | JWT | Custom domain config for org |
