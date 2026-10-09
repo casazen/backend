@@ -26,6 +26,7 @@ public class BookingServiceTests
     private readonly Mock<IOrgService> _mockOrgService = new();
     private readonly Mock<ITouristTaxQuoteService> _mockTouristTax = new();
     private readonly Mock<IStripeService> _mockStripe = new();
+    private readonly Mock<IPricingAdapterService> _mockPricing = new();
     private readonly RecordingEmailQueue _emails = new();
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -58,7 +59,11 @@ public class BookingServiceTests
             new Mock<ILogger<BookingService>>().Object,
             _mockHoldExpiry.Object,
             new OnSiteRequestNotifier(
-                _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()));
+                _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
+            _mockPricing.Object);
+        _mockPricing
+            .Setup(s => s.GetAppliedNightlyPricesAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<DateOnly, decimal>());
     }
 
     private static PropertyICalSyncService CreatePropertyICalSyncService(AppDbContext db, IConfiguration configuration)
