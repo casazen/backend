@@ -16,8 +16,9 @@ namespace Casazen.Infrastructure.Services;
 /// of the requests from the suppliers' public showcases (SP-10, <see cref="CancelUnansweredShowcaseAsync"/>, run by
 /// <see cref="ServiceRequestExpiryService"/> under its lock). They read disjoint sets (the context of the request decides), so
 /// neither cancels what the other owns, and the cancellation is the same: <c>Richiesto → Annullato</c> by CasaZen with the reason
-/// <c>NoResponse</c>, the other parties told by <see cref="ServiceRequestNotifier"/> (the host for a host's request, the customer
-/// for a showcase one).</para>
+/// <c>NoResponse</c> (or, for a showcase request whose customer did not answer the time the supplier proposed,
+/// <c>ProposalNotAnswered</c>: SP-11), the other parties told by <see cref="ServiceRequestNotifier"/> (the host for a host's
+/// request, the customer for a showcase one).</para>
 /// </remarks>
 public sealed class ServiceRequestAutoCancelService(
     AppDbContext db,
@@ -161,14 +162,20 @@ public sealed class ServiceRequestAutoCancelService(
                 return Outcome.Conflict;
             }
 
+            // A showcase request can lapse with a time proposed that its customer never answered (SP-11 gives the customer the way to
+            // answer it): then it is the customer who did not answer, not the supplier, and the reason says so — nobody is told the
+            // other one stayed silent (decision D24). A host's request with a proposal is never picked by this job.
+            var customerLetTheProposalLapse = showcase && request.ProposedStartUtc is not null;
+
             request.Status = ServiceRequestStatus.Annullato;
             request.CancelledAt = now;
             request.CancelledBy = ServiceRequestActorParty.System;
-            request.CancellationReason = ServiceRequestCancellationReasons.NoResponse;
+            request.CancellationReason = customerLetTheProposalLapse
+                ? ServiceRequestCancellationReasons.ProposalNotAnswered
+                : ServiceRequestCancellationReasons.NoResponse;
             request.ResponseDueAt = null;
 
-            // A showcase request can lapse with a time proposed that its customer never answered: a cancelled request has no
-            // proposal waiting (a host's request with one is never picked by this job, so for it this changes nothing).
+            // A cancelled request has no proposal waiting.
             ServiceRequestService.ClearProposal(request);
             request.UpdatedAt = now;
 

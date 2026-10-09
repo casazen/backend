@@ -13,6 +13,23 @@ public static class ServiceRequestCancellationReasons
     /// <c>ResponseDueAt</c>. Stored with <c>CancelledBy = System</c>; the client translates it, it is not a sentence.
     /// </summary>
     public const string NoResponse = "NoResponse";
+
+    /// <summary>
+    /// A request from the public showcase whose supplier had proposed another time and whose customer did not answer before
+    /// the deadline (SP-11, <c>Suppliers:Showcase:ProposalResponseMinutes</c>): cancelled by CasaZen (<c>CancelledBy = System</c>),
+    /// but the supplier did answer — it is the customer who did not. Its own code, so no party is told the other one stayed
+    /// silent (decision D24). The client translates it, it is not a sentence.
+    /// </summary>
+    public const string ProposalNotAnswered = "ProposalNotAnswered";
+
+    /// <summary>
+    /// The customer of the public showcase cancelled its own booking without giving a reason (SP-11, <c>CancelledBy = Customer</c>).
+    /// When the customer wrote a reason, the text is stored instead. The client translates the code, it is not a sentence.
+    /// </summary>
+    public const string CancelledByCustomer = "CancelledByCustomer";
+
+    /// <summary>True for a value of <c>CancellationReason</c> that is one of the codes above and not text a person wrote.</summary>
+    public static bool IsCode(string? reason) => reason is NoResponse or ProposalNotAnswered or CancelledByCustomer;
 }
 
 /// <summary>The kinds of line of <see cref="ServiceRequestPriceLine"/>.</summary>

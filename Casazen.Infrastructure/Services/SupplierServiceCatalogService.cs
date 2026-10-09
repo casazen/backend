@@ -74,7 +74,8 @@ public class SupplierServiceCatalogService(
                 l.WeekdaysMask,
                 l.PriceFromCents,
                 l.PriceUnit,
-                l.RequiresQuote))
+                l.RequiresQuote,
+                l.Slug))
             .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<int> CountActiveAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>

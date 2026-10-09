@@ -11,7 +11,8 @@ namespace Casazen.Core.Services;
 /// <c>Annullato</c> with the reason <c>NoResponse</c> and the customer and the supplier are told. It is the same cancellation as
 /// <see cref="IServiceRequestAutoCancelService"/> makes for the requests of the hosts (decision D8), run for the showcase
 /// ones: not behind <c>SupplierRequestAutoCancel</c>, and not skipped when the supplier proposed another time (the customer
-/// has the time of <c>Suppliers:Showcase:ProposalResponseMinutes</c> to answer).</item>
+/// has the time of <c>Suppliers:Showcase:ProposalResponseMinutes</c> to answer; a customer who lets it pass cancels the request
+/// with the reason <c>ProposalNotAnswered</c>, and the supplier is told it was the customer: SP-11).</item>
 /// </list>
 /// </summary>
 /// <remarks>

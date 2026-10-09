@@ -24,7 +24,9 @@ public interface IServiceRequestAutoCancelService
 
     /// <summary>
     /// The same cancellation for the requests of the public showcase (SP-10): the new ones past <c>ResponseDueAt</c> move to
-    /// <c>Annullato</c> (reason <c>NoResponse</c>, by CasaZen), and the <b>customer</b> and the supplier are told. <b>Not behind</b>
+    /// <c>Annullato</c> (by CasaZen), and the <b>customer</b> and the supplier are told. The reason is <c>NoResponse</c> when the
+    /// supplier did not answer, and <c>ProposalNotAnswered</c> (SP-11) when it did, with another time, and it is the <b>customer</b>
+    /// who did not answer in the day it had: the deadline of a pending proposal is the customer's. <b>Not behind</b>
     /// <c>SupplierRequestAutoCancel</c> (the showcase booking has its own flag and the requests that exist must lapse whatever the
     /// flags are), and a pending proposal of another time does not stop it: the proposal re-armed the deadline when it was made.
     /// Called with the lock of the expiry run already held by the caller, which is why it does not take one itself.
