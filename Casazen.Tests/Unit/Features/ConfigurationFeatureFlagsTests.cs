@@ -61,6 +61,8 @@ public class ConfigurationFeatureFlagsTests
         Assert.Equal("SupplierShowcaseBooking", FeatureFlags.SupplierShowcaseBooking);
         Assert.Equal("SupplierOnlinePayments", FeatureFlags.SupplierOnlinePayments);
         Assert.Equal("SupplierRequestAutoCancel", FeatureFlags.SupplierRequestAutoCancel);
+        // PM-02: the flag of the scheduled change of rental mode is appended after the flags of the other tasks.
+        Assert.Equal("PropertyModeChange", FeatureFlags.PropertyModeChange);
         Assert.Equal(
             new[]
             {
@@ -73,6 +75,7 @@ public class ConfigurationFeatureFlagsTests
                 "SupplierRequestAutoCancel",
                 "UiRedesign",
                 "OrgTeam",
+                "PropertyModeChange",
             },
             FeatureFlags.All);
     }

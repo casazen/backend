@@ -672,6 +672,105 @@
   <data name="RentPaymentReceived_Cta" xml:space="preserve">
     <value>Apri il contratto</value>
   </data>
+  <data name="PropertyModeLabel_Short" xml:space="preserve">
+    <value>affitto breve</value>
+  </data>
+  <data name="PropertyModeLabel_Long" xml:space="preserve">
+    <value>affitto lungo</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_Subject" xml:space="preserve">
+    <value>Passaggio ad affitto lungo programmato - {0}</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_Body" xml:space="preserve">
+    <value>Abbiamo programmato il passaggio di &lt;strong&gt;{0}&lt;/strong&gt; dagli affitti brevi agli affitti lunghi, a partire dal &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_Until" xml:space="preserve">
+    <value>Fino a quel giorno l'immobile resta in affitto breve: le prenotazioni che hai già restano valide.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_CalendarClosed" xml:space="preserve">
+    <value>Dalla notte prima di quel giorno le date sono chiuse nel calendario: il sito di prenotazione e i portali che leggono il calendario iCal di CasaZen non accettano più prenotazioni.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Subject" xml:space="preserve">
+    <value>Passaggio ad affitto breve programmato - {0}</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Body" xml:space="preserve">
+    <value>Abbiamo programmato il passaggio di &lt;strong&gt;{0}&lt;/strong&gt; dagli affitti lunghi agli affitti brevi, a partire dal &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Until" xml:space="preserve">
+    <value>Fino a quel giorno l'immobile resta in affitto lungo, con i suoi contratti.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Requirements" xml:space="preserve">
+    <value>Per ricevere prenotazioni dal sito di prenotazione servono i requisiti degli affitti brevi (CIN, documenti, checklist di sicurezza): finché non sono completi l'immobile non viene pubblicato.</value>
+  </data>
+  <data name="PropertyModeScheduled_Cancel" xml:space="preserve">
+    <value>Puoi annullare il passaggio dalla scheda dell'immobile finché non è avvenuto. Avviene da solo all'inizio di quel giorno (mezzanotte, ora italiana).</value>
+  </data>
+  <data name="PropertyModeScheduled_Cta" xml:space="preserve">
+    <value>Apri l'immobile</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Subject" xml:space="preserve">
+    <value>{0} è ora in affitto lungo</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Body" xml:space="preserve">
+    <value>Da oggi &lt;strong&gt;{0}&lt;/strong&gt; è in affitto lungo: non è più pubblicato sul sito di prenotazione e non accetta prenotazioni di soggiorni brevi.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_CalendarClosed" xml:space="preserve">
+    <value>Le sue date restano chiuse nel calendario fino al {0}: i portali che leggono il calendario iCal di CasaZen smettono di venderlo.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_CalendarClosedNoDate" xml:space="preserve">
+    <value>Le sue date restano chiuse nel calendario: i portali che leggono il calendario iCal di CasaZen smettono di venderlo.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Listings" xml:space="preserve">
+    <value>Se l'immobile è ancora online su un portale, rimuovi l'annuncio dal portale: CasaZen chiude le date ma non modifica i tuoi annunci.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Cta" xml:space="preserve">
+    <value>Apri l'immobile</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Subject" xml:space="preserve">
+    <value>{0} è tornato in affitto breve</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Body" xml:space="preserve">
+    <value>Da oggi &lt;strong&gt;{0}&lt;/strong&gt; è in affitto breve.</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_CalendarOpen" xml:space="preserve">
+    <value>Le date chiuse dal passaggio ad affitto lungo, se c'erano, sono di nuovo libere.</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Requirements" xml:space="preserve">
+    <value>Controlla che CIN, documenti e checklist di sicurezza siano completi: finché mancano, l'immobile non è pubblicato sul sito di prenotazione.</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Cta" xml:space="preserve">
+    <value>Controlla i requisiti</value>
+  </data>
+  <data name="PropertyModeFailed_Subject" xml:space="preserve">
+    <value>Passaggio non riuscito - {0}</value>
+  </data>
+  <data name="PropertyModeFailed_Body" xml:space="preserve">
+    <value>Non abbiamo potuto applicare il passaggio di &lt;strong&gt;{0}&lt;/strong&gt; ad {1} previsto per il &lt;strong&gt;{2}&lt;/strong&gt;: l'immobile è rimasto in {3}.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_Bookings" xml:space="preserve">
+    <value>Dopo la programmazione sono comparsi soggiorni o prenotazioni dei portali che finiscono dopo quel giorno: il passaggio non si sovrappone mai a un soggiorno.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_Lease" xml:space="preserve">
+    <value>C'è un contratto di locazione che termina dopo quel giorno: il passaggio non si sovrappone mai a un contratto.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_DraftLease" xml:space="preserve">
+    <value>Sull'immobile c'è una bozza di contratto: va eliminata prima del passaggio.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_Other" xml:space="preserve">
+    <value>L'immobile è cambiato dopo la programmazione e il passaggio non corrisponde più alla sua situazione.</value>
+  </data>
+  <data name="PropertyModeFailed_CalendarReopened" xml:space="preserve">
+    <value>Le date chiuse per il passaggio sono di nuovo aperte nel calendario.</value>
+  </data>
+  <data name="PropertyModeFailed_Earliest" xml:space="preserve">
+    <value>Il primo giorno possibile adesso è il &lt;strong&gt;{0}&lt;/strong&gt;: puoi programmare di nuovo il passaggio dalla scheda dell'immobile.</value>
+  </data>
+  <data name="PropertyModeFailed_Retry" xml:space="preserve">
+    <value>Puoi programmare di nuovo il passaggio dalla scheda dell'immobile.</value>
+  </data>
+  <data name="PropertyModeFailed_Cta" xml:space="preserve">
+    <value>Apri l'immobile</value>
+  </data>
   <data name="ServiceRequestCreated_When" xml:space="preserve">
     <value>Quando: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>

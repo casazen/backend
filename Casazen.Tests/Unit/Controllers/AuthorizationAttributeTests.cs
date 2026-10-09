@@ -14,6 +14,7 @@ public class AuthorizationAttributeTests
 {
     [Theory]
     [InlineData(typeof(PropertiesController))]
+    [InlineData(typeof(PropertyModeController))]
     [InlineData(typeof(BookingsController))]
     [InlineData(typeof(GuestsController))]
     [InlineData(typeof(PaymentsController))]
@@ -41,6 +42,7 @@ public class AuthorizationAttributeTests
     /// </summary>
     [Theory]
     [InlineData(typeof(PropertiesController), CasazenPolicies.SharedPropertyRead)]
+    [InlineData(typeof(PropertyModeController), CasazenPolicies.SharedPropertyRead)]
     [InlineData(typeof(BookingsController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(BookingCancellationController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(BookingLifecycleController), CasazenPolicies.BookingRead)]
@@ -98,6 +100,9 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(LongRentServiceRequestsController), nameof(LongRentServiceRequestsController.Create), "RequireContext:long-rent:property.write")]
     [InlineData(typeof(LongRentServiceRequestsController), nameof(LongRentServiceRequestsController.MarkPaid), "RequireContext:long-rent:property.write")]
     [InlineData(typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), "RequireContext:short-rent:ota.write")]
+    [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Preview), "RequireContext:short-rent|long-rent:property.write")]
+    [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Schedule), "RequireContext:short-rent|long-rent:property.write")]
+    [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Cancel), "RequireContext:short-rent|long-rent:property.write")]
     public void SensitiveAction_MustRequireExpectedContextPolicy(
         Type controllerType,
         string actionName,

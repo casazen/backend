@@ -16,6 +16,7 @@ Task BL-01 (redesign wave) adds `UiRedesign` (decision 01-D8; the same task adds
 Task SP-14 (redesign wave) puts the supplier's Stripe Connect account behind `SupplierOnlinePayments`
 (`docs/runbooks/stripe.md` § "Connect onboarding of the suppliers (SP-14)", `docs/runbooks/suppliers.md` section 25).
 Task AM-01 adds `OrgTeam` (org team, wave redesign; decisions D1, D15; `docs/runbooks/org-team.md`); AM-02 gates the endpoints of the invitations and of the members on it.
+Task PM-02 adds `PropertyModeChange` (decision D16; `docs/runbooks/property-rental-mode.md` §8).
 
 ## How it works
 
@@ -40,6 +41,7 @@ Task AM-01 adds `OrgTeam` (org team, wave redesign; decisions D1, D15; `docs/run
 | `SupplierOnlinePayments` | `Features__SupplierOnlinePayments` | `false` (D2: payment of a supplier's work inside CasaZen, direct charge on the supplier's Stripe account with the platform commission; the legal texts, D-C, and the tax treatment of the commission, D4, still need review before it goes live) | **SP-14**: `api/supplier/payments/*` (the supplier's Stripe Connect account: state, onboarding link, Express Dashboard link; 404 when off, before authentication; `stripe.md` § "Connect onboarding of the suppliers (SP-14)"). **Not behind it**: the processing of Stripe's events (`account.updated` of a connected account is applied whatever the flag says), the host's `api/connect/*`. **SP-15 will also gate** the creation of the payment requests; the public payment page and the webhook of money already in flight will stay active. No payment can be created with this flag on yet. Without it the manual flow ("Segna pagato" by the host) is the only one. Frontend key `supplierOnlinePayments`. |
 | `UiRedesign` | `Features__UiRedesign` | `false` (01-D8: gradual rollout of the new interface; the product owner turns it on when the frontend work is deployed and reviewed) | **Nothing in the backend**: BL-01 only introduces and exposes the flag, no endpoint, service or job reads it. Frontend: key `uiRedesign` (to add to `src/config/feature-flags.ts`, UI-01), which switches the new design tokens, shell and navigation on (`html[data-ui='v2']`) or off for everybody. It changes what **every** user sees, so there is no per-org or per-user switch in this flag. |
 | `OrgTeam` | `Features__OrgTeam` | `false` (the web app of today does not know the `account` context; the team screens arrive with AM-04) | AM-01: `GET /api/me/contexts` **does not list the `account` context** with the flag off (the authorization does not depend on the list: memberships, policies and the 403 `member_inactive` of a deactivated member work with the flag off). AM-02 gates **every endpoint of the invitations and of the members** on it (the public lookup and the acceptance included): 404 for everybody, before the authentication, while it is off; the hourly maintenance job of the invitations runs anyway (with the flag off it only deletes closed invitations). Frontend: key `orgTeam` with no consumer yet. **Turn it on together with the account screens, never before** (`docs/runbooks/org-team.md` § 7). |
+| `PropertyModeChange` | `Features__PropertyModeChange` | `false` (D16: the scheduled change of a property between short stays and long-term leases, a feature with effects on the public site and on the calendars of the portals; the screens are PM-03) | `GET /api/properties/{id}/mode`, `GET …/mode/preview`, `POST …/mode/change`, `DELETE …/mode/change/{changeId}` (404 when off, before authentication); recurring job `property-mode-change` (not registered, removed with `RemoveIfExists`): a change already programmed waits, untouched, until the flag is turned on again. **The mode itself (PM-01) and everything that reads it are not behind this flag.** Frontend: key `propertyModeChange` (PM-03). Nothing to configure besides the flag; before turning it on read [property-rental-mode.md §8](property-rental-mode.md#8-the-scheduled-change-of-mode-pm-02-decision-d16) (the calendar block, the draft leases that cannot be deleted yet, rollback). |
 
 ### Before turning `AiSupplierDiscovery` on
 
@@ -106,3 +108,8 @@ treatment of the commission, D4, is reviewed); set it to `true` on the test envi
 `booking-pull-all`. Leave
 `Features__SupplierRequestAutoCancel` unset until the web console and the mobile app show `Annullato` (`suppliers.md` section 21.8 and 21.11); after
 it is on, `service-request-auto-cancel` appears in the recurring jobs.
+
+`PropertyModeChange` (PM-02) stays off until the screens of PM-03 exist and the product owner has read
+[property-rental-mode.md §8](property-rental-mode.md#8-the-scheduled-change-of-mode-pm-02-decision-d16): then set
+`Features__PropertyModeChange=true` on the test environment first. The Hangfire dashboard lists `property-mode-change` only
+while it is on.
