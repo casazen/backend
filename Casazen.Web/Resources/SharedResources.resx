@@ -141,6 +141,9 @@
   <data name="NoOrganizationAssigned" xml:space="preserve">
     <value>Nessuna organizzazione assegnata all'utente corrente</value>
   </data>
+  <data name="MemberCannotOnboard" xml:space="preserve">
+    <value>Fai già parte di un'organizzazione come collaboratore: non puoi attivare un nuovo account né cambiare il tuo ruolo. Se ti serve un altro ruolo, chiedilo al titolare dell'organizzazione.</value>
+  </data>
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
