@@ -1,4 +1,5 @@
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Migrations;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -47,9 +48,6 @@ public class AlloggiatiHonestStatusMigrationPostgresTests : IAsyncLifetime
         // Duplicate (booking, guest): only the latest row is kept.
         Assert.Equal(0L, await ScalarAsync<long>(db, $"""SELECT count(*) FROM "AlloggiatiWebReports" WHERE "Id" = '{s.OlderDuplicate}'"""));
         Assert.Equal((4, null, false, false), await ReportAsync(db, s.NewerDuplicate));
-        // Duplicate with a receipt on the older row: keep the receipt-bearing row instead of the newer blank one.
-        Assert.Equal(0L, await ScalarAsync<long>(db, $"""SELECT count(*) FROM "AlloggiatiWebReports" WHERE "Id" = '{s.NewerBlankDuplicate}'"""));
-        Assert.Equal((2, null, true, false), await ReportAsync(db, s.OlderReceiptDuplicate));
 
         // Session marked "Alloggiati sent" on queueing: back to complete; kept only when a receipt exists.
         Assert.Equal(2, await ScalarAsync<int>(db, $"""SELECT "Status" FROM "GuestCheckInSessions" WHERE "Id" = '{s.SimulatedSession}'"""));
@@ -60,22 +58,38 @@ public class AlloggiatiHonestStatusMigrationPostgresTests : IAsyncLifetime
             $"""UPDATE "AlloggiatiWebReports" SET "Status" = 2 WHERE "Id" = {s.SimulatedReport}"""));
         Assert.Equal("CK_AlloggiatiWebReports_SentRequiresReceipt", ex.ConstraintName);
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+
+        // The shipped merge already ran (newest row). A duplicate that is still stored is re-ranked by the later
+        // migration: the older receipt is kept and the newer blank row is removed.
+        var olderReceipt = Guid.NewGuid();
+        await db.Database.ExecuteSqlAsync($"""DROP INDEX "IX_AlloggiatiWebReports_BookingId_GuestId";""");
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO "AlloggiatiWebReports" (
+                "Id", "BookingId", "GuestId", "OrgId", "ReportedAt", "Status", "ConfirmationNumber",
+                "ErrorMessage", "RetryCount", "ManuallyCompleted", "CreatedAt", "UpdatedAt")
+            VALUES (
+                {olderReceipt}, {s.Bookings[0]}, {s.Guests[0]}, {s.Org},
+                now() - interval '5 days', 2, 'RIC-KEEP', NULL, 0, false,
+                now() - interval '5 days', now() - interval '5 days');
+            """);
+        await db.Database.ExecuteSqlRawAsync(PreferAlloggiatiReceiptDuplicates.Sql);
+
+        Assert.Equal(0L, await ScalarAsync<long>(db, $"""SELECT count(*) FROM "AlloggiatiWebReports" WHERE "Id" = '{s.SimulatedReport}'"""));
+        Assert.Equal((2, null, true, false), await ReportAsync(db, olderReceipt));
     }
 
     private sealed class Seed
     {
         public Guid Org { get; } = Guid.NewGuid();
         public Guid Property { get; } = Guid.NewGuid();
-        public Guid[] Guests { get; } = Enumerable.Range(0, 6).Select(_ => Guid.NewGuid()).ToArray();
-        public Guid[] Bookings { get; } = Enumerable.Range(0, 6).Select(_ => Guid.NewGuid()).ToArray();
+        public Guid[] Guests { get; } = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToArray();
+        public Guid[] Bookings { get; } = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToArray();
         public Guid SimulatedReport { get; } = Guid.NewGuid();
         public Guid ReceiptReport { get; } = Guid.NewGuid();
         public Guid FailedReport { get; } = Guid.NewGuid();
         public Guid ConfirmedReport { get; } = Guid.NewGuid();
         public Guid OlderDuplicate { get; } = Guid.NewGuid();
         public Guid NewerDuplicate { get; } = Guid.NewGuid();
-        public Guid OlderReceiptDuplicate { get; } = Guid.NewGuid();
-        public Guid NewerBlankDuplicate { get; } = Guid.NewGuid();
         public Guid SimulatedSession { get; } = Guid.NewGuid();
         public Guid ReceiptSession { get; } = Guid.NewGuid();
     }
@@ -133,9 +147,7 @@ public class AlloggiatiHonestStatusMigrationPostgresTests : IAsyncLifetime
               ({s.FailedReport},    {s.Bookings[2]}, {s.Guests[2]}, {s.Org}, now(), 3, NULL, 'Validation failed: required Alloggiati Web fields missing', 1, false, now(), now()),
               ({s.ConfirmedReport}, {s.Bookings[3]}, {s.Guests[3]}, {s.Org}, now(), 2, NULL, NULL, 0, false, now(), now()),
               ({s.OlderDuplicate},  {s.Bookings[4]}, {s.Guests[4]}, {s.Org}, now(), 3, NULL, 'missing data', 0, false, now() - interval '2 days', now() - interval '2 days'),
-              ({s.NewerDuplicate},  {s.Bookings[4]}, {s.Guests[4]}, {s.Org}, now(), 1, NULL, 'simulated', 0, false, now() - interval '1 day', now() - interval '1 day'),
-              ({s.OlderReceiptDuplicate}, {s.Bookings[5]}, {s.Guests[5]}, {s.Org}, now() - interval '2 days', 1, 'RIC-2026-DUP', NULL, 0, false, now() - interval '2 days', now() - interval '2 days'),
-              ({s.NewerBlankDuplicate},   {s.Bookings[5]}, {s.Guests[5]}, {s.Org}, now() - interval '1 day', 1, NULL, 'simulated', 0, false, now() - interval '1 day', now() - interval '1 day');
+              ({s.NewerDuplicate},  {s.Bookings[4]}, {s.Guests[4]}, {s.Org}, now(), 1, NULL, 'simulated', 0, false, now() - interval '1 day', now() - interval '1 day');
 
             INSERT INTO "GuestCheckInSessions" ("Id", "BookingId", "OrgId", "TokenHash", "ExpiresAt", "Status", "CreatedAt", "UpdatedAt")
             VALUES

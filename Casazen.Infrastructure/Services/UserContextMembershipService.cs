@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -137,7 +138,40 @@ public sealed class UserContextMembershipService(
             .Select(m => new { m.ContextKey, m.Role.RoleKey })
             .ToListAsync(cancellationToken);
 
-        return memberships.Any(m => OrgOwnerRoles.IsHostMemberRole(m.ContextKey, m.RoleKey));
+        if (memberships.Any(m => OrgOwnerRoles.IsHostMemberRole(m.ContextKey, m.RoleKey)))
+            return true;
+
+        // AM-01: the org membership is the source of truth, whatever the memberships say (an administrator whose only
+        // rows are in the account context would otherwise look like an owner). IgnoreQueryFilters: the guard runs for a
+        // user whose request may have no tenant yet; the read is scoped to this user explicitly.
+        var orgRole = await db.OrgMembers
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(m => m.UserId == userId)
+            .Select(m => (OrgRole?)m.Role)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (orgRole is not null)
+            return orgRole != OrgRole.Owner;
+
+        // Removal used to leave User.OrgId in place. The org still has its owner, so this user must not onboard
+        // into it and become a second one. A host org with no owner yet is the caller's own onboarding.
+        var orgId = await db.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.OrgId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (orgId is not Guid id)
+            return false;
+
+        var isHostOrg = await db.Orgs.AsNoTracking()
+            .AnyAsync(o => o.Id == id && o.OrgType == OrgType.Host, cancellationToken);
+        if (!isHostOrg)
+            return false;
+
+        return await db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(
+                m => m.OrgId == id && m.Role == OrgRole.Owner && m.UserId != userId,
+                cancellationToken);
     }
 
     private sealed record RoleRow(int Id, string ContextKey, string RoleKey);

@@ -13,6 +13,7 @@ Task SP-11 (redesign wave) puts the customer's own area of a booking (find, canc
 (`docs/runbooks/suppliers.md` section 24): **the flag requires SP-10 and SP-11 both deployed**.
 Task BL-01 (redesign wave) adds `UiRedesign` (decision 01-D8; the same task adds the "accesso aperto" switch,
 `docs/runbooks/open-access.md`, which is **not** a feature flag).
+Task AM-01 adds `OrgTeam` (org team, wave redesign; decisions D1, D15; `docs/runbooks/org-team.md`).
 
 ## How it works
 
@@ -36,6 +37,7 @@ Task BL-01 (redesign wave) adds `UiRedesign` (decision 01-D8; the same task adds
 | `SupplierRequestAutoCancel` | `Features__SupplierRequestAutoCancel` | `false` (D8: a new request that nobody answers is cancelled by CasaZen after the response window; it changes what happens to the requests that exist, so the product owner turns it on once the console and the mobile app know the status `Annullato`) | The recurring job `service-request-auto-cancel` (every 10 minutes; registered only with the flag on and removed with `RemoveIfExists` otherwise) and, inside `ServiceRequestAutoCancelService`, the run itself (a run triggered by hand with the flag off does nothing). With the flag off the deadline `ResponseDueAt` is still recorded on every new request, but **nothing is ever cancelled by time**. The window is `Suppliers__ServiceRequests__HostResponseMinutes` (120). Turning it on cancels at the first run every open request that is already overdue (500 per run, every 10 minutes). The manual cancellation (`POST …/cancel`) is **not** behind this flag. Frontend key `supplierRequestAutoCancel` with no consumer yet. |
 | `SupplierOnlinePayments` | `Features__SupplierOnlinePayments` | `false` (D2: payment of a supplier's work inside CasaZen, direct charge on the supplier's Stripe account with the platform commission; the legal texts, D-C, and the tax treatment of the commission, D4, still need review before it goes live) | **Nothing yet**: SP-02 only introduces and exposes the flag. It will gate the creation of the payment requests and the supplier's Stripe onboarding (SP-14, SP-15); the public payment page and the webhook of money already in flight will stay active. Without it the manual flow ("Segna pagato" by the host) is the only one. Frontend key `supplierOnlinePayments`. |
 | `UiRedesign` | `Features__UiRedesign` | `false` (01-D8: gradual rollout of the new interface; the product owner turns it on when the frontend work is deployed and reviewed) | **Nothing in the backend**: BL-01 only introduces and exposes the flag, no endpoint, service or job reads it. Frontend: key `uiRedesign` (to add to `src/config/feature-flags.ts`, UI-01), which switches the new design tokens, shell and navigation on (`html[data-ui='v2']`) or off for everybody. It changes what **every** user sees, so there is no per-org or per-user switch in this flag. |
+| `OrgTeam` | `Features__OrgTeam` | `false` (the web app of today does not know the `account` context; the team screens arrive with AM-04) | AM-01: `GET /api/me/contexts` **does not list the `account` context** with the flag off (the authorization does not depend on the list: memberships, policies and the 403 `member_inactive` of a deactivated member work with the flag off). AM-02 gates the invitation endpoints on it. Frontend: key `orgTeam` with no consumer yet. **Turn it on together with the account screens, never before** (`docs/runbooks/org-team.md` § 7). |
 
 ### Before turning `AiSupplierDiscovery` on
 
@@ -87,7 +89,8 @@ value. It is independent of the "accesso aperto" switch ([`open-access.md`](open
 ## Product owner steps (Railway)
 
 Nothing to do for `OtaPartnerApi`, `AiSupplierDiscovery`, `RliProvider`, `ESignProvider`, `SupplierShowcaseBooking`,
-`SupplierOnlinePayments` and `SupplierRequestAutoCancel`: the default is off. Do
+`SupplierOnlinePayments`, `SupplierRequestAutoCancel` and `OrgTeam`: the default is off (`Features__OrgTeam` waits for
+the account screens, AM-04). Do
 **not** set `Features__OtaPartnerApi` (D10) or `Features__AiSupplierDiscovery` (D11) on test or production while the
 decisions are in force, nor `Features__RliProvider` / `Features__ESignProvider` before a real provider client exists
 (`docs/runbooks/rli.md`). `Features__SupplierShowcaseBooking` makes the public showcase of the suppliers show their services,

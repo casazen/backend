@@ -32,6 +32,21 @@ public class MigrationSqlTests
     }
 
     [Fact]
+    public void PreferAlloggiatiReceiptDuplicates_FollowsTheShippedDedupAndKeepsReceiptRows()
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var shipped = keys.FindIndex(k => k.EndsWith("AlloggiatiHonestStatus", StringComparison.Ordinal));
+        var repair = keys.FindIndex(k => k.EndsWith("PreferAlloggiatiReceiptDuplicates", StringComparison.Ordinal));
+        Assert.True(shipped >= 0);
+        Assert.True(repair > shipped);
+
+        var script = db.GetService<IMigrator>().GenerateScript(fromMigration: keys[repair - 1], toMigration: keys[repair]);
+        Assert.Contains("(btrim(coalesce(\"ConfirmationNumber\", '')) <> '') DESC", script);
+        Assert.DoesNotContain("ALTER TABLE", script);
+    }
+
+    [Fact]
     public void Migrations_RecentOnes_LandInOrder()
     {
         using var db = NewNpgsqlContext();

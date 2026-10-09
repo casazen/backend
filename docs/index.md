@@ -12,7 +12,7 @@
 | [TECHNICAL.md](TECHNICAL.md) | Architecture, API reference, data model, design patterns, infrastructure | Backend developers |
 | [PROJECT.md](PROJECT.md) | Compressed AI context — stack, layout, conventions, gotchas | AI agents, onboarding developers |
 | [INFRA.md](INFRA.md) | Hosting setup: Supabase + Railway + Vercel, multi-env release, release bundles. **Hosting in revisione (2026-10-02): Railway cancellato dal PO, la parte Railway è storica; vedi [runbooks/free-hosting-analysis.md](runbooks/free-hosting-analysis.md) (task HOSTING)** | DevOps, backend developers |
-| [runbooks/index.md](runbooks/index.md) | Index of the 44 runbooks created by the 2026 remediation plan (auth, billing, storage, compliance, LTR, SEO, CI, E2E), by area and task | DevOps, backend developers, Product Owner |
+| [runbooks/index.md](runbooks/index.md) | Index of the 45 runbooks created by the 2026 remediation plan and the redesign wave (auth, org team, billing, storage, compliance, LTR, SEO, CI, E2E), by area and task | DevOps, backend developers, Product Owner |
 | [../Sessions/risanamento/RIEPILOGO-FINALE.md](../Sessions/risanamento/RIEPILOGO-FINALE.md) | Final summary of the remediation (what was done per area, what stays open and why, decisions, how to bring it to `develop`) | Product Owner, all developers |
 | [runbooks/deploy-checklist.md](runbooks/deploy-checklist.md) | Every deploy variable of backend, frontend and mobile (where, required or not, effect when missing), ordered pre-deploy blockers, checked against the code | Product Owner, DevOps |
 | [AI-STRATEGY.md](AI-STRATEGY.md) | AI positioning, AI roadmap for the PMS core, and the AI-powered supplier & services marketplace vision | Product Owner, founders, architects |
