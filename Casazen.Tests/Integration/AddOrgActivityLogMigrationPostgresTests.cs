@@ -51,11 +51,16 @@ public class AddOrgActivityLogMigrationPostgresTests : IAsyncLifetime
     public async Task Migrate_Up_AddsTheTableTheIndexesAndTheCascade_AndTouchesNothingElse()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        var keys = db.Database.GetMigrations().ToList();
+        var index = keys.FindIndex(m => m.EndsWith("_AddOrgActivityLog", StringComparison.Ordinal));
+        Assert.True(index > 0);
+        var activity = keys[index];
+        db.GetService<IMigrator>().Migrate(keys[index - 1]);
         Assert.Equal("0", await TextAsync("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'OrgActivityEntries'"));
         var before = await SnapshotOfWhatExistsAsync();
 
-        await db.Database.MigrateAsync();
+        // Only this migration: later Wave 3 columns on Properties / SeasonalPriceSuggestions must not count as "touches".
+        db.GetService<IMigrator>().Migrate(activity);
 
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'OrgActivityEntries'"));
         Assert.Equal(before, await SnapshotOfWhatExistsAsync());
@@ -63,7 +68,7 @@ public class AddOrgActivityLogMigrationPostgresTests : IAsyncLifetime
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_OrgActivityEntries_OrgId_Type'"));
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_OrgActivityEntries_When'"));
         Assert.Equal("c", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_OrgActivityEntries_Orgs_OrgId'"));
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+        Assert.DoesNotContain(activity, await db.Database.GetPendingMigrationsAsync());
     }
 
     [PostgresFact]

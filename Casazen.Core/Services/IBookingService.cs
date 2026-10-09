@@ -18,6 +18,18 @@ public interface IBookingService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Paged version of <see cref="GetBookingsAsync"/> (PC-14): returns the requested page of bookings and the total
+    /// count. <paramref name="page"/> is 1-indexed.
+    /// </summary>
+    Task<(IReadOnlyList<Booking> Items, int TotalCount)> GetPagedBookingsAsync(
+        HostScope scope,
+        int page,
+        int pageSize,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a booking entered by the host: always <see cref="BookingStatus.Confirmed"/> with source
     /// <see cref="BookingSource.Manual"/>, stored together with its guest snapshot (same org as the booking).
     /// </summary>

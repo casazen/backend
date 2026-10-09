@@ -690,6 +690,30 @@
   <data name="RentReminder_AlreadyPaid" xml:space="preserve">
     <value>Se hai già pagato, ignora questa email.</value>
   </data>
+  <data name="GuestCancelLink_Subject" xml:space="preserve">
+    <value>Disdetta della prenotazione - {0}</value>
+  </data>
+  <data name="GuestCancelLink_Greeting" xml:space="preserve">
+    <value>Caro/a {0},</value>
+  </data>
+  <data name="GuestCancelLink_Body" xml:space="preserve">
+    <value>hai richiesto di disdire la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;. Clicca sul pulsante qui sotto per confermare la disdetta.</value>
+  </data>
+  <data name="GuestCancelLink_Policy" xml:space="preserve">
+    <value>L'eventuale rimborso verrà calcolato secondo la politica di cancellazione della struttura, applicata sull'importo del soggiorno al netto della tassa di soggiorno.</value>
+  </data>
+  <data name="GuestCancelLink_Cta" xml:space="preserve">
+    <value>Conferma la disdetta</value>
+  </data>
+  <data name="GuestCancelLink_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="GuestCancelLink_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0} (ora italiana).</value>
+  </data>
+  <data name="GuestCancelLink_NotYou" xml:space="preserve">
+    <value>Se non hai richiesto tu questa disdetta, ignora questa email: la tua prenotazione resta invariata.</value>
+  </data>
   <data name="PropertyModeLabel_Short" xml:space="preserve">
     <value>affitto breve</value>
   </data>

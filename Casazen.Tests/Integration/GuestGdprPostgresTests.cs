@@ -256,7 +256,9 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             && h.GetProperty("ipAddress").GetString() == "198.51.100.4");
         var retention = root.GetProperty("processing").GetProperty("retention").EnumerateArray().ToList();
         Assert.Equal(4, retention.Count);
-        Assert.All(retention, r => Assert.False(r.GetProperty("configured").GetBoolean()));
+        Assert.All(retention, r => Assert.True(r.GetProperty("configured").GetBoolean()));
+        Assert.Contains(retention, r => r.GetProperty("category").GetString() == "DocumentScans"
+            && r.GetProperty("years").GetInt32() == 5);
 
         await using var scope = NewScope(out var db);
         var audit = Assert.Single(await AuditAsync(db, seeded.GuestId));
@@ -440,11 +442,12 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             Assert.Equal((GuestConsentPurpose.Marketing, "marketing-2026-09", GuestConsentSource.RetentionPolicy), (expiry.Purpose, expiry.Version, expiry.Source));
         }
 
-        // Two years and a day: the whole record is anonymized, not marked deleted.
+        // Two years and a day: guest cards are not anonymized automatically (PO 2026-10-08).
         await RunRetentionAsync(storage, retention, checkOut.AddYears(2).AddDays(1));
         await RunRetentionAsync(storage, retention, checkOut.AddYears(2).AddDays(2));
         guest = await LoadGuestAsync(seeded.GuestId);
-        AssertNoPersonalData(guest);
+        Assert.Equal(("Giulia", "giulia.bianchi@example.com"), (guest.FirstName, guest.Email));
+        Assert.Null(guest.DataAnonymizedDate);
         Assert.False(guest.IsDeleted);
 
         await using (var scope = NewScope(out var db))
@@ -452,8 +455,9 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             var audits = await AuditAsync(db, seeded.GuestId);
             Assert.All(audits, a => Assert.Equal((GuestPrivacyAuditAction.RetentionApplied, null), (a.Action, a.ActorUserId)));
             Assert.Equal(
-                [GuestDataCategory.DocumentScans, GuestDataCategory.AlloggiatiData, GuestDataCategory.AlloggiatiData, GuestDataCategory.Marketing, GuestDataCategory.FiscalData],
+                [GuestDataCategory.DocumentScans, GuestDataCategory.AlloggiatiData, GuestDataCategory.AlloggiatiData, GuestDataCategory.Marketing],
                 audits.Select(a => a.Category!.Value));
+            Assert.DoesNotContain(GuestDataCategory.FiscalData, audits.Select(a => a.Category));
             Assert.Equal(3, audits.Where(a => a.Category == GuestDataCategory.AlloggiatiData).Sum(a => a.StayGuestsAnonymized));
         }
     }

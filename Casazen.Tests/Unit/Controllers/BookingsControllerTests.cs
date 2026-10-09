@@ -9,6 +9,7 @@ using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.Configuration;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
@@ -19,6 +20,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -68,7 +70,8 @@ public class BookingsControllerTests
             _mockAuthz.Object,
             CreatePropertyICalSyncService(),
             Mock.Of<IOtaStayService>(),
-            _mockLogger.Object);
+            _mockLogger.Object,
+            Options.Create(new BookingsOptions { DefaultPageSize = 10 }));
 
     private static PropertyICalSyncService CreatePropertyICalSyncService()
     {
@@ -163,22 +166,25 @@ public class BookingsControllerTests
         };
 
         _mockBookingService
-            .Setup(b => b.GetBookingsAsync(
-                It.Is<HostScope>(s => s.OrgId == OrgId && s.OwnerId == OwnerId), null, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([booking]);
+            .Setup(b => b.GetPagedBookingsAsync(
+                It.Is<HostScope>(s => s.OrgId == OrgId && s.OwnerId == OwnerId), 1, 10, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(([booking], 1));
 
         var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver());
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var items = Assert.IsAssignableFrom<IEnumerable<BookingResponseDto>>(ok.Value);
-        var dto = Assert.Single(items);
+        var paged = Assert.IsType<PagedResultDto<BookingResponseDto>>(ok.Value);
+        var dto = Assert.Single(paged.Items);
         Assert.Equal(booking.Id, dto.Id);
         Assert.Equal("Test Villa", dto.PropertyName);
         Assert.Equal("mario@test.com", dto.Guest.Email);
+        Assert.Equal(1, paged.TotalCount);
+        Assert.Equal(1, paged.Page);
+        Assert.Equal(10, paged.PageSize);
         // No per-booking authorization lookup any more (A2-17): the scope is applied by the single query.
         _mockAuthz.VerifyNoOtherCalls();
         _mockBookingService.Verify(
-            b => b.GetBookingsAsync(It.IsAny<HostScope>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            b => b.GetPagedBookingsAsync(It.IsAny<HostScope>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -193,7 +199,7 @@ public class BookingsControllerTests
         var problem = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
         _mockBookingService.Verify(
-            b => b.GetBookingsAsync(It.IsAny<HostScope>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            b => b.GetPagedBookingsAsync(It.IsAny<HostScope>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -209,7 +215,7 @@ public class BookingsControllerTests
 
         Assert.IsType<ForbidResult>(result.Result);
         _mockBookingService.Verify(
-            b => b.GetBookingsAsync(It.IsAny<HostScope>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            b => b.GetPagedBookingsAsync(It.IsAny<HostScope>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -219,16 +225,16 @@ public class BookingsControllerTests
         SetUser(OwnerId);
         var guestId = Guid.NewGuid();
         _mockBookingService
-            .Setup(b => b.GetBookingsAsync(It.IsAny<HostScope>(), null, guestId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+            .Setup(b => b.GetPagedBookingsAsync(It.IsAny<HostScope>(), 1, 10, null, guestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(([], 0));
 
         var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), null, guestId);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        Assert.Empty(Assert.IsAssignableFrom<IEnumerable<BookingResponseDto>>(ok.Value));
+        Assert.Empty(Assert.IsType<PagedResultDto<BookingResponseDto>>(ok.Value).Items);
         _mockBookingService.Verify(
-            b => b.GetBookingsAsync(
-                It.Is<HostScope>(s => s.OrgId == OrgId && s.OwnerId == OwnerId), null, guestId, It.IsAny<CancellationToken>()),
+            b => b.GetPagedBookingsAsync(
+                It.Is<HostScope>(s => s.OrgId == OrgId && s.OwnerId == OwnerId), 1, 10, null, guestId, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

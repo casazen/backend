@@ -62,12 +62,18 @@ public partial class AiSupplierDiscoveryService(
             if (string.IsNullOrWhiteSpace(searchContent))
                 return Remember(orgId, cacheKey, []);
 
+            // FD-21 (PO 2026-10-08): scrub PII from web-search snippets before the text reaches DeepSeek.
+            // Web-search results may contain personal contact details (phone numbers, email addresses,
+            // fiscal codes) belonging to business owners or their customers. PiiScrubber replaces them
+            // with labelled placeholders so no personal data leaves the platform.
+            var scrubbedContent = PiiScrubber.Scrub(searchContent);
+
             var extractPrompt =
                 """
                 Estrai fornitori locali dal testo seguente e rispondi SOLO con JSON valido:
                 {"suggestions":[{"name":"...","address":"...","phone":"...","email":null,"websiteUrl":null,"mapsUrl":"https://..."}]}
                 Massimo 5 elementi. Solo attività in Italia. Testo:
-                """ + searchContent;
+                """ + scrubbedContent;
 
             var ai = await aiProvider.GenerateAsync(extractPrompt, AiModelTier.Economy, cacheKey, cancellationToken);
             return Remember(orgId, cacheKey, ParseSuggestions(ai.Content));
