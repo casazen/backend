@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -449,7 +450,8 @@ public partial class SupplierService
     /// never mixed band by band), and then the keeper's <c>HoursConfiguredAt</c> follows;</item>
     /// <item>its settings (the rules) stay; the duplicate's settings row moves only when the keeper has none;</item>
     /// <item>the duplicate's time off, blocks, extra openings and calendar engagements all move: dropping a closure would
-    /// offer a slot the supplier had closed.</item>
+    /// offer a slot the supplier had closed. The one exception is an engagement of the calendar feed that the keeper has too
+    /// (same UID and start, <see cref="WindowsThatMove"/>): the keeper's row stays.</item>
     /// </list>
     /// What did not move goes with the duplicate profile (cascade).
     /// </summary>
@@ -479,8 +481,7 @@ public partial class SupplierService
         moved += await db.SupplierTimeOff
             .Where(t => t.OrgId == duplicateId)
             .ExecuteUpdateAsync(set => set.SetProperty(t => t.OrgId, keeperId), cancellationToken);
-        moved += await db.SupplierBusyWindows
-            .Where(w => w.OrgId == duplicateId)
+        moved += await WindowsThatMove(db, keeperId, duplicateId)
             .ExecuteUpdateAsync(set => set.SetProperty(w => w.OrgId, keeperId), cancellationToken);
 
         var duplicateSettings = await db.SupplierSettings
@@ -511,6 +512,23 @@ public partial class SupplierService
 
         return moved;
     }
+
+    /// <summary>
+    /// The windows of the duplicate that move to the keeper (SP-03, SP-05): all of them, except the engagements of the calendar
+    /// feed (<c>ExternalUid</c>) the keeper already has with the same UID and start. Those are unique per supplier (index
+    /// <c>UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc</c>, the iCal sync finds its rows by them), so moving the copy
+    /// would break the merge; both profiles read the same calendar, the keeper's row stays and the duplicate's goes with the
+    /// profile. The keeper's own sync rewrites its engagements at the next run, whatever the duplicate had.
+    /// </summary>
+    /// <remarks>Both orgs are explicit (the table is not tenant-filtered), as in every query of the agenda.</remarks>
+    internal static IQueryable<SupplierBusyWindow> WindowsThatMove(AppDbContext db, Guid keeperId, Guid duplicateId) =>
+        db.SupplierBusyWindows.Where(w => w.OrgId == duplicateId
+                                          && (w.ExternalUid == null
+                                              || !db.SupplierBusyWindows
+                                                  .Where(k => k.OrgId == keeperId
+                                                              && k.ExternalUid == w.ExternalUid
+                                                              && k.StartUtc == w.StartUtc)
+                                                  .Any()));
 
     /// <summary>
     /// Deletes the duplicate org once its members and devices are on the keeper. An org that also holds host data
