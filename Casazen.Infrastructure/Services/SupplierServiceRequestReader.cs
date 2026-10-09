@@ -143,7 +143,8 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
                 row.StartedAt,
                 row.CancelledAt,
                 row.CancellationReason,
-                row.CancelledBy),
+                row.CancelledBy,
+                row.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host),
             takenByName);
 
         return ToView(row, ownerPhones, history);
@@ -215,11 +216,27 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
         DateTime? EndUtc,
         DateTime? CheckOutDate);
 
+    /// <summary>The statuses in which a request has been taken by the supplier (<see cref="SupplierJobDisclosure.IsDisclosed"/>).</summary>
+    private static readonly ServiceRequestStatus[] DisclosedStatuses =
+    [
+        ServiceRequestStatus.PresoInCarico,
+        ServiceRequestStatus.InCorso,
+        ServiceRequestStatus.Completato,
+        ServiceRequestStatus.Pagato,
+    ];
+
     /// <summary>
     /// The requests sent to <paramref name="supplierOrgId"/>, with the columns the supplier may see. ServiceRequest has two
     /// parties and no tenant filter (TN-2 allow-list); IgnoreQueryFilters also opens the host's property, stay and org
     /// (another tenant) through the request: the explicit SupplierOrgId predicate is the scope.
     /// </summary>
+    /// <remarks>
+    /// A request from the public showcase (SP-10) has no property: the place is read from the request itself, the customer from
+    /// the request's <c>Customer</c>. What the supplier sees only after the take (the street address, the floor and the access
+    /// notes of the place, the e-mail and the phone of the customer) is selected only for the requests in a disclosed status, so
+    /// the database does not even return it for the others (it is encrypted: it is not decrypted either); the name of the
+    /// customer is read always and shortened to "Nome C." in <see cref="ToView"/> until the take (decision D9).
+    /// </remarks>
     internal IQueryable<SupplierRequestRow> Rows(Guid supplierOrgId) =>
         db.ServiceRequests
             .IgnoreQueryFilters()
@@ -229,6 +246,7 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
             {
                 Id = r.Id,
                 RentalContext = r.RentalContext,
+                Source = r.Source,
                 Status = r.Status,
                 Category = r.Category,
                 Urgency = r.Urgency,
@@ -252,7 +270,8 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
                             : r.CreatedAt,
                 // The day of the job: its scheduled time, else the check-out of its stay.
                 WorkAt = r.ScheduledStartUtc ?? (r.Booking != null ? r.Booking.CheckOutDate : (DateTime?)null),
-                ClientId = r.OrgId,
+                // The customer: the host org for a host's request, the private customer for a showcase one.
+                ClientId = r.CustomerId ?? r.OrgId,
                 ScheduledStartUtc = r.ScheduledStartUtc,
                 ScheduledEndUtc = r.ScheduledEndUtc,
                 ServiceListingId = r.ServiceListingId,
@@ -274,18 +293,27 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
                 ProposedAt = r.ProposedAt,
                 ProposalMessage = r.ProposalMessage,
                 PropertyId = r.PropertyId,
-                PropertyName = r.Property.Name,
-                City = r.Property.City,
-                ComuneIstatCode = r.Property.ComuneIstatCode,
-                PostalCode = r.Property.PostalCode,
-                Address = r.Property.Address,
-                OwnerId = r.Property.OwnerId,
+                PropertyName = r.Property != null ? r.Property.Name : null,
+                City = r.Property != null ? r.Property.City : r.LocationCity ?? string.Empty,
+                ComuneIstatCode = r.Property != null ? r.Property.ComuneIstatCode : r.LocationComuneIstat,
+                PostalCode = r.Property != null ? r.Property.PostalCode : r.LocationPostalCode,
+                // The street address of a showcase request is an encrypted column and the property's is not: they are two columns of
+                // the projection, never the two branches of one CASE (EF would give the CASE the mapping of the first branch, and
+                // the other would be read without, or with the wrong, decryption).
+                Address = r.Property != null ? r.Property.Address : null,
+                LocationAddress = DisclosedStatuses.Contains(r.Status) ? r.LocationAddress : null,
+                Floor = DisclosedStatuses.Contains(r.Status) ? r.LocationFloor : null,
+                AccessNotes = DisclosedStatuses.Contains(r.Status) ? r.LocationAccessNotes : null,
+                OwnerId = r.Property != null ? r.Property.OwnerId : string.Empty,
                 BookingId = r.BookingId,
                 CheckInDate = r.Booking != null ? r.Booking.CheckInDate : (DateTime?)null,
                 CheckOutDate = r.Booking != null ? r.Booking.CheckOutDate : (DateTime?)null,
                 HostDisplayName = r.Org.DisplayName,
                 HostName = r.Org.Name,
                 HostEmail = r.Org.ContactEmail,
+                CustomerFullName = r.Customer != null ? r.Customer.FullName : null,
+                CustomerEmail = r.Customer != null && DisclosedStatuses.Contains(r.Status) ? r.Customer.Email : null,
+                CustomerPhone = r.Customer != null && DisclosedStatuses.Contains(r.Status) ? r.Customer.Phone : null,
             });
 
     /// <summary>Phones of the owners of the properties of the requests the supplier took (none is read otherwise).</summary>
@@ -351,8 +379,18 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
         if (row.ScheduledStartUtc is { } scheduledStart)
             scheduledFor = RomeCalendar.DateInRome(scheduledStart);
 
+        // The party that asked: the host org for a host's request, the private customer for one from the public showcase (SP-10).
+        var showcase = row.RentalContext == ServiceRequestRentalContext.Showcase;
+
         SupplierJobHostContact? hostContact = null;
-        if (disclosed)
+        if (disclosed && showcase)
+        {
+            hostContact = new SupplierJobHostContact(
+                NullIfBlank(row.CustomerFullName) ?? string.Empty,
+                NullIfBlank(row.CustomerEmail),
+                NullIfBlank(row.CustomerPhone));
+        }
+        else if (disclosed)
         {
             var name = HostName(row);
             hostContact = new SupplierJobHostContact(
@@ -391,13 +429,15 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
                 disclosed ? row.PropertyName : null,
                 row.City,
                 NullIfBlank(row.PostalCode),
-                disclosed ? NullIfBlank(row.Address) : null),
+                disclosed ? NullIfBlank(row.Address ?? row.LocationAddress) : null,
+                disclosed ? NullIfBlank(row.Floor) : null,
+                disclosed ? NullIfBlank(row.AccessNotes) : null),
             scheduledFor,
             stay,
             disclosed,
             hostContact,
             history,
-            SupplierRequestSources.CasaZen,
+            SupplierRequestSources.Of(row.Source),
             row.ServiceListingId,
             NullIfBlank(row.ServiceNameSnapshot),
             new SupplierJobSchedule(
@@ -412,8 +452,11 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
                 row.FinalAmountCents,
                 row.FinalAmountNeedsConfirmation,
                 ServiceRequestJson.ReadPriceLines(row.PriceLinesJson)),
-            // Decision D9: for a host's request the customer is the host org, whose name is shown before the take.
-            new SupplierJobClient(row.ClientId, HostName(row)),
+            // Decision D9: for a host's request the customer is the host org, whose name is shown before the take; a private
+            // customer of the public showcase is "Nome C." until the supplier takes the request.
+            new SupplierJobClient(
+                row.ClientId,
+                showcase ? SupplierJobDisclosure.CustomerName(row.Status, row.CustomerFullName) : HostName(row)),
             proposal,
             cancellation,
             NullIfBlank(row.CompletionNotes),
@@ -430,6 +473,7 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
     {
         public Guid Id { get; init; }
         public ServiceRequestRentalContext RentalContext { get; init; }
+        public ServiceRequestSource Source { get; init; }
         public ServiceRequestStatus Status { get; init; }
         public string Category { get; init; } = string.Empty;
         public ServiceRequestUrgency Urgency { get; init; }
@@ -464,12 +508,15 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
         public DateTime? ProposedEndUtc { get; init; }
         public DateTime? ProposedAt { get; init; }
         public string? ProposalMessage { get; init; }
-        public Guid PropertyId { get; init; }
-        public string PropertyName { get; init; } = string.Empty;
+        public Guid? PropertyId { get; init; }
+        public string? PropertyName { get; init; }
         public string City { get; init; } = string.Empty;
         public string? ComuneIstatCode { get; init; }
         public string? PostalCode { get; init; }
         public string? Address { get; init; }
+        public string? LocationAddress { get; init; }
+        public string? Floor { get; init; }
+        public string? AccessNotes { get; init; }
         public string OwnerId { get; init; } = string.Empty;
         public Guid? BookingId { get; init; }
         public DateTime? CheckInDate { get; init; }
@@ -477,5 +524,11 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
         public string? HostDisplayName { get; init; }
         public string? HostName { get; init; }
         public string? HostEmail { get; init; }
+
+        // The private customer of a showcase request (SP-10): the name always (shortened to "Nome C." before the take), the
+        // e-mail and the phone only once the request is taken.
+        public string? CustomerFullName { get; init; }
+        public string? CustomerEmail { get; init; }
+        public string? CustomerPhone { get; init; }
     }
 }

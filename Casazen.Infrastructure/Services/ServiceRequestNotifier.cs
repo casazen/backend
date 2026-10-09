@@ -28,12 +28,17 @@ namespace Casazen.Infrastructure.Services;
 /// guest name.</para>
 /// <para>A status with no email or push to the party (a request the host itself cancelled, a paid one, an unknown one) sends
 /// nothing and logs nothing: it is not an error.</para>
+/// <para><b>A request from a supplier's public showcase (SP-10) has no host</b>: what would go to the host (the supplier took,
+/// refused, cancelled it, proposed another time, or nobody answered in time) goes to its <b>customer</b>, by e-mail, written by
+/// <see cref="ShowcaseBookingNotifier"/>, and there is no push to a host. What goes to the supplier is the same, with the comune
+/// of the request itself instead of the one of a property.</para>
 /// </remarks>
 public sealed class ServiceRequestNotifier(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
     IPushNotificationService pushNotifications,
+    ShowcaseBookingNotifier showcase,
     IOptions<ServiceRequestOptions> options,
     ILogger<ServiceRequestNotifier> logger)
 {
@@ -74,6 +79,13 @@ public sealed class ServiceRequestNotifier(
     /// </summary>
     public async Task NotifyHostAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
+        // No host behind a showcase request: its customer is told (e-mail only).
+        if (request.RentalContext == ServiceRequestRentalContext.Showcase)
+        {
+            await showcase.NotifyCustomerOfStatusAsync(request, cancellationToken);
+            return;
+        }
+
         await QueueHostStatusEmailAsync(request, cancellationToken);
         QueueHostStatusPush(request);
     }
@@ -94,7 +106,7 @@ public sealed class ServiceRequestNotifier(
                 EmailTemplates.DefaultCulture,
                 request.Status,
                 request.Category,
-                request.Property.Name,
+                PropertyNameOf(request),
                 request.Status == ServiceRequestStatus.Rifiutato ? request.RejectionReason : request.CancellationReason,
                 request.CancelledBy,
                 completion,
@@ -122,13 +134,13 @@ public sealed class ServiceRequestNotifier(
         {
             var type = PushTypes.ForServiceRequestStatus(request.Status);
             var push = EmailTemplates.ServiceRequestStatusPush(
-                EmailTemplates.DefaultCulture, request.Status, request.Category, request.Property.Name, request.CancelledBy);
-            if (type is null || push is null)
+                EmailTemplates.DefaultCulture, request.Status, request.Category, PropertyNameOf(request), request.CancelledBy);
+            if (type is null || push is null || request.PropertyId is not { } propertyId)
                 return;
 
             pushNotifications.Enqueue(
                 PushDeliveryKeys.ServiceRequestStatus(request.Id, request.Status),
-                PushAudience.PropertyHosts(request.PropertyId),
+                PushAudience.PropertyHosts(propertyId),
                 new PushNotificationPayload(push.Title, push.Body, type, request.BookingId, HostRoute(request), request.Id));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -146,11 +158,17 @@ public sealed class ServiceRequestNotifier(
         if (request is not { ProposedStartUtc: { } start, ProposedEndUtc: { } end, ProposedAt: { } proposedAt })
             return;
 
+        if (request.RentalContext == ServiceRequestRentalContext.Showcase)
+        {
+            await showcase.NotifyCustomerOfProposalAsync(request, cancellationToken);
+            return;
+        }
+
         try
         {
             var hostUrl = request.BookingId is { } bookingId ? publicSiteLinks.HostBooking(bookingId) : null;
             var email = EmailTemplates.ServiceRequestTimeProposed(
-                EmailTemplates.DefaultCulture, request.Category, request.Property.Name, start, end, request.ProposalMessage, hostUrl);
+                EmailTemplates.DefaultCulture, request.Category, PropertyNameOf(request), start, end, request.ProposalMessage, hostUrl);
             var hostEmail = await db.Orgs
                 .AsNoTracking()
                 .Where(o => o.Id == request.OrgId)
@@ -158,10 +176,10 @@ public sealed class ServiceRequestNotifier(
                 .FirstOrDefaultAsync(cancellationToken);
             emailQueue.Enqueue(hostEmail, email, EmailTemplates.Names.ServiceRequestTimeProposed);
 
-            var push = EmailTemplates.ServiceRequestTimeProposedPush(EmailTemplates.DefaultCulture, request.Category, request.Property.Name);
+            var push = EmailTemplates.ServiceRequestTimeProposedPush(EmailTemplates.DefaultCulture, request.Category, PropertyNameOf(request));
             pushNotifications.Enqueue(
                 PushDeliveryKeys.ServiceRequestTimeProposed(request.Id, proposedAt),
-                PushAudience.PropertyHosts(request.PropertyId),
+                PushAudience.PropertyHosts(request.PropertyId ?? throw new InvalidOperationException("A host's request has a property")),
                 new PushNotificationPayload(
                     push.Title, push.Body, PushTypes.ServiceRequestTimeProposed, request.BookingId, HostRoute(request), request.Id));
         }
@@ -185,7 +203,7 @@ public sealed class ServiceRequestNotifier(
         try
         {
             var supplier = await FindSupplierAsync(request, cancellationToken);
-            var comune = request.Property.City;
+            var comune = ComuneOf(request);
             if (supplier is not null)
             {
                 var email = EmailTemplates.ServiceRequestCancelledToSupplier(
@@ -220,7 +238,7 @@ public sealed class ServiceRequestNotifier(
         try
         {
             var supplier = await FindSupplierAsync(request, cancellationToken);
-            var comune = request.Property.City;
+            var comune = ComuneOf(request);
             if (supplier is not null)
             {
                 var email = EmailTemplates.ServiceRequestReminder(
@@ -253,7 +271,7 @@ public sealed class ServiceRequestNotifier(
         try
         {
             var supplier = await FindSupplierAsync(request, cancellationToken);
-            var comune = request.Property.City;
+            var comune = ComuneOf(request);
             if (supplier is not null)
             {
                 var email = EmailTemplates.ServiceRequestProposalAnswered(
@@ -288,7 +306,7 @@ public sealed class ServiceRequestNotifier(
                     EmailTemplates.DefaultCulture,
                     supplier.LegalName,
                     request.Category,
-                    request.Property.Name,
+                    PropertyNameOf(request),
                     publicSiteLinks.SupplierInbox());
                 emailQueue.Enqueue(supplier.Email, email, EmailTemplates.Names.ServiceRequestPaid);
             }
@@ -299,7 +317,7 @@ public sealed class ServiceRequestNotifier(
                     request.Id, request.SupplierOrgId);
             }
 
-            var push = EmailTemplates.ServiceRequestPaidPush(EmailTemplates.DefaultCulture, request.Category, request.Property.Name);
+            var push = EmailTemplates.ServiceRequestPaidPush(EmailTemplates.DefaultCulture, request.Category, PropertyNameOf(request));
             QueueSupplierPush(
                 request, PushDeliveryKeys.ServiceRequestStatus(request.Id, request.Status), PushTypes.ServiceRequestPaid, push);
         }
@@ -310,6 +328,15 @@ public sealed class ServiceRequestNotifier(
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The comune the supplier is told: the property's for a host's request (decision D9: never the property's name), the one the
+    /// customer wrote on the request for a showcase one.
+    /// </summary>
+    private static string ComuneOf(ServiceRequest request) => request.Property?.City ?? request.LocationCity ?? string.Empty;
+
+    /// <summary>The host's own name of the property, empty for a request that has none (only a host's request is told to a host).</summary>
+    private static string PropertyNameOf(ServiceRequest request) => request.Property?.Name ?? string.Empty;
 
     // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the request's supplier org.
     private Task<SupplierContact?> FindSupplierAsync(ServiceRequest request, CancellationToken cancellationToken) =>
