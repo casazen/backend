@@ -1505,7 +1505,16 @@
     <value>The amount cannot be negative.</value>
   </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
-    <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
+    <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days or period=Next30Days.</value>
+  </data>
+  <data name="BookingListInvalidStatus" xml:space="preserve">
+    <value>Invalid status: use the names Pending, Confirmed, CheckedIn, CheckedOut or Cancelled, repeated or separated by commas.</value>
+  </data>
+  <data name="BookingListInvalidRange" xml:space="preserve">
+    <value>Invalid range: the start date (from) cannot be after the end date (to).</value>
+  </data>
+  <data name="PaymentListInvalidRange" xml:space="preserve">
+    <value>Invalid range: the start date (from) cannot be after the end date (to).</value>
   </data>
   <data name="SeoCounselRequired" xml:space="preserve">
     <value>This page is among the first {0} and can be published only after the legal review: confirm that the text has been reviewed.</value>
