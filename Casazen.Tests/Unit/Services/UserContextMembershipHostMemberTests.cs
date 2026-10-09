@@ -190,6 +190,33 @@ public class UserContextMembershipHostMemberTests
         Assert.Equal(expected, await CreateService(db).IsHostMemberAsync(UserId));
     }
 
+    [Fact]
+    public async Task IsHostMemberAsync_OrgIdOfAHostOrgThatAlreadyHasAnOwner_IsTrue()
+    {
+        // Removed before User.OrgId was cleared: the row is gone, but onboarding must not make a second owner.
+        await using var db = await CreateSeededDbAsync();
+        var orgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity { Id = orgId, Name = "Host", DisplayName = "Host", Slug = "host", OrgType = OrgType.Host });
+        db.Users.Single(u => u.Id == UserId).OrgId = orgId;
+        db.OrgMembers.Add(new OrgMember { UserId = OtherUserId, OrgId = orgId, Role = OrgRole.Owner });
+        await db.SaveChangesAsync();
+
+        Assert.True(await CreateService(db).IsHostMemberAsync(UserId));
+    }
+
+    [Fact]
+    public async Task IsHostMemberAsync_OrgIdOfAHostOrgWithNoOwnerYet_IsFalse()
+    {
+        // The caller's own org, provisioned before the onboarding writes the owner row.
+        await using var db = await CreateSeededDbAsync();
+        var orgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity { Id = orgId, Name = "New", DisplayName = "New", Slug = "new", OrgType = OrgType.Host });
+        db.Users.Single(u => u.Id == UserId).OrgId = orgId;
+        await db.SaveChangesAsync();
+
+        Assert.False(await CreateService(db).IsHostMemberAsync(UserId));
+    }
+
     private static UserContextMembershipService CreateService(AppDbContext db) =>
         new(db, Mock.Of<IUserAuthorizationCache>(), NullLogger<UserContextMembershipService>.Instance);
 

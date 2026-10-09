@@ -1,41 +1,74 @@
-using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Email;
-using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Service requests between a host org and a supplier org. Who may call each operation is decided by the web layer
 /// (policies and the host resource handler, TN-3); this service only enforces the org boundaries it is given
-/// (<see cref="HostScope"/>, host org id, supplier org id) and the state machine.
+/// (<see cref="HostScope"/>, host org id, supplier org id), the state machine and the rules of the schedule and the price.
 /// </summary>
-public class ServiceRequestService(
+/// <remarks>
+/// <para><b>Concurrency.</b> Every change of a request is saved only if nobody changed the request since it was read
+/// (<c>xmin</c>, A4-19): the loser of two concurrent changes gets 409 <c>service_request_state_changed</c>. A change that
+/// sets the <b>time</b> of a request (a host's request with a slot, the supplier's take or proposal, the host's acceptance of
+/// the proposal) also runs under the supplier's calendar lock (<c>SupplierCalendarSync</c>, the lock of the agenda and of
+/// the iCal sync) and checks the slot with the planner <b>after</b> taking it, so two requests never get the same slot
+/// (409 <c>supplier_slot_unavailable</c>). Outside PostgreSQL nothing is locked.</para>
+/// <para><b>Notifications</b> (<see cref="ServiceRequestNotifier"/>) are queued after the change is saved, by the winner only.
+/// The operations of this class are split in files by topic: the lifecycle after the take (start, cancel, remind, propose, batch),
+/// and the photos of the work.</para>
+/// <para><b>Requests from the suppliers' public showcases (SP-10)</b> belong to the supplier and have a customer, not a host: the
+/// operations of the supplier work on them as on any request (take, refuse, start, complete, cancel, propose another time) and
+/// the customer is the one told; every operation of the <b>host</b> (list, read, cancel, remind, answer a proposal, mark as paid)
+/// answers 404 for them, whatever the org of the caller: they are filtered by their context and by their org, two reasons that
+/// do not depend on each other (the supplier org may also be a host org).</para>
+/// </remarks>
+public partial class ServiceRequestService(
     AppDbContext db,
     IServiceRequestRepository repository,
-    IEmailQueue emailQueue,
-    PublicSiteLinks publicSiteLinks,
-    IPushNotificationService pushNotifications,
+    ServiceRequestNotifier notifier,
     ISupplierComuneMatcher comuneMatcher,
     ILegalDocumentService legalDocuments,
-    ILogger<ServiceRequestService> logger) : IServiceRequestService
+    ISupplierServiceCatalogService catalog,
+    ISupplierAgendaService agenda,
+    IFileStorage fileStorage,
+    IImageStorageService images,
+    IOptions<ServiceRequestOptions> options,
+    IOptions<ShowcaseBookingOptions> showcaseOptions,
+    ILogger<ServiceRequestService> logger,
+    TimeProvider? timeProvider = null) : IServiceRequestService
 {
-    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    /// <summary>The time asked for a request, with the slot query that checks it.</summary>
+    private sealed record RequestSchedule(DateTime Start, DateTime End, SupplierSlotQuery Query);
 
     public async Task<ServiceRequest> CreateAsync(
         CreateServiceRequestCommand command,
         CancellationToken cancellationToken = default)
     {
+        // A request from a supplier's showcase is made by ShowcaseBookingService, from a checked e-mail address, and nowhere else:
+        // this is the host's path, which would give it a host org and a property (the table refuses that).
+        if (command.RentalContext == ServiceRequestRentalContext.Showcase)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(command), command.RentalContext, "A showcase request is not created through the host's path.");
+        }
+
         // Only category codes are stored (SU-03); anything else is a 422 before any lookup.
         var category = ServiceCategories.Require(command.Category);
 
@@ -87,6 +120,11 @@ public class ServiceRequestService(
                 ServiceRequestErrorCodes.SupplierOutsideComune, ServiceRequestErrorCodes.SupplierOutsideComuneMessageKey);
         }
 
+        // SP-04: the service of the supplier's catalog the request is for, and the time the host picked among its slots.
+        var service = await FindRequestableServiceAsync(command, category, cancellationToken);
+        var schedule = ResolveCreateSchedule(command, service);
+
+        var now = Now();
         var request = new ServiceRequest
         {
             OrgId = command.OrgId,
@@ -99,21 +137,36 @@ public class ServiceRequestService(
             Notes = command.Notes?.Trim() ?? string.Empty,
             ChargeToGuest = command.ChargeToGuest,
             Status = ServiceRequestStatus.Richiesto,
+            CreatedAt = now,
+            UpdatedAt = now,
+            ServiceListingId = service?.Id,
+            ServiceNameSnapshot = service?.Name,
+            EstimatedAmountCents = service?.EstimatedAmountCents,
+            ScheduledStartUtc = schedule?.Start,
+            ScheduledEndUtc = schedule?.End,
+            // Decision D8: a host's request waits for the supplier's answer for HostResponseMinutes. The deadline is recorded
+            // always; only the flag SupplierRequestAutoCancel makes the job act on it.
+            ResponseDueAt = now.AddMinutes(options.Value.HostResponseMinutes),
         };
 
         // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not a wrong link.
-        var supplierEmail = EmailTemplates.ServiceRequestCreated(
-            EmailTemplates.DefaultCulture,
-            supplier.LegalName,
-            request.Category,
-            property.Name,
-            request.Notes,
-            publicSiteLinks.SupplierInbox());
+        var comune = property.City;
+        var supplierEmail = notifier.RenderCreatedEmail(request, supplier.LegalName, comune);
 
-        await repository.AddAsync(request, cancellationToken);
+        IDbContextTransaction? transaction = schedule is null ? null : await LockSupplierCalendarAsync(command.SupplierOrgId, cancellationToken);
+        await using (transaction)
+        {
+            if (schedule is not null)
+            {
+                // After the lock: a request saved by whoever held it before is seen, so the slot is judged on what is there now.
+                await EnsureSlotFreeAsync(command.SupplierOrgId, schedule, exceptRequestId: null, cancellationToken);
+            }
 
-        emailQueue.Enqueue(supplier.Email, supplierEmail, EmailTemplates.Names.ServiceRequestCreated);
-        QueueSupplierPush(request, property.Name);
+            await repository.AddAsync(request, cancellationToken);
+            await CommitAsync(transaction, cancellationToken);
+        }
+
+        notifier.QueueCreated(request, supplier.Email, supplierEmail, comune);
 
         logger.LogInformation(
             "ServiceRequest {Id} ({RentalContext}) created by {UserId} for property {PropertyId} booking {BookingId} supplier {SupplierOrgId}",
@@ -160,36 +213,225 @@ public class ServiceRequestService(
         }
     }
 
+    /// <summary>
+    /// The service of the supplier's catalog a new request is for (SP-04), or null when the request is by category only.
+    /// 404 when it is not one of the supplier's (or was deleted); 422 when it is a draft or paused, or of another category.
+    /// </summary>
+    private async Task<SupplierServiceForRequest?> FindRequestableServiceAsync(
+        CreateServiceRequestCommand command,
+        string category,
+        CancellationToken cancellationToken)
+    {
+        if (command.ServiceListingId is not { } listingId)
+            return null;
+
+        // Another supplier's service is answered exactly like a missing one.
+        var service = await catalog.FindForRequestAsync(command.SupplierOrgId, listingId, cancellationToken)
+            ?? throw new NotFoundException($"Service {listingId} not found for the supplier")
+            {
+                Code = ServiceRequestErrorCodes.ServiceNotFound,
+                MessageKey = ServiceRequestErrorCodes.ServiceNotFoundMessageKey,
+            };
+
+        if (!service.IsRequestable)
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.ServiceUnavailable, ServiceRequestErrorCodes.ServiceUnavailableMessageKey);
+        }
+
+        if (!string.Equals(service.Category, category, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.ServiceCategoryMismatch, ServiceRequestErrorCodes.ServiceCategoryMismatchMessageKey);
+        }
+
+        return service;
+    }
+
+    /// <summary>
+    /// The time a host asked for (SP-04): it needs the service of the catalog, whose duration is the length of the work.
+    /// 422 <see cref="ServiceRequestErrorCodes.TimeNeedsService"/> otherwise. Null when the host asked for no time.
+    /// </summary>
+    private static RequestSchedule? ResolveCreateSchedule(CreateServiceRequestCommand command, SupplierServiceForRequest? service)
+    {
+        if (command.ScheduledStartUtc is not { } requested)
+            return null;
+
+        var query = service?.ToSlotQuery()
+            ?? throw new DomainRuleException(
+                ServiceRequestErrorCodes.TimeNeedsService, ServiceRequestErrorCodes.TimeNeedsServiceMessageKey);
+
+        var start = UtcDateTime.Normalize(requested);
+        return new RequestSchedule(start, start.AddMinutes(query.DurationMinutes), query);
+    }
+
     public async Task<ServiceRequest> TakeAsync(
         Guid id,
         Guid supplierOrgId,
         string userId,
+        TakeServiceRequestCommand? command = null,
         CancellationToken cancellationToken = default)
     {
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        EnsureCan(request, ServiceRequestStatus.PresoInCarico, ServiceRequestErrorCodes.CannotTakeMessageKey);
 
-        await TransitionAsync(
-            request,
-            ServiceRequestStatus.PresoInCarico,
-            ServiceRequestErrorCodes.CannotTakeMessageKey,
-            r =>
-            {
-                r.TakenAt = DateTime.UtcNow;
-                r.TakenByUserId = userId;
-            },
-            cancellationToken);
+        if (command?.QuotedAmountCents is { } quote)
+            ServiceRequestPricing.EnsureValidAmount(quote);
 
-        await NotifyHostAsync(request, cancellationToken);
+        var schedule = await ResolveTakeScheduleAsync(request, supplierOrgId, command, cancellationToken);
+
+        IDbContextTransaction? transaction = schedule is null ? null : await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
+        await using (transaction)
+        {
+            if (schedule is not null)
+                await EnsureSlotFreeAsync(supplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
+
+            await TransitionAsync(
+                request,
+                ServiceRequestStatus.PresoInCarico,
+                ServiceRequestErrorCodes.CannotTakeMessageKey,
+                r =>
+                {
+                    r.TakenAt = Now();
+                    r.TakenByUserId = userId;
+                    if (schedule is not null)
+                    {
+                        r.ScheduledStartUtc = schedule.Start;
+                        r.ScheduledEndUtc = schedule.End;
+                    }
+
+                    if (command?.QuotedAmountCents is { } committed)
+                        r.QuotedAmountCents = committed;
+
+                    // The supplier answered: no deadline to meet, and a time it proposed earlier is moot.
+                    r.ResponseDueAt = null;
+                    ClearProposal(r);
+                },
+                cancellationToken);
+            await CommitAsync(transaction, cancellationToken);
+        }
+
+        await notifier.NotifyHostAsync(request, cancellationToken);
         return request;
+    }
+
+    /// <summary>
+    /// The time the supplier sets when it takes a request (SP-04), or null when it sets none. A request that has a time keeps it
+    /// (the supplier proposes another one with <c>propose-time</c>); sending the same time again is not a change.
+    /// </summary>
+    private async Task<RequestSchedule?> ResolveTakeScheduleAsync(
+        ServiceRequest request,
+        Guid supplierOrgId,
+        TakeServiceRequestCommand? command,
+        CancellationToken cancellationToken)
+    {
+        if (command?.ScheduledStartUtc is not { } requested)
+        {
+            // An end without a start says nothing.
+            if (command?.ScheduledEndUtc is not null)
+                throw TimeInvalid();
+
+            return null;
+        }
+
+        var start = UtcDateTime.Normalize(requested);
+        var end = command.ScheduledEndUtc is { } requestedEnd ? UtcDateTime.Normalize(requestedEnd) : (DateTime?)null;
+        if (request.ScheduledStartUtc is { } current)
+        {
+            if (current == start && (end is null || end == request.ScheduledEndUtc))
+                return null;
+
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.TimeAlreadySet, ServiceRequestErrorCodes.TimeAlreadySetMessageKey);
+        }
+
+        return await ResolveScheduleAsync(request, supplierOrgId, start, end, cancellationToken);
+    }
+
+    /// <summary>
+    /// The interval and the slot query for a request moved to <paramref name="start"/>: the length is the explicit end, else
+    /// the duration of the request's catalog service. 422 <see cref="ServiceRequestErrorCodes.TimeInvalid"/> when neither gives
+    /// a length (or the end is not after the start, or the length is not whole minutes).
+    /// </summary>
+    private async Task<RequestSchedule> ResolveScheduleAsync(
+        ServiceRequest request,
+        Guid supplierOrgId,
+        DateTime start,
+        DateTime? end,
+        CancellationToken cancellationToken)
+    {
+        var service = request.ServiceListingId is { } listingId
+            ? await catalog.FindForRequestAsync(supplierOrgId, listingId, cancellationToken)
+            : null;
+
+        int minutes;
+        if (end is { } explicitEnd)
+        {
+            var length = explicitEnd - start;
+            if (length <= TimeSpan.Zero
+                || length.Ticks % TimeSpan.TicksPerMinute != 0
+                || length.TotalMinutes > SupplierServiceCatalogLimits.MaxDurationMinutes)
+            {
+                throw TimeInvalid();
+            }
+
+            minutes = (int)length.TotalMinutes;
+        }
+        else
+        {
+            minutes = service?.DurationMinutes is > 0 and var duration ? duration : throw TimeInvalid();
+        }
+
+        return new RequestSchedule(
+            start,
+            start.AddMinutes(minutes),
+            new SupplierSlotQuery(minutes, service?.MinNoticeHours, service?.WeekdaysMask));
+    }
+
+    /// <summary>
+    /// Checks, with the supplier's calendar lock held by the caller, that <paramref name="schedule"/> is one of the slots the
+    /// planner offers for the supplier (hours, time off, closed days, notice, daily maximum, buffer, what is already booked),
+    /// leaving out <paramref name="exceptRequestId"/> (the request being moved must not be in its own way). 409
+    /// <see cref="ServiceRequestErrorCodes.SlotUnavailable"/> otherwise.
+    /// </summary>
+    private async Task EnsureSlotFreeAsync(
+        Guid supplierOrgId,
+        RequestSchedule schedule,
+        Guid? exceptRequestId,
+        CancellationToken cancellationToken)
+    {
+        var day = RomeCalendar.DateInRome(schedule.Start);
+        var plans = await agenda.PlanAsync(supplierOrgId, day, day, schedule.Query, exceptRequestId, cancellationToken);
+
+        if (!plans.SelectMany(plan => plan.Slots).Any(slot => slot.StartUtc == schedule.Start))
+        {
+            logger.LogInformation(
+                "Supplier {SupplierOrgId}: the slot at {Start:O} is not free for a service request",
+                supplierOrgId, schedule.Start);
+            throw new DomainConflictException(
+                ServiceRequestErrorCodes.SlotUnavailable, ServiceRequestErrorCodes.SlotUnavailableMessageKey);
+        }
     }
 
     public async Task<ServiceRequest> CompleteAsync(
         Guid id,
         Guid supplierOrgId,
-        string? notes,
+        CompleteServiceRequestCommand? command = null,
         CancellationToken cancellationToken = default)
     {
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        EnsureCan(request, ServiceRequestStatus.Completato, ServiceRequestErrorCodes.CannotCompleteMessageKey);
+
+        // The final price: the declared total, or the agreed price plus the extras (decision D7 compares it with the quote).
+        var reference = ServiceRequestPricing.ReferenceAmount(request.QuotedAmountCents, request.EstimatedAmountCents);
+        var price = ServiceRequestPricing.ComposeFinalPrice(
+            reference,
+            command?.FinalAmountCents,
+            command?.Extras,
+            request.ServiceNameSnapshot ?? request.Category);
+        var needsConfirmation = ServiceRequestPricing.ExceedsQuote(
+            reference, price.FinalAmountCents, options.Value.FinalAmountTolerancePercent);
+        var notes = string.IsNullOrWhiteSpace(command?.Notes) ? null : command.Notes.Trim();
 
         await TransitionAsync(
             request,
@@ -197,13 +439,16 @@ public class ServiceRequestService(
             ServiceRequestErrorCodes.CannotCompleteMessageKey,
             r =>
             {
-                if (!string.IsNullOrWhiteSpace(notes))
-                    r.Notes = notes.Trim();
-                r.CompletedAt = DateTime.UtcNow;
+                // What the supplier writes is its own column: the host's notes stay as the host wrote them.
+                r.CompletionNotes = notes;
+                r.CompletedAt = Now();
+                r.FinalAmountCents = price.FinalAmountCents;
+                r.PriceLinesJson = ServiceRequestJson.Serialize(price.Lines);
+                r.FinalAmountNeedsConfirmation = needsConfirmation;
             },
             cancellationToken);
 
-        await NotifyHostAsync(request, cancellationToken);
+        await notifier.NotifyHostAsync(request, cancellationToken);
         return request;
     }
 
@@ -221,11 +466,16 @@ public class ServiceRequestService(
             request,
             ServiceRequestStatus.Rifiutato,
             ServiceRequestErrorCodes.CannotRejectMessageKey,
-            r => r.RejectionReason = reason.Trim(),
+            r =>
+            {
+                r.RejectionReason = reason.Trim();
+                r.ResponseDueAt = null;
+                ClearProposal(r);
+            },
             cancellationToken);
 
         // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions.
-        await NotifyHostAsync(request, cancellationToken);
+        await notifier.NotifyHostAsync(request, cancellationToken);
         return request;
     }
 
@@ -236,19 +486,19 @@ public class ServiceRequestService(
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
 
-        // Another org's request is answered exactly like a missing one.
-        if (request is null || request.OrgId != hostOrgId)
+        // Another org's request, and one from a supplier's showcase, are answered exactly like a missing one.
+        if (request is null || request.OrgId != hostOrgId || request.RentalContext == ServiceRequestRentalContext.Showcase)
             throw RequestNotFound(id);
 
         await TransitionAsync(
             request,
             ServiceRequestStatus.Pagato,
             ServiceRequestErrorCodes.CannotMarkPaidMessageKey,
-            r => r.PaidAt = DateTime.UtcNow,
+            r => r.PaidAt = Now(),
             cancellationToken);
 
         // SU-09: the supplier learns that the host marked the request as paid (the payment itself is outside CasaZen).
-        await NotifySupplierPaidAsync(request, cancellationToken);
+        await notifier.NotifySupplierPaidAsync(request, cancellationToken);
         return request;
     }
 
@@ -267,13 +517,30 @@ public class ServiceRequestService(
         CancellationToken cancellationToken)
     {
         var from = request.Status;
-        if (!ServiceRequestStateMachine.CanTransition(from, to))
-            throw new DomainRuleException(ServiceRequestErrorCodes.InvalidTransition, refusedMessageKey);
+        EnsureCan(request, to, refusedMessageKey);
 
         apply(request);
         request.Status = to;
-        request.UpdatedAt = DateTime.UtcNow;
+        request.UpdatedAt = Now();
 
+        await SaveAsync(request, $"transition {from} -> {to}", cancellationToken);
+
+        logger.LogInformation("ServiceRequest {Id}: {From} -> {To}", request.Id, from, to);
+    }
+
+    /// <summary>422 <see cref="ServiceRequestErrorCodes.InvalidTransition"/> unless the state machine allows <paramref name="to"/>.</summary>
+    private static void EnsureCan(ServiceRequest request, ServiceRequestStatus to, string refusedMessageKey)
+    {
+        if (!ServiceRequestStateMachine.CanTransition(request.Status, to))
+            throw new DomainRuleException(ServiceRequestErrorCodes.InvalidTransition, refusedMessageKey);
+    }
+
+    /// <summary>
+    /// Saves the change of <paramref name="request"/> only if nobody changed the request since it was read (<c>xmin</c>, A4-19);
+    /// 409 <see cref="ServiceRequestErrorCodes.StateChanged"/> otherwise, with nothing saved.
+    /// </summary>
+    private async Task SaveAsync(ServiceRequest request, string operation, CancellationToken cancellationToken)
+    {
         try
         {
             await repository.SaveChangesAsync(cancellationToken);
@@ -281,12 +548,42 @@ public class ServiceRequestService(
         catch (DbUpdateConcurrencyException)
         {
             logger.LogInformation(
-                "ServiceRequest {Id}: transition {From} -> {To} refused, the request changed since it was read",
-                request.Id, from, to);
+                "ServiceRequest {Id}: {Operation} refused, the request changed since it was read", request.Id, operation);
             throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
         }
+        catch (DbUpdateException ex) when (IsLockConflict(ex))
+        {
+            // A deadlock or a serialization failure of the database is the same thing for the caller as a request that changed under
+            // it: the other operation won, nothing of this one was saved (SP-11: the customer and the supplier act on one request).
+            logger.LogInformation(
+                "ServiceRequest {Id}: {Operation} refused, the database stopped it ({SqlState})", request.Id, operation, PostgresStateOf(ex));
+            throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
+        }
+    }
 
-        logger.LogInformation("ServiceRequest {Id}: {From} -> {To}", request.Id, from, to);
+    /// <summary>True for the errors PostgreSQL raises when two transactions get in each other's way: a deadlock and a serialization failure.</summary>
+    private static bool IsLockConflict(Exception ex) =>
+        PostgresStateOf(ex) is Npgsql.PostgresErrorCodes.DeadlockDetected or Npgsql.PostgresErrorCodes.SerializationFailure;
+
+    private static string? PostgresStateOf(Exception? ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is Npgsql.PostgresException postgres)
+                return postgres.SqlState;
+        }
+
+        return null;
+    }
+
+    /// <summary>The time the supplier proposed is dropped when the request moves on (taken, rejected, cancelled).</summary>
+    internal static void ClearProposal(ServiceRequest request)
+    {
+        request.ProposedStartUtc = null;
+        request.ProposedEndUtc = null;
+        request.ProposedAt = null;
+        request.ProposedByUserId = null;
+        request.ProposalMessage = null;
     }
 
     public Task<ServiceRequest?> GetByIdForHostAsync(
@@ -297,6 +594,9 @@ public class ServiceRequestService(
     {
         // ServiceRequest is not tenant-filtered (two parties, see the TN-2 allow-list); host and supplier
         // reads are scoped by the explicit OrgId / SupplierOrgId predicate, never by the included Property.
+        if (rentalContext == ServiceRequestRentalContext.Showcase)
+            return Task.FromResult<ServiceRequest?>(null);
+
         var query = ApplyHostScope(
             db.ServiceRequests
                 .IgnoreQueryFilters()
@@ -328,6 +628,9 @@ public class ServiceRequestService(
         CancellationToken cancellationToken = default)
     {
         // IgnoreQueryFilters: scoped by the explicit host OrgId predicate (see GetByIdForHostAsync).
+        if (rentalContext == ServiceRequestRentalContext.Showcase)
+            return Task.FromResult<(IReadOnlyList<ServiceRequest> Items, int Total)>(([], 0));
+
         var query = ApplyHostScope(
             db.ServiceRequests
                 .IgnoreQueryFilters()
@@ -357,9 +660,9 @@ public class ServiceRequestService(
         repository.ListForSupplierAsync(supplierOrgId, openOnly, page, pageSize, cancellationToken);
 
     /// <summary>
-    /// The request for a supplier action (take, complete, reject): 404 when it does not exist, 403 when it was sent to
-    /// another supplier, 422 <see cref="ServiceRequestErrorCodes.SupplierNotActive"/> when the acting supplier is not
-    /// <see cref="SupplierStatus.Active"/> (SU-12, A4-29): a suspended supplier performs no action, and the check comes
+    /// The request for a supplier action (take, complete, reject, start, cancel, propose): 404 when it does not exist, 403 when
+    /// it was sent to another supplier, 422 <see cref="ServiceRequestErrorCodes.SupplierNotActive"/> when the acting supplier is
+    /// not <see cref="SupplierStatus.Active"/> (SU-12, A4-29): a suspended supplier performs no action, and the check comes
     /// before the state machine so it is told why instead of "invalid transition". The host's own action
     /// (<see cref="MarkPaidAsync"/>) is not a supplier action and does not depend on the supplier's status.
     /// </summary>
@@ -406,11 +709,29 @@ public class ServiceRequestService(
         return request;
     }
 
+    /// <summary>
+    /// The request of the host org (404 <see cref="ServiceRequestErrorCodes.NotFound"/> for a missing one and for another org's,
+    /// which answers the same), for the host's own actions (cancel, remind, answer a proposal).
+    /// </summary>
+    private async Task<ServiceRequest> GetRequestOfHostOrThrow(Guid id, Guid hostOrgId, CancellationToken cancellationToken)
+    {
+        var request = await repository.GetByIdAsync(id, cancellationToken);
+
+        // The host never reaches a request of a supplier's public showcase (SP-10), even when the supplier org is also its org.
+        if (request is null || request.OrgId != hostOrgId || request.RentalContext == ServiceRequestRentalContext.Showcase)
+            throw RequestNotFound(id);
+
+        return request;
+    }
+
     private static NotFoundException RequestNotFound(Guid id) => new($"Service request {id} not found")
     {
         Code = ServiceRequestErrorCodes.NotFound,
         MessageKey = ServiceRequestErrorCodes.NotFoundMessageKey,
     };
+
+    private static DomainRuleException TimeInvalid() =>
+        new(ServiceRequestErrorCodes.TimeInvalid, ServiceRequestErrorCodes.TimeInvalidMessageKey);
 
     /// <summary>The host's org and, for a scope bound to an owner, only the requests on that owner's properties.</summary>
     private static IQueryable<ServiceRequest> ApplyHostScope(IQueryable<ServiceRequest> query, HostScope scope)
@@ -439,140 +760,18 @@ public class ServiceRequestService(
     }
 
     /// <summary>
-    /// Host notifications after a supplier status change (take, complete, reject): an email to the org's contact address
-    /// and a push to the property's hosts, both queued on Hangfire, never sent inside the supplier's request (A6-29).
-    /// The status is already saved, so a failure here is logged and never turned into an error for the supplier (A4-20).
-    /// Called only by the winner of a transition (SU-10), and the push key is the transition, so the host gets one push.
+    /// Opens a READ COMMITTED transaction holding the supplier's calendar lock (<c>SupplierCalendarSync</c>, the lock of the
+    /// agenda writes and of the iCal sync), or null outside PostgreSQL. Everything read after it sees what the previous holder
+    /// committed, so a slot is judged on the agenda as it is now.
     /// </summary>
-    private async Task NotifyHostAsync(ServiceRequest request, CancellationToken cancellationToken)
-    {
-        await QueueHostStatusEmailAsync(request, cancellationToken);
+    private Task<IDbContextTransaction?> LockSupplierCalendarAsync(Guid supplierOrgId, CancellationToken cancellationToken) =>
+        PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, CalendarSyncService.AvailabilityLock(supplierOrgId));
 
-        try
-        {
-            var push = EmailTemplates.ServiceRequestStatusPush(
-                EmailTemplates.DefaultCulture, request.Status, request.Category, request.Property.Name);
-            // A request tied to a stay opens it; one without a stay opens the property list: the app has no service
-            // request screen (MO-03, A6-19).
-            var route = request.BookingId is Guid bookingId ? PushRoutes.Booking(bookingId) : PushRoutes.Properties;
-            pushNotifications.Enqueue(
-                PushDeliveryKeys.ServiceRequestStatus(request.Id, request.Status),
-                PushAudience.PropertyHosts(request.PropertyId),
-                new PushNotificationPayload(
-                    push.Title,
-                    push.Body,
-                    PushTypes.ForServiceRequestStatus(request.Status),
-                    request.BookingId,
-                    route,
-                    request.Id));
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogError(ex, "Push notification for service request {Id} ({Status}) could not be queued", request.Id, request.Status);
-        }
+    private static async Task CommitAsync(IDbContextTransaction? transaction, CancellationToken cancellationToken)
+    {
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Push of a new request to the supplier org's users (A6-08), next to the supplier email. The stay belongs to the host
-    /// (the supplier cannot open it), so the push carries no booking and opens the property list of the app, which has
-    /// no supplier screens yet; <c>serviceRequestId</c> is in the data for a supplier app.
-    /// </summary>
-    private void QueueSupplierPush(ServiceRequest request, string propertyName)
-    {
-        try
-        {
-            var push = EmailTemplates.ServiceRequestCreatedPush(EmailTemplates.DefaultCulture, request.Category, propertyName);
-            pushNotifications.Enqueue(
-                PushDeliveryKeys.ServiceRequestCreated(request.Id),
-                PushAudience.SupplierOrg(request.SupplierOrgId),
-                new PushNotificationPayload(
-                    push.Title,
-                    push.Body,
-                    PushTypes.ServiceRequestCreated,
-                    BookingId: null,
-                    PushRoutes.Properties,
-                    request.Id));
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogError(ex, "Push notification for new service request {Id} could not be queued", request.Id);
-        }
-    }
-
-    /// <summary>
-    /// Email and push to the supplier after the host marked a request as paid (SU-09): queued on Hangfire, never sent inside
-    /// the host's request. The status is already saved, so a failure here is logged and never turned into an error for the
-    /// host. Called only by the winner of the transition (SU-10), and the push key is the transition, so the supplier gets
-    /// one push. The supplier is notified whatever its status: a suspended supplier is still owed what it completed.
-    /// </summary>
-    private async Task NotifySupplierPaidAsync(ServiceRequest request, CancellationToken cancellationToken)
-    {
-        try
-        {
-            // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the request's supplier org.
-            var supplier = await db.SupplierProfiles
-                .AsNoTracking()
-                .Where(sp => sp.OrgId == request.SupplierOrgId)
-                .Select(sp => new { sp.Email, sp.LegalName })
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (supplier is not null)
-            {
-                var email = EmailTemplates.ServiceRequestPaid(
-                    EmailTemplates.DefaultCulture,
-                    supplier.LegalName,
-                    request.Category,
-                    request.Property.Name,
-                    publicSiteLinks.SupplierInbox());
-                emailQueue.Enqueue(supplier.Email, email, EmailTemplates.Names.ServiceRequestPaid);
-            }
-            else
-            {
-                logger.LogWarning(
-                    "ServiceRequest {Id} paid: supplier {SupplierOrgId} has no profile, no email queued",
-                    request.Id, request.SupplierOrgId);
-            }
-
-            var push = EmailTemplates.ServiceRequestPaidPush(EmailTemplates.DefaultCulture, request.Category, request.Property.Name);
-            pushNotifications.Enqueue(
-                PushDeliveryKeys.ServiceRequestStatus(request.Id, request.Status),
-                PushAudience.SupplierOrg(request.SupplierOrgId),
-                new PushNotificationPayload(
-                    push.Title,
-                    push.Body,
-                    PushTypes.ServiceRequestPaid,
-                    BookingId: null,
-                    PushRoutes.Properties,
-                    request.Id));
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogError(ex, "Supplier notification for paid service request {Id} could not be queued", request.Id);
-        }
-    }
-
-    private async Task QueueHostStatusEmailAsync(ServiceRequest request, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var hostEmail = await db.Orgs
-                .AsNoTracking()
-                .Where(o => o.Id == request.OrgId)
-                .Select(o => o.ContactEmail)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            var email = EmailTemplates.ServiceRequestStatusChanged(
-                EmailTemplates.DefaultCulture,
-                request.Status,
-                request.Category,
-                request.Property.Name,
-                request.RejectionReason);
-
-            emailQueue.Enqueue(hostEmail, email, EmailTemplates.Names.ServiceRequestStatusChanged);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogError(ex, "Host email for service request {Id} ({Status}) could not be queued", request.Id, request.Status);
-        }
-    }
+    private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
 }

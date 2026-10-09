@@ -55,6 +55,9 @@ public sealed class PropertyResponse
 
     /// <summary>UTC instant the property was paused; null when not paused.</summary>
     public DateTime? PausedAt { get; init; }
+
+    /// <summary>How the property is let (PM-01): <c>Short</c> (short stays) or <c>Long</c> (long-term leases), exclusive.</summary>
+    public RentalMode RentalMode { get; init; }
     public PropertyComplianceStatus ComplianceStatus { get; init; }
     public DateTime? ComplianceCompletedAt { get; init; }
 
@@ -102,6 +105,7 @@ public sealed class PropertyResponse
             IsActive = property.IsActive,
             IsPaused = property.IsPaused,
             PausedAt = property.PausedAt,
+            RentalMode = property.RentalMode,
             ComplianceStatus = property.ComplianceStatus,
             ComplianceCompletedAt = property.ComplianceCompletedAt,
             CadastralSheet = property.CadastralSheet,

@@ -145,12 +145,16 @@ public class OnboardingService(
     /// <summary>
     /// Counts the org's properties for the checklist. Tenant filter only is lifted (PC-05): a soft-deleted property no
     /// longer counts as created, published or with a CIN. "Published" is <see cref="PublicListing.IsPublished"/> itself,
-    /// evaluated by the database, so the checklist cannot drift from what the public site shows.
+    /// evaluated by the database, so the checklist cannot drift from what the public site shows. The checklist is the
+    /// short-rent one (booking site, CIN, payments), so only the short-rent properties count (PM-01): a property in
+    /// long-term mode is neither "created", nor "without a CIN", nor waiting for the compliance activation. Internal for
+    /// the tests.
     /// </summary>
-    private async Task<ActivationPropertyFacts> LoadPropertyFactsAsync(Guid orgId, CancellationToken cancellationToken)
+    internal async Task<ActivationPropertyFacts> LoadPropertyFactsAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var ofOrg = db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.OrgId == orgId);
 
         var published = await ofOrg.Where(PublicListing.IsPublished).CountAsync(cancellationToken);

@@ -1,6 +1,7 @@
 ﻿using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Repositories;
 
@@ -20,6 +21,12 @@ public interface IPropertyRepository
     /// (TN-3 list filter, in SQL).
     /// </summary>
     Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope);
+
+    /// <summary>
+    /// The properties of <see cref="GetByScopeAsync(HostScope)"/> in <paramref name="mode"/> only (PM-01,
+    /// <c>GET /api/properties?mode=</c>).
+    /// </summary>
+    Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope, RentalMode mode);
     Task<IEnumerable<Property>> GetAllAsync();
     Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
     /// <summary>
@@ -56,9 +63,10 @@ public interface IPropertyRepository
     Task<Property?> GetPropertyDetailAsync(Guid id);
 
     /// <summary>
-    /// Properties of <see cref="HostScope.OrgId"/> for the CIN compliance summary, restricted to
+    /// Short-rent properties (<see cref="RentalMode.Short"/>, PM-01: a long-term property has no CIN obligation) of
+    /// <see cref="HostScope.OrgId"/> for the CIN compliance summary, restricted to
     /// <see cref="HostScope.OwnerId"/> when set (TN-3 list filter, in SQL), by name. Same reach as the property list
-    /// (MO-12, A6-20): an org-wide role sees the CIN of every property of the org.
+    /// (MO-12, A6-20): an org-wide role sees the CIN of every short-rent property of the org.
     /// </summary>
     Task<IEnumerable<Property>> GetByScopeForComplianceAsync(HostScope scope);
     Task<bool> CinCodeExistsOnOtherPropertyAsync(string cinCode, Guid excludePropertyId);

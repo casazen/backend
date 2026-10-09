@@ -25,8 +25,14 @@ internal sealed class RecordingEmailQueue : IEmailQueue
 {
     public List<(string? To, EmailContent Content, string Template)> Queued { get; } = [];
 
+    /// <summary>When set, nothing is queued and <see cref="Enqueue"/> answers <c>false</c>, like a queue that cannot take the e-mail.</summary>
+    public bool Refuse { get; set; }
+
     public bool Enqueue(string? to, EmailContent content, string template)
     {
+        if (Refuse)
+            return false;
+
         lock (Queued)
             Queued.Add((to, content, template));
         return true;

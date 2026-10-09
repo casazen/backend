@@ -151,7 +151,27 @@ public sealed class UserContextMembershipService(
             .Select(m => (OrgRole?)m.Role)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return orgRole is not null && orgRole != OrgRole.Owner;
+        if (orgRole is not null)
+            return orgRole != OrgRole.Owner;
+
+        // Removal used to leave User.OrgId in place. The org still has its owner, so this user must not onboard
+        // into it and become a second one. A host org with no owner yet is the caller's own onboarding.
+        var orgId = await db.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.OrgId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (orgId is not Guid id)
+            return false;
+
+        var isHostOrg = await db.Orgs.AsNoTracking()
+            .AnyAsync(o => o.Id == id && o.OrgType == OrgType.Host, cancellationToken);
+        if (!isHostOrg)
+            return false;
+
+        return await db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(
+                m => m.OrgId == id && m.Role == OrgRole.Owner && m.UserId != userId,
+                cancellationToken);
     }
 
     private sealed record RoleRow(int Id, string ContextKey, string RoleKey);

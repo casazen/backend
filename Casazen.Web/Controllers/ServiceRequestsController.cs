@@ -11,6 +11,7 @@ using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Casazen.Web.Controllers;
 
@@ -104,7 +105,9 @@ public class ServiceRequestsController(
                 request.Urgency,
                 request.Notes,
                 request.ChargeToGuest,
-                ServiceRequestRentalContext.ShortRent),
+                ServiceRequestRentalContext.ShortRent,
+                request.ServiceListingId,
+                request.ScheduledStartUtc),
             cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapDto(created));
@@ -150,9 +153,10 @@ public class ServiceRequestsController(
             var (items, total) = await serviceRequestService.ListForSupplierAsync(
                 supplierOrgId.Value, openOnly, page, pageSize, cancellationToken);
 
+            // The supplier reads its requests through the supplier mapping: before the take, no property name and no notes (D9).
             return Ok(new ServiceRequestListResponse
             {
-                Items = items.Select(MapDto),
+                Items = items.Select(MapDtoForSupplier),
                 Total = total,
                 Page = page,
                 PageSize = pageSize,
@@ -197,7 +201,7 @@ public class ServiceRequestsController(
             {
                 var supplierRequest = await serviceRequestService.GetByIdForSupplierAsync(id, supplierOrgId.Value, cancellationToken);
                 if (supplierRequest is not null)
-                    return Ok(MapDto(supplierRequest));
+                    return Ok(MapDtoForSupplier(supplierRequest));
             }
         }
 
@@ -227,19 +231,50 @@ public class ServiceRequestsController(
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<ServiceRequestDto>> Take(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<ServiceRequestDto>> Take(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] TakeServiceRequestRequest? request,
+        CancellationToken cancellationToken)
     {
         var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         var userId = User.GetUserId();
         if (supplierOrgId is null || userId is null) return NotFound();
 
-        var updated = await serviceRequestService.TakeAsync(id, supplierOrgId.Value, userId, cancellationToken);
-        return Ok(MapDto(updated));
+        // No body (or an empty one) accepts the request as it is; the time and the price are what the supplier adds (SP-04).
+        var command = request is null
+            ? null
+            : new TakeServiceRequestCommand(request.ScheduledStartUtc, request.ScheduledEndUtc, request.QuotedAmountCents);
+        var updated = await serviceRequestService.TakeAsync(id, supplierOrgId.Value, userId, command, cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
     }
 
     /// <summary>
-    /// The supplier completes a request it took; notes sent replace the request's notes (at most 1000 characters,
-    /// 400 otherwise). Same errors as <see cref="Take"/>.
+    /// The supplier starts the work on a request it took (<c>PresoInCarico → InCorso</c>, SP-04); the host is told. Same errors as
+    /// <see cref="Take"/>; 422 <c>service_request_invalid_transition</c> unless the request is taken and not started.
+    /// </summary>
+    [HttpPost("{id:guid}/start")]
+    [Authorize(Policy = CasazenPolicies.Supplier)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> Start(Guid id, CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (supplierOrgId is null) return NotFound();
+
+        var updated = await serviceRequestService.StartAsync(id, supplierOrgId.Value, cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// The supplier completes a request it took (SP-04): <c>notes</c> are what it leaves for the host (their own field,
+    /// <c>completionNotes</c>: the host's notes are no longer replaced, 400 over 1000 characters), <c>finalAmountCents</c> the
+    /// total it asks and <c>extras</c> the lines on top of the agreed price (at most 10). A total more than 20 % above the quote
+    /// is flagged <c>price.needsCustomerConfirmation</c> (decision D7). The photos are uploaded before, with
+    /// <c>POST {id}/photos</c>. Same errors as <see cref="Take"/>; 422 <c>service_request_amount_invalid</c> /
+    /// <c>service_request_final_amount_invalid</c> for the amounts.
     /// </summary>
     [HttpPost("{id:guid}/complete")]
     [Authorize(Policy = CasazenPolicies.Supplier)]
@@ -251,15 +286,84 @@ public class ServiceRequestsController(
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> Complete(
         Guid id,
-        [FromBody] CompleteServiceRequestRequest? request,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CompleteServiceRequestRequest? request,
         CancellationToken cancellationToken)
     {
         var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (supplierOrgId is null) return NotFound();
 
-        var updated = await serviceRequestService.CompleteAsync(
-            id, supplierOrgId.Value, request?.Notes, cancellationToken);
-        return Ok(MapDto(updated));
+        var command = request is null
+            ? null
+            : new CompleteServiceRequestCommand(
+                request.Notes,
+                request.FinalAmountCents,
+                request.Extras?.Select(extra => new ServiceRequestExtra(extra.Label, extra.AmountCents)).ToList());
+        var updated = await serviceRequestService.CompleteAsync(id, supplierOrgId.Value, command, cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// The supplier adds photos of the work to a request it took and has not completed (multipart field <c>photos</c>, JPEG, PNG
+    /// or WebP checked on their content, at most 6 per request, 10 MB each). All or none. The files are private: the host and
+    /// the supplier read them with <c>GET {id}/photos/{photoId}</c>. 422 <c>service_request_photo_invalid</c> /
+    /// <c>service_request_photo_limit_reached</c>; 413 for a request larger than 6 files of 10 MB.
+    /// </summary>
+    [HttpPost("{id:guid}/photos")]
+    [Authorize(Policy = CasazenPolicies.Supplier)]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(ServiceRequestLimits.MaxUploadRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = ServiceRequestLimits.MaxUploadRequestBytes)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> UploadPhotos(
+        Guid id,
+        [FromForm] List<IFormFile> photos,
+        CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (supplierOrgId is null) return NotFound();
+
+        if (photos is not { Count: > 0 })
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "ServiceRequestPhotosRequired");
+
+        var updated = await serviceRequestService.AddWorkPhotosAsync(id, supplierOrgId.Value, photos, cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// A photo of the work (SP-04), for the supplier it was sent to or for the host of the request (<c>property.read</c>,
+    /// short-rent). Private file: only here, never cached; 404 <c>service_request_not_found</c> for a request outside the
+    /// caller's scope, 404 <c>service_request_photo_not_found</c> for a photo the request does not have.
+    /// </summary>
+    [HttpGet("{id:guid}/photos/{photoId:guid}")]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPhoto(Guid id, Guid photoId, CancellationToken cancellationToken)
+    {
+        ServiceRequest? request = null;
+        var isSupplier = await SatisfiesAsync(CasazenPolicies.Supplier);
+        if (isSupplier)
+        {
+            var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+            if (supplierOrgId is not null)
+                request = await serviceRequestService.GetByIdForSupplierAsync(id, supplierOrgId.Value, cancellationToken);
+        }
+
+        if (request is null)
+        {
+            if (!await SatisfiesAsync(CasazenPolicies.PropertyRead))
+                return isSupplier ? ServiceRequestNotFound() : Forbid();
+
+            var scope = await GetHostScopeAsync(cancellationToken);
+            if (scope is null) return Unauthorized();
+
+            request = await serviceRequestService.GetByIdForHostAsync(id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
+        }
+
+        return await ServiceRequestPhotoResults.ForAsync(this, serviceRequestService, request, photoId, cancellationToken);
     }
 
     /// <summary>
@@ -284,7 +388,149 @@ public class ServiceRequestsController(
 
         var updated = await serviceRequestService.RejectAsync(
             id, supplierOrgId.Value, request.Reason, cancellationToken);
-        return Ok(MapDto(updated));
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// Cancels a request (SP-04), with a reason (required, at most 500 characters, 400 otherwise) shown to the other party, who is
+    /// told. Serves both sides and evaluates the policy of the branch it takes: the <b>supplier</b> it was sent to
+    /// (<see cref="CasazenPolicies.Supplier"/>) cancels before the work started (<c>Richiesto</c>, <c>PresoInCarico</c>); the
+    /// <b>host</b> (<c>property.write</c> on the property, short-rent) cancels up to and including the work in progress. 422
+    /// <c>service_request_invalid_transition</c> from any other status (the work is done, rejected, paid, already cancelled); 404
+    /// <c>service_request_not_found</c> outside the caller's scope; 409 <c>service_request_state_changed</c> on a concurrent change.
+    /// </summary>
+    [HttpPost("{id:guid}/cancel")]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> Cancel(
+        Guid id,
+        [FromBody] CancelServiceRequestRequest request,
+        CancellationToken cancellationToken)
+    {
+        var isSupplier = await SatisfiesAsync(CasazenPolicies.Supplier);
+        if (isSupplier)
+        {
+            var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+            if (supplierOrgId is not null
+                && await serviceRequestService.GetByIdForSupplierAsync(id, supplierOrgId.Value, cancellationToken) is not null)
+            {
+                var cancelled = await serviceRequestService.CancelAsSupplierAsync(id, supplierOrgId.Value, request.Reason, cancellationToken);
+                return Ok(MapDtoForSupplier(cancelled));
+            }
+        }
+
+        if (!await SatisfiesAsync(CasazenPolicies.PropertyWrite))
+            return isSupplier ? ServiceRequestNotFound() : Forbid();
+
+        return await HostActionAsync(
+            id, hostOrgId => serviceRequestService.CancelAsHostAsync(id, hostOrgId, request.Reason, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    /// The supplier proposes another time for a new request (SP-04): the proposal is saved and the host told, and the request
+    /// stays <c>Richiesto</c> until the host answers (<c>POST {id}/proposal/accept</c> or <c>reject</c>). A new proposal replaces
+    /// the old one. The time is checked with the supplier's agenda (409 <c>supplier_slot_unavailable</c>); 422
+    /// <c>service_request_invalid_transition</c> unless the request is new, <c>service_request_time_invalid</c> when the length of
+    /// the work is unknown. Same errors as <see cref="Take"/>.
+    /// </summary>
+    [HttpPost("{id:guid}/propose-time")]
+    [Authorize(Policy = CasazenPolicies.Supplier)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> ProposeTime(
+        Guid id,
+        [FromBody] ProposeServiceRequestTimeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        var userId = User.GetUserId();
+        if (supplierOrgId is null || userId is null) return NotFound();
+
+        var updated = await serviceRequestService.ProposeTimeAsync(
+            id,
+            supplierOrgId.Value,
+            userId,
+            new ProposeServiceRequestTimeCommand(request.StartUtc!.Value, request.EndUtc, request.Message),
+            cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// The host accepts the time the supplier proposed (SP-04): it becomes the time of the request, which the supplier member who
+    /// proposed it takes (<c>Richiesto → PresoInCarico</c>); the supplier is told. <c>property.write</c> on the property. The time
+    /// is checked again with the supplier's agenda (409 <c>supplier_slot_unavailable</c>); 422 <c>service_request_no_proposal</c>
+    /// when there is none to answer; 404 <c>service_request_not_found</c> outside the caller's scope.
+    /// </summary>
+    [HttpPost("{id:guid}/proposal/accept")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> AcceptProposal(Guid id, CancellationToken cancellationToken) =>
+        HostActionAsync(id, hostOrgId => serviceRequestService.AcceptProposalAsync(id, hostOrgId, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The host turns the proposed time down (SP-04): the request stays <c>Richiesto</c> as it was and the supplier is told, who
+    /// can still take it as it is, propose another time or reject it. Same errors as <see cref="AcceptProposal"/>.
+    /// </summary>
+    [HttpPost("{id:guid}/proposal/reject")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> RejectProposal(Guid id, CancellationToken cancellationToken) =>
+        HostActionAsync(id, hostOrgId => serviceRequestService.RejectProposalAsync(id, hostOrgId, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The host reminds the supplier to answer a new request (SP-04): the supplier is told by email and push. At most one
+    /// reminder every 6 hours (422 <c>service_request_remind_too_soon</c>); only while the request is new and the supplier has
+    /// not proposed a time (422 <c>service_request_invalid_transition</c>). <c>property.write</c> on the property.
+    /// </summary>
+    [HttpPost("{id:guid}/remind")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> Remind(Guid id, CancellationToken cancellationToken) =>
+        HostActionAsync(id, hostOrgId => serviceRequestService.RemindAsync(id, hostOrgId, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// Runs a host action on a short-rent request of the caller's scope: 404 for a request outside it (or a long-rent one), 403
+    /// when the caller may not write the request's property (<c>property.write</c> as a <see cref="HostResource"/>), then
+    /// <paramref name="action"/> with the host org.
+    /// </summary>
+    private async Task<ActionResult<ServiceRequestDto>> HostActionAsync(
+        Guid id,
+        Func<Guid, Task<ServiceRequest>> action,
+        CancellationToken cancellationToken)
+    {
+        var scope = await GetHostScopeAsync(cancellationToken);
+        if (scope is null) return Unauthorized();
+
+        var existing = await serviceRequestService.GetByIdForHostAsync(
+            id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
+        if (existing is null) return ServiceRequestNotFound();
+
+        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId);
+        if (existing.Property is null ||
+            !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
+            return Forbid();
+
+        return Ok(MapDto(await action(scope.OrgId)));
     }
 
     /// <summary>
@@ -370,36 +616,86 @@ public class ServiceRequestsController(
         return await authorizationService.IsAuthorizedAsync(User, property, operation) ? null : Forbid();
     }
 
-    internal static ServiceRequestDto MapDto(ServiceRequest r) => new()
+    /// <summary>The request as its host sees it: everything the host wrote and the supplier did.</summary>
+    internal static ServiceRequestDto MapDto(ServiceRequest r) => Map(r, forSupplier: false);
+
+    /// <summary>
+    /// The request as the supplier it was sent to sees it, in the shape of the host endpoints (the answers of its own actions and
+    /// the legacy <c>GET api/service-requests/{id}</c> and <c>?view=supplier</c>): until the supplier takes the request, no name of
+    /// the property and no host notes (decision D9, <see cref="SupplierJobDisclosure"/>).
+    /// </summary>
+    internal static ServiceRequestDto MapDtoForSupplier(ServiceRequest r) => Map(r, forSupplier: true);
+
+    private static ServiceRequestDto Map(ServiceRequest r, bool forSupplier)
     {
-        Id = r.Id,
-        OrgId = r.OrgId,
-        BookingId = r.BookingId,
-        RentalContext = r.RentalContext.ToString(),
-        PropertyId = r.PropertyId,
-        PropertyName = r.Property?.Name,
-        SupplierOrgId = r.SupplierOrgId,
-        SupplierName = r.SupplierOrg?.DisplayName ?? r.SupplierOrg?.Name,
-        Category = r.Category,
-        Urgency = r.Urgency.ToString(),
-        Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes,
-        Status = r.Status.ToString(),
-        TakenAt = r.TakenAt,
-        TakenByUserId = r.TakenByUserId,
-        CompletedAt = r.CompletedAt,
-        PaidAt = r.PaidAt,
-        ChargeToGuest = r.ChargeToGuest,
-        RejectionReason = r.RejectionReason,
-        CreatedAt = r.CreatedAt,
-        UpdatedAt = r.UpdatedAt,
-        History = ServiceRequestHistory
-            .Build(
-                new ServiceRequestMilestones(
-                    r.Status, r.CreatedAt, r.UpdatedAt, r.TakenAt, r.CompletedAt, r.PaidAt, r.RejectionReason),
-                takenByName: null)
-            .Select(h => ServiceRequestHistoryEntryDto.From(h))
-            .ToList(),
-    };
+        var disclosed = !forSupplier || SupplierJobDisclosure.IsDisclosed(r.Status);
+        // The supplier reads the photos at the shared endpoint; a host at the one of its rental context.
+        var photosPath = forSupplier || r.RentalContext == ServiceRequestRentalContext.ShortRent
+            ? ServiceRequestDtoParts.ShortRentBasePath
+            : ServiceRequestDtoParts.LongRentBasePath;
+
+        return new ServiceRequestDto
+        {
+            Id = r.Id,
+            OrgId = r.OrgId,
+            BookingId = r.BookingId,
+            RentalContext = r.RentalContext.ToString(),
+            PropertyId = r.PropertyId,
+            PropertyName = disclosed ? r.Property?.Name : null,
+            SupplierOrgId = r.SupplierOrgId,
+            SupplierName = r.SupplierOrg?.DisplayName ?? r.SupplierOrg?.Name,
+            Category = r.Category,
+            Urgency = r.Urgency.ToString(),
+            Notes = disclosed && !string.IsNullOrWhiteSpace(r.Notes) ? r.Notes : null,
+            Status = r.Status.ToString(),
+            TakenAt = r.TakenAt,
+            TakenByUserId = r.TakenByUserId,
+            CompletedAt = r.CompletedAt,
+            PaidAt = r.PaidAt,
+            ChargeToGuest = r.ChargeToGuest,
+            RejectionReason = r.RejectionReason,
+            CreatedAt = r.CreatedAt,
+            UpdatedAt = r.UpdatedAt,
+            History = ServiceRequestHistory
+                .Build(
+                    new ServiceRequestMilestones(
+                        r.Status,
+                        r.CreatedAt,
+                        r.UpdatedAt,
+                        r.TakenAt,
+                        r.CompletedAt,
+                        r.PaidAt,
+                        r.RejectionReason,
+                        r.StartedAt,
+                        r.CancelledAt,
+                        r.CancellationReason,
+                        r.CancelledBy,
+                        r.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host),
+                    takenByName: null)
+                .Select(h => ServiceRequestHistoryEntryDto.From(h))
+                .ToList(),
+            Source = SupplierRequestSources.Of(r.Source),
+            ServiceListingId = r.ServiceListingId,
+            ServiceName = r.ServiceNameSnapshot,
+            ScheduledStart = r.ScheduledStartUtc,
+            ScheduledEnd = r.ScheduledEndUtc,
+            RespondBy = r.Status == ServiceRequestStatus.Richiesto ? r.ResponseDueAt : null,
+            StartedAt = r.StartedAt,
+            Price = ServiceRequestDtoParts.ToPriceDto(
+                r.EstimatedAmountCents,
+                r.QuotedAmountCents,
+                r.FinalAmountCents,
+                r.FinalAmountNeedsConfirmation,
+                ServiceRequestJson.ReadPriceLines(r.PriceLinesJson)),
+            CancelledAt = r.CancelledAt,
+            CancelledBy = r.CancelledBy?.ToString(),
+            CancellationReason = r.CancellationReason,
+            CompletionNotes = r.CompletionNotes,
+            WorkPhotos = ServiceRequestDtoParts.ToPhotoDtos(r.Id, ServiceRequestJson.ReadPhotos(r.WorkPhotosJson), photosPath),
+            Proposal = ServiceRequestDtoParts.ToProposalDto(r.ProposedStartUtc, r.ProposedEndUtc, r.ProposedAt, r.ProposalMessage),
+            LastRemindedAt = r.LastRemindedAt,
+        };
+    }
 
     private static SupplierMatchResponse MapMatchResult(SupplierMatchResult result) => new()
     {

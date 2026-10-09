@@ -1550,7 +1550,7 @@
     <value>The property has not been declared ready for the next guest yet.</value>
   </data>
   <data name="SupplierInboxStatusInvalid" xml:space="preserve">
-    <value>Invalid status: use open, history, all or a request status (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato).</value>
+    <value>Invalid status: use open, history, all or a request status (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato, Annullato).</value>
   </data>
   <data name="SupplierInboxPeriodInvalid" xml:space="preserve">
     <value>Invalid period: the start date (from) cannot be after the end date (to).</value>
@@ -2029,6 +2029,63 @@
   <data name="SupplierPhotoUploadFailed" xml:space="preserve">
     <value>The photo upload failed. Try again shortly.</value>
   </data>
+  <data name="SupplierServiceNotFound" xml:space="preserve">
+    <value>Service not found: it may have been deleted.</value>
+  </data>
+  <data name="SupplierServiceInvalid" xml:space="preserve">
+    <value>Some details of the service are not valid (fields: {0}). Check them and try again.</value>
+  </data>
+  <data name="SupplierServiceNotPublishable" xml:space="preserve">
+    <value>A published service always has a name, a category, a duration and a price (or "on quote"). Missing: {0}.</value>
+  </data>
+  <data name="SupplierServiceLimitReached" xml:space="preserve">
+    <value>You can have at most {0} services: delete or reuse an existing one before creating another.</value>
+  </data>
+  <data name="SupplierServiceCannotPause" xml:space="preserve">
+    <value>Only a published service can be paused: this one is still a draft.</value>
+  </data>
+  <data name="SupplierServiceChanged" xml:space="preserve">
+    <value>The service was changed from another tab or by another user: reload the page and apply your change again.</value>
+  </data>
+  <data name="SupplierServicePhotoNone" xml:space="preserve">
+    <value>Select at least one photo to upload.</value>
+  </data>
+  <data name="SupplierServicePhotoInvalidType" xml:space="preserve">
+    <value>The file "{0}" is not a valid photo: only JPEG, PNG or WebP images are accepted.</value>
+  </data>
+  <data name="SupplierServicePhotoInvalidSize" xml:space="preserve">
+    <value>The file "{0}" is empty or larger than the maximum size of {1} MB.</value>
+  </data>
+  <data name="SupplierServicePhotoLimitReached" xml:space="preserve">
+    <value>A service can have at most {0} photos (it already has {1}): remove one before uploading more.</value>
+  </data>
+  <data name="SupplierServiceCopySuffix" xml:space="preserve">
+    <value> (copy)</value>
+  </data>
+  <data name="SupplierHoursInvalid" xml:space="preserve">
+    <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>
+  </data>
+  <data name="SupplierTimeOffInvalid" xml:space="preserve">
+    <value>The time off is not valid (fields: {0}). The first and the last day are required, the last day cannot be before the first nor already past, and the period lasts at most 366 days.</value>
+  </data>
+  <data name="SupplierTimeOffLimitReached" xml:space="preserve">
+    <value>You can have at most {0} upcoming time off periods: delete one you no longer need before adding another.</value>
+  </data>
+  <data name="SupplierTimeOffNotFound" xml:space="preserve">
+    <value>Time off not found: it may have been deleted already.</value>
+  </data>
+  <data name="SupplierBlockInvalid" xml:space="preserve">
+    <value>The time block is not valid (fields: {0}). The end must be after the start and not already past, the length at least 15 minutes (at most 31 days for a block), and an extra opening must stay within a single day.</value>
+  </data>
+  <data name="SupplierBlockLimitReached" xml:space="preserve">
+    <value>You can have at most {0} upcoming blocks and extra openings: delete the ones you no longer need before adding more.</value>
+  </data>
+  <data name="SupplierBlockNotFound" xml:space="preserve">
+    <value>Block not found: it may have been deleted already, or it comes from your connected calendar and is removed there.</value>
+  </data>
+  <data name="SupplierRulesInvalid" xml:space="preserve">
+    <value>The rules are not valid (fields: {0}). All five are required: break between jobs (0 to 240 minutes, in steps of 5), jobs per day (1 to 50), notice (0 to 720 hours), horizon (1 to 365 days) and slot step (15 to 240 minutes, in steps of 5).</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Provide the municipality or the property to search for suppliers.</value>
   </data>
@@ -2155,6 +2212,15 @@
   <data name="PropertyCityLockedByLease" xml:space="preserve">
     <value>The property city cannot be changed after a canone concordato lease has been submitted for registration.</value>
   </data>
+  <data name="PropertyNotBookableInLongMode" xml:space="preserve">
+    <value>This property is set to long-term rental: it is not published on the booking site and does not take short-stay bookings.</value>
+  </data>
+  <data name="PropertyRentalModeChangeNotAllowed" xml:space="preserve">
+    <value>The rental mode (short or long) of an existing property cannot be changed with this save.</value>
+  </data>
+  <data name="PropertyListModeInvalid" xml:space="preserve">
+    <value>Invalid mode: use "short" (short-term rental) or "long" (long-term rental).</value>
+  </data>
   <data name="DocumentTypeInvalid" xml:space="preserve">
     <value>Invalid document type.</value>
   </data>
@@ -2211,5 +2277,158 @@
   </data>
   <data name="ActivationIcalRecommended" xml:space="preserve">
     <value>Recommended: connect an OTA iCal feed.</value>
+  </data>
+  <data name="ServiceRequestCannotStart" xml:space="preserve">
+    <value>The request cannot be started in its current status: it must be taken first and not started yet.</value>
+  </data>
+  <data name="ServiceRequestCannotCancel" xml:space="preserve">
+    <value>The request cannot be cancelled in its current status: the host can cancel it until the work is done, the supplier only before it starts.</value>
+  </data>
+  <data name="ServiceRequestCannotPropose" xml:space="preserve">
+    <value>Another time can only be proposed for a new request.</value>
+  </data>
+  <data name="ServiceRequestCannotRemind" xml:space="preserve">
+    <value>Only a new request that is still waiting for the supplier's answer can be reminded.</value>
+  </data>
+  <data name="ServiceRequestCannotAddPhotos" xml:space="preserve">
+    <value>Photos of the work are added while the work is on, before the request is completed.</value>
+  </data>
+  <data name="SupplierSlotUnavailable" xml:space="preserve">
+    <value>The chosen time is no longer free: pick another one.</value>
+  </data>
+  <data name="ServiceRequestServiceUnavailable" xml:space="preserve">
+    <value>The chosen service is not available: the supplier paused it or has not published it yet.</value>
+  </data>
+  <data name="ServiceRequestServiceCategoryMismatch" xml:space="preserve">
+    <value>The category of the request is not the category of the chosen service.</value>
+  </data>
+  <data name="ServiceRequestTimeNeedsService" xml:space="preserve">
+    <value>To choose a time the supplier's service is needed: its duration gives the end of the work.</value>
+  </data>
+  <data name="ServiceRequestTimeInvalid" xml:space="preserve">
+    <value>The time is not valid: give the end of the work, after the start and in whole minutes, or choose a service that has a duration.</value>
+  </data>
+  <data name="ServiceRequestTimeAlreadySet" xml:space="preserve">
+    <value>The request already has a time: to change it, propose another time to the host.</value>
+  </data>
+  <data name="ServiceRequestAmountInvalid" xml:space="preserve">
+    <value>Invalid amount: it must be above zero and at most {0} euro; there can be at most {1} extras, each with a description of at most {2} characters.</value>
+  </data>
+  <data name="ServiceRequestFinalAmountInvalid" xml:space="preserve">
+    <value>The final amount cannot be lower than the extras it includes.</value>
+  </data>
+  <data name="ServiceRequestRemindTooSoon" xml:space="preserve">
+    <value>You reminded this request a short while ago: you can do it again {0} hours after the last reminder.</value>
+  </data>
+  <data name="ServiceRequestNoProposal" xml:space="preserve">
+    <value>There is no proposed time to answer for this request.</value>
+  </data>
+  <data name="ServiceRequestPhotoInvalid" xml:space="preserve">
+    <value>Invalid photo: {0}. Accepted formats: JPEG, PNG, WebP. Maximum size: 10 MB.</value>
+  </data>
+  <data name="ServiceRequestPhotoLimit" xml:space="preserve">
+    <value>A request can have at most {0} photos: it already has {1} and you are uploading {2}.</value>
+  </data>
+  <data name="ServiceRequestPhotoNotFound" xml:space="preserve">
+    <value>Photo not found.</value>
+  </data>
+  <data name="ServiceRequestServiceInvalid" xml:space="preserve">
+    <value>The service given is not valid.</value>
+  </data>
+  <data name="ServiceRequestAmountOutOfRange" xml:space="preserve">
+    <value>The amount must be between {1} and {2} cents of euro.</value>
+  </data>
+  <data name="ServiceRequestExtraLabelRequired" xml:space="preserve">
+    <value>Say what the extra is for.</value>
+  </data>
+  <data name="ServiceRequestExtraLabelTooLong" xml:space="preserve">
+    <value>The description of the extra can be at most {1} characters long.</value>
+  </data>
+  <data name="ServiceRequestExtrasTooMany" xml:space="preserve">
+    <value>You can add at most {1} extras.</value>
+  </data>
+  <data name="ServiceRequestCancelReasonRequired" xml:space="preserve">
+    <value>Give the reason for the cancellation.</value>
+  </data>
+  <data name="ServiceRequestCancelReasonTooLong" xml:space="preserve">
+    <value>The reason for the cancellation can be at most {1} characters long.</value>
+  </data>
+  <data name="ServiceRequestProposalStartRequired" xml:space="preserve">
+    <value>Give the start of the proposed time.</value>
+  </data>
+  <data name="ServiceRequestProposalMessageTooLong" xml:space="preserve">
+    <value>The message can be at most {1} characters long.</value>
+  </data>
+  <data name="ServiceRequestIdsRequired" xml:space="preserve">
+    <value>Give the requests to accept: at least one.</value>
+  </data>
+  <data name="ServiceRequestIdsTooMany" xml:space="preserve">
+    <value>You can accept at most {1} requests at a time.</value>
+  </data>
+  <data name="ServiceRequestPhotosRequired" xml:space="preserve">
+    <value>Upload at least one photo (field photos).</value>
+  </data>
+  <data name="SupplierInboxTabInvalid" xml:space="preserve">
+    <value>Invalid tab: use nuove, programmate, da-incassare or archivio.</value>
+  </data>
+  <data name="SupplierInboxWhenInvalid" xml:space="preserve">
+    <value>Invalid period: use oggi, settimana or mese.</value>
+  </data>
+  <data name="SupplierSlotsServiceRequired" xml:space="preserve">
+    <value>Specify the service whose times you want to see (service parameter).</value>
+  </data>
+  <data name="SupplierSlotsDaysInvalid" xml:space="preserve">
+    <value>The number of days (days parameter) must be between 1 and {0}.</value>
+  </data>
+  <data name="SupplierQuoteInvalid" xml:space="preserve">
+    <value>Some details of the estimate request are not valid (fields: {0}). Check them and try again.</value>
+  </data>
+  <data name="SupplierBookingInvalid" xml:space="preserve">
+    <value>Some details of the booking are not valid (fields: {0}). Check them and try again.</value>
+  </data>
+  <data name="SupplierBookingOffline" xml:space="preserve">
+    <value>This supplier is not taking online bookings right now: you can ask for a quote.</value>
+  </data>
+  <data name="SupplierBookingOutsideZone" xml:space="preserve">
+    <value>The supplier does not work in this comune: you can still ask for a quote.</value>
+  </data>
+  <data name="SupplierBookingConsentRequired" xml:space="preserve">
+    <value>To send the request you need to accept the privacy notice.</value>
+  </data>
+  <data name="SupplierBookingConsentOutdated" xml:space="preserve">
+    <value>The privacy notice has been updated: read the current version and accept it again.</value>
+  </data>
+  <data name="SupplierBookingLinkInvalid" xml:space="preserve">
+    <value>Invalid confirmation link: open the link you received by email.</value>
+  </data>
+  <data name="SupplierBookingLinkExpired" xml:space="preserve">
+    <value>The time to confirm the request has passed and the time is available again: send a new request from the supplier's site.</value>
+  </data>
+  <data name="SupplierBookingSupplierUnavailable" xml:space="preserve">
+    <value>The supplier cannot receive requests right now. Please try again later.</value>
+  </data>
+  <data name="SupplierBookingTokenRequired" xml:space="preserve">
+    <value>Open the link you received by email: the confirmation code is missing or not valid.</value>
+  </data>
+  <data name="SupplierBookingNotFound" xml:space="preserve">
+    <value>No request matches this code and email address. Check the code in the confirmation email and use the email address you booked with.</value>
+  </data>
+  <data name="SupplierBookingCannotCancel" xml:space="preserve">
+    <value>This request can no longer be cancelled here: the work has already started or is done, its time has passed, or the request is already closed. If you need to, contact the supplier.</value>
+  </data>
+  <data name="SupplierBookingCannotReschedule" xml:space="preserve">
+    <value>The time of this request cannot be changed: it can only be changed until the supplier has answered, while the supplier is active and the service is still available. You can cancel it and book again.</value>
+  </data>
+  <data name="SupplierBookingNoProposal" xml:space="preserve">
+    <value>There is no new time to accept or turn down for this request.</value>
+  </data>
+  <data name="SupplierBookingProposalExpired" xml:space="preserve">
+    <value>The time to answer the new time has passed: the request is cancelled automatically. You can book again from the supplier's site.</value>
+  </data>
+  <data name="SupplierBookingAccessRequired" xml:space="preserve">
+    <value>Give the supplier, the request code and the email address you booked with.</value>
+  </data>
+  <data name="SupplierBookingStartRequired" xml:space="preserve">
+    <value>Give the chosen time (startUtc).</value>
   </data>
 </root>

@@ -18,6 +18,23 @@ public static class RecurringJobsRegistration
     {
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
 
+        ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
+
+        // SP-10: the upkeep of the bookings from the suppliers' public showcases is registered whatever the flags say. A hold that
+        // was made while SupplierShowcaseBooking was on has to lapse, a request nobody answered has to be cancelled and a booking
+        // that exists keeps its reminder, also after the flag is turned off; with the flag off these runs just find nothing.
+        recurringJobManager.AddOrUpdate<ServiceRequestExpiryJob>(
+            ServiceRequestExpiryJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServiceRequestExpiryJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ServiceRequestReminderJob>(
+            ServiceRequestReminderJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            Cron.Hourly,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<DynamicPricingJob>(
             DynamicPricingJob.RecurringJobId,
             job => job.ExecuteAsync(),
@@ -135,6 +152,26 @@ public static class RecurringJobsRegistration
             PropertyComplianceCheckJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             PropertyComplianceCheckJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// Automatic cancellation of the service requests nobody answered (SP-04, D8): only with
+    /// <see cref="FeatureFlags.SupplierRequestAutoCancel"/> on. With the flag off no request is ever cancelled by time, and the
+    /// schedule of an earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureServiceRequestAutoCancel(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(ServiceRequestAutoCancelJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<ServiceRequestAutoCancelJob>(
+            ServiceRequestAutoCancelJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServiceRequestAutoCancelJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
