@@ -556,6 +556,7 @@ event (PL-10); the lease's rent lock (`PostgresAdvisoryLocks.Scope.RentLease`) i
 | Variable | Default | Meaning |
 |---|---|---|
 | `RentBilling__PaymentRequestDaysBeforeDue` | `5` (**provisional technical default**, to be decided by the product owner) | days before the due date on which the payment link is emailed (0-31) |
+| `RentBilling__ReminderIntervalHours` | `24` | hours between two landlord reminders of the same installment (1-720), LR-01: [`long-rent-aggregates.md`](long-rent-aggregates.md) § 4 |
 
 ### Stripe settings to check (product owner)
 
@@ -567,7 +568,8 @@ event (PL-10); the lease's rent lock (`PostgresAdvisoryLocks.Scope.RentLease`) i
 
 ### Not covered (open questions)
 
-Rent receipts and stamp duty, ISTAT updates, automatic off-session debit (SEPA mandate), reminders after the due date,
+Rent receipts and stamp duty, ISTAT updates, automatic off-session debit (SEPA mandate), automatic reminders after the due
+date (the landlord's manual reminder, with a new payment link, is LR-01: [`long-rent-aggregates.md`](long-rent-aggregates.md)),
 pro rata of a partial final period, who receives the money when the org is an agency and not the landlord: see the
 DUBBI of LT-06.
 

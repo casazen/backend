@@ -1,6 +1,6 @@
 # Indice dei runbook
 
-Un runbook per tema (47 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02), `org-team.md` (task AM-01 e AM-02 della wave di redesign, 2026-10-08), `property-rental-mode.md` (task PM-01 della wave di redesign, 2026-10-08) e `open-access.md` (task BL-01 della wave di redesign, 2026-10-09), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
+Un runbook per tema (48 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02), `org-team.md` (task AM-01 e AM-02 della wave di redesign, 2026-10-08), `property-rental-mode.md` (task PM-01 della wave di redesign, 2026-10-08), `open-access.md` (task BL-01 della wave di redesign, 2026-10-09) e `long-rent-aggregates.md` (task LR-01 della wave di redesign, 2026-10-09), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
 
 > **Hosting in revisione (2026-10-02):** il PO ha cancellato Railway. Nei runbook "Railway" indica l'host del backend così com'era configurato: va riletto alla luce dell'analisi del task HOSTING ([`free-hosting-analysis.md`](free-hosting-analysis.md); raccomandazione: VM Oracle Cloud Always Free, decisione del PO ancora da prendere). Il database resta su Supabase. Le variabili e le procedure non legate all'host restano valide.
 
@@ -83,6 +83,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | [`rli.md`](rli.md) | RLI registration of lease contracts | FD-06, FD-07, LT-01, LT-02, LT-03, LT-04, LT-07, LT-08 |
 | [`lease-contract-templates.md`](lease-contract-templates.md) | lease contract templates (approval gate, clause texts from the product owner, draft templates 2026-11 not approved) | FD-02, LG-02, LT-02, LT-03, LT-09, LT-10 |
 | [`canone-concordato.md`](canone-concordato.md) | Canone concordato: range, dati dell'accordo, tipo di contratto (LT-10, LT-13) | LT-08, LT-10, LT-13 |
+| [`long-rent-aggregates.md`](long-rent-aggregates.md) | elenco contratti con viste e ricerca, registro dei canoni con i numeri del mese e i solleciti e-mail (limite di frequenza, nota, link Stripe), scadenze e panoramica d'area, scope per immobile in SQL | LR-01 |
 
 ## SEO e siti pubblici
 
