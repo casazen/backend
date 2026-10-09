@@ -20,4 +20,17 @@ public interface ISupplierServiceRequestReader
     /// sent to another supplier).
     /// </summary>
     Task<SupplierServiceRequestView?> GetAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The requests of <paramref name="supplierOrgId"/> that have a day of their own between <paramref name="from"/> and
+    /// <paramref name="to"/> (Europe/Rome days, both included), as the items of the supplier's agenda (SP-03): every status
+    /// except <c>Rifiutato</c>, by day. A request has a day while it is a short-rent request tied to a stay (the check-out
+    /// day); the ones without one (long-rent, or older) are not in the agenda until they get a time (SP-04). Only the fields
+    /// of <see cref="SupplierAgendaRequest"/>: no property, address or contact.
+    /// </summary>
+    Task<IReadOnlyList<SupplierAgendaRequest>> ListForAgendaAsync(
+        Guid supplierOrgId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default);
 }

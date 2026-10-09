@@ -402,6 +402,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
         // The supplier's catalog of services with prices (SP-02): rows keyed by the supplier org, not tenant-filtered.
         services.AddScoped<ISupplierServiceCatalogService, SupplierServiceCatalogService>();
+        // The supplier's agenda (SP-03): hours, time off, blocks, rules, calendar and the input of the slot planner. Rows keyed
+        // by the supplier org, not tenant-filtered; every write under the SupplierCalendarSync lock.
+        services.AddScoped<ISupplierAgendaService, SupplierAgendaService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
 

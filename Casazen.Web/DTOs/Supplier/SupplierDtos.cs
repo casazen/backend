@@ -413,6 +413,12 @@ public class SupplierDuplicateMergeDto
     /// </summary>
     public int ServiceListingsMoved { get; set; }
 
+    /// <summary>
+    /// Rows of the duplicate's agenda (SP-03) that moved to the keeper: time off, blocks and extra openings, and the weekly
+    /// hours and settings when the keeper had none (the keeper's own stay as they are).
+    /// </summary>
+    public int AgendaRowsMoved { get; set; }
+
     /// <summary>False when the duplicate org also holds host data: only its supplier profile was removed.</summary>
     public bool DuplicateOrgDeleted { get; set; }
 }

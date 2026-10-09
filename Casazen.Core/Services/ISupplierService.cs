@@ -371,6 +371,10 @@ public record FixOrphanedSupplierOrgsReport(
 /// Services of the duplicate's price catalog (SP-02) that moved to the keeper, the deleted ones too (a slug the keeper
 /// already uses gets the next free suffix).
 /// </param>
+/// <param name="AgendaRowsMoved">
+/// Rows of the duplicate's agenda (SP-03) that moved to the keeper: its time off, blocks and extra openings, and its
+/// weekly hours and settings when the keeper had none (the keeper's own stay as they are).
+/// </param>
 public record SupplierDuplicateMerge(
     Guid KeeperOrgId,
     Guid DuplicateOrgId,
@@ -383,7 +387,8 @@ public record SupplierDuplicateMerge(
     int OrgMembersMoved,
     int DevicesMoved,
     bool DuplicateOrgDeleted,
-    int ServiceListingsMoved = 0);
+    int ServiceListingsMoved = 0,
+    int AgendaRowsMoved = 0);
 
 /// <summary>A case left untouched for an admin decision (<see cref="Code"/>: see <c>docs/runbooks/suppliers.md</c>).</summary>
 public record SupplierManualIntervention(string Code, IReadOnlyList<Guid> OrgIds, IReadOnlyList<string> UserIds);

@@ -10,7 +10,8 @@ host contact), request detail page and inbox history (SU-08, A4-14). Section 12:
 the platform admin's supplier list, suspension and invites (SU-12, A4-29).
 Section 15: what the host sees of a request (timeline, rejection reason, "Segna pagato" with confirmation, asking another supplier)
 and the payment notification to the supplier (SU-09, A4-28). Section 19: the supplier's catalog of services with prices
-and the category `electrical` (SP-02, redesign wave).
+and the category `electrical` (SP-02, redesign wave). Section 20: the supplier's agenda (weekly hours, time off, blocks, the
+rules, the calendar) and the slot planner (SP-03, redesign wave).
 
 ## 1. How a supplier joins
 
@@ -384,6 +385,8 @@ the migration there are no duplicate emails left, so a run normally only does th
      move to the keeper before the profile is deleted (the cascade would take what stayed); a slug the keeper already
      uses gets the next free suffix (`pulizie` → `pulizie-2`); the keeper may end up above the 30 services limit, which
      only stops it from creating more (`serviceListingsMoved`);
+   - the duplicate's agenda (SP-03, section 20.8): its time off, blocks, extra openings and calendar engagements move; its
+     weekly hours and its settings move only when the keeper has none (`agendaRowsMoved`);
    - the duplicate's categories and comuni the keeper lacks are appended (bio, photos, VAT, calendar settings of the
      duplicate are not copied: the keeper's profile is the one in use);
    - accounts: `SupplierOrgId` = duplicate → keeper; a supplier-only account (`OrgId` = duplicate, no `SupplierOrgId`)
@@ -403,7 +406,7 @@ the migration there are no duplicate emails left, so a run normally only does th
 Response (200): `dryRun`, `profilesScanned`, `duplicateGroups`, `duplicatesMerged`, `serviceRequestsMoved`, `merges[]`
 (`keeperOrgId`, `duplicateOrgId`, `serviceRequestsMoved`, `availabilityDaysMoved`,
 `availabilityDaysDropped`, `categoriesAdded`, `comuniAdded`, `supplierLinksMoved`, `orgMembersMoved`, `devicesMoved`,
-`serviceListingsMoved`, `duplicateOrgDeleted`), `danglingLinksCleared[]` and `supplierLinksBackfilled[]` (user ids), `orphanProfiles[]`,
+`serviceListingsMoved`, `agendaRowsMoved`, `duplicateOrgDeleted`), `danglingLinksCleared[]` and `supplierLinksBackfilled[]` (user ids), `orphanProfiles[]`,
 `manualInterventions[]` (`code`, `orgIds`, `userIds`). Ids and counts only: no email, no name.
 
 Errors: 409 `supplier_maintenance_conflict` when a concurrent change stops the run (nothing saved: run it again); 403
@@ -1044,6 +1047,211 @@ until then they show the raw code `electrical` (the web falls back to the value,
       `POST .../publish` → 422 until a duration and a price (or `requiresQuote`) are set; then 200 `Active`; `.../pause`,
       `.../duplicate` and `DELETE` answer as above; another supplier's `GET {id}` is 404.
 - [ ] `GET /api/service-categories` returns 11 codes, the last one `electrical`.
+
+## 20. The supplier's agenda: hours, time off, blocks, rules and the slot planner — SP-03
+
+Redesign wave task SP-03 (branch `feature/rd-supplier-agenda`, backend only: no screen yet, the console screens are SP-07;
+stacked on SP-02). Gap report 05 §4.1 and decisions D10 and D34 of `redesign/docs/wave/WAVE-SPEC.md`. Before this a
+supplier only had `SupplierAvailability`, a yes/no per day. Stacked on this branch, and **not part of it**: the time and
+price on a service request (SP-04), iCal events by the hour (SP-05), the public slots and the estimate (SP-09), the booking
+from the showcase with its holds (SP-10), the endpoint of the supplier's settings (`api/supplier/settings`, SP-16). No public
+endpoint, no feature flag, nothing new in the configuration.
+
+### 20.1 What the agenda is
+
+| Table (entity) | One row is |
+|---|---|
+| `SupplierWorkingHours` | a band of the **weekly** hours: `Weekday` (the number of `DayOfWeek`, Sunday is 0), `StartMinute` and `EndMinute` as **minutes after midnight on the wall clock of Rome** (`EndMinute` up to 1440, midnight). A supplier has up to **3 bands a day**; a weekday with none is a rest day. Unique on supplier + weekday + start |
+| `SupplierTimeOff` | days the supplier does not work: `FromDate` to `ToDate`, both included (calendar days of Rome), a `Reason` (`Vacation`, `Holiday`, `Illness`, `Other`: only a label) and an optional `Label` (≤ 80 characters, only the supplier's console shows it) |
+| `SupplierBusyWindow` (table `SupplierBusyWindows`) | hours in UTC: `StartUtc`, `EndUtc`, a `Kind` — `Block` (the supplier blocks them), `ExtraOpening` (opened on top of the weekly hours) or `External` (an engagement of the supplier's own calendar) — a `Source` (`Manual` or `ICalFeed`), a `Label` (≤ 80, **never public**) and the `ExternalUid` of an iCal event |
+| `SupplierSettings` | **one row per supplier** (the key is the supplier org): the five rules (below), `ParallelJobs` (decision D10: **1**, not editable from the console), `HoursConfiguredAt`, and the columns the next tasks use (`RespondWithinMinutes` 180, `OnlineBookingEnabled` false, `AutoAcceptRegulars`, three notification switches): no endpoint changes those yet |
+
+`SupplierAvailability` (one row per day) **stays as it was** and is now read as the *override of the day*: `Available = false`
+closes the whole day (by hand, or by an all-day event of the calendar feed), `true` is no override. There is no backfill:
+a supplier with no hours has no slot until it saves some. The migration is `AddSupplierAgenda` (four new tables, applied at
+startup): every agenda starts empty.
+
+The settings row is **lazy**: a supplier has none until it saves a rule or its hours. A read without a row answers the
+defaults and writes nothing; the first write creates the row (under the lock, so two first writes never make two). The
+defaults are in `SupplierAgendaDefaults`: buffer **30** minutes, **3** jobs a day, notice **24** hours, horizon **35** days,
+slot step **60** minutes. `HoursConfiguredAt` is the moment of the last save of the hours that left at least one band
+(`null` while there is none): the supplier's checklist (SP-04) reads it.
+
+### 20.2 Endpoints (policy `RequireSupplier`, supplier org from the caller's own link, not behind a feature flag)
+
+The org comes from `ISupplierOrgContextResolver.GetLinkedSupplierOrgIdAsync`, like the catalog (section 19.2): the agenda is
+business data and never provisions a supplier org; a `Supplier` account with no link is 404 `not_found`.
+
+| Method and path | Answer |
+|---|---|
+| `GET api/supplier/availability/hours` | `{ days[], configuredAt }`: **seven** days, Monday first, each `{ weekday, bands[{ startMinute, endMinute }] }` (a rest day has no band) |
+| `PUT api/supplier/availability/hours` | replaces the week with the body `{ days: [{ weekday, bands: [{ startMinute, endMinute }] }] }` (a weekday that is not sent becomes a rest day; `days: []` clears the hours); answers like the `GET`. A band that stays keeps its row |
+| `GET api/supplier/availability/time-off` | `{ items[], total, limit }`: the time off that has **not ended** (last day today or later), by first day; `limit` 100 |
+| `POST api/supplier/availability/time-off` | 201 + `Location`, body `{ fromDate, toDate, reason?, label? }` (`reason` left out is `Vacation`) |
+| `DELETE api/supplier/availability/time-off/{id}` | 204 |
+| `GET api/supplier/availability/blocks` | `{ items[], total, limit }`: the blocks and extra openings the supplier set **by hand** that have not ended, by start; `limit` 200 |
+| `POST api/supplier/availability/blocks` | 201 + `Location`, body `{ kind, startUtc, endUtc, label? }` with `kind` `Block` or `ExtraOpening` |
+| `DELETE api/supplier/availability/blocks/{id}` | 204; only a manual window |
+| `GET api/supplier/availability/rules` | `{ bufferMinutes, maxJobsPerDay, minNoticeHours, horizonDays, slotStepMinutes }` (the defaults while none was saved) |
+| `PUT api/supplier/availability/rules` | replaces the five rules; **all five are needed** (a missing one is a 422 naming it, never silently reset to its default); answers like the `GET` |
+| `GET api/supplier/calendar?from&to` | what the console calendar draws, see 20.3 |
+
+The endpoints that already existed **do not change**: `GET/PUT api/supplier/availability` (the override of the day),
+`calendar/status`, `calendar/ical` and `calendar/sync` (section 12 and `ical.md`).
+
+Errors (ProblemDetails `code`): 404 `supplier_time_off_not_found` and `supplier_block_not_found` (another supplier's entry,
+a deleted one, and — for a block — an engagement of the calendar feed, all answer the same: it does not exist for the
+caller); 400 `validation_error` for a malformed body (a weekday, a reason or a date that is not one) and for a calendar range
+that is reversed or longer than 62 days; 422 with **`fields`** (the JSON names of what is wrong, a day or a band by its
+position: `days[1].bands[0].endMinute`) `supplier_hours_invalid`, `supplier_time_off_invalid`, `supplier_block_invalid`,
+`supplier_rules_invalid`; 422 `supplier_time_off_limit_reached` and `supplier_block_limit_reached` (the limit is the
+message argument). The messages are keys of `SharedResources` (Italian and English); the list is
+`SupplierAgendaErrors.MessageKeys`.
+
+What is refused (the limits are constants in `Casazen.Core/Suppliers/SupplierAgendaLimits.cs`, technical bounds rather than
+product rules, checked by `SupplierAgendaRules`; the database mirrors them with check constraints):
+
+| Value | Rule |
+|---|---|
+| Weekly hours | up to **3 bands** a day; a start 0 to 1439, an end 1 to 1440 **after its start**; two bands of a day must not overlap (bands that only touch are accepted: the planner joins them); a weekday at most once; `days` is required |
+| Time off | both dates; last day not before the first, **at most 366 days**, not already over; first day at most 730 days ahead; `reason` one of the four; label ≤ 80 characters without control characters; at most **100** entries that have not ended |
+| Block / extra opening | `kind` `Block` or `ExtraOpening` (`External` is written only by the calendar sync); both instants (UTC); the end after the start, **at least 15 minutes**; a block at most 31 days; an **extra opening inside one day of Rome** (it may end at the midnight that closes the day); not already over; start at most 730 days ahead; label as above; at most **200** that have not ended |
+| Rules | buffer 0 to 240 minutes in **steps of 5**; jobs a day 1 to 50; notice 0 to 720 hours; horizon 1 to 365 days; slot step 15 to 240 minutes in **steps of 5** |
+
+### 20.3 The calendar
+
+`GET api/supplier/calendar?from=2026-10-01&to=2026-10-31` (dates `yyyy-MM-dd`, Rome days, both included; **at most 62
+days**; left out: from today, and 30 days after `from`) answers, for the supplier's own agenda only:
+
+- `workingHours`: the weekly hours, as the `GET hours` (seven days);
+- `closedDays[]`: `{ date, source }` for the days of the range closed by hand or by the calendar feed (`Available = false`);
+- `timeOff[]`: the time off that touches the range;
+- `blocks[]`: the blocks, extra openings **and calendar engagements** that touch the range (`kind`, `source`, `startUtc`, `endUtc`,
+  `label`), by start;
+- `requests[]`: the supplier's service requests that have a day, as **whole-day items**: `{ id, date, status, category }`.
+  The day of a request is, today, the check-out day of the stay of a short-rent request (what the inbox calls `scheduledFor`);
+  a long-rent request, or an old one not tied to a stay, has no day and is not here until it gets a time (SP-04). Every status
+  except `Rifiutato`. Nothing else of the request: **no property, address, host or guest** (those are the request's detail, and the
+  supplier sees them only after taking it, section 11).
+- `timeZone`: `Europe/Rome`.
+
+### 20.4 The slot planner
+
+`SupplierSlotPlanner` (`Casazen.Core/Suppliers`) is a **pure function**: it reads no clock, no database, no configuration. The
+input is a `SupplierPlanningInput` (the instant "now", the rules, the weekly hours, the time off, the closed days, the extra
+openings and the list of what takes the supplier's time) and a `SupplierSlotQuery` (the duration of the service, and
+optionally the service's own notice and the weekdays it is offered on). `PlanDay` and `PlanRange` (at most 366 days) answer,
+for each Europe/Rome day, either **why it has no slot** (`SupplierDayClosure`) or its free slots as UTC instants.
+
+A day has **no slot** when, in this order: it is before today (`Past`); the supplier is off (`TimeOff`); the day is closed by
+hand or by the feed (`DayClosed`); the service is not offered on that weekday (`ServiceNotOffered`: the days of a service restrict
+the supplier's hours, never replace them, so an extra opening does not open them); there is no weekly band for that weekday
+and no extra opening that day (`NoHours`); `MaxJobsPerDay` is reached (`MaxJobsReached`); the **whole day** is inside the notice,
+that is it ends before `now + notice` (`WithinNotice`); it is later than `today + HorizonDays` (`BeyondHorizon`: the horizon is
+inclusive, 35 days means the 35th day after today can still be booked; the gap report lists it among the rules, not among
+the closed days). An open day can still have no *free* slot (everything is taken): that is a day that is full of work, not a
+closed one.
+
+On an open day the weekly bands (wall clock of Rome, turned into UTC for that date) and the extra openings of the day are
+**joined into continuous bands** (bands that touch or overlap are one: an extra hour that fills the lunch break makes one band,
+and a 90-minute service can then cross it). In each band a slot starts at the beginning of the band and then every
+`SlotStepMinutes` of real time, as long as `start + duration ≤ end of the band`. A slot is **free** when:
+
+- it starts no earlier than `now + notice` (the notice of the service when it has one, otherwise the supplier's);
+- it does not overlap anything that takes the supplier's time, each stretch **widened by `BufferMinutes` before and after**:
+  requests with hours (also the ones not accepted yet), **holds** that have not expired, blocks and calendar engagements. The
+  buffer applies to all of them alike. It does not apply to the edges of a working band (nothing is before the first slot);
+- with `ParallelJobs` above 1 (not offered by the console, decision D10), it is enough that the widened stretches are **never as
+  many as the capacity at any one instant** of the slot: two jobs one after the other need one place, not two. With 1 this is
+  "nothing overlaps".
+
+`SupplierOccupancy` is **the input door for everything that takes the supplier's time**: `TimedRequest(start, end)`,
+`DatedRequest(day)`, `Hold(start, end, expiresAt)`, `Block(start, end)` and `External(start, end)`. A request that only has a
+day (the host's requests today: the day is the check-out) takes **no hour** but counts for `MaxJobsPerDay`. Requests and holds count
+for the daily maximum on the Europe/Rome day of their start (or of their date); blocks and engagements never do. A hold is a
+request waiting for its e-mail check: it counts, so that two customers cannot take the last place of a day at the same time (this
+goes one step beyond the gap report, which names only the requests; the planner ignores a hold altogether once it expired, the
+instant "now" being part of its input).
+
+### 20.5 Daylight saving time
+
+Working hours are **wall-clock times of Rome**: 09:00 stays 09:00 all year, so on 28 March (CET) it is 08:00 UTC and on 29 March
+(CEST) 07:00 UTC. `RomeCalendar.ToUtc(date, time)` (and `ToUtc(date, minutesAfterMidnight)`, 0 to 1440) does the conversion
+and has a **rule for the two days a year the clock changes**, so a time never has two answers or none:
+
+| Case | Rule | Example (2026) |
+|---|---|---|
+| a time that **does not exist** (the hour skipped when summer time starts: 02:00-02:59 on the last Sunday of March) | read with the offset in force **before** the change (+01:00): it lands one hour later on the clock | 29 March 02:30 → 03:30 CEST = 01:30 UTC; 02:00 and 03:00 are the same instant |
+| a time that **happens twice** (the hour repeated when summer time ends: 02:00-02:59 on the last Sunday of October) | its **first** occurrence, in summer time (+02:00) | 25 October 02:30 → 00:30 UTC, not 01:30 UTC |
+
+(`TimezoneHelper.ConvertLocalToUtc` is not used for this: it throws for a time that does not exist and takes the second
+occurrence of a repeated one.) Nothing else moves a slot: the planner turns the bands into UTC instants **first** and then walks
+the grid in real elapsed minutes. So 29 March is a 23-hour day, with nothing offered in the skipped hour (hours 00:00-06:00 give
+five hourly slots, at 00:00, 01:00, 03:00, 04:00 and 05:00 on the clock), and 25 October is a 25-hour day on which the repeated
+hour offers its slots twice, once per pass (hours 00:00-06:00 give seven). A band that starts in the skipped hour and ends right
+after it has no real length and is dropped. The notice and the end of a day use the real length of the day too. All of this has
+tests (`RomeCalendarTests`, `SupplierSlotPlannerTests`).
+
+### 20.6 Tenancy: keyed by the supplier org, not `ITenantOwned`
+
+The four tables follow `SupplierProfile`, `SupplierAvailability` and the catalog (section 19.4): `OrgId` is the **supplier** org
+(foreign key to `SupplierProfiles`, in cascade). They are **not** `ITenantOwned` (a supplier-only account has no `User.OrgId`,
+PL-05, so the global host-org filter would give it zero rows), each is in the allow-list of `TenantQueryFilterArchitectureTests`
+with its reason, and **every read and write carries an explicit `OrgId` predicate**: they all go through `HoursOf`,
+`TimeOffOf`, `WindowsOf` and `SettingsOf` of `SupplierAgendaService` (or are inserts of a row that has its `OrgId`).
+`SupplierAgendaTenancyTests` guards the model, the SQL of those queries and that **no other file** reads the tables (the repair,
+`SupplierService.Maintenance.cs`, and the context are the only others, each statement with the predicate): whoever adds a reader
+(SP-05 writes the windows of the iCal feed, SP-09 reads the slots) must add the file to `AllowedFiles` with its reason and the
+predicate; a public read also needs the supplier to be `Active` and must never expose a `Label`. The tests
+`SupplierAgendaPostgresTests` prove the isolation between two suppliers on PostgreSQL. The service request of a supplier is read
+through `ISupplierServiceRequestReader.ListForAgendaAsync`, which keeps the guarantee of section 11 (columns of the request only,
+the guest is never read).
+
+### 20.7 Concurrency: the lock
+
+**Every write of the agenda takes the advisory lock `SupplierCalendarSync` (scope 1_065, key = the supplier org id, the same lock
+as the iCal sync and the manual days, section 12) in a READ COMMITTED transaction and reads after taking it**: so a limit
+(100 time off, 200 blocks) is never decided on a stale read, two first writes never create two settings rows, two saves of the hours
+never mix their bands, and a sync never writes the same rows at once. A save of the hours is by difference (the bands that stay keep their row,
+one that only changes its end is updated), so the unique index never sees a row leave and come back. One lock per supplier: another
+supplier is never held back. The lock only exists on PostgreSQL: the tests that prove it (`SupplierAgendaPostgresTests`: every
+write waits for the lock held by another connection, parallel writes at the limit, parallel first writes) are `[PostgresFact]`
+(they run on CI, not on a laptop without a database). There is **no optimistic version**: `PUT` is a replacement and the last
+writer wins (the console saves the whole section it shows).
+
+### 20.8 Merge of duplicate profiles (`fix-orphaned`)
+
+The agenda of a duplicate profile moves to the keeper before the profile is deleted (section 9.3; the foreign keys cascade, so
+what stayed would be deleted with it), under the `SupplierCalendarSync` lock of both suppliers and in the repair's transaction
+(a dry run rolls it back): its **time off, blocks, extra openings and engagements always move** (dropping a closure would offer a
+slot the supplier had closed); its **weekly hours move only when the keeper has none**, and then the keeper's `HoursConfiguredAt`
+follows; its **settings row moves only when the keeper has none** (the keeper's rules are the ones in use). The report has
+`agendaRowsMoved` per merge (what moved: time off + windows + the bands and the settings row when they came over).
+
+### 20.9 For the tasks stacked on this one
+
+- **SP-04** (requests with hours): add `SupplierOccupancy.TimedRequest(startUtc, endUtc)` to the list of
+  `ISupplierAgendaService.BuildPlanningInputAsync` for the requests `Richiesto`, `PresoInCarico` and `InCorso` that have hours
+  (and keep `DatedRequest(day)` for the ones that do not), and use `PlanAsync` under the lock before taking a slot. The
+  planner does not change. `ISupplierServiceRequestReader.ListForAgendaAsync` gets the hours too.
+- **SP-05** (iCal by the hour): write the events as `SupplierBusyWindow` with `Kind = External`, `Source = ICalFeed` and the
+  `ExternalUid`, under the same lock (`CalendarSyncService.AvailabilityLock`), freeing only the windows of the feed; add its own
+  unique index on the event and its file to the allow-list of `SupplierAgendaTenancyTests`. `BuildPlanningInputAsync` already
+  turns `External` windows into occupancies, and the calendar already lists them.
+- **SP-09** (public slots): `PlanAsync(orgId, from, to, new SupplierSlotQuery(durationMinutes, service.MinNoticeHours, service.WeekdaysMask))`
+  for a published service of an `Active` supplier; show only the slot instants (never a label, a kind or a reason of closure).
+- **SP-10** (holds): add `SupplierOccupancy.Hold(startUtc, endUtc, expiresAtUtc)` and recompute under the lock before creating the hold.
+
+### 20.10 After a deploy
+
+- [ ] Migration `AddSupplierAgenda` applied (tables `SupplierWorkingHours`, `SupplierTimeOff`, `SupplierBusyWindows`,
+      `SupplierSettings`; unique index `UIX_SupplierWorkingHours_OrgId_Weekday_StartMinute`; the `CK_Supplier*` checks).
+- [ ] As a supplier (test environment): `GET /api/supplier/availability/hours` → seven rest days and `configuredAt: null`;
+      `PUT .../hours` with a Monday band `{ startMinute: 480, endMinute: 780 }` → 200 and `configuredAt` set; a fourth band in a
+      day → 422 `supplier_hours_invalid` with `fields`; `GET .../rules` → 30, 3, 24, 35, 60.
+- [ ] `POST .../time-off` and `POST .../blocks` answer 201, their `DELETE` 204, and `GET /api/supplier/calendar` lists them;
+      another supplier's `DELETE` of the same id is 404.
+- [ ] The existing `GET/PUT /api/supplier/availability` and `GET /api/supplier/calendar/status` still answer as before.
 
 ## Known limits (other tasks)
 

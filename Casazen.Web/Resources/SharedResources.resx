@@ -1978,6 +1978,30 @@
   <data name="SupplierServiceCopySuffix" xml:space="preserve">
     <value> (copia)</value>
   </data>
+  <data name="SupplierHoursInvalid" xml:space="preserve">
+    <value>Gli orari non sono validi (campi: {0}). Controlla le fasce: ogni giorno ne ha al massimo 3, non possono sovrapporsi e ognuna deve finire dopo il suo inizio (in minuti dalla mezzanotte, da 0 a 1440).</value>
+  </data>
+  <data name="SupplierTimeOffInvalid" xml:space="preserve">
+    <value>Le ferie non sono valide (campi: {0}). Il primo e l'ultimo giorno sono obbligatori, l'ultimo non può essere prima del primo né già passato, e il periodo dura al massimo 366 giorni.</value>
+  </data>
+  <data name="SupplierTimeOffLimitReached" xml:space="preserve">
+    <value>Puoi avere al massimo {0} periodi di ferie in programma: elimina uno di quelli che non ti servono prima di aggiungerne un altro.</value>
+  </data>
+  <data name="SupplierTimeOffNotFound" xml:space="preserve">
+    <value>Periodo di ferie non trovato: potrebbe essere già stato eliminato.</value>
+  </data>
+  <data name="SupplierBlockInvalid" xml:space="preserve">
+    <value>Il blocco di orario non è valido (campi: {0}). La fine deve essere dopo l'inizio e non già passata, la durata almeno 15 minuti (al massimo 31 giorni per un blocco) e un'apertura extra deve restare dentro un solo giorno.</value>
+  </data>
+  <data name="SupplierBlockLimitReached" xml:space="preserve">
+    <value>Puoi avere al massimo {0} blocchi e aperture extra in programma: elimina quelli che non ti servono prima di aggiungerne altri.</value>
+  </data>
+  <data name="SupplierBlockNotFound" xml:space="preserve">
+    <value>Blocco non trovato: potrebbe essere già stato eliminato, oppure arriva dal tuo calendario collegato e si toglie da lì.</value>
+  </data>
+  <data name="SupplierRulesInvalid" xml:space="preserve">
+    <value>Le regole non sono valide (campi: {0}). Servono tutte e cinque: pausa tra i lavori (da 0 a 240 minuti, a passi di 5), massimo lavori al giorno (da 1 a 50), preavviso (da 0 a 720 ore), orizzonte (da 1 a 365 giorni) e passo degli orari (da 15 a 240 minuti, a passi di 5).</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Indica il comune oppure l'immobile per cercare i fornitori.</value>
   </data>
