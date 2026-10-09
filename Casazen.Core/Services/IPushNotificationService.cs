@@ -84,6 +84,13 @@ public static class PushDeliveryKeys
     public static string ServiceRequestProposalAnswered(Guid serviceRequestId, DateTime proposedAtUtc, bool accepted) =>
         $"service-request:{serviceRequestId:N}:proposal-{(accepted ? "accepted" : "rejected")}:{proposedAtUtc:yyyyMMddHHmmss}";
 
+    /// <summary>
+    /// The customer of a supplier's public showcase moved a new request to another time, to the supplier (SP-11). A request can be
+    /// moved more than once, so the instant is part of the key: a retry of the job is one push, the next move is another.
+    /// </summary>
+    public static string ServiceRequestRescheduled(Guid serviceRequestId, DateTime rescheduledAtUtc) =>
+        $"service-request:{serviceRequestId:N}:rescheduled:{rescheduledAtUtc:yyyyMMddHHmmss}";
+
     /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static string NewBooking(Guid bookingId) => $"booking:{bookingId:N}:new";
 
@@ -125,11 +132,14 @@ public static class PushTypes
     /// <summary>The supplier proposes another time (SP-04): pushed to the host.</summary>
     public const string ServiceRequestTimeProposed = "service-request-time-proposed";
 
-    /// <summary>The host accepted the proposed time (SP-04): pushed to the supplier org.</summary>
+    /// <summary>The host (SP-04), or the customer of a showcase request (SP-11), accepted the proposed time: pushed to the supplier org.</summary>
     public const string ServiceRequestProposalAccepted = "service-request-proposal-accepted";
 
-    /// <summary>The host turned the proposed time down (SP-04): pushed to the supplier org.</summary>
+    /// <summary>The host (SP-04), or the customer of a showcase request (SP-11), turned the proposed time down: pushed to the supplier org.</summary>
     public const string ServiceRequestProposalRejected = "service-request-proposal-rejected";
+
+    /// <summary>The customer of the public showcase moved a new request to another time (SP-11): pushed to the supplier org.</summary>
+    public const string ServiceRequestRescheduled = "service-request-rescheduled";
     public const string NewBooking = "new-booking";
     public const string GuestDataMissing = "guest-data-missing";
     public const string AlloggiatiDeadline = "alloggiati-deadline";

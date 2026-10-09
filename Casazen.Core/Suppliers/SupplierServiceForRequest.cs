@@ -8,6 +8,10 @@ namespace Casazen.Core.Suppliers;
 /// <see cref="Services.ISupplierServiceCatalogService.FindForRequestAsync"/>; nothing of the public content of the service
 /// (photos, supplements, descriptions) is here.
 /// </summary>
+/// <param name="Slug">
+/// The public slug of the service (SP-11): the name the customer's page asks the free slots with
+/// (<c>GET api/public/suppliers/{slug}/slots?service=</c>) when it moves its booking to another time.
+/// </param>
 public sealed record SupplierServiceForRequest(
     Guid Id,
     string Name,
@@ -18,7 +22,8 @@ public sealed record SupplierServiceForRequest(
     int WeekdaysMask,
     int? PriceFromCents,
     SupplierServicePriceUnit PriceUnit,
-    bool RequiresQuote)
+    bool RequiresQuote,
+    string Slug)
 {
     /// <summary>True for a published service: the only kind a request can be made for.</summary>
     public bool IsRequestable => Status == SupplierServiceListingStatus.Active;
