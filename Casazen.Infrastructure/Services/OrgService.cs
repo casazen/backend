@@ -1,6 +1,7 @@
 ﻿using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -12,7 +13,7 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>
 /// Org tenant access and MVP plan management (US-004 extension).
 /// </summary>
-public partial class OrgService(AppDbContext dbContext) : IOrgService
+public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLog = null) : IOrgService
 {
     public Task<Org?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
         dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
@@ -193,11 +194,26 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
     public async Task<Org?> UpdatePlanTierAsync(
         Guid orgId,
         PlanTier planTier,
+        string? actorUserId = null,
+        PlanChangeSource source = PlanChangeSource.Org,
         CancellationToken cancellationToken = default)
     {
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         if (org is null)
             return null;
+
+        // The line of the activity log goes in the same save as the tier: it is there only if the tier changed.
+        if (org.PlanTier != planTier)
+        {
+            activityLog?.Record(OrgActivity.Of(
+                org.Id,
+                OrgActivityType.PlanChanged,
+                actorUserId,
+                org.Id.ToString(),
+                (OrgActivityDetailKeys.FromTier, org.PlanTier.ToString()),
+                (OrgActivityDetailKeys.ToTier, planTier.ToString()),
+                (OrgActivityDetailKeys.Source, source.Code())));
+        }
 
         org.PlanTier = planTier;
         org.UpdatedAt = DateTime.UtcNow;
@@ -254,6 +270,7 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         string slug,
         string contactEmail,
         bool contactEmailPublic,
+        string? actorUserId = null,
         CancellationToken cancellationToken = default)
     {
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
@@ -301,6 +318,13 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
 
             org.Slug = newSlug;
         }
+
+        // The activity log (AM-02b) says that the name or the slug changed, never what they became: one line each, in the
+        // save that writes the change.
+        if (!string.Equals(org.Name, trimmedName, StringComparison.Ordinal))
+            activityLog?.Record(OrgActivity.Of(org.Id, OrgActivityType.OrgNameChanged, actorUserId, org.Id.ToString()));
+        if (slugChanged)
+            activityLog?.Record(OrgActivity.Of(org.Id, OrgActivityType.OrgSlugChanged, actorUserId, org.Id.ToString()));
 
         org.Name = trimmedName;
         org.DisplayName = trimmedName;

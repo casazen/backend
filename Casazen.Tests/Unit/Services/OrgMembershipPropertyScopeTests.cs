@@ -37,7 +37,7 @@ public class OrgMembershipPropertyScopeTests
     {
         var (_, member) = await _kit.SeedMemberAsync(orgId, "auth0|anna", OrgRole.Collaborator);
         await using var db = _kit.NewDb();
-        var service = new OrgPropertyAccessService(db, _kit.Cache.Object, NullLogger<OrgPropertyAccessService>.Instance, _kit.Clock);
+        var service = _kit.PropertyAccess(db);
         await service.SetAsync(orgId, member.Id, OwnerId, PropertyScope.Selected, propertyIds);
         return member;
     }
