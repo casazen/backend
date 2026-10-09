@@ -38,6 +38,7 @@ and production never block each other.
 | `gdpr-data-retention` | 03:00 | `GdprDataRetentionJob.ExecuteAsync` | 300 s |
 | `stay-alerts` (CO-10, see [§9](#9-stay-alerts-co-10); replaces `alloggiati-deadline-alert` and `guest-checkin-reminder`, removed at startup) | hourly | `StayAlertsJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `cin-deadline-alert` (CO-20: host alert about properties without a valid CIN, once per stage, see [cin-format.md](cin-format.md#cin-deadline-and-host-alerts-co-20)) | 08:00 | `CinDeadlineAlertJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
+| `property-mode-change` (PM-02: applies the scheduled changes of rental mode in the hour after midnight of Rome, idempotent; only with `Features:PropertyModeChange=true`, otherwise removed at startup: FD-20, [feature-flags.md](feature-flags.md); see [property-rental-mode.md §8.5](property-rental-mode.md#85-the-job-property-mode-change)) | hourly | `PropertyModeChangeJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run, and the dates lock of each property) | 300 s |
 | `lease-sign-status-poll` | `*/10` | `LeaseSignStatusPollingJob.ExecuteAsync` | 60 s |
 | `lease-registration-status-poll` | `*/5` | `LeaseRegistrationStatusPollingJob.ExecuteAsync` | 60 s |
 | `rli-deadline-reminder` (LT-04, see [§8](#8-rli-deadline-reminder-lt-04)) | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
@@ -55,6 +56,7 @@ and production never block each other.
 | `property-compliance-check` (CO-06, see [§10](#10-property-compliance-check-co-06)) | 04:00 | `PropertyComplianceCheckJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `push-receipts` (MO-04, see [§11](#11-push-notifications-mo-04)) | `*/15` | `PushReceiptsJob.ExecuteAsync` | 60 s |
 | `domain-recheck` (BK-17: custom domains activate by themselves, a removed DNS record is noticed, dropped domains leave the Vercel project; see [seo-domain.md](seo-domain.md#10-custom-domains-on-vercel-bk-17)) | `*/15` | `DomainRecheckJob.ExecuteAsync` (what is due is decided per domain) | 60 s |
+| `org-invitation-maintenance` (AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days; it runs with `Features:OrgTeam` off too, and then it only deletes; see [org-team.md](org-team.md#15-emails-and-the-maintenance-job)) | hourly at :10 | `OrgInvitationMaintenanceJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run and the org's seats lock per invitation) | 300 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
@@ -249,9 +251,11 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 24 recurring jobs in each schema with every flag on; 19 with the defaults
-  -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider and Features:SupplierRequestAutoCancel off;
-  -- service-request-expiry and service-request-reminders are in both counts: they ignore the flags)
+  -- 25 recurring jobs in each schema with every flag on; 19 with the defaults
+  -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider, Features:SupplierRequestAutoCancel and
+  -- Features:PropertyModeChange off; service-request-expiry, service-request-reminders and org-invitation-maintenance are
+  -- in both counts: they ignore the flags; property-mode-change (PM-02) is the one that appears with
+  -- Features:PropertyModeChange on)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';

@@ -355,6 +355,8 @@ Errors (ProblemDetails, FD-05, messages IT/EN in `SharedResources`):
 | 422 | `calendar_block_in_past` | `startDate` before today (Europe/Rome) |
 | 422 | `calendar_block_too_long` | More than 366 nights (`ManualBlocks.MaxNights`): longer closures are a property put on pause |
 | 422 | `calendar_block_not_manual` | `DELETE` of a block imported from a feed: it goes with the feed or when the channel frees the dates |
+| 422 | `calendar_block_invalid_reason` | `reason` is `ModeChange` (PM-02): only CasaZen writes it, see below |
+| 422 | `calendar_block_held_by_mode_change` | `DELETE` of the block CasaZen holds for a property that went long-term (PM-02) |
 
 A night already closed by an **imported** block may be closed by hand too: when the channel frees it, it stays closed.
 
@@ -377,6 +379,12 @@ A night already closed by an **imported** block may be closed by hand too: when 
   maintenance must be closed on the channels too, otherwise a channel sells it (overbooking). They are not an echo:
   no channel sent them. Removing the block removes the event at the next read of the export.
 - **Guests** never see the reason: the booking site only shows the night as taken.
+- **The block of a mode change** (PM-02): a property that goes from short stays to long-term has a manual block of reason
+  `ModeChange` (3), written by CasaZen when the change is programmed and kept two years from the night before its day, so
+  the portals that read this export stop selling the property. The host cannot choose that reason (`422 calendar_block_invalid_reason`) nor delete
+  the block (`422 calendar_block_held_by_mode_change`); it goes away when the change is cancelled or fails and when the
+  property goes back to short stays. Everything else on this page (occupancy, export, neutral summary) applies to it as to
+  any manual block: [property-rental-mode.md §8.4](property-rental-mode.md#84-the-calendar-block-calendarblockreasonmodechange--3).
 
 ### Migration `AddManualCalendarBlockReason`
 

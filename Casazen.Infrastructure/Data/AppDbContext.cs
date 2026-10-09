@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Options;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
@@ -121,10 +122,16 @@ public class AppDbContext(
     public DbSet<ServiceCustomer> ServiceCustomers { get; set; } = null!;
     public DbSet<ShowcaseBookingHold> ShowcaseBookingHolds { get; set; } = null!;
 
+    // Payment of the service requests inside CasaZen (SP-15a): two parties, not tenant-filtered.
+    public DbSet<ServiceRequestPayment> ServiceRequestPayments { get; set; } = null!;
+
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
     public DbSet<PropertyICalExport> PropertyICalExports { get; set; } = null!;
+
+    // Scheduled changes of the rental mode of a property, and their history (PM-02)
+    public DbSet<PropertyModeChange> PropertyModeChanges { get; set; } = null!;
 
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
@@ -161,6 +168,7 @@ public class AppDbContext(
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
     public DbSet<OrgMember> OrgMembers { get; set; } = null!;
+    public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -930,6 +938,36 @@ public class AppDbContext(
                 .HasDatabaseName("IX_OrgMembers_OrgId_Role");
         });
 
+        // ─── Org invitations (AM-02) ────────────────────────────────────────────
+        modelBuilder.Entity<OrgInvitation>(entity =>
+        {
+            // The invitations of an org go with it.
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(i => i.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The link finds its invitation by the hash of the token; rotating the token swaps the hash, so it is unique.
+            entity.HasIndex(i => i.TokenHash)
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgInvitations_TokenHash");
+
+            // At most one pending invitation per org and email: two parallel invitations of the same person race on this
+            // (the loser gets 23505, answered as 409). Filter on Status = Pending (1), which is explicit and never reused.
+            entity.HasIndex(i => new { i.OrgId, i.Email })
+                .IsUnique()
+                .HasFilter($"\"Status\" = {(int)OrgInvitationStatus.Pending}")
+                .HasDatabaseName("UIX_OrgInvitations_OrgId_Email_Pending");
+
+            // The tenant filter reads by OrgId; the team page lists an org's open invitations and the seat count counts them.
+            entity.HasIndex(i => new { i.OrgId, i.Status })
+                .HasDatabaseName("IX_OrgInvitations_OrgId_Status");
+
+            // The maintenance job scans by state and date: the invitations to remind, expire or delete.
+            entity.HasIndex(i => new { i.Status, i.ExpiresAt })
+                .HasDatabaseName("IX_OrgInvitations_Status_ExpiresAt");
+        });
+
         modelBuilder.Entity<ConsentRecord>()
             .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
 
@@ -1308,6 +1346,75 @@ public class AppDbContext(
             });
         });
 
+        // ─── Payment of the service requests inside CasaZen (SP-15a) ─────────────
+        // The commission a supplier is charged instead of the platform's (an admin sets it, SP-15b): a percentage, 0 to 50.
+        modelBuilder.Entity<SupplierProfile>().ToTable(t =>
+            t.HasCheckConstraint(
+                "CK_SupplierProfiles_CommissionPercentOverride",
+                $"\"CommissionPercentOverride\" IS NULL OR \"CommissionPercentOverride\" BETWEEN 0 AND {(int)SupplierPaymentsOptions.MaxCommissionPercent}"));
+
+        // One payment per request that is not canceled: the live one. A canceled row (replaced by an offline record, or withdrawn)
+        // frees the request, so the index ignores it. The creation paths also take the advisory lock ServiceRequestPayment; this
+        // index is what makes a second live payment impossible even if one of them did not.
+        modelBuilder.Entity<ServiceRequestPayment>(entity =>
+        {
+            entity.HasOne(p => p.ServiceRequest)
+                .WithMany()
+                .HasForeignKey(p => p.ServiceRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(p => p.SupplierOrg)
+                .WithMany()
+                .HasForeignKey(p => p.SupplierOrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(p => p.PayerOrg)
+                .WithMany()
+                .HasForeignKey(p => p.PayerOrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(p => p.ServiceRequestId)
+                .IsUnique()
+                .HasDatabaseName(ServiceCharges.LivePaymentIndexName)
+                .HasFilter($"\"Status\" <> {(int)ServicePaymentStatus.Canceled}");
+
+            // A PaymentIntent belongs to one payment: the webhook finds its payment by it (SP-15b).
+            entity.HasIndex(p => p.StripePaymentIntentId)
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPayments_StripePaymentIntentId")
+                .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
+
+            entity.HasIndex(p => new { p.SupplierOrgId, p.Status });
+            entity.HasIndex(p => p.PayerOrgId);
+
+            // The JSON column is added to no existing rows, but the database gives it the empty list like the other jsonb columns.
+            entity.Property(p => p.LineItemsJson).HasDefaultValue("[]");
+
+            // The checks mirror the rules of the service: a bad row is refused by the database too. The amounts follow
+            // SupplierCommission (the fee is strictly below the amount, or 0 for none, and the net is what is left), the percentage
+            // is the one of the options, a host payer has its org, and a payment that was paid says when and how.
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_Amounts",
+                    $"\"AmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents} AND \"ApplicationFeeCents\" >= 0 "
+                    + "AND \"ApplicationFeeCents\" < \"AmountCents\" AND \"NetCents\" = \"AmountCents\" - \"ApplicationFeeCents\" "
+                    + "AND \"RefundedCents\" BETWEEN 0 AND \"AmountCents\" AND \"PaymentIntentCount\" >= 0 AND \"SentCount\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_CommissionPercent",
+                    $"\"CommissionPercent\" BETWEEN 0 AND {(int)SupplierPaymentsOptions.MaxCommissionPercent}");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_FeeVat",
+                    "(\"FeeVatMode\" IS NULL AND \"FeeVatCents\" IS NULL) OR "
+                    + "(\"FeeVatMode\" IS NOT NULL AND \"FeeVatCents\" IS NOT NULL AND \"FeeVatCents\" >= 0)");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_Payer",
+                    $"(\"PayerKind\" = {(int)ServicePayerKind.Host} AND \"PayerOrgId\" IS NOT NULL) OR \"PayerKind\" = {(int)ServicePayerKind.Private}");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_Paid",
+                    $"\"Status\" NOT IN ({(int)ServicePaymentStatus.Paid}, {(int)ServicePaymentStatus.PartiallyRefunded}, {(int)ServicePaymentStatus.Refunded}) "
+                    + "OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
+            });
+        });
+
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         modelBuilder.Entity<CalendarBlock>()
             .HasOne(b => b.Property)
@@ -1379,6 +1486,33 @@ public class AppDbContext(
         modelBuilder.Entity<PropertyICalExport>()
             .HasIndex(e => e.PropertyId)
             .IsUnique();
+
+        // ─── Scheduled change of rental mode (PM-02) ────────────────────────────
+        modelBuilder.Entity<PropertyModeChange>(entity =>
+        {
+            // The history goes with the property (a property is soft-deleted, so in practice it stays for good).
+            entity.HasOne(c => c.Property)
+                .WithMany()
+                .HasForeignKey(c => c.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(c => c.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One change waiting for its day per property. The creation takes the property dates lock first, so this is the
+            // net under it: a writer that skipped the lock gets 23505 on this index and answers property_mode_change_exists.
+            entity.HasIndex(c => c.PropertyId)
+                .IsUnique()
+                .HasFilter($"\"Status\" = {(int)PropertyModeChangeStatus.Scheduled}")
+                .HasDatabaseName(PropertyModeChange.OneScheduledIndexName);
+
+            // The hourly job: the scheduled changes whose day has come.
+            entity.HasIndex(c => new { c.Status, c.EffectiveDate });
+
+            // The history of a property, newest first.
+            entity.HasIndex(c => new { c.PropertyId, c.CreatedAt });
+        });
 
         modelBuilder.Entity<PropertyICalExport>()
             .HasIndex(e => e.ExportToken)

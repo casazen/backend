@@ -696,6 +696,105 @@
   <data name="GuestCancelLink_NotYou" xml:space="preserve">
     <value>Se non hai richiesto tu questa disdetta, ignora questa email: la tua prenotazione resta invariata.</value>
   </data>
+  <data name="PropertyModeLabel_Short" xml:space="preserve">
+    <value>affitto breve</value>
+  </data>
+  <data name="PropertyModeLabel_Long" xml:space="preserve">
+    <value>affitto lungo</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_Subject" xml:space="preserve">
+    <value>Passaggio ad affitto lungo programmato - {0}</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_Body" xml:space="preserve">
+    <value>Abbiamo programmato il passaggio di &lt;strong&gt;{0}&lt;/strong&gt; dagli affitti brevi agli affitti lunghi, a partire dal &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_Until" xml:space="preserve">
+    <value>Fino a quel giorno l'immobile resta in affitto breve: le prenotazioni che hai già restano valide.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToLong_CalendarClosed" xml:space="preserve">
+    <value>Dalla notte prima di quel giorno le date sono chiuse nel calendario: il sito di prenotazione e i portali che leggono il calendario iCal di CasaZen non accettano più prenotazioni.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Subject" xml:space="preserve">
+    <value>Passaggio ad affitto breve programmato - {0}</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Body" xml:space="preserve">
+    <value>Abbiamo programmato il passaggio di &lt;strong&gt;{0}&lt;/strong&gt; dagli affitti lunghi agli affitti brevi, a partire dal &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Until" xml:space="preserve">
+    <value>Fino a quel giorno l'immobile resta in affitto lungo, con i suoi contratti.</value>
+  </data>
+  <data name="PropertyModeScheduled_ToShort_Requirements" xml:space="preserve">
+    <value>Per ricevere prenotazioni dal sito di prenotazione servono i requisiti degli affitti brevi (CIN, documenti, checklist di sicurezza): finché non sono completi l'immobile non viene pubblicato.</value>
+  </data>
+  <data name="PropertyModeScheduled_Cancel" xml:space="preserve">
+    <value>Puoi annullare il passaggio dalla scheda dell'immobile finché non è avvenuto. Avviene da solo all'inizio di quel giorno (mezzanotte, ora italiana).</value>
+  </data>
+  <data name="PropertyModeScheduled_Cta" xml:space="preserve">
+    <value>Apri l'immobile</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Subject" xml:space="preserve">
+    <value>{0} è ora in affitto lungo</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Body" xml:space="preserve">
+    <value>Da oggi &lt;strong&gt;{0}&lt;/strong&gt; è in affitto lungo: non è più pubblicato sul sito di prenotazione e non accetta prenotazioni di soggiorni brevi.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_CalendarClosed" xml:space="preserve">
+    <value>Le sue date restano chiuse nel calendario fino al {0}: i portali che leggono il calendario iCal di CasaZen smettono di venderlo.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_CalendarClosedNoDate" xml:space="preserve">
+    <value>Le sue date restano chiuse nel calendario: i portali che leggono il calendario iCal di CasaZen smettono di venderlo.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Listings" xml:space="preserve">
+    <value>Se l'immobile è ancora online su un portale, rimuovi l'annuncio dal portale: CasaZen chiude le date ma non modifica i tuoi annunci.</value>
+  </data>
+  <data name="PropertyModeApplied_ToLong_Cta" xml:space="preserve">
+    <value>Apri l'immobile</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Subject" xml:space="preserve">
+    <value>{0} è tornato in affitto breve</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Body" xml:space="preserve">
+    <value>Da oggi &lt;strong&gt;{0}&lt;/strong&gt; è in affitto breve.</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_CalendarOpen" xml:space="preserve">
+    <value>Le date chiuse dal passaggio ad affitto lungo, se c'erano, sono di nuovo libere.</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Requirements" xml:space="preserve">
+    <value>Controlla che CIN, documenti e checklist di sicurezza siano completi: finché mancano, l'immobile non è pubblicato sul sito di prenotazione.</value>
+  </data>
+  <data name="PropertyModeApplied_ToShort_Cta" xml:space="preserve">
+    <value>Controlla i requisiti</value>
+  </data>
+  <data name="PropertyModeFailed_Subject" xml:space="preserve">
+    <value>Passaggio non riuscito - {0}</value>
+  </data>
+  <data name="PropertyModeFailed_Body" xml:space="preserve">
+    <value>Non abbiamo potuto applicare il passaggio di &lt;strong&gt;{0}&lt;/strong&gt; ad {1} previsto per il &lt;strong&gt;{2}&lt;/strong&gt;: l'immobile è rimasto in {3}.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_Bookings" xml:space="preserve">
+    <value>Dopo la programmazione sono comparsi soggiorni o prenotazioni dei portali che finiscono dopo quel giorno: il passaggio non si sovrappone mai a un soggiorno.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_Lease" xml:space="preserve">
+    <value>C'è un contratto di locazione che termina dopo quel giorno: il passaggio non si sovrappone mai a un contratto.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_DraftLease" xml:space="preserve">
+    <value>Sull'immobile c'è una bozza di contratto: va eliminata prima del passaggio.</value>
+  </data>
+  <data name="PropertyModeFailed_Reason_Other" xml:space="preserve">
+    <value>L'immobile è cambiato dopo la programmazione e il passaggio non corrisponde più alla sua situazione.</value>
+  </data>
+  <data name="PropertyModeFailed_CalendarReopened" xml:space="preserve">
+    <value>Le date chiuse per il passaggio sono di nuovo aperte nel calendario.</value>
+  </data>
+  <data name="PropertyModeFailed_Earliest" xml:space="preserve">
+    <value>Il primo giorno possibile adesso è il &lt;strong&gt;{0}&lt;/strong&gt;: puoi programmare di nuovo il passaggio dalla scheda dell'immobile.</value>
+  </data>
+  <data name="PropertyModeFailed_Retry" xml:space="preserve">
+    <value>Puoi programmare di nuovo il passaggio dalla scheda dell'immobile.</value>
+  </data>
+  <data name="PropertyModeFailed_Cta" xml:space="preserve">
+    <value>Apri l'immobile</value>
+  </data>
   <data name="ServiceRequestCreated_When" xml:space="preserve">
     <value>Quando: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>
@@ -1109,5 +1208,146 @@
   </data>
   <data name="Push_ShowcaseProposalLapsed_Body" xml:space="preserve">
     <value>{0} a {1}: il cliente non ha risposto in tempo al nuovo orario.</value>
+  </data>
+  <data name="OrgRole_Owner" xml:space="preserve">
+    <value>Titolare</value>
+  </data>
+  <data name="OrgRole_Admin" xml:space="preserve">
+    <value>Amministratore</value>
+  </data>
+  <data name="OrgRole_PropertyManager" xml:space="preserve">
+    <value>Property manager</value>
+  </data>
+  <data name="OrgRole_Collaborator" xml:space="preserve">
+    <value>Collaboratore</value>
+  </data>
+  <data name="OrgRole_Accountant" xml:space="preserve">
+    <value>Contabile</value>
+  </data>
+  <data name="OrgArea_ShortRent" xml:space="preserve">
+    <value>Affitti brevi</value>
+  </data>
+  <data name="OrgArea_LongRent" xml:space="preserve">
+    <value>Affitti lunghi</value>
+  </data>
+  <data name="OrgInvitation_Subject" xml:space="preserve">
+    <value>{0} ti invita a lavorare con {1} su CasaZen</value>
+  </data>
+  <data name="OrgInvitation_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="OrgInvitation_Body" xml:space="preserve">
+    <value>{0} ti ha invitato su CasaZen come &lt;strong&gt;{1}&lt;/strong&gt; di &lt;strong&gt;{2}&lt;/strong&gt;. Potrai lavorare in: {3}.</value>
+  </data>
+  <data name="OrgInvitation_EmailHint" xml:space="preserve">
+    <value>Accedi o registrati con l'email &lt;strong&gt;{0}&lt;/strong&gt;: l'invito vale solo per questo indirizzo e si può usare una sola volta. La password la scegli tu.</value>
+  </data>
+  <data name="OrgInvitation_Cta" xml:space="preserve">
+    <value>Accetta l'invito</value>
+  </data>
+  <data name="OrgInvitation_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OrgInvitation_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana). Se non conosci {1}, puoi ignorare questa email.</value>
+  </data>
+  <data name="OrgInvitationReminder_Subject" xml:space="preserve">
+    <value>Promemoria: l'invito a lavorare con {0} scade il {1}</value>
+  </data>
+  <data name="OrgInvitationReminder_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="OrgInvitationReminder_Body" xml:space="preserve">
+    <value>Hai ancora un invito per entrare in &lt;strong&gt;{0}&lt;/strong&gt; su CasaZen come &lt;strong&gt;{1}&lt;/strong&gt;: non lo hai ancora accettato.</value>
+  </data>
+  <data name="OrgInvitationReminder_Cta" xml:space="preserve">
+    <value>Accetta l'invito</value>
+  </data>
+  <data name="OrgInvitationReminder_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OrgInvitationReminder_NewLink" xml:space="preserve">
+    <value>Questo link sostituisce quello dell'email precedente, che non funziona più.</value>
+  </data>
+  <data name="OrgInvitationReminder_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana).</value>
+  </data>
+  <data name="OrgInvitationExpired_Subject" xml:space="preserve">
+    <value>Invito scaduto: {0}</value>
+  </data>
+  <data name="OrgInvitationExpired_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="OrgInvitationExpired_Body" xml:space="preserve">
+    <value>L'invito a &lt;strong&gt;{0}&lt;/strong&gt; ({1}) è scaduto senza essere accettato. Il posto nel piano è di nuovo libero.</value>
+  </data>
+  <data name="OrgInvitationExpired_Hint" xml:space="preserve">
+    <value>Se la persona vuole ancora entrare, puoi mandarle un nuovo invito da Persone e permessi.</value>
+  </data>
+  <data name="OrgInvitationExpired_Cta" xml:space="preserve">
+    <value>Apri Persone e permessi</value>
+  </data>
+  <data name="ServicePaymentRequest_Subject" xml:space="preserve">
+    <value>Da pagare: {0} ({1})</value>
+  </data>
+  <data name="ServicePaymentRequest_Body" xml:space="preserve">
+    <value>{0} ha completato il lavoro &lt;strong&gt;{1}&lt;/strong&gt; per l'immobile &lt;strong&gt;{2}&lt;/strong&gt; e ne chiede il pagamento.</value>
+  </data>
+  <data name="ServicePayment_Amount" xml:space="preserve">
+    <value>Importo da pagare: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServicePayment_Cta" xml:space="preserve">
+    <value>Paga online</value>
+  </data>
+  <data name="ServicePayment_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="ServicePayment_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0}. Dopo la scadenza chiedi al fornitore di inviartene uno nuovo.</value>
+  </data>
+  <data name="ServicePayment_Direct" xml:space="preserve">
+    <value>Il pagamento va direttamente sul conto Stripe del fornitore. Paghi l'importo indicato: la commissione di CasaZen è trattenuta al fornitore e non ti viene addebitata in più.</value>
+  </data>
+  <data name="ServicePayment_Personal" xml:space="preserve">
+    <value>Il link è personale: non inoltrarlo. Se hai già pagato, ignora questa email.</value>
+  </data>
+  <data name="ServicePaymentReminder_Subject" xml:space="preserve">
+    <value>Promemoria: pagamento da effettuare per {0}</value>
+  </data>
+  <data name="ServicePaymentReminder_Body" xml:space="preserve">
+    <value>Ti ricordiamo che il pagamento del lavoro &lt;strong&gt;{1}&lt;/strong&gt; di {0} per l'immobile &lt;strong&gt;{2}&lt;/strong&gt; risulta ancora da effettuare.</value>
+  </data>
+  <data name="ServicePaymentReceived_Subject" xml:space="preserve">
+    <value>Pagamento ricevuto: {0}</value>
+  </data>
+  <data name="ServicePaymentReceived_Body" xml:space="preserve">
+    <value>Il lavoro &lt;strong&gt;{0}&lt;/strong&gt; per l'immobile &lt;strong&gt;{1}&lt;/strong&gt; è stato pagato online: Stripe ha confermato il pagamento il {2}.</value>
+  </data>
+  <data name="ServicePaymentReceived_Gross" xml:space="preserve">
+    <value>Prezzo al lordo: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentReceived_Commission" xml:space="preserve">
+    <value>Commissione CasaZen ({0} %): &lt;strong&gt;{1}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentReceived_Net" xml:space="preserve">
+    <value>Netto per te, prima delle commissioni di Stripe: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServicePaymentReceived_Payout" xml:space="preserve">
+    <value>Il versamento sul tuo conto bancario segue le impostazioni dei versamenti del tuo account Stripe.</value>
+  </data>
+  <data name="ServicePaymentReceived_Cta" xml:space="preserve">
+    <value>Apri la console fornitore</value>
+  </data>
+  <data name="ServicePaymentOfflineRecorded_Subject" xml:space="preserve">
+    <value>Pagamento registrato dal fornitore: {0}</value>
+  </data>
+  <data name="ServicePaymentOfflineRecorded_Body" xml:space="preserve">
+    <value>{0} ha registrato come ricevuto fuori da CasaZen il pagamento del lavoro &lt;strong&gt;{1}&lt;/strong&gt; per l'immobile &lt;strong&gt;{2}&lt;/strong&gt;: &lt;strong&gt;{3}&lt;/strong&gt;. La richiesta risulta ora pagata.</value>
+  </data>
+  <data name="ServicePaymentOfflineRecorded_ReasonLabel" xml:space="preserve">
+    <value>Motivo indicato dal fornitore</value>
+  </data>
+  <data name="ServicePaymentOfflineRecorded_Hint" xml:space="preserve">
+    <value>Se non è corretto, contatta il fornitore.</value>
   </data>
 </root>

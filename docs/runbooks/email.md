@@ -70,6 +70,9 @@ On the **test** environment first, then on production after the release:
 ## Data kept in Hangfire
 
 The queued job carries recipient, subject and HTML. The check-in link job carries only the session id and the raw token (the email is built when it is sent). Hangfire removes succeeded jobs after 24 hours; failed deliveries are deleted after the last retry (each failure is logged without the recipient address).
+The `org-invitation` and `org-invitation-reminder` jobs (AM-02) carry the HTML with the **live link and its secret token**: it
+is readable in the job arguments until Hangfire removes the succeeded job (24 hours), so the Hangfire schema and dashboard
+stay restricted; after that only the SHA-256 of the token exists (`docs/runbooks/org-team.md` section 15).
 
 ## Complete list of emails
 
@@ -96,8 +99,14 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `alloggiati-failed` | host | Alloggiati Web communication rejected or failed | same, once per stay |
 | `checkout-reminder` | host | check-out day of a confirmed or checked-in stay, 20:00 property time | same, once per check-out date |
 | `property-compliance-suspended` | host | an active property lost an activation requirement (CIN, required document, safety checklist, base data) and was suspended from the booking site; the first check of a property published before CO-06 only with `Compliance__StatusCheck__NotifyOnFirstCheck=true` ([compliance.md](compliance.md#3-email-to-the-host)) | `PropertyComplianceStatusService` (request or `property-compliance-check` job), queued, once per suspension |
+| `property-mode-change-scheduled` | host | a change of rental mode (short stays ↔ long-term) was programmed: the day, what closes, how to withdraw it (PM-02, [property-rental-mode.md §8.6](property-rental-mode.md#86-e-mails-to-the-host)) | `PropertyModeService.ScheduleAsync` → `NotificationService`, queued, once per change |
+| `property-mode-change-applied` | host | the property changed mode at midnight of Rome | `property-mode-change` job → `NotificationService`, queued, once per change |
+| `property-mode-change-failed` | host | the job could not apply the change (stays, imported blocks or leases in the way): why and the first free day | same, once per change |
 | `service-request-created` | supplier | new service request | `ServiceRequestService`, queued |
 | `service-request-status-changed` | host | request taken / completed / rejected by the supplier | `ServiceRequestService`, queued |
+| `service-payment-request`, `service-payment-reminder` | host org (the payer) | a service paid inside CasaZen was completed / the supplier asks again: the price, who asks and the link of the payment page (valid `SupplierPayments__PaymentLinkValidityDays`); never the commission (SP-15a) | `ServiceRequestService` (completion, confirmation of the amount) and `SupplierPaymentService.RequestPaymentAsync`, queued after the save; a link that cannot be queued is taken back |
+| `service-payment-received` | supplier | a payment made online was received: gross, CasaZen commission, net before Stripe's fees, no payout date promised (SP-15a: template ready, sent by the webhook of SP-15b) | `SupplierPaymentService` (SP-15b), queued |
+| `service-payment-offline-recorded` | host org (the payer) | the supplier recorded a payment received outside CasaZen, with its reason (SP-15a) | `SupplierPaymentService.RecordOfflineAsync`, queued |
 | `supplier-invite` | prospective supplier | invite by a platform admin | `SupplierService`, queued |
 | `supplier-booking-verification` | customer of a supplier's showcase | the customer booked a slot: the link that checks its address (SP-10) | `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-receipt` | customer | the address is checked: code, time by which the supplier answers, estimate | same |
@@ -106,6 +115,9 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `supplier-booking-reminder` | customer | 18:00 (Rome) of the day before the work, once, if the supplier took the request before that time | `service-request-reminders` job → `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-cancellation-receipt`, `-proposal-expired` | customer | it cancelled its request (receipt); the day to answer the time the supplier proposed passed and the request was cancelled (SP-11) | `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-cancelled-by-customer`, `-rescheduled-by-customer`, `-proposal-answered-by-customer`, `-proposal-lapsed` | supplier | the customer cancelled, moved, accepted or turned down the proposed time, or let it lapse; comune and "Nome C." only, plus a push (SP-11) | `ShowcaseBookingNotifier`, queued |
+| `org-invitation` | invitee | an owner or administrator invites a person to the org team, or sends the invitation again (AM-02): the link carries the secret token and works for 7 days; a newer link replaces it | `OrgInvitationService`, queued after the commit; language chosen by the inviter |
+| `org-invitation-reminder` | invitee | the third day after the invitation, while it is pending, with a **new link** (AM-02) | `org-invitation-maintenance` job, queued, once per invitation; only with `Features__OrgTeam` on |
+| `org-invitation-expired` | inviter (the owner when the inviter no longer manages the org) | nobody accepted within 7 days: the seat is free again (AM-02) | same job, queued, once per invitation; only with the flag on; Italian |
 | `rli-deadline-reminder`, `rli-deadline-overdue`, `rli-extra-eu-notice` | landlord | RLI registration deadline / extra-EU tenant (long rents) | `RliDeadlineReminderJob` (job) |
 
 Not sent by design: bookings entered by the host (`Manual`, PC-01) and the host's own confirmations or cancellations get no email to the host; manual bookings get no confirmation to the guest (the host can send the check-in link). There is no guest self-service cancellation yet, so no "cancelled by the guest" email to the host. No email for the CIN deadline alert (CO-20: only logged as not delivered).
@@ -130,7 +142,8 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 
 ### Language
 
-The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done.
+The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done. The exception is the org team (AM-02): the invitation and its reminder go out
+in the language the inviter chose (`it`, the default, or `en`, stored on the invitation); the note to the inviter is in Italian.
 
 ## Showcase booking emails (SP-10)
 

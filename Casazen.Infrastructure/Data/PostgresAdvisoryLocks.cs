@@ -166,9 +166,18 @@ internal static class PostgresAdvisoryLocks
         ServiceCustomerRetentionRun = 1_313,
 
         /// <summary>
+        /// Payment of one service request (key: the request id, <c>requestId.ToString("N")</c>): the payment session of the payer
+        /// (anonymous with the link, or the signed-in host), the supplier's payment request and reminder, the offline record, and
+        /// (SP-15b) the Stripe webhook and the refunds change the payment one at a time, so a request never gets two payable
+        /// PaymentIntents, a link is never sent while another is being issued, and an offline record never races a payment in
+        /// progress (SP-15a). The values 1_320 to 1_329 are the payments of the service requests.
+        /// </summary>
+        ServiceRequestPayment = 1_320,
+
+        /// <summary>
         /// The people of one org (key: org id): adding, changing, deactivating or removing a member, and the owner's
-        /// creation, run one at a time, so the owner rule and, with AM-02, the seat count are decided on rows nobody else
-        /// is changing (AM-01).
+        /// creation, run one at a time, so the owner rule is decided on rows nobody else is changing (AM-01). The seat
+        /// count is decided under <see cref="OrgSeats"/>, which the callers take <b>before</b> this one (AM-02).
         /// </summary>
         OrgMembership = 1_401,
 
@@ -179,6 +188,30 @@ internal static class PostgresAdvisoryLocks
         /// and saves nothing (it is idempotent, so it is simply run again).
         /// </summary>
         OrgMembershipMaintenance = 1_402,
+
+        /// <summary>
+        /// The seats of one org (key: org id, AM-02, decisions D13 and D35): the count of active members plus pending
+        /// invitations and what depends on it run one at a time, like <c>CreatePropertyWithinLimitAsync</c> does for the
+        /// properties. Taken to create an invitation, to send it again, to accept it, to reactivate a member and by the
+        /// reminders and expiries of the maintenance job, so the last seat is given to one request only. Always taken
+        /// <b>before</b> <see cref="OrgMembership"/> (and before the org's property slot when a person leaves an empty org),
+        /// and for two orgs in the order of their ids: no cycle between two requests.
+        /// </summary>
+        OrgSeats = 1_403,
+
+        /// <summary>
+        /// One run of the org invitation maintenance (single key, session lock held for the whole run): reminders on the
+        /// third day, expiry and deletion of the closed ones never run twice at once, even outside Hangfire's own lock
+        /// (AM-02).
+        /// </summary>
+        OrgInvitationMaintenance = 1_404,
+
+        /// <summary>
+        /// One run of the hourly application of the scheduled changes of rental mode (single key, session lock held for the
+        /// whole run): two runs never apply or fail the same change at once, even outside Hangfire's own lock (PM-02). Each
+        /// change is then applied under the dates lock of its property, so it also serializes with the bookings.
+        /// </summary>
+        PropertyModeChangeRun = 1_501,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

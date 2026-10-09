@@ -35,6 +35,21 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// Page of the web app where a person accepts an invitation to an org (AM-02, route <c>/invite/accept</c>, built by
+    /// AM-04). The link carries the secret token of the invitation and nothing else (no email, no names): the page reads
+    /// what it shows from <c>POST /api/org-invitations/lookup</c>, which takes the token in its body, and keeps the token
+    /// out of the address bar as soon as it has read it.
+    /// </summary>
+    public string OrgInvitationAccept(string inviteToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inviteToken);
+        return Build($"/invite/accept?token={Uri.EscapeDataString(inviteToken)}");
+    }
+
+    /// <summary>The people page of the account (AM-02, route <c>/app/account/people</c>, built by AM-04): who works in the org and its invitations.</summary>
+    public string AccountPeople() => Build("/app/account/people");
+
+    /// <summary>
     /// Absolute URL of a public page of the web app (<paramref name="path"/> starts with <c>/</c>), e.g. a sitemap
     /// entry. Throws <see cref="EmailConfigurationException"/> when the public URL is not configured.
     /// </summary>
@@ -197,11 +212,29 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/rent/pay/{installmentId:D}?token={Uri.EscapeDataString(token)}");
     }
 
+    /// <summary>
+    /// Public page where the payer pays a service a supplier completed (route <c>/service/pay/:paymentId</c>, SP-15a). Only the
+    /// payment id and the random token are in the link, no personal data. The page itself is a frontend task (SP-15b).
+    /// </summary>
+    public string ServicePayment(Guid paymentId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build($"/service/pay/{paymentId:D}?token={Uri.EscapeDataString(token)}");
+    }
+
     /// <summary>Host console: detail page of one lease (route <c>/app/long-rent/leases/:id</c>, LT-06).</summary>
     public string HostLease(Guid leaseId) => Build($"/app/long-rent/leases/{leaseId:D}");
 
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
+
+    /// <summary>
+    /// Host console: the page of one property in the area of its rental mode (routes <c>/app/short-rent/properties/:id</c> for
+    /// <see cref="Core.Entities.Enums.RentalMode.Short"/>, <c>/app/long-rent/properties/:id</c> for
+    /// <see cref="Core.Entities.Enums.RentalMode.Long"/>, PM-02).
+    /// </summary>
+    public string HostProperty(Guid propertyId, Core.Entities.Enums.RentalMode mode) =>
+        Build($"/app/{(mode == Core.Entities.Enums.RentalMode.Long ? "long-rent" : "short-rent")}/properties/{propertyId:D}");
 
     /// <summary>Host console: activation wizard of one property (route <c>/app/short-rent/properties/:id/activation</c>, CO-06).</summary>
     public string HostPropertyActivation(Guid propertyId) => Build($"/app/short-rent/properties/{propertyId:D}/activation");

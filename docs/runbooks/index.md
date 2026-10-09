@@ -1,6 +1,6 @@
 # Indice dei runbook
 
-Un runbook per tema (47 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02), `org-team.md` (task AM-01 della wave di redesign, 2026-10-08), `property-rental-mode.md` (task PM-01 della wave di redesign, 2026-10-08) e `open-access.md` (task BL-01 della wave di redesign, 2026-10-09), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
+Un runbook per tema (47 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02), `org-team.md` (task AM-01 e AM-02 della wave di redesign, 2026-10-08), `property-rental-mode.md` (task PM-01 della wave di redesign, 2026-10-08) e `open-access.md` (task BL-01 della wave di redesign, 2026-10-09), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
 
 > **Hosting in revisione (2026-10-02):** il PO ha cancellato Railway. Nei runbook "Railway" indica l'host del backend così com'era configurato: va riletto alla luce dell'analisi del task HOSTING ([`free-hosting-analysis.md`](free-hosting-analysis.md); raccomandazione: VM Oracle Cloud Always Free, decisione del PO ancora da prendere). Il database resta su Supabase. Le variabili e le procedure non legate all'host restano valide.
 
@@ -12,7 +12,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 |---|---|---|
 | [`auth0.md`](auth0.md) | Auth0 (tenants, Management API, Action, mobile client) | FD-05, FD-14, FN-04, MO-01, MO-03, MO-05, PL-01, PL-02 |
 | [`onboarding-consents.md`](onboarding-consents.md) | onboarding gate and legal consents | PL-02, PL-03, PL-14 |
-| [`org-team.md`](org-team.md) | org membership (`OrgMember`), org roles, the `account` context, owner backfill and reconcile, `member_inactive`, flag `OrgTeam` | AM-01 |
+| [`org-team.md`](org-team.md) | org membership (`OrgMember`), org roles, the `account` context, owner backfill and reconcile, `member_inactive`, flag `OrgTeam`; invitations, members, seats, change of org, maintenance job (AM-02) | AM-01, AM-02 |
 | [`activation-checklist.md`](activation-checklist.md) | activation checklist and "site published" flag | BK-07, BK-13, BK-16, PC-03, PC-05, PL-04, PL-15 |
 | [`stripe.md`](stripe.md) | Stripe webhooks and platform billing (idempotency, one subscription per org) | BK-02, BK-04, BK-07, BK-08, BK-09, BK-10, BK-19, BK-21 |
 | [`billing-tax.md`](billing-tax.md) | VAT on the CasaZen subscriptions (Stripe Tax) and Italian e-invoices (SDI) | PL-10, PL-11, PL-13, RS-5 |
@@ -50,7 +50,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | Runbook | Argomento | Task |
 |---|---|---|
 | [`property-address.md`](property-address.md) | property address uniqueness, unit and coordinates | PC-03, PC-05, PC-06 |
-| [`property-rental-mode.md`](property-rental-mode.md) | rental mode of a property (short or long): rules, backfill with its dry run, predicates that ignore long-term properties, rollback | PM-01 |
+| [`property-rental-mode.md`](property-rental-mode.md) | rental mode of a property (short or long): rules, backfill with its dry run, predicates that ignore long-term properties, the scheduled change between the two modes (preview, daily job, calendar block, e-mails, flag), rollback | PM-01, PM-02 |
 | [`ical.md`](ical.md) | iCal import and export (property OTA calendars, supplier calendars) | BK-02, BK-04, BK-05, BK-06, BK-21, CO-04, CO-08, CO-09 |
 | [`seasonal-suggestions.md`](seasonal-suggestions.md) | Suggerimenti stagionali (seasonal price suggestions) | BK-03, BK-07, FD-20, PC-15 |
 | [`direct-booking.md`](direct-booking.md) | direct booking — "Paga in struttura" requests, checkout outcome page, payment options | BK-02, BK-03, BK-04, BK-06, BK-07, BK-08, BK-10, BK-11 |

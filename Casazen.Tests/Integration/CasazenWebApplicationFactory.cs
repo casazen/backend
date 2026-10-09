@@ -6,6 +6,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
+using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
 using Hangfire;
 using Hangfire.Common;
@@ -95,6 +96,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
                 ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
                 ["RateLimiting:PublicComuni:PermitLimit"] = "1000",
+                ["RateLimiting:PublicInvitationLookup:PermitLimit"] = "1000",
                 ["RateLimiting:PublicSupplierSlots:PermitLimit"] = "1000",
                 ["RateLimiting:PublicSupplierQuote:PermitLimit"] = "1000",
                 ["RateLimiting:PublicSupplierBookingCreate:PermitLimit"] = "1000",
@@ -174,6 +176,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
             RemoveService<IStripeBillingService>(services);
             services.AddSingleton<IStripeBillingService, FakeStripeBillingService>();
+
+            // The payments of the service requests (SP-15a) never reach Stripe: the fake answers the way Stripe does.
+            RemoveService<ISupplierPaymentGateway>(services);
+            services.AddSingleton<ISupplierPaymentGateway, FakeSupplierPaymentGateway>();
 
             RemoveService<IBillingEntryGate>(services);
             services.AddSingleton<IBillingEntryGate>(sp =>
