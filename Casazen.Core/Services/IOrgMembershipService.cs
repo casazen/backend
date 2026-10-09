@@ -37,8 +37,9 @@ public interface IOrgMembershipService
     /// Adds <paramref name="userId"/> to <paramref name="orgId"/> as <paramref name="role"/>, working in
     /// <paramref name="rentalContexts"/> (the areas): the <see cref="OrgMember"/> row and the memberships the role implies,
     /// all or nothing. The user's <c>OrgId</c> becomes <paramref name="orgId"/> when it has none. The member gets
-    /// <paramref name="propertyScope"/>: every property of the org by default (the list of properties for
-    /// <see cref="PropertyScope.Selected"/> is AM-03, until then only the value is recorded).
+    /// <paramref name="propertyScope"/>: every property of the org by default (the properties of a
+    /// <see cref="PropertyScope.Selected"/> member are set afterwards, AM-03). The person's host onboarding and consents
+    /// are not written here: the acceptance of the invitation records them itself (AM-02, decision D14).
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// The role is <see cref="OrgRole.Owner"/> (<see cref="OrgMembershipErrors.OwnerNotAssignable"/>: the ownership is not
@@ -85,7 +86,8 @@ public interface IOrgMembershipService
     /// <summary>
     /// Takes the member out of the org: the <see cref="OrgMember"/> row, every membership the org gave (account and rental
     /// contexts) and, since AM-02, the link of the account to the org (<c>User.OrgId</c> and the last used context), so the
-    /// person is no longer the tenant of an org it left for the endpoints that only ask for a signed-in user. The CasaZen
+    /// person is no longer the tenant of an org it left for the endpoints that only ask for a signed-in user, and a later
+    /// onboarding provisions a new org instead of making the person a second owner of this one. The CasaZen
     /// account stays, with its Auth0 login; its consents of that org stay as the record of what was accepted (they apply
     /// to that org only: another org needs its own). The person can onboard an org of its own, or accept another invitation.
     /// </summary>

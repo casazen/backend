@@ -77,10 +77,10 @@ lock, `PostgresAdvisoryLocks.Scope.OrgMembership` = 1401; the authorization cach
 | Method | What it does | Refusals |
 |---|---|---|
 | `EnsureOwnerAsync` | member Owner + `account/org_owner`, never touches the owner rental rows. **Called by the onboarding** right after the org is created. | 409 `org_member_other_org`, `org_member_already_member` |
-| `AddMemberAsync` | member + the memberships of the role for the chosen areas, all or nothing; sets `User.OrgId` when empty and records the property scope (AM-02) | 422 `org_owner_not_assignable`, `org_member_area_required`; 409 `org_member_already_member`, `org_member_other_org` |
+| `AddMemberAsync` | member + the memberships of the role for the chosen areas, all or nothing; sets `User.OrgId` when empty and records the property scope (AM-02); the onboarding and the four consents of the person are the acceptance's (D14), not copied here | 422 `org_owner_not_assignable`, `org_member_area_required`; 409 `org_member_already_member`, `org_member_other_org` |
 | `ChangeRoleAsync` | re-points the account row and the role key of every rental row, keeping the areas | 422 `org_owner_not_assignable`; 409 `org_last_owner` |
 | `DeactivateAsync` / `ReactivateAsync` | status only; idempotent; the account and the memberships stay | 409 `org_last_owner` (deactivating the owner) |
-| `RemoveAsync` | deletes the member and every membership the org gave and **unlinks the org** (`User.OrgId`, and the last used context when it was one of the org's; AM-02-FU1); the account stays | 409 `org_last_owner` |
+| `RemoveAsync` | deletes the member and every membership the org gave and **unlinks the org** (`User.OrgId`, and the last used context when it was one of the org's; AM-02-FU1), so a later onboarding provisions a new org and never makes the person a second owner of this one; the account stays | 409 `org_last_owner` |
 | `AbandonEmptyOrgAsync` | AM-02: the owner of an empty org leaves it (owner row, memberships, `OrgId`); only the acceptance of an invitation calls it (section 12) | 409 `org_member_other_org` |
 | `ReconcileAsync` | section 6 | 409 `org_membership_maintenance_conflict` |
 

@@ -432,10 +432,11 @@ public class UserService(
     {
         var roles = MapRentalTypeToRoles(rentalType);
 
-        // A member of an org (a DB membership of a host context with a role other than the owner's) cannot onboard: the
-        // grant below overwrites the role of an existing membership and assigns PropertyOwner in Auth0, so a collaborator
-        // would make itself the owner of the org it works for (AM-00, S2). Checked before anything is written. The real
-        // owner (no membership yet, or already the owner's) goes on, and so does a platform admin (not a host context).
+        // A member of an org (a DB membership of a host context with a role other than the owner's, or an OrgId still
+        // pointing at a host org that already has an owner) cannot onboard: the grant below overwrites the role of an
+        // existing membership and assigns PropertyOwner in Auth0, and EnsureOwnerAsync would add a second owner of the
+        // org the person was removed from (AM-00, S2). Checked before anything is written. The real owner (no membership
+        // yet, or already the owner's) goes on, and so does a platform admin (not a host context).
         if (await membershipService.IsHostMemberAsync(sub))
         {
             logger.LogWarning("Onboarding refused, the user is a member of an org and not its owner: userId={UserId}", sub);

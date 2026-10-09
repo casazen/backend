@@ -25,8 +25,9 @@ public interface IUserContextMembershipService
     /// its owner: it holds a DB membership of a host context with a role other than the owner's
     /// (<see cref="Casazen.Core.Authorization.OrgOwnerRoles.IsHostMemberRole"/>), or it has an <see cref="OrgMember"/> row
     /// whose role is not <see cref="Casazen.Core.Entities.Enums.OrgRole.Owner"/> (AM-01: the org membership is the source
-    /// of truth, whatever the projection says). Read from the database on every call, never from the authorization
-    /// cache: it guards a self-service action (the onboarding, AM-00).
+    /// of truth, whatever the projection says), or <c>User.OrgId</c> still points at a host org that already has a
+    /// different owner (a member removed before that link was cleared). Read from the database on every call, never from
+    /// the authorization cache: it guards a self-service action (the onboarding, AM-00).
     /// </summary>
     Task<bool> IsHostMemberAsync(string userId, CancellationToken cancellationToken = default);
 }

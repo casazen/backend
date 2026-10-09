@@ -159,6 +159,51 @@ public class OrgBillingAdminAuthorizationHandlerTests
         Assert.False(context.HasSucceeded);
     }
 
+    [Theory]
+    [InlineData(OrgRole.Collaborator, "short-rent", "staff")]
+    [InlineData(OrgRole.PropertyManager, "short-rent", "property_manager")]
+    [InlineData(OrgRole.Accountant, "account", "org_accountant")]
+    public async Task HandleAsync_OrgMemberWithLeftoverOwnerClaim_IsRefused(OrgRole role, string contextKey, string roleKey)
+    {
+        var snapshot = new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.PropertyOwner,
+            SupplierOrgId: null,
+            Memberships: [Access(contextKey, roleKey)],
+            OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), role, OrgMemberStatus.Active));
+        var handler = CreateHandler(snapshot);
+        // The platform admin role is not an org role and always counts (AM-02, tested below): it is left out here.
+        var context = Context(
+        [
+            new Claim(ClaimTypes.Role, "PropertyOwner"),
+            new Claim(ClaimTypes.Role, "LongTermLandlord"),
+            new Claim(ClaimTypes.Role, "PropertyManager"),
+        ]);
+
+        await handler.HandleAsync(context);
+
+        Assert.False(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task HandleAsync_OrgOwner_PassesFromTheOrgRoleWithoutAToken()
+    {
+        var snapshot = new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.PropertyOwner,
+            SupplierOrgId: null,
+            Memberships: [],
+            OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), OrgRole.Owner, OrgMemberStatus.Active));
+        var handler = CreateHandler(snapshot);
+        var context = Context([]);
+
+        await handler.HandleAsync(context);
+
+        Assert.True(context.HasSucceeded);
+    }
+
     [Fact]
     public async Task HandleAsync_ActiveMemberOfTheAccount_PassesAsBefore()
     {

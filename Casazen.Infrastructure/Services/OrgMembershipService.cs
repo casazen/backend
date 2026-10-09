@@ -53,6 +53,14 @@ public sealed partial class OrgMembershipService(
         var created = member is null;
         if (member is null)
         {
+            // A removed member no longer has a row, and the org still has its owner (the owner cannot be removed).
+            // Creating another Owner here is how that person would take the org over.
+            if (await db.OrgMembers.IgnoreQueryFilters().AnyAsync(
+                    m => m.OrgId == orgId && m.Role == OrgRole.Owner, cancellationToken))
+            {
+                throw new DomainConflictException(OrgMembershipErrors.AlreadyMember, "OrgMemberAlreadyMember");
+            }
+
             member = NewMember(userId, orgId, OrgRole.Owner, createdByUserId: null);
             db.OrgMembers.Add(member);
         }
@@ -198,6 +206,8 @@ public sealed partial class OrgMembershipService(
         if (member.Role == OrgRole.Owner)
             throw new DomainConflictException(OrgMembershipErrors.LastOwner, "OrgLastOwner");
 
+        // Leave no link the onboarding can reuse: EnsureOrgForUserAsync would otherwise return this org and
+        // EnsureOwnerAsync would insert a second Owner beside the one that cannot be removed (UnlinkOrgAsync).
         db.OrgMembers.Remove(member);
         await ProjectAsync(userId, [], ManagedContexts, cancellationToken);
         await UnlinkOrgAsync(userId, member.OrgId, cancellationToken);
