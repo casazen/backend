@@ -16,6 +16,10 @@ public static partial class EmailTemplates
         public const string ServicePaymentReminder = "service-payment-reminder";
         public const string ServicePaymentReceived = "service-payment-received";
         public const string ServicePaymentOfflineRecorded = "service-payment-offline-recorded";
+        public const string ServicePaymentFailed = "service-payment-failed";
+        public const string ServicePaymentRefundedPayer = "service-payment-refunded-payer";
+        public const string ServicePaymentRefundedSupplier = "service-payment-refunded-supplier";
+        public const string ServicePaymentAdminAlert = "service-payment-admin-alert";
     }
 
     /// <summary>
@@ -95,6 +99,107 @@ public static partial class EmailTemplates
             .Muted("ServicePaymentReceived_Payout")
             .Button("ServicePaymentReceived_Cta", consoleUrl)
             .Build("ServicePaymentReceived_Subject", serviceName);
+    }
+
+    /// <summary>
+    /// A payment that Stripe was processing failed afterwards (a SEPA debit that came back), to the payer (SP-15b): the same facts
+    /// as the request and a new personal link, which replaces the previous one. It says nothing about the commission.
+    /// </summary>
+    public static EmailContent ServicePaymentFailed(
+        CultureInfo culture,
+        string supplierName,
+        string serviceName,
+        string propertyName,
+        int amountCents,
+        DateTime validUntilUtc,
+        string payUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
+            .Paragraph("ServicePaymentFailed_Body", supplierName, serviceName, propertyName)
+            .Paragraph("ServicePayment_Amount", FormatEuro(amountCents, culture))
+            .Button("ServicePayment_Cta", payUrl)
+            .LinkFallback("ServicePayment_LinkFallback", payUrl)
+            .Muted("ServicePayment_Validity", builder.FormatInstant(validUntilUtc))
+            .Muted("ServicePayment_Direct")
+            .Muted("ServicePayment_Personal")
+            .Build("ServicePaymentFailed_Subject", serviceName);
+    }
+
+    /// <summary>
+    /// A refund of a service payment succeeded, to the payer (SP-15b): how much was given back. Nothing about the commission, and
+    /// no promise about when the money reaches the payer: that depends on the bank.
+    /// </summary>
+    public static EmailContent ServicePaymentRefundedToPayer(
+        CultureInfo culture,
+        string supplierName,
+        string serviceName,
+        string propertyName,
+        int refundedCents)
+    {
+        return new EmailHtmlBuilder(culture)
+            .Paragraph("ServicePaymentRefundedPayer_Body", supplierName, serviceName, propertyName, FormatEuro(refundedCents, culture))
+            .Muted("ServicePaymentRefundedPayer_Hint")
+            .Build("ServicePaymentRefundedPayer_Subject", serviceName);
+    }
+
+    /// <summary>
+    /// The same refund, to the supplier (SP-15b): the amount that went back to the payer from its Stripe balance and, when the
+    /// payment carried one, the part of CasaZen's commission that came back to it with the refund.
+    /// </summary>
+    public static EmailContent ServicePaymentRefundedToSupplier(
+        CultureInfo culture,
+        string serviceName,
+        string propertyName,
+        int refundedCents,
+        int commissionRefundedCents,
+        string consoleUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        builder.Paragraph("ServicePaymentRefundedSupplier_Body", serviceName, propertyName, FormatEuro(refundedCents, culture));
+        if (commissionRefundedCents > 0)
+            builder.Paragraph("ServicePaymentRefundedSupplier_Commission", FormatEuro(commissionRefundedCents, culture));
+
+        return builder
+            .Muted("ServicePaymentRefundedSupplier_Hint")
+            .Button("ServicePaymentReceived_Cta", consoleUrl)
+            .Build("ServicePaymentRefundedSupplier_Subject", serviceName);
+    }
+
+    /// <summary>
+    /// To the platform admins (SP-15b): a service payment needs them, either because the money that arrived does not match what was
+    /// asked for (or arrived for a payment that was withdrawn), or because the payer disputed the charge. Ids, amounts and Stripe's
+    /// codes only: no name, no address, no contact of the payer.
+    /// </summary>
+    public static EmailContent ServicePaymentAdminAlert(
+        CultureInfo culture,
+        bool dispute,
+        Guid paymentId,
+        Guid requestId,
+        string supplierName,
+        int amountCents,
+        string? detail)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        var subjectKey = dispute ? "ServicePaymentAlertDispute_Subject" : "ServicePaymentAlertReview_Subject";
+        var bodyKey = dispute ? "ServicePaymentAlertDispute_Body" : "ServicePaymentAlertReview_Body";
+        var actionKey = dispute ? "ServicePaymentAlertDispute_Action" : "ServicePaymentAlertReview_Action";
+
+        var lines = new List<(string Key, object?[] Args)>
+        {
+            ("ServicePaymentAlert_Supplier", [supplierName]),
+            ("ServicePaymentAlert_Amount", [FormatEuro(amountCents, culture)]),
+            ("ServicePaymentAlert_Payment", [paymentId.ToString("D")]),
+            ("ServicePaymentAlert_Request", [requestId.ToString("D")]),
+        };
+        if (!string.IsNullOrWhiteSpace(detail))
+            lines.Add(("ServicePaymentAlert_Detail", [detail]));
+
+        return builder
+            .Paragraph(bodyKey)
+            .List(lines)
+            .Muted(actionKey)
+            .Build(subjectKey, supplierName);
     }
 
     /// <summary>
