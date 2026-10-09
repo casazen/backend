@@ -53,7 +53,8 @@ public sealed class QueuedInAppNotification
 /// <remarks>
 /// <para><b>Once per event and user.</b> <c>(DeliveryKey, UserId)</c> is unique. A user who already has a row for the key
 /// (a retry of this job, the same event queued twice, a manual <i>Requeue</i> from the dashboard) is skipped; two runs that
-/// write the same user at the same moment lose the race on the index (23505), re-read and write what is still missing.
+/// write the same user at the same moment lose the race on the index (23505), re-read and write what is still missing; the users are
+/// written in a fixed order, and a deadlock (40P01) is retried like a lost race.
 /// Runs of the same key never overlap (<see cref="DisableConcurrentExecutionAttribute"/> on the key), so the index is the net
 /// under the lock, not the way the job usually works.</para>
 /// <para><b>Who.</b> Exactly the people the push tells, with the same rules (<see cref="HostNotificationAudience"/> for the hosts
@@ -116,7 +117,9 @@ public sealed class InAppNotificationJob(
                     .Select(n => n.UserId)
                     .ToListAsync(cancellationToken))
                 .ToHashSet(StringComparer.Ordinal);
-            var toTell = recipients.Users.Where(userId => !alreadyTold.Contains(userId)).ToList();
+            // Always in the same order (by user id): two runs of the same key that write several users at the same moment then wait for
+            // each other on the first row instead of each holding one the other needs (40P01).
+            var toTell = recipients.Users.Where(userId => !alreadyTold.Contains(userId)).Order(StringComparer.Ordinal).ToList();
             if (toTell.Count == 0)
             {
                 logger.LogInformation(
@@ -166,7 +169,10 @@ public sealed class InAppNotificationJob(
     private static bool IsRaceOrVanishedUser(DbUpdateException ex) =>
         ex.InnerException is PostgresException
         {
-            SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ForeignKeyViolation,
+            SqlState: PostgresErrorCodes.UniqueViolation
+                or PostgresErrorCodes.ForeignKeyViolation
+                or PostgresErrorCodes.DeadlockDetected
+                or PostgresErrorCodes.SerializationFailure,
         };
 
     private sealed record Recipients(Guid OrgId, IReadOnlyList<string> Users)
