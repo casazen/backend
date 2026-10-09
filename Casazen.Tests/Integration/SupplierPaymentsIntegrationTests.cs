@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -7,7 +8,9 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -404,6 +407,28 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         Assert.Equal(0, _stripe.CreateAccountCallCount);
         Assert.Equal(0, _stripe.OnboardingLinkCallCount);
         Assert.Equal(account, (await GetOrgAsync(orgId)).StripeConnectedAccountId);
+    }
+
+    [Fact]
+    public async Task OnboardingLink_PublicSiteNotConfigured_Returns503BeforeAnyStripeCall()
+    {
+        var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(_factory);
+        // Possible only in Development/Testing: elsewhere the startup fails without App:PublicSiteBaseUrl.
+        await using var unconfigured = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["App:PublicSiteBaseUrl"] = "" })));
+        var stripe = (FakeStripeConnectGateway)unconfigured.Services.GetRequiredService<IStripeConnectGateway>();
+        using var client = unconfigured.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthHandler.SchemeName, "test");
+        client.DefaultRequestHeaders.Add("X-Test-User", userId);
+        client.DefaultRequestHeaders.Add("X-Test-Roles", "Supplier");
+
+        var response = await client.PostAsync($"{Base}/onboarding-link", null);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("connect_return_url_not_configured", (await ReadAsync(response)).GetProperty("code").GetString());
+        // No account is created for a link that could not send the supplier back.
+        Assert.Equal(0, stripe.CreateAccountCallCount + stripe.OnboardingLinkCallCount);
+        Assert.Null((await GetOrgAsync(orgId)).StripeConnectedAccountId);
     }
 
     // ─── The dashboard link ──────────────────────────────────────────────────────
