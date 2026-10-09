@@ -187,6 +187,13 @@ public static class RecurringJobsRegistration
             job => job.ExecuteAsync(),
             OfficialReferenceDataRefreshJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // MEF nuova_at profiles of comuni that already have a house: monthly delta, never a full Italy scrape.
+        recurringJobManager.AddOrUpdate<ComuneOfficialProfileRefreshJob>(
+            ComuneOfficialProfileRefreshJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            ComuneOfficialProfileRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
     /// <summary>

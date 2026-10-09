@@ -54,6 +54,8 @@ public static class OfficialSourceDatasets
     public const string AlloggiatiDocumenti = "alloggiati_documenti";
     public const string AlloggiatiTipiAlloggiato = "alloggiati_tipi_alloggiato";
     public const string TouristTax = "tourist_tax";
+    public const string MefNuovaAtIndex = "mef_nuova_at_index";
+    public const string MefImpostaSoggiorno = "mef_imposta_soggiorno";
 }
 
 /// <summary>Outcome keys stored on <see cref="OfficialSourceFetch.Status"/>.</summary>

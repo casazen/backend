@@ -22,6 +22,19 @@ public class OfficialReferenceDataOptions
     public const string DefaultAlloggiatiDownloadBaseUrl =
         "https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/ashx/Download.ashx";
 
+    /// <summary>
+    /// MEF page of the imposta di soggiorno (PO source). The daily CSV permalink of the <c>nuova_at</c> archive
+    /// is discovered from this page, the same way the ISTAT catalog page yields the comuni file.
+    /// </summary>
+    public const string DefaultMefNuovaAtCatalogUrl =
+        "https://www.finanze.gov.it/it/fiscalita/fiscalita-regionale-e-locale/TARI-Imposta-di-soggiorno-e-altri-tributi-comunali/imposta-di-soggiorno/index.html";
+
+    /// <summary>
+    /// Fallback CSV URL when the catalog page does not expose a <c>nuova_at</c> permalink. Never a blog URL.
+    /// </summary>
+    public const string DefaultMefNuovaAtCsvUrl =
+        "https://www1.finanze.gov.it/finanze/dipartimentopolitichefiscali/fiscalitalocale/nuova_at/file/ElencoAtti.csv";
+
     /// <summary>When false the Hangfire job is a no-op (tests). On by default.</summary>
     public bool Enabled { get; set; } = true;
 
@@ -35,6 +48,13 @@ public class OfficialReferenceDataOptions
     public string AlloggiatiTabellePageUrl { get; set; } = DefaultAlloggiatiTabellePageUrl;
 
     public string AlloggiatiDownloadBaseUrl { get; set; } = DefaultAlloggiatiDownloadBaseUrl;
+
+    public string MefNuovaAtCatalogUrl { get; set; } = DefaultMefNuovaAtCatalogUrl;
+
+    public string MefNuovaAtCsvUrl { get; set; } = DefaultMefNuovaAtCsvUrl;
+
+    /// <summary>Reuse a current profile for this many days unless the MEF act hash changed.</summary>
+    public int ComuneProfileReuseDays { get; set; } = 30;
 
     /// <summary>
     /// Institutional tourist-tax pages of the pilot comuni already in the product. Never a national invented list.
