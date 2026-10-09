@@ -79,7 +79,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | Runbook | Argomento | Task |
 |---|---|---|
 | [`rli.md`](rli.md) | RLI registration of lease contracts | FD-06, FD-07, LT-01, LT-02, LT-03, LT-04, LT-07, LT-08 |
-| [`lease-contract-templates.md`](lease-contract-templates.md) | lease contract templates (approval gate, clause texts from the product owner) | FD-02, LT-02, LT-03, LT-09, LT-10 |
+| [`lease-contract-templates.md`](lease-contract-templates.md) | lease contract templates (approval gate, clause texts from the product owner, draft templates 2026-11 not approved) | FD-02, LG-02, LT-02, LT-03, LT-09, LT-10 |
 | [`canone-concordato.md`](canone-concordato.md) | Canone concordato: range, dati dell'accordo, tipo di contratto (LT-10, LT-13) | LT-08, LT-10, LT-13 |
 
 ## SEO e siti pubblici
