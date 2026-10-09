@@ -9,13 +9,21 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>
+/// The fiscal area (regime, tax profile, reports, simulator). It is about money: besides <c>property.read</c> it needs
+/// <c>payment.read</c> (AM-03: a collaborator reads properties and bookings, never what they earn), which the owner, the
+/// property managers and the accountant hold. The writes add their own permission (<c>property.write</c>). The reports show
+/// the properties the caller reaches.
+/// </summary>
 [ApiController]
 [Route("api/fiscal")]
 [Authorize(Policy = "RequireContext:short-rent:property.read")]
+[Authorize(Policy = CasazenPolicies.PaymentRead)]
 public class FiscalController(
     IFiscalRegimeService fiscalRegime,
     IFiscalReportingService fiscalReporting,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService) : ControllerBase
 {
@@ -131,7 +139,8 @@ public class FiscalController(
     /// <summary>
     /// Fiscal summary per property and taxpayer (CO-19): collected gross, tourist tax, gross rent, withholding and the tax
     /// estimated for the cedolare secca only. Period: <paramref name="from"/>-<paramref name="to"/> (calendar dates, both
-    /// included) inside <paramref name="taxYear"/>, the whole year by default. <c>format</c>: json, csv or pdf.
+    /// included) inside <paramref name="taxYear"/>, the whole year by default. <c>format</c>: json, csv or pdf. Only the
+    /// properties the caller reaches (AM-03).
     /// </summary>
     [HttpGet("reports/annual/{taxYear:int}")]
     public async Task<IActionResult> AnnualReport(
@@ -228,13 +237,13 @@ public class FiscalController(
         this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, ex.MessageArgs);
 
     /// <summary>
-    /// The caller's reach for the reports (TN-3): the whole org for org-wide roles, only the properties the caller owns
-    /// otherwise; null when unauthenticated.
+    /// The caller's reach for the reports (TN-3, AM-03): the whole org for the roles that reach it, only the properties the
+    /// member was given or the account created otherwise; null when unauthenticated or without reach.
     /// </summary>
     private async Task<HostScope?> GetScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        return orgId is null ? null : User.GetHostScope(orgId.Value);
+        return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
     /// <summary>Period inside the tax year: null (the whole year) when neither bound is given, else the missing bound is the year's.</summary>

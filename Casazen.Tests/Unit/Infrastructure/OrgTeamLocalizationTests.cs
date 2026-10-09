@@ -36,6 +36,9 @@ public class OrgTeamLocalizationTests
         { OrgMembershipErrors.AreaRequired, "OrgMemberAreaRequired" },
         { OrgMembershipErrors.AlreadyMember, "OrgMemberAlreadyMember" },
         { OrgMembershipErrors.OtherOrg, "OrgMemberOtherOrg" },
+        { OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported" },
+        { OrgMembershipErrors.PropertyUnknown, "OrgMemberPropertyUnknown" },
+        { PropertyResponsibleErrors.Invalid, "PropertyResponsibleInvalid" },
     };
 
     [Theory]
@@ -56,7 +59,10 @@ public class OrgTeamLocalizationTests
     public void TheTable_CoversEveryCodeOfTheTeamAndNothingElse()
     {
         var inTable = CodesAndKeys.Select(row => (string)row[0]).ToHashSet();
-        var declared = new[] { typeof(OrgInvitationErrors), typeof(OrgSeatErrors), typeof(OrgMembershipErrors) }
+        var declared = new[]
+            {
+                typeof(OrgInvitationErrors), typeof(OrgSeatErrors), typeof(OrgMembershipErrors), typeof(PropertyResponsibleErrors),
+            }
             .SelectMany(t => t.GetFields(BindingFlags.Public | BindingFlags.Static))
             .Where(f => f is { IsLiteral: true, FieldType.Name: nameof(String) })
             .Select(f => (string)f.GetRawConstantValue()!)
@@ -80,6 +86,7 @@ public class OrgTeamLocalizationTests
         var keys = new[]
             {
                 typeof(CreateOrgInvitationRequest), typeof(OrgInvitationLookupRequest), typeof(AcceptOrgInvitationRequest),
+                typeof(SetOrgMemberPropertiesRequest), typeof(Casazen.Web.Controllers.SetPropertyResponsibleRequest),
             }
             .SelectMany(t => t.GetProperties())
             .SelectMany(p => p.GetCustomAttributes<ValidationAttribute>())

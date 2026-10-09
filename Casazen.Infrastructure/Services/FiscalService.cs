@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -361,12 +362,17 @@ public partial class FiscalService(
     /// fiscal area: active ones not only let long-term in the year, plus any property with short-term stays in the year.
     /// Only the latter count toward the threshold (fiscale.md C4: apartments let short-term in the tax year).
     /// </summary>
+    /// <param name="scope">
+    /// The caller's reach (AM-03): it only marks which properties the caller may see (<c>YearProperty.InScope</c>), the
+    /// threshold of a taxpayer is always computed on all the org's apartments. <c>null</c> = every property.
+    /// </param>
     private async Task<FiscalYearView> LoadYearAsync(
         Guid orgId,
         string? orgFiscalCode,
         int taxYear,
         bool trackAssignments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        HostScope? scope = null)
     {
         var (yearStart, yearEnd) = YearBounds(taxYear);
         var stays = await db.Bookings.AsNoTracking()
@@ -396,8 +402,22 @@ public partial class FiscalService(
         var properties = await db.Properties.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == orgId && (!p.IsDeleted || p.DeletedAt == null || p.DeletedAt >= yearStart))
-            .Select(p => new { p.Id, p.Name, p.IsActive, p.TaxpayerFiscalCode, p.OwnerId })
+            .Select(p => new { p.Id, p.Name, p.IsActive, p.TaxpayerFiscalCode })
             .ToListAsync(cancellationToken);
+
+        // The properties the caller reaches, only when it does not reach them all: one query in SQL (InScope), because the
+        // list above is the whole org's (the threshold needs it) and the report must show the caller's own lines.
+        HashSet<Guid>? inScope = null;
+        if (scope is { IsOrgWide: false })
+        {
+            inScope = (await db.Properties.AsNoTracking()
+                    .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+                    .Where(p => p.OrgId == orgId)
+                    .InScope(scope)
+                    .Select(p => p.Id)
+                    .ToListAsync(cancellationToken))
+                .ToHashSet();
+        }
 
         var assignmentsQuery = db.PropertyFiscalYears.Where(y => y.OrgId == orgId && y.TaxYear == taxYear);
         if (!trackAssignments)
@@ -411,7 +431,8 @@ public partial class FiscalService(
                 var shortStay = shortStayPropertyIds.Contains(p.Id);
                 var candidate = shortStay || (p.IsActive && !leasedPropertyIds.Contains(p.Id));
                 var taxpayerCode = NormalizeFiscalCode(p.TaxpayerFiscalCode);
-                return new YearProperty(p.Id, p.Name, taxpayerCode ?? orgKey, taxpayerCode, candidate, shortStay, p.OwnerId);
+                return new YearProperty(
+                    p.Id, p.Name, taxpayerCode ?? orgKey, taxpayerCode, candidate, shortStay, inScope is null || inScope.Contains(p.Id));
             })
             .ToDictionary(p => p.Id);
 
@@ -450,7 +471,7 @@ public partial class FiscalService(
         string? TaxpayerFiscalCode,
         bool IsCandidate,
         bool ShortStay,
-        string OwnerId);
+        bool InScope);
 
     private sealed record TaxpayerYear(
         int Index,

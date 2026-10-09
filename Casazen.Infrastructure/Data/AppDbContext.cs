@@ -172,6 +172,7 @@ public class AppDbContext(
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
     public DbSet<OrgMember> OrgMembers { get; set; } = null!;
     public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
+    public DbSet<PropertyMemberAccess> PropertyMemberAccesses { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -971,6 +972,50 @@ public class AppDbContext(
                 .HasDatabaseName("IX_OrgInvitations_Status_ExpiresAt");
         });
 
+        // ─── Property scope of the org members (AM-03) ──────────────────────────
+        modelBuilder.Entity<PropertyMemberAccess>(entity =>
+        {
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(a => a.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // The grants of a property go with it (it is soft-deleted, so in practice never) and the grants of a person go
+            // with the account.
+            entity.HasOne(a => a.Property)
+                .WithMany(p => p.MemberAccesses)
+                .HasForeignKey(a => a.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A member reaches a property once: the second grant of the same pair loses the race on this index (23505).
+            // It also serves the EXISTS of every list (UserId first) and the reads of the member's own grants.
+            entity.HasIndex(a => new { a.UserId, a.PropertyId })
+                .IsUnique()
+                .HasDatabaseName("UIX_PropertyMemberAccesses_UserId_PropertyId");
+
+            // «Chi può accedere» per property, and the tenant filter (OrgId) of every read.
+            entity.HasIndex(a => new { a.PropertyId })
+                .HasDatabaseName("IX_PropertyMemberAccesses_PropertyId");
+            entity.HasIndex(a => new { a.OrgId, a.UserId })
+                .HasDatabaseName("IX_PropertyMemberAccesses_OrgId_UserId");
+        });
+
+        // The member in charge of a property (AM-03): notified together with the org's administrators. The account can go;
+        // the property keeps its history and is simply left without a named person.
+        modelBuilder.Entity<Property>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(p => p.ResponsibleUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Property>()
+            .HasIndex(p => p.ResponsibleUserId)
+            .HasDatabaseName("IX_Properties_ResponsibleUserId");
+
         modelBuilder.Entity<ConsentRecord>()
             .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
 
@@ -1585,6 +1630,10 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = "ota.write" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.read" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.write" },
+            // AM-03: carved out of property.write, guest.write and booking.write; the owner keeps doing all of it.
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ServiceRequestWrite },
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestManage },
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.AlloggiatiSubmit },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },
             new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },

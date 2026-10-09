@@ -43,6 +43,8 @@ public class SharedPropertyPolicyTests
         "PropertyModeController.GetState",
         "PropertyModeController.Preview",
         "PropertyModeController.Schedule",
+        // AM-03: the member in charge of a property is part of the property core (both kinds of landlord have properties).
+        "PropertyResponsibleController.Set",
     ];
 
     [Fact]

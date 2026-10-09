@@ -43,11 +43,27 @@ public static class BookingOperations
     public static readonly HostOperationRequirement Write = new("short-rent", "booking.write");
 }
 
-/// <summary>Operations on a guest of the org (org-level resource, no owner).</summary>
+/// <summary>
+/// Operations on a guest of the org (org-level resource, no owner). <see cref="Manage"/> (AM-03) is the erasure, anonymization
+/// and consent changes, apart from <see cref="Write"/> (registering and correcting a guest).
+/// </summary>
 public static class GuestOperations
 {
     public static readonly HostOperationRequirement Read = new("short-rent", "guest.read");
     public static readonly HostOperationRequirement Write = new("short-rent", "guest.write");
+    public static readonly HostOperationRequirement Manage = new("short-rent", Casazen.Core.Authorization.HostPermissions.GuestManage);
+}
+
+/// <summary>Operations on the service requests (interventions) of a property (the resource is the property), apart from the property record (AM-03).</summary>
+public static class ServiceRequestOperations
+{
+    public static readonly HostOperationRequirement Write = new("short-rent", Casazen.Core.Authorization.HostPermissions.ServiceRequestWrite);
+}
+
+/// <summary>Operations on the Alloggiati communication of a stay (the resource is the property of the booking), apart from the booking itself (AM-03).</summary>
+public static class AlloggiatiOperations
+{
+    public static readonly HostOperationRequirement Submit = new("short-rent", Casazen.Core.Authorization.HostPermissions.AlloggiatiSubmit);
 }
 
 /// <summary>Operations on a payment (the resource is the property of its booking).</summary>

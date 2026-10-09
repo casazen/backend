@@ -49,6 +49,10 @@ public sealed partial class OrgInvitationService(
         if (request.Role == OrgRole.Owner)
             throw new DomainRuleException(OrgMembershipErrors.OwnerNotAssignable, "OrgMemberOwnerNotAssignable");
 
+        // «Solo alcuni» is the collaborator's (AM-03): refused here, not at the acceptance, where the inviter is gone.
+        if (request.PropertyScope == PropertyScope.Selected && request.Role != OrgRole.Collaborator)
+            throw new DomainRuleException(OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported");
+
         var areas = NormalizeAreas(request.Areas);
         if (areas.Count == 0)
             throw new DomainRuleException(OrgMembershipErrors.AreaRequired, "OrgMemberAreaRequired");

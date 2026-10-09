@@ -10,7 +10,7 @@ namespace Casazen.Core.Services;
 /// <param name="Name">The person's name, as the inviter knows it (shown in the team page and in the email).</param>
 /// <param name="Role">The org role. Never <see cref="OrgRole.Owner"/>; <see cref="OrgRole.Admin"/> only from the owner.</param>
 /// <param name="Areas">The areas the person works in: <c>short-rent</c> and/or <c>long-rent</c>.</param>
-/// <param name="PropertyScope">All the properties or only some (the list of them is AM-03).</param>
+/// <param name="PropertyScope">All the properties, or only some: <c>Selected</c> is the collaborator's alone (422 <c>org_member_scope_not_supported</c> for another role); the properties are given to the member afterwards (AM-03).</param>
 /// <param name="Language">Language of the emails: <c>it</c> (default) or <c>en</c>.</param>
 public sealed record CreateOrgInvitation(
     Guid OrgId,

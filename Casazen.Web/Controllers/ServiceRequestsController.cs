@@ -16,7 +16,8 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Service requests (TN-3). Host side, short-rent context: <c>property.read</c> / <c>property.write</c>, then the
+/// Service requests (TN-3). Host side, short-rent context: <c>property.read</c> to read, <c>servicerequest.write</c> to create or
+/// mark paid (AM-03: it used to be <c>property.write</c>, which the collaborator does not have), then the
 /// property is authorized as a <see cref="HostResource"/> (org, permission, ownership). Supplier side:
 /// <see cref="CasazenPolicies.Supplier"/> plus the linked supplier org. <c>GET</c> list and detail serve both sides and
 /// evaluate the policy of the branch they take.
@@ -36,6 +37,7 @@ public class ServiceRequestsController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     ISupplierOrgContextResolver supplierOrgContextResolver,
     ISupplierPaymentService supplierPayments) : ControllerBase
 {
@@ -46,7 +48,7 @@ public class ServiceRequestsController(
     /// </summary>
     [HttpPost("match-supplier")]
     [FeatureGate(FeatureFlags.AiSupplierDiscovery)]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
     [AiRateLimit]
     [ProducesResponseType(typeof(SupplierMatchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -60,7 +62,7 @@ public class ServiceRequestsController(
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null) return Unauthorized();
 
-        if (await AuthorizePropertyAsync(request.PropertyId, PropertyOperations.Write, cancellationToken) is { } denied)
+        if (await AuthorizePropertyAsync(request.PropertyId, ServiceRequestOperations.Write, cancellationToken) is { } denied)
             return denied;
 
         var result = await supplierMatchService.MatchAsync(
@@ -79,7 +81,7 @@ public class ServiceRequestsController(
     /// the comune, <c>chargeToGuest</c>), with the codes of <see cref="ServiceRequestErrorCodes"/>.
     /// </summary>
     [HttpPost]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -92,7 +94,7 @@ public class ServiceRequestsController(
         var userId = User.GetUserId();
         if (orgId is null || userId is null) return Unauthorized();
 
-        if (await AuthorizePropertyAsync(request.PropertyId, PropertyOperations.Write, cancellationToken) is { } denied)
+        if (await AuthorizePropertyAsync(request.PropertyId, ServiceRequestOperations.Write, cancellationToken) is { } denied)
             return denied;
 
         var created = await serviceRequestService.CreateAsync(
@@ -526,7 +528,7 @@ public class ServiceRequestsController(
             id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
         if (existing is null) return ServiceRequestNotFound();
 
-        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId, existing.PropertyId);
         if (existing.Property is null ||
             !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
             return Forbid();
@@ -574,7 +576,7 @@ public class ServiceRequestsController(
             id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
         if (existing is null) return ServiceRequestNotFound();
 
-        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId, existing.PropertyId);
         if (existing.Property is null ||
             !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
             return Forbid();
@@ -585,7 +587,7 @@ public class ServiceRequestsController(
     }
 
     /// <summary>
-    /// Host marks a completed short-rent request as paid (manual flag, no Stripe transfer): <c>property.write</c> on the
+    /// Host marks a completed short-rent request as paid (manual flag, no Stripe transfer): <c>servicerequest.write</c> on the
     /// request's property. A request outside the caller's host scope, or a long-rent one, is 404
     /// <c>service_request_not_found</c>; a request that is not completed is 422
     /// <c>service_request_invalid_transition</c>; a request paid inside CasaZen (<c>paymentMode: Online</c>, SP-15a) is 422
@@ -593,7 +595,7 @@ public class ServiceRequestsController(
     /// a concurrent change.
     /// </summary>
     [HttpPost("{id:guid}/mark-paid")]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
@@ -607,9 +609,9 @@ public class ServiceRequestsController(
             id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
         if (existing is null) return ServiceRequestNotFound();
 
-        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId);
+        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId, existing.PropertyId);
         if (existing.Property is null ||
-            !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
+            !await authorizationService.IsAuthorizedAsync(User, resource, ServiceRequestOperations.Write))
             return Forbid();
 
         var updated = await serviceRequestService.MarkPaidAsync(id, scope.OrgId, cancellationToken);
@@ -629,7 +631,7 @@ public class ServiceRequestsController(
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        return orgId is null ? null : User.GetHostScope(orgId.Value);
+        return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
     /// <summary>

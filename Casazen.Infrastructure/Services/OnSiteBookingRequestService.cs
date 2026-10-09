@@ -89,9 +89,8 @@ public sealed class OnSiteBookingRequestService(
         var query = db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == scope.OrgId)
-            .Where(OnSiteRequests.IsAwaitingHostApproval(UtcNow()));
-        if (scope.OwnerId is { } ownerId)
-            query = query.Where(b => b.Property.OwnerId == ownerId);
+            .Where(OnSiteRequests.IsAwaitingHostApproval(UtcNow()))
+            .InScope(scope);
 
         return await query
             .Include(b => b.Guest)

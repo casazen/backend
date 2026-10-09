@@ -83,6 +83,7 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         Assert.Equal([
             (late.GuestEmail, EmailTemplates.Names.GuestBookingConfirmed),
             (SeededHostEmail, EmailTemplates.Names.HostBookingConfirmed),
+            (await CreatorEmailAsync(property), EmailTemplates.Names.HostBookingConfirmed),
         ], _sentEmails.ToList());
     }
 
@@ -159,6 +160,7 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
             [
                 (hold.GuestEmail, EmailTemplates.Names.GuestBookingConfirmed),
                 (SeededHostEmail, EmailTemplates.Names.HostBookingConfirmed),
+                (await CreatorEmailAsync(property), EmailTemplates.Names.HostBookingConfirmed),
             ],
             _sentEmails.ToList());
     }
@@ -269,6 +271,7 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         Assert.Equal([
             (late.GuestEmail, EmailTemplates.Names.GuestBookingConfirmed),
             (SeededHostEmail, EmailTemplates.Names.HostBookingConfirmed),
+            (await CreatorEmailAsync(property), EmailTemplates.Names.HostBookingConfirmed),
         ], _sentEmails.ToList());
     }
 
@@ -464,6 +467,18 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         property.ComplianceStatus = PropertyComplianceStatus.Active;
         await db.SaveChangesAsync();
         return (property, account);
+    }
+
+    /// <summary>
+    /// The account email of the creator of the property. Since AM-03 it is told about a new booking as well as the contact address
+    /// of the org (<c>HostNotificationAudience</c>): the member in charge, or the creator while nobody is named, and the
+    /// administrators of the org.
+    /// </summary>
+    private async Task<string> CreatorEmailAsync(Property property)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Users.Where(u => u.Id == property.OwnerId).Select(u => u.Email).SingleAsync();
     }
 
     private sealed record SeededBooking(Guid BookingId, string PaymentIntentId, string GuestEmail);

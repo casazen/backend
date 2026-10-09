@@ -15,7 +15,7 @@ Task BL-01 (redesign wave) adds `UiRedesign` (decision 01-D8; the same task adds
 `docs/runbooks/open-access.md`, which is **not** a feature flag).
 Task SP-14 (redesign wave) puts the supplier's Stripe Connect account behind `SupplierOnlinePayments`
 (`docs/runbooks/stripe.md` § "Connect onboarding of the suppliers (SP-14)", `docs/runbooks/suppliers.md` section 25).
-Task AM-01 adds `OrgTeam` (org team, wave redesign; decisions D1, D15; `docs/runbooks/org-team.md`); AM-02 gates the endpoints of the invitations and of the members on it.
+Task AM-01 adds `OrgTeam` (org team, wave redesign; decisions D1, D15; `docs/runbooks/org-team.md`); AM-02 gates the endpoints of the invitations and of the members on it; AM-03 gates the two endpoints that set the properties of a member on it (the scope itself is enforced with the flag off too, but nobody can be limited without the gated endpoints).
 Task PM-02 adds `PropertyModeChange` (decision D16; `docs/runbooks/property-rental-mode.md` §8).
 Task SP-15a (redesign wave) puts the **creation** of the payments of the supplier's work behind `SupplierOnlinePayments`
 (`docs/runbooks/stripe.md` § "Services of the suppliers (SP-15)", `docs/runbooks/suppliers.md` section 26); SP-15b adds the

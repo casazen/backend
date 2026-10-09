@@ -9,6 +9,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
+using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
@@ -67,6 +68,7 @@ public class PropertiesControllerRentalModeTests
             Mock.Of<IPropertyDocumentService>(),
             Mock.Of<IAdminAccessAuditService>(),
             orgContext.Object,
+            HostAuthorizationTestHarness.ScopeResolver(),
             entitlements.Object,
             ICalTestServices.PropertySync(
                 new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()

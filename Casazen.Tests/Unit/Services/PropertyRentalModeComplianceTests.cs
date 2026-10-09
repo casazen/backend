@@ -229,7 +229,7 @@ public class PropertyRentalModeComplianceTests
         await SeedAsync(db, RentalMode.Long, PropertyComplianceStatus.Pending, cinCode: null, orgId: orgId, name: "Casa Lungo");
         await SeedAsync(db, RentalMode.Long, PropertyComplianceStatus.Suspended, cinCode: null, orgId: orgId, name: "Casa Lungo 2");
 
-        var summary = await WizardService(db, Mock.Of<IPropertyComplianceStatusService>()).GetSummaryAsync(orgId);
+        var summary = await WizardService(db, Mock.Of<IPropertyComplianceStatusService>()).GetSummaryAsync(new HostScope(orgId));
 
         Assert.Equal(1, summary.PropertiesPending.Count);
         Assert.Equal(["Casa Breve"], summary.PropertiesPending.Items.Select(i => i.Label));

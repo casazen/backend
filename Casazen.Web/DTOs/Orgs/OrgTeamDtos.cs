@@ -31,7 +31,7 @@ public class CreateOrgInvitationRequest
     [Required(ErrorMessage = "OrgMemberAreaRequired")]
     public List<string> Areas { get; set; } = [];
 
-    /// <summary><c>All</c> (default) or <c>Selected</c>: the list of properties arrives with AM-03.</summary>
+    /// <summary><c>All</c> (default) or <c>Selected</c> («Solo alcuni», a collaborator only: 422 <c>org_member_scope_not_supported</c> otherwise). The properties are given afterwards, with <c>PUT /api/orgs/me/members/{id}/properties</c>; until then the person reaches none.</summary>
     public PropertyScope PropertyScope { get; set; } = PropertyScope.All;
 
     /// <summary>Language of the emails: <c>it</c> (default) or <c>en</c>.</summary>
