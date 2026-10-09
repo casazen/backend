@@ -133,6 +133,14 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
 
+    /// <summary>
+    /// Host console: the page of one property in the area of its rental mode (routes <c>/app/short-rent/properties/:id</c> for
+    /// <see cref="Core.Entities.Enums.RentalMode.Short"/>, <c>/app/long-rent/properties/:id</c> for
+    /// <see cref="Core.Entities.Enums.RentalMode.Long"/>, PM-02).
+    /// </summary>
+    public string HostProperty(Guid propertyId, Core.Entities.Enums.RentalMode mode) =>
+        Build($"/app/{(mode == Core.Entities.Enums.RentalMode.Long ? "long-rent" : "short-rent")}/properties/{propertyId:D}");
+
     /// <summary>Host console: activation wizard of one property (route <c>/app/short-rent/properties/:id/activation</c>, CO-06).</summary>
     public string HostPropertyActivation(Guid propertyId) => Build($"/app/short-rent/properties/{propertyId:D}/activation");
 
