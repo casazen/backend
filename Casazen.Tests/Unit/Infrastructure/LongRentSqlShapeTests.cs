@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Leases;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
@@ -256,5 +257,68 @@ public class LongRentSqlShapeTests
         Assert.Contains("GROUP BY s.\"Key\"", statements[1], StringComparison.Ordinal);
         Assert.Contains("GROUP BY r.\"LeaseContractId\"", statements[2], StringComparison.Ordinal);
         Assert.DoesNotContain(Owner, string.Concat(statements), StringComparison.Ordinal);
+    }
+
+    // --- A collaborator «Solo alcuni» (AM-03) -----------------------------------------------------------
+
+    private const string Collaborator = "auth0|collaboratore-segreto";
+    private static readonly HostScope Granted = new(OrgId, GrantedToUserId: Collaborator);
+
+    private static async Task<List<string>> StatementsOfAsync(Func<AppDbContext, Task> call, Func<string, System.Data.DataTable?>? answer = null)
+    {
+        var statements = new List<string>();
+        await using var db = LongRentSqlProbe.NewContext(statements, answer);
+        await call(db);
+        return statements;
+    }
+
+    /// <summary>The grants of the person are read inside the statement, once, and the person is a parameter, never text.</summary>
+    private static void AssertReadsTheGrants(string sql)
+    {
+        Assert.Equal(1, Count(sql, "\"PropertyMemberAccesses\""));
+        Assert.Matches("\"UserId\" = @", sql);
+        Assert.DoesNotContain(Collaborator, sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"OwnerId\" = @", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LeaseList_ForACollaboratorSoloAlcuni_IsStillOneStatement_ThatReadsItsGrants()
+    {
+        var statements = await StatementsOfAsync(
+            db => new LeaseContractRepository(db).GetSummariesAsync(Granted, new LeaseListQuery(Guid.NewGuid(), LeaseListView.Active, SearchText), Today));
+
+        var sql = Assert.Single(statements);
+        AssertReadsTheGrants(sql);
+        Assert.Equal(1, Count(sql, "LEFT JOIN"));
+        Assert.Equal(3, Count(sql, "LIMIT 1"));
+        Assert.DoesNotContain(SearchText, sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Register_ForACollaboratorSoloAlcuni_IsStillThreeStatements_TheTwoOfTheLedgerReadItsGrants()
+    {
+        var statements = await StatementsOfAsync(
+            db => new RentRegisterService(db, new ConfigurationBuilder().Build(), new Clock())
+                .GetRegisterAsync(Granted, new RentRegisterQuery(new DateOnly(2026, 10, 1), RentRegisterStatus.Overdue, 2, 10)),
+            CountersAnswer());
+
+        Assert.Equal(3, statements.Count);
+        AssertReadsTheGrants(statements[0]);
+        AssertReadsTheGrants(statements[1]);
+        // The state of Stripe of the org belongs to no property.
+        Assert.DoesNotContain("PropertyMemberAccesses", statements[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Agenda_ForACollaboratorSoloAlcuni_ReadsItsGrantsInEveryStatement()
+    {
+        var deadlines = await StatementsOfAsync(
+            db => new LongRentAgendaService(db, new Clock())
+                .GetDeadlinesAsync(Granted, new LongRentDeadlinesQuery(new DateOnly(2026, 10, 9), new DateOnly(2027, 1, 7))));
+        var overview = await StatementsOfAsync(db => new LongRentAgendaService(db, new Clock()).GetOverviewAsync(Granted));
+
+        Assert.Equal(2, deadlines.Count);
+        Assert.Equal(5, overview.Count);
+        Assert.All(deadlines.Concat(overview), AssertReadsTheGrants);
     }
 }

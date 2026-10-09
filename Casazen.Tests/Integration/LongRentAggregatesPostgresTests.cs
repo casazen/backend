@@ -12,6 +12,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
 using Casazen.Tests.Unit.Email;
+using Casazen.Tests.Unit.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
@@ -83,10 +84,10 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
     private AppDbContext NewCountingContext(CommandCounter counter) =>
         new(new DbContextOptionsBuilder<AppDbContext>(_database!.CreateOptions()).AddInterceptors(counter).Options);
 
-    /// <summary>The commands each call sends, by name, for the owner of the properties (a restricted scope).</summary>
-    private async Task<Dictionary<string, int>> CommandsPerCallAsync()
+    /// <summary>The commands each call sends, by name, for a caller with the given reach (by default the owner of the properties).</summary>
+    private async Task<Dictionary<string, int>> CommandsPerCallAsync(HostScope? reach = null)
     {
-        var scope = new HostScope(_orgId, OwnerId);
+        var scope = reach ?? new HostScope(_orgId, OwnerId);
         var clock = new FixedTimeProvider(Now);
         var calls = new Dictionary<string, Func<AppDbContext, Task>>
         {
@@ -126,6 +127,41 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
         var after = await CommandsPerCallAsync();
 
         Assert.Equal(before, after);
+
+        // The collaborator «Solo alcuni» (AM-03) reads its grants inside the same statements: the same commands, not one more.
+        Assert.Equal(before, await CommandsPerCallAsync(new HostScope(_orgId, GrantedToUserId: "auth0|lr01-postgres-collaborator")));
+    }
+
+    [PostgresFact]
+    public async Task Scopes_EveryCallerOfTheScenarioOfAm03_SeesOnlyItsPropertiesInEveryAggregate()
+    {
+        await using var seeding = _database!.CreateContext();
+        var world = await HostScopeScenario.SeedAsync(seeding);
+        await LongRentHostScopePoints.SeedAsync(seeding, world);
+
+        // All the points are run and reported together, so one run of CI tells everything that is wrong.
+        var failures = new List<string>();
+        var points = new (string Name, Func<AppDbContext, HostScopeWorld, Task> Run)[]
+        {
+            ("lease list", LongRentHostScopePoints.LeaseListAsync),
+            ("rent register", LongRentHostScopePoints.RentRegisterAsync),
+            ("deadlines", LongRentHostScopePoints.DeadlinesAsync),
+            ("overview", LongRentHostScopePoints.OverviewAsync),
+        };
+        foreach (var (name, run) in points)
+        {
+            try
+            {
+                await using var db = _database.CreateContext();
+                await run(db, world);
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"{name}: {exception.GetType().Name}: {exception.Message}");
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
     [PostgresFact]
