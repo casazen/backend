@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.OrgTeam;
 
 namespace Casazen.Core.Services;
 
@@ -40,11 +41,16 @@ public interface IOrgService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Writes the stored plan tier. No entitlement check: callers apply <see cref="PlanChangePolicy"/> first.
+    /// Writes the stored plan tier. No entitlement check: callers apply <see cref="PlanChangePolicy"/> first. When the tier
+    /// really changes the activity log gets the line <c>PlanChanged</c>, in the same save (AM-02b):
+    /// <paramref name="actorUserId"/> is who asked, <paramref name="source"/> says whether it was the org's billing
+    /// administrator or CasaZen staff.
     /// </summary>
     Task<Org?> UpdatePlanTierAsync(
         Guid orgId,
         PlanTier planTier,
+        string? actorUserId = null,
+        PlanChangeSource source = PlanChangeSource.Org,
         CancellationToken cancellationToken = default);
 
     Task<Org?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default);
@@ -70,7 +76,9 @@ public interface IOrgService
     /// checked for uniqueness; the previous one is kept as an <c>OrgSlugAlias</c> so shared links keep working) and
     /// its <c>ContactEmail</c>, whose publication on the public booking site is opt-in (<c>ContactEmailPublic</c>,
     /// off by default — GDPR). Returns <c>null</c> when the org does not exist. Throws <c>DomainRuleException</c>
-    /// for an unusable slug and <c>DomainConflictException</c> when another org uses it.
+    /// for an unusable slug and <c>DomainConflictException</c> when another org uses it. When the name or the slug really
+    /// changes the activity log gets a line for each (<c>OrgNameChanged</c>, <c>OrgSlugChanged</c>: no value, only the fact),
+    /// in the same save (AM-02b); <paramref name="actorUserId"/> is who asked.
     /// </summary>
     Task<Org?> UpdateSettingsAsync(
         Guid orgId,
@@ -78,6 +86,7 @@ public interface IOrgService
         string slug,
         string contactEmail,
         bool contactEmailPublic,
+        string? actorUserId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

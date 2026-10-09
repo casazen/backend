@@ -529,6 +529,9 @@ public class OrgInvitationsFlagOffIntegrationTests(OrgInvitationsFlagOffIntegrat
     [InlineData("DELETE", $"/api/orgs/me/members/{SomeId}")]
     [InlineData("POST", "/api/org-invitations/lookup")]
     [InlineData("POST", "/api/org-invitations/accept")]
+    [InlineData("GET", "/api/orgs/me/activity")]
+    [InlineData("GET", "/api/orgs/me/activity.csv")]
+    [InlineData("POST", "/api/orgs/me/access-requests")]
     public async Task EveryEndpointOfTheTeam_WithTheFlagOff_AnswersNotFound_ToAnyone(string method, string path)
     {
         using var anonymous = factory.CreateClient();

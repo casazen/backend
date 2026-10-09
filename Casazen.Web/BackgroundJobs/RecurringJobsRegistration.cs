@@ -75,6 +75,14 @@ public static class RecurringJobsRegistration
             OrgInvitationMaintenanceJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // AM-02b: the activity log keeps 12 months. Always registered, like the invitations: the retention of what the log holds
+        // does not depend on the OrgTeam flag (with the flag off nothing writes to it, and a flag turned off later leaves lines).
+        recurringJobManager.AddOrUpdate<OrgActivityRetentionJob>(
+            OrgActivityRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            OrgActivityRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         ConfigureESignProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.ESignProvider));
 
         ConfigureRliProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.RliProvider));

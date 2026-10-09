@@ -1693,6 +1693,55 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("Orgs");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OrgActivityEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Area")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SubjectId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("SubjectType")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("When")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("When")
+                        .HasDatabaseName("IX_OrgActivityEntries_When");
+
+                    b.HasIndex("OrgId", "Type")
+                        .HasDatabaseName("IX_OrgActivityEntries_OrgId_Type");
+
+                    b.HasIndex("OrgId", "When")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_OrgActivityEntries_OrgId_When");
+
+                    b.ToTable("OrgActivityEntries");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OrgInvitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6346,6 +6395,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
 
                     b.Navigation("Party");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OrgActivityEntry", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OrgInvitation", b =>
