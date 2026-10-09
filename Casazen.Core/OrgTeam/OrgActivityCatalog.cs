@@ -23,6 +23,12 @@ public static class OrgActivityDetailKeys
     /// <summary>How many properties were taken away from the member in one change.</summary>
     public const string Revoked = "revoked";
 
+    /// <summary>
+    /// How many properties lost their person in charge (<c>Property.ResponsibleUserId</c>) because the member no longer reaches
+    /// them (AM-03b). Written only when there were some; the details of a change that released nothing are as they were.
+    /// </summary>
+    public const string Released = "released";
+
     public const string FromTier = "fromTier";
     public const string ToTier = "toTier";
 
@@ -40,7 +46,7 @@ public static class OrgActivityDetailKeys
 
     public static IReadOnlyList<string> All { get; } =
     [
-        Role, FromRole, ToRole, Scope, Granted, Revoked, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
+        Role, FromRole, ToRole, Scope, Granted, Revoked, Released, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
     ];
 }
 
@@ -111,7 +117,7 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.MemberReactivated, OrgActivityArea.Account, OrgActivitySubjectType.Member, [OrgActivityDetailKeys.Role]),
         new(OrgActivityType.MemberRemoved, OrgActivityArea.Account, OrgActivitySubjectType.Member, [OrgActivityDetailKeys.Role]),
         new(OrgActivityType.MemberPropertyAccessChanged, OrgActivityArea.Account, OrgActivitySubjectType.Member,
-            [OrgActivityDetailKeys.Scope, OrgActivityDetailKeys.Granted, OrgActivityDetailKeys.Revoked]),
+            [OrgActivityDetailKeys.Scope, OrgActivityDetailKeys.Granted, OrgActivityDetailKeys.Revoked, OrgActivityDetailKeys.Released]),
         new(OrgActivityType.AccessRequested, OrgActivityArea.Account, OrgActivitySubjectType.Org, [OrgActivityDetailKeys.RequestedArea]),
 
         // Plan and organization.

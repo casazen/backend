@@ -53,6 +53,7 @@ public sealed class OrgPropertyAccessService(
             throw new ArgumentOutOfRangeException(nameof(scope), scope, "Unknown property scope.");
 
         OrgMember target;
+        IReadOnlyList<Guid> released;
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                          db, cancellationToken, OrgMembershipService.OrgLock(orgId)))
         {
@@ -97,18 +98,33 @@ public sealed class OrgPropertyAccessService(
 
             var newScope = target.Role == OrgRole.Collaborator ? scope : PropertyScope.All;
 
+            // A person who no longer reaches a property cannot stay in charge of it (AM-03b): the properties of "Solo alcuni" that
+            // are not in the new set lose their person in charge, in the same save as the grants that were taken away. With every
+            // property nothing was taken away, so nothing is released.
+            released = newScope == PropertyScope.Selected
+                ? await PropertyResponsibility.ReleaseAsync(db, orgId, target.UserId, wanted, now, cancellationToken)
+                : [];
+
             // Who gave what to whom (AM-02b): one line for the change, in the save that writes it, and none when nothing changed.
-            // The properties themselves are not named: the line says the scope the member now has and how many were given or taken.
-            if (given.Count + taken.Count > 0 || newScope != target.PropertyScope)
+            // The properties themselves are not named: the line says the scope the member now has and how many were given or taken,
+            // and (AM-03b) how many lost their person in charge with it, only when some did.
+            if (given.Count + taken.Count + released.Count > 0 || newScope != target.PropertyScope)
             {
+                var details = new List<(string Key, string Value)>
+                {
+                    (OrgActivityDetailKeys.Scope, newScope.ToString()),
+                    (OrgActivityDetailKeys.Granted, given.Count.ToString(CultureInfo.InvariantCulture)),
+                    (OrgActivityDetailKeys.Revoked, taken.Count.ToString(CultureInfo.InvariantCulture)),
+                };
+                if (released.Count > 0)
+                    details.Add((OrgActivityDetailKeys.Released, released.Count.ToString(CultureInfo.InvariantCulture)));
+
                 activityLog.Record(OrgActivity.Of(
                     orgId,
                     OrgActivityType.MemberPropertyAccessChanged,
                     actor.UserId,
                     target.UserId,
-                    (OrgActivityDetailKeys.Scope, newScope.ToString()),
-                    (OrgActivityDetailKeys.Granted, given.Count.ToString(CultureInfo.InvariantCulture)),
-                    (OrgActivityDetailKeys.Revoked, taken.Count.ToString(CultureInfo.InvariantCulture))));
+                    [.. details]));
             }
 
             target.PropertyScope = newScope;
@@ -125,6 +141,12 @@ public sealed class OrgPropertyAccessService(
         logger.LogInformation(
             "Org member property access set: memberId={MemberId} orgId={OrgId} scope={Scope} properties={Count} by={ActorUserId}",
             memberId, orgId, target.PropertyScope, propertyIds.Count, actorUserId);
+        if (released.Count > 0)
+        {
+            logger.LogInformation(
+                "Property responsibility released with the access: memberId={MemberId} orgId={OrgId} properties={Count}",
+                memberId, orgId, released.Count);
+        }
 
         return await BuildViewAsync(orgId, target, cancellationToken);
     }
@@ -135,20 +157,29 @@ public sealed class OrgPropertyAccessService(
         string? responsibleUserId,
         CancellationToken cancellationToken = default)
     {
-        var property = await db.Properties
-            .FirstOrDefaultAsync(p => p.Id == propertyId && p.OrgId == orgId, cancellationToken)
-            ?? throw new NotFoundException($"Property {propertyId} not found")
-            {
-                Code = "property_not_found",
-                MessageKey = "PropertyNotFound",
-            };
+        // The people lock, like every write of the access (AM-03b): that the person reaches the property is read and the name is
+        // written in one step that cannot interleave with the grant being taken away, which releases the name in its own save.
+        Property property;
+        await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                         db, cancellationToken, OrgMembershipService.OrgLock(orgId)))
+        {
+            property = await db.Properties
+                .FirstOrDefaultAsync(p => p.Id == propertyId && p.OrgId == orgId, cancellationToken)
+                ?? throw new NotFoundException($"Property {propertyId} not found")
+                {
+                    Code = "property_not_found",
+                    MessageKey = "PropertyNotFound",
+                };
 
-        if (!string.IsNullOrWhiteSpace(responsibleUserId))
-            await EnsureCanBeInChargeAsync(orgId, propertyId, responsibleUserId, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(responsibleUserId))
+                await EnsureCanBeInChargeAsync(orgId, propertyId, responsibleUserId, cancellationToken);
 
-        property.ResponsibleUserId = string.IsNullOrWhiteSpace(responsibleUserId) ? null : responsibleUserId;
-        property.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
-        await db.SaveChangesAsync(cancellationToken);
+            property.ResponsibleUserId = string.IsNullOrWhiteSpace(responsibleUserId) ? null : responsibleUserId;
+            property.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
+            await db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+        }
 
         logger.LogInformation(
             "Property responsible set: propertyId={PropertyId} orgId={OrgId} responsible={Named}",
