@@ -24,11 +24,15 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
             .FirstOrDefaultAsync(cancellationToken);
 
         var storedTier = org?.PlanTier ?? PlanTier.Starter;
-        var effectiveTier = ResolveEffectiveTier(storedTier, org?.SubscriptionStatus ?? SubscriptionStatus.None, org?.PastDueSince);
+        var paidTier = ResolvePaidTier(storedTier, org?.SubscriptionStatus ?? SubscriptionStatus.None, org?.PastDueSince);
+        // BL-01: the open access lifts the orgs that exist; an unknown org id keeps the fail-closed Starter fallback.
+        var effectiveTier = org is null ? paidTier : ApplyOpenAccess(paidTier);
         var maxProperties = ResolveMaxProperties(effectiveTier);
         var propertyCount = await CountPropertiesAsync(orgId, cancellationToken);
 
-        return new EntitlementResult(orgId, effectiveTier.ToString(), maxProperties, propertyCount, propertyCount < maxProperties);
+        return new EntitlementResult(
+            orgId, effectiveTier.ToString(), maxProperties, propertyCount, propertyCount < maxProperties,
+            OpenAccess: effectiveTier != paidTier);
     }
 
     public async Task<bool> CanAddPropertyAsync(Guid orgId, CancellationToken cancellationToken = default) =>
@@ -70,10 +74,12 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         if (org is null || org.SubscriptionStatus == SubscriptionStatus.None)
             return;
 
-        var effectiveTier = ResolveEffectiveTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
-        if (effectiveTier != org.PlanTier)
+        // The tier the subscription pays for, never the effective one: the open access (BL-01) is an override on read
+        // and must not reach the stored tier.
+        var paidTier = ResolvePaidTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
+        if (paidTier != org.PlanTier)
         {
-            org.PlanTier = effectiveTier;
+            org.PlanTier = paidTier;
             org.UpdatedAt = DateTime.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -96,6 +102,16 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
     public PlanTier ResolveEffectiveTier(Org org) =>
         ResolveEffectiveTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
 
+    public PlanTier ResolvePaidTier(Org org) =>
+        ResolvePaidTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
+
+    /// <summary>
+    /// The tier every gate uses: the one the subscription pays for (<see cref="ResolvePaidTier(PlanTier, SubscriptionStatus, DateTime?)"/>),
+    /// raised to the tier of the open access when that is on and higher (BL-01, <see cref="OpenAccess"/>).
+    /// </summary>
+    internal PlanTier ResolveEffectiveTier(PlanTier storedTier, SubscriptionStatus status, DateTime? pastDueSince) =>
+        ApplyOpenAccess(ResolvePaidTier(storedTier, status, pastDueSince));
+
     /// <summary>
     /// A paid tier needs a subscription paying for it (#274, A1-11). Only active, trialing and past due within the
     /// grace period keep the stored tier. Everything else fails closed to Starter: no subscription
@@ -103,13 +119,20 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
     /// (<see cref="SubscriptionStatus.Incomplete"/>), retries exhausted (<see cref="SubscriptionStatus.Unpaid"/>),
     /// canceled or <c>incomplete_expired</c>, past due beyond grace or without a start date, and unknown values.
     /// </summary>
-    internal PlanTier ResolveEffectiveTier(PlanTier storedTier, SubscriptionStatus status, DateTime? pastDueSince) =>
+    internal PlanTier ResolvePaidTier(PlanTier storedTier, SubscriptionStatus status, DateTime? pastDueSince) =>
         status switch
         {
             SubscriptionStatus.Active or SubscriptionStatus.Trialing => storedTier,
             SubscriptionStatus.PastDue when !IsPastDueGraceExpired(pastDueSince) => storedTier,
             _ => PlanTier.Starter,
         };
+
+    /// <summary>
+    /// <c>Entitlement:OpenAccess</c> (BL-01): with the switch on, the tier of the org is at least the configured one; off (the
+    /// default) or not valid, the paid tier is returned as it is. Read from the configuration at every call, like the other
+    /// <c>Entitlement</c> and <c>Billing</c> settings.
+    /// </summary>
+    private PlanTier ApplyOpenAccess(PlanTier paidTier) => OpenAccess.Read(configuration).Apply(paidTier);
 
     private bool IsPastDueGraceExpired(DateTime? pastDueSince)
     {
