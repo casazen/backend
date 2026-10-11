@@ -60,8 +60,9 @@ As an admin, I want a review screen with the source page next to the extracted v
 
 ### Backend — source discovery
 
-- **AC4**: The job resolves the agreement source from, in order: (a) an admin-maintained `AgreementSourceHint` (scope: comune, ambito or province → URL); (b) an official comune/province page link found on an allowed host. It never takes a result of a free web search as a source; candidates found by search are only **suggested** to an admin (phase 2).
+- **AC4**: The job resolves the agreement source from, in order: (a) an admin-maintained `AgreementSourceHint` (scope: comune, ambito or province → URL); (b) a link found on the official page of the ente (comune, unione, province, città metropolitana, region) served by a **trusted host** (AC6b). It never takes a result of a free web search as a source; candidates found by search are only **suggested** to an admin (phase 2).
 - **AC5**: No source found → status `SourceNotFound`, an `OfficialSourceFetch` row with the reason, an admin notification, and the user-facing state "data being prepared". Nothing is invented.
+- **AC6b**: The trusted hosts come from a registry (`OfficialAuthorityHosts`: host, ente type, ISTAT or province scope, origin `Ipa` or `Admin`, verified-at), not from a host-name pattern. It is seeded from the official register of the public administrations (IPA open data; the field layout still has to be verified) and extended by an admin with a reason. Hosts of **associations** (signatories publish copies of the agreements) are never trusted by themselves: a document found only there is a `ThirdParty` candidate that an admin must confirm against the copy deposited with the comune. Every published agreement stores its `VerificationLevel` with the same legend as the tourist-tax rates (`Official`, `Deduced`, `ThirdParty`).
 - **AC6**: The download goes through `OfficialSourceDownloader`: HTTPS only, allowlisted host, redirects re-checked against the allowlist, size cap, `%PDF-` signature check, SHA-256 stored. A document hosted on a third-party CMS (e.g. the Municipium storage that hosts the Seveso copy of the Monza e Brianza agreement) is accepted only when it is **linked from an allowed official page** (`LinkedFromUrl` stored); a bare third-party URL is refused with `host_not_allowed`.
 
 ### Backend — extraction and validation
@@ -114,7 +115,7 @@ As an admin, I want a review screen with the source page next to the extracted v
 |---|---|---|---|
 | AC1 | L1 + PG | A property of any rental mode in an unknown comune enqueues the job once, with the right priority (short-only → `Low`, long-rent → `Normal`, concordato lease → `High`); a comune already known enqueues nothing | Job skipped for short rent; queued twice on update; a second run started for a priority change |
 | AC2 | L1 + PG | Two properties in Seveso and Meda → one run, one source row | Two runs; deadlock under two instances |
-| AC4–AC6 | L1 | Hint URL on an allowed host downloads; a URL on a non-allowlisted host and an unlinked third-party storage URL → `host_not_allowed` | A free web-search result accepted as source; a redirect to a non-allowed host followed |
+| AC4–AC6b | L1 | Hint URL on a trusted host downloads; a URL on a non-trusted host and an unlinked third-party storage URL → `host_not_allowed`; `comune.attacker.it` is **not** trusted; an association-only document → `ThirdParty` candidate, no automatic extraction run | A free web-search result accepted as source; a redirect to a non-trusted host followed; a host trusted because its name starts with `comune.` |
 | AC7 | L1 | A PDF with no text layer → `Unreadable/no_text_layer`, no provider call | Image pages sent to the provider |
 | AC8–AC10 | L1 golden | Monza e Brianza PDF fixture: the 55 comuni tables are extracted; **Seveso (24 values) and Cesano Maderno (48 values) equal the seed**; each invariant has a failing fixture | A comune missing from the scope accepted; `min ≥ max` published; an invented table for a comune with no annex |
 | AC11 | L1 | Cesano Maderno zones carry sheet lists; Monza carries `ByMap` | Zone guessed from an address |
@@ -158,6 +159,10 @@ Phase 1 keeps the existing one-row-per-comune `TerritorialRentAgreement` and add
 | `ConcordatoRentBand` (change) | + `ZoneResolution` (`Single`, `ByCadastralSheet`, `ByMap`) |
 
 Match comuni by **ISTAT code**, never by the free-text city (home town names collide). `OfficialSourceDatasets` gets `territorial_agreement`.
+
+### Source trust (finding on the current allowlist)
+
+`OfficialHostAllowlist` (branch `feat/agente-dati-comune`) trusts any host that starts with `comune.` or contains `.comune.` and ends in `.it`. Anyone can register `attacker.it` and serve from `comune.attacker.it`, which passes. For the MEF and ISTAT sources the risk is small (fixed URLs), but this pipeline follows links and fetches documents whose **content decides what a customer is told about his taxes**, so it must not inherit the pattern. The same allowlist also does not cover provinces, città metropolitane or regions (`provincia.mb.it`, `regione.lombardia.it` are not `*.gov.it`), where many agreements are published. Fix for the new source type: the registry of AC6b. Fixing the pattern for the existing sources is a separate small change, to be agreed.
 
 ### Run status machine
 
@@ -242,4 +247,5 @@ Extraction runs once per source hash and is cached; refresh is by hash; a 70-pag
 5. **Order of provinces after Monza e Brianza**, by where the customers are.
 6. **Minimum rent** in the calculator (duration uplift or not) and **coefficient combination** (sum, as the attestation above suggests): confirm in writing with a signatory organization before changing the code.
 7. **Review capacity for `Low` runs.** Extract and validate agreements for short-rent-only comuni (the unknown-comune rule), or only discover and extract, leaving the review until a long-rent need appears? The spec assumes the first, with the review deprioritised.
-8. **Renewal of the Monza e Brianza agreement** (formal expiry 01/11/2025, in force until replaced): the pipeline watches it but nobody has verified whether a new one exists.
+8. **Official domain list.** IPA open data as the seed of the trusted-host registry: confirm the dataset and its field for the institutional website before building on it.
+9. **Renewal of the Monza e Brianza agreement** (formal expiry 01/11/2025, in force until replaced): the pipeline watches it but nobody has verified whether a new one exists.
