@@ -21,7 +21,7 @@ last_reviewed: 2026-10-11
 
 Today the canone concordato data of a comune (zones, €/mq bands, coefficient rules, signatories, validity) exists only for Seveso and Cesano Maderno, entered by hand after a research task (RS-8). The other 53 comuni of the Monza e Brianza agreement are `Missing`, and every other province has nothing. The agreements are public PDFs (often scans) published by comuni, provinces or associations; there is **no national dataset** and **no API**.
 
-The pipeline loads them **on demand**: when a long-rent property is created (or a concordato lease is started) in a comune with no usable agreement, an asynchronous job finds the source document, extracts the data deterministically first and with the AI provider second, validates it, versions it with its source hash, and puts it in a **review queue**. Data become binding only after a human approves them. One agreement document covers many comuni, so one run loads them all (the Monza e Brianza PDF covers 55).
+The pipeline loads them **on demand**: when a property of **any rental mode** (short or long) is created in a comune the system does not know yet, or a concordato lease is started in a comune with no usable agreement, an asynchronous job finds the source document, extracts the data deterministically first and with the AI provider second, validates it, versions it with its source hash, and puts it in a **review queue**. Data become binding only after a human approves them. One agreement document covers many comuni, so one run loads them all (the Monza e Brianza PDF covers 55).
 
 What "done" means for a human: a landlord with a house in a comune of an already-ingested agreement gets the calculator range at once; a landlord in a new comune sees "data being prepared", and an admin gets one review task that, once approved, serves every comune of that agreement.
 
@@ -37,14 +37,14 @@ Design: none yet. ADRs: none. Reused from the branch: `OfficialSourceFetch`, `Of
 2. **Never invent a value.** Missing field → `null` and a rejection or `unreadable` status, never a guess or a completed table.
 3. **Source and hash on every value.** URL, retrieval time, SHA-256, page, extractor version.
 4. **Public documents only.** The AI prompt never contains tenant, property or user data. Customer documents are out of scope (the active provider processes data outside the EEA, see `docs/runbooks/ai.md`).
-5. **Lazy and delta, never a full Italy scrape.** Work starts for comuni that have a property; refresh is monthly and by hash.
+5. **If the comune is unknown, find out.** The discriminant is the knowledge of the comune, not the rental mode: any property with a chosen comune whose data are missing starts the work. No full Italy scrape; refresh is monthly and by hash. What differs by mode is the **review priority**, not whether the system learns.
 6. **Wrong data costs the customer his tax benefits.** Publication is never automatic; `Complete` needs a written confirmation (existing rule in `docs/runbooks/canone-concordato.md`).
 
 ---
 
 ## User Story
 
-As a long-rent landlord, I want the canone concordato range of my comune to be available without waiting for someone to research it by hand, so that I can fix the rent inside the agreement.
+As a landlord (short or long rent) adding a house in a comune the product does not know, I want the comune data to be gathered for me, so that the rules that apply (tourist tax for a short rent, canone concordato range for a long rent) are available without waiting for someone to research them by hand.
 
 As an admin, I want a review screen with the source page next to the extracted values, so that I can approve or correct an agreement in minutes and be sure of what the customers will see.
 
@@ -54,9 +54,9 @@ As an admin, I want a review screen with the source page next to the extracted v
 
 ### Backend — trigger and dedupe
 
-- **AC1**: Creating or updating a property with a chosen `ComuneIstatCode` in a long-rent mode, or creating a lease with `ContractType = Concordato`, enqueues `AgreementIngestionJob.EnsureAsync(istatCode)` when no usable agreement exists for that code. A short-term-rental property in a comune never triggers it.
+- **AC1**: Creating or updating a property of **any rental mode** with a chosen `ComuneIstatCode`, or creating a lease with `ContractType = Concordato`, enqueues `AgreementIngestionJob.EnsureAsync(istatCode, priority)` when no usable agreement and no run exist for that code. It is called at the same place as the existing `QueueComuneOfficialProfile` (property create and update), so one property event starts every comune dataset that is missing: the MEF tourist-tax profile (existing) and the territorial agreement (this spec). Priority: `High` (a concordato lease waits), `Normal` (a long-rent property waits), `Low` (only short-rent properties wait: the agreement is extracted and validated, the human review waits for capacity or for a property of that comune to switch to long rent).
 - **AC2**: The job is idempotent and safe with several instances (advisory lock per agreement source, as in `ComuneOfficialProfileService`). Two properties in two comuni of the same agreement produce **one** run.
-- **AC3**: If the comune is covered by an agreement already `Published`, or `InReview`, no new run starts and the caller gets the existing status.
+- **AC3**: If the comune is covered by an agreement already `Published`, or `InReview`, no new run starts and the caller gets the existing status. A later event with a higher priority (a short-rent property switches to long rent, a concordato lease is started) raises the priority of the existing run; it never starts a second one.
 
 ### Backend — source discovery
 
@@ -93,7 +93,7 @@ As an admin, I want a review screen with the source page next to the extracted v
 ### Admin UI
 
 - **AC18**: The review screen shows, side by side, the source page (image or text of the page the value comes from) and the extracted table; per-comune approve / reject / edit; the diff against the previous version; the invariants that passed or failed; the prompt and extractor version.
-- **AC19**: The screen lists the queue by age, with the number of properties and leases waiting on each agreement, so the admin works the biggest first.
+- **AC19**: The screen lists the queue by priority, then by the number of long-rent properties and concordato leases waiting on each agreement, then by age, so the admin works the biggest first. `Low` runs are shown apart and can be filtered out.
 
 ### User-facing behavior
 
@@ -112,7 +112,7 @@ As an admin, I want a review screen with the source page next to the extracted v
 
 | AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
 |---|---|---|---|
-| AC1 | L1 + PG | Property create in a long-rent comune without data enqueues the job once; short-rent property enqueues nothing | Job queued for short rent; queued twice on update |
+| AC1 | L1 + PG | A property of any rental mode in an unknown comune enqueues the job once, with the right priority (short-only → `Low`, long-rent → `Normal`, concordato lease → `High`); a comune already known enqueues nothing | Job skipped for short rent; queued twice on update; a second run started for a priority change |
 | AC2 | L1 + PG | Two properties in Seveso and Meda → one run, one source row | Two runs; deadlock under two instances |
 | AC4–AC6 | L1 | Hint URL on an allowed host downloads; a URL on a non-allowlisted host and an unlinked third-party storage URL → `host_not_allowed` | A free web-search result accepted as source; a redirect to a non-allowed host followed |
 | AC7 | L1 | A PDF with no text layer → `Unreadable/no_text_layer`, no provider call | Image pages sent to the provider |
@@ -165,7 +165,7 @@ Match comuni by **ISTAT code**, never by the free-text city (home town names col
 
 ### Pipeline
 
-1. **Trigger** (AC1–AC3): property or lease event → job with the ISTAT code → dedupe by source.
+1. **Trigger** (AC1–AC3): property create/update (any mode) or concordato lease → one orchestration call per ISTAT code → dataset jobs for what is missing (tourist tax: existing; agreement: this spec) → dedupe by source, priority by what waits.
 2. **Discover** (AC4–AC6): hint → allowed official page link → download, hash, store the PDF in the private bucket.
 3. **Extract** (AC7–AC9): text layer → code parser for tables → AI for narrative rules, prompt `agreement-2026-10-v1`, cache key `agreement:{sourceSha}:{promptVersion}`, `MaxActChars` raised for 70+ page documents or split by annex.
 4. **Validate** (AC10–AC11): invariants, soft checks, diff vs previous.
@@ -241,4 +241,5 @@ Extraction runs once per source hash and is cached; refresh is by hash; a 70-pag
 4. **Several agreements in one comune** (different associations): which one the calculator uses, or whether the landlord chooses.
 5. **Order of provinces after Monza e Brianza**, by where the customers are.
 6. **Minimum rent** in the calculator (duration uplift or not) and **coefficient combination** (sum, as the attestation above suggests): confirm in writing with a signatory organization before changing the code.
-7. **Renewal of the Monza e Brianza agreement** (formal expiry 01/11/2025, in force until replaced): the pipeline watches it but nobody has verified whether a new one exists.
+7. **Review capacity for `Low` runs.** Extract and validate agreements for short-rent-only comuni (the unknown-comune rule), or only discover and extract, leaving the review until a long-rent need appears? The spec assumes the first, with the review deprioritised.
+8. **Renewal of the Monza e Brianza agreement** (formal expiry 01/11/2025, in force until replaced): the pipeline watches it but nobody has verified whether a new one exists.
