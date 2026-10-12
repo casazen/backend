@@ -92,6 +92,11 @@ public class ContextAuthorizationService(
             var existingKeys = fromDb.Select(c => c.ContextKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var jwtContext in jwtContexts)
             {
+                if (HostOnboarding.IsHostContext(jwtContext.ContextKey))
+                {
+                    continue;
+                }
+
                 if (!existingKeys.Contains(jwtContext.ContextKey))
                 {
                     fromDb.Add(jwtContext);

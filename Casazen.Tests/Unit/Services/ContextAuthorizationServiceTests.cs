@@ -224,7 +224,7 @@ public class ContextAuthorizationServiceTests
     }
 
     [Fact]
-    public async Task HasPermissionAsync_LongRentMembership_DoesNotGrantShortRentPropertyPermissions()
+    public async Task HasPermissionAsync_LongRentMembership_WithStaleJwtRole_DoesNotGrantShortRentPropertyPermissions()
     {
         await using var db = CreateDbContext();
         if (!await db.AppContexts.AnyAsync(c => c.Key == "long-rent"))
@@ -253,7 +253,7 @@ public class ContextAuthorizationServiceTests
         });
         await db.SaveChangesAsync();
 
-        var httpContext = BuildHttpContext("auth0|long-membership", []);
+        var httpContext = BuildHttpContext("auth0|long-membership", ["PropertyOwner"]);
         var service = CreateService(db, httpContext);
 
         Assert.True(await service.HasPermissionAsync("auth0|long-membership", "long-rent", "property.write"));
