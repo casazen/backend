@@ -837,8 +837,8 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Take requires a stored interval; seed one that fits the supplier's working week.
-        var start = DateTime.UtcNow.Date.AddDays(7).AddHours(8);
+        // Take requires a stored interval (fixed UTC, not "today" — see CalendarTodayArchitectureTests).
+        var start = new DateTime(2026, 10, 16, 8, 0, 0, DateTimeKind.Utc);
         var request = new ServiceRequest
         {
             OrgId = host.OrgId,
