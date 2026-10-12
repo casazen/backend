@@ -51,8 +51,14 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var (granted, hidden, _) = await HostScopeScenario.SeedPropertiesOfAsync(db, orgId, ownerId);
         var memberId = await db.OrgMembers.IgnoreQueryFilters().Where(m => m.UserId == collaboratorId).Select(m => m.Id).SingleAsync();
-        var grantedBooking = await db.Bookings.IgnoreQueryFilters().Where(b => b.PropertyId == granted.Id).Select(b => b.Id).FirstAsync();
-        var hiddenBooking = await db.Bookings.IgnoreQueryFilters().Where(b => b.PropertyId == hidden.Id).Select(b => b.Id).FirstAsync();
+        // Each property also has a pending request with no payment: pick a stay that was paid, otherwise
+        // /api/payments?bookingId= is empty depending on PostgreSQL row order.
+        var grantedBooking = await db.Bookings.IgnoreQueryFilters()
+            .Where(b => b.PropertyId == granted.Id && db.Payments.Any(p => p.BookingId == b.Id))
+            .Select(b => b.Id).FirstAsync();
+        var hiddenBooking = await db.Bookings.IgnoreQueryFilters()
+            .Where(b => b.PropertyId == hidden.Id && db.Payments.Any(p => p.BookingId == b.Id))
+            .Select(b => b.Id).FirstAsync();
         var world = new World(ownerId, orgId, collaboratorId, memberId, granted.Id, hidden.Id, grantedBooking, hiddenBooking);
 
         if (limited)
