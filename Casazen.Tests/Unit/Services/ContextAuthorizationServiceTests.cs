@@ -226,6 +226,8 @@ public class ContextAuthorizationServiceTests
     [Fact]
     public async Task HasPermissionAsync_LongRentMembership_WithStaleJwtRole_DoesNotGrantShortRentPropertyPermissions()
     {
+        // AM-01: the veto applies to an org member who already has a rental row. Without the org member the token
+        // still completes host contexts (legacy owners before the backfill).
         await using var db = CreateDbContext();
         if (!await db.AppContexts.AnyAsync(c => c.Key == "long-rent"))
         {
@@ -245,6 +247,14 @@ public class ContextAuthorizationServiceTests
             ],
         });
         await SeedOnboardedUserAsync(db, "auth0|long-membership", Core.Entities.UserRole.LongTermLandlord);
+        var orgId = await db.Users.Where(u => u.Id == "auth0|long-membership").Select(u => u.OrgId).SingleAsync();
+        db.OrgMembers.Add(new Core.Entities.OrgMember
+        {
+            UserId = "auth0|long-membership",
+            OrgId = orgId!.Value,
+            Role = Core.Entities.Enums.OrgRole.Owner,
+            Status = Core.Entities.Enums.OrgMemberStatus.Active,
+        });
         db.UserContextMemberships.Add(new Core.Entities.UserContextMembership
         {
             UserId = "auth0|long-membership",
