@@ -524,6 +524,8 @@ Percorso minimo automatizzato sull’**app nativa host**, usando la stessa preno
 
 LTR #269 (**superato**: decisione D1 del 2026-09-23, LTR è una feature attiva, stato reale `partial` in `specs/README.md`), unified inbox, AI copilot, OTA API partner #31-35 (non iCal), marketplace full US-014, GVR, enterprise, EU. Sbloccato MVP: iCal. Scope ridotto: imposta soggiorno comuni pilota; fiscale wizard.
 
+Il thread ospite CasaZen (un thread per soggiorno, risposte da template, router Jev, agente di supporto soggiorno, approvazione dei costi) è specificato in `specs/spec-guest-messaging-hub.md`. Non sblocca `unified-inbox` né `ai-copilot-messaging`.
+
 **Aggiunta freeze:** PWA come strategia mobile principale — **sostituita da app nativa**.
 
 ---
