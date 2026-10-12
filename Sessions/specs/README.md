@@ -159,6 +159,7 @@ The registry marked these rows `frozen` while the code was being developed (A7-3
 
 | ID | Slug | Title | Priority | Registry before | Real state | Issue | Why and evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| US-029 | `smart-devices-access` | Smart devices — automatic property access | P2 | planned | **planned** | [#464](https://github.com/casazen/backend/issues/464) | Added 2026-10-08. Unique code per stay, remote lock, battery. Sandbox provider only until a vendor key exists. See `spec-smart-devices-access.md`. |
 | US-014 | `supplier-marketplace` | Supplier marketplace + take-rate (full) | P2 | **frozen** | **frozen** | — | Unchanged; supplier payment stays the manual "Pagato" flag. |
 | US-015 | `google-vacation-rentals` | Google Vacation Rentals | — | **frozen** | **frozen** | — | Unchanged. |
 
