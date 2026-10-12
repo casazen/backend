@@ -1,0 +1,160 @@
+name: Verify Railway Deploy
+
+# Runs AFTER CI/CD Pipeline succeeds. Must stay out of that workflow: Railway Wait for CI
+# waits for the push check suite, and verify waits for the Railway deploy of this SHA.
+# Keeping them in the same suite deadlocks DEV (FD-12). Runbook: docs/runbooks/health-checks.md.
+
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types: [completed]
+
+concurrency:
+  group: verify-railway-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  verify-test:
+    name: Verify Railway Test (native deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'develop'
+    environment:
+      name: test
+      url: ${{ vars.RAILWAY_TEST_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Wait for this commit to be deployed and ready
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: bash scripts/verify-deploy.sh "$RAILWAY_TEST_URL" "${{ github.event.workflow_run.head_sha }}" 1200
+
+      - name: Smoke test (auth gate — expect 401, never 500)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: |
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_TEST_URL}/api/properties")
+          if [ "$STATUS" = "500" ]; then
+            echo "❌ /api/properties returned 500 — likely pending EF migration (AddContextAuthorization)"
+            exit 1
+          fi
+          if [ "$STATUS" != "401" ]; then
+            echo "❌ Expected 401 on /api/properties, got $STATUS"
+            exit 1
+          fi
+          echo "✅ Auth gate OK"
+
+      - name: Smoke test (bookings — never 500 without auth)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: |
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_TEST_URL}/api/bookings")
+          if [ "$STATUS" = "500" ]; then
+            echo "❌ /api/bookings returned 500 — likely pending EF migration"
+            exit 1
+          fi
+          if [ "$STATUS" != "401" ]; then
+            echo "❌ Expected 401 on /api/bookings, got $STATUS"
+            exit 1
+          fi
+          echo "✅ Bookings auth gate OK"
+
+      - name: Smoke test (users/me, contexts — never 500 without auth)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: |
+          for PATH_SUFFIX in users/me me/contexts users; do
+            STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+              "${RAILWAY_TEST_URL}/api/${PATH_SUFFIX}")
+            if [ "$STATUS" = "500" ]; then
+              echo "❌ /api/${PATH_SUFFIX} returned 500 — run scripts/migrate.ps1 -Target test"
+              exit 1
+            fi
+            if [ "$STATUS" != "401" ]; then
+              echo "❌ Expected 401 on /api/${PATH_SUFFIX}, got $STATUS"
+              exit 1
+            fi
+            echo "✅ /api/${PATH_SUFFIX} auth gate OK"
+          done
+
+      - name: Verify pricing adapter endpoint (auth gate — never 500)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+          TEST_PROPERTY_ID: ${{ vars.TEST_PROPERTY_ID }}
+        run: |
+          PROPERTY_ID="${TEST_PROPERTY_ID:-00000000-0000-0000-0000-000000000001}"
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_TEST_URL}/api/pricing-adapter/config/${PROPERTY_ID}")
+          if [ "$STATUS" = "500" ]; then
+            echo "❌ /api/pricing-adapter/config returned 500"
+            exit 1
+          fi
+          if [ "$STATUS" != "401" ] && [ "$STATUS" != "404" ] && [ "$STATUS" != "200" ]; then
+            echo "❌ Unexpected status on pricing-adapter config: $STATUS"
+            exit 1
+          fi
+          echo "✅ Pricing adapter auth gate OK (status $STATUS)"
+
+  verify-prod:
+    name: Verify Railway Production (native deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    environment:
+      name: production
+      url: ${{ vars.RAILWAY_PROD_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Wait for this commit to be deployed and ready
+        env:
+          RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
+        run: bash scripts/verify-deploy.sh "$RAILWAY_PROD_URL" "${{ github.event.workflow_run.head_sha }}" 1200
+
+      - name: Smoke test production (auth gate)
+        env:
+          RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
+        run: |
+          for PATH_SUFFIX in properties bookings users/me me/contexts orgs/me/entitlement; do
+            STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+              "${RAILWAY_PROD_URL}/api/${PATH_SUFFIX}")
+            if [ "$STATUS" = "500" ]; then
+              echo "❌ /api/${PATH_SUFFIX} returned 500 — run scripts/migrate.ps1 -Target prod"
+              exit 1
+            fi
+            if [ "$STATUS" != "401" ]; then
+              echo "❌ Expected 401 on /api/${PATH_SUFFIX}, got $STATUS"
+              exit 1
+            fi
+            echo "✅ Production /api/${PATH_SUFFIX} auth gate OK"
+          done
+
+      - name: Production FE bundle sanity (must serve SPA, not placeholder)
+        run: |
+          BODY=$(curl -sf "https://casazen-app.vercel.app" || true)
+          if [ -z "$BODY" ]; then
+            echo "❌ Production FE unreachable at https://casazen-app.vercel.app"
+            exit 1
+          fi
+          if ! echo "$BODY" | grep -q 'id="root"'; then
+            echo "❌ Production FE missing React root — check Vercel Production deploy"
+            exit 1
+          fi
+          echo "✅ Production FE SPA shell OK (casazen-app.vercel.app)"
