@@ -23,6 +23,13 @@ public sealed class SupplierRegistrationOptions
     /// </summary>
     public List<SupplierPilotComune> PilotComuni { get; set; } = [];
 
+    /// <summary>
+    /// When true (default, <c>Suppliers__AnyComune</c>) a supplier registering without an invite may pick any active comune of the
+    /// official ISTAT list, and <see cref="PilotComuni"/> are only the ones suggested first. When false the registration is
+    /// restricted to <see cref="PilotComuni"/> (the original SU-01 pilot behaviour; empty list = invite only).
+    /// </summary>
+    public bool AnyComune { get; set; } = true;
+
     public bool SelfServeEnabled => PilotComuni.Count > 0;
 
     /// <summary>The pilot comune with this code, or null.</summary>
