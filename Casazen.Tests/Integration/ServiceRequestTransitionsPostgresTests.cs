@@ -84,7 +84,14 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         var w = await SeedWorldAsync();
         var id = await CreateRequestAsync(w);
         var emails = new RecordingEmailQueue();
-        await using var app = AppHoldingParallelSaves(emails, serializedByCalendarLock: true);
+        // No SaveRendezvous: Take always holds the supplier calendar lock through the save, so holding two saves
+        // under that lock deadlocks. The lock serializes the takes; the loser is 409 (xmin) or 422 (already taken).
+        await using var app = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IEmailQueue>();
+                services.AddSingleton<IEmailQueue>(emails);
+            }));
         using var member1 = CreateClient(app, w.SupplierUserId, Supplier);
         using var member2 = CreateClient(app, w.SecondSupplierUserId, Supplier);
 
@@ -92,9 +99,9 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
             member1.PostAsJsonAsync($"/api/service-requests/{id}/take", new { }),
             member2.PostAsJsonAsync($"/api/service-requests/{id}/take", new { }));
 
-        Assert.Equal(
-            new[] { HttpStatusCode.OK, HttpStatusCode.Conflict },
-            responses.Select(r => r.StatusCode).OrderBy(s => s).ToArray());
+        Assert.DoesNotContain(responses, r => (int)r.StatusCode >= 500);
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
+        Assert.Single(responses, r => r.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity);
         var winner = (await ReadJsonAsync(responses.Single(r => r.StatusCode == HttpStatusCode.OK))).GetProperty("takenByUserId").GetString();
         Assert.Equal(winner, (await ReadAsync(id)).TakenByUserId);
         Assert.Single(emails.Snapshot());
@@ -554,15 +561,10 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
     /// </summary>
     private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> AppHoldingParallelSaves(
         RecordingEmailQueue emails,
-        RecordingPushNotifications? pushes = null,
-        bool serializedByCalendarLock = false) =>
+        RecordingPushNotifications? pushes = null) =>
         _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
-            // Two takes both hold the calendar lock of the supplier: the second save cannot arrive while the first one waits.
-            if (serializedByCalendarLock)
-                SaveRendezvous.HoldParallelSaves(services, parties: 2, timeout: SaveRendezvous.SerializedTimeout, proceedOnTimeout: true);
-            else
-                SaveRendezvous.HoldParallelSaves(services, parties: 2);
+            SaveRendezvous.HoldParallelSaves(services, parties: 2);
             services.RemoveAll<IEmailQueue>();
             services.AddSingleton<IEmailQueue>(emails);
             if (pushes is not null)

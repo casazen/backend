@@ -40,16 +40,17 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         var customerMails = factory.EmailsTo(booked.Email).Count;
         var supplierMails = factory.EmailsTo(supplier.ContactEmail).Count;
 
-        await using var app = HoldingTwoSaves();
-        using var customer = app.CreateClient();
-        using var asSupplier = AppClient(app, supplier);
+        // Take holds the supplier calendar lock through its save; SaveRendezvous under that lock deadlocks with another
+        // party. Race without holding saves: one of cancel/take wins, the other is 409/422, never 500.
+        using var customer = factory.CreateClient();
+        using var asSupplier = AppClient(factory, supplier);
         var cancelTask = Task.Run(() => Http.PostAsync(customer, "cancel", booked.Access(new { reason = "Cambio programma" })));
         var takeTask = Task.Run(() => asSupplier.PostAsync($"/api/service-requests/{booked.RequestId}/take", content: null));
 
         var cancel = await cancelTask;
         var take = await takeTask;
 
-        AssertOneWinsOneConflicts(cancel, take);
+        AssertOneWinsOneLoses(cancel, take);
         var stored = await LoadRequestAsync(booked.RequestId);
         if (cancel.StatusCode == HttpStatusCode.OK)
         {
@@ -108,16 +109,16 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         var booked = await Http.BookAsync(factory, setup, supplier, PublicBookingTestData.TuesdayAt9);
         var newStart = PublicBookingTestData.TuesdayAt9.AddDays(1);
 
-        await using var app = HoldingTwoSaves();
-        using var customer = app.CreateClient();
-        using var asSupplier = AppClient(app, supplier);
+        // Both sides take the supplier calendar lock; SaveRendezvous under that lock deadlocks (500/500).
+        using var customer = factory.CreateClient();
+        using var asSupplier = AppClient(factory, supplier);
         var moveTask = Task.Run(() => Http.PostAsync(customer, "reschedule", booked.Access(new { startUtc = newStart })));
         var takeTask = Task.Run(() => asSupplier.PostAsync($"/api/service-requests/{booked.RequestId}/take", content: null));
 
         var move = await moveTask;
         var take = await takeTask;
 
-        AssertOneWinsOneConflicts(move, take);
+        AssertOneWinsOneLoses(move, take);
         var stored = await LoadRequestAsync(booked.RequestId);
         if (move.StatusCode == HttpStatusCode.OK)
         {
@@ -380,6 +381,17 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         Assert.DoesNotContain(new[] { first, second }, r => (int)r.StatusCode >= 500);
         var statuses = new[] { first.StatusCode, second.StatusCode }.Order().ToArray();
         Assert.Equal(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, statuses);
+    }
+
+    /// <summary>
+    /// One of the two answers is 200; the other is a client conflict (409) or a ruled-out transition (422) when the
+    /// calendar lock serialized the loser after the winner already moved the request. Never a server error.
+    /// </summary>
+    private static void AssertOneWinsOneLoses(HttpResponseMessage first, HttpResponseMessage second)
+    {
+        Assert.DoesNotContain(new[] { first, second }, r => (int)r.StatusCode >= 500);
+        Assert.Single(new[] { first, second }, r => r.StatusCode == HttpStatusCode.OK);
+        Assert.Single(new[] { first, second }, r => r.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity);
     }
 
     /// <summary>Runs every call at the same moment (they all wait at the gate), and returns the answers in order.</summary>

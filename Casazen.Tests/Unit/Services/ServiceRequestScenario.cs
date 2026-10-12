@@ -199,10 +199,6 @@ internal sealed class ServiceRequestScenario : IDisposable
     }
 
     /// <summary>A request of the host for the supplier, created through the service (the way the API does). Always timed.</summary>
-    /// <param name="usePublishedSlots">
-    /// When true, omit a host-typed duration so Create checks the supplier's published planner slots
-    /// (<see cref="ServiceRequestScheduleTests"/>). Default false: pass a duration and skip that check (most lifecycle tests).
-    /// </param>
     public Task<ServiceRequest> RequestAsync(
         DateTime? start = null,
         bool withService = true,
@@ -210,12 +206,9 @@ internal sealed class ServiceRequestScenario : IDisposable
         string? notes = HostNotes,
         Guid? serviceListingId = null,
         string category = ServiceCategories.Cleaning,
-        int? durationMinutes = null,
-        bool usePublishedSlots = false)
+        int? durationMinutes = null)
     {
         var listingId = serviceListingId ?? (withService ? ListingId : null);
-        // Host-typed length skips the published-slot planner; planner tests pass usePublishedSlots: true instead.
-        var duration = usePublishedSlots ? durationMinutes : durationMinutes ?? ServiceMinutes;
         return Service.CreateAsync(new CreateServiceRequestCommand(
             HostOrgId,
             HostUserId,
@@ -228,9 +221,10 @@ internal sealed class ServiceRequestScenario : IDisposable
             false,
             rentalContext,
             listingId,
-            // Default timed slot for catalog requests; null start uses Create's auto-assign.
+            // Default timed slot for catalog requests; null start uses Create's auto-assign (duration, no planner).
+            // Catalog + start without duration still goes through the published-slot planner.
             start ?? (listingId is null ? null : FridayAt10),
-            duration));
+            durationMinutes ?? (listingId is null ? ServiceMinutes : null)));
     }
 
     /// <summary>A request the supplier took (without a time of its own unless the request has one).</summary>
