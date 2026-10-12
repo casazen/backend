@@ -292,6 +292,47 @@ public class SeoContentServiceTests
     }
 
     [Fact]
+    public async Task SaveManualDraftAsync_PlainText_StoresAPublishableDraftAndDoesNotApprove()
+    {
+        var page = new SeoContentPage
+        {
+            Id = Guid.NewGuid(),
+            Slug = "affitti-brevi/lombardia/como",
+            ComuneCode = "013075",
+            RegionCode = "LOM",
+            PageType = SeoPageType.ComplianceGuide,
+            Title = "Affitti brevi a Como",
+            MetaDescription = "Guida",
+        };
+        var stored = new List<SeoContentRevision>();
+        var seoRepo = new Mock<ISeoContentRepository>();
+        seoRepo.Setup(r => r.GetByIdAsync(page.Id, It.IsAny<CancellationToken>())).ReturnsAsync(page);
+        seoRepo.Setup(r => r.UpsertPageAsync(It.IsAny<SeoContentPage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SeoContentPage p, CancellationToken _) => p);
+        seoRepo.Setup(r => r.AddRevisionAsync(It.IsAny<SeoContentRevision>(), It.IsAny<CancellationToken>()))
+            .Callback<SeoContentRevision, CancellationToken>((revision, _) => stored.Add(revision))
+            .Returns(Task.CompletedTask);
+        seoRepo.Setup(r => r.GetLatestRevisionAsync(page.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => stored.LastOrDefault());
+        seoRepo.Setup(r => r.GetReviewEventsAsync(page.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<SeoReviewEventSummary>());
+        var service = CreateService(seoRepo.Object);
+        var paragraph = new string('a', 320);
+
+        var detail = await service.SaveManualDraftAsync(
+            new SaveSeoDraftCommand(page.Id, $"{paragraph}\n\n{paragraph}", "Titolo nuovo", null, "auth0|admin"));
+
+        var revision = Assert.Single(stored);
+        Assert.Equal(SeoContentStatus.Manual, revision.ContentStatus);
+        Assert.Contains("<h2>Titolo nuovo</h2>", revision.BodyHtml);
+        Assert.Equal("manual", revision.SourceDataVersion);
+        Assert.Equal(0, revision.PromptTokens);
+        Assert.Equal(SeoContentStatus.Manual, detail.PendingRevision!.ContentStatus);
+        Assert.False(detail.Page.IsPublished);
+        seoRepo.Verify(r => r.ApproveRevisionAsync(It.IsAny<SeoContentReviewEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task WithdrawAsync_PageNotPublished_ThrowsConflict()
     {
         var seoRepo = new Mock<ISeoContentRepository>();

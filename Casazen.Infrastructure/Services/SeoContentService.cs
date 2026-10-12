@@ -199,6 +199,40 @@ public class SeoContentService(
         return await GetAdminPageDtoAsync(command.PageId, cancellationToken);
     }
 
+    public async Task<SeoPageAdminDetailDto> SaveManualDraftAsync(
+        SaveSeoDraftCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var page = await repository.GetByIdAsync(command.PageId, cancellationToken)
+            ?? throw new NotFoundException($"SEO page {command.PageId} not found");
+
+        if (!string.IsNullOrWhiteSpace(command.Title))
+            page.Title = command.Title.Trim();
+        if (!string.IsNullOrWhiteSpace(command.MetaDescription))
+            page.MetaDescription = command.MetaDescription.Trim();
+
+        var body = SeoGeneratedContent.EvaluateManual(command.BodyHtml, page.Title);
+        var now = _clock.GetUtcNow().UtcDateTime;
+        page.LastRefreshedAt = now;
+        page = await repository.UpsertPageAsync(page, cancellationToken);
+
+        await repository.AddRevisionAsync(new SeoContentRevision
+        {
+            PageId = page.Id,
+            BodyHtml = body,
+            ContentStatus = SeoContentStatus.Manual,
+            PromptVersion = null,
+            AiModelTier = AiModelTier.Economy,
+            PromptTokens = 0,
+            GeneratedAt = now,
+            SourceDataVersion = "manual",
+        }, cancellationToken);
+
+        logger.LogInformation("SEO page {PageId} manual draft stored by {ActorUserId}", page.Id, command.ActorUserId);
+        return await GetAdminPageAsync(page.Id, cancellationToken)
+            ?? throw new NotFoundException($"SEO page {page.Id} not found");
+    }
+
     private async Task<SeoPageAdminDto> GetAdminPageDtoAsync(Guid pageId, CancellationToken cancellationToken)
     {
         var detail = await GetAdminPageAsync(pageId, cancellationToken)
@@ -409,6 +443,13 @@ public class SeoContentService(
         if (existing is not null && !forceRegenerate)
         {
             var latest = await repository.GetLatestRevisionAsync(existing.Id, cancellationToken);
+            // A text the admin wrote is kept until they ask to regenerate: a batch must not replace it.
+            if (latest is { ContentStatus: SeoContentStatus.Manual })
+            {
+                logger.LogInformation("SEO page {Slug} has a manual draft; skipping until an explicit regenerate", slug);
+                return false;
+            }
+
             if (latest is { ContentStatus: SeoContentStatus.Generated, PromptVersion: SeoContentPrompt.Version }
                 && latest.SourceDataVersion == sourceVersion)
             {

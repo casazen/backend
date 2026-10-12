@@ -22,7 +22,10 @@ namespace Casazen.Infrastructure.Services;
 /// controller's data does not. Runbook: <c>docs/runbooks/legal-documents.md</c>.
 /// </para>
 /// </summary>
-public partial class LegalDocumentService(IConfiguration configuration, ILogger<LegalDocumentService> logger)
+public partial class LegalDocumentService(
+    IConfiguration configuration,
+    ILogger<LegalDocumentService> logger,
+    IAiRuntimeSettings? aiSettings = null)
     : ILegalDocumentService
 {
     public const string DefaultContentPath = "LegalDocuments";
@@ -126,7 +129,7 @@ public partial class LegalDocumentService(IConfiguration configuration, ILogger<
     public SubprocessorsDocument GetSubprocessors()
     {
         var version = GetVersion("Subprocessors");
-        var items = LegalSubprocessorCatalog.Build(configuration);
+        var items = LegalSubprocessorCatalog.Build(configuration, aiSettings?.Peek());
 
         var ai = items.FirstOrDefault(item => item.Key == LegalSubprocessorCatalog.Ai);
         if (ai is not null)

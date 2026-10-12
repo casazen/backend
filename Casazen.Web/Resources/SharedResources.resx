@@ -2692,4 +2692,13 @@
   <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
     <value>Indica un mese passato o in corso nel formato aaaa-mm (ad esempio 2026-10).</value>
   </data>
+  <data name="SeoDraftInvalid" xml:space="preserve">
+    <value>Il testo non è pubblicabile: servono almeno {0} caratteri visibili, un titolo di sezione (h2) e un paragrafo (p). Il markdown non è accettato.</value>
+  </data>
+  <data name="AiProviderInvalid" xml:space="preserve">
+    <value>Provider AI non valido: scegli Stub, DeepSeek, OpenAI, Anthropic oppure un endpoint compatibile con OpenAI.</value>
+  </data>
+  <data name="AiBaseUrlInvalid" xml:space="preserve">
+    <value>L'indirizzo del provider deve essere un URL https, senza nome utente né password.</value>
+  </data>
 </root>
