@@ -199,6 +199,10 @@ internal sealed class ServiceRequestScenario : IDisposable
     }
 
     /// <summary>A request of the host for the supplier, created through the service (the way the API does). Always timed.</summary>
+    /// <param name="usePublishedSlots">
+    /// When true, omit a host-typed duration so Create checks the supplier's published planner slots
+    /// (<see cref="ServiceRequestScheduleTests"/>). Default false: pass a duration and skip that check (most lifecycle tests).
+    /// </param>
     public Task<ServiceRequest> RequestAsync(
         DateTime? start = null,
         bool withService = true,
@@ -206,9 +210,12 @@ internal sealed class ServiceRequestScenario : IDisposable
         string? notes = HostNotes,
         Guid? serviceListingId = null,
         string category = ServiceCategories.Cleaning,
-        int? durationMinutes = null)
+        int? durationMinutes = null,
+        bool usePublishedSlots = false)
     {
         var listingId = serviceListingId ?? (withService ? ListingId : null);
+        // Host-typed length skips the published-slot planner; planner tests pass usePublishedSlots: true instead.
+        var duration = usePublishedSlots ? durationMinutes : durationMinutes ?? ServiceMinutes;
         return Service.CreateAsync(new CreateServiceRequestCommand(
             HostOrgId,
             HostUserId,
@@ -222,9 +229,8 @@ internal sealed class ServiceRequestScenario : IDisposable
             rentalContext,
             listingId,
             // Default timed slot for catalog requests; null start uses Create's auto-assign.
-            // Always pass a duration so Create skips the published-slot planner (host-typed length).
             start ?? (listingId is null ? null : FridayAt10),
-            durationMinutes ?? ServiceMinutes));
+            duration));
     }
 
     /// <summary>A request the supplier took (without a time of its own unless the request has one).</summary>
