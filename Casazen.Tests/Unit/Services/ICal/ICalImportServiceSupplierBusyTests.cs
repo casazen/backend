@@ -56,6 +56,21 @@ public class ICalImportServiceSupplierBusyTests
     }
 
     [Fact]
+    public void ToSupplierBusy_ATimedEventFromMidnightToMidnight_ClosesThoseDaysAndKeepsTheTitle()
+    {
+        // An all-day event written as 00:00–00:00 in Rome, not as VALUE=DATE. 13 October 2026 is still summer time.
+        var busy = Busy(
+            "UID:busy\nDTSTART;TZID=Europe/Rome:20261013T000000\nDTEND;TZID=Europe/Rome:20261014T000000\nSUMMARY:busy - TEST");
+
+        Assert.Equal([new DateOnly(2026, 10, 13)], busy.BusyDays.Order());
+        var window = Assert.Single(busy.Windows);
+        Assert.Equal("busy", window.ExternalUid);
+        Assert.Equal("busy - TEST", window.Label);
+        Assert.Equal(Utc("2026-10-12T22:00:00Z"), window.StartUtc);
+        Assert.Equal(Utc("2026-10-13T22:00:00Z"), window.EndUtc);
+    }
+
+    [Fact]
     public void ToSupplierBusy_AllDayAndByTheHour_EachDoesItsOwnThing()
     {
         var busy = Busy(
