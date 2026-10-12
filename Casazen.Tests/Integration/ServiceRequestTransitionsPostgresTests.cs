@@ -84,7 +84,9 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         var w = await SeedWorldAsync();
         var id = await CreateRequestAsync(w);
         var emails = new RecordingEmailQueue();
-        await using var app = AppHoldingParallelSaves(emails);
+        // Both takes hold the supplier calendar lock before saving: SaveRendezvous would deadlock (the second never
+        // reaches SaveChanges while the first waits for it). The lock serialises them; xmin still makes the loser 409.
+        await using var app = AppRecordingEmails(emails);
         using var member1 = CreateClient(app, w.SupplierUserId, Supplier);
         using var member2 = CreateClient(app, w.SecondSupplierUserId, Supplier);
 
@@ -551,13 +553,28 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
     /// <summary>
     /// The app with every save of a request held until two of them arrived (<see cref="SaveRendezvous"/>: ONE rendezvous for the
     /// host, shared by the requests of every scope), the email queue recording what is sent and, when given, the push service too.
+    /// Only for races where one side does <b>not</b> hold the supplier calendar lock (e.g. take vs reject); two locked
+    /// takes would deadlock at the rendezvous.
     /// </summary>
     private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> AppHoldingParallelSaves(
         RecordingEmailQueue emails,
         RecordingPushNotifications? pushes = null) =>
+        AppWithRecorders(emails, pushes, holdParallelSaves: true);
+
+    /// <summary>Recording email (and optional push) without <see cref="SaveRendezvous"/> — for races both under the calendar lock.</summary>
+    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> AppRecordingEmails(
+        RecordingEmailQueue emails,
+        RecordingPushNotifications? pushes = null) =>
+        AppWithRecorders(emails, pushes, holdParallelSaves: false);
+
+    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> AppWithRecorders(
+        RecordingEmailQueue emails,
+        RecordingPushNotifications? pushes,
+        bool holdParallelSaves) =>
         _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
-            SaveRendezvous.HoldParallelSaves(services, parties: 2);
+            if (holdParallelSaves)
+                SaveRendezvous.HoldParallelSaves(services, parties: 2);
             services.RemoveAll<IEmailQueue>();
             services.AddSingleton<IEmailQueue>(emails);
             if (pushes is not null)

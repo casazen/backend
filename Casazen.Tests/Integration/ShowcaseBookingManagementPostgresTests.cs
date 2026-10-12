@@ -40,7 +40,8 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         var customerMails = factory.EmailsTo(booked.Email).Count;
         var supplierMails = factory.EmailsTo(supplier.ContactEmail).Count;
 
-        await using var app = HoldingTwoSaves();
+        // Cancel and take both hold the supplier calendar lock: SaveRendezvous would deadlock. Rely on the lock + xmin.
+        await using var app = factory.WithWebHostBuilder(_ => { });
         using var customer = app.CreateClient();
         using var asSupplier = AppClient(app, supplier);
         var cancelTask = Task.Run(() => Http.PostAsync(customer, "cancel", booked.Access(new { reason = "Cambio programma" })));
@@ -108,7 +109,8 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         var booked = await Http.BookAsync(factory, setup, supplier, PublicBookingTestData.TuesdayAt9);
         var newStart = PublicBookingTestData.TuesdayAt9.AddDays(1);
 
-        await using var app = HoldingTwoSaves();
+        // Reschedule and take both hold the supplier calendar lock: SaveRendezvous would deadlock. Rely on the lock + xmin.
+        await using var app = factory.WithWebHostBuilder(_ => { });
         using var customer = app.CreateClient();
         using var asSupplier = AppClient(app, supplier);
         var moveTask = Task.Run(() => Http.PostAsync(customer, "reschedule", booked.Access(new { startUtc = newStart })));
