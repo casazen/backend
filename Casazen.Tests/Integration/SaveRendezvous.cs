@@ -18,9 +18,13 @@ namespace Casazen.Tests.Integration;
 /// fail with a <see cref="TimeoutException"/> that the API answers with 500. This is what the five parallel-transition tests of
 /// SP-04 did the first time they ran in CI (30 s and 500/500 instead of 200/409). <see cref="HoldParallelSaves"/> creates the
 /// instance first and registers that one, so the mistake cannot be made.</para>
+/// <para><b>No calendar lock while it waits.</b> Implementing <see cref="IParallelSaveRendezvousInterceptor"/> makes
+/// <see cref="PostgresAdvisoryLocks"/> skip locks on this host: take (and cancel/reschedule) always hold the supplier calendar
+/// lock across the save, so the first party would wait here forever for a second save that cannot start until that lock is
+/// released. The harness is only for the <c>xmin</c> race; slot exclusivity is covered elsewhere.</para>
 /// <para>It holds the asynchronous saves only (the services of the API never save synchronously).</para>
 /// </remarks>
-internal sealed class SaveRendezvous : SaveChangesInterceptor
+internal sealed class SaveRendezvous : SaveChangesInterceptor, IParallelSaveRendezvousInterceptor
 {
     /// <summary>Long enough for a cold test host to serve both requests; a rendezvous that is never completed fails after it.</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
@@ -90,7 +94,9 @@ internal sealed class SaveRendezvous : SaveChangesInterceptor
             throw new TimeoutException(
                 $"Only {Arrived} of {_parties} saves reached the rendezvous in {_timeout.TotalSeconds:0.##} s. If the requests ran in "
                 + "parallel, they do not share it: register ONE instance for the host (SaveRendezvous.HoldParallelSaves), never one "
-                + "built inside the ConfigureDbContext lambda, which creates a new object for every request.");
+                + "built inside the ConfigureDbContext lambda, which creates a new object for every request. If they share it and "
+                + "still time out, the first party is likely holding a Postgres advisory lock across this wait — "
+                + $"{nameof(IParallelSaveRendezvousInterceptor)} must be on the interceptor so locks are skipped.");
         }
 
         return result;
