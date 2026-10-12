@@ -221,8 +221,8 @@ internal sealed class ServiceRequestScenario : IDisposable
             false,
             rentalContext,
             listingId,
-            start ?? FridayAt10,
-            // Category-only requests need an explicit duration; catalog services carry their own.
+            // Default timed slot for catalog requests; null start uses Create's auto-assign (duration, no planner).
+            start ?? (listingId is null ? null : FridayAt10),
             durationMinutes ?? (listingId is null ? ServiceMinutes : null)));
     }
 

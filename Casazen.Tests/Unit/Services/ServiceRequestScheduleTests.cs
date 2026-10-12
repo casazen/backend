@@ -66,7 +66,7 @@ public class ServiceRequestScheduleTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
 
-        var created = await s.RequestAsync(withService: false);
+        var created = await s.RequestAsync(ServiceRequestScenario.FridayAt10, withService: false);
 
         var saved = await s.ReadAsync(created.Id);
         Assert.Null(saved.ServiceListingId);
