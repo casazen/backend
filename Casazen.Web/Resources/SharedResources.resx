@@ -63,6 +63,18 @@
   <data name="UserReactivatedAuth0NotSynced" xml:space="preserve">
     <value>Utente riattivato in CasaZen, ma Auth0 non è stato aggiornato: l'utente non può accedere finché non ripeti la riattivazione quando Auth0 è raggiungibile.</value>
   </data>
+  <data name="UserCannotDeleteSelf" xml:space="preserve">
+    <value>Non puoi rimuovere il tuo account: chiedi a un altro amministratore.</value>
+  </data>
+  <data name="UserCannotDeleteLastAdmin" xml:space="preserve">
+    <value>Non puoi rimuovere l'ultimo amministratore attivo: nomina prima un altro amministratore.</value>
+  </data>
+  <data name="UserDeleteBlocked" xml:space="preserve">
+    <value>Questo utente non si può rimuovere: ha ancora dati collegati. Disattivalo.</value>
+  </data>
+  <data name="UserDeleteAuth0Failed" xml:space="preserve">
+    <value>Auth0 non ha rimosso l'account: l'utente è ancora in CasaZen. Riprova quando Auth0 è raggiungibile.</value>
+  </data>
   <data name="NotFound" xml:space="preserve">
     <value>Non trovato</value>
   </data>

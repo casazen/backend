@@ -33,15 +33,7 @@ public class MeController(
             return Unauthorized();
         }
 
-        var email = User.FindFirst("email")?.Value
-                    ?? User.FindFirst(ClaimTypes.Email)?.Value
-                    ?? string.Empty;
-        var firstName = User.FindFirst("given_name")?.Value
-                        ?? User.FindFirst("name")?.Value?.Split(' ').FirstOrDefault()
-                        ?? string.Empty;
-        var lastName = User.FindFirst("family_name")?.Value
-                       ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
-                       ?? string.Empty;
+        var (email, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
 
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
         if (!user.IsActive)
