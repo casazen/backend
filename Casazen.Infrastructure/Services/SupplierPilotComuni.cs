@@ -33,11 +33,11 @@ public class SupplierPilotComuni(
         if (string.IsNullOrEmpty(trimmed))
             return null;
 
-        if (options.Value.AnyComune)
+        // Any active comune of the official list, by ISTAT or cadastral code (never a bare name: it can be ambiguous). While the
+        // list is not imported nothing can be validated: the configured pilots answer as before (their name is used by the
+        // invite emails); registration is refused earlier because self-serve is off without the list.
+        if (options.Value.AnyComune && await directory.IsAvailableAsync(cancellationToken))
         {
-            // Any active comune of the official list, by ISTAT or cadastral code (never a bare name: it can be ambiguous).
-            if (!await directory.IsAvailableAsync(cancellationToken))
-                return null;
             var listed = await directory.ResolveAsync([trimmed], cancellationToken);
             return listed.TryGetValue(trimmed, out var any) && any.IsActive
                 ? new SupplierPilot(any.IstatCode, any.Name, Validated: true)
