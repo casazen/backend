@@ -18,8 +18,7 @@ namespace Casazen.Infrastructure.Migrations
                 UPDATE "ServiceRequests" AS sr
                 SET
                     "ScheduledStartUtc" = start_at,
-                    "ScheduledEndUtc" = start_at + make_interval(mins => duration_mins),
-                    "UpdatedAt" = NOW() AT TIME ZONE 'utc'
+                    "ScheduledEndUtc" = start_at + make_interval(mins => duration_mins)
                 FROM (
                     SELECT
                         sr2."Id",

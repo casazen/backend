@@ -221,15 +221,18 @@ internal sealed class ServiceRequestScenario : IDisposable
             false,
             rentalContext,
             listingId,
-            // Default timed slot for catalog requests; null start uses Create's auto-assign (duration, no planner).
+            // Default timed slot for catalog requests; null start uses Create's auto-assign.
+            // Always pass a duration so Create skips the published-slot planner (host-typed length).
             start ?? (listingId is null ? null : FridayAt10),
-            durationMinutes ?? (listingId is null ? ServiceMinutes : null)));
+            durationMinutes ?? ServiceMinutes));
     }
 
     /// <summary>A request the supplier took (without a time of its own unless the request has one).</summary>
     public async Task<ServiceRequest> TakenAsync(DateTime? start = null, TakeServiceRequestCommand? command = null)
     {
-        var request = await RequestAsync(start);
+        // Explicit duration: payment and lifecycle helpers are not testing the published-slot planner, and many of them
+        // create several jobs on the same default Friday 10:00 (or after the clock has moved past that slot).
+        var request = await RequestAsync(start, durationMinutes: ServiceMinutes);
         return await Service.TakeAsync(request.Id, SupplierOrgId, SupplierUserId, command);
     }
 

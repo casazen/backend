@@ -837,6 +837,8 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // Take requires a stored interval; seed one that fits the supplier's working week.
+        var start = DateTime.UtcNow.Date.AddDays(7).AddHours(8);
         var request = new ServiceRequest
         {
             OrgId = host.OrgId,
@@ -845,6 +847,8 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
             SupplierOrgId = supplierOrgId,
             Category = "cleaning",
             Status = status,
+            ScheduledStartUtc = start,
+            ScheduledEndUtc = start.AddHours(2),
             TakenAt = status >= ServiceRequestStatus.PresoInCarico && status != ServiceRequestStatus.Rifiutato ? DateTime.UtcNow : null,
             CompletedAt = status is ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato ? DateTime.UtcNow : null,
         };

@@ -72,6 +72,9 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var first = await factory.CreateRequestAsync(world);
         var second = await factory.CreateRequestAsync(world);
+        // Create always stores an interval; clear it so take can set the contested slot (legacy take-sets-time path).
+        await ClearScheduleAsync(first);
+        await ClearScheduleAsync(second);
         var slot = ServiceRequestWorlds.Slot();
 
         var responses = await Task.WhenAll(
@@ -93,6 +96,7 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var waiting = await factory.CreateRequestAsync(world);
+        await ClearScheduleAsync(waiting);
         var slot = ServiceRequestWorlds.Slot();
 
         var results = await Task.WhenAll(
@@ -162,6 +166,8 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var waiting = await factory.CreateRequestAsync(world);
+        if (operation == "take")
+            await ClearScheduleAsync(waiting);
         var slot = ServiceRequestWorlds.Slot();
 
         await using var holder = await HoldTheLockAsync(world.SupplierOrgId);
@@ -252,6 +258,13 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
 
     private Task<HttpResponseMessage> TakeAsync(ServiceRequestWorld world, Guid id, object body) =>
         Task.Run(() => PostAsSupplierAsync(world, $"/api/service-requests/{id}/take", body));
+
+    private Task ClearScheduleAsync(Guid id) =>
+        factory.ChangeRequestAsync(id, r =>
+        {
+            r.ScheduledStartUtc = null;
+            r.ScheduledEndUtc = null;
+        });
 
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response) =>
         JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
