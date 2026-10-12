@@ -216,8 +216,7 @@ public class ServiceRequestScheduleTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var noDuration = await s.AddListingAsync("Senza durata", durationMinutes: null);
 
-        var ex = await Assert.ThrowsAsync<DomainRuleException>(
-            () => s.RequestAsync(ServiceRequestScenario.FridayAt10, serviceListingId: noDuration, usePublishedSlots: true));
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.RequestAsync(ServiceRequestScenario.FridayAt10, serviceListingId: noDuration));
 
         Assert.Equal(ServiceRequestErrorCodes.TimeNeedsService, ex.Code);
     }
@@ -229,8 +228,7 @@ public class ServiceRequestScheduleTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
 
-        var ex = await Assert.ThrowsAsync<DomainConflictException>(
-            () => s.RequestAsync(ServiceRequestScenario.SundayAt10, usePublishedSlots: true));
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(ServiceRequestScenario.SundayAt10));
 
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, ex.Code);
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailableMessageKey, ex.MessageKey);
@@ -250,7 +248,7 @@ public class ServiceRequestScheduleTests
         var start = DateTime.Parse(
             startUtc, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
 
-        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(start, usePublishedSlots: true));
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(start));
 
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, ex.Code);
         Assert.Empty(s.Db.ServiceRequests);
@@ -266,7 +264,7 @@ public class ServiceRequestScheduleTests
         var start = DateTime.Parse(
             startUtc, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
 
-        var created = await s.RequestAsync(start, usePublishedSlots: true);
+        var created = await s.RequestAsync(start);
 
         Assert.Equal(start, (await s.ReadAsync(created.Id)).ScheduledStartUtc);
     }
@@ -275,11 +273,10 @@ public class ServiceRequestScheduleTests
     public async Task CreateAsync_SlotAlreadyHeldByAnotherRequest_Throws409AndLeavesOnlyTheFirst()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var first = await s.RequestAsync(ServiceRequestScenario.FridayAt10, usePublishedSlots: true);
+        var first = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
         s.ForgetNotifications();
 
-        var ex = await Assert.ThrowsAsync<DomainConflictException>(
-            () => s.RequestAsync(ServiceRequestScenario.FridayAt10, usePublishedSlots: true));
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(ServiceRequestScenario.FridayAt10));
 
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, ex.Code);
         Assert.Equal(first.Id, Assert.Single(await s.Db.ServiceRequests.AsNoTracking().ToListAsync()).Id);
@@ -292,11 +289,10 @@ public class ServiceRequestScheduleTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         // 08:00-10:00 in Rome; 30 minutes of buffer: 10:00 is too close, 11:00 is the next slot of the supplier.
-        await s.RequestAsync(new DateTime(2026, 10, 9, 6, 0, 0, DateTimeKind.Utc), usePublishedSlots: true);
+        await s.RequestAsync(new DateTime(2026, 10, 9, 6, 0, 0, DateTimeKind.Utc));
 
-        await Assert.ThrowsAsync<DomainConflictException>(
-            () => s.RequestAsync(ServiceRequestScenario.FridayAt10, usePublishedSlots: true));
-        var second = await s.RequestAsync(new DateTime(2026, 10, 9, 9, 0, 0, DateTimeKind.Utc), usePublishedSlots: true);
+        await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(ServiceRequestScenario.FridayAt10));
+        var second = await s.RequestAsync(new DateTime(2026, 10, 9, 9, 0, 0, DateTimeKind.Utc));
 
         Assert.Equal(new DateTime(2026, 10, 9, 9, 0, 0, DateTimeKind.Utc), (await s.ReadAsync(second.Id)).ScheduledStartUtc);
     }
@@ -309,7 +305,7 @@ public class ServiceRequestScheduleTests
         var withNotice = await s.AddListingAsync("Con preavviso", minNoticeHours: 48);
 
         var ex = await Assert.ThrowsAsync<DomainConflictException>(
-            () => s.RequestAsync(ServiceRequestScenario.FridayAt10, serviceListingId: withNotice, usePublishedSlots: true));
+            () => s.RequestAsync(ServiceRequestScenario.FridayAt10, serviceListingId: withNotice));
 
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, ex.Code);
     }
@@ -323,7 +319,7 @@ public class ServiceRequestScheduleTests
             weekdaysMask: SupplierServiceWeekdays.ToMask([DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday]));
 
         var ex = await Assert.ThrowsAsync<DomainConflictException>(
-            () => s.RequestAsync(ServiceRequestScenario.FridayAt10, serviceListingId: mondayToThursday, usePublishedSlots: true));
+            () => s.RequestAsync(ServiceRequestScenario.FridayAt10, serviceListingId: mondayToThursday));
 
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, ex.Code);
     }
@@ -336,8 +332,7 @@ public class ServiceRequestScheduleTests
             s.SupplierOrgId,
             new SupplierTimeOffInput(new DateOnly(2026, 10, 9), new DateOnly(2026, 10, 9), SupplierTimeOffReason.Holiday, null));
 
-        await Assert.ThrowsAsync<DomainConflictException>(
-            () => s.RequestAsync(ServiceRequestScenario.FridayAt10, usePublishedSlots: true));
+        await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(ServiceRequestScenario.FridayAt10));
     }
 
     [Fact]
@@ -345,10 +340,9 @@ public class ServiceRequestScheduleTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.Agenda.ReplaceRulesAsync(s.SupplierOrgId, new SupplierRulesInput(0, 1, 0, 35, 60));
-        await s.RequestAsync(ServiceRequestScenario.FridayAt10, usePublishedSlots: true);
+        await s.RequestAsync(ServiceRequestScenario.FridayAt10);
 
-        var ex = await Assert.ThrowsAsync<DomainConflictException>(
-            () => s.RequestAsync(ServiceRequestScenario.FridayAt14, usePublishedSlots: true));
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(ServiceRequestScenario.FridayAt14));
 
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, ex.Code);
     }
@@ -357,14 +351,14 @@ public class ServiceRequestScheduleTests
     public async Task CreateAsync_SlotOfARequestThatWasCancelledOrRejected_IsFreeAgain()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var cancelled = await s.RequestAsync(ServiceRequestScenario.FridayAt10, usePublishedSlots: true);
+        var cancelled = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
         await s.Service.CancelAsHostAsync(cancelled.Id, s.HostOrgId, "Cambio di programma");
-        var rejected = await s.RequestAsync(ServiceRequestScenario.FridayAt14, usePublishedSlots: true);
+        var rejected = await s.RequestAsync(ServiceRequestScenario.FridayAt14);
         await s.Service.RejectAsync(rejected.Id, s.SupplierOrgId, "Non posso");
 
         // Both slots are free again.
-        var again10 = await s.RequestAsync(ServiceRequestScenario.FridayAt10, usePublishedSlots: true);
-        var again14 = await s.RequestAsync(ServiceRequestScenario.FridayAt14, usePublishedSlots: true);
+        var again10 = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
+        var again14 = await s.RequestAsync(ServiceRequestScenario.FridayAt14);
 
         Assert.Equal(ServiceRequestScenario.FridayAt10, (await s.ReadAsync(again10.Id)).ScheduledStartUtc);
         Assert.Equal(ServiceRequestScenario.FridayAt14, (await s.ReadAsync(again14.Id)).ScheduledStartUtc);
@@ -582,8 +576,7 @@ public class ServiceRequestScheduleTests
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.TakenAsync(ServiceRequestScenario.FridayAt10);
 
-        await Assert.ThrowsAsync<DomainConflictException>(
-            () => s.RequestAsync(ServiceRequestScenario.FridayAt10, usePublishedSlots: true));
+        await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(ServiceRequestScenario.FridayAt10));
     }
 
     [Fact]
