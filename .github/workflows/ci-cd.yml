@@ -60,7 +60,7 @@ jobs:
 
       - name: Test
         run: |
-          dotnet test --configuration Release --no-build --verbosity normal --maxcpucount
+          dotnet test --configuration Release --no-build --verbosity minimal --maxcpucount
 
       - name: Check formatting
         run: dotnet format --verify-no-changes
