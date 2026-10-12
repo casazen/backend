@@ -90,6 +90,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:DefaultConnection"] = string.Empty,
+                // Quiet by default: a green run printed ~15k lines of host logs. Failures still surface through xUnit.
+                // EF is silenced because tests that probe DB constraints make it log every expected rejection as an error.
+                ["Logging:LogLevel:Default"] = "Warning",
+                ["Logging:LogLevel:Microsoft.EntityFrameworkCore"] = "None",
                 ["Auth0:Domain"] = "test.auth0.com",
                 ["Auth0:Audience"] = "https://test-api.casazen.app",
                 ["Stripe:PublishableKey"] = "pk_test_integration",

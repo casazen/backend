@@ -370,7 +370,10 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
 
     /// <summary>The host of the test with every save of a service request held until two of them have arrived: the race made deterministic.</summary>
     private WebApplicationFactory<Program> HoldingTwoSaves() =>
-        factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => SaveRendezvous.HoldParallelSaves(services, parties: 2)));
+        // The customer's cancel and reschedule and the supplier's take all hold the calendar lock of the supplier, so they run
+        // one after the other: the first save goes on after a short wait and the lock decides who wins.
+        factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            SaveRendezvous.HoldParallelSaves(services, parties: 2, timeout: SaveRendezvous.SerializedTimeout, proceedOnTimeout: true)));
 
     /// <summary>One of the two answers is 200, the other 409, and none is a server error.</summary>
     private static void AssertOneWinsOneConflicts(HttpResponseMessage first, HttpResponseMessage second)
