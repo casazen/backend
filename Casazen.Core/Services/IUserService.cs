@@ -27,6 +27,21 @@ public interface IUserService
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user does not exist.</exception>
     Task<UserActivationResult> ReactivateUserAsync(string id, string actorId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Permanently removes a registered account. Auth0 is deleted first (<see cref="IAuth0ManagementService.DeleteUserAsync"/>):
+    /// when that fails nothing is removed in CasaZen and the failed result is returned, so the admin can retry.
+    /// A user Auth0 no longer has counts as deleted. Memberships and property grants go with the account; the
+    /// organization and its properties stay.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// <see cref="UserActivationErrors.CannotDeleteSelf"/> or <see cref="UserActivationErrors.CannotDeleteLastAdmin"/>.
+    /// </exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// <see cref="UserActivationErrors.DeleteBlocked"/>: a related row refuses the delete.
+    /// </exception>
+    /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user does not exist.</exception>
+    Task<Auth0SyncResult> DeleteRegisteredUserAsync(string id, string actorId, CancellationToken cancellationToken = default);
     Task<bool> ValidateCredentialsAsync(string email, string password);
 
     /// <summary>
@@ -119,6 +134,15 @@ public static class UserActivationErrors
 
     /// <summary>The user is deactivated: its roles are suspended until the reactivation.</summary>
     public const string UserInactive = "user_inactive";
+
+    /// <summary>An admin cannot delete the account they are using.</summary>
+    public const string CannotDeleteSelf = "cannot_delete_self";
+
+    /// <summary>Deleting this account would leave no active platform administrator.</summary>
+    public const string CannotDeleteLastAdmin = "cannot_delete_last_admin";
+
+    /// <summary>Related rows refuse the delete (the account stays).</summary>
+    public const string DeleteBlocked = "user_delete_blocked";
 }
 
 /// <summary>

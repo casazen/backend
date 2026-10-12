@@ -22,6 +22,7 @@ The general developer guide (SPA app, API, local setup) stays in [`docs/AUTH0_SE
 | Per-request DB reads | User flags, supplier link and memberships read once per request and cached 60 s per user (`Authorization:UserCacheSeconds`, `0` disables), invalidated on every role/membership/link change of this instance | `UserAuthorizationSnapshotStore` |
 | Deactivated users (PL-03) | Every authenticated request of a user with `Users.IsActive = false` gets **403 `account_inactive`**, before any policy, whatever the roles in the token. The flag is read with the tenant (one query per request, no cache) | `InactiveAccountMiddleware`, `TenantContext` |
 | Deactivation / reactivation | `DELETE /api/users/{id}`: DB first, then Auth0 `blocked=true` and removal of the user's CasaZen roles (remembered in `Users.SuspendedAuth0Roles`). `POST /api/users/{id}/reactivate`: roles given back, then `blocked=false`. Outcome in `auth0Synced` / `auth0SyncError` / `message`; section 10 | `UserService.DeactivateUserAsync` / `ReactivateUserAsync` |
+| Permanent removal | `DELETE /api/users/{id}/account`: Auth0 user deleted first (`delete:users`), then the CasaZen row. The organization and its properties stay. 502 when Auth0 refuses, so a retry is safe (a missing Auth0 user counts as deleted). 422 `cannot_delete_self` / `cannot_delete_last_admin` | `UserService.DeleteRegisteredUserAsync` |
 
 Error codes returned to clients: `auth0_management_not_configured`, `auth0_management_token_failed`,
 `auth0_role_not_found`, `auth0_rate_limited`, `auth0_management_error`. Deactivation (PL-03): `account_inactive` (403),
@@ -136,6 +137,7 @@ Applications → Applications → **Create Application** → *Machine to Machine
    |---|---|
    | `read:users` | profile backfill (email/name) in admin listings; account email and `email_verified` for supplier invites and claims when the access token lacks the Action claims (SU-02); roles of a user before its deactivation (PL-03) |
    | `update:users` | **blocking and unblocking** a deactivated / reactivated user (`PATCH /users/{id}` with `blocked`, PL-03) |
+   | `delete:users` | **permanent removal** of a registered account from the admin console (`DELETE /api/users/{id}/account` → `DELETE /api/v2/users/{id}`). Without it the CasaZen row stays and the call answers 502 |
    | `read:roles` | resolving role ids (cached); roles of a user before its deactivation |
    | `create:role_members` | adding a role to a user (`POST /users/{id}/roles`); giving the roles back at the reactivation |
    | `delete:role_members` | removing a named role from a user (`DELETE /users/{id}/roles`); removing the roles at the deactivation |

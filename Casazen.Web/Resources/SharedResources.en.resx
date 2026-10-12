@@ -63,6 +63,18 @@
   <data name="UserReactivatedAuth0NotSynced" xml:space="preserve">
     <value>User reactivated in CasaZen, but Auth0 was not updated: the user cannot sign in until you repeat the reactivation when Auth0 is reachable.</value>
   </data>
+  <data name="UserCannotDeleteSelf" xml:space="preserve">
+    <value>You cannot remove your own account: ask another administrator.</value>
+  </data>
+  <data name="UserCannotDeleteLastAdmin" xml:space="preserve">
+    <value>You cannot remove the last active administrator: appoint another administrator first.</value>
+  </data>
+  <data name="UserDeleteBlocked" xml:space="preserve">
+    <value>This user cannot be removed: related data still points at the account. Deactivate it instead.</value>
+  </data>
+  <data name="UserDeleteAuth0Failed" xml:space="preserve">
+    <value>Auth0 did not remove the account: the user is still in CasaZen. Try again when Auth0 is reachable.</value>
+  </data>
   <data name="NotFound" xml:space="preserve">
     <value>Not Found</value>
   </data>
