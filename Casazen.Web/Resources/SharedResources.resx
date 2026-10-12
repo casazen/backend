@@ -2704,4 +2704,22 @@
   <data name="AiBaseUrlInvalid" xml:space="preserve">
     <value>L'indirizzo del provider deve essere un URL https, senza nome utente né password.</value>
   </data>
+  <data name="DemoEnvironmentUnavailable" xml:space="preserve">
+    <value>L'ambiente demo non è disponibile su questa installazione.</value>
+  </data>
+  <data name="DemoEnvironmentDisabled" xml:space="preserve">
+    <value>Attiva prima la modalità demo.</value>
+  </data>
+  <data name="DemoResetConfirmation" xml:space="preserve">
+    <value>Per reimpostare la vetrina scrivi RESET.</value>
+  </data>
+  <data name="DemoCinExhausted" xml:space="preserve">
+    <value>Non ci sono più codici CIN di test disponibili per questo comune.</value>
+  </data>
+  <data name="DemoResetBlocked" xml:space="preserve">
+    <value>La vetrina demo non si può reimpostare: un annuncio demo è collegato a un contratto o a un altro dato che va tenuto.</value>
+  </data>
+  <data name="DemoOrgNotFound" xml:space="preserve">
+    <value>Organizzazione non trovata.</value>
+  </data>
 </root>

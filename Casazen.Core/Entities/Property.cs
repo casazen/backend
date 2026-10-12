@@ -231,6 +231,12 @@ public class Property : ITenantOwned
     /// <summary>UTC instant the host paused the property (<see cref="IsPaused"/>); null when not paused. Cleared on reactivation.</summary>
     public DateTime? PausedAt { get; set; }
 
+    /// <summary>
+    /// The row was created or completed with invented data for the test environment (demo seed). Real host data stays
+    /// <c>false</c>. The showcase reset deletes only rows marked this way and recorded as showcase.
+    /// </summary>
+    public bool IsTestData { get; set; }
+
     /// <summary>Compliance activation gate for public listing (US-019 / #295).</summary>
     public PropertyComplianceStatus ComplianceStatus { get; set; } = PropertyComplianceStatus.Pending;
 

@@ -966,6 +966,37 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("ConsentRecords");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.DemoEnvironmentSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastResetAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastResetBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("TemplateVersion")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DemoEnvironmentSettings");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.DeviceRegistration", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2960,6 +2991,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("IsPaused")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsTestData")
+                        .HasColumnType("boolean");
+
                     b.Property<decimal>("Latitude")
                         .HasPrecision(9, 6)
                         .HasColumnType("numeric(9,6)");
@@ -3094,6 +3128,9 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("IsTestData")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
@@ -6104,6 +6141,45 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("TerritorialRentAgreements");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.TestDataMarker", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("TemplateKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntityType", "EntityId")
+                        .IsUnique();
+
+                    b.HasIndex("OrgId", "Origin");
+
+                    b.ToTable("TestDataMarkers");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.TouristTaxRate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7480,6 +7556,15 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Agreement");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.TestDataMarker", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.User", b =>
