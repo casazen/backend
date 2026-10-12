@@ -507,6 +507,81 @@ Check after the deploy (test tenant, test users only):
    (section 5), `auth0_management_error` with HTTP 403 in the logs = missing scope (section 4: `update:users`,
    `read:role_members`, `delete:role_members`).
 
+## 11. Signup: existing email and email verification
+
+Two things the product owner sets in **each** tenant (test and production). The app cannot change them:
+Auth0 hides them on purpose, or decides them before the redirect reaches CasaZen.
+
+### 11.1 An email that already has an account
+
+Auth0 does not say "this email is already registered". On the signup screen it shows a generic error
+("Something went wrong" / "Si è verificato un errore"). That is the user-enumeration protection of the
+database connection: turning the old "user already exists" text back on is not available.
+
+What to set instead, so a person who already signed up is not stuck:
+
+1. Auth0 Dashboard → **Authentication** → **Authentication Profile** → **Identifier First** → Save.
+   The person types the email first. If the account exists, Auth0 opens the password (or the social
+   login) of that account. If it does not, Auth0 opens signup. They never hit the generic signup error
+   for an email they already used.
+2. Branding → **Universal Login** → **Advanced Options** → **Custom Text**, screen `signup`. Set the
+   generic failure text (Italian tenant copy) so a leftover error still points at the login, without
+   confirming that the email exists:
+
+   ```text
+   Non è stato possibile creare l'account. Se ne hai già uno, accedi.
+   ```
+
+   The prompt key Auth0 uses for that generic failure is `auth0-users-validation` on the `signup` screen.
+   If the dashboard shows a different key for the same sentence, change that key, not a new one.
+3. Keep a visible "Accedi" link on the signup screen (Universal Login already has
+   `loginActionLinkText`). Do not add an Action that answers "this email exists": that brings the
+   enumeration leak back.
+
+Check: with a private window, open `/signup`, enter an email that already has an account. Identifier
+First must ask for the password of that account, not a generic signup error.
+
+### 11.2 "Your email address could not be verified"
+
+That sentence is Auth0's own result page, in English, on the tenant domain. CasaZen never renders it.
+The email is sent; the click fails **before** the app opens. Two causes cover what we see:
+
+1. **Redirect To is not an Allowed Callback URL.** Branding → Email Templates → **Verification Email
+   (Link)** → Redirect To. Auth0 refuses the ticket when that URL is missing from the SPA application's
+   Allowed Callback URLs, and shows exactly "Error / Your email address could not be verified."
+2. **The link was already used.** Outlook Safe Links, Defender and similar tools open the link with a
+   GET and consume the one-time ticket. The person's click then fails with the same sentence. The
+   current Auth0 template avoids that: it opens a page with a button, and only the button verifies.
+   A custom template that puts `{{ url }}` straight on the button brings the scanner problem back.
+   Reset the template to the default, then set only Redirect To (below). Do not rewrite the link.
+
+The web app's login redirect is the **origin** (`https://<app>`), not `/callback`
+(`frontend/src/config/auth.config.ts`). Do not send the verification result there: Auth0 adds
+`code=success`, and a URL that is also the login redirect can be read as a broken login.
+
+Set, on the SPA application of this tenant:
+
+| Field | Value |
+|---|---|
+| Allowed Callback URLs | the origin of this environment **and** `https://<app>/email-verified` (localhost too, for local login) |
+| Verification email → Redirect To | `https://<app>/email-verified` exactly, no query string |
+| Verification email body | Auth0 default (the confirm button). Status: enabled |
+
+`/email-verified` is a CasaZen page. On success it says the address is confirmed and offers **Accedi**.
+On `success=false` it explains the used or expired link in Italian and still offers **Accedi** (the
+address may already be verified by the scanner). It is not behind the host onboarding.
+
+Check, in a private window, with a new email:
+
+1. Sign up, open the message, press the confirm control (not only the preview).
+2. The browser lands on `https://<app>/email-verified?success=true&code=success&…`, in Italian, not on
+   the English Auth0 error.
+3. **Accedi** with the same email reaches the app. In Auth0 → Users the user has Email verified.
+4. Repeat with an email client that rewrites links (Outlook). The confirm button must still work.
+
+If step 2 still shows the English error, Redirect To and Allowed Callback URLs do not match character
+for character (scheme, host, path, trailing slash).
+
 ## Multi-instance note
 
 The 60 s authorization cache and the role-id cache are per process. A role change is visible immediately on
