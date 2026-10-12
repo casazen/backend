@@ -248,6 +248,18 @@ off, **O** = optional, **PO** = a decision of the product owner with no default 
 
 **Supabase pooler port.** The connection string must use the **session** pooler (port `5432`, host `*.pooler.supabase.com`, user `postgres.<project-ref>`) or the direct host, never the transaction pooler (port `6543`): it silently breaks PostgreSQL advisory locks (overbooking and plan-limit protection) and Hangfire's locks. Outside Development and Testing the **startup is refused** with port 6543, and `db-connections` is `degraded` when the pools can exceed the connection budget.
 
+### 2.13 Official reference data (ISTAT, Alloggiati, tourist tax)
+
+| Variable | Req. | Test / Prod | Example (placeholder) | Effect if missing or wrong | Task · runbook |
+|---|---|---|---|---|---|
+| `OfficialReferenceData__Enabled` | O | same | `true` | Default on. `false`: the Hangfire job `official-reference-data-refresh` (04:30 UTC) is a no-op and does not download ISTAT, Alloggiati or the pilot tourist-tax pages | [`comuni-istat.md`](comuni-istat.md), [`alloggiati.md`](alloggiati.md) |
+| `OfficialReferenceData__SeedAlloggiatiOnStartup` | O | same | `true` | Default on. `false`: an empty database is not filled with the embedded Alloggiati code tables at startup | [`alloggiati.md`](alloggiati.md) |
+| `OfficialReferenceData__IstatCatalogUrl` | O | same | `https://www.istat.it/classificazione/codici-dei-comuni-delle-province-e-delle-regioni/` | Page the job reads for the "aggiornato al" date. Empty uses the default in `OfficialReferenceDataOptions` | [`comuni-istat.md`](comuni-istat.md) |
+| `OfficialReferenceData__IstatComuniCsvUrl` | O | same | `https://www.istat.it/storage/codici-unita-amministrative/Elenco-comuni-italiani.csv` | Permalink CSV the job downloads. A host outside the allowlist is refused. Empty uses the default | [`comuni-istat.md`](comuni-istat.md) |
+| `OfficialReferenceData__AlloggiatiTabellePageUrl` | O | same | `https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Tabelle.aspx` | Provenance page of the Alloggiati tables. Empty uses the default | [`alloggiati.md`](alloggiati.md) |
+| `OfficialReferenceData__AlloggiatiDownloadBaseUrl` | O | same | `https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/ashx/Download.ashx` | Base URL of the four code-table downloads. Empty uses the default | [`alloggiati.md`](alloggiati.md) |
+| `OfficialReferenceData__TouristTaxSources__{n}__{IstatCode,Name,Authority,SourceUrl}` | O | same | the pilot comuni committed in `appsettings.json` | Institutional pages the job re-reads. A row without an https URL of an allowed host is ignored; a page that is not a deterministic tariff is logged and does not change stored amounts | [`tourist-tax-rates.md`](tourist-tax-rates.md) |
+
 ## 3. Local development (backend)
 
 Copy `Casazen.Web/appsettings.Development.example.json` to `appsettings.Development.json` (gitignored) and keep real values

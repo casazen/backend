@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.OfficialData;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
@@ -177,6 +179,7 @@ public partial class FiscalService
                 b.PropertyId,
                 PropertyName = b.Property.Name,
                 b.Property.City,
+                b.Property.ComuneIstatCode,
                 b.CheckInDate,
                 b.CheckOutDate,
                 b.NumberOfGuests,
@@ -255,7 +258,55 @@ public partial class FiscalService
                 lines.Sum(l => l.Nights),
                 lines.Sum(l => l.Guests),
                 lines.Sum(l => l.Amount),
-                lines.Count(l => l.Amount <= 0)));
+                lines.Count(l => l.Amount <= 0)),
+            await LoadRemittanceNotesAsync(stays.Select(s => s.ComuneIstatCode), cancellationToken));
+    }
+
+    private async Task<IReadOnlyList<TouristTaxRemittanceNote>> LoadRemittanceNotesAsync(
+        IEnumerable<string?> istatCodes,
+        CancellationToken cancellationToken)
+    {
+        var codes = istatCodes.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToList();
+        if (codes.Count == 0)
+            return [];
+
+        var versions = await db.ComuneOfficialProfileVersions.AsNoTracking()
+            .Where(v => v.IsCurrent && codes.Contains(v.IstatCode) && v.ExtractJson != null)
+            .ToListAsync(cancellationToken);
+        if (versions.Count == 0)
+            return [];
+
+        var comuniByCode = await db.Comuni.AsNoTracking()
+            .Where(c => codes.Contains(c.IstatCode))
+            .ToDictionaryAsync(c => c.IstatCode, cancellationToken);
+
+        var notes = new List<TouristTaxRemittanceNote>();
+        foreach (var version in versions)
+        {
+            ComuneOfficialExtractDto? extract;
+            try
+            {
+                extract = JsonSerializer.Deserialize<ComuneOfficialExtractDto>(
+                    version.ExtractJson!, ComuneOfficialExtractValidator.JsonOptions);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            var text = extract?.Remittance?.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            var name = comuniByCode.TryGetValue(version.IstatCode, out var comune)
+                ? comune.Name
+                : version.IstatCode;
+            notes.Add(new TouristTaxRemittanceNote(name, text));
+        }
+
+        return notes
+            .OrderBy(n => n.Comune, StringComparer.CurrentCulture)
+            .ToList();
     }
 
     public byte[] ToCsv(AnnualIncomeReport report) => FiscalReportDocuments.Csv(report);

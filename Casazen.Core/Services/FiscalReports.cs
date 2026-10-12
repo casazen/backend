@@ -171,6 +171,8 @@ public record TouristTaxTotals(int Stays, int Nights, int Guests, decimal Amount
 /// Tourist tax per comune and month (CO-19, part of A5-16): confirmed stays with check-in in the period and the amount the
 /// tourist tax engine recorded on each (BK-03). A basis for the comune's statement, not the statement itself.
 /// </summary>
+public record TouristTaxRemittanceNote(string Comune, string Text);
+
 public record TouristTaxReport(
     FiscalReportPeriod Period,
     string Disclaimer,
@@ -179,4 +181,5 @@ public record TouristTaxReport(
     IReadOnlyList<TouristTaxPeriodRow> Rows,
     IReadOnlyList<TouristTaxComuneTotals> ByComune,
     IReadOnlyList<TouristTaxStayLine> Stays,
-    TouristTaxTotals Totals);
+    TouristTaxTotals Totals,
+    IReadOnlyList<TouristTaxRemittanceNote>? RemittanceNotes = null);

@@ -120,6 +120,12 @@ internal static class PostgresAdvisoryLocks
         ComuneImport = 1_087,
 
         /// <summary>
+        /// Official MEF tourist-tax profile of one comune (key: ISTAT code): two property creates and the monthly
+        /// delta never write versions of the same comune at once.
+        /// </summary>
+        ComuneOfficialProfile = 1_088,
+
+        /// <summary>
         /// Rent of one lease (key: lease id): the schedule set-up, the tenant's payment session, an offline payment, the
         /// payment webhooks and the collection job change its installments one at a time, so an installment never gets
         /// two payable PaymentIntents or an offline payment while it is paid online (LT-06).
