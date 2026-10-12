@@ -401,6 +401,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
         services.AddScoped<IPropertyComplianceStatusService, PropertyComplianceStatusService>();
+        services.AddSingleton<IDemoEnvironmentGate, Casazen.Web.Demo.HostDemoEnvironmentGate>();
+        services.AddScoped<IDemoEnvironmentService, DemoEnvironmentService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
         // Single PDF renderer (LT-09, A7-14): A4, wrapping, pagination, embedded Unicode fonts. Stateless.

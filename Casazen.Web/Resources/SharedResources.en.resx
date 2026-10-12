@@ -2701,4 +2701,22 @@
   <data name="AiBaseUrlInvalid" xml:space="preserve">
     <value>The provider address must be an https URL, with no username or password.</value>
   </data>
+  <data name="DemoEnvironmentUnavailable" xml:space="preserve">
+    <value>The demo environment is not available on this installation.</value>
+  </data>
+  <data name="DemoEnvironmentDisabled" xml:space="preserve">
+    <value>Turn demo mode on first.</value>
+  </data>
+  <data name="DemoResetConfirmation" xml:space="preserve">
+    <value>Type RESET to rebuild the showcase.</value>
+  </data>
+  <data name="DemoCinExhausted" xml:space="preserve">
+    <value>There are no test CIN codes left for this comune.</value>
+  </data>
+  <data name="DemoResetBlocked" xml:space="preserve">
+    <value>The demo showcase cannot be reset: a demo listing is linked to a contract or to other data that has to be kept.</value>
+  </data>
+  <data name="DemoOrgNotFound" xml:space="preserve">
+    <value>Organization not found.</value>
+  </data>
 </root>

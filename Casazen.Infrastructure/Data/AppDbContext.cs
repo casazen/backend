@@ -86,6 +86,8 @@ public class AppDbContext(
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
     public DbSet<SeasonalPriceSuggestion> SeasonalPriceSuggestions { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
+    public DbSet<TestDataMarker> TestDataMarkers { get; set; } = null!;
+    public DbSet<DemoEnvironmentSetting> DemoEnvironmentSettings { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
     public DbSet<SeoContentReviewEvent> SeoContentReviewEvents { get; set; } = null!;
@@ -628,6 +630,22 @@ public class AppDbContext(
             .Property(d => d.DocumentType)
             .HasConversion<string>()
             .HasMaxLength(100);
+
+        // Demo environment: one platform row, and one marker per invented row so a reset never touches host data.
+        modelBuilder.Entity<DemoEnvironmentSetting>(entity =>
+        {
+            entity.Property(s => s.TemplateVersion).HasMaxLength(40);
+            entity.Property(s => s.LastResetBy).HasMaxLength(255);
+        });
+        modelBuilder.Entity<TestDataMarker>(entity =>
+        {
+            entity.Property(m => m.EntityType).HasMaxLength(TestDataMarker.EntityTypeMaxLength);
+            entity.Property(m => m.Origin).HasMaxLength(TestDataMarker.OriginMaxLength);
+            entity.Property(m => m.TemplateKey).HasMaxLength(TestDataMarker.TemplateKeyMaxLength);
+            entity.HasIndex(m => new { m.EntityType, m.EntityId }).IsUnique();
+            entity.HasIndex(m => new { m.OrgId, m.Origin });
+            entity.HasOne<Org>().WithMany().HasForeignKey(m => m.OrgId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         // LeaseContract → Property (restrict to preserve history)
         modelBuilder.Entity<LeaseContract>()
