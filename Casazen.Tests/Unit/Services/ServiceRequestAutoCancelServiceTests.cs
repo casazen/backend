@@ -130,16 +130,17 @@ public class ServiceRequestAutoCancelServiceTests
     public async Task CancelUnansweredAsync_OnlyTheRequestsNobodyAnswered()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // Category-only: Create auto-assigns an interval without holding a published slot, so several can coexist.
-        var overdue = await s.RequestAsync(withService: false);
-        var taken = await s.RequestAsync(withService: false);
+        // Non-overlapping intervals: after one is taken, create still checks overlap against accepted jobs.
+        var overdue = await s.RequestAsync(ServiceRequestScenario.FridayAt10, withService: false, durationMinutes: 60);
+        var taken = await s.RequestAsync(ServiceRequestScenario.FridayAt14, withService: false, durationMinutes: 60);
         await s.Service.TakeAsync(taken.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
-        var rejected = await s.RequestAsync(withService: false);
+        var rejected = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09, withService: false, durationMinutes: 60);
         await s.Service.RejectAsync(rejected.Id, s.SupplierOrgId, "Non posso");
-        var withProposal = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09);
+        var withProposal = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09.AddHours(3), withService: false, durationMinutes: 60);
         await s.Service.ProposeTimeAsync(
-            withProposal.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, new ProposeServiceRequestTimeCommand(ServiceRequestScenario.FridayAt14));
-        var cancelledByHost = await s.RequestAsync(withService: false);
+            withProposal.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId,
+            new ProposeServiceRequestTimeCommand(ServiceRequestScenario.SaturdayAt09.AddHours(3)));
+        var cancelledByHost = await s.RequestAsync(ServiceRequestScenario.FridayAt10.AddDays(7), withService: false, durationMinutes: 60);
         await s.Service.CancelAsHostAsync(cancelledByHost.Id, s.HostOrgId, "Non serve");
         var completed = await s.SeedAsync(ServiceRequestStatus.Completato, r => r.ResponseDueAt = ServiceRequestScenario.Instant.UtcDateTime);
         var longAgo = await s.SeedAsync(ServiceRequestStatus.Richiesto, r => r.ResponseDueAt = null);
