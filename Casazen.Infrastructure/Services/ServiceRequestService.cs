@@ -124,6 +124,7 @@ public partial class ServiceRequestService(
 
         // SP-04: the service of the supplier's catalog the request is for, and the time the host picked among its slots.
         var service = await FindRequestableServiceAsync(command, category, cancellationToken);
+        command = await EnsureTimedCreateCommandAsync(command, service, cancellationToken);
         var schedule = ResolveCreateSchedule(command, service);
 
         var now = Now();
@@ -253,7 +254,42 @@ public partial class ServiceRequestService(
     }
 
     /// <summary>
-    /// The interval the host asks for (SP-04): a start is always required. The end is
+    /// Every request stores an interval. When the host omitted the start, use Europe/Rome 10:00 on the stay check-out
+    /// day (or on today for long-rent) and a duration from the host, the catalog, or 120 minutes — never a day-only row.
+    /// </summary>
+    private async Task<CreateServiceRequestCommand> EnsureTimedCreateCommandAsync(
+        CreateServiceRequestCommand command,
+        SupplierServiceForRequest? service,
+        CancellationToken cancellationToken)
+    {
+        if (command.ScheduledStartUtc is not null)
+            return command;
+
+        DateOnly day;
+        if (command.BookingId is Guid bookingId)
+        {
+            var checkout = await db.Bookings.AsNoTracking()
+                .Where(b => b.Id == bookingId)
+                .Select(b => (DateTime?)b.CheckOutDate)
+                .FirstOrDefaultAsync(cancellationToken);
+            day = checkout is { } when ? RomeCalendar.DateInRome(when) : RomeCalendar.DateInRome(Now());
+        }
+        else
+        {
+            day = RomeCalendar.DateInRome(Now());
+        }
+
+        var start = RomeCalendar.ToUtc(day, new TimeOnly(10, 0));
+        // Explicit duration so the planner is not asked for a published slot the host never chose.
+        var minutes = command.DurationMinutes
+            ?? (service?.DurationMinutes is > 0 and var fromService ? fromService : 120);
+
+        return command with { ScheduledStartUtc = start, DurationMinutes = minutes };
+    }
+
+    /// <summary>
+    /// The interval the host asks for (SP-04): a start is always required (filled by
+    /// <see cref="EnsureTimedCreateCommandAsync"/> when omitted). The end is
     /// <see cref="CreateServiceRequestCommand.DurationMinutes"/> when set, else the catalog service duration
     /// (422 <see cref="ServiceRequestErrorCodes.TimeNeedsService"/> when neither gives a length).
     /// </summary>

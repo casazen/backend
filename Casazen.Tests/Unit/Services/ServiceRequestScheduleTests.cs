@@ -38,11 +38,11 @@ public class ServiceRequestScheduleTests
     }
 
     [Fact]
-    public async Task CreateAsync_WithoutAStart_Throws422TimeInvalid()
+    public async Task CreateAsync_WithoutAStart_AssignsTenAmOnTheStayCheckOutDay()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
 
-        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.CreateAsync(new CreateServiceRequestCommand(
+        var created = await s.Service.CreateAsync(new CreateServiceRequestCommand(
             s.HostOrgId,
             ServiceRequestScenario.HostUserId,
             s.PropertyId,
@@ -53,10 +53,12 @@ public class ServiceRequestScheduleTests
             null,
             false,
             ServiceListingId: s.ListingId,
-            ScheduledStartUtc: null)));
+            ScheduledStartUtc: null));
 
-        Assert.Equal(ServiceRequestErrorCodes.TimeInvalid, ex.Code);
-        Assert.Equal(0, await s.Db.ServiceRequests.IgnoreQueryFilters().CountAsync());
+        // Check-out is 2026-10-12 UTC midnight → 10:00 Europe/Rome that day (08:00Z in CEST).
+        var expectedStart = new DateTime(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(expectedStart, created.ScheduledStartUtc);
+        Assert.Equal(expectedStart.AddMinutes(ServiceRequestScenario.ServiceMinutes), created.ScheduledEndUtc);
     }
 
     [Fact]

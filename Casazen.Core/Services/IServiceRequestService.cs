@@ -16,9 +16,10 @@ namespace Casazen.Core.Services;
 /// request's category. Gives the name, the price and the duration of the work.
 /// </param>
 /// <param name="ScheduledStartUtc">
-/// Required start of the work (UTC). With a catalog service and no <paramref name="DurationMinutes"/>, the end is the
-/// service's duration and the start must be a free slot. With <paramref name="DurationMinutes"/>, the end is the start
-/// plus that duration and the time is kept even when it is not a published slot. A request without a start is rejected.
+/// Start of the work (UTC). With a catalog service and no <paramref name="DurationMinutes"/>, the end is the service's
+/// duration and the start must be a free slot. With <paramref name="DurationMinutes"/>, the end is the start plus that
+/// duration. When omitted, the service assigns Europe/Rome 10:00 on the stay check-out day (or today) so no day-only
+/// request is stored.
 /// </param>
 /// <param name="DurationMinutes">
 /// How long the work lasts, in minutes (5 to 1,440). With <paramref name="ScheduledStartUtc"/> it sets the end when no
