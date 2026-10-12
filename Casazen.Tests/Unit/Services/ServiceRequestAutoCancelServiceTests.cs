@@ -132,14 +132,15 @@ public class ServiceRequestAutoCancelServiceTests
         using var s = await ServiceRequestScenario.CreateAsync();
         // Non-overlapping intervals: after one is taken, create still checks overlap against accepted jobs.
         var overdue = await s.RequestAsync(ServiceRequestScenario.FridayAt10, withService: false, durationMinutes: 60);
-        var taken = await s.RequestAsync(ServiceRequestScenario.FridayAt14, withService: false, durationMinutes: 60);
+        var taken = await s.RequestAsync(ServiceRequestScenario.FridayAt10.AddDays(14), withService: false, durationMinutes: 60);
         await s.Service.TakeAsync(taken.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
         var rejected = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09, withService: false, durationMinutes: 60);
         await s.Service.RejectAsync(rejected.Id, s.SupplierOrgId, "Non posso");
-        var withProposal = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09.AddHours(3), withService: false, durationMinutes: 60);
+        // Catalog service: propose-time needs a listing duration; FridayAt14 is free (taken is two weeks later).
+        var withProposal = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09.AddHours(3));
         await s.Service.ProposeTimeAsync(
             withProposal.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId,
-            new ProposeServiceRequestTimeCommand(ServiceRequestScenario.SaturdayAt09.AddHours(3)));
+            new ProposeServiceRequestTimeCommand(ServiceRequestScenario.FridayAt14));
         var cancelledByHost = await s.RequestAsync(ServiceRequestScenario.FridayAt10.AddDays(7), withService: false, durationMinutes: 60);
         await s.Service.CancelAsHostAsync(cancelledByHost.Id, s.HostOrgId, "Non serve");
         var completed = await s.SeedAsync(ServiceRequestStatus.Completato, r => r.ResponseDueAt = ServiceRequestScenario.Instant.UtcDateTime);
