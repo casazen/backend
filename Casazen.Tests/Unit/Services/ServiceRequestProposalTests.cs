@@ -40,8 +40,8 @@ public class ServiceRequestProposalTests
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, saved.ProposedAt);
         Assert.Equal(ServiceRequestScenario.SupplierUserId, saved.ProposedByUserId);
         Assert.Equal("Posso solo nel pomeriggio", saved.ProposalMessage);
-        // The request itself is untouched: no time, no taker, the same deadline.
-        Assert.Null(saved.ScheduledStartUtc);
+        // The request itself is untouched: host time kept, no taker, the same deadline.
+        Assert.Equal(ServiceRequestScenario.FridayAt10, saved.ScheduledStartUtc);
         Assert.Null(saved.TakenAt);
         Assert.Equal(deadline, saved.ResponseDueAt);
 
@@ -453,7 +453,12 @@ public class ServiceRequestProposalTests
     public async Task AcceptManyAsync_NewRequests_TakesThemAllAndAnswersEachRowInOrder()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var requests = new List<ServiceRequest> { await s.RequestAsync(), await s.RequestAsync(), await s.RequestAsync() };
+        var requests = new List<ServiceRequest>
+        {
+            await s.RequestAsync(ServiceRequestScenario.FridayAt10),
+            await s.RequestAsync(ServiceRequestScenario.FridayAt14),
+            await s.RequestAsync(ServiceRequestScenario.SaturdayAt09),
+        };
         s.ForgetNotifications();
 
         var results = await s.Service.AcceptManyAsync(
@@ -479,13 +484,13 @@ public class ServiceRequestProposalTests
     public async Task AcceptManyAsync_SomeRowsFail_EachFailureIsReportedAndTheOthersAreStillTaken()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var fresh = await s.RequestAsync();
-        var alreadyTaken = await s.TakenAsync();
+        var fresh = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
+        var alreadyTaken = await s.TakenAsync(ServiceRequestScenario.FridayAt14);
         var otherSupplier = await s.AddOtherSupplierAsync();
         var foreign = await s.SeedAsync(ServiceRequestStatus.Richiesto, supplierOrgId: otherSupplier);
         var unknown = Guid.NewGuid();
         var rejected = await s.SeedAsync(ServiceRequestStatus.Rifiutato);
-        var last = await s.RequestAsync();
+        var last = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09);
 
         var results = await s.Service.AcceptManyAsync(
             s.SupplierOrgId,
@@ -544,8 +549,24 @@ public class ServiceRequestProposalTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var ids = new List<Guid>();
+        var firstHour = new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc);
         for (var i = 0; i < ServiceRequestLimits.MaxBatchAccept; i++)
-            ids.Add((await s.RequestAsync(withService: false)).Id);
+        {
+            // Each job has its own hour, so accepting the batch is not twenty jobs on the same untimed day.
+            var created = await s.Service.CreateAsync(new CreateServiceRequestCommand(
+                s.HostOrgId,
+                ServiceRequestScenario.HostUserId,
+                s.PropertyId,
+                s.BookingId,
+                s.SupplierOrgId,
+                ServiceCategories.Cleaning,
+                ServiceRequestUrgency.Normal,
+                null,
+                false,
+                ScheduledStartUtc: firstHour.AddHours(i * 3),
+                DurationMinutes: 60));
+            ids.Add(created.Id);
+        }
 
         var results = await s.Service.AcceptManyAsync(s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, ids);
 
@@ -565,8 +586,8 @@ public class ServiceRequestProposalTests
     public async Task AcceptManyAsync_SuspendedSupplier_EveryRowFailsAndNothingIsTaken()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var first = await s.RequestAsync();
-        var second = await s.RequestAsync();
+        var first = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
+        var second = await s.RequestAsync(ServiceRequestScenario.FridayAt14);
         await s.SetSupplierStatusAsync(SupplierStatus.Suspended);
 
         var results = await s.Service.AcceptManyAsync(s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, [first.Id, second.Id]);

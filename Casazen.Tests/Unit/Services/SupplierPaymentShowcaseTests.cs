@@ -32,8 +32,8 @@ public class SupplierPaymentShowcaseTests
 
         Assert.Equal(ServiceRequestPaymentMode.Manual, taken.PaymentMode);
         Assert.Equal(ServiceRequestPaymentMode.Manual, (await s.ReadAsync(request.Id)).PaymentMode);
-        // The same supplier, flag and account: a request of a host is paid inside CasaZen.
-        Assert.Equal(ServiceRequestPaymentMode.Online, (await s.TakenAsync()).PaymentMode);
+        // The same supplier, flag and account: a request of a host is paid inside CasaZen (non-overlapping slot).
+        Assert.Equal(ServiceRequestPaymentMode.Online, (await s.TakenAsync(ServiceRequestScenario.FridayAt14)).PaymentMode);
     }
 
     [Fact]

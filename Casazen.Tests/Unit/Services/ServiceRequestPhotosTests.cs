@@ -276,7 +276,7 @@ public class ServiceRequestPhotosTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var taken = await s.TakenAsync();
-        var another = await s.TakenAsync();
+        var another = await s.TakenAsync(ServiceRequestScenario.SaturdayAt09);
         await s.Service.AddWorkPhotosAsync(another.Id, s.SupplierOrgId, [Image("altro.jpg", "image/jpeg", JpegBytes)]);
         var anotherPhoto = ServiceRequestJson.ReadPhotos((await s.ReadAsync(another.Id)).WorkPhotosJson).Single();
 

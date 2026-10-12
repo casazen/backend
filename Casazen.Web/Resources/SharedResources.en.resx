@@ -2483,10 +2483,13 @@
     <value>To choose a time the supplier's service is needed: its duration gives the end of the work.</value>
   </data>
   <data name="ServiceRequestTimeInvalid" xml:space="preserve">
-    <value>The time is not valid: give the end of the work, after the start and in whole minutes, or choose a service that has a duration.</value>
+    <value>The time is not valid: give the start of the work and the end (after the start, in whole minutes), or choose a service that has a duration. A request without a time is not allowed.</value>
   </data>
   <data name="ServiceRequestTimeAlreadySet" xml:space="preserve">
     <value>The request already has a time: to change it, propose another time to the host.</value>
+  </data>
+  <data name="SupplierCommitmentConflict" xml:space="preserve">
+    <value>You cannot take this job: it overlaps another you already accepted. You may have more than one on the same day only when the times do not touch.</value>
   </data>
   <data name="ServiceRequestAmountInvalid" xml:space="preserve">
     <value>Invalid amount: it must be above zero and at most {0} euro; there can be at most {1} extras, each with a description of at most {2} characters.</value>

@@ -151,7 +151,8 @@ public class LongRentServiceRequestsController(
                 request.ChargeToGuest,
                 ServiceRequestRentalContext.LongRent,
                 request.ServiceListingId,
-                request.ScheduledStartUtc),
+                request.ScheduledStartUtc,
+                request.DurationMinutes),
             cancellationToken);
 
         return Created($"/api/long-rent/service-requests/{created.Id}", ServiceRequestsController.MapDto(created));
