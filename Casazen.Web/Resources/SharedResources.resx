@@ -2483,10 +2483,13 @@
     <value>Per scegliere un orario serve il servizio del fornitore: la sua durata dà la fine del lavoro.</value>
   </data>
   <data name="ServiceRequestTimeInvalid" xml:space="preserve">
-    <value>L'orario non è valido: indica la fine del lavoro, dopo l'inizio e in minuti interi, oppure scegli un servizio che ha una durata.</value>
+    <value>L'orario non è valido: indica l'inizio del lavoro e la fine (dopo l'inizio, in minuti interi), oppure scegli un servizio che ha una durata. Una richiesta senza orario non è ammessa.</value>
   </data>
   <data name="ServiceRequestTimeAlreadySet" xml:space="preserve">
     <value>La richiesta ha già un orario: per cambiarlo proponi un altro orario all'host.</value>
+  </data>
+  <data name="SupplierCommitmentConflict" xml:space="preserve">
+    <value>Non puoi prendere in carico questo incarico: si sovrappone a un altro che hai già accettato. Nello stesso giorno puoi averne più di uno solo se gli orari non si toccano.</value>
   </data>
   <data name="ServiceRequestAmountInvalid" xml:space="preserve">
     <value>Importo non valido: deve essere maggiore di zero e al massimo {0} euro; gli extra sono al massimo {1}, ciascuno con una descrizione di al massimo {2} caratteri.</value>

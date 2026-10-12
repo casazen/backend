@@ -179,6 +179,8 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             // Checked again under the lock, like the host's acceptance: the slot may have been taken, or closed, since the supplier
             // proposed it. Then 409 and the proposal stays: the customer can still turn it down, or cancel.
             await EnsureSlotFreeAsync(supplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
+            await EnsureNoOverlappingCommitmentAsync(
+                supplierOrgId, request.Id, proposedStart, proposedEnd, cancellationToken);
 
             var proposedBy = request.ProposedByUserId;
             await TransitionAsync(

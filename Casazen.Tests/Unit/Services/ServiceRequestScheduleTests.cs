@@ -9,10 +9,10 @@ using Xunit;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// SP-04: the service and the time of a request. A host picks a service of the supplier's catalog and, optionally, a slot; the
-/// slot is judged by the planner of SP-03 (hours, time off, notice, buffer, daily maximum, what the supplier already has), and
-/// the supplier may set the time when it takes the request. A request with no time stays "to be agreed", as before. The lock
-/// that keeps two requests off the same slot needs PostgreSQL and is in <c>ServiceRequestSchedulePostgresTests</c>.
+/// SP-04: the service and the time of a request. A host picks a service of the supplier's catalog and a start; the end is the
+/// service duration or an explicit duration. The slot is judged by the planner of SP-03 unless the host typed a duration. A
+/// request without a start is rejected. Same-day jobs may both be taken when their intervals do not overlap. The lock that
+/// keeps two requests off the same slot needs PostgreSQL and is in <c>ServiceRequestSchedulePostgresTests</c>.
 /// </summary>
 public class ServiceRequestScheduleTests
 {
@@ -38,21 +38,29 @@ public class ServiceRequestScheduleTests
     }
 
     [Fact]
-    public async Task CreateAsync_ServiceWithoutTime_IsToBeAgreedButKeepsTheServiceAndTheEstimate()
+    public async Task CreateAsync_WithoutAStart_Throws422TimeInvalid()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
 
-        var created = await s.RequestAsync();
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.CreateAsync(new CreateServiceRequestCommand(
+            s.HostOrgId,
+            ServiceRequestScenario.HostUserId,
+            s.PropertyId,
+            s.BookingId,
+            s.SupplierOrgId,
+            ServiceCategories.Cleaning,
+            ServiceRequestUrgency.Normal,
+            null,
+            false,
+            ServiceListingId: s.ListingId,
+            ScheduledStartUtc: null)));
 
-        var saved = await s.ReadAsync(created.Id);
-        Assert.Null(saved.ScheduledStartUtc);
-        Assert.Null(saved.ScheduledEndUtc);
-        Assert.Equal(s.ListingId, saved.ServiceListingId);
-        Assert.Equal(ServiceRequestScenario.ServicePriceCents, saved.EstimatedAmountCents);
+        Assert.Equal(ServiceRequestErrorCodes.TimeInvalid, ex.Code);
+        Assert.Equal(0, await s.Db.ServiceRequests.IgnoreQueryFilters().CountAsync());
     }
 
     [Fact]
-    public async Task CreateAsync_NoServiceAndNoTime_IsAsItWasBeforeApartFromTheDeadline()
+    public async Task CreateAsync_NoServiceWithStartAndDuration_KeepsTheIntervalAndTheDeadline()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
 
@@ -62,7 +70,8 @@ public class ServiceRequestScheduleTests
         Assert.Null(saved.ServiceListingId);
         Assert.Null(saved.ServiceNameSnapshot);
         Assert.Null(saved.EstimatedAmountCents);
-        Assert.Null(saved.ScheduledStartUtc);
+        Assert.Equal(ServiceRequestScenario.FridayAt10, saved.ScheduledStartUtc);
+        Assert.Equal(ServiceRequestScenario.FridayAt10.AddMinutes(ServiceRequestScenario.ServiceMinutes), saved.ScheduledEndUtc);
         Assert.Equal("[]", saved.OptionsJson);
         Assert.Equal("[]", saved.PriceLinesJson);
         Assert.Equal("[]", saved.WorkPhotosJson);
@@ -178,11 +187,21 @@ public class ServiceRequestScheduleTests
     }
 
     [Fact]
-    public async Task CreateAsync_TimeWithoutAService_Throws422TimeNeedsService()
+    public async Task CreateAsync_TimeWithoutAServiceOrDuration_Throws422TimeNeedsService()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
 
-        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.RequestAsync(ServiceRequestScenario.FridayAt10, withService: false));
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.CreateAsync(new CreateServiceRequestCommand(
+            s.HostOrgId,
+            ServiceRequestScenario.HostUserId,
+            s.PropertyId,
+            s.BookingId,
+            s.SupplierOrgId,
+            ServiceCategories.Cleaning,
+            ServiceRequestUrgency.Normal,
+            null,
+            false,
+            ScheduledStartUtc: ServiceRequestScenario.FridayAt10)));
 
         Assert.Equal(ServiceRequestErrorCodes.TimeNeedsService, ex.Code);
         Assert.Equal(ServiceRequestErrorCodes.TimeNeedsServiceMessageKey, ex.MessageKey);
@@ -344,12 +363,13 @@ public class ServiceRequestScheduleTests
     }
 
     [Fact]
-    public async Task CreateAsync_RequestWithoutATime_HoldsNoSlot()
+    public async Task CreateAsync_CategoryOnlyJobsWithDuration_SkipThePlannerDailyMaximum()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // Three requests to be agreed do not use the daily maximum of the supplier.
+        // Duration-typed creates skip the published-slot check, so they can exceed the daily maximum of timed catalog slots.
+        var origin = new DateTime(2026, 11, 2, 8, 0, 0, DateTimeKind.Utc);
         for (var i = 0; i < 4; i++)
-            await s.RequestAsync();
+            await s.RequestAsync(origin.AddHours(i * 3), withService: false, durationMinutes: 60);
 
         var timed = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
 
@@ -374,7 +394,7 @@ public class ServiceRequestScheduleTests
     public async Task TakeAsync_WithATime_SetsItFromTheDurationOfTheServiceAndClearsTheDeadline()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var request = await s.RequestAsync();
+        var request = await s.SeedUntimedAsync();
 
         var taken = await s.Service.TakeAsync(
             request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId,
@@ -393,7 +413,7 @@ public class ServiceRequestScheduleTests
     public async Task TakeAsync_WithATimeAndAnEnd_UsesTheEndOfTheSupplier()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var request = await s.RequestAsync(withService: false);
+        var request = await s.SeedUntimedAsync(withService: false);
 
         var taken = await s.Service.TakeAsync(
             request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId,
@@ -415,7 +435,7 @@ public class ServiceRequestScheduleTests
         var saved = await s.ReadAsync(taken.Id);
         Assert.Equal(7500, saved.QuotedAmountCents);
         Assert.Equal(ServiceRequestScenario.ServicePriceCents, saved.EstimatedAmountCents);
-        Assert.Null(saved.ScheduledStartUtc);
+        Assert.Equal(ServiceRequestScenario.FridayAt10, saved.ScheduledStartUtc);
     }
 
     [Theory]
@@ -438,7 +458,7 @@ public class ServiceRequestScheduleTests
     public async Task TakeAsync_TimeOutsideTheHours_Throws409SlotUnavailableAndLeavesTheRequestNew()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var request = await s.RequestAsync();
+        var request = await s.SeedUntimedAsync();
         s.ForgetNotifications();
 
         var ex = await Assert.ThrowsAsync<DomainConflictException>(() => s.Service.TakeAsync(
@@ -448,7 +468,6 @@ public class ServiceRequestScheduleTests
         var saved = await s.ReadAsync(request.Id);
         Assert.Equal(ServiceRequestStatus.Richiesto, saved.Status);
         Assert.Null(saved.ScheduledStartUtc);
-        Assert.NotNull(saved.ResponseDueAt);
         Assert.Empty(s.Emails.Snapshot());
         Assert.Empty(s.Pushes);
     }
@@ -458,7 +477,7 @@ public class ServiceRequestScheduleTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.RequestAsync(ServiceRequestScenario.FridayAt10);
-        var other = await s.RequestAsync();
+        var other = await s.SeedUntimedAsync();
 
         var ex = await Assert.ThrowsAsync<DomainConflictException>(() => s.Service.TakeAsync(
             other.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, new TakeServiceRequestCommand(ServiceRequestScenario.FridayAt10)));
@@ -511,7 +530,7 @@ public class ServiceRequestScheduleTests
     public async Task TakeAsync_TimeForARequestWithoutServiceAndWithoutAnEnd_Throws422TimeInvalid()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var request = await s.RequestAsync(withService: false);
+        var request = await s.SeedUntimedAsync(withService: false);
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.TakeAsync(
             request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, new TakeServiceRequestCommand(ServiceRequestScenario.FridayAt10)));
@@ -527,7 +546,7 @@ public class ServiceRequestScheduleTests
     public async Task TakeAsync_EndThatIsNotAfterTheStartOrIsTooLong_Throws422TimeInvalid(int minutesAfterStart)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var request = await s.RequestAsync();
+        var request = await s.SeedUntimedAsync();
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.TakeAsync(
             request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId,
@@ -540,7 +559,7 @@ public class ServiceRequestScheduleTests
     public async Task TakeAsync_EndWithoutAStart_Throws422TimeInvalid()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var request = await s.RequestAsync();
+        var request = await s.SeedUntimedAsync();
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.TakeAsync(
             request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId,
@@ -556,5 +575,57 @@ public class ServiceRequestScheduleTests
         await s.TakenAsync(ServiceRequestScenario.FridayAt10);
 
         await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(ServiceRequestScenario.FridayAt10));
+    }
+
+    [Fact]
+    public async Task TakeAsync_TwoJobsTheSameDayWhoseTimesDoNotOverlap_BothAreTaken()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        await s.TakenAsync(ServiceRequestScenario.FridayAt10);
+
+        var second = await s.TakenAsync(ServiceRequestScenario.FridayAt14);
+
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, second.Status);
+        Assert.Equal(ServiceRequestScenario.FridayAt14, second.ScheduledStartUtc);
+    }
+
+    [Fact]
+    public async Task TakeAsync_TwoJobsWhoseIntervalsOverlap_TheSecondConflicts()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        // Both stay Richiesto until the first take: create only conflicts with jobs already accepted.
+        var first = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
+        var second = await s.RequestAsync(ServiceRequestScenario.FridayAt10, withService: false, durationMinutes: 60);
+        await s.Service.TakeAsync(first.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() =>
+            s.Service.TakeAsync(second.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId));
+
+        Assert.Equal(ServiceRequestErrorCodes.CommitmentConflict, ex.Code);
+        Assert.Equal(ServiceRequestErrorCodes.CommitmentConflictMessageKey, ex.MessageKey);
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(second.Id)).Status);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithADurationAndNoCatalogService_KeepsTheIntervalTheHostAsked()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+
+        var created = await s.Service.CreateAsync(new CreateServiceRequestCommand(
+            s.HostOrgId,
+            ServiceRequestScenario.HostUserId,
+            s.PropertyId,
+            s.BookingId,
+            s.SupplierOrgId,
+            ServiceCategories.Cleaning,
+            ServiceRequestUrgency.Normal,
+            null,
+            false,
+            ScheduledStartUtc: ServiceRequestScenario.FridayAt10,
+            DurationMinutes: 90));
+
+        Assert.Equal(ServiceRequestScenario.FridayAt10, created.ScheduledStartUtc);
+        Assert.Equal(ServiceRequestScenario.FridayAt10.AddMinutes(90), created.ScheduledEndUtc);
+        Assert.Null(created.ServiceListingId);
     }
 }

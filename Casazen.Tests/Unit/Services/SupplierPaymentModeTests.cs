@@ -140,8 +140,8 @@ public class SupplierPaymentModeTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnablePaymentsAsync();
-        var first = await s.RequestAsync();
-        var second = await s.RequestAsync();
+        var first = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
+        var second = await s.RequestAsync(ServiceRequestScenario.FridayAt14);
 
         var results = await s.Service.AcceptManyAsync(s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, [first.Id, second.Id]);
 

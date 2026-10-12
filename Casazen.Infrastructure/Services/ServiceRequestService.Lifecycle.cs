@@ -211,6 +211,8 @@ public partial class ServiceRequestService
         {
             // Checked again under the lock: the slot may have been taken, or closed, since the supplier proposed it.
             await EnsureSlotFreeAsync(request.SupplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
+            await EnsureNoOverlappingCommitmentAsync(
+                request.SupplierOrgId, request.Id, proposedStart, proposedEnd, cancellationToken);
 
             await TransitionAsync(
                 request,
