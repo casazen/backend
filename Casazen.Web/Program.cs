@@ -217,6 +217,8 @@ builder.Services.AddHostedService<AlloggiatiCodeTableSeedHostedService>();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 // Which legal documents are not published and what to configure (decision D9, docs/runbooks/legal-documents.md).
 builder.Services.AddHostedService<LegalDocumentsStartupCheck>();
+// The provider an admin saved, so the first request does not still see only the server configuration.
+builder.Services.AddHostedService<AiSettingsWarmupHostedService>();
 
 // API
 builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsResultFilter>())

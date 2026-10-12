@@ -36,7 +36,14 @@ public static partial class LegalSubprocessorCatalog
 
     private const string RailwayRegionVariable = "RAILWAY_REPLICA_REGION";
 
-    public static IReadOnlyList<SubprocessorItem> Build(IConfiguration configuration)
+    public static IReadOnlyList<SubprocessorItem> Build(IConfiguration configuration) =>
+        Build(configuration, effectiveAi: null);
+
+    /// <param name="effectiveAi">
+    /// The provider in effect (server configuration plus the admin override). Null: read <c>Ai</c> from
+    /// <paramref name="configuration"/> only.
+    /// </param>
+    public static IReadOnlyList<SubprocessorItem> Build(IConfiguration configuration, AiOptions? effectiveAi)
     {
         var items = new List<SubprocessorItem>();
 
@@ -64,7 +71,7 @@ public static partial class LegalSubprocessorCatalog
         if (IsEnabled(configuration, Vercel, IsVercelHost(PublicSiteOptions.ResolveBaseUrl(configuration))))
             items.Add(Item(configuration, Vercel, "Vercel", "https://vercel.com", "frontendHosting", detectedRegion: null));
 
-        var ai = BuildActiveAiProviderItem(configuration);
+        var ai = BuildActiveAiProviderItem(effectiveAi ?? configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions());
         if (ai is not null)
             items.Add(ai);
 
@@ -129,9 +136,8 @@ public static partial class LegalSubprocessorCatalog
     /// The active external AI provider (<see cref="AiOptions"/>, section <c>Ai:Subprocessor</c>): prompts reach it, so it
     /// is listed (A8-15). Its legal details are never filled in here.
     /// </summary>
-    private static SubprocessorItem? BuildActiveAiProviderItem(IConfiguration configuration)
+    private static SubprocessorItem? BuildActiveAiProviderItem(AiOptions ai)
     {
-        var ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         if (!ai.IsExternalProviderActive())
             return null;
 

@@ -90,6 +90,7 @@ public class AppDbContext(
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
     public DbSet<SeoContentReviewEvent> SeoContentReviewEvents { get; set; } = null!;
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
+    public DbSet<PlatformAiSettings> PlatformAiSettings { get; set; } = null!;
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
 

@@ -1,6 +1,8 @@
 using System.Net;
+using System.Text;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
@@ -36,6 +38,46 @@ public static partial class SeoGeneratedContent
             return (SeoContentStatus.InvalidOutput, body);
 
         return (SeoContentStatus.Generated, body);
+    }
+
+    /// <summary>
+    /// Text an admin wrote. Plain text becomes a heading plus paragraphs; HTML is kept and sanitized. The result is
+    /// publishable only with the same structure and length as a generated page, and it is not an AI answer.
+    /// </summary>
+    public static string EvaluateManual(string raw, string heading)
+    {
+        var prepared = NormalizeManualInput(raw, heading);
+        var body = SeoHtmlSanitizer.Sanitize(prepared);
+        var text = VisibleText(body);
+        var htmlInput = raw.Contains('<', StringComparison.Ordinal);
+        if ((htmlInput && LooksLikeMarkdown(raw)) || !HasRequiredStructure(body) || text.Length < MinimumTextLength)
+            throw new DomainRuleException(SeoReviewErrorCodes.DraftInvalid, "SeoDraftInvalid", MinimumTextLength);
+
+        return body;
+    }
+
+    /// <summary>Plain text becomes HTML; a fragment that already has tags is left for the sanitizer.</summary>
+    public static string NormalizeManualInput(string? raw, string heading)
+    {
+        var trimmed = (raw ?? string.Empty).Trim();
+        if (trimmed.Contains('<', StringComparison.Ordinal))
+            return trimmed;
+
+        var headingText = string.IsNullOrWhiteSpace(heading) ? "Contenuto" : heading.Trim();
+        var builder = new StringBuilder();
+        builder.Append("<h2>").Append(WebUtility.HtmlEncode(headingText)).Append("</h2>");
+        var blocks = trimmed.Split(["\r\n\r\n", "\n\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (blocks.Length == 0)
+            blocks = [trimmed];
+        foreach (var block in blocks)
+        {
+            var paragraph = block.Replace("\r\n", " ", StringComparison.Ordinal).Replace('\n', ' ').Trim();
+            if (paragraph.Length == 0)
+                continue;
+            builder.Append("<p>").Append(WebUtility.HtmlEncode(paragraph)).Append("</p>");
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>Text of a sanitized HTML fragment, entities decoded and whitespace collapsed.</summary>

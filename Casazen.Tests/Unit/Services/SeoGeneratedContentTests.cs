@@ -157,4 +157,24 @@ public class SeoContentPromptTests
         Assert.DoesNotContain("http://example.test/rate", prompt);
         Assert.DoesNotContain("normattiva", prompt);
     }
+
+    [Fact]
+    public void EvaluateManual_PlainText_BecomesPublishableHtml()
+    {
+        var paragraph = new string('a', 320);
+        var body = SeoGeneratedContent.EvaluateManual($"{paragraph}\n\n{paragraph}", "Guida di Como");
+
+        Assert.Contains("<h2>Guida di Como</h2>", body);
+        Assert.Contains("<p>", body);
+        Assert.True(SeoGeneratedContent.VisibleText(body).Length >= SeoGeneratedContent.MinimumTextLength);
+    }
+
+    [Fact]
+    public void EvaluateManual_ShortText_IsRefused()
+    {
+        var error = Assert.Throws<Casazen.Core.Exceptions.DomainRuleException>(() =>
+            SeoGeneratedContent.EvaluateManual("<h2>CIN</h2><p>Troppo corto.</p>", "Como"));
+
+        Assert.Equal(SeoReviewErrorCodes.DraftInvalid, error.Code);
+    }
 }
