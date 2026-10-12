@@ -25,16 +25,24 @@ internal sealed class SaveRendezvous : SaveChangesInterceptor
     /// <summary>Long enough for a cold test host to serve both requests; a rendezvous that is never completed fails after it.</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// How long a save waits for the others when the operations are serialized by the calendar lock of the supplier
+    /// (see <c>proceedOnTimeout</c>): the second one cannot arrive before the first one has finished.
+    /// </summary>
+    public static readonly TimeSpan SerializedTimeout = TimeSpan.FromSeconds(3);
+
     private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly int _parties;
     private readonly TimeSpan _timeout;
+    private readonly bool _proceedOnTimeout;
     private int _arrived;
 
-    public SaveRendezvous(int parties, TimeSpan? timeout = null)
+    public SaveRendezvous(int parties, TimeSpan? timeout = null, bool proceedOnTimeout = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(parties, 2);
         _parties = parties;
         _timeout = timeout ?? DefaultTimeout;
+        _proceedOnTimeout = proceedOnTimeout;
     }
 
     /// <summary>The saves of a service request that reached the rendezvous so far.</summary>
@@ -44,9 +52,13 @@ internal sealed class SaveRendezvous : SaveChangesInterceptor
     /// Puts <b>one</b> rendezvous of <paramref name="parties"/> saves on every <see cref="AppDbContext"/> of the host being built
     /// (call it from <c>ConfigureTestServices</c>, which runs once) and returns it.
     /// </summary>
-    public static SaveRendezvous HoldParallelSaves(IServiceCollection services, int parties = 2, TimeSpan? timeout = null)
+    public static SaveRendezvous HoldParallelSaves(
+        IServiceCollection services,
+        int parties = 2,
+        TimeSpan? timeout = null,
+        bool proceedOnTimeout = false)
     {
-        var rendezvous = new SaveRendezvous(parties, timeout);
+        var rendezvous = new SaveRendezvous(parties, timeout, proceedOnTimeout);
         services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(rendezvous));
         return rendezvous;
     }
@@ -67,6 +79,11 @@ internal sealed class SaveRendezvous : SaveChangesInterceptor
         try
         {
             await _allArrived.Task.WaitAsync(_timeout, cancellationToken);
+        }
+        catch (TimeoutException) when (_proceedOnTimeout)
+        {
+            // The other operation is queued behind the calendar lock this one holds: save, so that it can enter. It then
+            // finds the request already changed (stale token or status) and loses with 409, which is what the test asserts.
         }
         catch (TimeoutException)
         {

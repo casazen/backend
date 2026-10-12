@@ -84,7 +84,7 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         var w = await SeedWorldAsync();
         var id = await CreateRequestAsync(w);
         var emails = new RecordingEmailQueue();
-        await using var app = AppHoldingParallelSaves(emails);
+        await using var app = AppHoldingParallelSaves(emails, serializedByCalendarLock: true);
         using var member1 = CreateClient(app, w.SupplierUserId, Supplier);
         using var member2 = CreateClient(app, w.SecondSupplierUserId, Supplier);
 
@@ -554,10 +554,15 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
     /// </summary>
     private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> AppHoldingParallelSaves(
         RecordingEmailQueue emails,
-        RecordingPushNotifications? pushes = null) =>
+        RecordingPushNotifications? pushes = null,
+        bool serializedByCalendarLock = false) =>
         _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
-            SaveRendezvous.HoldParallelSaves(services, parties: 2);
+            // Two takes both hold the calendar lock of the supplier: the second save cannot arrive while the first one waits.
+            if (serializedByCalendarLock)
+                SaveRendezvous.HoldParallelSaves(services, parties: 2, timeout: SaveRendezvous.SerializedTimeout, proceedOnTimeout: true);
+            else
+                SaveRendezvous.HoldParallelSaves(services, parties: 2);
             services.RemoveAll<IEmailQueue>();
             services.AddSingleton<IEmailQueue>(emails);
             if (pushes is not null)
