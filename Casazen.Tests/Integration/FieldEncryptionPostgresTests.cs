@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -232,9 +233,13 @@ public class FieldEncryptionPostgresTests
         Assert.ThrowsAny<CryptographicException>(() => firstProtector.Unprotect(secondPayload));
         Assert.ThrowsAny<CryptographicException>(() => secondProtector.Unprotect(firstPayload));
 
-        await using var firstContext = NewContext(database, first);
-        await using var sameProvider = NewContext(database, first);
-        await using var otherProvider = NewContext(database, second);
+        // QA-INFRA-01: EF's model cache is process-wide and holds about forty models (one per provider). Once it is
+        // full a new model is not cached, so "same provider shares one model" depended on how many providers earlier
+        // tests had created. These three contexts use a MemoryCache of their own, like ICalFeedUrlProtectionTests.
+        using var modelCache = new MemoryCache(new MemoryCacheOptions());
+        await using var firstContext = NewContext(database, first, modelCache);
+        await using var sameProvider = NewContext(database, first, modelCache);
+        await using var otherProvider = NewContext(database, second, modelCache);
         Assert.Same(firstContext.Model, sameProvider.Model);
         Assert.NotSame(firstContext.Model, otherProvider.Model);
         Assert.Equal(DocumentNumber, (await firstContext.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId)).DocumentNumber);
@@ -447,8 +452,18 @@ public class FieldEncryptionPostgresTests
     private static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter? DocumentNumberConverter(AppDbContext db) =>
         db.Model.FindEntityType(typeof(Guest))!.FindProperty(nameof(Guest.DocumentNumber))!.GetValueConverter();
 
-    private static AppDbContext NewContext(PostgresTestDatabase database, IDataProtectionProvider provider) =>
-        new(database.CreateOptions(), tenantContext: null, provider);
+    private static AppDbContext NewContext(
+        PostgresTestDatabase database,
+        IDataProtectionProvider provider,
+        IMemoryCache? modelCache = null)
+    {
+        var options = modelCache is null
+            ? database.CreateOptions()
+            : new DbContextOptionsBuilder<AppDbContext>(database.CreateOptions())
+                .UseMemoryCache(modelCache)
+                .Options;
+        return new AppDbContext(options, tenantContext: null, provider);
+    }
 
     private static IDataProtectionProvider Provider(IServiceProvider services) =>
         services.GetRequiredService<IDataProtectionProvider>();
