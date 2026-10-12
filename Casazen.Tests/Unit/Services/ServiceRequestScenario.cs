@@ -221,10 +221,10 @@ internal sealed class ServiceRequestScenario : IDisposable
             false,
             rentalContext,
             listingId,
-            // Default timed slot for catalog requests; null start uses Create's auto-assign.
-            // Always pass a duration so Create skips the published-slot planner (host-typed length).
+            // Default timed slot for catalog requests; null start uses Create's auto-assign (duration, no planner).
+            // Catalog + start without duration still goes through the published-slot planner.
             start ?? (listingId is null ? null : FridayAt10),
-            durationMinutes ?? ServiceMinutes));
+            durationMinutes ?? (listingId is null ? ServiceMinutes : null)));
     }
 
     /// <summary>A request the supplier took (without a time of its own unless the request has one).</summary>
