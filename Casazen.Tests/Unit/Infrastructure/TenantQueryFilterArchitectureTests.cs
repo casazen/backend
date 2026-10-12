@@ -43,6 +43,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SeoEvent)] = "Platform analytics of the public SEO pages (SE-04): written by the anonymous events endpoint, read by admins only as totals per comune; no org and no person (no IP, user or visitor id), deleted after Seo:Events:RetentionDays.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
         [typeof(PlatformAiSettings)] = "Platform-wide AI provider override saved from the admin panel, not per org.",
+        [typeof(DemoEnvironmentSetting)] = "Platform-wide demo showcase switch for the staff console, one row for the installation, not per org.",
         [typeof(PendingDomainRemoval)] = "Queue of custom domains that must leave the Vercel project (BK-17): keyed by the domain, names no org, written by the owner's domain change and read only by the platform's domain-recheck job; no endpoint lists it.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",
         [typeof(DataProtectionKey)] = "ASP.NET Core Data Protection key ring of the whole application (FD-07), not tenant data.",
