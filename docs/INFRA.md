@@ -380,7 +380,7 @@ ConnectionStrings__DefaultConnection=Host=db.YOUR_REF.supabase.co;Port=5432;Data
 # Auth0 — Domain/Audience REQUIRED (the app does not start without them); M2M client for the role sync (docs/runbooks/auth0.md)
 # One tenant per environment (A1-32), or one shared tenant with separate applications, APIs and connections (docs/runbooks/auth0.md §1, §1.2)
 Auth0__Domain=[login domain of the Auth0 tenant of THIS environment]
-# Audience of THIS environment: https://casazen-api on production, https://casazen-api-test on test (shared tenant)
+# Audience of THIS environment: https://casazen-api-prod on production, https://casazen-api on test (shared tenant)
 Auth0__Audience=https://casazen-api
 Auth0__ManagementClientId=[M2M client id]
 Auth0__ManagementClientSecret=[M2M client secret]
@@ -574,7 +574,7 @@ In Vercel dashboard → Settings → Environment Variables:
 | `VITE_API_BASE_URL` | `https://casazen-api-test.up.railway.app/api` | `https://casazen-api.up.railway.app/api` |
 | `VITE_AUTH0_DOMAIN` | domain of the **test** Auth0 tenant | domain of the **production** Auth0 tenant (never the test one, A1-32) |
 | `VITE_AUTH0_CLIENT_ID` | SPA client id of the test tenant | SPA client id of the production tenant |
-| `VITE_AUTH0_AUDIENCE` | `https://casazen-api-test` | **`https://casazen-api`** (each must match `Auth0__Audience` of the Railway environment it calls; required, the build fails without it) |
+| `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | **`https://casazen-api-prod`** (each must match `Auth0__Audience` of the Railway environment it calls; required, the build fails without it) |
 | `VITE_PUBLIC_SITE_URL` | not needed | **required**: `https://<public domain>`, same value as Railway production `App__PublicSiteBaseUrl`; the build fails without it |
 | `VITE_PLAUSIBLE_DOMAIN` | optional | optional: the domain registered on Plausible; the app then also calls `window.plausible()` for the SEO funnel events (the script is added by the product owner). Unset: nothing goes to a third party. [`runbooks/seo-funnel.md`](runbooks/seo-funnel.md) |
 

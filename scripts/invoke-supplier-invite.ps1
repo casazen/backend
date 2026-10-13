@@ -13,7 +13,7 @@ param(
     # Auth0 tenant of the API called (test tenant for Railway test, docs/runbooks/auth0.md section 1): no default.
     [string]$Auth0Domain = $env:E2E_AUTH0_DOMAIN,
     [string]$Auth0ClientId = $env:E2E_AUTH0_CLIENT_ID,
-    [string]$Auth0Audience = 'https://casazen-api-test',
+    [string]$Auth0Audience = 'https://casazen-api',
     [string]$AdminEmail = $env:E2E_AUTH0_ADMIN_EMAIL,
     [string]$AdminPassword = $env:E2E_AUTH0_ADMIN_PASSWORD,
     [string]$AccessToken = $env:CASAZEN_ADMIN_ACCESS_TOKEN,

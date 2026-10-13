@@ -121,15 +121,16 @@ reverse.
 
 ### 1.2 One shared tenant: what separates test from production
 
-Identifiers (production keeps today's values, nothing existing is renamed; test gets the `-test` ones):
+Identifiers (the resources that existed first belong to **test** and are not renamed: an API identifier cannot be changed;
+production gets new ones):
 
-| Resource | Test | Production |
+| Resource | Test (existing) | Production (new) |
 |---|---|---|
-| Database connection | `casazen-test-users` | `casazen-prod-users` (or the existing `Username-Password-Authentication`, if it holds the real users: do not migrate them) |
-| API identifier (`Auth0__Audience`, `VITE_AUTH0_AUDIENCE`, `EXPO_PUBLIC_AUTH0_AUDIENCE`) | `https://casazen-api-test` | `https://casazen-api` (unchanged) |
-| SPA application | `casazen-web-test` | existing SPA application |
-| Native application (mobile) | `casazen-mobile-test` | existing Native application |
-| M2M application (Management API) | `casazen-backend-test` | existing M2M application |
+| Database connection | `Username-Password-Authentication` | `casazen-prod-users` |
+| API identifier (`Auth0__Audience`, `VITE_AUTH0_AUDIENCE`, `EXPO_PUBLIC_AUTH0_AUDIENCE`) | `https://casazen-api` | `https://casazen-api-prod` |
+| SPA application | existing SPA application | `casazen-web-prod` |
+| Native application (mobile) | existing Native application | `casazen-mobile-prod` |
+| M2M application (Management API) | existing M2M application | `casazen-backend-prod` |
 
 Rules, all of them needed:
 
@@ -162,7 +163,7 @@ Rules, all of them needed:
 8. **Quota and limits are shared**: test users count in the monthly active users of the plan, and the tenant carries the
    Production tag (rate limits of production apply to test traffic too).
 
-Check: a token obtained by `casazen-web-test` has `aud` `https://casazen-api-test` and is answered **401** by the
+Check: a token obtained by the test SPA application has `aud` `https://casazen-api` and is answered **401** by the
 production API; a production token is answered **401** by the test API. A test user cannot log in on the production
 application ("Wrong email or password"), and the reverse.
 
