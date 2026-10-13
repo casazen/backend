@@ -5,7 +5,7 @@ code** (no default in `appsettings.json`, `vercel.json` or the sources). The cod
 chooses the domain, sets the variables of section 2 and follows sections 3 and 4.
 
 **Exception to D3 (legacy production host):** `vercel.json` may contain one permanent redirect from the retired
-host `casazen-app.vercel.app` to the public canonical (`https://www.casazen.space/:path*`). That is the only CasaZen
+host `casazen-app.vercel.app` to the public canonical (`https://casazen.space/:path*`). That is the only CasaZen
 domain allowed in that file; every other public URL still comes from `VITE_PUBLIC_SITE_URL` /
 `App__PublicSiteBaseUrl`. After the redirect is live in production, remove `https://casazen-app.vercel.app` from
 Railway `Cors__AllowedOrigins`.
