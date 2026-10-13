@@ -437,6 +437,8 @@ public class SeoContentService(
             ToTouristTaxComune(comune), _clock.TodayInRomeAsDateOnly(), cancellationToken);
         var sourceVersion = BuildSourceDataVersion(comune, taxRates);
 
+        var promptVersion = SeoContentPrompt.VersionFor(comune, pageType);
+
         var slug = BuildSlug(comune, pageType);
         var existing = await repository.GetPageAsync(comune.Code, pageType, cancellationToken);
 
@@ -450,7 +452,8 @@ public class SeoContentService(
                 return false;
             }
 
-            if (latest is { ContentStatus: SeoContentStatus.Generated, PromptVersion: SeoContentPrompt.Version }
+            if (latest is { ContentStatus: SeoContentStatus.Generated }
+                && latest.PromptVersion == promptVersion
                 && latest.SourceDataVersion == sourceVersion)
             {
                 logger.LogInformation("SEO source unchanged for {Slug}; skipping LLM", slug);
@@ -458,7 +461,7 @@ public class SeoContentService(
             }
         }
 
-        var cacheKey = $"{comune.Code}:{pageType}:{sourceVersion}:{SeoContentPrompt.Version}";
+        var cacheKey = $"{comune.Code}:{pageType}:{sourceVersion}:{promptVersion}";
         var prompt = SeoContentPrompt.Build(comune, pageType, taxRates);
         // A paid provider is wrapped by the platform budget guard: it checks the cap BEFORE the call and throws
         // AiBudgetExceededException, which stops the batch (A8-07). The prompt holds public regulatory data only.
@@ -492,7 +495,7 @@ public class SeoContentService(
             PageId = page.Id,
             BodyHtml = bodyHtml,
             ContentStatus = contentStatus,
-            PromptVersion = SeoContentPrompt.Version,
+            PromptVersion = promptVersion,
             AiModelTier = AiModelTier.Economy,
             PromptTokens = aiResult.FromCache || !aiResult.ProviderConfigured ? 0 : aiResult.PromptTokens,
             GeneratedAt = now,

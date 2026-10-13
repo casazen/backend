@@ -148,9 +148,11 @@ jobs:
 
       - name: Production FE bundle sanity (must serve SPA, not placeholder)
         run: |
-          BODY=$(curl -sf "https://casazen-app.vercel.app" || true)
+          # `/login` is always the single-page app (the root may serve the public home page), and `-L` follows the
+          # permanent redirect of the old production host to the public domain (runbook seo-domain.md §1).
+          BODY=$(curl -sfL "https://casazen-app.vercel.app/login" || true)
           if [ -z "$BODY" ]; then
-            echo "❌ Production FE unreachable at https://casazen-app.vercel.app"
+            echo "❌ Production FE unreachable at https://casazen-app.vercel.app/login"
             exit 1
           fi
           if ! echo "$BODY" | grep -q 'id="root"'; then

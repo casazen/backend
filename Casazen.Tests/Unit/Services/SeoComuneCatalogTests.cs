@@ -94,7 +94,7 @@ public class SeoComuneCatalogTests
     [Fact]
     public void SeoPilotComuni_AreNamesAndProvincesNotCodes()
     {
-        Assert.Equal(12, SeoPilotComuni.All.Count);
+        Assert.Equal(24, SeoPilotComuni.All.Count);
         Assert.All(SeoPilotComuni.All, pilot =>
         {
             Assert.False(string.IsNullOrWhiteSpace(pilot.Name));

@@ -33,11 +33,12 @@ public record PublicTouristTaxRateSummaryDto(
 /// (SE-05, A8-19). <c>AiGenerated</c>: the text was written by an AI model (then reviewed by an admin, SE-01): the client
 /// shows the AI Act transparency notice next to it (A8-27). The last update is <c>LastRefreshedAt</c>; the disclaimers
 /// ("not legal advice", "AI generated") are texts of the client, in the language of the visitor, not of this API.
+/// <c>Cta</c> is <c>null</c> while the flag <c>SeoSignupCta</c> is off (private invitation, SEO-INVITE).
 /// </summary>
 public record SeoPagePublicDto(
     Guid Id, SeoPageType PageType, string Title, string MetaDescription, string BodyHtml,
     string ComuneName, string ComuneCode, string RegionCode, string RegionSlug, string ComuneSlug,
-    string? CanonicalUrl, DateTime? LastRefreshedAt, bool AiGenerated, string ContentLanguage, SeoCtaDto Cta,
+    string? CanonicalUrl, DateTime? LastRefreshedAt, bool AiGenerated, string ContentLanguage, SeoCtaDto? Cta,
     IReadOnlyList<PublicTouristTaxRateSummaryDto> TouristTaxRates);
 
 /// <summary>A published SEO page listed by the public hub; <c>Path</c> is the web app route (<c>/p/…</c>).</summary>

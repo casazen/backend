@@ -123,6 +123,85 @@ public class SeoContentPromptTests
     }
 
     [Fact]
+    public void Build_LombardyGuide_AddsTheRegionalSectionFactsAndOfficialSources()
+    {
+        var prompt = SeoContentPrompt.Build(Como, SeoPageType.ComplianceGuide, []);
+
+        Assert.Contains("<h2>Regole della Lombardia: CIR e flussi turistici (Ross1000)</h2>", prompt);
+        Assert.Contains("Il CIR è propedeutico al CIN", prompt);
+        Assert.Contains("entro il giorno 5 del mese successivo", prompt);
+        Assert.Contains("https://www.flussituristici.servizirl.it/", prompt);
+        Assert.Contains("https://www.regione.lombardia.it/cultura-turismo-e-sport/imprese-e-professioni-turistiche/codice-identificativo-di-riferimento-cir", prompt);
+        // Province of Como (ISTAT 013): its own page on Ross1000 and the CIR.
+        Assert.Contains("https://www.provincia.como.it/", prompt);
+        Assert.Contains("tra 400 e 750 parole", prompt);
+        // The regional section comes after the Questura and before the tourist tax.
+        Assert.True(
+            prompt.IndexOf("Alloggiati Web)</h2>", StringComparison.Ordinal)
+            < prompt.IndexOf("Regole della Lombardia", StringComparison.Ordinal));
+        Assert.True(
+            prompt.IndexOf("Regole della Lombardia", StringComparison.Ordinal)
+            < prompt.IndexOf("<h2>Imposta di soggiorno a Como</h2>", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("015146", "Milano", "https://www.cittametropolitana.mi.it/")]
+    [InlineData("097084", "Varenna", "https://www.provincia.lecco.it/")]
+    public void Build_LombardyGuide_CitesThePageOfItsProvince(string code, string name, string provinceUrl)
+    {
+        var comune = new ComuneInfo(code, name, "LOM", "lombardia", name.ToLowerInvariant());
+
+        var prompt = SeoContentPrompt.Build(comune, SeoPageType.ComplianceGuide, []);
+
+        Assert.Contains(provinceUrl, prompt);
+        Assert.DoesNotContain("https://www.provincia.como.it/", prompt);
+    }
+
+    [Fact]
+    public void Build_LombardyGuideOfAProvinceWithoutAVerifiedPage_CitesTheRegionalSourcesOnly()
+    {
+        var varese = new ComuneInfo("012133", "Varese", "LOM", "lombardia", "varese");
+
+        var prompt = SeoContentPrompt.Build(varese, SeoPageType.ComplianceGuide, []);
+
+        Assert.Contains("Regole della Lombardia", prompt);
+        Assert.Contains("https://www.flussituristici.servizirl.it/", prompt);
+        Assert.DoesNotContain("provincia.como.it", prompt);
+        Assert.DoesNotContain("cittametropolitana.mi.it", prompt);
+        Assert.DoesNotContain("provincia.lecco.it", prompt);
+    }
+
+    [Fact]
+    public void Build_LombardyTouristTaxPage_HasNoRegionalSection()
+    {
+        var prompt = SeoContentPrompt.Build(Como, SeoPageType.TouristTaxCalc, []);
+
+        Assert.DoesNotContain("Lombardia", prompt);
+        Assert.DoesNotContain("Ross1000", prompt);
+        Assert.Contains("tra 300 e 600 parole", prompt);
+    }
+
+    [Fact]
+    public void Build_GuideOutsideLombardy_HasNoRegionalSection()
+    {
+        var prompt = SeoContentPrompt.Build(ComuneTestData.PalermoInfo, SeoPageType.ComplianceGuide, []);
+
+        Assert.DoesNotContain("Lombardia", prompt);
+        Assert.DoesNotContain("CIR", prompt);
+        Assert.Contains("tra 300 e 600 parole", prompt);
+    }
+
+    [Fact]
+    public void VersionFor_OnlyTheLombardyGuides_HaveTheNewVersion()
+    {
+        // A page whose prompt did not change keeps its version: it is not regenerated, nor reviewed again, for nothing.
+        Assert.Equal(SeoContentPrompt.LombardyGuideVersion, SeoContentPrompt.VersionFor(Como, SeoPageType.ComplianceGuide));
+        Assert.Equal(SeoContentPrompt.Version, SeoContentPrompt.VersionFor(Como, SeoPageType.TouristTaxCalc));
+        Assert.Equal(SeoContentPrompt.Version, SeoContentPrompt.VersionFor(ComuneTestData.PalermoInfo, SeoPageType.ComplianceGuide));
+        Assert.NotEqual(SeoContentPrompt.Version, SeoContentPrompt.LombardyGuideVersion);
+    }
+
+    [Fact]
     public void Build_AllowedTags_AreExactlyTheSanitizerAllowlist()
     {
         var prompt = SeoContentPrompt.Build(Como, SeoPageType.ComplianceGuide, []);
