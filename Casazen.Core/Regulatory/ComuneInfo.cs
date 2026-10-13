@@ -49,6 +49,8 @@ public static class SeoPilotComuni
         ("Domaso", "CO"),
         ("Cernobbio", "CO"),
         ("Lezzeno", "CO"),
+        ("Argegno", "CO"),
+        ("Colico", "LC"),
         ("Varese", "VA"),
         ("Luino", "VA"),
         ("Maccagno con Pino e Veddasca", "VA"),
