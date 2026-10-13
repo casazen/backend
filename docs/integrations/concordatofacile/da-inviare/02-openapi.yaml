@@ -1,17 +1,16 @@
 openapi: 3.0.3
 info:
   title: CasaZen - ConcordatoFacile integration
-  version: 1.1-draft
+  version: 1.2-draft
   description: |
     Contratto tecnico di `01-technical-specification.md` (che prevale in caso di discrepanza).
-    Tutti i nomi sono in inglese.
+    I nomi sono quelli già usati nell'API di CasaZen: JSON camelCase, valori enumerati come nome del membro,
+    date ISO 8601 UTC, importi decimali in euro, errori application/problem+json.
 
     - Tag `CasaZen`: l'endpoint che riceve gli eventi di ConcordatoFacile (sezioni 2 e 3).
     - Tag `ConcordatoFacile`: le due chiamate che ConcordatoFacile espone per ricevere risposte e documenti (sezione 4).
 
     L'utente compila il modulo di ConcordatoFacile (link della sezione 1): non esiste un endpoint di creazione della pratica.
-
-    Importi in centesimi interi; date ISO 8601 UTC; comune = codice ISTAT a 6 cifre.
 tags:
   - name: CasaZen
   - name: ConcordatoFacile
@@ -29,19 +28,16 @@ paths:
       operationId: receiveEvent
       summary: Receives a case event from ConcordatoFacile
       description: |
-        Risposta entro 3 secondi. Corpo massimo 256 KB.
-        Firma: X-CF-Signature = "sha256=" + hex(HMAC-SHA256(secret, X-CF-Timestamp + "." + rawBody)).
-        Orario ammesso: +/- 300 secondi. Idempotenza per X-CF-Event-Id.
-        Ritentare solo su 408, 429, 5xx ed errori di rete (1 min, 5 min, 30 min, 2 h, 6 h, 12 h).
+        Firma: X-ConcordatoFacile-Signature = hex minuscolo di HMAC-SHA256(secret, rawBody), rawBody = byte esatti del corpo (UTF-8).
+        CasaZen verifica la firma, accoda l'evento e risponde subito; l'elaborazione è asincrona.
+        Idempotenza per eventId; un evento con occurredAt precedente all'ultimo applicato per lo stesso caseId è ignorato.
+        Un leaseId sconosciuto riceve comunque 200 (evento ignorato e registrato nel log).
+        Ritentare solo su 5xx, errori di rete e timeout.
       parameters:
-        - { name: X-CF-Event-Id, in: header, required: true, schema: { type: string, format: uuid } }
-        - { name: X-CF-Timestamp, in: header, required: true, description: Secondi Unix UTC, schema: { type: integer, format: int64 } }
-        - { name: X-CF-Key-Id, in: header, required: true, description: Identificativo del segreto, schema: { type: string } }
-        - name: X-CF-Signature
+        - name: X-ConcordatoFacile-Signature
           in: header
           required: true
-          schema: { type: string, pattern: '^sha256=[0-9a-f]{64}$' }
-        - { name: X-CF-Api-Version, in: header, required: true, schema: { type: string, enum: ['1'] } }
+          schema: { type: string, pattern: '^[0-9a-f]{64}$' }
       requestBody:
         required: true
         content:
@@ -50,21 +46,20 @@ paths:
               $ref: '#/components/schemas/Event'
             examples:
               created:
-                summary: Vettore di prova (secret test_secret_0123456789abcdef0123456789abcdef; timestamp 1760347800)
+                summary: Vettore di prova (secret test_secret_0123456789abcdef0123456789abcdef)
+                description: Signature 0791287ff20b268465b053546db639f3cc1c47b0b17d999ebb39077477560027 sul corpo su una sola riga, senza spazi aggiunti
                 value:
                   eventId: 7b0c1c5e-3a52-4d0e-9d3e-0a1f2b3c4d5e
-                  eventType: case.created
-                  apiVersion: '1'
+                  eventType: case_created
                   occurredAt: '2026-10-13T09:30:00Z'
-                  sequence: 1
                   caseId: CF-TEST-000001
-                  reference: 0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11
+                  leaseId: 0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11
                   data:
                     level: complete
-                    istatCode: '108039'
+                    comuneIstatCode: '108040'
       responses:
         '200':
-          description: Accettato (anche se già ricevuto)
+          description: Evento accettato (anche se già ricevuto o per un leaseId sconosciuto)
           content:
             application/json:
               schema:
@@ -72,12 +67,18 @@ paths:
                 required: [received]
                 properties:
                   received: { type: boolean, enum: [true] }
-        '400': { $ref: '#/components/responses/NotRetryable' }
-        '401': { $ref: '#/components/responses/InvalidSignature' }
-        '413': { $ref: '#/components/responses/NotRetryable' }
-        '422': { $ref: '#/components/responses/UnknownReference' }
-        '429': { $ref: '#/components/responses/Retryable' }
-        '503': { $ref: '#/components/responses/Retryable' }
+        '401':
+          description: Firma assente o errata. Non ritentare.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              examples:
+                signature: { value: { status: 401, code: invalid_signature } }
+        '503':
+          description: Problema temporaneo. Ritentare con backoff.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /v1/cases/{caseId}/answers:
     servers:
@@ -104,8 +105,8 @@ paths:
               discriminator:
                 propertyName: type
                 mapping:
-                  information: '#/components/schemas/InformationAnswers'
-                  draft_decision: '#/components/schemas/DraftDecision'
+                  Information: '#/components/schemas/InformationAnswers'
+                  DraftDecision: '#/components/schemas/DraftDecision'
       responses:
         '202':
           description: Received
@@ -116,9 +117,9 @@ paths:
                 required: [received]
                 properties:
                   received: { type: boolean, enum: [true] }
-        '404': { $ref: '#/components/responses/ApiError' }
-        '409': { $ref: '#/components/responses/ApiError' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
 
   /v1/cases/{caseId}/documents:
     servers:
@@ -140,11 +141,14 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [kind, sha256, file]
+              required: [kind, file]
               properties:
-                kind: { type: string, enum: [signed_contract, requested_document, other] }
-                requestId: { type: string, description: Se il documento risponde a una richiesta }
-                sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+                kind: { type: string, enum: [SignedContract, RequestedDocument] }
+                requestId: { type: string, description: Obbligatorio con RequestedDocument }
+                documentType:
+                  type: string
+                  enum: [CinCertificate, FloorPlan, InsurancePolicy, PropertyLicense, SafetyCompliance, Ape, Other]
+                  description: Obbligatorio con RequestedDocument
                 file: { type: string, format: binary, description: PDF fino a 20 MB }
       responses:
         '201':
@@ -156,10 +160,10 @@ paths:
                 required: [fileId]
                 properties:
                   fileId: { type: string }
-        '404': { $ref: '#/components/responses/ApiError' }
-        '409': { $ref: '#/components/responses/ApiError' }
-        '413': { $ref: '#/components/responses/ApiError' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
 
 components:
   securitySchemes:
@@ -182,83 +186,57 @@ components:
       schema: { type: string, format: uuid }
 
   responses:
-    InvalidSignature:
-      description: Firma o orario non validi. Non ritentare.
+    Problem:
+      description: Errore dell'API (application/problem+json)
       content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-          examples:
-            signature: { value: { code: invalid_signature } }
-            timestamp: { value: { code: timestamp_out_of_range } }
-    UnknownReference:
-      description: reference sconosciuto. Non ritentare.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-          examples:
-            unknown: { value: { code: unknown_reference } }
-    NotRetryable:
-      description: Richiesta non valida. Non ritentare.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    Retryable:
-      description: Problema temporaneo. Ritentare con backoff.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    ApiError:
-      description: Errore dell'API
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     ValidationError:
       description: Validazione fallita
       content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
           examples:
             fields:
               value:
-                code: validation_failed
-                message: The request is not valid.
+                status: 400
+                code: validation_error
                 errors:
-                  - { field: 'contract.startDate', code: invalid_format }
-                  - { field: 'property.cadastre.subparcel', code: required }
+                  cadastralSubaltern: ['The field is required.']
+                  startDate: ['The value is not a valid date.']
 
   schemas:
-    Error:
+    Problem:
       type: object
-      required: [code]
+      required: [status, code]
       properties:
+        status: { type: integer }
         code:
           type: string
-          description: 'validation_failed, unauthorized, case_not_found, invalid_state, file_too_large, checksum_mismatch, duplicate_request'
-        message: { type: string }
+          enum: [bad_request, validation_error, unauthorized, forbidden, not_found, conflict, payload_too_large, unsupported_media_type, business_rule_violation, too_many_requests, invalid_signature]
+        title: { type: string }
+        detail: { type: string }
         errors:
-          type: array
-          items:
-            type: object
-            required: [field, code]
-            properties:
-              field: { type: string }
-              code: { type: string, enum: [required, invalid_format, out_of_range, unknown_value] }
+          type: object
+          description: Campo -> messaggi, solo per validation_error
+          additionalProperties:
+            type: array
+            items: { type: string }
 
     Level:
       type: string
+      description: Valori di ConcordatoFacile (da confermare)
       enum: [basic, complete]
 
     EventEnvelope:
       type: object
-      required: [eventId, eventType, apiVersion, occurredAt, sequence, caseId, reference, data]
+      required: [eventId, eventType, occurredAt, caseId, leaseId, data]
       properties:
         eventId: { type: string, format: uuid }
         eventType: { type: string }
-        apiVersion: { type: string, enum: ['1'] }
         occurredAt: { type: string, format: date-time }
-        sequence: { type: integer, minimum: 1, description: 'Cresce di 1 per ogni pratica, da 1' }
         caseId: { type: string }
-        reference: { type: string, format: uuid, description: 'UUID creato da CasaZen, restituito sempre' }
+        leaseId: { type: string, format: uuid, description: 'GUID del contratto in CasaZen, restituito sempre' }
         data: { type: object }
 
     Event:
@@ -273,45 +251,45 @@ components:
       discriminator:
         propertyName: eventType
         mapping:
-          case.created: '#/components/schemas/CaseCreatedEvent'
-          case.status_changed: '#/components/schemas/CaseStatusChangedEvent'
-          case.information_requested: '#/components/schemas/CaseInformationRequestedEvent'
-          case.draft_ready: '#/components/schemas/CaseDraftReadyEvent'
-          case.completed: '#/components/schemas/CaseCompletedEvent'
-          case.rejected: '#/components/schemas/CaseRejectedEvent'
-          case.cancelled: '#/components/schemas/CaseCancelledEvent'
+          case_created: '#/components/schemas/CaseCreatedEvent'
+          case_status_changed: '#/components/schemas/CaseStatusChangedEvent'
+          case_information_requested: '#/components/schemas/CaseInformationRequestedEvent'
+          case_draft_ready: '#/components/schemas/CaseDraftReadyEvent'
+          case_completed: '#/components/schemas/CaseCompletedEvent'
+          case_rejected: '#/components/schemas/CaseRejectedEvent'
+          case_cancelled: '#/components/schemas/CaseCancelledEvent'
 
     CaseCreatedEvent:
       allOf:
         - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [case.created] }
+            eventType: { type: string, enum: [case_created] }
             data:
               type: object
-              required: [level, istatCode]
+              required: [level, comuneIstatCode]
               properties:
                 level: { $ref: '#/components/schemas/Level' }
-                istatCode: { type: string, pattern: '^[0-9]{6}$' }
+                comuneIstatCode: { type: string, pattern: '^[0-9]{6}$' }
 
     CaseStatusChangedEvent:
       allOf:
         - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [case.status_changed] }
+            eventType: { type: string, enum: [case_status_changed] }
             data:
               type: object
               required: [status]
               properties:
-                status: { type: string, enum: [in_review, certified, awaiting_signature, in_registration] }
+                status: { type: string, enum: [InReview, Certified, AwaitingSignature, InRegistration] }
 
     CaseInformationRequestedEvent:
       allOf:
         - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [case.information_requested] }
+            eventType: { type: string, enum: [case_information_requested] }
             data:
               type: object
               required: [requestId, questions]
@@ -328,20 +306,16 @@ components:
         - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [case.draft_ready] }
+            eventType: { type: string, enum: [case_draft_ready] }
             data:
               type: object
-              required: [draftId, version, files, allowedActions]
+              required: [draftId, version, files]
               properties:
                 draftId: { type: string }
                 version: { type: integer, minimum: 1 }
                 files:
                   type: array
                   items: { $ref: '#/components/schemas/File' }
-                allowedActions:
-                  type: array
-                  items: { type: string, enum: [approve, request_changes] }
-                notes: { type: string, maxLength: 2000 }
                 dueAt: { type: string, format: date-time }
 
     CaseCompletedEvent:
@@ -349,7 +323,7 @@ components:
         - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [case.completed] }
+            eventType: { type: string, enum: [case_completed] }
             data:
               type: object
               required: [attestation, files]
@@ -365,49 +339,103 @@ components:
         - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [case.rejected] }
+            eventType: { type: string, enum: [case_rejected] }
             data:
               type: object
               required: [reason, detail]
               properties:
-                reason: { type: string, enum: [rent_out_of_range, inconsistent_data, agreement_not_in_force, municipality_not_covered, invalid_documents, other] }
+                reason: { type: string, enum: [rent_out_of_range, inconsistent_data, agreement_not_in_force, municipality_not_covered, invalid_documents, registration_rejected, other] }
                 detail: { type: string, maxLength: 1000 }
                 limits:
                   type: object
                   properties:
-                    minMonthlyRentCents: { type: integer, minimum: 0 }
-                    maxMonthlyRentCents: { type: integer, minimum: 0 }
+                    canoneMinMensile: { type: number, minimum: 0, multipleOf: 0.01 }
+                    canoneMaxMensile: { type: number, minimum: 0, multipleOf: 0.01 }
 
     CaseCancelledEvent:
       allOf:
         - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [case.cancelled] }
+            eventType: { type: string, enum: [case_cancelled] }
             data:
               type: object
               required: [reason]
               properties:
-                reason: { type: string, maxLength: 500 }
+                reason: { type: string, enum: [cancelled_by_user, expired, other] }
+                detail: { type: string, maxLength: 500 }
+
+    FieldName:
+      type: string
+      description: Catalogo dei campi di CasaZen (sezione 3 della specifica)
+      enum:
+        - comuneIstatCode
+        - cadastralSheet
+        - cadastralParcel
+        - cadastralSubaltern
+        - cadastralCategory
+        - cadastralIncome
+        - startDate
+        - endDate
+        - monthlyRent
+        - securityDeposit
+        - taxRegime
+        - sqm
+        - garageSqm
+        - balconySqm
+        - otherAppurtenanceSqm
+        - privateGreenSqm
+        - typeAElementCount
+        - typeBElementCount
+        - typeCElementCount
+        - typeDElementCount
+        - qualifyingTypeDElementCount
+        - stoveHeating
+        - isFurnished
+        - airConditioning
+        - zoneName
+        - firstName
+        - lastName
+        - fiscalCode
+        - citizenship
+        - contactEmail
+        - isExtraEU
+        - document
+        - apeCode
+        - apeEnergyClass
+
+    PartyRole:
+      type: string
+      enum: [Landlord, Tenant]
+
+    DocumentType:
+      type: string
+      enum: [CinCertificate, FloorPlan, InsurancePolicy, PropertyLicense, SafetyCompliance, Ape, Other]
+
+    TaxRegime:
+      type: string
+      enum: [CedolareSecca, Ordinario]
 
     Question:
       type: object
-      required: [field, label, type, required]
+      required: [field, type, required]
       properties:
-        field: { type: string, description: 'Identificativo stabile scelto da ConcordatoFacile (es. property.cadastre.subparcel); per i documenti documents.<name>' }
-        label: { type: string }
-        type: { type: string, enum: [text, number, date, choice, file] }
+        field: { $ref: '#/components/schemas/FieldName' }
+        type: { type: string, enum: [string, integer, decimal, boolean, date, enum, file] }
         required: { type: boolean }
         options:
           type: array
           items: { type: string }
-        help: { type: string }
+          description: Solo con type enum
+        partyRole: { $ref: '#/components/schemas/PartyRole' }
+        position: { type: integer, minimum: 0, description: 'Posizione della parte tra quelle dello stesso ruolo, da 0' }
+        documentType: { $ref: '#/components/schemas/DocumentType' }
 
     InformationAnswers:
       type: object
       required: [type, requestId, answers]
       properties:
-        type: { type: string, enum: [information] }
+        type: { type: string, enum: [Information] }
         requestId: { type: string }
         answers:
           type: array
@@ -415,82 +443,73 @@ components:
             type: object
             required: [field]
             properties:
-              field: { type: string }
-              value: { type: string, description: 'Sempre una stringa; date YYYY-MM-DD; numeri con il punto' }
+              field: { $ref: '#/components/schemas/FieldName' }
+              value:
+                description: 'Tipo JSON del campo: stringa, booleano, numero decimale; date ISO 8601 UTC; enum come nome del membro'
+                oneOf:
+                  - { type: string }
+                  - { type: number }
+                  - { type: boolean }
               fileId: { type: string, description: 'Per il tipo file: id restituito dal caricamento' }
+              partyRole: { $ref: '#/components/schemas/PartyRole' }
+              position: { type: integer, minimum: 0 }
+              documentType: { $ref: '#/components/schemas/DocumentType' }
 
     DraftDecision:
       type: object
       required: [type, draftId, decision]
       properties:
-        type: { type: string, enum: [draft_decision] }
+        type: { type: string, enum: [DraftDecision] }
         draftId: { type: string }
-        decision: { type: string, enum: [approved, changes_requested] }
+        decision: { type: string, enum: [Approved, ChangesRequested] }
         notes: { type: string, maxLength: 2000 }
 
     File:
       type: object
-      required: [fileId, kind, fileName, mimeType, sizeBytes, sha256, downloadUrl, expiresAt]
+      required: [fileId, kind, fileName, contentType, downloadUrl, downloadUrlExpiresAt]
       properties:
         fileId: { type: string }
-        kind:
-          type: string
-          enum: [attestation, calculation_sheet, contract_draft, signed_contract, submission_receipt, registration_receipt, payment_receipt, full_package_zip, other]
+        kind: { type: string, enum: [Attestation, ContractDraft, SignedContract, RegistrationReceipt, Other] }
         fileName: { type: string, maxLength: 150 }
-        mimeType: { type: string, enum: [application/pdf, application/zip] }
-        sizeBytes: { type: integer, minimum: 1, description: 'Massimo 20 MB per un PDF; 40 MB per uno zip compresso' }
-        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
-        downloadUrl: { type: string, format: uri, description: 'HTTPS, valido almeno 7 giorni' }
-        expiresAt: { type: string, format: date-time }
+        contentType: { type: string, enum: [application/pdf] }
+        downloadUrl: { type: string, format: uri, description: 'HTTPS, valido almeno 7 giorni; PDF fino a 20 MB (10 MB per la ricevuta)' }
+        downloadUrlExpiresAt: { type: string, format: date-time }
 
     Attestation:
       type: object
-      required: [attestationId, issuedOn, agreement, organizations, rent, documentFileId]
+      required: [attestationCode, issuedAt, agreementName, comuneIstatCode, signatories, assessment]
       properties:
-        attestationId: { type: string }
-        issuedOn: { type: string, format: date }
-        agreement:
-          type: object
-          required: [name, istatCode, inForceFrom]
-          properties:
-            name: { type: string }
-            istatCode: { type: string, pattern: '^[0-9]{6}$' }
-            inForceFrom: { type: string, format: date }
-        organizations:
+        attestationCode: { type: string }
+        issuedAt: { type: string, format: date-time, description: Mezzanotte UTC della data di rilascio }
+        agreementName: { type: string }
+        comuneIstatCode: { type: string, pattern: '^[0-9]{6}$' }
+        signatories:
           type: array
           minItems: 1
           items:
             type: object
-            required: [name, represents, signerName, signedOn]
+            required: [name, role]
             properties:
               name: { type: string }
-              represents: { type: string, enum: [landlords, tenants] }
-              signerName: { type: string }
-              signedOn: { type: string, format: date }
-        rent:
+              role: { type: string, enum: [Proprieta, Inquilini] }
+        assessment:
           type: object
-          required: [zone, subBand, areaSqm, minMonthlyRentCents, maxMonthlyRentCents, agreedMonthlyRentCents]
+          required: [zone, subFascia, sqm, usableSqm, canoneMinAnnuo, canoneMaxAnnuo, canoneMinMensile, canoneMaxMensile, monthlyRent]
           properties:
             zone: { type: string }
-            subBand: { type: integer, minimum: 1, maximum: 3 }
-            areaSqm: { type: number, multipleOf: 0.1 }
-            minMonthlyRentCents: { type: integer, minimum: 0 }
-            maxMonthlyRentCents: { type: integer, minimum: 0 }
-            agreedMonthlyRentCents: { type: integer, minimum: 0 }
-        documentFileId: { type: string }
+            subFascia: { type: integer, minimum: 1, maximum: 3 }
+            sqm: { type: number, multipleOf: 0.01 }
+            usableSqm: { type: number, multipleOf: 0.01 }
+            canoneMinAnnuo: { type: number, minimum: 0, multipleOf: 0.01 }
+            canoneMaxAnnuo: { type: number, minimum: 0, multipleOf: 0.01 }
+            canoneMinMensile: { type: number, minimum: 0, multipleOf: 0.01 }
+            canoneMaxMensile: { type: number, minimum: 0, multipleOf: 0.01 }
+            monthlyRent: { type: number, minimum: 0, multipleOf: 0.01 }
 
     Registration:
       type: object
-      required: [type, revenueOffice, registeredOn, electronicProtocol, contractIdentificationCode, flatTaxElected, registrationTaxCents, stampDutyCents, receiptFileIds]
+      required: [registrationCode, registrationDate, taxRegime]
       properties:
-        type: { type: string, enum: [L1, L2] }
-        revenueOffice: { type: string }
-        registeredOn: { type: string, format: date }
-        electronicProtocol: { type: string }
-        contractIdentificationCode: { type: string }
-        flatTaxElected: { type: boolean }
-        registrationTaxCents: { type: integer, minimum: 0 }
-        stampDutyCents: { type: integer, minimum: 0 }
-        receiptFileIds:
-          type: array
-          items: { type: string }
+        registrationCode: { type: string, maxLength: 100, description: 'Numero o protocollo dell''Agenzia delle Entrate come scritto sulla ricevuta' }
+        registrationDate: { type: string, format: date-time, description: Mezzanotte UTC della data di registrazione }
+        taxRegime: { $ref: '#/components/schemas/TaxRegime' }
