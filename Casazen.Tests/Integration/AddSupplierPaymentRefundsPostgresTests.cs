@@ -304,17 +304,16 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
             Category = ServiceCategories.Cleaning,
         };
 
-        // Plain SQL for the orgs and the property: the first test of this class seeds at the schema right before
+        // Plain SQL for the orgs, the property and the request: the first test of this class seeds at the schema right before
         // AddSupplierPaymentRefunds, and saving them through the model writes the columns that later migrations add (DB-03:
         // HostName, PublicPhone, Subtitle on the org; MinNights, WeekendSurchargePercent on the property; Wave 3:
-        // CancellationFullRefundHours), which do not exist there (42703).
+        // CancellationFullRefundHours; UI-13a: the SearchKey columns), which do not exist there (42703).
         await LegacyOrgRows.InsertAsync(db, hostOrg);
         await LegacyOrgRows.InsertAsync(db, supplierOrg);
         await db.Database.ExecuteSqlAsync($"""UPDATE "Orgs" SET "OrgType" = {(int)supplierOrg.OrgType} WHERE "Id" = {supplierOrg.Id}""");
         await LegacyPropertyRows.InsertAsync(db, property);
         await db.Database.ExecuteSqlAsync($"""UPDATE "Properties" SET "CinCode" = {property.CinCode} WHERE "Id" = {property.Id}""");
-        db.ServiceRequests.Add(request);
-        await db.SaveChangesAsync();
+        await LegacyServiceRequestRows.InsertAsync(db, request);
 
         var payment = new ServiceRequestPayment
         {

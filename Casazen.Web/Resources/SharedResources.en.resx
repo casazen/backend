@@ -2698,6 +2698,18 @@
   <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
     <value>Give a past or current month in the form yyyy-mm (for example 2026-10).</value>
   </data>
+  <data name="SearchQueryTooShort" xml:space="preserve">
+    <value>Type at least {0} characters to search.</value>
+  </data>
+  <data name="SearchQueryTooLong" xml:space="preserve">
+    <value>A search can have at most {0} characters.</value>
+  </data>
+  <data name="ContextNotAccessible" xml:space="preserve">
+    <value>You do not have access to this area.</value>
+  </data>
+  <data name="ContextKeyRequired" xml:space="preserve">
+    <value>Give the area.</value>
+  </data>
   <data name="SeoDraftInvalid" xml:space="preserve">
     <value>The text cannot be published: it needs at least {0} characters of visible text, a section heading (h2) and a paragraph (p). Markdown is not accepted.</value>
   </data>
