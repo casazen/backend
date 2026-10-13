@@ -1,55 +1,117 @@
 ---
 title: Specifiche tecniche - integrazione CasaZen / ConcordatoFacile
-version: 1.2-bozza
+version: 1.3-bozza
 date: 2026-10-13
 ---
 
 # Specifiche tecniche: integrazione CasaZen / ConcordatoFacile
 
-**Versione 1.2 (bozza)** · 13 ottobre 2026 · Allegato: `02-openapi.yaml` (contratto leggibile da macchina, stessi nomi di questo documento).
+**Versione 1.3 (bozza)** · 13 ottobre 2026 · Allegato: `02-openapi.yaml` (contratto leggibile da macchina, stessi nomi di questo documento).
 
-**Principio.** L'utente compila il **modulo di ConcordatoFacile (CF)**, che resta sul dominio CF con la veste di CasaZen. CasaZen non invia i dati della pratica. Per far restare l'utente nell'app di CasaZen definiamo solo questi comportamenti: il link al modulo (sezione 1), gli eventi che CF invia a CasaZen (sezioni 2 e 3), le risposte e i documenti che CasaZen restituisce a CF (sezione 4) e le regole sui file (sezione 5). Proposte ed esempi sono inclusi. Il testo è in italiano; **i nomi (endpoint, campi, valori) sono in inglese**, tranne i pochi già italiani nell'API di CasaZen (`canoneMinMensile`, `subFascia`, `Proprieta`, `Inquilini`, `CedolareSecca`, `Ordinario`), che manteniamo uguali per non dover mappare nulla.
+**Principio.** L'utente apre il **modulo di ConcordatoFacile (CF)** da CasaZen e **svolge lì tutta la pratica**: inserimento dei dati, documenti, integrazioni richieste, correzioni, reinvio dei documenti, revisione di eventuali bozze, firma, stato della pratica. Ogni azione la compie l'utente nel modulo: CasaZen non risponde a nessuna richiesta di CF e non carica nulla al posto dell'utente. CasaZen fa solo tre cose: apre o riapre il modulo con un link firmato (sezione 2), riceve da CF gli **avvisi di stato** (per esempio "serve un'azione dell'utente nel modulo") e riceve l'**esito finale** (sezione 3). Il documento ha due parti: **che cosa deve garantire il modulo** (sezione 1) e **lo scambio di dati** tra CF e CasaZen (sezioni 2, 3 e 4). Proposte ed esempi sono inclusi. Il testo è in italiano; **i nomi (endpoint, campi, valori) sono in inglese**, tranne i pochi già italiani nell'API di CasaZen (`canoneMinMensile`, `subFascia`, `Proprieta`, `Inquilini`), che manteniamo uguali per non dover mappare nulla.
 
 **Convenzioni.** Sono quelle già in uso nell'API di CasaZen, così nessun campo va adattato dopo l'integrazione.
 
 | Tema | Regola |
 |---|---|
 | JSON | UTF-8, nomi dei campi in `camelCase` |
-| Valori enumerati | Stringa con il nome del membro, per esempio `Tenant`, `CedolareSecca` (mai numeri) |
-| Date e orari | ISO 8601 UTC con `Z`: `2026-10-13T09:30:00Z`. Una data di calendario (`startDate`, `registrationDate`) è la mezzanotte UTC: `2026-11-01T00:00:00Z` |
-| Importi | Numero decimale in euro, due decimali, nessuna conversione in centesimi: `monthlyRent: 400.00`. Valuta sempre EUR |
+| Valori enumerati | Stringa con il nome del membro, per esempio `Tenant`, `Proprieta` (mai numeri) |
+| Date e orari | ISO 8601 UTC con `Z`: `2026-10-13T09:30:00Z`. Una data di calendario (`startDate`) è la mezzanotte UTC: `2026-11-01T00:00:00Z` |
+| Importi | Numero decimale in euro, due decimali, nessuna conversione in centesimi: `monthlyRent: 400.00` |
 | Comune | `comuneIstatCode`: codice ISTAT a 6 cifre come stringa (`"108040"`) |
 | Identificativi | `leaseId` = GUID del contratto in CasaZen, restituito da CF in ogni evento. `caseId` = identificativo creato da CF |
-| Errori | `application/problem+json` con `code` in snake_case (sezione 4) |
+| Errori | `application/problem+json` con `code` in snake_case |
 
 ---
 
-## 1. Link al modulo CF
+## 1. Cosa deve garantire il modulo CF
+
+Poiché CasaZen delega a CF l'intera pratica, il modulo deve garantire quanto segue. Per ogni punto che non potete garantire così com'è, indicate l'alternativa.
+
+**Accesso e veste**
+
+| # | Requisito |
+|--|------------------------------|
+| R1 | Il modulo si apre dal link della sezione 2 e l'utente **non deve creare né usare un account CF**. |
+| R2 | Il modulo e le comunicazioni dirette all'utente (email, pagina di stato) riportano la veste di CasaZen indicata da `theme` (nome, logo, colori). |
+| R3 | Funziona da telefono e dal browser integrato dell'app CasaZen. |
+| R4 | È in lingua italiana. |
+| R5 | Non chiede pagamenti all'utente: il compenso a CF è regolato tra CF e CasaZen. |
+| R6 | Il modulo si apre solo con un **link firmato da CasaZen** (sezione 2): un link senza firma valida, o scaduto, è rifiutato. Così nessuno può aprire pratiche a nome di CasaZen né leggere i dati di una pratica conoscendo solo il `leaseId`. Il link di rientro che CF invia all'utente per email (R10) è equivalente. |
+
+**Gestione della pratica, tutta dentro il modulo**
+
+| # | Requisito |
+|--|------------------------------|
+| R7 | Raccoglie tutti i dati e i documenti necessari all'attestazione, compresi quelli elencati in `attestation` nella sezione 3 (parti, immobile e dati catastali, durata, canone, superfici, zona). |
+| R8 | Salva la compilazione in bozza: l'utente può interrompere e riprendere dallo stesso link. |
+| R9 | Gestisce **con l'utente** richieste di dati o documenti mancanti, correzioni, reinvio dei documenti, bozza da approvare e firmare, firma e relative notifiche. Il destinatario di ogni richiesta è l'utente (all'email che indica nel modulo). CasaZen riceve solo l'avviso di stato della sezione 3, a titolo informativo: **non deve rispondere e non fa da intermediario**. |
+| R10 | L'utente può **rientrare nel modulo in qualsiasi momento** per caricare i documenti mancanti, correggere i dati, approvare la bozza e firmare: dal link firmato di CasaZen (sezione 2) oppure dal link di rientro ricevuto per email da CF (valido almeno 30 giorni dall'ultima richiesta, proposta; l'utente può farlo rigenerare). Al rientro il modulo mostra subito la richiesta in sospeso. |
+| R11 | Mostra all'utente lo stato della pratica e la prossima azione richiesta, in ogni momento. |
+| R12 | Verifica all'inizio che il comune sia coperto da un accordo in vigore. Se non lo è, chiude subito con `case_rejected` e `reason` `municipality_not_covered`, senza lavorazione. |
+| R13 | Una sola pratica aperta per `leaseId`. Lo stesso `leaseId` riapre la pratica se è aperta. Se è chiusa con `case_rejected` o `case_cancelled`, ne apre una nuova (nuovo `caseId`). Se è chiusa con `case_completed`, mostra l'attestazione e **non ne crea un'altra**. |
+| R14 | In ogni momento, e al termine della compilazione, l'utente può tornare a CasaZen con un pulsante che porta a `returnUrl` (sezione 2). Il modulo reindirizza solo a domini di CasaZen concordati in anticipo. |
+
+**Attestazione**
+
+| # | Requisito |
+|--|------------------------------|
+| R15 | È emessa sul **modello ufficiale** previsto dall'accordo territoriale del comune, dalle organizzazioni **firmatarie di quell'accordo** (una per la proprietà e una per gli inquilini, dove l'accordo lo richiede). Nome e ruolo (`Proprieta` o `Inquilini`) di ciascuna sono nell'evento. |
+| R16 | Il canone è verificato sull'accordo in vigore (zona, sub-fascia, coefficienti): i valori usati sono nell'evento (`assessment`), così CasaZen può confrontarli con i propri. |
+| R17 | È consegnata a CasaZen come **PDF separato**, apribile e senza password, anche se CF produce uno zip dell'intero fascicolo (che CasaZen non richiede). Le eventuali firme digitali restano valide: il file non viene ristampato né riconvertito. |
+| R18 | È emessa entro 48 ore da quando la pratica è completa (tempo da voi indicato). |
+| R19 | Resta scaricabile da CF per l'utente per un periodo da concordare (proposta: 10 anni). |
+
+**Esito verso CasaZen**
+
+| # | Requisito |
+|--|------------------------------|
+| R20 | CF invia a CasaZen, firmati come nella sezione 3, solo: gli **avvisi di stato** (`case_status_changed`) e **un solo evento finale** per pratica (`case_completed`, `case_rejected` o `case_cancelled`). Nessun altro evento è richiesto. |
+| R21 | Se CasaZen non risponde `200`, CF ritenta; CF permette di **rinviare un evento** (a richiesta o da pannello) con lo stesso `eventId`. |
+| R22 | `case_completed` contiene i dati attestati e il PDF, nei formati della sezione 3. |
+
+**Dati personali, sicurezza, prova**
+
+| # | Requisito |
+|--|------------------------------|
+| R23 | Prima del lancio si definisce l'inquadramento privacy (responsabile del trattamento ex art. 28 GDPR o titolare autonomo). I dati sono trattati nello Spazio Economico Europeo e non sono usati per altri scopi né per comunicazioni commerciali all'utente. |
+| R24 | HTTPS con TLS 1.2 o superiore; nessun dato personale negli URL; `caseId` e `leaseId` non indovinabili. |
+| R25 | Esiste un ambiente di prova con lo stesso comportamento, che emette eventi firmati con un segreto di prova, accetta link firmati con un segreto di prova e permette di ottenere ciascun evento della sezione 3. |
+
+## 2. CasaZen → CF: link al modulo
 
 L'utente apre il modulo CF da CasaZen:
 
-`{CF_FORM_URL}?partner=<code>&leaseId=<guid>&level=<basic|complete>&comuneIstatCode=<istat>&returnUrl=<url-encoded>&theme=<theme>`
+`{CF_FORM_URL}?partner=<code>&leaseId=<guid>&expiresAt=<iso>&signature=<hex>&comuneIstatCode=<istat>&returnUrl=<url-encoded>&theme=<theme>`
 
 Esempio:
 
 ```
-https://form.concordatofacile.example/start?partner=casazen&leaseId=0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11&level=complete&comuneIstatCode=108040&returnUrl=https%3A%2F%2Fapp.casazen.example%2Fleases%2F0b6f7a3e&theme=casazen
+https://form.concordatofacile.example/start?partner=casazen&leaseId=0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11&expiresAt=2026-10-13T10%3A00%3A00Z&signature=fa10ce472c1e3b33939e62e01a7f5f8cec10d45abc02726f691cae37bd639eea&comuneIstatCode=108040&returnUrl=https%3A%2F%2Fapp.casazen.example%2Fleases%2F0b6f7a3e&theme=casazen
 ```
 
 | Parametro | Obbligatorio | Note |
 |---|---|---|
-| `partner` | sì | Codice assegnato da CF |
-| `leaseId` | sì | Restituito in ogni evento |
-| `level` | sì | Valori di CF (qui `basic`, `complete`: da confermare con i vostri nomi) |
+| `partner` | sì | Codice assegnato da CF; identifica anche il servizio contrattato con CasaZen |
+| `leaseId` | sì | Restituito in ogni evento. Lo stesso link serve per aprire la pratica la prima volta e per riaprirla (R10, R13) |
+| `expiresAt` | sì | Fine di validità del link, ISO 8601 UTC (proposta: 15 minuti dopo la generazione). Vale solo per l'apertura: la sessione che ne segue è di CF |
+| `signature` | sì | `hex(HMAC-SHA256(linkSecret, leaseId + "." + expiresAt))`, in esadecimale minuscolo. `expiresAt` è il valore decodificato, per esempio `2026-10-13T10:00:00Z`. `linkSecret` è un segreto diverso da quello dei webhook, consegnato fuori banda, diverso per prova e produzione |
 | `comuneIstatCode` | no | Precompila il comune |
-| `returnUrl` | no | A fine compilazione CF reindirizza a `<returnUrl>?leaseId=<guid>&caseId=<id>` (nessun dato personale nell'URL) |
-| `theme` | no | Identificativo della veste di CasaZen (nome, logo, colori) |
+| `returnUrl` | sì | Il pulsante "Torna a CasaZen" porta a `<returnUrl>?leaseId=<guid>&caseId=<id>` (nessun dato personale nell'URL). Il ritorno non comunica l'esito: l'esito arriva solo con l'evento della sezione 3 |
+| `theme` | no | Identificativo della veste di CasaZen |
 
-Un secondo accesso con lo stesso `leaseId` riapre la stessa pratica: non ne crea un'altra. Quando l'utente invia il modulo, CF emette `case_created` (sezione 3).
+CF rifiuta un link con `signature` errata o con `expiresAt` passato (R6). `comuneIstatCode`, `returnUrl` e `theme` non sono coperti dalla firma.
 
-## 2. CF → CasaZen: eventi (webhook)
+**Vettore di prova del link** (`linkSecret` `test_link_secret_0123456789abcdef0123456789abcdef`):
 
-`POST {CASAZEN_BASE_URL}/webhooks/concordatofacile` (URL di prova e di produzione comunicati separatamente) · HTTPS · corpo JSON. I file non viaggiano nel corpo (sezione 5). È lo stesso schema degli altri webhook di CasaZen.
+```
+message   = 0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11.2026-10-13T10:00:00Z
+signature = fa10ce472c1e3b33939e62e01a7f5f8cec10d45abc02726f691cae37bd639eea
+```
+
+## 3. CF → CasaZen: stato ed esito della pratica (webhook)
+
+`POST {CASAZEN_BASE_URL}/webhooks/concordatofacile` (URL di prova e di produzione comunicati separatamente) · HTTPS · corpo JSON. Il file non viaggia nel corpo (sezione 4). È lo stesso schema degli altri webhook di CasaZen.
 
 | Intestazione | Valore |
 |---|---|
@@ -61,8 +123,8 @@ Un secondo accesso con lo stesso `leaseId` riapre la stessa pratica: non ne crea
 **Vettore di prova** (segreto `test_secret_0123456789abcdef0123456789abcdef`). Il corpo è **su una sola riga, senza spazi aggiunti**: copiarlo dal file `.md`, non dal PDF.
 
 ```
-body = {"eventId":"7b0c1c5e-3a52-4d0e-9d3e-0a1f2b3c4d5e","eventType":"case_created","occurredAt":"2026-10-13T09:30:00Z","caseId":"CF-TEST-000001","leaseId":"0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11","data":{"level":"complete","comuneIstatCode":"108040"}}
-X-ConcordatoFacile-Signature = 0791287ff20b268465b053546db639f3cc1c47b0b17d999ebb39077477560027
+body = {"eventId":"7b0c1c5e-3a52-4d0e-9d3e-0a1f2b3c4d5e","eventType":"case_cancelled","occurredAt":"2026-10-13T09:30:00Z","caseId":"CF-TEST-000001","leaseId":"0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11","data":{"reason":"cancelled_by_user"}}
+X-ConcordatoFacile-Signature = 29feda5f7daf037d0aecbe49cdc7a2b8d0ab215cf26b164b0106775c2fd484b3
 ```
 
 **Risposte di CasaZen.** CasaZen verifica la firma, accoda l'evento e risponde subito: l'elaborazione è asincrona.
@@ -73,89 +135,36 @@ X-ConcordatoFacile-Signature = 0791287ff20b268465b053546db639f3cc1c47b0b17d999eb
 | `401` `invalid_signature` | Firma assente o errata | non ritentare, correggere il segreto |
 | `5xx`, errore di rete, timeout | Temporaneo | ritentare con backoff (a scelta di CF) |
 
-**Idempotenza e ordine.** `eventId` (UUID) identifica l'evento: un `eventId` già ricevuto è ignorato. Un evento ritentato mantiene `eventId` e `occurredAt`. L'ordine di consegna non è garantito: CasaZen ignora un evento con `occurredAt` precedente all'ultimo già applicato per lo stesso `caseId`.
+**Idempotenza e ordine.** `eventId` (UUID) identifica l'evento: un `eventId` già ricevuto è ignorato. Un evento ritentato o rinviato mantiene `eventId` e `occurredAt`. L'ordine di consegna non è garantito: CasaZen ignora un evento con `occurredAt` precedente all'ultimo già applicato per lo stesso `caseId`, e ignora ogni evento ricevuto dopo l'evento finale.
 
 **Busta di ogni evento:**
 
 ```json
 {
   "eventId": "7b0c1c5e-3a52-4d0e-9d3e-0a1f2b3c4d5e",
-  "eventType": "case_status_changed",
-  "occurredAt": "2026-10-14T08:00:00Z",
+  "eventType": "case_completed",
+  "occurredAt": "2026-10-15T09:00:00Z",
   "caseId": "CF-2026-000123",
   "leaseId": "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11",
   "data": {}
 }
 ```
 
-`eventType`: `case_created`, `case_status_changed`, `case_information_requested`, `case_draft_ready`, `case_completed`, `case_rejected`, `case_cancelled`.
+`eventType`: `case_status_changed`, `case_completed`, `case_rejected`, `case_cancelled`.
 
-## 3. Eventi ed esempi (`data`)
-
-**`case_created`**: l'utente ha inviato il modulo.
+**`case_status_changed`**: avviso di stato. Serve a CasaZen per dire all'utente se deve agire nel modulo; CasaZen non risponde e non invia nulla a CF. `status`: `InReview` (CF sta lavorando: all'invio del modulo e dopo ogni azione dell'utente) oppure `ActionRequired` (serve un'azione dell'utente **nel modulo**). Con `ActionRequired`, `reason` è `information_requested` (dati o documenti mancanti, correzioni) oppure `draft_ready` (bozza da approvare e firmare); `detail` è un testo per l'utente, in italiano; `dueAt` è opzionale.
 
 ```json
-{ "level": "complete", "comuneIstatCode": "108040" }
+{ "status": "ActionRequired", "reason": "information_requested", "detail": "Manca l'APE in corso di validità.", "dueAt": "2026-10-20T12:00:00Z" }
 ```
-
-**`case_status_changed`** (`status`: `InReview`, `Certified`, `AwaitingSignature`, `InRegistration`)
 
 ```json
 { "status": "InReview" }
 ```
 
-**`case_information_requested`**: manca un dato o un documento. L'utente risponde dall'app di CasaZen (sezione 4). Formato proposto:
+CasaZen mostra "Azione richiesta" con `detail` e un pulsante che riapre il modulo con il link della sezione 2; ripristina lo stato normale con `InReview`.
 
-```json
-{
-  "requestId": "req-001",
-  "dueAt": "2026-10-20T12:00:00Z",
-  "questions": [
-    { "field": "cadastralSubaltern", "type": "string", "required": true },
-    { "field": "isFurnished", "type": "boolean", "required": true },
-    { "field": "startDate", "type": "date", "required": true },
-    { "field": "sqm", "type": "decimal", "required": true },
-    { "field": "taxRegime", "type": "enum", "options": ["CedolareSecca", "Ordinario"], "required": true },
-    { "field": "fiscalCode", "partyRole": "Tenant", "position": 0, "type": "string", "required": true },
-    { "field": "document", "documentType": "Ape", "type": "file", "required": true }
-  ]
-}
-```
-
-`type`: `string`, `integer`, `decimal`, `boolean`, `date`, `enum` (con `options`), `file`. Una richiesta può contenere più domande: CasaZen risponde a tutte con una sola chiamata (sezione 4).
-
-`field` è **sempre un nome del catalogo seguente**: sono i campi che CasaZen ha già e che mostra con i propri testi localizzati (IT/EN), quindi CF non invia `label` né `help`. Per i campi delle parti, `partyRole` (`Landlord` o `Tenant`) e `position` (0 per la prima parte di quel ruolo) dicono di quale parte si tratta. Per un documento, `field` è `document` e `documentType` è un valore di `DocumentType` di CasaZen (qui `Ape`; gli altri: `CinCertificate`, `FloorPlan`, `InsurancePolicy`, `PropertyLicense`, `SafetyCompliance`, `Other`).
-
-| Gruppo | `field` (tipo) |
-|---|---|
-| Immobile | `comuneIstatCode` (string, 6 cifre), `cadastralSheet`, `cadastralParcel`, `cadastralSubaltern`, `cadastralCategory` (string), `cadastralIncome` (decimal, euro) |
-| Contratto | `startDate`, `endDate` (date), `monthlyRent`, `securityDeposit` (decimal), `taxRegime` (enum: `CedolareSecca`, `Ordinario`) |
-| Superfici | `sqm`, `garageSqm`, `balconySqm`, `otherAppurtenanceSqm`, `privateGreenSqm` (decimal, mq) |
-| Elementi di qualità | `typeAElementCount`, `typeBElementCount`, `typeCElementCount`, `typeDElementCount`, `qualifyingTypeDElementCount` (integer) |
-| Dotazioni | `stoveHeating`, `isFurnished`, `airConditioning` (boolean) |
-| Zona | `zoneName` (string) |
-| Parti (con `partyRole`, `position`) | `firstName`, `lastName`, `fiscalCode` (16 caratteri), `citizenship` (ISO 3166-1 alpha-2), `contactEmail` (string), `isExtraEU` (boolean) |
-| Documenti | `document` (file, con `documentType`), `apeCode`, `apeEnergyClass` (string) |
-
-Se CF ha bisogno di un dato che non è nel catalogo, lo segnala come richiesta di estensione del catalogo (non come domanda): è un'aggiunta da concordare, non un campo libero.
-
-**`case_draft_ready`**: bozza di contratto da approvare e firmare.
-
-```json
-{
-  "draftId": "draft-001",
-  "version": 1,
-  "files": [
-    { "fileId": "f-010", "kind": "ContractDraft", "fileName": "contract-draft-v1.pdf", "contentType": "application/pdf",
-      "downloadUrl": "https://...", "downloadUrlExpiresAt": "2026-10-21T09:00:00Z" }
-  ],
-  "dueAt": "2026-10-25T12:00:00Z"
-}
-```
-
-Se vengono chieste modifiche, CF emette un nuovo `case_draft_ready` con `version` maggiore.
-
-**`case_completed`**: tutto consegnato. I nomi dei campi sono quelli già usati da CasaZen per la verifica del canone concordato e per la registrazione (valori di esempio).
+**`case_completed`**: l'attestazione è stata rilasciata. I campi sono quelli che CasaZen usa già per il contratto e per la verifica del canone concordato; CasaZen li confronta con il contratto che ha. I valori sono di esempio.
 
 ```json
 {
@@ -168,32 +177,34 @@ Se vengono chieste modifiche, CF emette un nuovo `case_draft_ready` con `version
       { "name": "Organization A (example)", "role": "Proprieta" },
       { "name": "Organization B (example)", "role": "Inquilini" }
     ],
+    "property": {
+      "cadastralSheet": "12", "cadastralParcel": "345", "cadastralSubaltern": "6", "cadastralCategory": "A/2"
+    },
+    "lease": {
+      "startDate": "2026-11-01T00:00:00Z", "endDate": "2030-10-31T00:00:00Z", "monthlyRent": 400.00
+    },
+    "parties": [
+      { "partyRole": "Landlord", "position": 0, "fiscalCode": "RSSMRA80A01H501U" },
+      { "partyRole": "Tenant", "position": 0, "fiscalCode": "BNCLRA85M41F205C" }
+    ],
     "assessment": {
       "zone": "Zona 1", "subFascia": 2, "sqm": 65.00, "usableSqm": 65.00,
       "canoneMinAnnuo": 1300.00, "canoneMaxAnnuo": 5525.00,
-      "canoneMinMensile": 108.33, "canoneMaxMensile": 460.42,
-      "monthlyRent": 400.00
+      "canoneMinMensile": 108.33, "canoneMaxMensile": 460.42
     }
   },
-  "registration": {
-    "registrationCode": "TEST-REG-0001",
-    "registrationDate": "2026-10-19T00:00:00Z",
-    "taxRegime": "CedolareSecca"
-  },
-  "files": [
-    { "fileId": "f-001", "kind": "Attestation", "fileName": "attestation.pdf", "contentType": "application/pdf",
-      "downloadUrl": "https://...", "downloadUrlExpiresAt": "2026-10-28T15:02:11Z" },
-    { "fileId": "f-004", "kind": "RegistrationReceipt", "fileName": "registration-receipt.pdf", "contentType": "application/pdf",
-      "downloadUrl": "https://...", "downloadUrlExpiresAt": "2026-10-28T15:02:11Z" }
-  ]
+  "file": {
+    "fileId": "f-001", "kind": "Attestation", "fileName": "attestation.pdf", "contentType": "application/pdf",
+    "downloadUrl": "https://...", "downloadUrlExpiresAt": "2026-10-22T09:00:00Z"
+  }
 }
 ```
 
-- `registration` è presente solo se la registrazione è inclusa nel `level`. `registrationCode` è il numero o protocollo dell'Agenzia delle Entrate così come scritto sulla ricevuta (massimo 100 caratteri); CasaZen segna la registrazione come eseguita solo con `registrationCode`, `registrationDate` e il file `RegistrationReceipt`.
-- I `signatories` devono essere **firmatari dell'accordo** del comune (`role`: `Proprieta` o `Inquilini`): CasaZen li verifica sul proprio archivio.
-- La ricevuta di registrazione è un **PDF separato** (`RegistrationReceipt`). Altri documenti (per esempio la ricevuta di pagamento) hanno `kind` `Other`.
+- `signatories` devono essere **firmatari dell'accordo** del comune: CasaZen li verifica sul proprio archivio.
+- Di ogni parte sono inviati solo `partyRole`, `position` (0 per la prima parte di quel ruolo) e `fiscalCode`: servono a riconoscere il contratto, non si inviano altri dati personali.
+- `property`, `lease`, `parties` e `assessment` sono i valori **attestati**, cioè quelli scritti nell'attestazione.
 
-**`case_rejected`**: l'attestazione o la registrazione non possono essere completate.
+**`case_rejected`**: l'attestazione non può essere rilasciata.
 
 ```json
 {
@@ -203,7 +214,7 @@ Se vengono chieste modifiche, CF emette un nuovo `case_draft_ready` con `version
 }
 ```
 
-`reason`: `rent_out_of_range`, `inconsistent_data`, `agreement_not_in_force`, `municipality_not_covered`, `invalid_documents`, `registration_rejected`, `other`. `limits` è opzionale.
+`reason`: `rent_out_of_range`, `inconsistent_data`, `agreement_not_in_force`, `municipality_not_covered`, `invalid_documents`, `other`. `limits` è opzionale. `detail` è un testo per l'utente, in italiano.
 
 **`case_cancelled`**: pratica chiusa senza esito.
 
@@ -211,89 +222,21 @@ Se vengono chieste modifiche, CF emette un nuovo `case_draft_ready` con `version
 { "reason": "cancelled_by_user", "detail": "Annullata su richiesta dell'utente." }
 ```
 
-`reason`: `cancelled_by_user`, `expired`, `other`.
+`reason`: `cancelled_by_user`, `expired`, `other`. `detail` è opzionale.
 
-## 4. CasaZen → CF: risposte e documenti (proposta)
+## 4. File
 
-È il solo punto in cui CF espone endpoint: servono per far tornare a CF ciò che l'utente fa nell'app di CasaZen. Base `{CF_BASE_URL}/v1`, `Authorization: Bearer <api key>` (una chiave per la prova, una per la produzione), `Idempotency-Key: <uuid>` (una chiave ripetuta restituisce la stessa risposta).
-
-**Esempio: dato mancante** (risposta al `case_information_requested` della sezione 3). Prima il file, poi le risposte:
-
-```
-POST /v1/cases/CF-2026-000123/documents
-Content-Type: multipart/form-data
-  kind=RequestedDocument   requestId=req-001   documentType=Ape   file=@energy-certificate.pdf
-
-201 Created
-{ "fileId": "file-9f2" }
-```
-
-```
-POST /v1/cases/CF-2026-000123/answers
-{
-  "type": "Information",
-  "requestId": "req-001",
-  "answers": [
-    { "field": "cadastralSubaltern", "value": "6" },
-    { "field": "isFurnished", "value": true },
-    { "field": "startDate", "value": "2026-11-01T00:00:00Z" },
-    { "field": "sqm", "value": 65.00 },
-    { "field": "taxRegime", "value": "CedolareSecca" },
-    { "field": "fiscalCode", "partyRole": "Tenant", "position": 0, "value": "RSSMRA80A01H501U" },
-    { "field": "document", "documentType": "Ape", "fileId": "file-9f2" }
-  ]
-}
-
-202 Accepted
-{ "received": true }
-```
-
-`value` ha il tipo JSON del campo (stringa, booleano, numero decimale) e il formato della sezione "Convenzioni". Dopo una risposta valida CF emette `case_status_changed` (`InReview`) o l'evento successivo.
-
-**Esempio: approvazione della bozza e contratto firmato:**
-
-```
-POST /v1/cases/CF-2026-000123/answers
-{ "type": "DraftDecision", "draftId": "draft-001", "decision": "Approved" }
-→ 202 { "received": true }
-
-POST /v1/cases/CF-2026-000123/documents
-  kind=SignedContract   file=@signed-contract.pdf
-→ 201 { "fileId": "file-a41" }
-```
-
-`decision`: `Approved` oppure `ChangesRequested` (con `notes`). Con `Approved`, CF emette `case_status_changed` con `AwaitingSignature` finché non riceve il `SignedContract`.
-
-**Formato degli errori di CF** (proposto: lo stesso delle API di CasaZen, `application/problem+json`):
-
-```json
-{
-  "status": 400,
-  "code": "validation_error",
-  "errors": {
-    "cadastralSubaltern": ["The field is required."],
-    "startDate": ["The value is not a valid date."]
-  }
-}
-```
-
-Valori di `code` (quelli già usati da CasaZen): `bad_request`, `validation_error`, `unauthorized`, `forbidden`, `not_found`, `conflict`, `payload_too_large`, `unsupported_media_type`, `business_rule_violation`, `too_many_requests`. Uso proposto: caso sconosciuto → `404` `not_found`; richiesta già risposta o stato non valido → `409` `conflict`; domanda non presente nella richiesta o risposta obbligatoria mancante → `400` `validation_error`; file troppo grande → `413` `payload_too_large`. CasaZen ritenta solo su `5xx`, `429` e timeout.
-
-**Se queste chiamate non sono disponibili al lancio**, l'alternativa provvisoria è il link di ritorno al modulo CF (sezione 1) con lo stesso `leaseId`: l'utente completa lì il passaggio e CF emette lo stesso evento successivo.
-
-## 5. File
-
-I file sono elencati in `files[]` (eventi) e scaricati da CasaZen; i file che CasaZen restituisce a CF viaggiano con `POST .../documents`. L'oggetto:
+Il PDF dell'attestazione è descritto da `file` e scaricato da CasaZen da `downloadUrl`. L'oggetto:
 
 ```json
 { "fileId": "f-001", "kind": "Attestation", "fileName": "attestation.pdf", "contentType": "application/pdf",
-  "downloadUrl": "https://...", "downloadUrlExpiresAt": "2026-10-28T15:02:11Z" }
+  "downloadUrl": "https://...", "downloadUrlExpiresAt": "2026-10-22T09:00:00Z" }
 ```
 
 | Campo | Regola |
 |---|---|
-| `kind` | Eventi: `Attestation`, `ContractDraft`, `SignedContract`, `RegistrationReceipt`, `Other`. Caricamento: `SignedContract`, `RequestedDocument` (con `requestId` e `documentType`) |
-| `contentType` | `application/pdf`. Se CF invia anche uno zip dell'intero fascicolo, CasaZen lo ignora |
+| `kind` | `Attestation` |
+| `contentType` | `application/pdf` |
 | `downloadUrl`, `downloadUrlExpiresAt` | HTTPS, senza altre credenziali, **valido per almeno 7 giorni** |
 
-Limiti, gli stessi che CasaZen applica ai propri caricamenti: PDF fino a **20 MB** (contratto, attestazione) e fino a **10 MB** (ricevuta). CasaZen controlla che il file sia davvero un PDF (intestazione `%PDF-`), non solo il `contentType`, e scarta quelli che non lo sono.
+Limite: PDF fino a **20 MB**, lo stesso che CasaZen applica ai propri caricamenti. CasaZen controlla che il file sia davvero un PDF (intestazione `%PDF-`), non solo il `contentType`, e scarta quelli che non lo sono.
