@@ -4,6 +4,12 @@ Task SE-02, audit defect A8-02 (P0), decision D3: the public domain is configura
 code** (no default in `appsettings.json`, `vercel.json` or the sources). The code is in place; the product owner
 chooses the domain, sets the variables of section 2 and follows sections 3 and 4.
 
+**Exception to D3 (legacy production host):** `vercel.json` may contain one permanent redirect from the retired
+host `casazen-app.vercel.app` to the public canonical (`https://www.casazen.space/:path*`). That is the only CasaZen
+domain allowed in that file; every other public URL still comes from `VITE_PUBLIC_SITE_URL` /
+`App__PublicSiteBaseUrl`. After the redirect is live in production, remove `https://casazen-app.vercel.app` from
+Railway `Cors__AllowedOrigins`.
+
 Task SE-01, audit defects A8-04, A8-05, A8-06, A8-21 and R-09: a page is public only with a text a person read and
 approved in the admin dashboard; section 7 describes the review flow, the audit and what the migration withdrew.
 
