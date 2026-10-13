@@ -187,10 +187,10 @@ public class ComuneImportPostgresTests : IAsyncLifetime
         var results = await Task.WhenAll(tasks);
 
         Assert.All(results, r => Assert.True(r.Success, string.Join(",", r.Errors)));
-        Assert.Equal(29, results.Sum(r => r.Inserted));
-        Assert.Equal(29, results.Sum(r => r.Unchanged));
+        Assert.Equal(40, results.Sum(r => r.Inserted));
+        Assert.Equal(40, results.Sum(r => r.Unchanged));
         await using var check = MigratedContext();
-        Assert.Equal(29, await check.Comuni.CountAsync());
+        Assert.Equal(40, await check.Comuni.CountAsync());
         Assert.Equal(2, await check.ComuneImports.CountAsync());
     }
 
