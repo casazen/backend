@@ -220,6 +220,19 @@ internal static class PostgresAdvisoryLocks
         OrgActivityRetention = 1_405,
 
         /// <summary>
+        /// The host invites of one inviter org, or of one admin (key: org id, or user id for an admin): the daily quota, the
+        /// pending cap and the duplicate check are decided one request at a time, so the last invite of the day is given to one
+        /// request only.
+        /// </summary>
+        HostInviteQuota = 1_410,
+
+        /// <summary>Acceptance of one host invite (key: token hash): an invite is used at most once.</summary>
+        HostInviteAccept = 1_411,
+
+        /// <summary>One run of the retention of the host invites (single key, session lock held for the whole run).</summary>
+        HostInviteRetention = 1_412,
+
+        /// <summary>
         /// The access requests of one person of one org (key: org id and user id, AM-02b): the count of the requests of the last
         /// 24 hours, read from the activity log, and the line that records the next one run one at a time, so the daily limit
         /// holds across requests and API instances.

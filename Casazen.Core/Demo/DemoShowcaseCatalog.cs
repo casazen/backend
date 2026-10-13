@@ -15,7 +15,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-12.1";
+    public const string Version = "2026-10-13.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -30,6 +30,9 @@ public static class DemoShowcaseCatalog
         public const string LongStayCadastral = "long-stay-cadastral";
         public const string BookingUpcoming = "booking-upcoming";
         public const string BookingPast = "booking-past";
+        public const string HostInvitePending = "host-invite-pending";
+        public const string HostInviteUsed = "host-invite-used";
+        public const string HostInviteExpired = "host-invite-expired";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -41,6 +44,20 @@ public static class DemoShowcaseCatalog
         Scenario.LongStayCadastral,
         Scenario.BookingUpcoming,
         Scenario.BookingPast,
+        Scenario.HostInvitePending,
+        Scenario.HostInviteUsed,
+        Scenario.HostInviteExpired,
+    ];
+
+    /// <summary>
+    /// Invites of new independent hosts the demo host sent: one waiting, one accepted, one expired, so the list of the host shows every
+    /// state. Addresses are <c>@example.com</c>; the link token is random and never shown, so none of them can be accepted.
+    /// </summary>
+    public static IReadOnlyList<DemoHostInviteTemplate> HostInvites { get; } =
+    [
+        new("in-attesa", "host.demo.in-attesa@example.com", "Ciao, provaci anche tu (invito di dimostrazione).", -1, DemoHostInviteState.Pending, Scenario.HostInvitePending),
+        new("accettato", "host.demo.accettato@example.com", null, -10, DemoHostInviteState.Used, Scenario.HostInviteUsed),
+        new("scaduto", "host.demo.scaduto@example.com", null, -20, DemoHostInviteState.Expired, Scenario.HostInviteExpired),
     ];
 
     public static IReadOnlyList<DemoPropertyTemplate> Properties { get; } =
@@ -161,3 +178,20 @@ public sealed record DemoPropertyTemplate(
     DemoCadastral? Cadastral,
     IReadOnlyList<string> Scenarios,
     IReadOnlyList<DemoBookingTemplate> Bookings);
+
+/// <summary>State a demo host invite is created in.</summary>
+public enum DemoHostInviteState
+{
+    Pending,
+    Used,
+    Expired,
+}
+
+/// <summary>An invite of the demo host: created <paramref name="CreatedOffsetDays"/> days from today (negative: in the past).</summary>
+public sealed record DemoHostInviteTemplate(
+    string Key,
+    string Email,
+    string? Message,
+    int CreatedOffsetDays,
+    DemoHostInviteState State,
+    string Scenario);

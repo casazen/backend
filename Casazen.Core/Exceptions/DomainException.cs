@@ -60,3 +60,10 @@ public class DomainForbiddenException(string code, string messageKey, params obj
 /// </summary>
 public class DomainGoneException(string code, string messageKey, params object[] messageArgs)
     : DomainException(code, messageKey, messageArgs);
+
+/// <summary>
+/// A limit of the domain is used up (a daily quota, a cap of pending items) and the caller must wait or free something. HTTP
+/// 429 with the stable <see cref="DomainException.Code"/>. Not for the rate limiting middleware, which answers by itself.
+/// </summary>
+public class DomainTooManyRequestsException(string code, string messageKey, params object[] messageArgs)
+    : DomainException(code, messageKey, messageArgs);

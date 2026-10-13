@@ -1387,6 +1387,110 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("HighTensionAreaComuni");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.HostInviteAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Action")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ActorOrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("InviteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InviteId")
+                        .HasDatabaseName("IX_HostInviteAuditEntries_InviteId");
+
+                    b.HasIndex("ActorOrgId", "OccurredAt")
+                        .HasDatabaseName("IX_HostInviteAuditEntries_ActorOrgId_OccurredAt");
+
+                    b.ToTable("HostInviteAuditEntries");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.HostInviteRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("InvitedByOrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("InvitedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("PersonalDataErasedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UsedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_HostInviteRecords_TokenHash");
+
+                    b.HasIndex("InvitedByOrgId", "CreatedAt")
+                        .HasDatabaseName("IX_HostInviteRecords_InvitedByOrgId_CreatedAt");
+
+                    b.HasIndex("InvitedByUserId", "Email")
+                        .HasDatabaseName("IX_HostInviteRecords_InvitedByUserId_Email");
+
+                    b.ToTable("HostInviteRecords");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.InAppNotification", b =>
                 {
                     b.Property<Guid>("Id")
