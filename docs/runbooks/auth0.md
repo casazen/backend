@@ -66,6 +66,13 @@ Test users (E2E, demo, Maestro) live only in the test tenant. The code holds no 
 `Auth0__*`, the web app `VITE_AUTH0_*`, the mobile app `EXPO_PUBLIC_AUTH0_*`, the helper scripts of `scripts/`
 `E2E_AUTH0_DOMAIN` / `E2E_AUTH0_CLIENT_ID` (or `Auth0__Domain` for `start-backend-local.ps1`).
 
+### 1.0 When a second tenant is not available: one tenant, two environments (§ 1.2)
+
+The Free plan allows **one** tenant. When the product owner cannot create a second one, test and production share it and
+are separated by **resources**, not by tenant: § 1.2. This is a deliberate deviation from the rule above (audit A1-32),
+with the residual risks listed there. Everything written about "the test tenant" below then means "the test resources of
+the shared tenant".
+
 ### 1.1 Separating the tenants (one-time, product owner)
 
 Decide first which of the two environments keeps the tenant used today. Keeping it for **production** keeps the real
@@ -111,6 +118,53 @@ users and their passwords where they are; the test environment then gets a new, 
 Check: log in on the test web app → the Auth0 page shows the test tenant domain; log in on production → the production
 domain. A token of the test tenant sent to the production API answers **401** (issuer and signing keys differ), and the
 reverse.
+
+### 1.2 One shared tenant: what separates test from production
+
+Identifiers (production keeps today's values, nothing existing is renamed; test gets the `-test` ones):
+
+| Resource | Test | Production |
+|---|---|---|
+| Database connection | `casazen-test-users` | `casazen-prod-users` (or the existing `Username-Password-Authentication`, if it holds the real users: do not migrate them) |
+| API identifier (`Auth0__Audience`, `VITE_AUTH0_AUDIENCE`, `EXPO_PUBLIC_AUTH0_AUDIENCE`) | `https://casazen-api-test` | `https://casazen-api` (unchanged) |
+| SPA application | `casazen-web-test` | existing SPA application |
+| Native application (mobile) | `casazen-mobile-test` | existing Native application |
+| M2M application (Management API) | `casazen-backend-test` | existing M2M application |
+
+Rules, all of them needed:
+
+1. **Connections per application.** Each application has enabled **only** the database connection of its environment
+   (Applications → application → Connections). Disable `Username-Password-Authentication` on the test applications and
+   every social connection nobody asked for. This is what keeps test users out of production and lets the same email
+   exist in both (their `sub` differ).
+2. **One API per environment**, with the same permissions and RBAC settings (*Enable RBAC*, *Add Permissions in the
+   Access Token*, *Allow Offline Access*). The scopes the web app requests (`read:properties`, …) must exist on both.
+   Authorize each application only on the API of its own environment (APIs → Application Access): the backend rejects a
+   token whose `aud` is not its own `Auth0__Audience`, and that is the **only** check that tells the two backends apart,
+   because the issuer (`Auth0__Domain`, custom domain included) is the same.
+3. **Allowed URLs per application.** Test applications: localhost, the `develop` deployment and the preview pattern.
+   Production applications: the production domain only. No URL in both.
+4. **Railway / Vercel / EAS / GitHub:** `Auth0__Domain` / `VITE_AUTH0_DOMAIN` / `EXPO_PUBLIC_AUTH0_DOMAIN` are the same
+   in both environments; audience and client ids differ. The frontend build fails on Vercel without
+   `VITE_AUTH0_AUDIENCE` for this reason.
+5. **Management API (M2M).** Use one M2M application per environment, but know the limit: Auth0 cannot scope an M2M
+   application to a connection, so the test one can **block, change or delete production users** if it is ever given a
+   production user id. Grant the test M2M application only the scopes the test flows need and never reuse a secret
+   between the two Railway environments. The backend only calls the Management API with ids it read from its own
+   database (separate schema per environment), which is the second barrier.
+6. **Verification email.** The Redirect To of *Verification Email (Link)* is **per tenant**, and Auth0 supports only
+   `application.name`, `application.clientID` and `application.callback_domain` in it. Use one template with a
+   condition on the application name, each branch an exact `https://<app>/email-verified` of that environment, and keep
+   those URLs in the Allowed Callback URLs of the matching application (§ 11.2). Email provider, templates, password
+   policy, MFA, Identifier First and the custom domain are tenant-wide and shared.
+7. **The Action `CasaZen claims` (§ 6) is shared**: it runs for every application of the tenant. Any change is live in
+   production at once: review it like production code, and limit test-only logic with `event.client.client_id`.
+8. **Quota and limits are shared**: test users count in the monthly active users of the plan, and the tenant carries the
+   Production tag (rate limits of production apply to test traffic too).
+
+Check: a token obtained by `casazen-web-test` has `aud` `https://casazen-api-test` and is answered **401** by the
+production API; a production token is answered **401** by the test API. A test user cannot log in on the production
+application ("Wrong email or password"), and the reverse.
 
 ## 2. API (resource server)
 

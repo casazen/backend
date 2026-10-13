@@ -22,7 +22,7 @@ if (-not $env:Auth0__Domain) {
   throw 'Set Auth0__Domain to the login domain of your development/test Auth0 tenant (same as VITE_AUTH0_DOMAIN of the web app).'
 }
 if (-not $env:Auth0__Audience) {
-  $env:Auth0__Audience = 'https://casazen-api'
+  $env:Auth0__Audience = 'https://casazen-api-test'
 }
 
 Write-Host "============================================================"
