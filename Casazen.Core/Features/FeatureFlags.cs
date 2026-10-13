@@ -122,6 +122,15 @@ public static class FeatureFlags
     /// </summary>
     public const string InAppNotifications = "InAppNotifications";
 
+    /// <summary>
+    /// SEO-INVITE (product owner, 2026-10-13): CasaZen is on private invitation, prices and the onboarding of new customers are
+    /// not defined yet. Off (the default): the public SEO pages carry no call to action to sign up ("Pubblica la tua casa"):
+    /// <c>cta</c> is <c>null</c> in <c>GET api/public/content/…</c> and the crawler page has no link to <c>/signup</c>. The
+    /// registration itself is closed outside the code: Auth0 "Disable Sign Ups" on every connection, and
+    /// <c>Suppliers__AnyComune=false</c> with no pilot comuni (docs/runbooks/feature-flags.md).
+    /// </summary>
+    public const string SeoSignupCta = "SeoSignupCta";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -136,5 +145,6 @@ public static class FeatureFlags
         OrgTeam,
         PropertyModeChange,
         InAppNotifications,
+        SeoSignupCta,
     ];
 }

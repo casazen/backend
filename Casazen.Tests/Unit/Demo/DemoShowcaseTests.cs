@@ -66,11 +66,26 @@ public class DemoShowcaseTests
 
         var covered = DemoShowcaseCatalog.Properties
             .SelectMany(p => p.Scenarios.Concat(p.Bookings.Select(b => b.Scenario)))
+            .Concat(DemoShowcaseCatalog.HostInvites.Select(i => i.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Publish);
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Key == DemoShowcaseCatalog.DraftKey && !p.Publish);
         Assert.All(DemoShowcaseCatalog.Properties, p => Assert.Equal(6, p.Place.IstatCode.Length));
+    }
+
+    [Fact]
+    public void HostInvites_EveryTemplate_IsObviouslyTestData_WithUniqueKeys_AndEveryStateIsCovered()
+    {
+        var invites = DemoShowcaseCatalog.HostInvites;
+
+        Assert.Equal(invites.Count, invites.Select(i => i.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(invites, i => Assert.EndsWith("@example.com", i.Email, StringComparison.Ordinal));
+        Assert.All(invites, i => Assert.True(i.CreatedOffsetDays < 0));
+        Assert.Equal(
+            Enum.GetValues<DemoHostInviteState>().Order(),
+            invites.Select(i => i.State).Distinct().Order());
+        Assert.Contains(DemoShowcaseCatalog.Scenario.HostInvitePending, DemoShowcaseCatalog.Scenarios);
     }
 }

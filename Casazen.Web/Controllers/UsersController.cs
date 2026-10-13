@@ -473,10 +473,14 @@ public class UsersController(
     /// <summary>The caller's own profile, with where it stands with the host onboarding gate (PL-02).</summary>
     private async Task<UserDetailDto> ToOwnDetailAsync(User user)
     {
-        var detail = ToDetail(user, await ResolveOrgAsync(user));
+        var org = await ResolveOrgAsync(user);
+        var detail = ToDetail(user, org);
         var onboarding = await hostOnboardingGate.GetStatusAsync(user.Id, HttpContext.RequestAborted);
         detail.OnboardingRequired = !onboarding.IsComplete;
         detail.ConsentsAccepted = onboarding.ConsentsAccepted;
+        // A supplier org owns no properties: the "first property" step is for host orgs only.
+        if (user.OrgId is Guid orgId && org?.OrgType != OrgType.Supplier)
+            detail.HasProperties = await onboardingService.OrgHasPropertiesAsync(orgId, HttpContext.RequestAborted);
         return detail;
     }
 

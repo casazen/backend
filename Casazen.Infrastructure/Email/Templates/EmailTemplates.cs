@@ -24,6 +24,7 @@ public static partial class EmailTemplates
         public const string ServiceRequestTimeProposed = "service-request-time-proposed";
         public const string ServiceRequestProposalAnswered = "service-request-proposal-answered";
         public const string SupplierInvite = "supplier-invite";
+        public const string HostInvite = "host-invite";
         public const string GuestCheckInLink = "guest-checkin-link";
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
         public const string AlloggiatiDeadline = "alloggiati-deadline";
@@ -285,6 +286,36 @@ public static partial class EmailTemplates
             .LinkFallback("SupplierInvite_LinkFallback", signupUrl)
             .Muted("SupplierInvite_Expires", builder.FormatInstant(expiresAtUtc))
             .Build("SupplierInvite_Subject");
+    }
+
+    /// <summary>
+    /// Invitation of a prospective independent host by a platform admin (<paramref name="inviterName"/> null) or by a host. The
+    /// invite grants nothing: the email says to sign up normally. <paramref name="message"/> is the inviter's note, HTML-encoded
+    /// like every value; the expiry is shown in Italian time (Europe/Rome).
+    /// </summary>
+    public static EmailContent HostInvite(
+        CultureInfo culture,
+        string email,
+        string? inviterName,
+        string? message,
+        string signupUrl,
+        DateTime expiresAtUtc)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        builder.Heading("HostInvite_Title");
+        if (string.IsNullOrWhiteSpace(inviterName))
+            builder.Paragraph("HostInvite_BodyFromTeam");
+        else
+            builder.Paragraph("HostInvite_BodyFromHost", inviterName);
+
+        return builder
+            .Muted("HostInvite_EmailHint", email)
+            .Paragraph("HostInvite_NextSteps")
+            .Quote("HostInvite_MessageLabel", message)
+            .Button("HostInvite_Cta", signupUrl)
+            .LinkFallback("HostInvite_LinkFallback", signupUrl)
+            .Muted("HostInvite_Expires", builder.FormatInstant(expiresAtUtc))
+            .Build("HostInvite_Subject");
     }
 
     /// <summary>Tokenized self check-in link, to the guest.</summary>

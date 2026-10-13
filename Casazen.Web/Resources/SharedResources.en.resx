@@ -2722,4 +2722,61 @@
   <data name="DemoOrgNotFound" xml:space="preserve">
     <value>Organization not found.</value>
   </data>
+  <data name="HostInviteNotFound" xml:space="preserve">
+    <value>Invitation not found.</value>
+  </data>
+  <data name="HostInviteNotPending" xml:space="preserve">
+    <value>Only a pending invitation can be revoked: this one has already been used, has expired or was revoked.</value>
+  </data>
+  <data name="HostInviteNotResendable" xml:space="preserve">
+    <value>An invitation that was already used or revoked cannot be sent again.</value>
+  </data>
+  <data name="HostInviteDuplicate" xml:space="preserve">
+    <value>You already have a pending invitation for this email address. Revoke it or wait for it to expire before inviting it again.</value>
+  </data>
+  <data name="HostInviteEmailTaken" xml:space="preserve">
+    <value>This email address is already registered on CasaZen.</value>
+  </data>
+  <data name="HostInviteEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address.</value>
+  </data>
+  <data name="HostInviteEmailRequired" xml:space="preserve">
+    <value>The email address is required.</value>
+  </data>
+  <data name="HostInviteMessageTooLong" xml:space="preserve">
+    <value>The message can be at most 500 characters long.</value>
+  </data>
+  <data name="HostInviteLocaleInvalid" xml:space="preserve">
+    <value>The language is not valid: use “it” or “en”.</value>
+  </data>
+  <data name="HostInviteTokenRequired" xml:space="preserve">
+    <value>The invitation code is required.</value>
+  </data>
+  <data name="HostInviteSelf" xml:space="preserve">
+    <value>You cannot invite your own email address.</value>
+  </data>
+  <data name="HostInviteQuotaExceeded" xml:space="preserve">
+    <value>You have reached the maximum number of invitations for today. Try again later.</value>
+  </data>
+  <data name="HostInvitePendingLimit" xml:space="preserve">
+    <value>You have too many pending invitations. Revoke the ones you no longer need or wait for them to expire.</value>
+  </data>
+  <data name="HostInviteInvalid" xml:space="preserve">
+    <value>This invitation is not valid. Open the link from the email again or ask for a new invitation.</value>
+  </data>
+  <data name="HostInviteExpired" xml:space="preserve">
+    <value>This invitation has expired. Ask whoever invited you to send you a new one.</value>
+  </data>
+  <data name="HostInviteRevoked" xml:space="preserve">
+    <value>This invitation was revoked. Ask whoever invited you to send you a new one.</value>
+  </data>
+  <data name="HostInviteUsed" xml:space="preserve">
+    <value>This invitation has already been used by another account.</value>
+  </data>
+  <data name="HostInviteEmailNotVerified" xml:space="preserve">
+    <value>Verify your email address before accepting the invitation.</value>
+  </data>
+  <data name="HostInviteEmailMismatch" xml:space="preserve">
+    <value>This invitation was written for another email address: sign in with the account it was sent to.</value>
+  </data>
 </root>

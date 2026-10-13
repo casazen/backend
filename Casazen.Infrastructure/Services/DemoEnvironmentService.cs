@@ -115,6 +115,7 @@ public class DemoEnvironmentService(
             throw new DomainRuleException("demo_reset_confirmation", "DemoResetConfirmation");
 
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
+        await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
         var ownerId = await OwnerIdAsync(orgId, cancellationToken);
         var created = 0;
@@ -123,6 +124,9 @@ public class DemoEnvironmentService(
             await CreateShowcasePropertyAsync(orgId, ownerId, template, cancellationToken);
             created++;
         }
+
+        foreach (var invite in DemoShowcaseCatalog.HostInvites)
+            await CreateHostInviteAsync(orgId, ownerId, invite, cancellationToken);
 
         settings.LastResetAt = UtcNow();
         settings.LastResetBy = actorUserId;
@@ -189,6 +193,63 @@ public class DemoEnvironmentService(
         }
 
         return propertyIds.Count;
+    }
+
+    /// <summary>Deletes the host invites (and their audit lines) the showcase wrote for the org, found by their markers.</summary>
+    private async Task RemoveShowcaseHostInvitesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var inviteIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.HostInvite)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (inviteIds.Count == 0)
+            return;
+
+        await db.HostInviteAuditEntries.Where(e => inviteIds.Contains(e.InviteId)).ExecuteDeleteAsync(cancellationToken);
+        await db.HostInviteRecords.Where(i => inviteIds.Contains(i.Id)).ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.HostInvite)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One invite of the demo host, in the state of its template. The token is random and thrown away: the link of a demo invite
+    /// does not exist, so it can be neither opened nor accepted.
+    /// </summary>
+    private async Task CreateHostInviteAsync(
+        Guid orgId, string ownerId, DemoHostInviteTemplate template, CancellationToken cancellationToken)
+    {
+        var created = UtcNow().AddDays(template.CreatedOffsetDays);
+        var invite = new HostInviteRecord
+        {
+            Email = template.Email,
+            TokenHash = Casazen.Core.Suppliers.SupplierInviteTokens.Hash(Casazen.Core.Suppliers.SupplierInviteTokens.Generate()),
+            Message = template.Message,
+            InvitedByUserId = ownerId,
+            InvitedByOrgId = orgId,
+            CreatedAt = created,
+            ExpiresAt = template.State == DemoHostInviteState.Pending
+                ? UtcNow().Add(Casazen.Core.HostInvites.HostInviteRules.Validity)
+                : created.Add(Casazen.Core.HostInvites.HostInviteRules.Validity),
+        };
+        if (template.State == DemoHostInviteState.Used)
+        {
+            invite.IsUsed = true;
+            invite.UsedAt = created.AddHours(2);
+            invite.UsedByUserId = DemoSafetyChecklist.Actor;
+        }
+
+        db.HostInviteRecords.Add(invite);
+        db.HostInviteAuditEntries.Add(new HostInviteAuditEntry
+        {
+            InviteId = invite.Id,
+            Action = HostInviteAuditAction.Created,
+            ActorUserId = ownerId,
+            ActorOrgId = orgId,
+            OccurredAt = created,
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.HostInvite, invite.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     private async Task<int> RemoveUnpublishedAsync(Guid orgId, CancellationToken cancellationToken)

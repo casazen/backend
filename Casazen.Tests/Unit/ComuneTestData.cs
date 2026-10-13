@@ -8,8 +8,9 @@ using Microsoft.Extensions.Options;
 namespace Casazen.Tests.Unit;
 
 /// <summary>
-/// The official ISTAT comuni list for tests (SU-04). <c>Fixtures/Comuni/comuni-istat-sample.csv</c> holds 29 rows copied
-/// verbatim from the official file (<c>Data/Seeds/comuni-istat.csv</c>, ISTAT, 21/02/2026): the comuni the tests need, among
+/// The official ISTAT comuni list for tests (SU-04). <c>Fixtures/Comuni/comuni-istat-sample.csv</c> holds 40 rows copied
+/// from the official file (<c>Data/Seeds/comuni-istat.csv</c>, ISTAT, 21/02/2026; the 11 SEO pilots added in 2026-10 keep
+/// the sample's older layout, whose 2017-2025 numeric code column is their current code): the comuni the tests need, among
 /// them the ones the old hard-coded registry got wrong (Torino 001272, Bellagio 013250, Menaggio 013145, Varenna 097084 in
 /// Lecco), pairs of comuni with the same name in different provinces (Castro, Livo, Samone, Peglio) and a bilingual one
 /// (Bolzano/Bozen). It is imported through the real import, never inserted by hand.
