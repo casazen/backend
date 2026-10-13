@@ -84,6 +84,7 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyPropertyRows), Pm01 },
         { nameof(LegacyPropertyRows), Sp10 },
         { nameof(LegacyPropertyRows), Sp15b },
+        { nameof(LegacyServiceRequestRows), Sp15b },
         { nameof(LegacyPropertyRows), Db03 },
         { nameof(LegacyPropertyRows), Latest },
         { nameof(LegacyLeaseRows), Lt14 },
