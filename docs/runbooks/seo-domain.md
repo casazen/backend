@@ -67,6 +67,22 @@ The domain is a product decision (not taken in code). Once chosen:
 2. Decide what the other names do (e.g. the apex redirecting to `www`, or the old `*.vercel.app` production URL):
    Vercel → Domains → **Redirect to** the chosen domain, so only one host serves the pages.
 
+### Chosen domain: `casazen.space` (D3 exception)
+
+- Canonical host: `https://casazen.space` (apex); `www.casazen.space` redirects to it from Vercel → Domains (**Redirect to**,
+  permanent).
+- The old production alias `casazen-app.vercel.app` cannot be redirected from the Domains dropdown (it is not a project domain).
+  Frontend `vercel.json` redirects it with a permanent (308) redirect that keeps the path and the query string, the
+  configuration Vercel documents for the production `vercel.app` host
+  (<https://vercel.com/docs/routing/redirects#redirect-the-production-vercel.app-hostname>). It is the **only** place where a
+  CasaZen domain is written in the frontend configuration: a redirect in `vercel.json` is static and cannot read an environment
+  variable. Covered by `src/test/vercel-routing.test.ts` (exact host only: the preview and deployment URLs are not redirected).
+- **Release order**: the redirect reaches production only after `casazen.space` serves the production deployment (Vercel
+  domain verified, `VITE_PUBLIC_SITE_URL` and Railway `App__PublicSiteBaseUrl` set to `https://casazen.space`, Auth0 URLs
+  added, section 2). Until the redirect is live, keep `https://casazen-app.vercel.app` in Railway `Cors__AllowedOrigins`; remove
+  it afterwards.
+- If the public domain changes again, change this redirect in the same release as the variables.
+
 ## 2. Variables
 
 Set them **before** the release reaches `main`: the production API does not start without `App__PublicSiteBaseUrl`
@@ -254,13 +270,22 @@ Defects A8-04 (the legal review was an automatic stamp), A8-05 (a regeneration r
 
    The admin list shows these as "Contenuto non generato: …". A page left in one of them is generated again by the next
    "Genera tutti" (also without "force") once a provider is configured.
-3. **Prompt** (`SeoContentPrompt`, version stored with each revision, currently `seo-it-2026-09-v1`): Italian, only the
+3. **Prompt** (`SeoContentPrompt`, version stored with each revision): Italian, only the
    HTML tags of the allowlist, the sections to write (CIN, Alloggiati Web, imposta di soggiorno, Fonti ufficiali for the
    guide; imposta, calcolo, esenzioni, fonti for the tourist tax page), 300-600 words, no legal or tax advice, and **only
    the facts and sources listed in the prompt**: the CIN and Alloggiati facts verified in
    `.claude/context/regulations/cin.md` and `alloggiati.md` with their official URLs, and the tourist tax rates of the
    comune in force today with their `SourceUrl` (https only). Without a rate the prompt says there is no verified rate and
-   no amount may be written. A new prompt version makes "Genera tutti" regenerate every page.
+   no amount may be written.
+   - **Lombardy guides** add the section "Regole della Lombardia: CIR e flussi turistici (Ross1000)" (400-750 words): only
+     the facts marked official in `.claude/context/regulations/cir-lombardia.md` and `istat-flussi-turistici.md` (CIR and
+     its path SUAP → Provincia → Ross1000, CIN instead of CIR in the ads, monthly flows by the 5th and their sanction), the
+     regional sources and, for the provinces of Como, Milano and Lecco, the province's own page. The open points of that
+     research (CIR format, article of the CIR sanction) are not written.
+   - **Versions, per page** (`SeoContentPrompt.VersionFor`): `seo-it-2026-10-lom-v1` for the Lombardy guides,
+     `seo-it-2026-09-v1` for every other page. "Genera tutti" regenerates only the pages whose version changed (and those
+     whose data changed): after this change the Lombardy guides come back as drafts to review, the other pages are left
+     alone. Their published text stays online until the new draft is approved.
 4. **Review** (admin → SEO → "Rivedi"): the text waiting for approval next to the text published now, both sanitized as
    the public page shows them, and the review history. "Approva e pubblica" needs the confirmation checkbox ("revisione
    legale"; for the first 100 pages, `CounselRequired`, the backend refuses without it: 422 `seo_counsel_required`) and
