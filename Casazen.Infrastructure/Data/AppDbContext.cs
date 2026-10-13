@@ -118,6 +118,8 @@ public class AppDbContext(
     public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
+    public DbSet<HostInviteRecord> HostInviteRecords { get; set; } = null!;
+    public DbSet<HostInviteAuditEntry> HostInviteAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
     /// <summary>
@@ -1328,6 +1330,32 @@ public class AppDbContext(
         // key: the trail outlives a supplier org deleted by the fix-orphaned repair.
         modelBuilder.Entity<SupplierAdminAuditEntry>()
             .HasIndex(e => new { e.SupplierOrgId, e.OccurredAt });
+
+        // ─── Host invites (invitation of new independent hosts) ──────────────────
+        modelBuilder.Entity<HostInviteRecord>(entity =>
+        {
+            // The link finds its invite by the hash of the token; sending it again swaps the hash, so it is unique.
+            entity.HasIndex(i => i.TokenHash)
+                .IsUnique()
+                .HasDatabaseName("UIX_HostInviteRecords_TokenHash");
+
+            // The duplicate check and the lists of an inviter, newest first.
+            entity.HasIndex(i => new { i.InvitedByUserId, i.Email })
+                .HasDatabaseName("IX_HostInviteRecords_InvitedByUserId_Email");
+
+            // The pending cap of a host org and the admin list by creation date.
+            entity.HasIndex(i => new { i.InvitedByOrgId, i.CreatedAt })
+                .HasDatabaseName("IX_HostInviteRecords_InvitedByOrgId_CreatedAt");
+        });
+
+        // Audit trail and source of the daily quota: read by host org and time window. No foreign key: it outlives a purged invite.
+        modelBuilder.Entity<HostInviteAuditEntry>(entity =>
+        {
+            entity.HasIndex(e => new { e.ActorOrgId, e.OccurredAt })
+                .HasDatabaseName("IX_HostInviteAuditEntries_ActorOrgId_OccurredAt");
+            entity.HasIndex(e => e.InviteId)
+                .HasDatabaseName("IX_HostInviteAuditEntries_InviteId");
+        });
 
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()

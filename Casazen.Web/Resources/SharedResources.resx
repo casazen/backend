@@ -2722,4 +2722,61 @@
   <data name="DemoOrgNotFound" xml:space="preserve">
     <value>Organizzazione non trovata.</value>
   </data>
+  <data name="HostInviteNotFound" xml:space="preserve">
+    <value>Invito non trovato.</value>
+  </data>
+  <data name="HostInviteNotPending" xml:space="preserve">
+    <value>Solo un invito in attesa può essere revocato: questo è già stato usato, è scaduto o è stato revocato.</value>
+  </data>
+  <data name="HostInviteNotResendable" xml:space="preserve">
+    <value>Un invito già usato o revocato non può essere rinviato.</value>
+  </data>
+  <data name="HostInviteDuplicate" xml:space="preserve">
+    <value>Hai già un invito in attesa per questo indirizzo email. Revocalo o attendi che scada prima di invitarlo di nuovo.</value>
+  </data>
+  <data name="HostInviteEmailTaken" xml:space="preserve">
+    <value>Questo indirizzo email è già registrato su CasaZen.</value>
+  </data>
+  <data name="HostInviteEmailInvalid" xml:space="preserve">
+    <value>Inserisci un indirizzo email valido.</value>
+  </data>
+  <data name="HostInviteEmailRequired" xml:space="preserve">
+    <value>L'indirizzo email è obbligatorio.</value>
+  </data>
+  <data name="HostInviteMessageTooLong" xml:space="preserve">
+    <value>Il messaggio può contenere al massimo 500 caratteri.</value>
+  </data>
+  <data name="HostInviteLocaleInvalid" xml:space="preserve">
+    <value>La lingua non è valida: usa «it» o «en».</value>
+  </data>
+  <data name="HostInviteTokenRequired" xml:space="preserve">
+    <value>Il codice dell'invito è obbligatorio.</value>
+  </data>
+  <data name="HostInviteSelf" xml:space="preserve">
+    <value>Non puoi invitare il tuo stesso indirizzo email.</value>
+  </data>
+  <data name="HostInviteQuotaExceeded" xml:space="preserve">
+    <value>Hai raggiunto il numero massimo di inviti per oggi. Riprova più tardi.</value>
+  </data>
+  <data name="HostInvitePendingLimit" xml:space="preserve">
+    <value>Hai troppi inviti in attesa. Revoca quelli che non servono più o attendi che scadano.</value>
+  </data>
+  <data name="HostInviteInvalid" xml:space="preserve">
+    <value>Questo invito non è valido. Apri di nuovo il link ricevuto via email o chiedi un nuovo invito.</value>
+  </data>
+  <data name="HostInviteExpired" xml:space="preserve">
+    <value>Questo invito è scaduto. Chiedi a chi ti ha invitato di mandartene uno nuovo.</value>
+  </data>
+  <data name="HostInviteRevoked" xml:space="preserve">
+    <value>Questo invito è stato revocato. Chiedi a chi ti ha invitato di mandartene uno nuovo.</value>
+  </data>
+  <data name="HostInviteUsed" xml:space="preserve">
+    <value>Questo invito è già stato usato da un altro account.</value>
+  </data>
+  <data name="HostInviteEmailNotVerified" xml:space="preserve">
+    <value>Verifica il tuo indirizzo email prima di accettare l'invito.</value>
+  </data>
+  <data name="HostInviteEmailMismatch" xml:space="preserve">
+    <value>Questo invito è stato scritto per un altro indirizzo email: accedi con l'account a cui è stato inviato.</value>
+  </data>
 </root>

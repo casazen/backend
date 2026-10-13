@@ -21,7 +21,10 @@ namespace Casazen.Tests.Unit.Authorization;
 /// </summary>
 public class SharedPropertyPolicyTests
 {
-    /// <summary>Every action a caller with only the long-rent <c>property.*</c> permissions may pass the policies of.</summary>
+    /// <summary>
+    /// Every action a caller with only the long-rent <c>property.*</c> permissions may pass the policies of: the property core,
+    /// plus the one deliberate exception, the recommendation of CasaZen to a friend (<c>HostInvitationsController</c>).
+    /// </summary>
     private static readonly string[] SharedPropertyActions =
     [
         "PropertiesController.Create",
@@ -45,6 +48,14 @@ public class SharedPropertyPolicyTests
         "PropertyModeController.Schedule",
         // AM-03: the member in charge of a property is part of the property core (both kinds of landlord have properties).
         "PropertyResponsibleController.Set",
+        // Recommendation of CasaZen to a friend: open to every member of a host org, whatever the role and the rental context
+        // (a loyalty-style action, not an administrative one). It reuses the permission every host role holds in either context
+        // instead of a new permission to seed on every role; it touches no property and no short-stay data.
+        "HostInvitationsController.Create",
+        "HostInvitationsController.GetQuota",
+        "HostInvitationsController.List",
+        "HostInvitationsController.Resend",
+        "HostInvitationsController.Revoke",
     ];
 
     [Fact]

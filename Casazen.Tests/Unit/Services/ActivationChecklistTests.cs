@@ -34,7 +34,9 @@ public class ActivationChecklistTests
         OrgEntity? org,
         ActivationPropertyFacts? properties = null,
         bool firstBooking = false,
-        bool account = true) => new(account, account, account, org, properties ?? ActivationPropertyFacts.None, firstBooking);
+        bool account = true,
+        bool? onboardingCompleted = null) =>
+        new(account, account, account, org, properties ?? ActivationPropertyFacts.None, firstBooking, onboardingCompleted ?? account);
 
     private static ActivationChecklistStep Step(OnboardingActivationStatus status, string key) =>
         Assert.Single(status.Steps, s => s.Key == key);
@@ -65,6 +67,37 @@ public class ActivationChecklistTests
             Assert.Equal(ActivationStepStates.Blocked, step.State);
             Assert.Equal(ActivationStepReasons.OnboardingIncomplete, step.Reason);
         }
+    }
+
+    [Fact]
+    public void Build_RoleNotChosenButOnboardingCompletedWithOrgAndConsents_AccountIsDone()
+    {
+        // Same facts as HostOnboardingStatus.IsComplete (invite acceptance completes the onboarding without a rental type).
+        var facts = new ActivationFacts(false, true, true, ConfiguredOrg(), ActivationPropertyFacts.None, false, true);
+
+        var status = ActivationChecklist.Build(facts);
+
+        Assert.Equal(ActivationStepStates.Done, Step(status, "account").State);
+    }
+
+    [Fact]
+    public void Build_RoleChosenButOnboardingNotCompleted_AccountIsTodo()
+    {
+        var status = ActivationChecklist.Build(Facts(ConfiguredOrg(), onboardingCompleted: false));
+
+        var step = Step(status, "account");
+        Assert.Equal(ActivationStepStates.Todo, step.State);
+        Assert.Equal(ActivationStepReasons.OnboardingIncomplete, step.Reason);
+    }
+
+    [Fact]
+    public void Build_OnboardingCompletedButConsentsOutdated_AccountIsTodo()
+    {
+        var facts = new ActivationFacts(true, true, false, ConfiguredOrg(), ActivationPropertyFacts.None, false, true);
+
+        var status = ActivationChecklist.Build(facts);
+
+        Assert.Equal(ActivationStepStates.Todo, Step(status, "account").State);
     }
 
     // ─── Organization (name and slug) ────────────────────────────────────────────

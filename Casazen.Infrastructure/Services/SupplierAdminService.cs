@@ -407,13 +407,13 @@ public sealed class SupplierAdminService(
             _ => i => !i.IsUsed && i.RevokedAt == null && i.TokenHash != null && i.ExpiresAt > now,
         };
 
-    private const string LikeEscape = "\\";
+    internal const string LikeEscape = "\\";
 
     /// <summary>
     /// <c>%text%</c> with the LIKE wildcards of the text escaped, or null for no search: a search for <c>50%</c> or
     /// <c>a_b</c> finds those characters, not everything.
     /// </summary>
-    private static string? LikePattern(string? search)
+    internal static string? LikePattern(string? search)
     {
         var text = search?.Trim();
         if (string.IsNullOrEmpty(text))

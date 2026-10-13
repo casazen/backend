@@ -85,7 +85,7 @@ public class OnboardingService(
     {
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
-            return ActivationChecklist.Build(new ActivationFacts(false, false, false, null, ActivationPropertyFacts.None, false));
+            return ActivationChecklist.Build(new ActivationFacts(false, false, false, null, ActivationPropertyFacts.None, false, false));
 
         var roleChosen = user.RentalType.HasValue;
         var orgProvisioned = user.OrgId.HasValue;
@@ -97,10 +97,11 @@ public class OnboardingService(
         var consentsAccepted = false;
         if (orgId.HasValue)
         {
+            // Terms, Privacy and DPA only: the same documents as the host onboarding gate (HostOnboardingGate.Evaluate).
+            // The subprocessors acknowledgement is collected but does not block the host contexts.
             var tos = legalDocumentService.GetTos();
             var privacy = legalDocumentService.GetPrivacy();
             var dpa = legalDocumentService.GetDpa();
-            var subprocessors = legalDocumentService.GetSubprocessors();
             var userConsents = await db.ConsentRecords.IgnoreQueryFilters()
                 .Where(c => c.UserId == userId && c.OrgId == orgId)
                 .Select(c => new { c.Type, c.Version })
@@ -109,8 +110,7 @@ public class OnboardingService(
             consentsAccepted =
                 userConsents.Any(c => c.Type == ConsentType.Tos && c.Version == tos.Version)
                 && userConsents.Any(c => c.Type == ConsentType.Privacy && c.Version == privacy.Version)
-                && userConsents.Any(c => c.Type == ConsentType.Dpa && c.Version == dpa.Version)
-                && userConsents.Any(c => c.Type == ConsentType.SubprocessorsAck && c.Version == subprocessors.Version);
+                && userConsents.Any(c => c.Type == ConsentType.Dpa && c.Version == dpa.Version);
         }
 
         Org? org = null;
@@ -132,7 +132,8 @@ public class OnboardingService(
                 cancellationToken);
 
         var status = ActivationChecklist.Build(new ActivationFacts(
-            roleChosen, orgProvisioned, consentsAccepted, org, properties, firstBookingTaken));
+            roleChosen, orgProvisioned, consentsAccepted, org, properties, firstBookingTaken,
+            user.OnboardingCompletedAt is not null));
 
         // Only a site that is really published has a link to share. On App:PublicSiteBaseUrl (D3, no fallback domain):
         // null also when it is not configured (Development/Testing).
@@ -141,6 +142,11 @@ public class OnboardingService(
 
         return status;
     }
+
+    public Task<bool> OrgHasPropertiesAsync(Guid orgId, CancellationToken cancellationToken) =>
+        db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .AnyAsync(p => p.OrgId == orgId, cancellationToken);
 
     /// <summary>
     /// Counts the org's properties for the checklist. Tenant filter only is lifted (PC-05): a soft-deleted property no

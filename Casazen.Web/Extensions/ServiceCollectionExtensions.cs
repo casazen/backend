@@ -460,6 +460,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicSupplierShowcaseService, PublicSupplierShowcaseService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
+        // Invitation of new independent hosts by admins and hosts: limits are configuration (HostInvites), validated at startup.
+        services.AddOptions<Casazen.Core.Options.HostInviteOptions>()
+            .BindConfiguration(Casazen.Core.Options.HostInviteOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.HostInviteOptions>, Casazen.Core.Options.HostInviteOptionsValidator>();
+        services.AddScoped<IHostInviteService, HostInviteService>();
+        services.AddScoped<IHostInviteRetentionService, HostInviteRetentionService>();
 
         // Official ISTAT comuni list (SU-04): read side, import (admin upload and the seed file of the deploy), the SEO view,
         // the supplier matching by ISTAT code and the validated pilot comuni of the supplier registration.
