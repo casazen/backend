@@ -13,6 +13,7 @@ public class OnboardingService(
     AppDbContext db,
     ILegalDocumentService legalDocumentService,
     IUserAuthorizationCache authorizationCache,
+    IHostOnboardingGate hostOnboardingGate,
     PublicSiteLinks publicSiteLinks) : IOnboardingService
 {
     public (bool Success, ConsentValidationError? Error) ValidateConsents(
@@ -91,27 +92,13 @@ public class OnboardingService(
         var orgProvisioned = user.OrgId.HasValue;
         var orgId = user.OrgId;
 
-        // IgnoreQueryFilters below: every query is scoped explicitly to the caller's own org, read from
-        // Users just now. The tenant filter may still hold the null org cached before OrgContextResolver
-        // provisioned the org earlier in this same request, and would then hide the caller's own rows.
-        var consentsAccepted = false;
-        if (orgId.HasValue)
-        {
-            // Terms, Privacy and DPA only: the same documents as the host onboarding gate (HostOnboardingGate.Evaluate).
-            // The subprocessors acknowledgement is collected but does not block the host contexts.
-            var tos = legalDocumentService.GetTos();
-            var privacy = legalDocumentService.GetPrivacy();
-            var dpa = legalDocumentService.GetDpa();
-            var userConsents = await db.ConsentRecords.IgnoreQueryFilters()
-                .Where(c => c.UserId == userId && c.OrgId == orgId)
-                .Select(c => new { c.Type, c.Version })
-                .ToListAsync(cancellationToken);
-
-            consentsAccepted =
-                userConsents.Any(c => c.Type == ConsentType.Tos && c.Version == tos.Version)
-                && userConsents.Any(c => c.Type == ConsentType.Privacy && c.Version == privacy.Version)
-                && userConsents.Any(c => c.Type == ConsentType.Dpa && c.Version == dpa.Version);
-        }
+        // "Onboarding completed" and "current consents" come from the host onboarding gate itself, not from a second
+        // computation of the same rule: the account step and the gate that sends a user to /onboarding (and decides
+        // between a plain update and the consents step) can never disagree, so a step shown as "todo" is always one the
+        // wizard can finish. The gate reads Terms, Privacy and the DPA of the host org; the subprocessors
+        // acknowledgement is collected but does not block the host contexts.
+        var onboarding = await hostOnboardingGate.GetStatusAsync(userId, cancellationToken);
+        var consentsAccepted = onboarding.ConsentsAccepted;
 
         Org? org = null;
         if (orgId.HasValue)
@@ -133,7 +120,7 @@ public class OnboardingService(
 
         var status = ActivationChecklist.Build(new ActivationFacts(
             roleChosen, orgProvisioned, consentsAccepted, org, properties, firstBookingTaken,
-            user.OnboardingCompletedAt is not null));
+            onboarding.OnboardingCompleted));
 
         // Only a site that is really published has a link to share. On App:PublicSiteBaseUrl (D3, no fallback domain):
         // null also when it is not configured (Development/Testing).

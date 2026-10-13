@@ -552,6 +552,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierServiceRequestReader, SupplierServiceRequestReader>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         services.AddScoped<CalendarSyncService>();
+        // The supplier's answers about the "Available" events of its calendar (they occupy until answered).
+        services.AddScoped<SupplierFreeEventService>();
         // iCal import (PC-10, runbook ical.md): recurrence window, optional section ICalImport.
         services.AddOptions<ICalImportOptions>().BindConfiguration(ICalImportOptions.SectionName);
         services.AddScoped<ICalImportService>();

@@ -22,6 +22,14 @@ public sealed class ICalImportOptions
     /// </summary>
     public int MaxFeedsPerProperty { get; set; } = 10;
 
+    /// <summary>
+    /// Supplier calendars: a free-looking event (<c>TRANSP:TRANSPARENT</c>, e.g. every all-day event of Google Calendar) the
+    /// supplier has not answered about keeps its days or hours occupied. Default true. Setting it to false (Railway:
+    /// <c>ICalImport__BlockUndecidedFreeEvents=false</c>) restores the old behavior for events not answered yet, without a
+    /// deploy; answers already given ("Busy") still apply.
+    /// </summary>
+    public bool BlockUndecidedFreeEvents { get; set; } = true;
+
     internal int EffectiveMonthsAhead => Math.Clamp(RecurrenceMonthsAhead, 1, 60);
 
     internal int EffectiveMonthsBack => Math.Clamp(RecurrenceMonthsBack, 0, 12);
