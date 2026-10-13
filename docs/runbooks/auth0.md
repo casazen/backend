@@ -154,10 +154,13 @@ Rules, all of them needed:
    between the two Railway environments. The backend only calls the Management API with ids it read from its own
    database (separate schema per environment), which is the second barrier.
 6. **Verification email.** The Redirect To of *Verification Email (Link)* is **per tenant**, and Auth0 supports only
-   `application.name`, `application.clientID` and `application.callback_domain` in it. Use one template with a
-   condition on the application name, each branch an exact `https://<app>/email-verified` of that environment, and keep
-   those URLs in the Allowed Callback URLs of the matching application (§ 11.2). Email provider, templates, password
-   policy, MFA, Identifier First and the custom domain are tenant-wide and shared.
+   `application.name`, `application.clientID` and `application.callback_domain` in it. Set it to
+   `{{ application.callback_domain }}/email-verified`: `callback_domain` is the origin of the **first** Allowed Callback
+   URL of the application that sent the email, so the **first** callback URL of each web application must be the origin of
+   its own environment, and `<origin>/email-verified` must be in its list too (§ 11.2). Keep the Auth0 default body.
+   Tenants created on or after 2026-05-05 without an enterprise plan cannot edit Redirect To: check the field is
+   editable. A Native application would redirect to its `casazen://` origin: verification is meant for the web signup.
+   Email provider, templates, password policy, MFA, Identifier First and the custom domain are tenant-wide and shared.
 7. **The Action `CasaZen claims` (§ 6) is shared**: it runs for every application of the tenant. Any change is live in
    production at once: review it like production code, and limit test-only logic with `event.client.client_id`.
 8. **Quota and limits are shared**: test users count in the monthly active users of the plan, and the tenant carries the
