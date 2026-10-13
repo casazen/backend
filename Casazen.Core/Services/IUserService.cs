@@ -110,6 +110,14 @@ public interface IUserService
         string email,
         string firstName,
         string lastName);
+
+    /// <summary>
+    /// Remembers the context the user entered last (<see cref="User.LastUsedContextKey"/>, UI-13a): <c>GET /api/me/contexts</c>
+    /// gives it back so the client opens the same area on any device. Only that column and <see cref="User.UpdatedAt"/> are written.
+    /// The caller has already checked that the user may enter <paramref name="contextKey"/>; it is stored as given.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user does not exist.</exception>
+    Task<User> SetLastUsedContextAsync(string userId, string contextKey, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -143,6 +151,16 @@ public static class UserActivationErrors
 
     /// <summary>Related rows refuse the delete (the account stays).</summary>
     public const string DeleteBlocked = "user_delete_blocked";
+}
+
+/// <summary>Stable code (HTTP 422) of the refused <c>PUT /api/me/last-context</c> (UI-13a), with the key of its message in the resources.</summary>
+public static class LastContextErrors
+{
+    /// <summary>The context does not exist, or the caller cannot enter it right now (<c>GET /api/me/contexts</c> does not list it).</summary>
+    public const string ContextNotAccessible = "context_not_accessible";
+
+    /// <summary>SharedResources key of the message of <see cref="ContextNotAccessible"/>.</summary>
+    public const string ContextNotAccessibleMessageKey = "ContextNotAccessible";
 }
 
 /// <summary>
