@@ -78,16 +78,6 @@ public sealed class OrgContextResolver(
         if (principal is null)
             return (string.Empty, string.Empty, string.Empty);
 
-        var email = principal.FindFirst("email")?.Value
-                    ?? principal.FindFirst(ClaimTypes.Email)?.Value
-                    ?? string.Empty;
-        var firstName = principal.FindFirst("given_name")?.Value
-                        ?? principal.FindFirst("name")?.Value?.Split(' ').FirstOrDefault()
-                        ?? string.Empty;
-        var lastName = principal.FindFirst("family_name")?.Value
-                       ?? principal.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
-                       ?? string.Empty;
-
-        return (email, firstName, lastName);
+        return AccountEmailResolver.ReadProfile(principal);
     }
 }

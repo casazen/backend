@@ -59,7 +59,7 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
     }
 
     [Fact]
-    public async Task Create_WithoutAServiceNorATime_StaysToBeAgreedAsBefore()
+    public async Task Create_WithoutAServiceNorATime_GetsADefaultIntervalOnTheStayCheckOutDay()
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         using var host = factory.Host(world);
@@ -74,7 +74,8 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(JsonValueKind.Null, body.GetProperty("scheduledStart").ValueKind);
+        Assert.Equal(JsonValueKind.String, body.GetProperty("scheduledStart").ValueKind);
+        Assert.Equal(JsonValueKind.String, body.GetProperty("scheduledEnd").ValueKind);
         Assert.Equal(JsonValueKind.Null, body.GetProperty("serviceListingId").ValueKind);
         Assert.Equal(JsonValueKind.Null, body.GetProperty("price").GetProperty("amountCents").ValueKind);
     }
@@ -189,6 +190,12 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var id = await factory.CreateRequestAsync(world);
+        // Legacy shape before backfill: take still sets the time when the row has none.
+        await factory.ChangeRequestAsync(id, r =>
+        {
+            r.ScheduledStartUtc = null;
+            r.ScheduledEndUtc = null;
+        });
         var slot = ServiceRequestWorlds.Slot(hour: 14);
         using var supplier = factory.Supplier(world);
 
@@ -224,6 +231,11 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var id = await factory.CreateRequestAsync(world);
+        await factory.ChangeRequestAsync(id, r =>
+        {
+            r.ScheduledStartUtc = null;
+            r.ScheduledEndUtc = null;
+        });
         var sunday = ServiceRequestWorlds.Slot(day: DayOfWeek.Sunday);
         using var supplier = factory.Supplier(world);
 

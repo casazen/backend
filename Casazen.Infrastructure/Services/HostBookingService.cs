@@ -16,10 +16,11 @@ namespace Casazen.Infrastructure.Services;
 /// Host changes to an existing booking (PC-07, A2-07, A2-08). See <see cref="IHostBookingService"/>.
 /// </summary>
 /// <remarks>
-/// Every change takes the advisory lock of the booking used by the cancellation (BK-02), so a change and a cancellation
-/// sent together never overwrite each other. New dates (and a confirmation) are saved through
-/// <see cref="IBookingRepository.UpdateAsync"/>, which adds the lock of the property and checks, in the same
-/// transaction, that no other booking takes them. Only the columns that changed are written.
+/// Every change takes the iCal-sync lock of the property before the advisory lock of the booking used by the cancellation
+/// (BK-02), so a feed sync cannot add an OTA block between the block check and the commit, and a change and a
+/// cancellation sent together never overwrite each other. New dates (and a confirmation) are saved through
+/// <see cref="IBookingRepository.UpdateAsync"/>, which adds the lock of the property and checks, in the same transaction,
+/// that no other booking takes them. Only the columns that changed are written.
 /// </remarks>
 public sealed class HostBookingService(
     AppDbContext db,
@@ -55,7 +56,7 @@ public sealed class HostBookingService(
         if (checkIn != current.CheckInDate.Date || checkOut != current.CheckOutDate.Date)
             await checkoutHoldExpiry.ExpireOverlappingHoldsAsync(current.PropertyId, checkIn, checkOut, cancellationToken);
 
-        await using var transaction = await LockBookingAsync(update.BookingId, cancellationToken);
+        await using var transaction = await LockBookingAsync(current.PropertyId, update.BookingId, cancellationToken);
         var booking = await LoadAsync(update.BookingId, cancellationToken);
 
         if (booking.Status == BookingStatus.Cancelled)
@@ -135,7 +136,7 @@ public sealed class HostBookingService(
         await checkoutHoldExpiry.ExpireOverlappingHoldsAsync(
             current.PropertyId, current.CheckInDate, current.CheckOutDate, cancellationToken);
 
-        await using var transaction = await LockBookingAsync(bookingId, cancellationToken);
+        await using var transaction = await LockBookingAsync(current.PropertyId, bookingId, cancellationToken);
         var booking = await LoadAsync(bookingId, cancellationToken);
 
         if (booking.Status != BookingStatus.Pending)
@@ -186,10 +187,14 @@ public sealed class HostBookingService(
             await transaction.CommitAsync(cancellationToken);
     }
 
-    private Task<IDbContextTransaction?> LockBookingAsync(Guid bookingId, CancellationToken cancellationToken) =>
+    private Task<IDbContextTransaction?> LockBookingAsync(
+        Guid propertyId,
+        Guid bookingId,
+        CancellationToken cancellationToken) =>
         PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db,
             cancellationToken,
+            (PostgresAdvisoryLocks.Scope.PropertyICalSync, propertyId.ToString()),
             (PostgresAdvisoryLocks.Scope.BookingCancellation, bookingId.ToString("N")));
 
     /// <summary>

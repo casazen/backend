@@ -1,0 +1,14 @@
+---
+description: Keep the demo showcase in sync with every new feature
+alwaysApply: true
+---
+
+# Demo seed
+
+Every feature that adds or changes something a host, a guest, a supplier or a staff user can see updates the demo showcase in the same change.
+
+- Extend `Casazen.Core/Demo/DemoShowcaseCatalog.cs`: add a scenario id to `Scenarios` and template data that exercises the new flow.
+- Invented data must stay valid for the real rules (CIN format, required PDFs, safety checklist). Mark it as test (`IsTestData`, `TestDataMarkers`). Do not bypass those checks.
+- A new table written by the seed gets a constant in `TestDataEntities`, and reset must delete those rows with the other showcase markers.
+- Extend `Casazen.Tests/Unit/Demo/DemoShowcaseTests.cs` so a scenario without template data fails.
+- The standing requirement is `Sessions/specs/_TEMPLATE.md` (section “Demo seed”) and `.claude/rules/demo-seed.md`.

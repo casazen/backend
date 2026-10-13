@@ -110,7 +110,8 @@ public class ServiceRequestsController(
                 request.ChargeToGuest,
                 ServiceRequestRentalContext.ShortRent,
                 request.ServiceListingId,
-                request.ScheduledStartUtc),
+                request.ScheduledStartUtc,
+                request.DurationMinutes),
             cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapDto(created));

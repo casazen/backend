@@ -206,6 +206,7 @@ public class PropertiesController(
         }
 
         logger.LogInformation("Property created: {PropertyId} in org {OrgId}", created.Id, created.OrgId);
+        QueueComuneOfficialProfile(created.ComuneIstatCode);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
@@ -303,6 +304,8 @@ public class PropertiesController(
         }
 
         await propertyService.UpdatePropertyAsync(existing);
+        if (chosenComune is not null)
+            QueueComuneOfficialProfile(chosenComune.IstatCode);
         return NoContent();
     }
 
@@ -1270,6 +1273,26 @@ public class PropertiesController(
         }
 
         return (property, null);
+    }
+
+    private void QueueComuneOfficialProfile(string? istatCode)
+    {
+        if (string.IsNullOrWhiteSpace(istatCode))
+            return;
+
+        var backgroundJobClient = HttpContext.RequestServices.GetService<IBackgroundJobClient>();
+        if (backgroundJobClient is null)
+            return;
+
+        try
+        {
+            backgroundJobClient.Enqueue<ComuneOfficialProfileJob>(
+                job => job.EnsureAsync(istatCode, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not queue the official profile of comune {IstatCode}", istatCode);
+        }
     }
 
     private void QueueIcalFeedSync(Guid feedId, IBackgroundJobClient backgroundJobClient)

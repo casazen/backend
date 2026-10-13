@@ -1,0 +1,24 @@
+{
+  "authority": "Polizia di Stato, Centro Elettronico Nazionale",
+  "pageUrl": "https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Tabelle.aspx",
+  "retrievedAt": "2026-10-09",
+  "note": "Official public files from ashx/Download.ashx, no login. SOAP Tabella is unused (needs host credentials). Committed copies of the files downloaded on 2026-10-09.",
+  "tables": {
+    "COMUNI": {
+      "url": "https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/ashx/Download.ashx?ID=0&N=COMUNI",
+      "sha256": "a9d0f21fc5511b3e05bca881914251ee18c1310a2351abc636bae432f47b6454"
+    },
+    "STATI": {
+      "url": "https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/ashx/Download.ashx?ID=1&N=STATI",
+      "sha256": "77f4bb0b0df6bcf10385b9b8892d876a6023c2da40abea72c569b2beb205ced4"
+    },
+    "DOCUMENTI": {
+      "url": "https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/ashx/Download.ashx?ID=2&N=DOCUMENTI",
+      "sha256": "b411088e0c5baf01c16cd64ca32c427258dde74eb9cdf13455dff904e1a00663"
+    },
+    "TIPO_ALLOGGIATO": {
+      "url": "https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/ashx/Download.ashx?ID=3&N=TIPO_ALLOGGIATO",
+      "sha256": "3cf46914cf9806e9b0d2307c27bfcf67f849de1432c65ff7e8603cd74b69f4cd"
+    }
+  }
+}

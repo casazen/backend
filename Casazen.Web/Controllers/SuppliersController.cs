@@ -207,7 +207,7 @@ public class SuppliersController(
         var pilots = await pilotComuni.GetAsync(cancellationToken);
         return Ok(new SupplierRegistrationOptionsResponse
         {
-            SelfServeEnabled = pilots.Count > 0,
+            SelfServeEnabled = await pilotComuni.IsSelfServeEnabledAsync(cancellationToken),
             PilotComuni = pilots.Select(c => new SupplierPilotComuneDto { Code = c.Code, Name = c.Name }).ToList(),
         });
     }

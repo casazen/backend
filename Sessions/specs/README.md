@@ -16,6 +16,7 @@ New specs: copy [`_TEMPLATE.md`](./_TEMPLATE.md), fill YAML frontmatter, add a r
 - `## Verifiable Outcomes` — every ACn has an observable pass/fail
 - `## UX / UI Quality` — when Frontend ACs exist
 - `## Export / Report Criteria` — when CSV/PDF/Excel/export ACs exist
+- `## Demo seed` — every feature updates `DemoShowcaseCatalog` in the same change (invented, format-valid, marked as test)
 
 ### Status values
 

@@ -7,11 +7,25 @@ public class AiOptions
 {
     public const string SectionName = "Ai";
 
-    /// <summary>The only external provider supported today.</summary>
+    public const string StubProvider = "Stub";
+
+    /// <summary>OpenAI-compatible chat completions at <c>https://api.deepseek.com</c>.</summary>
     public const string DeepSeekProvider = "DeepSeek";
 
-    /// <summary><c>Stub</c> (default: no external call) or <c>DeepSeek</c>.</summary>
-    public string Provider { get; set; } = "Stub";
+    /// <summary>OpenAI chat completions at <c>https://api.openai.com/v1</c>.</summary>
+    public const string OpenAiProvider = "OpenAI";
+
+    /// <summary>Anthropic Messages API at <c>https://api.anthropic.com</c>.</summary>
+    public const string AnthropicProvider = "Anthropic";
+
+    /// <summary>Any other service that speaks the OpenAI chat completions API. The base URL is required.</summary>
+    public const string CompatibleProvider = "OpenAiCompatible";
+
+    /// <summary>
+    /// <see cref="StubProvider"/> (default: no external call), <see cref="DeepSeekProvider"/>, <see cref="OpenAiProvider"/>,
+    /// <see cref="AnthropicProvider"/> or <see cref="CompatibleProvider"/>.
+    /// </summary>
+    public string Provider { get; set; } = StubProvider;
 
     public string? ApiKey { get; set; }
 
@@ -31,12 +45,25 @@ public class AiOptions
     public AiSubprocessorOptions Subprocessor { get; set; } = new();
 
     /// <summary>
-    /// True when data can leave for an external provider: <see cref="Provider"/> is <c>DeepSeek</c> and an API key is
-    /// set. Paid calls then go through the budget guard and the provider is listed among the subprocessors.
+    /// True when a prompt can leave for an external provider: the provider is not <see cref="StubProvider"/>, an API key
+    /// is set, and the call has a base URL. Paid calls then go through the budget guard and the provider is listed
+    /// among the subprocessors.
     /// </summary>
     public bool IsExternalProviderActive() =>
-        string.Equals(Provider, DeepSeekProvider, StringComparison.OrdinalIgnoreCase)
-        && !string.IsNullOrWhiteSpace(ApiKey);
+        !IsStub()
+        && !string.IsNullOrWhiteSpace(ApiKey)
+        && !string.IsNullOrWhiteSpace(ChatBaseUrl());
+
+    public bool IsStub() =>
+        string.IsNullOrWhiteSpace(Provider)
+        || string.Equals(Provider, StubProvider, StringComparison.OrdinalIgnoreCase);
+
+    public bool UsesAnthropicMessages() =>
+        string.Equals(Provider, AnthropicProvider, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Base URL of the chat call for the provider in effect. Empty when a compatible provider has none.</summary>
+    public string ChatBaseUrl() =>
+        UsesAnthropicMessages() ? AnthropicBaseUrl?.Trim() ?? string.Empty : OpenAiBaseUrl?.Trim() ?? string.Empty;
 }
 
 /// <summary>

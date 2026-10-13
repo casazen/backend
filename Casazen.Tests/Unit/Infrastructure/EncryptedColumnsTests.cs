@@ -21,6 +21,7 @@ public class EncryptedColumnsTests
                 "Guest.DocumentNumber:Casazen.Guest.Document",
                 "OtaIntegration.ApiKey:Casazen.OtaIntegration.Secrets",
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
+                "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.Username:Casazen.PropertyQuesturaCredentials",

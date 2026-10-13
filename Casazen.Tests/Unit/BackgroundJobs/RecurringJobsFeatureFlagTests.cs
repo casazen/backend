@@ -187,6 +187,10 @@ public class RecurringJobsFeatureFlagTests
 
         RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false));
 
+        Assert.Equal("comune-official-profile-refresh", ComuneOfficialProfileRefreshJob.RecurringJobId);
+        Assert.Equal("0 5 1 * *", scheduled[ComuneOfficialProfileRefreshJob.RecurringJobId].Cron);
+        Assert.Equal(TimeZoneInfo.Utc, scheduled[ComuneOfficialProfileRefreshJob.RecurringJobId].Options.TimeZone);
+        Assert.Contains(OfficialReferenceDataRefreshJob.RecurringJobId, scheduled.Keys);
         Assert.Equal("*/5 * * * *", scheduled[ServiceRequestExpiryJob.RecurringJobId].Cron);
         Assert.Equal("0 * * * *", scheduled[ServiceRequestReminderJob.RecurringJobId].Cron);
         Assert.Equal(TimeZoneInfo.Utc, scheduled[ServiceRequestExpiryJob.RecurringJobId].Options.TimeZone);

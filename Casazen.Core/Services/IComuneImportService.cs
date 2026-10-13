@@ -27,15 +27,21 @@ public interface IComuneImportService
 /// <param name="SourceVersion">Source and edition, e.g. "ISTAT, Elenco dei comuni italiani, aggiornato al 21/02/2026".</param>
 /// <param name="ReferenceDate">Date the list is valid at (the "aggiornato al" date of the official file).</param>
 /// <param name="ImportedBy">Auth0 id of the admin, or <c>system</c>.</param>
-/// <param name="Origin">Admin upload or seed file.</param>
+/// <param name="Origin">Admin upload, seed file or scheduled download.</param>
 /// <param name="IsPartial">The file is a part of the list: the comuni it does not have stay as they are.</param>
+/// <param name="SourceUrl">Official URL the file was downloaded from.</param>
+/// <param name="Authority">Publishing body (e.g. ISTAT).</param>
+/// <param name="RetrievedAt">When the file was retrieved from <paramref name="SourceUrl"/>.</param>
 public sealed record ComuneImportRequest(
     string FileName,
     string SourceVersion,
     DateOnly ReferenceDate,
     string ImportedBy,
     ComuneImportOrigin Origin = ComuneImportOrigin.AdminUpload,
-    bool IsPartial = false);
+    bool IsPartial = false,
+    string? SourceUrl = null,
+    string? Authority = null,
+    DateTime? RetrievedAt = null);
 
 /// <summary>Outcome of an import; <see cref="Success"/> is false when the file was rejected (nothing was written).</summary>
 public sealed record ComuneImportResult(

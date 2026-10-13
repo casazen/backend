@@ -837,6 +837,8 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // Take requires a stored interval (fixed UTC, not "today" — see CalendarTodayArchitectureTests).
+        var start = new DateTime(2026, 10, 16, 8, 0, 0, DateTimeKind.Utc);
         var request = new ServiceRequest
         {
             OrgId = host.OrgId,
@@ -845,6 +847,8 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
             SupplierOrgId = supplierOrgId,
             Category = "cleaning",
             Status = status,
+            ScheduledStartUtc = start,
+            ScheduledEndUtc = start.AddHours(2),
             TakenAt = status >= ServiceRequestStatus.PresoInCarico && status != ServiceRequestStatus.Rifiutato ? DateTime.UtcNow : null,
             CompletedAt = status is ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato ? DateTime.UtcNow : null,
         };

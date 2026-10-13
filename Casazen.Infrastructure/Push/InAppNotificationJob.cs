@@ -124,32 +124,42 @@ public sealed class InAppNotificationJob(
         }
 
         // One row per SaveChanges. A batch of several rows takes its index entries in the order EF sorts the commands (by row id,
-        // not by user), so two runs of the same key could each hold a row the other needs and deadlock (40P01, which EF reports
-        // as a "transient failure" the job does not catch). A row of its own waits at most for the run that holds the same user,
-        // and that run commits at once.
+        // not by user), so two runs of the same key could each hold a row the other needs. Even one row at a time, several runs
+        // that insert the same user together deadlock on the unique index (40P01). Npgsql reports that as a transient failure
+        // wrapped in InvalidOperationException, which a catch of DbUpdateException alone does not see. Retry that user: the run
+        // that won has committed, so the next attempt is the unique violation (23505) and is skipped.
         var written = 0;
         foreach (var userId in toTell)
         {
-            db.InAppNotifications.Add(new InAppNotification
+            for (var attempt = 1; ; attempt++)
             {
-                OrgId = recipients.OrgId,
-                UserId = userId,
-                Type = notification.Type,
-                EntityId = notification.EntityId,
-                DeliveryKey = deliveryKey,
-                CreatedAt = createdAt,
-            });
+                db.InAppNotifications.Add(new InAppNotification
+                {
+                    OrgId = recipients.OrgId,
+                    UserId = userId,
+                    Type = notification.Type,
+                    EntityId = notification.EntityId,
+                    DeliveryKey = deliveryKey,
+                    CreatedAt = createdAt,
+                });
 
-            try
-            {
-                await db.SaveChangesAsync(cancellationToken);
-                written++;
-            }
-            catch (DbUpdateException ex) when (IsRaceOrVanishedUser(ex))
-            {
-                // Another run of the same key wrote this user first (23505), or the account was deleted since the read (23503):
-                // there is nothing left to write for them.
-                db.ChangeTracker.Clear();
+                try
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                    written++;
+                    break;
+                }
+                catch (Exception ex) when (IsRaceOrVanishedUser(ex))
+                {
+                    // Another run of the same key wrote this user first (23505), or the account was deleted since the read (23503):
+                    // there is nothing left to write for them.
+                    db.ChangeTracker.Clear();
+                    break;
+                }
+                catch (Exception ex) when (IsDeadlock(ex) && attempt < DeadlockAttempts)
+                {
+                    db.ChangeTracker.Clear();
+                }
             }
         }
 
@@ -163,11 +173,24 @@ public sealed class InAppNotificationJob(
             notification.AudienceId);
     }
 
-    private static bool IsRaceOrVanishedUser(DbUpdateException ex) =>
-        ex.InnerException is PostgresException
+    /// <summary>How many times one user is inserted again after PostgreSQL aborts the statement with 40P01.</summary>
+    private const int DeadlockAttempts = 4;
+
+    private static bool IsRaceOrVanishedUser(Exception ex) =>
+        PostgresState(ex) is PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ForeignKeyViolation;
+
+    private static bool IsDeadlock(Exception ex) => PostgresState(ex) == PostgresErrorCodes.DeadlockDetected;
+
+    private static string? PostgresState(Exception ex)
+    {
+        for (Exception? current = ex; current is not null; current = current.InnerException)
         {
-            SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ForeignKeyViolation,
-        };
+            if (current is PostgresException postgres)
+                return postgres.SqlState;
+        }
+
+        return null;
+    }
 
     private sealed record Recipients(Guid OrgId, IReadOnlyList<string> Users)
     {

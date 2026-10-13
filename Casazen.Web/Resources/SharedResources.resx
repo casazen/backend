@@ -63,6 +63,18 @@
   <data name="UserReactivatedAuth0NotSynced" xml:space="preserve">
     <value>Utente riattivato in CasaZen, ma Auth0 non è stato aggiornato: l'utente non può accedere finché non ripeti la riattivazione quando Auth0 è raggiungibile.</value>
   </data>
+  <data name="UserCannotDeleteSelf" xml:space="preserve">
+    <value>Non puoi rimuovere il tuo account: chiedi a un altro amministratore.</value>
+  </data>
+  <data name="UserCannotDeleteLastAdmin" xml:space="preserve">
+    <value>Non puoi rimuovere l'ultimo amministratore attivo: nomina prima un altro amministratore.</value>
+  </data>
+  <data name="UserDeleteBlocked" xml:space="preserve">
+    <value>Questo utente non si può rimuovere: ha ancora dati collegati. Disattivalo.</value>
+  </data>
+  <data name="UserDeleteAuth0Failed" xml:space="preserve">
+    <value>Auth0 non ha rimosso l'account: l'utente è ancora in CasaZen. Riprova quando Auth0 è raggiungibile.</value>
+  </data>
   <data name="NotFound" xml:space="preserve">
     <value>Non trovato</value>
   </data>
@@ -2471,10 +2483,13 @@
     <value>Per scegliere un orario serve il servizio del fornitore: la sua durata dà la fine del lavoro.</value>
   </data>
   <data name="ServiceRequestTimeInvalid" xml:space="preserve">
-    <value>L'orario non è valido: indica la fine del lavoro, dopo l'inizio e in minuti interi, oppure scegli un servizio che ha una durata.</value>
+    <value>L'orario non è valido: indica l'inizio del lavoro e la fine (dopo l'inizio, in minuti interi), oppure scegli un servizio che ha una durata. Una richiesta senza orario non è ammessa.</value>
   </data>
   <data name="ServiceRequestTimeAlreadySet" xml:space="preserve">
     <value>La richiesta ha già un orario: per cambiarlo proponi un altro orario all'host.</value>
+  </data>
+  <data name="SupplierCommitmentConflict" xml:space="preserve">
+    <value>Non puoi prendere in carico questo incarico: si sovrappone a un altro che hai già accettato. Nello stesso giorno puoi averne più di uno solo se gli orari non si toccano.</value>
   </data>
   <data name="ServiceRequestAmountInvalid" xml:space="preserve">
     <value>Importo non valido: deve essere maggiore di zero e al massimo {0} euro; gli extra sono al massimo {1}, ciascuno con una descrizione di al massimo {2} caratteri.</value>
@@ -2679,5 +2694,89 @@
   </data>
   <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
     <value>Indica un mese passato o in corso nel formato aaaa-mm (ad esempio 2026-10).</value>
+  </data>
+  <data name="SeoDraftInvalid" xml:space="preserve">
+    <value>Il testo non è pubblicabile: servono almeno {0} caratteri visibili, un titolo di sezione (h2) e un paragrafo (p). Il markdown non è accettato.</value>
+  </data>
+  <data name="AiProviderInvalid" xml:space="preserve">
+    <value>Provider AI non valido: scegli Stub, DeepSeek, OpenAI, Anthropic oppure un endpoint compatibile con OpenAI.</value>
+  </data>
+  <data name="AiBaseUrlInvalid" xml:space="preserve">
+    <value>L'indirizzo del provider deve essere un URL https, senza nome utente né password.</value>
+  </data>
+  <data name="DemoEnvironmentUnavailable" xml:space="preserve">
+    <value>L'ambiente demo non è disponibile su questa installazione.</value>
+  </data>
+  <data name="DemoEnvironmentDisabled" xml:space="preserve">
+    <value>Attiva prima la modalità demo.</value>
+  </data>
+  <data name="DemoResetConfirmation" xml:space="preserve">
+    <value>Per reimpostare la vetrina scrivi RESET.</value>
+  </data>
+  <data name="DemoCinExhausted" xml:space="preserve">
+    <value>Non ci sono più codici CIN di test disponibili per questo comune.</value>
+  </data>
+  <data name="DemoResetBlocked" xml:space="preserve">
+    <value>La vetrina demo non si può reimpostare: un annuncio demo è collegato a un contratto o a un altro dato che va tenuto.</value>
+  </data>
+  <data name="DemoOrgNotFound" xml:space="preserve">
+    <value>Organizzazione non trovata.</value>
+  </data>
+  <data name="HostInviteNotFound" xml:space="preserve">
+    <value>Invito non trovato.</value>
+  </data>
+  <data name="HostInviteNotPending" xml:space="preserve">
+    <value>Solo un invito in attesa può essere revocato: questo è già stato usato, è scaduto o è stato revocato.</value>
+  </data>
+  <data name="HostInviteNotResendable" xml:space="preserve">
+    <value>Un invito già usato o revocato non può essere rinviato.</value>
+  </data>
+  <data name="HostInviteDuplicate" xml:space="preserve">
+    <value>Hai già un invito in attesa per questo indirizzo email. Revocalo o attendi che scada prima di invitarlo di nuovo.</value>
+  </data>
+  <data name="HostInviteEmailTaken" xml:space="preserve">
+    <value>Questo indirizzo email è già registrato su CasaZen.</value>
+  </data>
+  <data name="HostInviteEmailInvalid" xml:space="preserve">
+    <value>Inserisci un indirizzo email valido.</value>
+  </data>
+  <data name="HostInviteEmailRequired" xml:space="preserve">
+    <value>L'indirizzo email è obbligatorio.</value>
+  </data>
+  <data name="HostInviteMessageTooLong" xml:space="preserve">
+    <value>Il messaggio può contenere al massimo 500 caratteri.</value>
+  </data>
+  <data name="HostInviteLocaleInvalid" xml:space="preserve">
+    <value>La lingua non è valida: usa «it» o «en».</value>
+  </data>
+  <data name="HostInviteTokenRequired" xml:space="preserve">
+    <value>Il codice dell'invito è obbligatorio.</value>
+  </data>
+  <data name="HostInviteSelf" xml:space="preserve">
+    <value>Non puoi invitare il tuo stesso indirizzo email.</value>
+  </data>
+  <data name="HostInviteQuotaExceeded" xml:space="preserve">
+    <value>Hai raggiunto il numero massimo di inviti per oggi. Riprova più tardi.</value>
+  </data>
+  <data name="HostInvitePendingLimit" xml:space="preserve">
+    <value>Hai troppi inviti in attesa. Revoca quelli che non servono più o attendi che scadano.</value>
+  </data>
+  <data name="HostInviteInvalid" xml:space="preserve">
+    <value>Questo invito non è valido. Apri di nuovo il link ricevuto via email o chiedi un nuovo invito.</value>
+  </data>
+  <data name="HostInviteExpired" xml:space="preserve">
+    <value>Questo invito è scaduto. Chiedi a chi ti ha invitato di mandartene uno nuovo.</value>
+  </data>
+  <data name="HostInviteRevoked" xml:space="preserve">
+    <value>Questo invito è stato revocato. Chiedi a chi ti ha invitato di mandartene uno nuovo.</value>
+  </data>
+  <data name="HostInviteUsed" xml:space="preserve">
+    <value>Questo invito è già stato usato da un altro account.</value>
+  </data>
+  <data name="HostInviteEmailNotVerified" xml:space="preserve">
+    <value>Verifica il tuo indirizzo email prima di accettare l'invito.</value>
+  </data>
+  <data name="HostInviteEmailMismatch" xml:space="preserve">
+    <value>Questo invito è stato scritto per un altro indirizzo email: accedi con l'account a cui è stato inviato.</value>
   </data>
 </root>

@@ -89,8 +89,8 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `ci-cd.yml` | PR, push `develop` / `main` | NuGet vulnerability gate (High/Critical fail, transitive included), build, tests on PostgreSQL, format — `docs/runbooks/ci-backend.md` |
-| `ci-cd.yml` → `verify-test` | Push `develop` | Poll `GET /api/health/ready` until the test API runs **this commit** and answers 200, then smoke (fails if `RAILWAY_TEST_URL` is missing) |
-| `ci-cd.yml` → `verify-prod` | Push `main` | Same on production (`RAILWAY_PROD_URL`), then smoke |
+| `verify-railway-deploy.yml` → `verify-test` | After a green `CI/CD Pipeline` push to `develop` | Poll `GET /api/health/ready` until the test API runs **this commit** and answers 200, then smoke (fails if `RAILWAY_TEST_URL` is missing) |
+| `verify-railway-deploy.yml` → `verify-prod` | After a green `CI/CD Pipeline` push to `main` | Same on production (`RAILWAY_PROD_URL`), then smoke |
 | `e2e-golden-journey.yml` | PR, push `develop` / `main`, nightly | Golden Journey from the UI on an ephemeral stack (throw-away PostgreSQL, mock IdP and mail, Stripe test mode with secrets) — `docs/runbooks/golden-journey-l3.md` |
 | `deploy-preview.yml` | PR | Comment with BE/FE URLs (no deploy) |
 | `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping: fails when a configured ping fails, skips with a warning when not configured |
@@ -363,7 +363,7 @@ Railway → Project → **Environments** → Create:
 
 **PR previews (optional):** Railway → Service → Settings → enable PR deployments if you want a distinct backend URL per PR. Otherwise validate backend on shared test URL after merge to `develop`.
 
-**Wait for CI: keep it off** on both environments. `verify-test` / `verify-prod` are part of `ci-cd.yml` and wait for the deployment of the pushed commit: with "Wait for CI" on, Railway would wait for them and they would wait for Railway, so the job times out and the deploy is skipped. Pull requests stay gated by the `build` job (branch protection).
+**Wait for CI** may stay on: it waits for `CI/CD Pipeline` (`Build & Test` only). `verify-test` / `verify-prod` live in `verify-railway-deploy.yml` and start after that suite is green, so they no longer deadlock the native deploy. Watch paths are dashboard-only (no `railway.toml` in this repo). Pull requests stay gated by `Build & Test`.
 
 **Healthcheck path (recommended):** Railway → service → Settings → Deploy → Healthcheck Path = `/api/health/ready`: a new deployment receives traffic only when its database and Hangfire are ready. Details: [`runbooks/health-checks.md`](runbooks/health-checks.md).
 
@@ -621,7 +621,7 @@ PR opened → develop (BE or FE)
 Merge feature PR → develop
     │
     ├─ Railway (native): deploy test environment
-    ├─ ci-cd.yml verify-test: $RAILWAY_TEST_URL/api/health/ready → 200 with commit = pushed SHA
+    ├─ verify-railway-deploy.yml verify-test: $RAILWAY_TEST_URL/api/health/ready → 200 with commit = pushed SHA
     ├─ Vercel (native): staging FE from develop branch
     └─ Human: bundle check + acceptance on test
     │
@@ -629,7 +629,7 @@ Merge feature PR → develop
 Stage 05 — Release (release PR: develop → main)
     ├─ release-manager squash-merges develop → main
     ├─ Railway (native): deploy production environment
-    ├─ ci-cd.yml verify-prod: $RAILWAY_PROD_URL/api/health/ready → 200 with commit = pushed SHA
+    ├─ verify-railway-deploy.yml verify-prod: $RAILWAY_PROD_URL/api/health/ready → 200 with commit = pushed SHA
     ├─ Vercel (native): production FE from main
     └─ git tag vX.Y.Z on main (changelog only — no deploy trigger)
 ```
