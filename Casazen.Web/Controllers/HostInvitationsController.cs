@@ -11,15 +11,17 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// A host invites new independent hosts by email (a new org, not a member of its own). Policy
-/// <see cref="CasazenPolicies.OrgMembersManage"/>: the owner and the administrators of the host org, once the onboarding and the
-/// consents are done; a collaborator, property manager or accountant never invites. The org is the caller's own, never taken
+/// A host recommends CasaZen to a friend: an invite by email to a new independent host (a new org, not a member of its own).
+/// Open to every member of a host org, whatever the role (a loyalty-style recommendation, not an administrative act): policy
+/// <see cref="CasazenPolicies.SharedPropertyRead"/> is the permission every host role holds in either rental context, and
+/// it applies only once the onboarding and the consents are done; suppliers and anyone without a host org never pass.
+/// The org is the caller's own, never taken
 /// from the request, and a host only sees, sends again and revokes the invites it created itself (another's id is a 404).
 /// Limits per host org: <c>HostInvites:DailyQuotaPerHost</c> in 24 hours and <c>HostInvites:MaxPendingPerHost</c> pending.
 /// </summary>
 [ApiController]
 [Route("api/hosts/me/invitations")]
-[Authorize(Policy = CasazenPolicies.OrgMembersManage)]
+[Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
 public class HostInvitationsController(IHostInviteService invites, IOrgContextResolver orgContextResolver) : ControllerBase
 {
     /// <summary>

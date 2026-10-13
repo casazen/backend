@@ -28,13 +28,13 @@ public class HostInviteEndpointsTests
     }
 
     [Fact]
-    public void HostInvitationsController_NeedsTheOrgTeamPermissionNotJustASignIn_AndHasNoAnonymousAction()
+    public void HostInvitationsController_NeedsAHostRolePermissionNotJustASignIn_AndHasNoAnonymousAction()
     {
         var type = typeof(HostInvitationsController);
 
         Assert.Equal("api/hosts/me/invitations", type.GetCustomAttribute<RouteAttribute>()!.Template);
         var policy = type.GetCustomAttribute<AuthorizeAttribute>()!.Policy;
-        Assert.Equal(CasazenPolicies.OrgMembersManage, policy);
+        Assert.Equal(CasazenPolicies.SharedPropertyRead, policy);
         Assert.NotEqual(CasazenPolicies.Authenticated, policy);
         Assert.NotEqual(CasazenPolicies.AdminOnly, policy);
         Assert.All(Actions(type), m => Assert.Null(m.GetCustomAttribute<AllowAnonymousAttribute>()));
