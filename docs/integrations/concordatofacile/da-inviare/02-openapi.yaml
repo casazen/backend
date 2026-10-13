@@ -1,33 +1,34 @@
 openapi: 3.0.3
 info:
-  title: Integrazione Piattaforma - ConcordatoFacile
-  version: 1.0-bozza
+  title: Platform - ConcordatoFacile integration
+  version: 1.0-draft
   description: |
-    Contratto tecnico di `01-risposte-alle-domande.md` (che prevale in caso di discrepanza).
+    Contratto tecnico di `01-technical-specification.md` (che prevale in caso di discrepanza).
+    Tutti i nomi sono in inglese.
 
-    - Tag `Piattaforma`: l'endpoint che riceve gli eventi di ConcordatoFacile (sezioni 5 e 6).
-    - Tag `ConcordatoFacile`: le due chiamate che ConcordatoFacile espone per ricevere risposte e documenti (sezione 7).
+    - Tag `Platform`: l'endpoint che riceve gli eventi di ConcordatoFacile (sezioni 3 e 4).
+    - Tag `ConcordatoFacile`: le chiamate che ConcordatoFacile espone (sezioni 1 e 5).
 
-    Convenzioni: JSON UTF-8; importi in centesimi interi; date ISO 8601 UTC; comune = codice ISTAT a 6 cifre.
+    Importi in centesimi interi; date ISO 8601 UTC; comune = codice ISTAT a 6 cifre.
 tags:
-  - name: Piattaforma
+  - name: Platform
   - name: ConcordatoFacile
 
 paths:
   /webhooks/concordatofacile:
     servers:
-      - url: '{piattaformaBaseUrl}'
+      - url: '{platformBaseUrl}'
         variables:
-          piattaformaBaseUrl:
+          platformBaseUrl:
             default: https://test.example.invalid
             description: URL di prova e di produzione comunicati separatamente
     post:
-      tags: [Piattaforma]
-      operationId: riceviEvento
-      summary: Riceve un evento di pratica da ConcordatoFacile
+      tags: [Platform]
+      operationId: receiveEvent
+      summary: Receives a case event from ConcordatoFacile
       description: |
         Risposta entro 3 secondi. Corpo massimo 256 KB.
-        Firma: X-CF-Signature = "sha256=" + hex(HMAC-SHA256(segreto, X-CF-Timestamp + "." + corpoGrezzo)).
+        Firma: X-CF-Signature = "sha256=" + hex(HMAC-SHA256(secret, X-CF-Timestamp + "." + rawBody)).
         Orario ammesso: +/- 300 secondi. Idempotenza per X-CF-Event-Id.
         Ritentare solo su 408, 429, 5xx ed errori di rete (1 min, 5 min, 30 min, 2 h, 6 h, 12 h).
       parameters:
@@ -44,21 +45,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Evento'
+              $ref: '#/components/schemas/Event'
             examples:
-              creata:
-                summary: Vettore di prova (segreto test_secret_0123456789abcdef0123456789abcdef; timestamp 1760347800)
+              created:
+                summary: Vettore di prova (secret test_secret_0123456789abcdef0123456789abcdef; timestamp 1760347800)
                 value:
                   eventId: 7b0c1c5e-3a52-4d0e-9d3e-0a1f2b3c4d5e
-                  eventType: pratica.creata
+                  eventType: case.created
                   apiVersion: '1'
                   occurredAt: '2026-10-13T09:30:00Z'
                   sequence: 1
-                  praticaId: CF-TEST-000001
+                  caseId: CF-TEST-000001
                   reference: 0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11
                   data:
-                    livello: completa
-                    comuneIstat: '108039'
+                    level: complete
+                    istatCode: '108039'
       responses:
         '200':
           description: Accettato (anche se già ricevuto)
@@ -69,14 +70,14 @@ paths:
                 required: [received]
                 properties:
                   received: { type: boolean, enum: [true] }
-        '400': { $ref: '#/components/responses/NonRitentabile' }
-        '401': { $ref: '#/components/responses/FirmaNonValida' }
-        '413': { $ref: '#/components/responses/NonRitentabile' }
-        '422': { $ref: '#/components/responses/ReferenceSconosciuto' }
-        '429': { $ref: '#/components/responses/Ritentabile' }
-        '503': { $ref: '#/components/responses/Ritentabile' }
+        '400': { $ref: '#/components/responses/NotRetryable' }
+        '401': { $ref: '#/components/responses/InvalidSignature' }
+        '413': { $ref: '#/components/responses/NotRetryable' }
+        '422': { $ref: '#/components/responses/UnknownReference' }
+        '429': { $ref: '#/components/responses/Retryable' }
+        '503': { $ref: '#/components/responses/Retryable' }
 
-  /v1/pratiche/{praticaId}/risposte:
+  /v1/cases:
     servers:
       - url: '{cfBaseUrl}'
         variables:
@@ -85,27 +86,27 @@ paths:
             description: URL API di ConcordatoFacile (prova e produzione)
     post:
       tags: [ConcordatoFacile]
-      operationId: inviaRisposte
-      summary: Risposte a una richiesta di informazioni oppure decisione sulla bozza
+      operationId: createCase
+      summary: Creates a case with data and calculation already filled in (proposal)
       security: [{ BearerAuth: [] }]
       parameters:
-        - { $ref: '#/components/parameters/PraticaId' }
         - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              oneOf:
-                - { $ref: '#/components/schemas/RisposteInformazioni' }
-                - { $ref: '#/components/schemas/DecisioneBozza' }
+            schema: { $ref: '#/components/schemas/CreateCaseRequest' }
       responses:
-        '202': { description: Ricevuto }
-        '404': { $ref: '#/components/responses/ErroreApi' }
-        '409': { $ref: '#/components/responses/ErroreApi' }
-        '422': { $ref: '#/components/responses/ErroreApi' }
+        '201':
+          description: Case created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseCreated' }
+        '401': { $ref: '#/components/responses/ApiError' }
+        '409': { $ref: '#/components/responses/ApiError' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
-  /v1/pratiche/{praticaId}/documenti:
+  /v1/cases/{caseId}/answers:
     servers:
       - url: '{cfBaseUrl}'
         variables:
@@ -113,11 +114,52 @@ paths:
             default: https://api.example.invalid
     post:
       tags: [ConcordatoFacile]
-      operationId: caricaDocumento
-      summary: Carica un documento (es. contratto firmato)
+      operationId: sendAnswers
+      summary: Answers to an information request, or decision on the contract draft
       security: [{ BearerAuth: [] }]
       parameters:
-        - { $ref: '#/components/parameters/PraticaId' }
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { $ref: '#/components/schemas/InformationAnswers' }
+                - { $ref: '#/components/schemas/DraftDecision' }
+              discriminator:
+                propertyName: type
+                mapping:
+                  information: '#/components/schemas/InformationAnswers'
+                  draft_decision: '#/components/schemas/DraftDecision'
+      responses:
+        '202':
+          description: Received
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received: { type: boolean, enum: [true] }
+        '404': { $ref: '#/components/responses/ApiError' }
+        '409': { $ref: '#/components/responses/ApiError' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /v1/cases/{caseId}/documents:
+    servers:
+      - url: '{cfBaseUrl}'
+        variables:
+          cfBaseUrl:
+            default: https://api.example.invalid
+    post:
+      tags: [ConcordatoFacile]
+      operationId: uploadDocument
+      summary: Uploads a document (for example the signed contract)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
         - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
         required: true
@@ -127,13 +169,13 @@ paths:
               type: object
               required: [kind, sha256, file]
               properties:
-                kind: { type: string, enum: [contratto_firmato, documento_richiesto, altro] }
-                richiestaId: { type: string, description: Se il documento risponde a una richiesta }
+                kind: { type: string, enum: [signed_contract, requested_document, other] }
+                requestId: { type: string, description: Se il documento risponde a una richiesta }
                 sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
                 file: { type: string, format: binary, description: PDF fino a 20 MB }
       responses:
         '201':
-          description: Documento ricevuto
+          description: Document received
           content:
             application/json:
               schema:
@@ -141,10 +183,10 @@ paths:
                 required: [fileId]
                 properties:
                   fileId: { type: string }
-        '404': { $ref: '#/components/responses/ErroreApi' }
-        '409': { $ref: '#/components/responses/ErroreApi' }
-        '413': { $ref: '#/components/responses/ErroreApi' }
-        '422': { $ref: '#/components/responses/ErroreApi' }
+        '404': { $ref: '#/components/responses/ApiError' }
+        '409': { $ref: '#/components/responses/ApiError' }
+        '413': { $ref: '#/components/responses/ApiError' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
 components:
   securitySchemes:
@@ -154,8 +196,8 @@ components:
       description: Chiave API di ConcordatoFacile (una per prova e una per produzione)
 
   parameters:
-    PraticaId:
-      name: praticaId
+    CaseId:
+      name: caseId
       in: path
       required: true
       schema: { type: string }
@@ -167,233 +209,264 @@ components:
       schema: { type: string, format: uuid }
 
   responses:
-    FirmaNonValida:
+    InvalidSignature:
       description: Firma o orario non validi. Non ritentare.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Errore' }
+          schema: { $ref: '#/components/schemas/Error' }
           examples:
-            firma: { value: { code: invalid_signature } }
-            orario: { value: { code: timestamp_out_of_range } }
-    ReferenceSconosciuto:
+            signature: { value: { code: invalid_signature } }
+            timestamp: { value: { code: timestamp_out_of_range } }
+    UnknownReference:
       description: reference sconosciuto. Non ritentare.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Errore' }
+          schema: { $ref: '#/components/schemas/Error' }
           examples:
-            e: { value: { code: unknown_reference } }
-    NonRitentabile:
+            unknown: { value: { code: unknown_reference } }
+    NotRetryable:
       description: Richiesta non valida. Non ritentare.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Errore' }
-    Ritentabile:
+          schema: { $ref: '#/components/schemas/Error' }
+    Retryable:
       description: Problema temporaneo. Ritentare con backoff.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Errore' }
-    ErroreApi:
+          schema: { $ref: '#/components/schemas/Error' }
+    ApiError:
       description: Errore dell'API
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Errore' }
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Validazione fallita
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            fields:
+              value:
+                code: validation_failed
+                message: The request is not valid.
+                errors:
+                  - { field: 'parties[0].taxCode', code: invalid_format }
+                  - { field: 'property.cadastre.parcel', code: required }
 
   schemas:
-    Errore:
+    Error:
       type: object
       required: [code]
       properties:
-        code: { type: string }
+        code:
+          type: string
+          description: 'validation_failed, unauthorized, case_not_found, invalid_state, file_too_large, checksum_mismatch, duplicate_request'
         message: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, code]
+            properties:
+              field: { type: string }
+              code: { type: string, enum: [required, invalid_format, out_of_range, unknown_value] }
 
-    Livello:
+    Level:
       type: string
-      enum: [base, completa]
+      enum: [basic, complete]
 
-    BustaEvento:
+    Status:
+      type: string
+      enum: [received, in_review, information_requested, certified, draft_ready, awaiting_signature, in_registration, completed, rejected, cancelled]
+
+    EventEnvelope:
       type: object
-      required: [eventId, eventType, apiVersion, occurredAt, sequence, praticaId, reference, data]
+      required: [eventId, eventType, apiVersion, occurredAt, sequence, caseId, reference, data]
       properties:
         eventId: { type: string, format: uuid }
         eventType: { type: string }
         apiVersion: { type: string, enum: ['1'] }
         occurredAt: { type: string, format: date-time }
-        sequence: { type: integer, minimum: 1, description: 'Crescente per pratica, parte da 1' }
-        praticaId: { type: string }
-        reference: { type: string, format: uuid, description: 'UUID della pratica lato Piattaforma, restituito sempre' }
+        sequence: { type: integer, minimum: 1, description: 'Cresce di 1 per ogni pratica, da 1' }
+        caseId: { type: string }
+        reference: { type: string, format: uuid, description: 'UUID creato dalla Platform, restituito sempre' }
         data: { type: object }
 
-    Evento:
+    Event:
       oneOf:
-        - { $ref: '#/components/schemas/EventoCreata' }
-        - { $ref: '#/components/schemas/EventoStatoAggiornato' }
-        - { $ref: '#/components/schemas/EventoInformazioniRichieste' }
-        - { $ref: '#/components/schemas/EventoBozzaPronta' }
-        - { $ref: '#/components/schemas/EventoCompletata' }
-        - { $ref: '#/components/schemas/EventoRespinta' }
-        - { $ref: '#/components/schemas/EventoAnnullata' }
+        - { $ref: '#/components/schemas/CaseCreatedEvent' }
+        - { $ref: '#/components/schemas/CaseStatusChangedEvent' }
+        - { $ref: '#/components/schemas/CaseInformationRequestedEvent' }
+        - { $ref: '#/components/schemas/CaseDraftReadyEvent' }
+        - { $ref: '#/components/schemas/CaseCompletedEvent' }
+        - { $ref: '#/components/schemas/CaseRejectedEvent' }
+        - { $ref: '#/components/schemas/CaseCancelledEvent' }
       discriminator:
         propertyName: eventType
         mapping:
-          pratica.creata: '#/components/schemas/EventoCreata'
-          pratica.stato_aggiornato: '#/components/schemas/EventoStatoAggiornato'
-          pratica.informazioni_richieste: '#/components/schemas/EventoInformazioniRichieste'
-          pratica.bozza_pronta: '#/components/schemas/EventoBozzaPronta'
-          pratica.completata: '#/components/schemas/EventoCompletata'
-          pratica.respinta: '#/components/schemas/EventoRespinta'
-          pratica.annullata: '#/components/schemas/EventoAnnullata'
+          case.created: '#/components/schemas/CaseCreatedEvent'
+          case.status_changed: '#/components/schemas/CaseStatusChangedEvent'
+          case.information_requested: '#/components/schemas/CaseInformationRequestedEvent'
+          case.draft_ready: '#/components/schemas/CaseDraftReadyEvent'
+          case.completed: '#/components/schemas/CaseCompletedEvent'
+          case.rejected: '#/components/schemas/CaseRejectedEvent'
+          case.cancelled: '#/components/schemas/CaseCancelledEvent'
 
-    EventoCreata:
+    CaseCreatedEvent:
       allOf:
-        - $ref: '#/components/schemas/BustaEvento'
+        - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [pratica.creata] }
+            eventType: { type: string, enum: [case.created] }
             data:
               type: object
-              required: [livello, comuneIstat]
+              required: [level, istatCode]
               properties:
-                livello: { $ref: '#/components/schemas/Livello' }
-                comuneIstat: { type: string, pattern: '^[0-9]{6}$' }
+                level: { $ref: '#/components/schemas/Level' }
+                istatCode: { type: string, pattern: '^[0-9]{6}$' }
 
-    EventoStatoAggiornato:
+    CaseStatusChangedEvent:
       allOf:
-        - $ref: '#/components/schemas/BustaEvento'
+        - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [pratica.stato_aggiornato] }
+            eventType: { type: string, enum: [case.status_changed] }
             data:
               type: object
-              required: [stato]
+              required: [status]
               properties:
-                stato: { type: string, enum: [in_verifica, attestata, in_firma, in_registrazione] }
+                status: { type: string, enum: [in_review, certified, awaiting_signature, in_registration] }
 
-    EventoInformazioniRichieste:
+    CaseInformationRequestedEvent:
       allOf:
-        - $ref: '#/components/schemas/BustaEvento'
+        - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [pratica.informazioni_richieste] }
+            eventType: { type: string, enum: [case.information_requested] }
             data:
               type: object
-              required: [richiestaId, domande]
+              required: [requestId, questions]
               properties:
-                richiestaId: { type: string }
-                scadenzaRisposta: { type: string, format: date-time }
-                domande:
+                requestId: { type: string }
+                dueAt: { type: string, format: date-time }
+                questions:
                   type: array
                   minItems: 1
-                  items: { $ref: '#/components/schemas/Domanda' }
+                  items: { $ref: '#/components/schemas/Question' }
 
-    EventoBozzaPronta:
+    CaseDraftReadyEvent:
       allOf:
-        - $ref: '#/components/schemas/BustaEvento'
+        - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [pratica.bozza_pronta] }
+            eventType: { type: string, enum: [case.draft_ready] }
             data:
               type: object
-              required: [bozzaId, versione, files, azioniPossibili]
+              required: [draftId, version, files, allowedActions]
               properties:
-                bozzaId: { type: string }
-                versione: { type: integer, minimum: 1 }
+                draftId: { type: string }
+                version: { type: integer, minimum: 1 }
                 files:
                   type: array
                   items: { $ref: '#/components/schemas/File' }
-                azioniPossibili:
+                allowedActions:
                   type: array
-                  items: { type: string, enum: [approva, richiedi_modifiche] }
-                note: { type: string, maxLength: 2000 }
-                scadenza: { type: string, format: date-time }
+                  items: { type: string, enum: [approve, request_changes] }
+                notes: { type: string, maxLength: 2000 }
+                dueAt: { type: string, format: date-time }
 
-    EventoCompletata:
+    CaseCompletedEvent:
       allOf:
-        - $ref: '#/components/schemas/BustaEvento'
+        - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [pratica.completata] }
+            eventType: { type: string, enum: [case.completed] }
             data:
               type: object
-              required: [attestazione, files]
+              required: [attestation, files]
               properties:
-                attestazione: { $ref: '#/components/schemas/Attestazione' }
-                registrazione: { $ref: '#/components/schemas/Registrazione' }
+                attestation: { $ref: '#/components/schemas/Attestation' }
+                registration: { $ref: '#/components/schemas/Registration' }
                 files:
                   type: array
                   items: { $ref: '#/components/schemas/File' }
 
-    EventoRespinta:
+    CaseRejectedEvent:
       allOf:
-        - $ref: '#/components/schemas/BustaEvento'
+        - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [pratica.respinta] }
+            eventType: { type: string, enum: [case.rejected] }
             data:
               type: object
-              required: [motivo, dettaglio]
+              required: [reason, detail]
               properties:
-                motivo: { type: string, enum: [canone_fuori_limiti, dati_incongruenti, accordo_non_vigente, comune_non_coperto, documenti_non_validi, altro] }
-                dettaglio: { type: string, maxLength: 1000 }
-                limiti:
+                reason: { type: string, enum: [rent_out_of_range, inconsistent_data, agreement_not_in_force, municipality_not_covered, invalid_documents, other] }
+                detail: { type: string, maxLength: 1000 }
+                limits:
                   type: object
                   properties:
-                    minimoMensileCent: { type: integer, minimum: 0 }
-                    massimoMensileCent: { type: integer, minimum: 0 }
+                    minMonthlyRentCents: { type: integer, minimum: 0 }
+                    maxMonthlyRentCents: { type: integer, minimum: 0 }
 
-    EventoAnnullata:
+    CaseCancelledEvent:
       allOf:
-        - $ref: '#/components/schemas/BustaEvento'
+        - $ref: '#/components/schemas/EventEnvelope'
         - type: object
           properties:
-            eventType: { type: string, enum: [pratica.annullata] }
+            eventType: { type: string, enum: [case.cancelled] }
             data:
               type: object
-              required: [motivo]
+              required: [reason]
               properties:
-                motivo: { type: string, maxLength: 500 }
+                reason: { type: string, maxLength: 500 }
 
-    Domanda:
+    Question:
       type: object
-      required: [campo, etichetta, tipo, obbligatorio]
+      required: [field, label, type, required]
       properties:
-        campo: { type: string }
-        etichetta: { type: string }
-        tipo: { type: string, enum: [testo, numero, data, scelta, file] }
-        obbligatorio: { type: boolean }
-        opzioni:
+        field: { type: string, description: 'Percorso con punti, es. property.cadastre.subparcel; per i documenti documents.<kind>' }
+        label: { type: string }
+        type: { type: string, enum: [text, number, date, choice, file] }
+        required: { type: boolean }
+        options:
           type: array
           items: { type: string }
-        aiuto: { type: string }
+        help: { type: string }
 
-    RisposteInformazioni:
+    InformationAnswers:
       type: object
-      required: [richiestaId, risposte]
+      required: [type, requestId, answers]
       properties:
-        richiestaId: { type: string }
-        risposte:
+        type: { type: string, enum: [information] }
+        requestId: { type: string }
+        answers:
           type: array
           items:
             type: object
-            required: [campo]
+            required: [field]
             properties:
-              campo: { type: string }
-              valore: { type: string, description: 'Per i tipi testo, numero, data e scelta' }
+              field: { type: string }
+              value: { type: string, description: 'Sempre una stringa; date YYYY-MM-DD; numeri con il punto' }
               fileId: { type: string, description: 'Per il tipo file: id restituito dal caricamento' }
 
-    DecisioneBozza:
+    DraftDecision:
       type: object
-      required: [bozzaId, decisione]
+      required: [type, draftId, decision]
       properties:
-        bozzaId: { type: string }
-        decisione: { type: string, enum: [approvata, modifiche] }
-        note: { type: string, maxLength: 2000 }
+        type: { type: string, enum: [draft_decision] }
+        draftId: { type: string }
+        decision: { type: string, enum: [approved, changes_requested] }
+        notes: { type: string, maxLength: 2000 }
 
     File:
       type: object
       required: [fileId, kind, fileName, mimeType, sizeBytes, sha256, downloadUrl, expiresAt]
       properties:
         fileId: { type: string }
-        kind: { type: string, enum: [attestazione, scheda_calcolo, bozza_contratto, contratto_firmato, ricevuta_trasmissione, ricevuta_registrazione, ricevuta_pagamento, zip_completo, altro] }
+        kind:
+          type: string
+          enum: [attestation, calculation_sheet, contract_draft, signed_contract, submission_receipt, registration_receipt, payment_receipt, full_package_zip, other, request_form, lease_contract, cadastral_survey, floor_plan, energy_certificate]
         fileName: { type: string, maxLength: 150 }
         mimeType: { type: string, enum: [application/pdf, application/zip] }
         sizeBytes: { type: integer, minimum: 1, description: 'Massimo 20 MB per un PDF; 40 MB per uno zip compresso' }
@@ -401,54 +474,129 @@ components:
         downloadUrl: { type: string, format: uri, description: 'HTTPS, valido almeno 7 giorni' }
         expiresAt: { type: string, format: date-time }
 
-    Attestazione:
+    Attestation:
       type: object
-      required: [attestazioneId, emessaIl, accordo, organizzazioni, canone, documentoFileId]
+      required: [attestationId, issuedOn, agreement, organizations, rent, documentFileId]
       properties:
-        attestazioneId: { type: string }
-        emessaIl: { type: string, format: date }
-        accordo:
+        attestationId: { type: string }
+        issuedOn: { type: string, format: date }
+        agreement:
           type: object
-          required: [nome, comuneIstat, inVigoreDal]
+          required: [name, istatCode, inForceFrom]
           properties:
-            nome: { type: string }
-            comuneIstat: { type: string, pattern: '^[0-9]{6}$' }
-            inVigoreDal: { type: string, format: date }
-        organizzazioni:
+            name: { type: string }
+            istatCode: { type: string, pattern: '^[0-9]{6}$' }
+            inForceFrom: { type: string, format: date }
+        organizations:
           type: array
           minItems: 1
           items:
             type: object
-            required: [nome, ruolo, firmatarioNome, firmatoIl]
+            required: [name, represents, signerName, signedOn]
             properties:
-              nome: { type: string }
-              ruolo: { type: string, enum: [proprieta, inquilini] }
-              firmatarioNome: { type: string }
-              firmatoIl: { type: string, format: date }
-        canone:
+              name: { type: string }
+              represents: { type: string, enum: [landlords, tenants] }
+              signerName: { type: string }
+              signedOn: { type: string, format: date }
+        rent:
           type: object
-          required: [zona, sottofascia, superficieMq, minimoMensileCent, massimoMensileCent, concordatoMensileCent]
+          required: [zone, subBand, areaSqm, minMonthlyRentCents, maxMonthlyRentCents, agreedMonthlyRentCents]
           properties:
-            zona: { type: string }
-            sottofascia: { type: integer, minimum: 1, maximum: 3 }
-            superficieMq: { type: number, multipleOf: 0.1 }
-            minimoMensileCent: { type: integer, minimum: 0 }
-            massimoMensileCent: { type: integer, minimum: 0 }
-            concordatoMensileCent: { type: integer, minimum: 0 }
-        documentoFileId: { type: string }
+            zone: { type: string }
+            subBand: { type: integer, minimum: 1, maximum: 3 }
+            areaSqm: { type: number, multipleOf: 0.1 }
+            minMonthlyRentCents: { type: integer, minimum: 0 }
+            maxMonthlyRentCents: { type: integer, minimum: 0 }
+            agreedMonthlyRentCents: { type: integer, minimum: 0 }
+        documentFileId: { type: string }
 
-    Registrazione:
+    Registration:
       type: object
-      required: [tipologia, ufficioTerritoriale, dataRegistrazione, protocolloTelematico, codiceIdentificativoContratto, cedolareSecca, importoRegistroCent, importoBolloCent, ricevuteFileId]
+      required: [type, revenueOffice, registeredOn, electronicProtocol, contractIdentificationCode, flatTaxElected, registrationTaxCents, stampDutyCents, receiptFileIds]
       properties:
-        tipologia: { type: string, enum: [L1, L2] }
-        ufficioTerritoriale: { type: string }
-        dataRegistrazione: { type: string, format: date }
-        protocolloTelematico: { type: string }
-        codiceIdentificativoContratto: { type: string }
-        cedolareSecca: { type: boolean }
-        importoRegistroCent: { type: integer, minimum: 0 }
-        importoBolloCent: { type: integer, minimum: 0 }
-        ricevuteFileId:
+        type: { type: string, enum: [L1, L2] }
+        revenueOffice: { type: string }
+        registeredOn: { type: string, format: date }
+        electronicProtocol: { type: string }
+        contractIdentificationCode: { type: string }
+        flatTaxElected: { type: boolean }
+        registrationTaxCents: { type: integer, minimum: 0 }
+        stampDutyCents: { type: integer, minimum: 0 }
+        receiptFileIds:
           type: array
           items: { type: string }
+
+    CreateCaseRequest:
+      type: object
+      required: [reference, level, property, parties, contract]
+      properties:
+        reference: { type: string, format: uuid }
+        level: { $ref: '#/components/schemas/Level' }
+        property:
+          type: object
+          required: [istatCode, address, cadastre]
+          properties:
+            istatCode: { type: string, pattern: '^[0-9]{6}$' }
+            address: { type: string }
+            postalCode: { type: string }
+            cadastre:
+              type: object
+              required: [sheet, parcel]
+              properties:
+                sheet: { type: string }
+                parcel: { type: string }
+                subparcel: { type: string }
+                category: { type: string }
+            areaSqm: { type: number, multipleOf: 0.1 }
+        parties:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [role, firstName, lastName, taxCode]
+            properties:
+              role: { type: string, enum: [landlord, tenant] }
+              firstName: { type: string }
+              lastName: { type: string }
+              taxCode: { type: string }
+              ownershipPercent: { type: number, minimum: 0, maximum: 100 }
+        contract:
+          type: object
+          required: [startDate, termYears, monthlyRentCents]
+          properties:
+            startDate: { type: string, format: date }
+            termYears: { type: integer, minimum: 3 }
+            monthlyRentCents: { type: integer, minimum: 0 }
+            furnished: { type: boolean }
+            airConditioning: { type: boolean }
+            elements:
+              type: object
+              description: 'Codici A-D dell''accordo dichiarati dalle parti'
+              properties:
+                A: { type: array, items: { type: string } }
+                B: { type: array, items: { type: string } }
+                C: { type: array, items: { type: string } }
+                D: { type: array, items: { type: string } }
+        platformCalculation:
+          type: object
+          description: Calcolo della Platform, per il confronto con la verifica di ConcordatoFacile
+          properties:
+            zone: { type: string }
+            subBand: { type: integer, minimum: 1, maximum: 3 }
+            minMonthlyRentCents: { type: integer, minimum: 0 }
+            maxMonthlyRentCents: { type: integer, minimum: 0 }
+        documents:
+          type: array
+          items: { $ref: '#/components/schemas/File' }
+
+    CaseCreated:
+      type: object
+      required: [caseId, reference, status]
+      properties:
+        caseId: { type: string }
+        reference: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/Status' }
+        formUrl:
+          type: string
+          format: uri
+          description: Link per completare nel modulo i dati ancora mancanti
