@@ -116,7 +116,7 @@ public class SeoPublicDomainTests
 
         Assert.Equal(
             $"{PublicSite}/signup?comune=como&utm_source=seo-compliance&utm_medium=cta&utm_content={utmContent}",
-            dto!.Cta.SignupUrl);
+            dto!.Cta!.SignupUrl);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class SeoPublicDomainTests
 
         Assert.Equal(
             "/signup?comune=como&utm_source=seo-compliance&utm_medium=cta&utm_content=compliance-guide",
-            dto!.Cta.SignupUrl);
+            dto!.Cta!.SignupUrl);
     }
 
     [Fact]

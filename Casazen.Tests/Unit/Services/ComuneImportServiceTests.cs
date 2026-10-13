@@ -10,7 +10,7 @@ using Xunit;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// SU-04: import of the official ISTAT comuni list. The rows of the official file come from the sample fixture (29 rows
+/// SU-04: import of the official ISTAT comuni list. The rows of the official file come from the sample fixture (40 rows
 /// copied verbatim); the rows written in the tests are synthetic and say so: the comuni are named "Prova" and the codes
 /// are not real ones (province prefix 999).
 /// </summary>
@@ -31,7 +31,7 @@ public class ComuneImportServiceTests
         var result = await ComuneTestData.ImportSampleAsync(db);
 
         Assert.True(result.Success);
-        Assert.Equal((29, 29, 0, 0, 0), (result.Rows, result.Inserted, result.Updated, result.Unchanged, result.Deactivated));
+        Assert.Equal((40, 40, 0, 0, 0), (result.Rows, result.Inserted, result.Updated, result.Unchanged, result.Deactivated));
 
         var roma = await db.Comuni.AsNoTracking().SingleAsync(c => c.IstatCode == ComuneTestData.Roma);
         Assert.Equal(("H501", "Roma", "RM", "12", "Lazio", "LAZ", true), (roma.CadastralCode, roma.Name, roma.ProvinceCode, roma.RegionIstatCode, roma.RegionName, roma.RegionCode, roma.IsActive));
@@ -73,7 +73,7 @@ public class ComuneImportServiceTests
         var again = await ComuneTestData.ImportSampleAsync(db);
 
         Assert.True(again.Success);
-        Assert.Equal((29, 0, 0, 29, 0), (again.Rows, again.Inserted, again.Updated, again.Unchanged, again.Deactivated));
+        Assert.Equal((40, 0, 0, 40, 0), (again.Rows, again.Inserted, again.Updated, again.Unchanged, again.Deactivated));
         var after = await db.Comuni.AsNoTracking().OrderBy(c => c.IstatCode).Select(c => new { c.IstatCode, c.UpdatedAt, c.SourceImportId }).ToListAsync();
         Assert.Equal(before, after);
 

@@ -135,13 +135,45 @@ Torino (3,80 €). Still without an amount:
 Roma and Venezia rates are per accommodation category: the public calculator asks the category; property checkouts
 there show "tariffa non disponibile" until properties have a category (open product question, see below).
 
+## Seed `AddLombardyPilotTouristTaxRates` (SEO-LOCALE, 2026-10-13)
+
+Rates of the new Lombardy SEO pilots (`SeoPilotComuni`), read **directly** in the tariff deliberations and regulations
+published on the MEF portal of the Dipartimento delle Finanze. An act takes effect from the first day of the second month
+after its publication there (art. 13 c. 15-quater D.L. 201/2011): `EffectiveFrom` is that date. Only the rows free of
+ambiguity are loaded (product owner decision); code and notes in `TouristTaxLombardyPilotSeed`.
+
+| Comune | Category | Season | €/person/night | Max nights | Exempt under | From | Act |
+|---|---|---|---|---|---|---|---|
+| San Siro | — (CAV, agenzie) | all year | 1,50 | 7 | 14 | 2025-02-01 | G.C. 90/2024 |
+| San Siro | other extra-alberghiere A/7, A/8 | all year | 5,00 | 7 | 14 | 2025-02-01 | G.C. 90/2024 |
+| Gravedona ed Uniti | — (CAV, locazioni brevi) | all year | 1,50 | 10 | 14 | 2026-01-01 | G.C. 104/2025 |
+| Cernobbio | — (extra-alberghiere) | 01/04-31/12 | 3,00 | 7 | 14 | 2025-08-01 | G.C. 181/2024, confirmed by 169/2025 |
+| Cernobbio | ville di pregio A/1, A/8, A/9 | 01/04-31/12 | 5,00 | 7 | 14 | 2025-08-01 | same |
+| Lezzeno | — | 01/04-31/10 | 1,50 | 7 | 11 | 2025-03-01 | G.C. 80/2024 |
+| Maccagno con Pino e Veddasca | — | all year | 1,00 | 10 | 14 | 2026-03-01 | G.C. 271/2025 |
+| Rho | — | all year | 2,00 | 5 | 18 | 2026-02-01 | G.C. 246/2025 |
+
+Not loaded, to confirm with the comune or a lawyer before an admin adds them:
+
+- **Bellagio, Menaggio, Tremezzina** (3,00 €; A/7-A/9 5,00 €; 7 nights; 01/03-30/11): minors "entro l'undicesimo anno d'età"
+  are exempt: under 11 or under 12?
+- **Varenna** (3,00 €, 7 nights, under 7): the season 01/03-31/10 may have been changed by C.C. 22/2024, not on the portal.
+- **Varese** (1,00 €): 7 nights **per calendar year** (the engine caps per stay) and a new regulation from 01/03/2026.
+- **Luino**: 2,50 € for "case vacanze e locazioni in A1-A8" or 1,00 € for the other structures: which one an ordinary CAV pays.
+- **Monza** (2,00 €, 20 nights): minors exempt only when they stay with a guest who pays (not modelled).
+- **Domaso**: no tax until 31/12/2026 (to be instituted from 2027). **Seregno**: no act found.
+
+Engine limits that apply here: outside the season (Cernobbio, Lezzeno) a night has no rate, so the quote is "non
+disponibile", never 0 (an amount of 0 is not a valid rate); the villa rows apply only to a property with that category, and
+properties have none yet, so they get the base rate.
+
 ### Check after the deploy (test, then production)
 
 Read-only queries on the environment schema (`casazen_test` / `casazen_prod`):
 
 ```sql
--- The seeded rates, with source and level (expected: 15 rows - Milano, Como, Firenze, Napoli, Torino, Bologna,
--- 3 Roma, 6 Venezia - all VerificationLevel = 'Official', IstatCode set)
+-- The seeded rates, with source and level (expected: 23 rows - Milano, Como, Firenze, Napoli, Torino, Bologna,
+-- 3 Roma, 6 Venezia, and the 8 rows of AddLombardyPilotTouristTaxRates - all VerificationLevel = 'Official', IstatCode set)
 SELECT "City", "IstatCode", "AccommodationCategory", "SeasonStart", "SeasonEnd", "RatePerPersonPerNight",
        "ReducedRatePerPersonPerNight", "MaxNights", "MinimumAge", "EffectiveFrom", "VerificationLevel"
 FROM "TouristTaxRates" WHERE "SourceUrl" IS NOT NULL ORDER BY "City", "AccommodationCategory", "SeasonStart";

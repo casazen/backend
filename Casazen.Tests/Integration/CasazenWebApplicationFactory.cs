@@ -62,7 +62,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     public Mock<IBackgroundJobClient> BackgroundJobClientMock { get; } = new();
 
     /// <summary>
-    /// Loads the 29 official rows of <see cref="ComuneTestData"/> into the test database at startup (SU-04): the comuni the
+    /// Loads the 40 official rows of <see cref="ComuneTestData"/> into the test database at startup (SU-04): the comuni the
     /// tests need, resolved through the real import. A suite that tests the list not being imported returns false.
     /// </summary>
     protected virtual bool SeedComuneSample => true;
