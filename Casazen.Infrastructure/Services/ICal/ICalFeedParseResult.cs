@@ -26,6 +26,10 @@ namespace Casazen.Infrastructure.Services.ICal;
 /// True for a <c>VALUE=DATE</c> event (SP-05): calendar days, no hours. The supplier sync closes these days; a timed event
 /// with a length becomes a window of hours instead.
 /// </param>
+/// <param name="IsRecurring">
+/// True for an occurrence of a series (<c>RRULE</c>/<c>RDATE</c>) or an instance replaced by an override of one
+/// (<c>RECURRENCE-ID</c>): the answer about a free-looking event is one per series, not one per occurrence.
+/// </param>
 public sealed record ICalOccurrence(
     string? Uid,
     string? Summary,
@@ -34,7 +38,8 @@ public sealed record ICalOccurrence(
     DateOnly LastDay,
     DateTime StartUtc,
     DateTime EndUtc,
-    bool IsAllDay)
+    bool IsAllDay,
+    bool IsRecurring = false)
 {
     public bool HasNights => EndDate > StartDate;
 
@@ -53,8 +58,17 @@ public sealed class ICalFeedParseResult
     /// <summary>Events with <c>STATUS:CANCELLED</c>: they block nothing.</summary>
     public int CancelledEvents { get; init; }
 
-    /// <summary>Events with <c>TRANSP:TRANSPARENT</c> (free time): they block nothing.</summary>
+    /// <summary>
+    /// Events with <c>TRANSP:TRANSPARENT</c> (free time): not in <see cref="Occurrences"/>, so by themselves they block nothing;
+    /// their occurrences from today on are in <see cref="TransparentOccurrences"/>.
+    /// </summary>
     public int TransparentEvents { get; init; }
+
+    /// <summary>
+    /// Occurrences of the transparent ("Available") events that end today or later (Europe/Rome), recurring ones expanded in the
+    /// import window. Unlike <see cref="Occurrences"/> they are not busy: the supplier sync asks the supplier about them.
+    /// </summary>
+    public IReadOnlyList<ICalOccurrence> TransparentOccurrences { get; init; } = [];
 
     /// <summary>Events or occurrences without a usable start, or ending before they start.</summary>
     public int UnreadableEvents { get; init; }

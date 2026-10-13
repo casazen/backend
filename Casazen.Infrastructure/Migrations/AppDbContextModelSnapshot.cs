@@ -5639,6 +5639,68 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierFreeCalendarEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Decision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DecisionKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsAllDay")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Occurrences")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Recurring")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("UidHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "DecisionKey")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierFreeCalendarEvents_OrgId_DecisionKey");
+
+                    b.HasIndex("OrgId", "Decision", "NextStartUtc")
+                        .HasDatabaseName("IX_SupplierFreeCalendarEvents_OrgId_Decision_NextStartUtc");
+
+                    b.ToTable("SupplierFreeCalendarEvents");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.SupplierInviteRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7586,6 +7648,17 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SupplierBusyWindow", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierFreeCalendarEvent", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithMany()

@@ -115,6 +115,7 @@ public class AppDbContext(
     public DbSet<SupplierWorkingHours> SupplierWorkingHours { get; set; } = null!;
     public DbSet<SupplierTimeOff> SupplierTimeOff { get; set; } = null!;
     public DbSet<SupplierBusyWindow> SupplierBusyWindows { get; set; } = null!;
+    public DbSet<SupplierFreeCalendarEvent> SupplierFreeCalendarEvents { get; set; } = null!;
     public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
@@ -1278,6 +1279,23 @@ public class AppDbContext(
                 .HasDatabaseName("UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc");
 
             entity.ToTable(t => t.HasCheckConstraint("CK_SupplierBusyWindows_Interval", "\"StartUtc\" < \"EndUtc\""));
+        });
+
+        modelBuilder.Entity<SupplierFreeCalendarEvent>(entity =>
+        {
+            entity.HasOne(e => e.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(e => e.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The sync finds the row of an event again by its key at every run: one row per event and supplier.
+            entity.HasIndex(e => new { e.OrgId, e.DecisionKey })
+                .IsUnique()
+                .HasDatabaseName("UIX_SupplierFreeCalendarEvents_OrgId_DecisionKey");
+
+            // The console lists the unanswered ones of a supplier by their next date.
+            entity.HasIndex(e => new { e.OrgId, e.Decision, e.NextStartUtc })
+                .HasDatabaseName("IX_SupplierFreeCalendarEvents_OrgId_Decision_NextStartUtc");
         });
 
         modelBuilder.Entity<SupplierSettings>(entity =>

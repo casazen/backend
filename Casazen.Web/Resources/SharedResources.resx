@@ -708,6 +708,15 @@
   <data name="ICalSupplierNoFeed" xml:space="preserve">
     <value>Non hai ancora collegato un calendario iCal: incolla prima l'URL del tuo calendario.</value>
   </data>
+  <data name="FreeEventDecisionInvalid" xml:space="preserve">
+    <value>Non è stato possibile registrare la risposta: scegli «Disponibile» oppure «Occupato».</value>
+  </data>
+  <data name="FreeEventAlreadyDecided" xml:space="preserve">
+    <value>Hai già risposto per questo evento del calendario.</value>
+  </data>
+  <data name="FreeEventNotFound" xml:space="preserve">
+    <value>Evento del calendario non trovato.</value>
+  </data>
   <data name="ICalExportBusySummary" xml:space="preserve">
     <value>Occupato</value>
     <comment>SUMMARY of every event of the public iCal export read by the OTAs (PC-12): neutral, never a name.</comment>
