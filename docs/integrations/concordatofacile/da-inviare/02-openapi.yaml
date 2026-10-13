@@ -1,29 +1,29 @@
 openapi: 3.0.3
 info:
-  title: Platform - ConcordatoFacile integration
+  title: CasaZen - ConcordatoFacile integration
   version: 1.0-draft
   description: |
     Contratto tecnico di `01-technical-specification.md` (che prevale in caso di discrepanza).
     Tutti i nomi sono in inglese.
 
-    - Tag `Platform`: l'endpoint che riceve gli eventi di ConcordatoFacile (sezioni 3 e 4).
+    - Tag `CasaZen`: l'endpoint che riceve gli eventi di ConcordatoFacile (sezioni 3 e 4).
     - Tag `ConcordatoFacile`: le chiamate che ConcordatoFacile espone (sezioni 1 e 5).
 
     Importi in centesimi interi; date ISO 8601 UTC; comune = codice ISTAT a 6 cifre.
 tags:
-  - name: Platform
+  - name: CasaZen
   - name: ConcordatoFacile
 
 paths:
   /webhooks/concordatofacile:
     servers:
-      - url: '{platformBaseUrl}'
+      - url: '{casazenBaseUrl}'
         variables:
-          platformBaseUrl:
+          casazenBaseUrl:
             default: https://test.example.invalid
             description: URL di prova e di produzione comunicati separatamente
     post:
-      tags: [Platform]
+      tags: [CasaZen]
       operationId: receiveEvent
       summary: Receives a case event from ConcordatoFacile
       description: |
@@ -289,7 +289,7 @@ components:
         occurredAt: { type: string, format: date-time }
         sequence: { type: integer, minimum: 1, description: 'Cresce di 1 per ogni pratica, da 1' }
         caseId: { type: string }
-        reference: { type: string, format: uuid, description: 'UUID creato dalla Platform, restituito sempre' }
+        reference: { type: string, format: uuid, description: 'UUID creato da CasaZen, restituito sempre' }
         data: { type: object }
 
     Event:
@@ -577,9 +577,9 @@ components:
                 B: { type: array, items: { type: string } }
                 C: { type: array, items: { type: string } }
                 D: { type: array, items: { type: string } }
-        platformCalculation:
+        casazenCalculation:
           type: object
-          description: Calcolo della Platform, per il confronto con la verifica di ConcordatoFacile
+          description: Calcolo di CasaZen, per il confronto con la verifica di ConcordatoFacile
           properties:
             zone: { type: string }
             subBand: { type: integer, minimum: 1, maximum: 3 }

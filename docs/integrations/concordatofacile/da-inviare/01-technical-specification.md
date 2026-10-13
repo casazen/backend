@@ -1,22 +1,22 @@
 ---
-title: Specifiche tecniche - integrazione Platform / ConcordatoFacile
+title: Specifiche tecniche - integrazione CasaZen / ConcordatoFacile
 version: 1.0-bozza
 date: 2026-10-13
 ---
 
-# Specifiche tecniche: integrazione Platform / ConcordatoFacile
+# Specifiche tecniche: integrazione CasaZen / ConcordatoFacile
 
 **Versione 1.0 (bozza)** · 13 ottobre 2026 · Allegato: `02-openapi.yaml` (contratto leggibile da macchina, stessi nomi di questo documento).
 
-Il documento definisce che cosa la Platform si aspetta da ConcordatoFacile (CF) e che cosa la Platform invia. Contiene proposte ed esempi. Il testo è in italiano; **tutti i nomi (endpoint, campi, valori) sono in inglese**.
+Il documento definisce che cosa CasaZen si aspetta da ConcordatoFacile (CF) e che cosa CasaZen invia. Contiene proposte ed esempi. Il testo è in italiano; **tutti i nomi (endpoint, campi, valori) sono in inglese**.
 
-**Convenzioni.** JSON UTF-8. Orari ISO 8601 UTC (`2026-10-13T09:30:00Z`); date `YYYY-MM-DD`. Importi in centesimi interi (campi `...Cents`, valuta `EUR`). Comune = codice ISTAT a 6 cifre (`istatCode`). `reference` = UUID creato dalla Platform: CF lo restituisce in ogni evento. `caseId` = identificativo creato da CF.
+**Convenzioni.** JSON UTF-8. Orari ISO 8601 UTC (`2026-10-13T09:30:00Z`); date `YYYY-MM-DD`. Importi in centesimi interi (campi `...Cents`, valuta `EUR`). Comune = codice ISTAT a 6 cifre (`istatCode`). `reference` = UUID creato da CasaZen: CF lo restituisce in ogni evento. `caseId` = identificativo creato da CF.
 
 **Valori usati.** `level`: `basic`, `complete`. `status`: `received`, `in_review`, `information_requested`, `certified`, `draft_ready`, `awaiting_signature`, `in_registration`, `completed`, `rejected`, `cancelled`. `role` delle parti: `landlord`, `tenant`.
 
 ---
 
-## 1. Platform → CF: invio di una pratica (proposta)
+## 1. CasaZen → CF: invio di una pratica (proposta)
 
 `POST {CF_BASE_URL}/v1/cases` · `Authorization: Bearer <api key>` (una chiave per la prova, una per la produzione) · `Idempotency-Key: <uuid>` (una chiave ripetuta restituisce la stessa risposta).
 
@@ -43,18 +43,18 @@ Il documento definisce che cosa la Platform si aspetta da ConcordatoFacile (CF) 
     "airConditioning": false,
     "elements": { "A": ["A1", "A2"], "B": ["B2", "B3", "B4", "B5"], "C": ["C4", "C6"], "D": ["D1", "D5"] }
   },
-  "platformCalculation": { "zone": "1", "subBand": 2, "minMonthlyRentCents": 10833, "maxMonthlyRentCents": 46042 },
+  "casazenCalculation": { "zone": "1", "subBand": 2, "minMonthlyRentCents": 10833, "maxMonthlyRentCents": 46042 },
   "documents": [
     {
       "fileId": "p-001", "kind": "request_form", "fileName": "request-form.pdf", "mimeType": "application/pdf",
-      "sizeBytes": 183201, "sha256": "<64 caratteri esadecimali>", "downloadUrl": "https://platform.example/files/p-001?token=...", "expiresAt": "2026-10-20T09:30:00Z"
+      "sizeBytes": 183201, "sha256": "<64 caratteri esadecimali>", "downloadUrl": "https://casazen.example/files/p-001?token=...", "expiresAt": "2026-10-20T09:30:00Z"
     }
   ]
 }
 ```
 
 - `documents[]` sono link che CF scarica (stesso oggetto `File` della sezione 6). `kind` dei documenti che inviamo: `request_form` (modulo di richiesta precompilato, sempre), `lease_contract`, `cadastral_survey`, `floor_plan`, `energy_certificate` (solo se servono).
-- `elements` contiene i codici A, B, C, D dichiarati dalle parti. `platformCalculation` è il nostro calcolo, per il confronto con la verifica di CF.
+- `elements` contiene i codici A, B, C, D dichiarati dalle parti. `casazenCalculation` è il nostro calcolo, per il confronto con la verifica di CF.
 - I campi opzionali possono mancare. CF ignora i campi che non conosce.
 
 **Risposta `201`:**
@@ -82,24 +82,24 @@ Valori di `code`: `validation_failed`, `unauthorized`, `case_not_found`, `invali
 
 ## 2. Alternativa alla sezione 1: link al modulo CF
 
-Se l'endpoint di creazione non è disponibile al lancio, l'utente apre il modulo CF dalla Platform:
+Se l'endpoint di creazione non è disponibile al lancio, l'utente apre il modulo CF da CasaZen:
 
 `{CF_FORM_URL}?partner=<code>&ref=<reference>&level=<basic|complete>&istat=<istatCode>&return_url=<url-encoded>&theme=<theme id>`
 
 | Parametro | Obbligatorio | Note |
 |---|---|---|
 | `partner` | sì | Codice assegnato da CF |
-| `ref` | sì | `reference` della Platform, restituito in ogni evento |
+| `ref` | sì | `reference` di CasaZen, restituito in ogni evento |
 | `level` | sì | `basic` o `complete` |
 | `istat` | no | Precompila il comune |
 | `return_url` | no | A fine compilazione CF reindirizza a `<return_url>?ref=<reference>&caseId=<id>` (nessun dato personale nell'URL) |
-| `theme` | no | Identificativo della veste della Platform (nome, logo, colori) |
+| `theme` | no | Identificativo della veste di CasaZen (nome, logo, colori) |
 
 Un secondo accesso con lo stesso `ref` riapre la stessa pratica: non ne crea un'altra.
 
-## 3. CF → Platform: eventi (webhook)
+## 3. CF → CasaZen: eventi (webhook)
 
-`POST {PLATFORM_BASE_URL}/webhooks/concordatofacile` (URL di prova e di produzione comunicati separatamente) · HTTPS, TLS 1.2 o superiore · corpo JSON, massimo **256 KB**. I file non viaggiano nel corpo (sezione 6).
+`POST {CASAZEN_BASE_URL}/webhooks/concordatofacile` (URL di prova e di produzione comunicati separatamente) · HTTPS, TLS 1.2 o superiore · corpo JSON, massimo **256 KB**. I file non viaggiano nel corpo (sezione 6).
 
 | Intestazione | Valore |
 |---|---|
@@ -118,7 +118,7 @@ signature      = HMAC-SHA256(secret, message)            (esadecimale minuscolo)
 X-CF-Signature = "sha256=" + signature
 ```
 
-La Platform rifiuta (`401`) una firma errata, un orario a più di 300 s dal proprio, o un `X-CF-Key-Id` sconosciuto. Il segreto è casuale, di almeno 32 byte, diverso per prova e produzione, consegnato fuori banda. Alla rotazione restano validi due segreti per 7 giorni.
+CasaZen rifiuta (`401`) una firma errata, un orario a più di 300 s dal proprio, o un `X-CF-Key-Id` sconosciuto. Il segreto è casuale, di almeno 32 byte, diverso per prova e produzione, consegnato fuori banda. Alla rotazione restano validi due segreti per 7 giorni.
 
 **Vettore di prova** (segreto `test_secret_0123456789abcdef0123456789abcdef`, `X-CF-Timestamp: 1760347800`). Il corpo è **su una sola riga, senza spazi aggiunti**: copiarlo dal file `.md`, non dal PDF.
 
@@ -127,7 +127,7 @@ body = {"eventId":"7b0c1c5e-3a52-4d0e-9d3e-0a1f2b3c4d5e","eventType":"case.creat
 X-CF-Signature = sha256=78dd2d480a898d4c9079df175edd0a4f287a6a499bcae20bdb395da6d121dc2e
 ```
 
-**Risposte della Platform e ritentativi.** La Platform risponde entro 3 secondi e lavora in modo asincrono.
+**Risposte di CasaZen e ritentativi.** CasaZen risponde entro 3 secondi e lavora in modo asincrono.
 
 | Risposta | Significato | Azione di CF |
 |---|---|---|
@@ -137,7 +137,7 @@ X-CF-Signature = sha256=78dd2d480a898d4c9079df175edd0a4f287a6a499bcae20bdb395da6
 | `400`, `413` | Corpo non valido o troppo grande | non ritentare |
 | `408`, `429`, `5xx`, errore di rete | Temporaneo | ritentare dopo 1 min, 5 min, 30 min, 2 h, 6 h, 12 h |
 
-Un evento ritentato mantiene `eventId`, `occurredAt` e `sequence`; cambiano solo `X-CF-Timestamp` e la firma. L'ordine di consegna non è garantito: `sequence` è un intero che cresce di 1 per ogni pratica, da 1; la Platform applica uno stato solo se la sua `sequence` è maggiore dell'ultima applicata.
+Un evento ritentato mantiene `eventId`, `occurredAt` e `sequence`; cambiano solo `X-CF-Timestamp` e la firma. L'ordine di consegna non è garantito: `sequence` è un intero che cresce di 1 per ogni pratica, da 1; CasaZen applica uno stato solo se la sua `sequence` è maggiore dell'ultima applicata.
 
 **Busta di ogni evento:**
 
@@ -184,7 +184,7 @@ Un evento ritentato mantiene `eventId`, `occurredAt` e `sequence`; cambiano solo
 }
 ```
 
-`type`: `text`, `number`, `date`, `choice`, `file`. `field` usa i nomi della sezione 1 (percorso con punti); per i documenti `documents.<kind>`. `label` e `help` sono mostrati all'utente così come sono (in italiano). Una richiesta può contenere più domande: la Platform risponde a tutte con una sola chiamata (sezione 5).
+`type`: `text`, `number`, `date`, `choice`, `file`. `field` usa i nomi della sezione 1 (percorso con punti); per i documenti `documents.<kind>`. `label` e `help` sono mostrati all'utente così come sono (in italiano). Una richiesta può contenere più domande: CasaZen risponde a tutte con una sola chiamata (sezione 5).
 
 **`case.draft_ready`**: bozza di contratto da approvare e firmare.
 
@@ -231,7 +231,7 @@ Se vengono chieste modifiche, CF emette un nuovo `case.draft_ready` con `version
 ```
 
 - `registration` è presente solo se la registrazione è inclusa nel `level`; `type` è `L1` o `L2`.
-- Le organizzazioni in `attestation.organizations` devono essere **firmatarie dell'accordo** del comune: la Platform le verifica sul proprio archivio.
+- Le organizzazioni in `attestation.organizations` devono essere **firmatarie dell'accordo** del comune: CasaZen le verifica sul proprio archivio.
 - Le ricevute sono consegnate **anche come PDF separati**, non solo dentro lo zip.
 
 **`case.rejected`**: l'attestazione non può essere rilasciata.
@@ -252,7 +252,7 @@ Se vengono chieste modifiche, CF emette un nuovo `case.draft_ready` con `version
 { "reason": "Annullata su richiesta dell'utente." }
 ```
 
-## 5. Platform → CF: risposte e documenti (proposta)
+## 5. CasaZen → CF: risposte e documenti (proposta)
 
 Base `{CF_BASE_URL}/v1`, `Authorization: Bearer <api key>`, `Idempotency-Key: <uuid>`, errori come alla sezione 1.
 
