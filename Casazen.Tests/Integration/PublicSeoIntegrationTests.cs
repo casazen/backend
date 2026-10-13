@@ -8,6 +8,7 @@ using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -655,12 +656,47 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Contains("<h2>CIN</h2>", html);
         Assert.Contains("Il CIN è obbligatorio.", html);
         Assert.DoesNotContain("alert(1)", html);
+        // SEO-INVITE: CasaZen is on private invitation, so the flag SeoSignupCta is off and the page has no link to the signup.
+        Assert.DoesNotContain("/signup", html);
         Assert.Contains("non consulenza legale", html);
         Assert.Contains("amministratore CasaZen prima della pubblicazione", html);
         var article = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "Article");
         Assert.Equal("CasaZen", article.GetProperty("publisher").GetProperty("name").GetString());
         var breadcrumb = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "BreadcrumbList");
         Assert.Equal($"{PublicSite}/p/affitti-brevi", breadcrumb.GetProperty("itemListElement")[0].GetProperty("item").GetString());
+    }
+
+    [Fact]
+    public async Task GetGuide_SignupCtaFlagOn_LinksTheSignupWithTheComune()
+    {
+        await SeedGuideAsync("013145", "menaggio", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p>");
+        await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:SeoSignupCta"] = "true" })));
+
+        var response = await factory.CreateClient().GetAsync("/api/public/seo/guides/lombardia/menaggio");
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains($"<a href=\"{PublicSite}/signup?comune=menaggio", html);
+    }
+
+    [Fact]
+    public async Task GetPublicContent_SignupCtaFlagOffOrOn_CtaIsNullOrTheSignupUrl()
+    {
+        await SeedGuideAsync("013250", "bellagio", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p>");
+
+        var off = await _factory.CreateClient().GetAsync("/api/public/content/affitti-brevi/lombardia/bellagio");
+        var offJson = JsonDocument.Parse(await off.Content.ReadAsStringAsync()).RootElement;
+
+        Assert.Equal(HttpStatusCode.OK, off.StatusCode);
+        Assert.Equal(JsonValueKind.Null, offJson.GetProperty("cta").ValueKind);
+
+        await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:SeoSignupCta"] = "true" })));
+        var on = await factory.CreateClient().GetAsync("/api/public/content/affitti-brevi/lombardia/bellagio");
+        var onJson = JsonDocument.Parse(await on.Content.ReadAsStringAsync()).RootElement;
+
+        Assert.StartsWith($"{PublicSite}/signup?", onJson.GetProperty("cta").GetProperty("signupUrl").GetString());
     }
 
     [Fact]
