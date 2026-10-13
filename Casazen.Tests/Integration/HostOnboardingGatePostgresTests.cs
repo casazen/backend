@@ -94,10 +94,15 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
         Assert.False(me.GetProperty("onboardingRequired").GetBoolean());
         Assert.True(me.GetProperty("consentsAccepted").GetBoolean());
         Assert.Equal("PropertyOwner", me.GetProperty("role").GetString());
+        // Onboarded but no property yet: the web app takes the host to the first-property creation.
+        Assert.False(me.GetProperty("hasProperties").GetBoolean());
 
         var property = await client.PostAsJsonAsync("/api/properties", BodyFor("/api/properties", Guid.Empty));
         Assert.Equal(HttpStatusCode.Created, property.StatusCode);
         var propertyId = (await property.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        var meWithProperty = await (await client.GetAsync("/api/users/me")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(meWithProperty.GetProperty("hasProperties").GetBoolean());
 
         var guest = await client.PostAsJsonAsync("/api/guests", BodyFor("/api/guests", propertyId));
         Assert.Equal(HttpStatusCode.Created, guest.StatusCode);

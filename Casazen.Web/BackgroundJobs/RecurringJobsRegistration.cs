@@ -75,6 +75,14 @@ public static class RecurringJobsRegistration
             OrgInvitationMaintenanceJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // Host invites: the email of a closed invite is erased after HostInvites:RetentionDays. Always registered, like the org
+        // invitations: the retention of personal data does not depend on a feature being on.
+        recurringJobManager.AddOrUpdate<HostInviteRetentionJob>(
+            HostInviteRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            HostInviteRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // AM-02b: the activity log keeps 12 months. Always registered, like the invitations: the retention of what the log holds
         // does not depend on the OrgTeam flag (with the flag off nothing writes to it, and a flag turned off later leaves lines).
         recurringJobManager.AddOrUpdate<OrgActivityRetentionJob>(

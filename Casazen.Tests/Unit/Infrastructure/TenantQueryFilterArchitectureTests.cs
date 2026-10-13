@@ -71,6 +71,10 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SupplierInviteRecord)] = "Admin-issued supplier invitations keyed by e-mail, before any supplier org exists.",
         [typeof(SupplierAdminAuditEntry)] = "Platform-wide audit log of the admin actions on suppliers and invites (SU-12): suspension, reactivation, invite resend and revoke. Not tenant data: written and read only by SupplierAdminService behind the AdminOnly policy.",
 
+        // Invitation of new independent hosts: the invitee has no org yet and an admin's invite has none at all.
+        [typeof(HostInviteRecord)] = "Invite of a prospective independent host, written before any org exists for the invitee and by platform admins who have no org: InvitedByOrgId is attribution and quota scope, never a tenant filter (a filter would hide an admin's invites and the public link lookup). Only HostInviteService and HostInviteRetentionService touch it: the host endpoints always filter by the caller's own InvitedByUserId (a host never reaches another's invite), the admin endpoints are AdminOnly, the public lookup and the acceptance find the row by the SHA-256 of the secret token.",
+        [typeof(HostInviteAuditEntry)] = "Append-only audit trail of the host invites (created, sent again, revoked) with the actor and the actor's org, holding no email: platform-wide like SupplierAdminAuditEntry, written in the same transaction as the change by HostInviteService and read only by it to count the daily quota of one host org (ActorOrgId predicate).",
+
         // Rows owned by a user, not by an org.
         [typeof(PushDelivery)] = "Delivery log of the push jobs (MO-04): one row per event key and push token, written and read only by the Hangfire push delivery and receipts jobs, no endpoint; no org, no user, no text, purged after 7 days.",
         [typeof(DeviceRegistration)] = "Owned by the user (UserId), not the org: DevicesController only touches the caller's own rows and must drop the same push token from users of any org; push delivery crosses orgs by design (supplier to host) with explicit OrgId and UserId predicates. No endpoint lists devices.",

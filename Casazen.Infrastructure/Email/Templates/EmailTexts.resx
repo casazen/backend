@@ -1491,4 +1491,34 @@
   <data name="ServicePaymentAlert_Detail" xml:space="preserve">
     <value>Dettaglio: {0}</value>
   </data>
+  <data name="HostInvite_Subject" xml:space="preserve">
+    <value>Invito CasaZen — Registrati come host</value>
+  </data>
+  <data name="HostInvite_Title" xml:space="preserve">
+    <value>Sei stato invitato su CasaZen</value>
+  </data>
+  <data name="HostInvite_BodyFromHost" xml:space="preserve">
+    <value>{0} ti invita a provare CasaZen come &lt;strong&gt;host&lt;/strong&gt;: potrai gestire i tuoi alloggi, le prenotazioni e gli adempimenti in un unico posto.</value>
+  </data>
+  <data name="HostInvite_BodyFromTeam" xml:space="preserve">
+    <value>Il team CasaZen ti invita a provare CasaZen come &lt;strong&gt;host&lt;/strong&gt;: potrai gestire i tuoi alloggi, le prenotazioni e gli adempimenti in un unico posto.</value>
+  </data>
+  <data name="HostInvite_EmailHint" xml:space="preserve">
+    <value>Registrati con l'email &lt;strong&gt;{0}&lt;/strong&gt;: l'invito vale solo per questo indirizzo e si può usare una sola volta.</value>
+  </data>
+  <data name="HostInvite_NextSteps" xml:space="preserve">
+    <value>L'invito non dà nessun privilegio particolare: crei il tuo account con la normale registrazione e il tuo spazio resta tuo.</value>
+  </data>
+  <data name="HostInvite_MessageLabel" xml:space="preserve">
+    <value>Messaggio di chi ti ha invitato:</value>
+  </data>
+  <data name="HostInvite_Cta" xml:space="preserve">
+    <value>Accetta l'invito e registrati</value>
+  </data>
+  <data name="HostInvite_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="HostInvite_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana). Se non te l'aspettavi, puoi ignorare questa email.</value>
+  </data>
 </root>

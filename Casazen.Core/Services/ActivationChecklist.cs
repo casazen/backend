@@ -93,13 +93,18 @@ public sealed record ActivationPropertyFacts(
 
 /// <summary>Everything the activation checklist reads, loaded by the service (so the rules stay pure).</summary>
 /// <param name="Org">The org of the caller; null when the caller has none yet.</param>
+/// <param name="OnboardingCompleted">
+/// <c>User.OnboardingCompletedAt</c> is set: the same fact the host onboarding gate reads
+/// (<c>HostOnboardingStatus.IsComplete</c>), so the account step and the web guard cannot disagree.
+/// </param>
 public sealed record ActivationFacts(
     bool RoleChosen,
     bool OrgProvisioned,
     bool ConsentsAccepted,
     Org? Org,
     ActivationPropertyFacts Properties,
-    bool FirstBookingTaken);
+    bool FirstBookingTaken,
+    bool OnboardingCompleted);
 
 /// <summary>
 /// Rules of the host activation checklist (PL-15, A1-37, A3-26, PLG-AC10). Every step is derived from stored state and
@@ -122,7 +127,9 @@ public static class ActivationChecklist
 
         var org = facts.Org;
         var properties = org is null ? ActivationPropertyFacts.None : facts.Properties;
-        var accountDone = facts.RoleChosen && facts.OrgProvisioned && facts.ConsentsAccepted;
+        // Same facts as the host onboarding gate (onboarding completed + current consents), plus the org: a step that
+        // is "todo" always sends the host to a wizard that still has something to do, never to a redirect loop.
+        var accountDone = facts.OnboardingCompleted && facts.OrgProvisioned && facts.ConsentsAccepted;
 
         var organization = OrganizationStep(org);
         var property = PropertyStep(org, properties);
