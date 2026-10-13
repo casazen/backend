@@ -108,15 +108,7 @@ public class MeController(
     /// <summary>The caller's row, created from the token when it is the first request (the claims fill what the row lacks).</summary>
     private Task<Casazen.Core.Entities.User> GetCurrentUserAsync(string sub)
     {
-        var email = User.FindFirst("email")?.Value
-                    ?? User.FindFirst(ClaimTypes.Email)?.Value
-                    ?? string.Empty;
-        var firstName = User.FindFirst("given_name")?.Value
-                        ?? User.FindFirst("name")?.Value?.Split(' ').FirstOrDefault()
-                        ?? string.Empty;
-        var lastName = User.FindFirst("family_name")?.Value
-                       ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
-                       ?? string.Empty;
+        var (email, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
 
         return userService.GetCurrentUserAsync(sub, email, firstName, lastName);
     }

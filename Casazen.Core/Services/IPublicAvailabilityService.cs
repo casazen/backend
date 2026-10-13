@@ -31,8 +31,18 @@ public interface IPublicAvailabilityService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>Taken nights of a property, as calendar dates (midnight UTC), in order and without duplicates.</summary>
-public sealed record PublicAvailability(Guid PropertyId, DateTime FromDate, DateTime ToDate, IReadOnlyList<DateTime> BookedNights)
+/// <summary>
+/// Taken nights of a property, as calendar dates (midnight UTC), in order and without duplicates. <paramref name="MinNights"/>
+/// is the minimum stay of the property (DB-03), <c>null</c> for none: a free night can be booked as part of a stay of at least
+/// that many nights (the quote and the checkout refuse a shorter one, 422 <c>direct_booking_min_nights_not_met</c>), so a
+/// calendar built from this answer can grey out a selection that is too short without asking the quote.
+/// </summary>
+public sealed record PublicAvailability(
+    Guid PropertyId,
+    DateTime FromDate,
+    DateTime ToDate,
+    IReadOnlyList<DateTime> BookedNights,
+    int? MinNights = null)
 {
     /// <summary>Longest range one request may ask for: one year of the booking calendar.</summary>
     public const int MaxRangeDays = 366;

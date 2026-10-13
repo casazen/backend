@@ -26,6 +26,7 @@ public class PublicOrgControllerTests
     private readonly Mock<IPropertyService> _propertyService = new();
     private readonly Mock<IEntitlementService> _entitlementService = new();
     private readonly Mock<IOrgSiteDocumentService> _siteDocumentService = new();
+    private readonly GdprOptions _gdpr = new();
     private readonly PublicOrgController _controller;
 
     public PublicOrgControllerTests()
@@ -41,7 +42,8 @@ public class PublicOrgControllerTests
                 new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicSite })),
                 Options.Create(new PublicHostOptions { BaseDomain = "sites.example.test" }),
                 _entitlementService.Object),
-            _siteDocumentService.Object);
+            _siteDocumentService.Object,
+            Options.Create(_gdpr));
     }
 
     // ── GetOrg ──────────────────────────────────────────────────────────────────
@@ -419,6 +421,76 @@ public class PublicOrgControllerTests
 
         var dto = Assert.IsType<PublicPropertyDetailDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
         Assert.Equal("https://villa-rossi.sites.example.test/property/casa-mare", dto.CanonicalUrl);
+    }
+
+    // ── Public profile and booking readiness (DB-03) ─────────────────────────────────
+
+    [Fact]
+    public async Task GetOrg_PublicProfile_ReturnsSubtitleHostNameAndPublicPhone()
+    {
+        var org = BuildOrg("profile-org");
+        org.Subtitle = "Trulli, case sul mare e dimore barocche.";
+        org.HostName = "Giulia";
+        org.PublicPhone = "+393331234567";
+        _orgService.Setup(s => s.GetPublicBySlugAsync("profile-org", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>((await _controller.GetOrg("profile-org", CancellationToken.None)).Result).Value);
+
+        Assert.Equal("Trulli, case sul mare e dimore barocche.", dto.Subtitle);
+        Assert.Equal("Giulia", dto.HostName);
+        Assert.Equal("+393331234567", dto.PublicPhone);
+    }
+
+    [Fact]
+    public async Task GetOrg_NothingPublishedByTheHost_ExposesNoPhoneNoHostNameNoSubtitle()
+    {
+        // GDPR: an org that never entered a public phone exposes none, whatever else it has (its contact email stays behind
+        // its own opt-in).
+        var org = BuildOrg("bare-org");
+        org.ContactEmailPublic = false;
+        _orgService.Setup(s => s.GetPublicBySlugAsync("bare-org", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>((await _controller.GetOrg("bare-org", CancellationToken.None)).Result).Value);
+
+        Assert.Null(dto.PublicPhone);
+        Assert.Null(dto.HostName);
+        Assert.Null(dto.Subtitle);
+        Assert.Null(dto.ContactEmail);
+    }
+
+    [Theory]
+    [InlineData(null, false, false)] // no account
+    [InlineData("", true, false)] // a blank account
+    [InlineData("acct_started", false, false)] // onboarding started, Stripe does not allow charges yet
+    [InlineData("acct_ready", true, true)]
+    public async Task GetOrg_AcceptsBookings_IsTheRuleOfTheCheckout(string? accountId, bool chargesEnabled, bool expected)
+    {
+        var org = BuildOrg("bookable-org");
+        org.StripeConnectedAccountId = accountId;
+        org.ConnectChargesEnabled = chargesEnabled;
+        _orgService.Setup(s => s.GetPublicBySlugAsync("bookable-org", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>((await _controller.GetOrg("bookable-org", CancellationToken.None)).Result).Value);
+
+        Assert.Equal(expected, dto.AcceptsBookings);
+        // One rule: the same property of the org that the checkout reads before it accepts a booking.
+        Assert.Equal(org.CanTakeDirectPayments, dto.AcceptsBookings);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(" marketing-2026-10 ", "marketing-2026-10")]
+    public async Task GetOrg_MarketingConsentVersion_IsTheConfiguredVersionOrNullWhenThereIsNone(string? configured, string? expected)
+    {
+        _gdpr.MarketingConsentVersion = configured;
+        var org = BuildOrg("consent-org");
+        _orgService.Setup(s => s.GetPublicBySlugAsync("consent-org", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>((await _controller.GetOrg("consent-org", CancellationToken.None)).Result).Value);
+
+        Assert.Equal(expected, dto.MarketingConsentVersion);
     }
 
     private static OrgEntity BuildOrg(string slug) => new()

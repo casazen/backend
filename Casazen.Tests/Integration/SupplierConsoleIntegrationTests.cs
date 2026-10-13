@@ -7,6 +7,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 // OrgEntity is a global alias defined in Casazen.Tests.csproj: OrgEntity = global::Casazen.Core.Entities.Org
 
@@ -31,8 +32,10 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     [Fact]
     public async Task Register_SelfServeWithoutPilotComuniConfigured_Returns422SelfServeUnavailable()
     {
-        // This factory configures no Suppliers:PilotComuni: self-serve is off until the product owner sets them.
-        using var client = _factory.CreateClient();
+        // Restricted mode (Suppliers:AnyComune=false) and no Suppliers:PilotComuni: self-serve is off, invite only.
+        await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Suppliers:AnyComune"] = "false" })));
+        using var client = factory.CreateClient();
         var email = $"supplier-{Guid.NewGuid():N}@test.com";
 
         var response = await client.PostAsJsonAsync("/api/suppliers/register", new
@@ -51,7 +54,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.False(options.GetProperty("selfServeEnabled").GetBoolean());
         Assert.Empty(options.GetProperty("pilotComuni").EnumerateArray());
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.False(db.SupplierProfiles.Any(sp => sp.Email == email));
     }

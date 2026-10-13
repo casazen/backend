@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -182,6 +183,23 @@ public class FiscalRulesPostgresTests : IClassFixture<CasazenWebApplicationFacto
         Assert.Null((await db.Properties.AsNoTracking().SingleAsync(p => p.Id == property.Id)).TaxpayerFiscalCode);
     }
 
+    [PostgresFact]
+    public async Task AssignRegime_SameOrgHostNotOwningProperty_Returns404AndDoesNotWrite()
+    {
+        var owner = $"auth0|co18-owner-{Guid.NewGuid():N}";
+        var property = await _factory.SeedPropertyAsync(owner);
+        await SeedStayAsync(property, new DateTime(TaxYear, 10, 1, 0, 0, 0, DateTimeKind.Utc), nights: 2);
+        var colleague = await SeedSameOrgOwnerAsync(property.OrgId);
+        using var client = _factory.CreateAuthenticatedClient(colleague, "PropertyOwner");
+
+        var response = await AssignAsync(client, property.Id, "CedolareSecca21");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.PropertyFiscalYears.AsNoTracking().AnyAsync(y => y.PropertyId == property.Id));
+    }
+
     private static async Task<JsonElement> GetRegimeAsync(HttpClient client)
     {
         var response = await client.GetAsync($"/api/fiscal/regime?taxYear={TaxYear}");
@@ -227,5 +245,26 @@ public class FiscalRulesPostgresTests : IClassFixture<CasazenWebApplicationFacto
         db.Bookings.Add(booking);
         await db.SaveChangesAsync();
         return booking;
+    }
+
+    private async Task<string> SeedSameOrgOwnerAsync(Guid orgId)
+    {
+        var userId = $"auth0|co18-colleague-{Guid.NewGuid():N}";
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = new User
+        {
+            Id = userId,
+            Email = $"{Guid.NewGuid():N}@example.com",
+            FirstName = "Collega",
+            LastName = "Fiscale",
+            OrgId = orgId,
+            Role = UserRole.PropertyOwner,
+            IsActive = true,
+        };
+        db.Users.Add(user);
+        await HostOnboardingSeed.MarkOnboardedAsync(db, user, orgId, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
+        await db.SaveChangesAsync();
+        return userId;
     }
 }

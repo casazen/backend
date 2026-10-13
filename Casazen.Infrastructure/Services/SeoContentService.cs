@@ -199,6 +199,40 @@ public class SeoContentService(
         return await GetAdminPageDtoAsync(command.PageId, cancellationToken);
     }
 
+    public async Task<SeoPageAdminDetailDto> SaveManualDraftAsync(
+        SaveSeoDraftCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var page = await repository.GetByIdAsync(command.PageId, cancellationToken)
+            ?? throw new NotFoundException($"SEO page {command.PageId} not found");
+
+        if (!string.IsNullOrWhiteSpace(command.Title))
+            page.Title = command.Title.Trim();
+        if (!string.IsNullOrWhiteSpace(command.MetaDescription))
+            page.MetaDescription = command.MetaDescription.Trim();
+
+        var body = SeoGeneratedContent.EvaluateManual(command.BodyHtml, page.Title);
+        var now = _clock.GetUtcNow().UtcDateTime;
+        page.LastRefreshedAt = now;
+        page = await repository.UpsertPageAsync(page, cancellationToken);
+
+        await repository.AddRevisionAsync(new SeoContentRevision
+        {
+            PageId = page.Id,
+            BodyHtml = body,
+            ContentStatus = SeoContentStatus.Manual,
+            PromptVersion = null,
+            AiModelTier = AiModelTier.Economy,
+            PromptTokens = 0,
+            GeneratedAt = now,
+            SourceDataVersion = "manual",
+        }, cancellationToken);
+
+        logger.LogInformation("SEO page {PageId} manual draft stored by {ActorUserId}", page.Id, command.ActorUserId);
+        return await GetAdminPageAsync(page.Id, cancellationToken)
+            ?? throw new NotFoundException($"SEO page {page.Id} not found");
+    }
+
     private async Task<SeoPageAdminDto> GetAdminPageDtoAsync(Guid pageId, CancellationToken cancellationToken)
     {
         var detail = await GetAdminPageAsync(pageId, cancellationToken)
@@ -403,13 +437,23 @@ public class SeoContentService(
             ToTouristTaxComune(comune), _clock.TodayInRomeAsDateOnly(), cancellationToken);
         var sourceVersion = BuildSourceDataVersion(comune, taxRates);
 
+        var promptVersion = SeoContentPrompt.VersionFor(comune, pageType);
+
         var slug = BuildSlug(comune, pageType);
         var existing = await repository.GetPageAsync(comune.Code, pageType, cancellationToken);
 
         if (existing is not null && !forceRegenerate)
         {
             var latest = await repository.GetLatestRevisionAsync(existing.Id, cancellationToken);
-            if (latest is { ContentStatus: SeoContentStatus.Generated, PromptVersion: SeoContentPrompt.Version }
+            // A text the admin wrote is kept until they ask to regenerate: a batch must not replace it.
+            if (latest is { ContentStatus: SeoContentStatus.Manual })
+            {
+                logger.LogInformation("SEO page {Slug} has a manual draft; skipping until an explicit regenerate", slug);
+                return false;
+            }
+
+            if (latest is { ContentStatus: SeoContentStatus.Generated }
+                && latest.PromptVersion == promptVersion
                 && latest.SourceDataVersion == sourceVersion)
             {
                 logger.LogInformation("SEO source unchanged for {Slug}; skipping LLM", slug);
@@ -417,7 +461,7 @@ public class SeoContentService(
             }
         }
 
-        var cacheKey = $"{comune.Code}:{pageType}:{sourceVersion}:{SeoContentPrompt.Version}";
+        var cacheKey = $"{comune.Code}:{pageType}:{sourceVersion}:{promptVersion}";
         var prompt = SeoContentPrompt.Build(comune, pageType, taxRates);
         // A paid provider is wrapped by the platform budget guard: it checks the cap BEFORE the call and throws
         // AiBudgetExceededException, which stops the batch (A8-07). The prompt holds public regulatory data only.
@@ -451,7 +495,7 @@ public class SeoContentService(
             PageId = page.Id,
             BodyHtml = bodyHtml,
             ContentStatus = contentStatus,
-            PromptVersion = SeoContentPrompt.Version,
+            PromptVersion = promptVersion,
             AiModelTier = AiModelTier.Economy,
             PromptTokens = aiResult.FromCache || !aiResult.ProviderConfigured ? 0 : aiResult.PromptTokens,
             GeneratedAt = now,

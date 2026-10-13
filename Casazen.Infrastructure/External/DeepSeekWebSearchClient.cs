@@ -5,7 +5,6 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.External;
 
@@ -16,14 +15,16 @@ namespace Casazen.Infrastructure.External;
 /// </summary>
 public class DeepSeekWebSearchClient(
     IHttpClientFactory httpClientFactory,
-    IOptions<AiOptions> options,
+    IAiRuntimeSettings settings,
     IAiBudgetGuard budget,
     ILogger<DeepSeekWebSearchClient> logger) : IWebSearchClient
 {
     public async Task<string?> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
-        var config = options.Value;
-        if (string.IsNullOrWhiteSpace(config.ApiKey))
+        var config = await settings.GetEffectiveAsync(cancellationToken);
+        // The web search speaks DeepSeek's Anthropic-compatible endpoint only. Another chat provider does not receive it.
+        if (!string.Equals(config.Provider, AiOptions.DeepSeekProvider, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(config.ApiKey))
         {
             logger.LogDebug("Ai:ApiKey not configured; skipping web search.");
             return null;

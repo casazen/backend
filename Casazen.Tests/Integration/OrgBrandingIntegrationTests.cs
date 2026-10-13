@@ -235,6 +235,144 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal("urban", after.GetProperty("branding").GetProperty("publicThemeId").GetString());
     }
 
+    // ─── Public profile of the booking site (DB-03) ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateBranding_PublicProfile_IsPublishedOnThePublicOrgWithTheNormalizedPhone()
+    {
+        var ownerId = $"auth0|branding-profile-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        var slug = await SetSlugAsync(org.Id, $"villa-profile-{Guid.NewGuid():N}"[..29]);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new
+        {
+            tagline = "Case con l'anima",
+            subtitle = "  Trulli, case sul mare\n e dimore barocche. ",
+            hostName = " Giulia   Rinaldi ",
+            publicPhone = "+39 333 123 4567",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var saved = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Trulli, case sul mare e dimore barocche.", saved.GetProperty("subtitle").GetString());
+        Assert.Equal("Giulia Rinaldi", saved.GetProperty("hostName").GetString());
+        Assert.Equal("+393331234567", saved.GetProperty("publicPhone").GetString());
+
+        using var anonymous = _factory.CreateClient();
+        var publicOrg = await anonymous.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{slug}");
+        Assert.Equal("Trulli, case sul mare e dimore barocche.", publicOrg.GetProperty("subtitle").GetString());
+        Assert.Equal("Giulia Rinaldi", publicOrg.GetProperty("hostName").GetString());
+        Assert.Equal("+393331234567", publicOrg.GetProperty("publicPhone").GetString());
+        // The branding that was already there is untouched.
+        Assert.Equal("Case con l'anima", publicOrg.GetProperty("tagline").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateBranding_BodyWithoutTheProfile_KeepsTheProfile()
+    {
+        // The appearance form of today sends color, theme and tagline only; it must never erase what the profile holds.
+        var ownerId = $"auth0|branding-keep-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(ownerId);
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.PutAsJsonAsync("/api/orgs/me/branding", new { subtitle = "Sottotitolo", hostName = "Giulia", publicPhone = "0832123456" })).StatusCode);
+
+        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new { primaryColor = "#1A6B8F", publicThemeId = "urban", tagline = "Nuovo slogan" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Nuovo slogan", json.GetProperty("tagline").GetString());
+        Assert.Equal("Sottotitolo", json.GetProperty("subtitle").GetString());
+        Assert.Equal("Giulia", json.GetProperty("hostName").GetString());
+        Assert.Equal("0832123456", json.GetProperty("publicPhone").GetString());
+        var get = await client.GetFromJsonAsync<JsonElement>("/api/orgs/me/branding");
+        Assert.Equal("0832123456", get.GetProperty("publicPhone").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateBranding_ProfileSentAsNullOrBlank_UnpublishesIt()
+    {
+        var ownerId = $"auth0|branding-clear-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        var slug = await SetSlugAsync(org.Id, $"villa-clear-{Guid.NewGuid():N}"[..27]);
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        await client.PutAsJsonAsync("/api/orgs/me/branding", new { subtitle = "Sottotitolo", hostName = "Giulia", publicPhone = "0832123456" });
+
+        var response = await client.PutAsync(
+            "/api/orgs/me/branding",
+            new StringContent("""{ "subtitle": null, "publicPhone": "  " }""", System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var anonymous = _factory.CreateClient();
+        var publicOrg = await anonymous.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{slug}");
+        Assert.Equal(JsonValueKind.Null, publicOrg.GetProperty("subtitle").ValueKind);
+        Assert.Equal(JsonValueKind.Null, publicOrg.GetProperty("publicPhone").ValueKind);
+        Assert.Equal("Giulia", publicOrg.GetProperty("hostName").GetString());
+    }
+
+    [Theory]
+    [InlineData("publicPhone", "call me maybe", "org_branding_phone_invalid")]
+    [InlineData("publicPhone", "12345", "org_branding_phone_invalid")]
+    [InlineData("hostName", "h", "org_branding_host_name_too_long")]
+    [InlineData("subtitle", "s", "org_branding_subtitle_too_long")]
+    public async Task UpdateBranding_InvalidProfileValue_Returns422WithItsCodeAndKeepsTheStoredProfile(string field, string value, string expectedCode)
+    {
+        var ownerId = $"auth0|branding-bad-profile-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(ownerId);
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        await client.PutAsJsonAsync("/api/orgs/me/branding", new { hostName = "Giulia", publicPhone = "0832123456" });
+        // One character stands for "too long" in the rows above: the real overflow is built here.
+        var sent = field switch
+        {
+            "hostName" => new string('h', 101),
+            "subtitle" => new string('s', 301),
+            _ => value,
+        };
+
+        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new Dictionary<string, string> { [field] = sent });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(expectedCode, json.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(json.GetProperty("detail").GetString()));
+        var stored = await client.GetFromJsonAsync<JsonElement>("/api/orgs/me/branding");
+        Assert.Equal("Giulia", stored.GetProperty("hostName").GetString());
+        Assert.Equal("0832123456", stored.GetProperty("publicPhone").GetString());
+    }
+
+    [Theory]
+    [InlineData("subtitle", 501)]
+    [InlineData("hostName", 201)]
+    [InlineData("publicPhone", 41)]
+    public async Task UpdateBranding_InputFarBeyondTheLimits_Returns400ValidationError(string field, int length)
+    {
+        var ownerId = $"auth0|branding-huge-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(ownerId);
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+
+        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new Dictionary<string, string> { [field] = new string('1', length) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("validation_error", json.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task GetBranding_NewOrg_HasNoPublicProfile()
+    {
+        var ownerId = $"auth0|branding-empty-profile-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(ownerId);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var json = await client.GetFromJsonAsync<JsonElement>("/api/orgs/me/branding");
+
+        Assert.Equal(JsonValueKind.Null, json.GetProperty("subtitle").ValueKind);
+        Assert.Equal(JsonValueKind.Null, json.GetProperty("hostName").ValueKind);
+        Assert.Equal(JsonValueKind.Null, json.GetProperty("publicPhone").ValueKind);
+    }
+
     private static MultipartFormDataContent ImageForm(byte[] bytes, string fileName, string contentType)
     {
         var file = new ByteArrayContent(bytes);

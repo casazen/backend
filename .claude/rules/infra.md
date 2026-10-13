@@ -14,7 +14,7 @@ Full setup guide: `docs/INFRA.md`
 
 - **Railway** deploys `casazen/backend` via GitHub integration — not via `railway up` in Actions
 - **Vercel** deploys `casazen/frontend` via GitHub integration
-- **GitHub Actions** (`ci-cd.yml`): build, test, format; `verify-test` / `verify-prod` curl health URLs only
+- **GitHub Actions** (`ci-cd.yml`): build, test, format. `verify-railway-deploy.yml` curls health URLs after that suite is green
 - **PR comments** (`deploy-preview.yml`): links to Railway test URL + Vercel preview — no deploy
 
 ## Database

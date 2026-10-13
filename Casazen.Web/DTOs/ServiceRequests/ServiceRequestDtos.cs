@@ -45,11 +45,18 @@ public class CreateServiceRequestRequest
     public Guid? ServiceListingId { get; set; }
 
     /// <summary>
-    /// The start of the work (UTC), picked among the supplier's free slots (SP-04): needs <see cref="ServiceListingId"/>, since the
-    /// duration of the service gives the end. It is checked with the supplier's agenda (409 <c>supplier_slot_unavailable</c> when it
-    /// is not free). Without it the time is "da concordare", as before.
+    /// The start of the work (UTC). With <see cref="DurationMinutes"/> the end is the start plus that duration, so the supplier
+    /// sees when the job is and how long it lasts. With a catalog service and no duration, the service's duration gives the end
+    /// and the start is checked against the agenda (409 <c>supplier_slot_unavailable</c>). Without a start the time is
+    /// "da concordare" and the job occupies the whole day once the supplier takes it.
     /// </summary>
     public DateTime? ScheduledStartUtc { get; set; }
+
+    /// <summary>
+    /// How long the work lasts, in minutes (5 to 1,440). Together with <see cref="ScheduledStartUtc"/> it is the interval the
+    /// supplier cannot overlap with a job already accepted.
+    /// </summary>
+    public int? DurationMinutes { get; set; }
 }
 
 /// <summary>Body of <c>POST api/service-requests/{id}/reject</c>: the reason is required (A4-18).</summary>

@@ -14,6 +14,8 @@ using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
+using Casazen.Core.Options;
+using Casazen.Infrastructure.OfficialData;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Services.ICal;
@@ -279,6 +281,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
         // Host dashboard KPIs per period and iCal feeds widget (PC-16).
         services.AddScoped<IHostDashboardService, HostDashboardService>();
+        // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
+        services.AddScoped<IHostTodayService, HostTodayService>();
+        services.AddScoped<IComplianceMissingService, ComplianceMissingService>();
+        // Lists that hold up with many rows: bookings by days, status and text, a page at a time; payments by booking and period (SR-03).
+        services.AddScoped<IBookingSearchService, BookingSearchService>();
+        services.AddScoped<IPaymentListService, PaymentListService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
         // Refunds and cancellations on Stripe Connect (BK-02, docs/runbooks/stripe.md "Refunds").
@@ -373,17 +381,31 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IRentBillingService, RentBillingService>();
+        // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
+        services.AddScoped<IRentRegisterService, RentRegisterService>();
+        services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
         // Guests of a stay and official Alloggiati code tables (CO-12).
         services.AddScoped<IAlloggiatiCodeTableService, AlloggiatiCodeTableService>();
+        services.AddHttpClient<OfficialSourceDownloader>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-official-reference-data/1.0");
+        });
+        services.AddScoped<IOfficialReferenceDataRefreshService, OfficialReferenceDataRefreshService>();
+        services.AddScoped<IComuneOfficialProfileService, ComuneOfficialProfileService>();
+        services.AddOptions<OfficialReferenceDataOptions>()
+            .BindConfiguration(OfficialReferenceDataOptions.SectionName);
         services.AddScoped<IStayGuestService, StayGuestService>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         // D.L. 145/2023 safety checklist of a short-stay property (CO-07).
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
         services.AddScoped<IPropertyComplianceStatusService, PropertyComplianceStatusService>();
+        services.AddSingleton<IDemoEnvironmentGate, Casazen.Web.Demo.HostDemoEnvironmentGate>();
+        services.AddScoped<IDemoEnvironmentService, DemoEnvironmentService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
         // Single PDF renderer (LT-09, A7-14): A4, wrapping, pagination, embedded Unicode fonts. Stateless.
@@ -441,6 +463,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicSupplierShowcaseService, PublicSupplierShowcaseService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
+        // Invitation of new independent hosts by admins and hosts: limits are configuration (HostInvites), validated at startup.
+        services.AddOptions<Casazen.Core.Options.HostInviteOptions>()
+            .BindConfiguration(Casazen.Core.Options.HostInviteOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.HostInviteOptions>, Casazen.Core.Options.HostInviteOptionsValidator>();
+        services.AddScoped<IHostInviteService, HostInviteService>();
+        services.AddScoped<IHostInviteRetentionService, HostInviteRetentionService>();
 
         // Official ISTAT comuni list (SU-04): read side, import (admin upload and the seed file of the deploy), the SEO view,
         // the supplier matching by ISTAT code and the validated pilot comuni of the supplier registration.

@@ -57,8 +57,8 @@ The backend no longer serves an HTML `/register` page (it sent users to Auth0 wi
 | `supplier_invite_comune_mismatch` | Form comune differs from the invited comune |
 | `supplier_account_email_missing` | Signed in, but the account email is unknown: no email claim in the access token (`https://casazen.app/email`, `email`; Auth0 Action, [`auth0.md`](auth0.md) §6) and the Management API (M2M client, §4-5) is not configured or has no email for the user |
 | `supplier_account_email_mismatch` | Signed-in self-serve with an email that is not the account's |
-| `supplier_self_serve_unavailable` | No pilot comune configured (section 3) |
-| `supplier_comune_not_pilot` | Self-serve for a comune outside the pilot list |
+| `supplier_self_serve_unavailable` | Official ISTAT list not imported (`AnyComune=true`), or no pilot comune configured (`AnyComune=false`, section 3) |
+| `supplier_comune_not_pilot` | Comune not in the official list (`AnyComune=true`), or outside the pilot list (`AnyComune=false`) |
 
 `409 supplier_email_taken` when a supplier profile already has the email (trimmed, case-insensitive; SU-14, section
 9): the owner of that profile links it with the claim (section 2), a second profile is never created. The admin invite
@@ -139,14 +139,20 @@ Auth0 database connection's verification email enabled (default).
 - A host with a supplier profile keeps the host org (`orgId`) and the supplier org (`supplierOrgId`): the context
   switch (`GET /api/me/contexts`) offers both.
 - The host onboarding shows *Sono un fornitore* to users without org, role or claim: *Registrati come fornitore* opens
-  `/register` (signed-in self-serve, only for the pilot comuni; "solo su invito" when none is configured) and *Hai già
+  `/register` (self-serve in **any comune of the official ISTAT list**, see section 3) and *Hai già
   registrato la tua attività? Collega il profilo* opens `/register/claim` (verified-email claim).
 
 ## 3. Pilot comuni (Railway variables, per environment)
 
-The spec allows self-serve signup only "for pilot comune" (`Sessions/specs/spec-supplier-console-web.md` AC3) and
-does not name them, so there is **no default**: while the list is empty self-serve is **off** and suppliers join only
-by invite (the page says so). Admin invites are not limited to the pilot comuni.
+**Default: any comune.** `Suppliers__AnyComune` (default `true`) lets a supplier registering without an invite pick **any
+active comune of the official ISTAT list** (comuni picker on `/register`, ISTAT or cadastral code accepted by the API);
+self-serve is on as soon as the list is imported ([comuni-istat.md](comuni-istat.md)), with no pilot configured. This
+supersedes the "pilot comune only" wording of `Sessions/specs/spec-supplier-console-web.md` AC3 (product owner decision,
+2026-10). Abuse control stays on the anonymous endpoint (rate limit, section 5, claim token, one profile per email).
+
+Set `Suppliers__AnyComune=false` to restore the restricted behaviour below: only the pilot comuni, and while the pilot list
+is empty self-serve is **off** and suppliers join only by invite. With `AnyComune=true` the pilots are only the ones
+suggested first. Admin invites are never limited to the pilot comuni.
 
 | Variable | Meaning |
 |---|---|

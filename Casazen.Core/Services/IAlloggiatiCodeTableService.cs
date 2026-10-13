@@ -4,9 +4,9 @@ using Casazen.Core.Regulatory;
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// Official Alloggiati Web code tables (comuni, stati, tipi documento, tipi alloggiato): import of the file downloaded
-/// from the portal by an admin, status, search for the forms and resolution of the guests' codes (CO-12). The tables are
-/// empty until an admin imports them: CasaZen ships no code (RS-1: never committed, never invented).
+/// Official Alloggiati Web code tables (comuni, stati, tipi documento, tipi alloggiato): import of the official file
+/// (startup seed, scheduled download from the public Alloggiati portal, or admin upload), status, search for the forms
+/// and resolution of the guests' codes (CO-12). Codes are never invented: only the official files are stored.
 /// </summary>
 public interface IAlloggiatiCodeTableService
 {
@@ -36,7 +36,16 @@ public interface IAlloggiatiCodeTableService
         string fileName,
         string sourceVersion,
         string importedBy,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? sourceUrl = null,
+        string? authority = null,
+        bool skipIfUnchanged = false);
+
+    /// <summary>
+    /// Loads the embedded official tables of the deploy when a table is empty. Does not replace a table an admin or
+    /// the scheduled job already imported.
+    /// </summary>
+    Task<IReadOnlyList<AlloggiatiCodeImportResult>> ImportSeedIfEmptyAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed record AlloggiatiCodeTableStatus(
@@ -56,7 +65,8 @@ public sealed record AlloggiatiCodeImportResult(
     AlloggiatiCodeTable Table,
     int RowCount,
     Guid? ImportId,
-    IReadOnlyList<AlloggiatiCodeImportLineError> Errors)
+    IReadOnlyList<AlloggiatiCodeImportLineError> Errors,
+    bool Unchanged = false)
 {
     public bool Success => Errors.Count == 0;
 }

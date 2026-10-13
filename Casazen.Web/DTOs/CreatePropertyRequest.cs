@@ -92,6 +92,21 @@ public class CreatePropertyRequest
     public decimal NightlyRate { get; set; }
 
     /// <summary>
+    /// Fewest nights the public booking site accepts (DB-03), 1 to 30; <c>null</c> or left out = no minimum. The guests' quote
+    /// and checkout refuse a shorter stay (422 <c>direct_booking_min_nights_not_met</c>); the host can still enter one by hand.
+    /// </summary>
+    [Range(PropertyStayRules.MinMinNights, PropertyStayRules.MaxMinNights, ErrorMessage = "PropertyMinNightsRange")]
+    public int? MinNights { get; set; }
+
+    /// <summary>
+    /// Percent added to the nightly rate on the Friday and Saturday nights of a stay (DB-03), 0 to 100 with two decimals;
+    /// <c>0</c> or left out = no surcharge (the default: the price of a stay does not change).
+    /// </summary>
+    [Range(typeof(decimal), "0", "100", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyWeekendSurchargeRange")]
+    public decimal WeekendSurchargePercent { get; set; }
+
+    /// <summary>
     /// How the property is let (PM-01, D19): <c>Short</c> (short stays) or <c>Long</c> (long-term leases), exclusive.
     /// Optional. <b>Compatibility rule</b> (<see cref="PropertyRentalModeRules.ResolveForCreation"/>): without it, a request
     /// with no guests (<c>maxGuests: 0</c>) <b>and</b> no rate (<c>nightlyRate: 0</c>) — what the long-rent form has always
@@ -176,6 +191,8 @@ public class CreatePropertyRequest
         Bathrooms = Bathrooms,
         MaxGuests = MaxGuests,
         NightlyRate = NightlyRate,
+        MinNights = MinNights,
+        WeekendSurchargePercent = WeekendSurchargePercent,
         RentalMode = PropertyRentalModeRules.ResolveForCreation(RentalMode, MaxGuests, NightlyRate),
         CleaningFee = CleaningFee,
         DamageDeposit = DamageDeposit,

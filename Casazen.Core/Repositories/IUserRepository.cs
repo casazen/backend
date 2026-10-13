@@ -20,6 +20,12 @@ public interface IUserRepository
     Task UpdateAsync(User user);
 
     /// <summary>
+    /// Removes the account. Memberships and property grants cascade; a property that named this user as responsible
+    /// is left without one. Push tokens of the account are removed too (they have no foreign key).
+    /// </summary>
+    Task DeleteAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Sets <c>IsActive</c> of user <paramref name="id"/> (PL-03). A deactivation runs under a transaction-scoped
     /// advisory lock and changes nothing when <paramref name="actorId"/> was deactivated meanwhile
     /// (<see cref="UserActivationOutcome.ActorInactive"/>) or when the user is the last active platform admin

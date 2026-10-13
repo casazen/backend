@@ -21,13 +21,28 @@ public class SupplierPilotComuni(
     }
 
     public async Task<bool> IsSelfServeEnabledAsync(CancellationToken cancellationToken = default) =>
-        (await GetAsync(cancellationToken)).Count > 0;
+        // Any comune: the official list must be imported (nothing can be validated without it); a typo in the configured
+        // pilots never closes it. Restricted: at least one validated pilot.
+        options.Value.AnyComune
+            ? await directory.IsAvailableAsync(cancellationToken)
+            : (await GetAsync(cancellationToken)).Count > 0;
 
     public async Task<SupplierPilot?> FindAsync(string? code, CancellationToken cancellationToken = default)
     {
         var trimmed = code?.Trim();
         if (string.IsNullOrEmpty(trimmed))
             return null;
+
+        // Any active comune of the official list, by ISTAT or cadastral code (never a bare name: it can be ambiguous). While the
+        // list is not imported nothing can be validated: the configured pilots answer as before (their name is used by the
+        // invite emails); registration is refused earlier because self-serve is off without the list.
+        if (options.Value.AnyComune && await directory.IsAvailableAsync(cancellationToken))
+        {
+            var listed = await directory.ResolveAsync([trimmed], cancellationToken);
+            return listed.TryGetValue(trimmed, out var any) && any.IsActive
+                ? new SupplierPilot(any.IstatCode, any.Name, Validated: true)
+                : null;
+        }
 
         var pilots = await GetAsync(cancellationToken);
         var direct = pilots.FirstOrDefault(p => p.Code.Equals(trimmed, StringComparison.OrdinalIgnoreCase));

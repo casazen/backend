@@ -132,6 +132,32 @@ public class ComplianceSummaryItemDto
 
     /// <summary>Set for every action on a booking, null for <see cref="ComplianceCockpitAction.ActivateProperty"/>.</summary>
     public Guid? BookingId { get; set; }
+
+    /// <summary>
+    /// What the item still lacks (SR-03), with stable codes and fields: the blockers of a property to activate, the fields of the
+    /// Alloggiati record the guests of a stay lack, the single thing left for the other actions. Never empty.
+    /// </summary>
+    public IEnumerable<ComplianceMissingDto> Missing { get; set; } = [];
+}
+
+/// <summary>One thing an item of the cockpit still lacks (SR-03): a stable code, the field it is about, how many guests lack it.</summary>
+public class ComplianceMissingDto
+{
+    /// <summary>Stable snake_case code the client translates: a blocker of the activation wizard (<c>activation_cin_missing</c>, ...) or a code of the stays (<c>guest_field_missing</c>, ...).</summary>
+    public string Code { get; init; } = string.Empty;
+
+    /// <summary>The step of the activation wizard (<c>cin</c>, <c>documents</c>, ...) or the field of the Alloggiati record (<c>documentNumber</c>, ...); <c>null</c> when the code says it all.</summary>
+    public string? Field { get; init; }
+
+    /// <summary>Guests of the stay that lack the field; <c>null</c> when it does not apply.</summary>
+    public int? Count { get; init; }
+
+    public static ComplianceMissingDto From(Casazen.Core.Services.ComplianceMissing missing) => new()
+    {
+        Code = missing.Code,
+        Field = missing.Field,
+        Count = missing.Count,
+    };
 }
 
 public class ComplianceSummarySectionDto

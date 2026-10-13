@@ -31,4 +31,12 @@ public class UserDetailDto : UserSummaryDto
     /// user's org. False with a completed onboarding means a document changed and must be accepted again.
     /// </summary>
     public bool? ConsentsAccepted { get; set; }
+
+    /// <summary>
+    /// Own profile only, <c>null</c> elsewhere (and for a user without a host org): the user's org has at least one
+    /// property. False means the host still has to create the first one; the web app takes a host with a completed
+    /// onboarding to the first-property creation, not back to the wizard. Independent of
+    /// <see cref="OnboardingRequired"/>: it never gates an endpoint.
+    /// </summary>
+    public bool? HasProperties { get; set; }
 }

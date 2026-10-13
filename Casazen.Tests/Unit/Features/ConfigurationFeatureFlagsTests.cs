@@ -81,6 +81,8 @@ public class ConfigurationFeatureFlagsTests
                 // UI-12a: the flag of the in-app notifications is appended after the ones of the other tasks.
                 "InAppNotifications",
                 "GlobalSearch",
+                // SEO-INVITE: the call to action to sign up on the public SEO pages, off while CasaZen is on invitation.
+                "SeoSignupCta",
             },
             FeatureFlags.All);
     }

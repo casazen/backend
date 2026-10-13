@@ -46,6 +46,17 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/invite/accept?token={Uri.EscapeDataString(inviteToken)}");
     }
 
+    /// <summary>
+    /// Public page of the web app for a host invite (route <c>/invito-host/{token}</c>): it reads what it shows from
+    /// <c>GET api/host-invites/lookup</c> and sends the person to the normal signup. Only the secret token is in the link: no
+    /// email, no name.
+    /// </summary>
+    public string HostInviteSignup(string inviteToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inviteToken);
+        return Build($"/invito-host/{Uri.EscapeDataString(inviteToken)}");
+    }
+
     /// <summary>The people page of the account (AM-02, route <c>/app/account/people</c>, built by AM-04): who works in the org and its invitations.</summary>
     public string AccountPeople() => Build("/app/account/people");
 

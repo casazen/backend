@@ -51,6 +51,15 @@ public interface IBookingRepository
     Task<bool> IsAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut, int? directPendingTtlMinutes = null);
 
     Task<Booking> AddAsync(Booking booking);
+
+    /// <summary>
+    /// <see cref="AddAsync(Booking)"/> for the booking of a public checkout whose guest ticked the optional "send me offers"
+    /// box (DB-03): the booking, its guest snapshot and the record of the marketing consent
+    /// (<see cref="GuestConsentRecord.GuestId"/> is the booking's guest) are written in the same transaction, under the same
+    /// property lock and overlap checks. A checkout that loses the dates to a concurrent one leaves no consent behind either.
+    /// </summary>
+    Task<Booking> AddWithGuestConsentAsync(Booking booking, GuestConsentRecord consent);
+
     Task<Booking> UpdateAsync(Booking booking);
     Task DeleteAsync(Guid id);
 

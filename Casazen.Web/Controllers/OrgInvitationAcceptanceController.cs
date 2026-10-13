@@ -86,11 +86,8 @@ public class OrgInvitationAcceptanceController(
         var (email, emailVerified) = await accountEmails.ResolveAsync(User, userId, cancellationToken);
 
         // The acceptance page lives outside the app shell: the account row may not exist yet.
-        await userService.GetCurrentUserAsync(
-            userId,
-            email ?? string.Empty,
-            User.FindFirst("given_name")?.Value ?? User.FindFirst("name")?.Value?.Split(' ').FirstOrDefault() ?? string.Empty,
-            User.FindFirst("family_name")?.Value ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault() ?? string.Empty);
+        var (_, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
+        await userService.GetCurrentUserAsync(userId, email ?? string.Empty, firstName, lastName);
 
         var accepted = await invitations.AcceptAsync(
             new AcceptOrgInvitation(

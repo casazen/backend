@@ -19,6 +19,13 @@ public class SaveRendezvousTests
     private static readonly TimeSpan ShortTimeout = TimeSpan.FromMilliseconds(500);
 
     [Fact]
+    public void HoldParallelSaves_RegistersTheMarkerThatSkipsAdvisoryLocksAcrossTheBarrier()
+    {
+        // Take always holds the calendar lock across SaveChanges; without this marker the first party deadlocks the second.
+        Assert.True(typeof(IParallelSaveRendezvousInterceptor).IsAssignableFrom(typeof(SaveRendezvous)));
+    }
+
+    [Fact]
     public async Task TwoSavesInTwoScopes_AreHeldUntilBothHaveArrived_ThenBothGoThrough()
     {
         var services = NewServices();

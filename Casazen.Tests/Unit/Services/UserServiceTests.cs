@@ -346,6 +346,76 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task EnrichUsersFromAuth0Async_EmptyEmail_StoresTheAuth0Email()
+    {
+        var user = new User { Id = "auth0|no-mail", Email = "", FirstName = "", LastName = "" };
+        _auth0Mock.Setup(a => a.GetUserProfileAsync(user.Id))
+            .ReturnsAsync(new Auth0UserProfile("Host@Example.com", "Luca", "Neri", true));
+        _repoMock.Setup(r => r.UpdateAsync(user)).Returns(Task.CompletedTask);
+
+        await _service.EnrichUsersFromAuth0Async([user]);
+
+        Assert.Equal("host@example.com", user.Email);
+        Assert.Equal(("Luca", "Neri"), (user.FirstName, user.LastName));
+        _repoMock.Verify(r => r.UpdateAsync(user), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteRegisteredUserAsync_Auth0Deleted_RemovesTheLocalAccount()
+    {
+        var user = new User { Id = "auth0|target", Role = UserRole.PropertyOwner, IsActive = true };
+        _repoMock.Setup(r => r.GetByIdAsync(user.Id)).ReturnsAsync(user);
+        _auth0Mock.Setup(a => a.DeleteUserAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Auth0SyncResult.Synced);
+        _repoMock.Setup(r => r.DeleteAsync(user.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var result = await _service.DeleteRegisteredUserAsync(user.Id, "auth0|admin");
+
+        Assert.True(result.Succeeded);
+        _repoMock.Verify(r => r.DeleteAsync(user.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _cacheMock.Verify(c => c.Invalidate(user.Id), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteRegisteredUserAsync_Auth0Fails_KeepsTheLocalAccount()
+    {
+        var user = new User { Id = "auth0|target", Role = UserRole.PropertyOwner, IsActive = true };
+        _repoMock.Setup(r => r.GetByIdAsync(user.Id)).ReturnsAsync(user);
+        _auth0Mock.Setup(a => a.DeleteUserAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Auth0SyncResult.NotConfigured);
+
+        var result = await _service.DeleteRegisteredUserAsync(user.Id, "auth0|admin");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(Auth0SyncResult.NotConfiguredCode, result.ErrorCode);
+        _repoMock.Verify(r => r.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteRegisteredUserAsync_Self_ThrowsWithoutAuth0Calls()
+    {
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => _service.DeleteRegisteredUserAsync("auth0|admin", "auth0|admin"));
+
+        Assert.Equal(UserActivationErrors.CannotDeleteSelf, ex.Code);
+        _auth0Mock.Verify(a => a.DeleteUserAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteRegisteredUserAsync_LastActiveAdmin_ThrowsWithoutAuth0Calls()
+    {
+        var user = new User { Id = "auth0|only-admin", Role = UserRole.Admin, IsActive = true };
+        _repoMock.Setup(r => r.GetByIdAsync(user.Id)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.HasOtherActiveAdminAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => _service.DeleteRegisteredUserAsync(user.Id, "auth0|other"));
+
+        Assert.Equal(UserActivationErrors.CannotDeleteLastAdmin, ex.Code);
+        _auth0Mock.Verify(a => a.DeleteUserAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task UpdateRolesAsync_RemovesOneOfSeveralRoles_KeepsTheOthers()
     {
         // Arrange: admin unchecks Supplier only; Admin (primary) and PropertyOwner stay.

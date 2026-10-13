@@ -304,7 +304,7 @@ public class SeoContentRepository(AppDbContext context, ISeoComuneCatalog comune
         if (page.PublishedRevisionId == revision.Id)
             return SeoApprovalOutcome.AlreadyPublished;
 
-        if (revision.ContentStatus != SeoContentStatus.Generated || !revision.HasBody)
+        if (!revision.ContentStatus.IsPublishable() || !revision.HasBody)
             return SeoApprovalOutcome.NotPublishable;
 
         auditEvent.Action = SeoReviewAction.Approved;

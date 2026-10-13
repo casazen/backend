@@ -124,6 +124,7 @@ public partial class ServiceRequestService(
 
         // SP-04: the service of the supplier's catalog the request is for, and the time the host picked among its slots.
         var service = await FindRequestableServiceAsync(command, category, cancellationToken);
+        command = await EnsureTimedCreateCommandAsync(command, service, cancellationToken);
         var schedule = ResolveCreateSchedule(command, service);
 
         var now = Now();
@@ -144,8 +145,8 @@ public partial class ServiceRequestService(
             ServiceListingId = service?.Id,
             ServiceNameSnapshot = service?.Name,
             EstimatedAmountCents = service?.EstimatedAmountCents,
-            ScheduledStartUtc = schedule?.Start,
-            ScheduledEndUtc = schedule?.End,
+            ScheduledStartUtc = schedule.Start,
+            ScheduledEndUtc = schedule.End,
             // Decision D8: a host's request waits for the supplier's answer for HostResponseMinutes. The deadline is recorded
             // always; only the flag SupplierRequestAutoCancel makes the job act on it.
             ResponseDueAt = now.AddMinutes(options.Value.HostResponseMinutes),
@@ -155,14 +156,16 @@ public partial class ServiceRequestService(
         var comune = property.City;
         var supplierEmail = notifier.RenderCreatedEmail(request, supplier.LegalName, comune);
 
-        IDbContextTransaction? transaction = schedule is null ? null : await LockSupplierCalendarAsync(command.SupplierOrgId, cancellationToken);
+        IDbContextTransaction? transaction = await LockSupplierCalendarAsync(command.SupplierOrgId, cancellationToken);
         await using (transaction)
         {
-            if (schedule is not null)
-            {
-                // After the lock: a request saved by whoever held it before is seen, so the slot is judged on what is there now.
+            // After the lock: a request saved by whoever held it before is seen, so the slot is judged on what is there now.
+            // A duration the host typed is the length of the job; it does not have to be one of the published slots.
+            if (command.DurationMinutes is null)
                 await EnsureSlotFreeAsync(command.SupplierOrgId, schedule, exceptRequestId: null, cancellationToken);
-            }
+
+            await EnsureNoOverlappingCommitmentAsync(
+                command.SupplierOrgId, request.Id, schedule.Start, schedule.End, cancellationToken);
 
             await repository.AddAsync(request, cancellationToken);
             await CommitAsync(transaction, cancellationToken);
@@ -251,19 +254,63 @@ public partial class ServiceRequestService(
     }
 
     /// <summary>
-    /// The time a host asked for (SP-04): it needs the service of the catalog, whose duration is the length of the work.
-    /// 422 <see cref="ServiceRequestErrorCodes.TimeNeedsService"/> otherwise. Null when the host asked for no time.
+    /// Every request stores an interval. When the host omitted the start, use Europe/Rome 10:00 on the stay check-out
+    /// day (or on today for long-rent) and a duration from the host, the catalog, or 120 minutes — never a day-only row.
     /// </summary>
-    private static RequestSchedule? ResolveCreateSchedule(CreateServiceRequestCommand command, SupplierServiceForRequest? service)
+    private async Task<CreateServiceRequestCommand> EnsureTimedCreateCommandAsync(
+        CreateServiceRequestCommand command,
+        SupplierServiceForRequest? service,
+        CancellationToken cancellationToken)
+    {
+        if (command.ScheduledStartUtc is not null)
+            return command;
+
+        DateOnly day;
+        if (command.BookingId is Guid bookingId)
+        {
+            var checkout = await db.Bookings.AsNoTracking()
+                .Where(b => b.Id == bookingId)
+                .Select(b => (DateTime?)b.CheckOutDate)
+                .FirstOrDefaultAsync(cancellationToken);
+            day = checkout is { } when ? RomeCalendar.DateInRome(when) : RomeCalendar.DateInRome(Now());
+        }
+        else
+        {
+            day = RomeCalendar.DateInRome(Now());
+        }
+
+        var start = RomeCalendar.ToUtc(day, new TimeOnly(10, 0));
+        // Explicit duration so the planner is not asked for a published slot the host never chose.
+        var minutes = command.DurationMinutes
+            ?? (service?.DurationMinutes is > 0 and var fromService ? fromService : 120);
+
+        return command with { ScheduledStartUtc = start, DurationMinutes = minutes };
+    }
+
+    /// <summary>
+    /// The interval the host asks for (SP-04): a start is always required (filled by
+    /// <see cref="EnsureTimedCreateCommandAsync"/> when omitted). The end is
+    /// <see cref="CreateServiceRequestCommand.DurationMinutes"/> when set, else the catalog service duration
+    /// (422 <see cref="ServiceRequestErrorCodes.TimeNeedsService"/> when neither gives a length).
+    /// </summary>
+    private static RequestSchedule ResolveCreateSchedule(CreateServiceRequestCommand command, SupplierServiceForRequest? service)
     {
         if (command.ScheduledStartUtc is not { } requested)
-            return null;
+            throw TimeInvalid();
+
+        var start = UtcDateTime.Normalize(requested);
+        if (command.DurationMinutes is int minutes)
+        {
+            if (minutes is < SupplierServiceCatalogLimits.MinDurationMinutes or > SupplierServiceCatalogLimits.MaxDurationMinutes)
+                throw TimeInvalid();
+
+            return new RequestSchedule(start, start.AddMinutes(minutes), new SupplierSlotQuery(minutes));
+        }
 
         var query = service?.ToSlotQuery()
             ?? throw new DomainRuleException(
                 ServiceRequestErrorCodes.TimeNeedsService, ServiceRequestErrorCodes.TimeNeedsServiceMessageKey);
 
-        var start = UtcDateTime.Normalize(requested);
         return new RequestSchedule(start, start.AddMinutes(query.DurationMinutes), query);
     }
 
@@ -286,11 +333,19 @@ public partial class ServiceRequestService(
         // can take charges and payouts: no payment before the KYC).
         var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
-        IDbContextTransaction? transaction = schedule is null ? null : await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
+        // Always under the calendar lock: two takes of the same day must not both pass the overlap check.
+        IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
         await using (transaction)
         {
             if (schedule is not null)
                 await EnsureSlotFreeAsync(supplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
+
+            await EnsureNoOverlappingCommitmentAsync(
+                supplierOrgId,
+                request.Id,
+                schedule?.Start ?? request.ScheduledStartUtc,
+                schedule?.End ?? request.ScheduledEndUtc,
+                cancellationToken);
 
             await TransitionAsync(
                 request,
@@ -778,6 +833,48 @@ public partial class ServiceRequestService(
     private static DomainRuleException TimeInvalid() =>
         new(ServiceRequestErrorCodes.TimeInvalid, ServiceRequestErrorCodes.TimeInvalidMessageKey);
 
+    /// <summary>
+    /// 409 <see cref="ServiceRequestErrorCodes.CommitmentConflict"/> when this job's interval overlaps one the supplier
+    /// already accepted (<c>PresoInCarico</c> or <c>InCorso</c>). Same-day jobs are allowed when the half-open intervals
+    /// <c>[start, end)</c> do not touch. 422 <see cref="ServiceRequestErrorCodes.TimeInvalid"/> when this job has no interval
+    /// (a request without start and duration must not exist).
+    /// </summary>
+    private async Task EnsureNoOverlappingCommitmentAsync(
+        Guid supplierOrgId,
+        Guid exceptRequestId,
+        DateTime? startUtc,
+        DateTime? endUtc,
+        CancellationToken cancellationToken)
+    {
+        if (startUtc is not { } start || endUtc is not { } end || end <= start)
+            throw TimeInvalid();
+
+        var others = await db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.SupplierOrgId == supplierOrgId
+                && r.Id != exceptRequestId
+                && (r.Status == ServiceRequestStatus.PresoInCarico || r.Status == ServiceRequestStatus.InCorso)
+                && r.ScheduledStartUtc != null
+                && r.ScheduledEndUtc != null)
+            .Select(r => new { Start = r.ScheduledStartUtc!.Value, End = r.ScheduledEndUtc!.Value })
+            .ToListAsync(cancellationToken);
+
+        foreach (var other in others)
+        {
+            if (other.End <= other.Start)
+                continue;
+
+            if (!(start < other.End && other.Start < end))
+                continue;
+
+            logger.LogInformation(
+                "Supplier {SupplierOrgId}: a service request overlaps a job already accepted",
+                supplierOrgId);
+            throw new DomainConflictException(
+                ServiceRequestErrorCodes.CommitmentConflict, ServiceRequestErrorCodes.CommitmentConflictMessageKey);
+        }
+    }
     /// <summary>The host's org and, for a restricted scope (AM-03), only the requests on the properties the caller reaches.</summary>
     private static IQueryable<ServiceRequest> ApplyHostScope(IQueryable<ServiceRequest> query, HostScope scope) =>
         query.Where(r => r.OrgId == scope.OrgId).InScope(scope);

@@ -74,6 +74,17 @@ public class GdprControllerOrgExportTests
     }
 
     [Fact]
+    public void AnonymizeOrgFiscal_NeedsTheOrgPolicy_NotThePropertyOne()
+    {
+        // Wiping the fiscal identifiers of the whole org cannot be undone: it is an act of the holder, like the export (AM-03b-FU1).
+        var method = typeof(GdprController).GetMethod(nameof(GdprController.AnonymizeOrgFiscal))!;
+
+        var policies = method.GetCustomAttributes<AuthorizeAttribute>().Select(a => a.Policy).ToList();
+
+        Assert.Equal([CasazenPolicies.OrgBillingAdmin], policies);
+    }
+
+    [Fact]
     public async Task ExportOrgFiscal_HandsTheServiceTheScopeOfTheCaller()
     {
         var scope = new HostScope(OrgId);

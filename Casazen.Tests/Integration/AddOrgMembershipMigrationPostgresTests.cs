@@ -258,7 +258,12 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
         supplierOrg.OrgType = OrgType.Supplier;
         var noRoleOrg = NewOrg();
         var staffNoHostOrg = NewOrg();
-        db.Orgs.AddRange(shortOwnerOrg, longOwnerOrg, staffOrg, mixedOrg, ambiguousOrg, supplierOrg, noRoleOrg, staffNoHostOrg);
+
+        // Plain SQL for the orgs (LegacyOrgRows): these tests run at the schema before this migration, and saving an Org through
+        // the model writes every column of today's table (DB-03: HostName, PublicPhone, Subtitle), which do not exist there (42703).
+        foreach (var org in new[] { shortOwnerOrg, longOwnerOrg, staffOrg, mixedOrg, ambiguousOrg, supplierOrg, noRoleOrg, staffNoHostOrg })
+            await LegacyOrgRows.InsertAsync(db, org);
+        await db.Database.ExecuteSqlAsync($"""UPDATE "Orgs" SET "OrgType" = {(int)supplierOrg.OrgType} WHERE "Id" = {supplierOrg.Id}""");
 
         var seed = new LegacySeed(
             ShortOwner: Id("short-owner"),

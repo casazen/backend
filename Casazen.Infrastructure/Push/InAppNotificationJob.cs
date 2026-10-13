@@ -53,7 +53,8 @@ public sealed class QueuedInAppNotification
 /// <remarks>
 /// <para><b>Once per event and user.</b> <c>(DeliveryKey, UserId)</c> is unique. A user who already has a row for the key
 /// (a retry of this job, the same event queued twice, a manual <i>Requeue</i> from the dashboard) is skipped; two runs that
-/// write the same user at the same moment lose the race on the index (23505), re-read and write what is still missing.
+/// write the same user at the same moment lose the race on the index (23505) for that user and go on with the next one; each user is written
+/// with a save of its own, in a fixed order, so two runs never wait for each other's rows in a cycle (a batch deadlocked, 40P01).
 /// Runs of the same key never overlap (<see cref="DisableConcurrentExecutionAttribute"/> on the key), so the index is the net
 /// under the lock, not the way the job usually works.</para>
 /// <para><b>Who.</b> Exactly the people the push tells, with the same rules (<see cref="HostNotificationAudience"/> for the hosts
@@ -70,9 +71,6 @@ public sealed class InAppNotificationJob(
     ILogger<InAppNotificationJob> logger)
 {
     public const int MaxAttempts = 5;
-
-    /// <summary>Times the job reads and writes again after losing a race on the unique index (or a user vanishing) before giving up to Hangfire.</summary>
-    private const int MaxWriteAttempts = 3;
 
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     [DisableConcurrentExecution("InAppNotificationJob.CreateAsync:{0}", 60)]
@@ -94,80 +92,105 @@ public sealed class InAppNotificationJob(
             : UtcDateTime.Normalize(notification.OccurredAt);
         var createdAt = UtcDateTime.TruncateToMicroseconds(occurredAt);
 
-        for (var attempt = 1; ; attempt++)
+        var recipients = await ResolveRecipientsAsync(notification, cancellationToken);
+        if (recipients.Users.Count == 0)
         {
-            var recipients = await ResolveRecipientsAsync(notification, cancellationToken);
-            if (recipients.Users.Count == 0)
-            {
-                logger.LogInformation(
-                    "In-app notification {Type} (key {DeliveryKey}): nobody to tell for {Audience} {AudienceId}",
-                    notification.Type,
-                    deliveryKey,
-                    notification.AudienceKind,
-                    notification.AudienceId);
-                return;
-            }
+            logger.LogInformation(
+                "In-app notification {Type} (key {DeliveryKey}): nobody to tell for {Audience} {AudienceId}",
+                notification.Type,
+                deliveryKey,
+                notification.AudienceKind,
+                notification.AudienceId);
+            return;
+        }
 
-            // IgnoreQueryFilters([Tenant]): a job without a tenant; the key identifies the event, whatever its org.
-            var alreadyTold = (await db.InAppNotifications
-                    .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-                    .AsNoTracking()
-                    .Where(n => n.DeliveryKey == deliveryKey)
-                    .Select(n => n.UserId)
-                    .ToListAsync(cancellationToken))
-                .ToHashSet(StringComparer.Ordinal);
-            var toTell = recipients.Users.Where(userId => !alreadyTold.Contains(userId)).ToList();
-            if (toTell.Count == 0)
-            {
-                logger.LogInformation(
-                    "In-app notification {Type} (key {DeliveryKey}): the {Told} users were told already",
-                    notification.Type,
-                    deliveryKey,
-                    alreadyTold.Count);
-                return;
-            }
+        // IgnoreQueryFilters([Tenant]): a job without a tenant; the key identifies the event, whatever its org.
+        var alreadyTold = (await db.InAppNotifications
+                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .AsNoTracking()
+                .Where(n => n.DeliveryKey == deliveryKey)
+                .Select(n => n.UserId)
+                .ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.Ordinal);
+        var toTell = recipients.Users.Where(userId => !alreadyTold.Contains(userId)).Order(StringComparer.Ordinal).ToList();
+        if (toTell.Count == 0)
+        {
+            logger.LogInformation(
+                "In-app notification {Type} (key {DeliveryKey}): the {Told} users were told already",
+                notification.Type,
+                deliveryKey,
+                alreadyTold.Count);
+            return;
+        }
 
-            db.InAppNotifications.AddRange(toTell.Select(userId => new InAppNotification
+        // One row per SaveChanges. A batch of several rows takes its index entries in the order EF sorts the commands (by row id,
+        // not by user), so two runs of the same key could each hold a row the other needs. Even one row at a time, several runs
+        // that insert the same user together deadlock on the unique index (40P01). Npgsql reports that as a transient failure
+        // wrapped in InvalidOperationException, which a catch of DbUpdateException alone does not see. Retry that user: the run
+        // that won has committed, so the next attempt is the unique violation (23505) and is skipped.
+        var written = 0;
+        foreach (var userId in toTell)
+        {
+            for (var attempt = 1; ; attempt++)
             {
-                OrgId = recipients.OrgId,
-                UserId = userId,
-                Type = notification.Type,
-                EntityId = notification.EntityId,
-                DeliveryKey = deliveryKey,
-                CreatedAt = createdAt,
-            }));
+                db.InAppNotifications.Add(new InAppNotification
+                {
+                    OrgId = recipients.OrgId,
+                    UserId = userId,
+                    Type = notification.Type,
+                    EntityId = notification.EntityId,
+                    DeliveryKey = deliveryKey,
+                    CreatedAt = createdAt,
+                });
 
-            try
-            {
-                await db.SaveChangesAsync(cancellationToken);
-                logger.LogInformation(
-                    "In-app notification {Type} (key {DeliveryKey}) written for {Count} users of {Audience} {AudienceId}",
-                    notification.Type,
-                    deliveryKey,
-                    toTell.Count,
-                    notification.AudienceKind,
-                    notification.AudienceId);
-                return;
-            }
-            catch (DbUpdateException ex) when (attempt < MaxWriteAttempts && IsRaceOrVanishedUser(ex))
-            {
-                // Another run of the same key wrote some of these users first, or an account was deleted since the read: the
-                // batch was refused as a whole. Read what is in the table now (and who is left) and write the rest.
-                db.ChangeTracker.Clear();
-                logger.LogInformation(
-                    "In-app notification {Type} (key {DeliveryKey}) written concurrently or a user is gone: read again (attempt {Attempt})",
-                    notification.Type,
-                    deliveryKey,
-                    attempt);
+                try
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                    written++;
+                    break;
+                }
+                catch (Exception ex) when (IsRaceOrVanishedUser(ex))
+                {
+                    // Another run of the same key wrote this user first (23505), or the account was deleted since the read (23503):
+                    // there is nothing left to write for them.
+                    db.ChangeTracker.Clear();
+                    break;
+                }
+                catch (Exception ex) when (IsDeadlock(ex) && attempt < DeadlockAttempts)
+                {
+                    db.ChangeTracker.Clear();
+                }
             }
         }
+
+        logger.LogInformation(
+            "In-app notification {Type} (key {DeliveryKey}) written for {Count} of {Candidates} users of {Audience} {AudienceId}",
+            notification.Type,
+            deliveryKey,
+            written,
+            toTell.Count,
+            notification.AudienceKind,
+            notification.AudienceId);
     }
 
-    private static bool IsRaceOrVanishedUser(DbUpdateException ex) =>
-        ex.InnerException is PostgresException
+    /// <summary>How many times one user is inserted again after PostgreSQL aborts the statement with 40P01.</summary>
+    private const int DeadlockAttempts = 4;
+
+    private static bool IsRaceOrVanishedUser(Exception ex) =>
+        PostgresState(ex) is PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ForeignKeyViolation;
+
+    private static bool IsDeadlock(Exception ex) => PostgresState(ex) == PostgresErrorCodes.DeadlockDetected;
+
+    private static string? PostgresState(Exception ex)
+    {
+        for (Exception? current = ex; current is not null; current = current.InnerException)
         {
-            SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ForeignKeyViolation,
-        };
+            if (current is PostgresException postgres)
+                return postgres.SqlState;
+        }
+
+        return null;
+    }
 
     private sealed record Recipients(Guid OrgId, IReadOnlyList<string> Users)
     {

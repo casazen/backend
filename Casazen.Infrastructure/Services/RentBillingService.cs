@@ -33,7 +33,7 @@ namespace Casazen.Infrastructure.Services;
 /// (FD-13). Logs carry lease, installment and Stripe ids only.
 /// </para>
 /// </remarks>
-public sealed class RentBillingService(
+public sealed partial class RentBillingService(
     AppDbContext db,
     IStripeService stripeService,
     IEmailQueue emailQueue,
@@ -1006,7 +1006,7 @@ public sealed class RentBillingService(
         entry.AmountDue,
         RentCharges.Currency.ToUpperInvariant(),
         entry.Status,
-        (entry.Status is RentLedgerStatus.Scheduled or RentLedgerStatus.Failed) && entry.DueDate < today,
+        RentInstallmentRules.IsOverdue(entry.Status, entry.DueDate, today),
         entry.PaidVia,
         entry.PaidOn,
         entry.OfflinePaymentNote,

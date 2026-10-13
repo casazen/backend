@@ -41,7 +41,10 @@ public class DirectBookingQuoteResponse
     public int Nights { get; set; }
     public decimal NightlyRate { get; set; }
 
-    /// <summary>Nightly rate x nights.</summary>
+    /// <summary>
+    /// The price of all the nights: the nightly rate x nights, plus the weekend surcharge on the weekend nights when the
+    /// property charges one (DB-03). With no surcharge, the default, it is the nightly rate x nights as it always was.
+    /// </summary>
     public decimal LodgingTotal { get; set; }
 
     public decimal CleaningFee { get; set; }
@@ -59,6 +62,16 @@ public class DirectBookingQuoteResponse
     /// <summary>What the checkout may offer and promise for this stay (A3-16).</summary>
     public DirectBookingPaymentOptionsDto PaymentOptions { get; set; } = new();
 
+    /// <summary>
+    /// The price breakdown in cents (DB-03), in order: <c>Nights</c> (the ordinary nights; every night when there is no
+    /// weekend surcharge; one more line for each other price that the host confirmed for dates of the stay, so the list may
+    /// hold several), <c>WeekendNights</c> (Friday and Saturday nights at the rate with the surcharge, only when there
+    /// are such nights), <c>CleaningFee</c> (only when not zero), <c>TouristTax</c> (only when its amount is known: see
+    /// <see cref="TouristTax"/> otherwise) and <c>Total</c>. The lines before the total add up to it, to the cent. The
+    /// numbers above (<see cref="TotalPrice"/> and the others) are unchanged.
+    /// </summary>
+    public IReadOnlyList<QuoteLineDto> Lines { get; set; } = [];
+
     public static DirectBookingQuoteResponse From(DirectBookingQuote quote) => new()
     {
         PropertyId = quote.PropertyId,
@@ -66,13 +79,41 @@ public class DirectBookingQuoteResponse
         CheckOutDate = quote.CheckOutDate,
         Nights = quote.Nights,
         NightlyRate = quote.NightlyRate,
-        LodgingTotal = quote.NightlyRate * quote.Nights,
+        LodgingTotal = quote.Lodging.Total,
         CleaningFee = quote.CleaningFee,
         BasePrice = quote.BasePrice,
         TouristTax = TouristTaxQuoteDto.From(quote.TouristTax),
         TotalPrice = quote.TotalPrice,
         Currency = quote.Currency,
         PaymentOptions = DirectBookingPaymentOptionsDto.From(quote.PaymentOptions),
+        Lines = StayPricing.Lines(quote).Select(QuoteLineDto.From).ToList(),
+    };
+}
+
+/// <summary>
+/// One line of the price breakdown of a quote (DB-03). Amounts are in cents (euro cents, <c>Currency</c> of the quote), whole
+/// numbers, so the frontend adds integers and formats once.
+/// </summary>
+public class QuoteLineDto
+{
+    /// <summary><c>Nights</c>, <c>WeekendNights</c>, <c>CleaningFee</c>, <c>TouristTax</c> or <c>Total</c>.</summary>
+    public QuoteLineKind Kind { get; set; }
+
+    /// <summary>Nights of a night line, 1 for the cleaning fee; null for the tourist tax and the total.</summary>
+    public int? Quantity { get; set; }
+
+    /// <summary>Price of one night (night lines) or the fee (cleaning); null for the tourist tax and the total.</summary>
+    public long? UnitAmountCents { get; set; }
+
+    /// <summary>Amount of the line; for <c>Total</c>, the total to pay.</summary>
+    public long AmountCents { get; set; }
+
+    public static QuoteLineDto From(QuoteLine line) => new()
+    {
+        Kind = line.Kind,
+        Quantity = line.Quantity,
+        UnitAmountCents = line.UnitAmountCents,
+        AmountCents = line.AmountCents,
     };
 }
 

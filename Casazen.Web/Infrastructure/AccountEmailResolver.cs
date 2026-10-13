@@ -61,4 +61,37 @@ public sealed class AccountEmailResolver(IAuth0ManagementService auth0Management
             .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
         return bool.TryParse(value?.Trim(), out var verified) ? verified : null;
     }
+
+    /// <summary>
+    /// Email and name to store on the account. The access token carries them as Auth0 Action claims
+    /// (<c>https://casazen.app/email</c> and <c>https://casazen.app/name</c>, runbook <c>auth0.md</c> §6);
+    /// <c>email</c>, <c>given_name</c> and <c>family_name</c> are the fallback. Without this, a first login
+    /// stores an empty email and the admin list shows a dash.
+    /// </summary>
+    public static (string Email, string FirstName, string LastName) ReadProfile(ClaimsPrincipal user)
+    {
+        var email = GetEmail(user) ?? string.Empty;
+        var firstName = FirstNonEmpty(user, "given_name");
+        var lastName = FirstNonEmpty(user, "family_name");
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
+        {
+            var fullName = FirstNonEmpty(user, "https://casazen.app/name", "name");
+            if (!string.IsNullOrWhiteSpace(fullName))
+            {
+                var parts = fullName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                if (string.IsNullOrWhiteSpace(firstName))
+                    firstName = parts[0];
+                if (string.IsNullOrWhiteSpace(lastName) && parts.Length > 1)
+                    lastName = parts[1];
+            }
+        }
+
+        return (email, firstName ?? string.Empty, lastName ?? string.Empty);
+    }
+
+    private static string? FirstNonEmpty(ClaimsPrincipal user, params string[] claimTypes) =>
+        claimTypes
+            .Select(user.FindFirstValue)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+            ?.Trim();
 }

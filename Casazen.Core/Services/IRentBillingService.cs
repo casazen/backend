@@ -53,6 +53,19 @@ public sealed record RentLedgerView(
     IReadOnlyList<RentInstallmentView> Installments,
     RentPeriod? PartialFinalPeriod);
 
+/// <summary>
+/// A reminder the landlord sent for an installment (LR-01, B1): when, how many times so far, to how many tenants, whether the
+/// email carries a payment link (the org accepts rent online) and when the next reminder of the same installment is possible.
+/// No address nor name: the recipients are not part of the answer.
+/// </summary>
+public sealed record RentReminderResult(
+    Guid InstallmentId,
+    DateTime SentAt,
+    int ReminderCount,
+    int RecipientCount,
+    bool IncludesPaymentLink,
+    DateTime NextReminderAllowedAt);
+
 /// <summary>Where an installment stands for the tenant on the public payment page.</summary>
 public enum PublicRentPaymentState
 {
@@ -140,6 +153,19 @@ public interface IRentBillingService
 
     /// <summary>Emails the payment link of the installment to the tenants now (a new link: the previous one stops working).</summary>
     Task<RentInstallmentView> SendPaymentRequestAsync(Guid leaseId, Guid installmentId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reminds the tenants of an installment that is not paid (LR-01, B1): an email from the template with the optional short
+    /// <paramref name="note"/> of the landlord, and the payment link when the org accepts rent online (a new link: the previous
+    /// one stops working, as for <see cref="SendPaymentRequestAsync"/>). Recorded on the installment (<c>LastReminderAt</c>,
+    /// <c>ReminderCount</c>) under the lock of the lease, so two reminders at once send one. 422
+    /// <c>rent_reminder_too_soon</c> before <c>RentBilling:ReminderIntervalHours</c> have passed since the last one,
+    /// <c>rent_no_tenant_email</c>, <c>rent_reminder_not_sent</c> when no email could be queued (nothing is recorded); 409
+    /// <c>rent_installment_not_payable</c> for a paid or cancelled installment, <c>rent_installment_in_flight</c> while a payment
+    /// is being processed. No automatic reminder and no SMS or WhatsApp (decision D30).
+    /// </summary>
+    Task<RentReminderResult> SendReminderAsync(
+        Guid leaseId, Guid installmentId, string? note, CancellationToken cancellationToken = default);
 
     /// <summary>Anonymous: the installment of a payment link; 404 <c>rent_payment_link_invalid</c> for a wrong id or token.</summary>
     Task<PublicRentPayment> GetPublicPaymentAsync(Guid installmentId, string token, CancellationToken cancellationToken = default);

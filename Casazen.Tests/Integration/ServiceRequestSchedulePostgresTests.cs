@@ -72,6 +72,9 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var first = await factory.CreateRequestAsync(world);
         var second = await factory.CreateRequestAsync(world);
+        // Create always stores an interval; clear it so take can set the contested slot (legacy take-sets-time path).
+        await ClearScheduleAsync(first);
+        await ClearScheduleAsync(second);
         var slot = ServiceRequestWorlds.Slot();
 
         var responses = await Task.WhenAll(
@@ -93,6 +96,7 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var waiting = await factory.CreateRequestAsync(world);
+        await ClearScheduleAsync(waiting);
         var slot = ServiceRequestWorlds.Slot();
 
         var results = await Task.WhenAll(
@@ -162,6 +166,8 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var waiting = await factory.CreateRequestAsync(world);
+        if (operation == "take")
+            await ClearScheduleAsync(waiting);
         var slot = ServiceRequestWorlds.Slot();
 
         await using var holder = await HoldTheLockAsync(world.SupplierOrgId);
@@ -182,18 +188,19 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
     }
 
     [PostgresFact]
-    public async Task ARequestWithoutATime_DoesNotWaitForTheLock()
+    public async Task ARequestWithoutAHostTime_StillWaitsForTheLockBecauseCreateAlwaysStoresAnInterval()
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
-        var waiting = await factory.CreateRequestAsync(world);
         await using var holder = await HoldTheLockAsync(world.SupplierOrgId);
 
-        // Nothing here is a slot: the host asks without a time and the supplier takes without one.
-        var created = await PostAsHostAsync(world, "/api/service-requests", CreateBody(world, slot: null)).WaitAsync(TimeSpan.FromSeconds(30));
-        var taken = await TakeAsync(world, waiting, new { }).WaitAsync(TimeSpan.FromSeconds(30));
+        // Auto-timed create still takes the calendar lock (overlap check).
+        var pending = PostAsHostAsync(world, "/api/service-requests", CreateBody(world, slot: null));
+        await Task.Delay(300);
+        Assert.False(pending.IsCompleted, "create without a host time did not wait for the lock of the supplier's calendar");
 
+        await holder.ReleaseAsync();
+        var created = await pending.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, taken.StatusCode);
     }
 
     [PostgresFact]
@@ -251,6 +258,13 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
 
     private Task<HttpResponseMessage> TakeAsync(ServiceRequestWorld world, Guid id, object body) =>
         Task.Run(() => PostAsSupplierAsync(world, $"/api/service-requests/{id}/take", body));
+
+    private Task ClearScheduleAsync(Guid id) =>
+        factory.ChangeRequestAsync(id, r =>
+        {
+            r.ScheduledStartUtc = null;
+            r.ScheduledEndUtc = null;
+        });
 
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response) =>
         JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), new JsonSerializerOptions(JsonSerializerDefaults.Web));

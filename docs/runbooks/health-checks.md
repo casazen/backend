@@ -89,8 +89,10 @@ The startup log also prints `Commit: <sha>`.
 
 ## CI: `verify-test` / `verify-prod`
 
-`ci-cd.yml` runs `scripts/verify-deploy.sh <url> <github.sha> 1200` after a push to `develop` (test) or `main`
-(production). The script polls `/api/health/ready` every 15 s and:
+`verify-railway-deploy.yml` runs `scripts/verify-deploy.sh <url> <head_sha> 1200` after a successful
+`CI/CD Pipeline` push to `develop` (test) or `main` (production). It is a separate workflow so Railway
+Wait for CI can go green on `Build & Test` and deploy before verify polls. The script polls
+`/api/health/ready` every 15 s and:
 
 - **fails at once** when the GitHub variable (`RAILWAY_TEST_URL` / `RAILWAY_PROD_URL`) is not set;
 - waits until the API exposes the pushed commit (or a later commit of the branch that contains it, when Railway
@@ -106,9 +108,10 @@ Product owner setup (once):
 
 1. GitHub → `casazen/backend` → Settings → Secrets and variables → Actions → **Variables**: `RAILWAY_TEST_URL` and
    `RAILWAY_PROD_URL` = public Railway URLs, without trailing slash. They are now mandatory.
-2. Railway → service → each environment → Settings → **Wait for CI: off**. With it on, Railway waits for the whole
-   `ci-cd.yml` run, which includes the verify job waiting for the deployment: the job times out and Railway skips the
-   deploy. Pull requests are still gated by the `build` job through branch protection.
+2. Railway → service → each environment → Settings → **Wait for CI** may stay on. It waits for the `CI/CD Pipeline`
+   suite (`Build & Test` only). Deploy verification is `verify-railway-deploy.yml` and starts after that suite is
+   green, so the two no longer wait for each other. Watch paths are set only in the Railway dashboard (there is no
+   `railway.toml` in this repo). Pull requests stay gated by `Build & Test`.
 3. Optional: Railway → service → Settings → Deploy → **Healthcheck Path** = `/api/health/ready`. Railway then switches
    traffic to a new deployment only after it answers 200, so a deployment with the database unreachable or migrations
    missing never replaces the running one. Use `/api/health/live` instead if a degraded-but-running container must
@@ -120,7 +123,7 @@ Product owner setup (once):
 |---|---|
 | CI: `API URL not configured` | Set the GitHub variable (setup step 1). |
 | CI: `does not expose the commit of the running build` | The deployment still runs a build older than FD-12 (first deploy: wait, then re-run the job), or it was not triggered from GitHub (no `RAILWAY_GIT_COMMIT_SHA`). |
-| CI: `Railway still serves commit X instead of Y` | The new deployment failed (Railway → Deployments → build/deploy logs: startup validation errors are listed there), was skipped ("Wait for CI" on, setup step 2), or the build took longer than 20 minutes. |
+| CI: `Railway still serves commit X instead of Y` | The new deployment failed (Railway → Deployments → build/deploy logs: startup validation errors are listed there), was skipped (watch paths in the Railway dashboard, or Wait for CI still waiting on a red suite other than `Build & Test`), or the build took longer than 20 minutes. |
 | `database: unhealthy` | Supabase paused or unreachable (free tier pauses after 7 days of inactivity), wrong connection string, or migrations not applied. The startup of a Production container applies them; on a database migrated by hand run `scripts/migrate.sh test|prod`. |
 | `hangfire: unhealthy` | Hangfire storage unreachable or its server not running: no email, Stripe webhook or recurring job is processed. Check the Hangfire schema (runbook [`hangfire.md`](hangfire.md) §5) and the logs of the container. |
 | `hangfire: degraded` | Only another instance's server is alive (e.g. right after a deploy): it should turn `healthy` within a minute. |

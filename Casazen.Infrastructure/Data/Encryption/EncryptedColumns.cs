@@ -49,6 +49,9 @@ public static class EncryptedColumns
     /// </summary>
     public const string ServiceRequestLocationPurpose = "Casazen.ServiceRequest.Location";
 
+    /// <summary>Purpose of the AI provider key saved from the admin panel. Never change it: stored keys would become unreadable.</summary>
+    public const string PlatformAiSettingsPurpose = "Casazen.PlatformAiSettings";
+
     /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
@@ -100,6 +103,9 @@ public static class EncryptedColumns
             nameof(ServiceRequest.LocationAddress),
             nameof(ServiceRequest.LocationFloor),
             nameof(ServiceRequest.LocationAccessNotes)),
+        new EncryptedEntity<PlatformAiSettings>(
+            PlatformAiSettingsPurpose,
+            nameof(PlatformAiSettings.ApiKey)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

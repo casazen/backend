@@ -13,6 +13,7 @@ using Casazen.Infrastructure.Email.Templates;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Xunit;
@@ -709,6 +710,10 @@ public class PublicBookingFactory : PublicShowcaseFactory
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
+
+        // The "no secret in the logs" tests read what the host writes at Information: undo the quiet default.
+        builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Logging:LogLevel:Default"] = "Information" }));
         builder.ConfigureLogging(logging => logging.AddProvider(new CapturingProvider(_logs)));
         builder.ConfigureTestServices(services =>
         {
