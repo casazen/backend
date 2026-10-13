@@ -8,7 +8,7 @@ date: 2026-10-13
 
 **Versione 1.3 (bozza)** · 13 ottobre 2026 · Allegato: `02-openapi.yaml` (contratto leggibile da macchina, stessi nomi di questo documento).
 
-**Principio.** L'utente apre il **modulo di ConcordatoFacile (CF)** da CasaZen e **svolge lì tutta la pratica**: inserimento dei dati, documenti, integrazioni richieste, correzioni, reinvio dei documenti, revisione di eventuali bozze, firma, stato della pratica. Ogni azione la compie l'utente nel modulo: CasaZen non risponde a nessuna richiesta di CF e non carica nulla al posto dell'utente. CasaZen fa solo tre cose: apre o riapre il modulo con un link firmato (sezione 2), riceve da CF gli **avvisi di stato** (per esempio "serve un'azione dell'utente nel modulo") e riceve l'**esito finale** (sezione 3). Il documento ha due parti: **che cosa deve garantire il modulo** (sezione 1) e **lo scambio di dati** tra CF e CasaZen (sezioni 2, 3 e 4). Proposte ed esempi sono inclusi. Il testo è in italiano; **i nomi (endpoint, campi, valori) sono in inglese**, tranne i pochi già italiani nell'API di CasaZen (`canoneMinMensile`, `subFascia`, `Proprieta`, `Inquilini`), che manteniamo uguali per non dover mappare nulla.
+**Principio.** L'utente apre il **modulo di ConcordatoFacile (CF)** da CasaZen e **svolge lì tutta la pratica**: inserimento dei dati, documenti, integrazioni richieste, correzioni, reinvio dei documenti, revisione di eventuali bozze, firma, stato della pratica. Ogni azione sui dati e sui documenti la compie l'utente nel modulo: CasaZen non risponde a nessuna richiesta di CF e non raccoglie, corregge né trasmette dati o documenti al posto dell'utente. CasaZen fa solo tre cose: apre o riapre il modulo con un link firmato (sezione 2), riceve da CF gli **avvisi di stato** (per esempio "serve un'azione dell'utente nel modulo"), che può inoltrare all'utente nella propria app, e riceve l'**esito finale** (sezione 3). Il documento ha due parti: **che cosa deve garantire il modulo** (sezione 1) e **lo scambio di dati** tra CF e CasaZen (sezioni 2, 3 e 4). Proposte ed esempi sono inclusi. Il testo è in italiano; **i nomi (endpoint, campi, valori) sono in inglese**, tranne i pochi già italiani nell'API di CasaZen (`canoneMinMensile`, `subFascia`, `Proprieta`, `Inquilini`), che manteniamo uguali per non dover mappare nulla.
 
 **Convenzioni.** Sono quelle già in uso nell'API di CasaZen, così nessun campo va adattato dopo l'integrazione.
 
@@ -37,7 +37,7 @@ Poiché CasaZen delega a CF l'intera pratica, il modulo deve garantire quanto se
 | R3 | Funziona da telefono e dal browser integrato dell'app CasaZen. |
 | R4 | È in lingua italiana. |
 | R5 | Non chiede pagamenti all'utente: il compenso a CF è regolato tra CF e CasaZen. |
-| R6 | Il modulo si apre solo con un **link firmato da CasaZen** (sezione 2): un link senza firma valida, o scaduto, è rifiutato. Così nessuno può aprire pratiche a nome di CasaZen né leggere i dati di una pratica conoscendo solo il `leaseId`. Il link di rientro che CF invia all'utente per email (R10) è equivalente. |
+| R6 | Il modulo si apre solo con un **link firmato da CasaZen** (sezione 2): un link senza firma valida, o scaduto, è rifiutato. Così nessuno può aprire pratiche a nome di CasaZen né leggere i dati di una pratica conoscendo solo il `leaseId`. Il link di rientro che CF invia all'utente per email (R11) è equivalente. |
 
 **Gestione della pratica, tutta dentro il modulo**
 
@@ -45,38 +45,39 @@ Poiché CasaZen delega a CF l'intera pratica, il modulo deve garantire quanto se
 |--|------------------------------|
 | R7 | Raccoglie tutti i dati e i documenti necessari all'attestazione, compresi quelli elencati in `attestation` nella sezione 3 (parti, immobile e dati catastali, durata, canone, superfici, zona). |
 | R8 | Salva la compilazione in bozza: l'utente può interrompere e riprendere dallo stesso link. |
-| R9 | Gestisce **con l'utente** richieste di dati o documenti mancanti, correzioni, reinvio dei documenti, bozza da approvare e firmare, firma e relative notifiche. Il destinatario di ogni richiesta è l'utente (all'email che indica nel modulo). CasaZen riceve solo l'avviso di stato della sezione 3, a titolo informativo: **non deve rispondere e non fa da intermediario**. |
-| R10 | L'utente può **rientrare nel modulo in qualsiasi momento** per caricare i documenti mancanti, correggere i dati, approvare la bozza e firmare: dal link firmato di CasaZen (sezione 2) oppure dal link di rientro ricevuto per email da CF (valido almeno 30 giorni dall'ultima richiesta, proposta; l'utente può farlo rigenerare). Al rientro il modulo mostra subito la richiesta in sospeso. |
-| R11 | Mostra all'utente lo stato della pratica e la prossima azione richiesta, in ogni momento. |
-| R12 | Verifica all'inizio che il comune sia coperto da un accordo in vigore. Se non lo è, chiude subito con `case_rejected` e `reason` `municipality_not_covered`, senza lavorazione. |
-| R13 | Una sola pratica aperta per `leaseId`. Lo stesso `leaseId` riapre la pratica se è aperta. Se è chiusa con `case_rejected` o `case_cancelled`, ne apre una nuova (nuovo `caseId`). Se è chiusa con `case_completed`, mostra l'attestazione e **non ne crea un'altra**. |
-| R14 | In ogni momento, e al termine della compilazione, l'utente può tornare a CasaZen con un pulsante che porta a `returnUrl` (sezione 2). Il modulo reindirizza solo a domini di CasaZen concordati in anticipo. |
+| R9 | Dati o documenti mancanti, correzioni, reinvio dei documenti, bozza da approvare e firmare, firma: si gestiscono **solo nel modulo, dall'utente**. CasaZen non li raccoglie e non li trasmette, non deve rispondere e non fa da intermediario. |
+| R10 | L'**avviso** all'utente che serve un'azione è un'impostazione del partner che CasaZen sceglie e può cambiare: (a) CF avvisa solo CasaZen con `case_status_changed` / `ActionRequired` (sezione 3) e CasaZen avvisa l'utente nella propria app, (b) CF avvisa solo l'utente per email, (c) entrambi. In ogni caso l'avviso dice che cosa manca o che cosa fare (`detail`) e l'utente può riaprire il modulo (R11). |
+| R11 | L'utente può **rientrare nel modulo in qualsiasi momento** per inviare i dati o i documenti mancanti, modificare i dati, approvare la bozza e firmare: dal link firmato di CasaZen (sezione 2) oppure, se è attiva l'email di CF (R10), dal link di rientro ricevuto (valido almeno 30 giorni dall'ultima richiesta, proposta; l'utente può farlo rigenerare). Al rientro il modulo mostra subito la richiesta in sospeso. |
+| R12 | Mostra all'utente lo stato della pratica e la prossima azione richiesta, in ogni momento. |
+| R13 | Verifica all'inizio che il comune sia coperto da un accordo in vigore. Se non lo è, chiude subito con `case_rejected` e `reason` `municipality_not_covered`, senza lavorazione. |
+| R14 | Una sola pratica aperta per `leaseId`. Lo stesso `leaseId` riapre la pratica se è aperta. Se è chiusa con `case_rejected` o `case_cancelled`, ne apre una nuova (nuovo `caseId`). Se è chiusa con `case_completed`, mostra l'attestazione e **non ne crea un'altra**. |
+| R15 | In ogni momento, e al termine della compilazione, l'utente può tornare a CasaZen con un pulsante che porta a `returnUrl` (sezione 2). Il modulo reindirizza solo a domini di CasaZen concordati in anticipo. |
 
 **Attestazione**
 
 | # | Requisito |
 |--|------------------------------|
-| R15 | È emessa sul **modello ufficiale** previsto dall'accordo territoriale del comune, dalle organizzazioni **firmatarie di quell'accordo** (una per la proprietà e una per gli inquilini, dove l'accordo lo richiede). Nome e ruolo (`Proprieta` o `Inquilini`) di ciascuna sono nell'evento. |
-| R16 | Il canone è verificato sull'accordo in vigore (zona, sub-fascia, coefficienti): i valori usati sono nell'evento (`assessment`), così CasaZen può confrontarli con i propri. |
-| R17 | È consegnata a CasaZen come **PDF separato**, apribile e senza password, anche se CF produce uno zip dell'intero fascicolo (che CasaZen non richiede). Le eventuali firme digitali restano valide: il file non viene ristampato né riconvertito. |
-| R18 | È emessa entro 48 ore da quando la pratica è completa (tempo da voi indicato). |
-| R19 | Resta scaricabile da CF per l'utente per un periodo da concordare (proposta: 10 anni). |
+| R16 | È emessa sul **modello ufficiale** previsto dall'accordo territoriale del comune, dalle organizzazioni **firmatarie di quell'accordo** (una per la proprietà e una per gli inquilini, dove l'accordo lo richiede). Nome e ruolo (`Proprieta` o `Inquilini`) di ciascuna sono nell'evento. |
+| R17 | Il canone è verificato sull'accordo in vigore (zona, sub-fascia, coefficienti): i valori usati sono nell'evento (`assessment`), così CasaZen può confrontarli con i propri. |
+| R18 | È consegnata a CasaZen come **PDF separato**, apribile e senza password, anche se CF produce uno zip dell'intero fascicolo (che CasaZen non richiede). Le eventuali firme digitali restano valide: il file non viene ristampato né riconvertito. |
+| R19 | È emessa entro 48 ore da quando la pratica è completa (tempo da voi indicato). |
+| R20 | Resta scaricabile da CF per l'utente per un periodo da concordare (proposta: 10 anni). |
 
 **Esito verso CasaZen**
 
 | # | Requisito |
 |--|------------------------------|
-| R20 | CF invia a CasaZen, firmati come nella sezione 3, solo: gli **avvisi di stato** (`case_status_changed`) e **un solo evento finale** per pratica (`case_completed`, `case_rejected` o `case_cancelled`). Nessun altro evento è richiesto. |
-| R21 | Se CasaZen non risponde `200`, CF ritenta; CF permette di **rinviare un evento** (a richiesta o da pannello) con lo stesso `eventId`. |
-| R22 | `case_completed` contiene i dati attestati e il PDF, nei formati della sezione 3. |
+| R21 | CF invia a CasaZen, firmati come nella sezione 3, solo: gli **avvisi di stato** (`case_status_changed`) e **un solo evento finale** per pratica (`case_completed`, `case_rejected` o `case_cancelled`). Nessun altro evento è richiesto. |
+| R22 | Se CasaZen non risponde `200`, CF ritenta; CF permette di **rinviare un evento** (a richiesta o da pannello) con lo stesso `eventId`. |
+| R23 | `case_completed` contiene i dati attestati e il PDF, nei formati della sezione 3. |
 
 **Dati personali, sicurezza, prova**
 
 | # | Requisito |
 |--|------------------------------|
-| R23 | Prima del lancio si definisce l'inquadramento privacy (responsabile del trattamento ex art. 28 GDPR o titolare autonomo). I dati sono trattati nello Spazio Economico Europeo e non sono usati per altri scopi né per comunicazioni commerciali all'utente. |
-| R24 | HTTPS con TLS 1.2 o superiore; nessun dato personale negli URL; `caseId` e `leaseId` non indovinabili. |
-| R25 | Esiste un ambiente di prova con lo stesso comportamento, che emette eventi firmati con un segreto di prova, accetta link firmati con un segreto di prova e permette di ottenere ciascun evento della sezione 3. |
+| R24 | Prima del lancio si definisce l'inquadramento privacy (responsabile del trattamento ex art. 28 GDPR o titolare autonomo). I dati sono trattati nello Spazio Economico Europeo e non sono usati per altri scopi né per comunicazioni commerciali all'utente. |
+| R25 | HTTPS con TLS 1.2 o superiore; nessun dato personale negli URL; `caseId` e `leaseId` non indovinabili. |
+| R26 | Esiste un ambiente di prova con lo stesso comportamento, che emette eventi firmati con un segreto di prova, accetta link firmati con un segreto di prova e permette di ottenere ciascun evento della sezione 3. |
 
 ## 2. CasaZen → CF: link al modulo
 
@@ -93,7 +94,7 @@ https://form.concordatofacile.example/start?partner=casazen&leaseId=0b6f7a3e-5a2
 | Parametro | Obbligatorio | Note |
 |---|---|---|
 | `partner` | sì | Codice assegnato da CF; identifica anche il servizio contrattato con CasaZen |
-| `leaseId` | sì | Restituito in ogni evento. Lo stesso link serve per aprire la pratica la prima volta e per riaprirla (R10, R13) |
+| `leaseId` | sì | Restituito in ogni evento. Lo stesso link serve per aprire la pratica la prima volta e per riaprirla (R11, R14) |
 | `expiresAt` | sì | Fine di validità del link, ISO 8601 UTC (proposta: 15 minuti dopo la generazione). Vale solo per l'apertura: la sessione che ne segue è di CF |
 | `signature` | sì | `hex(HMAC-SHA256(linkSecret, leaseId + "." + expiresAt))`, in esadecimale minuscolo. `expiresAt` è il valore decodificato, per esempio `2026-10-13T10:00:00Z`. `linkSecret` è un segreto diverso da quello dei webhook, consegnato fuori banda, diverso per prova e produzione |
 | `comuneIstatCode` | no | Precompila il comune |
@@ -152,7 +153,7 @@ X-ConcordatoFacile-Signature = 29feda5f7daf037d0aecbe49cdc7a2b8d0ab215cf26b164b0
 
 `eventType`: `case_status_changed`, `case_completed`, `case_rejected`, `case_cancelled`.
 
-**`case_status_changed`**: avviso di stato. Serve a CasaZen per dire all'utente se deve agire nel modulo; CasaZen non risponde e non invia nulla a CF. `status`: `InReview` (CF sta lavorando: all'invio del modulo e dopo ogni azione dell'utente) oppure `ActionRequired` (serve un'azione dell'utente **nel modulo**). Con `ActionRequired`, `reason` è `information_requested` (dati o documenti mancanti, correzioni) oppure `draft_ready` (bozza da approvare e firmare); `detail` è un testo per l'utente, in italiano; `dueAt` è opzionale.
+**`case_status_changed`**: avviso di stato. CasaZen lo usa per avvisare l'utente, nella propria app, che deve agire nel modulo (se è la modalità scelta in R10); CasaZen non risponde e non invia nulla a CF. `status`: `InReview` (CF sta lavorando: all'invio del modulo e dopo ogni azione dell'utente) oppure `ActionRequired` (serve un'azione dell'utente **nel modulo**). Con `ActionRequired`, `reason` è `information_requested` (dati o documenti mancanti, correzioni) oppure `draft_ready` (bozza da approvare e firmare); `detail` è un testo per l'utente, in italiano, che CasaZen può mostrare così com'è: dice che cosa manca o che cosa fare; `dueAt` è opzionale.
 
 ```json
 { "status": "ActionRequired", "reason": "information_requested", "detail": "Manca l'APE in corso di validità.", "dueAt": "2026-10-20T12:00:00Z" }
@@ -162,7 +163,7 @@ X-ConcordatoFacile-Signature = 29feda5f7daf037d0aecbe49cdc7a2b8d0ab215cf26b164b0
 { "status": "InReview" }
 ```
 
-CasaZen mostra "Azione richiesta" con `detail` e un pulsante che riapre il modulo con il link della sezione 2; ripristina lo stato normale con `InReview`.
+CasaZen mostra "Azione richiesta" con `detail` e un pulsante che riapre il modulo con il link della sezione 2; ripristina lo stato normale con `InReview`. L'utente invia o corregge i dati sempre e solo nel modulo.
 
 **`case_completed`**: l'attestazione è stata rilasciata. I campi sono quelli che CasaZen usa già per il contratto e per la verifica del canone concordato; CasaZen li confronta con il contratto che ha. I valori sono di esempio.
 
