@@ -1,4 +1,6 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -7,14 +9,17 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Compliance summary cockpit (US-019 / #295 AC10).
+/// Compliance summary cockpit (US-019 / #295 AC10), of the properties the caller reaches (AM-03). Every item says what it
+/// still lacks, with stable codes and fields (SR-03).
 /// </summary>
 [ApiController]
 [Route("api/compliance")]
 [Authorize(Policy = "RequireContext:short-rent:booking.read")]
 public class ComplianceController(
     IComplianceWizardService complianceWizardService,
-    IOrgContextResolver orgContextResolver) : ControllerBase
+    IComplianceMissingService complianceMissingService,
+    IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver) : ControllerBase
 {
     [HttpGet("summary")]
     [Authorize(Policy = "RequireContext:short-rent:booking.read")]
@@ -23,10 +28,12 @@ public class ComplianceController(
     public async Task<ActionResult<ComplianceSummaryDto>> GetSummary(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (orgId is null)
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return Unauthorized();
 
-        var summary = await complianceWizardService.GetSummaryAsync(orgId.Value, cancellationToken);
+        var summary = await complianceMissingService.DescribeAsync(
+            await complianceWizardService.GetSummaryAsync(scope, cancellationToken), cancellationToken);
         return Ok(MapSummary(summary));
     }
 
@@ -50,6 +57,7 @@ public class ComplianceController(
             Action = i.Action,
             PropertyId = i.PropertyId,
             BookingId = i.BookingId,
+            Missing = i.Missing.Select(ComplianceMissingDto.From).ToList(),
         }),
     };
 }

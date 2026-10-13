@@ -129,6 +129,7 @@ public class PricingAdapterService(
             row.Rule = day.Rule;
             row.Holiday = day.Holiday;
             row.ComputedAt = now;
+            // AppliedPrice is kept: a new suggestion does not silently change a price the host already confirmed.
         }
 
         // Dates left over are past or beyond the window: no history of old suggestions is kept.
@@ -154,5 +155,50 @@ public class PricingAdapterService(
             .Where(s => s.PropertyId == propertyId)
             .OrderBy(s => s.StayDate)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<int> ApplySuggestionsAsync(
+        Guid propertyId,
+        IReadOnlyList<SeasonalPriceApplyItem> items,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await db.SeasonalPriceSuggestions
+            .Where(s => s.PropertyId == propertyId)
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            return 0;
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var selected = items.Count == 0
+            ? rows
+            : rows.Where(r => items.Any(i => i.Date == r.StayDate)).ToList();
+        var byDate = items.ToDictionary(i => i.Date, i => i.Price);
+
+        foreach (var row in selected)
+        {
+            var edited = byDate.TryGetValue(row.StayDate, out var price) ? price : null;
+            row.AppliedPrice = edited is { } value && value > 0 ? decimal.Round(value, 2) : row.SuggestedPrice;
+            row.AppliedAt = now;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation(
+            "Host applied {Count} seasonal prices for property {PropertyId}", selected.Count, propertyId);
+        return selected.Count;
+    }
+
+    public async Task<IReadOnlyDictionary<DateOnly, decimal>> GetAppliedNightlyPricesAsync(
+        Guid propertyId,
+        DateOnly fromInclusive,
+        DateOnly toExclusive,
+        CancellationToken cancellationToken = default)
+    {
+        return await db.SeasonalPriceSuggestions
+            .AsNoTracking()
+            .Where(s => s.PropertyId == propertyId
+                && s.AppliedPrice != null
+                && s.StayDate >= fromInclusive
+                && s.StayDate < toExclusive)
+            .ToDictionaryAsync(s => s.StayDate, s => s.AppliedPrice!.Value, cancellationToken);
     }
 }

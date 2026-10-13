@@ -1,3 +1,5 @@
+using Casazen.Core.Authorization;
+
 namespace Casazen.Web.Authorization;
 
 /// <summary>
@@ -32,8 +34,11 @@ public static class CasazenPolicies
 
     /// <summary>
     /// Administrator of the caller's org, in whichever rental context it works (PL-16): plan, entitlement, billing,
-    /// domain. An org policy, not a context one: the org's owner (<c>PropertyOwner</c> or <c>LongTermLandlord</c>), a
-    /// <c>PropertyManager</c> or a platform admin; never a <c>Staff</c> collaborator (<c>OrgBillingAdminAuthorizationHandler</c>).
+    /// Connect, branding, domain, site documents and, since AM-03b, the export of the org's fiscal data and team
+    /// (<c>GET api/gdpr/org/export</c>). An org policy, not a context one: the org's owner (<c>PropertyOwner</c>
+    /// or <c>LongTermLandlord</c>, as JWT role or as DB membership of the owner's role key), an administrator of the org team
+    /// or a platform admin; never a <c>Staff</c> collaborator, a <c>PropertyManager</c> (D12) or the holder of any other member
+    /// role (<c>OrgBillingAdminAuthorizationHandler</c>, <see cref="Casazen.Core.Authorization.OrgOwnerRoles"/>).
     /// </summary>
     public const string OrgBillingAdmin = "RequireOrgBillingAdmin";
 
@@ -74,6 +79,27 @@ public static class CasazenPolicies
     public const string OtaRead = ShortRent + "ota.read";
     public const string OtaWrite = ShortRent + "ota.write";
 
+    // The finer permissions of AM-03, carved out of the broad ones so that the collaborator can do its job without prices, CIN
+    // or bookings (HostPermissions).
+
+    /// <summary>
+    /// Ask a supplier for an intervention on a stay (find the supplier, create the request, mark it paid). It used to be
+    /// <see cref="PropertyWrite"/>. Short-rent context.
+    /// </summary>
+    public const string ServiceRequestWrite = ShortRent + HostPermissions.ServiceRequestWrite;
+
+    /// <summary>
+    /// Erase or anonymize a guest and change its consents: the destructive and legal acts on a guest's data. It used to be
+    /// <see cref="GuestWrite"/>, which still lets a person register and correct a guest. Short-rent context.
+    /// </summary>
+    public const string GuestManage = ShortRent + HostPermissions.GuestManage;
+
+    /// <summary>
+    /// Register the guests of a stay and declare the Alloggiati communication sent. It used to be <see cref="BookingWrite"/>,
+    /// which still creates, moves and cancels bookings. Short-rent context.
+    /// </summary>
+    public const string AlloggiatiSubmit = ShortRent + HostPermissions.AlloggiatiSubmit;
+
     /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
     /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
@@ -89,6 +115,21 @@ public static class CasazenPolicies
     public const string LeaseSign = LongRent + "lease.sign";
     public const string LeaseRegister = LongRent + "lease.register";
 
+    /// <summary>
+    /// Invite, change, deactivate, reactivate and remove the people of the caller's org (AM-02): the permission
+    /// <c>org.members.manage</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody
+    /// else. Like the host contexts it waits for the onboarding and the consents. What each of them may do to whom
+    /// (only the owner creates and manages administrators) is decided by the services (<c>OrgTeamRules</c>).
+    /// </summary>
+    public const string OrgMembersManage = ContextPolicyPrefix + AccountContext.Key + ":" + AccountContext.Permissions.MembersManage;
+
+    /// <summary>
+    /// Read the activity log of the caller's org (AM-02b): the list and the CSV of who did what. The permission
+    /// <c>org.activity.read</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody else
+    /// (AM-01 seeds it). Like the host contexts it waits for the onboarding and the consents.
+    /// </summary>
+    public const string OrgActivityRead = ContextPolicyPrefix + AccountContext.Key + ":" + AccountContext.Permissions.ActivityRead;
+
     /// <summary>Prefix of the context policies; the rest is <c>{context}:{permission}</c>.</summary>
     public const string ContextPolicyPrefix = "RequireContext:";
 
@@ -101,8 +142,10 @@ public static class CasazenPolicies
         PaymentRead, PaymentWrite,
         GuestRead, GuestWrite,
         OtaRead, OtaWrite,
+        ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
+        OrgMembersManage, OrgActivityRead,
     ];
 
     /// <summary>

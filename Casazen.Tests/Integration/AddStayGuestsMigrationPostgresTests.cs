@@ -88,7 +88,7 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Orgs, Properties and Guests are written through the model (same schema before and after the migration). Bookings
+    /// Orgs, Properties and Guests are written with SQL (later migrations add columns to the current entities). Bookings
     /// are inserted with SQL, only with the columns that exist before the migration: later migrations add columns to
     /// Bookings (e.g. BK-06 AddOnSiteRequestApproval) that the model would write.
     /// </summary>
@@ -141,8 +141,8 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
             DocumentNumber = "X1",
         };
 
-        db.Orgs.Add(org);
-        await db.SaveChangesAsync();
+        // The org row in SQL: the current Org entity has columns that later migrations add (PL-04).
+        await LegacyOrgRows.InsertAsync(db, org);
         // The guest rows in SQL too (CO-15): the current Guest entity has "AlloggiatiDataErasedAt", which this
         // migration point does not have yet, and no longer has "DataRetentionUntil", which the table still requires.
         await InsertGuestBeforeCo15Async(db, complete);

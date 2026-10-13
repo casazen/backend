@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -10,28 +9,41 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.External;
 
+/// <summary>
+/// DeepSeek chat completions. No cache of its own (A8-25): a caller that may reuse an answer asks
+/// <see cref="IAiResponseCache"/> first, which is bounded and expires; <c>cacheKey</c> is only the label of the request.
+/// </summary>
 public class DeepSeekAiProvider(
     IHttpClientFactory httpClientFactory,
     IOptions<AiOptions> options,
     ILogger<DeepSeekAiProvider> logger) : IAiProvider
 {
-    private static readonly ConcurrentDictionary<string, AiGenerationResult> Cache = new();
+    public Task<AiGenerationResult> GenerateAsync(
+        string prompt,
+        AiModelTier tier,
+        string cacheKey,
+        CancellationToken cancellationToken = default) =>
+        GenerateAsync(prompt, tier, cacheKey, options.Value, cancellationToken);
 
+    /// <summary>Same call, with the settings in effect (server configuration or the admin override).</summary>
     public async Task<AiGenerationResult> GenerateAsync(
         string prompt,
         AiModelTier tier,
         string cacheKey,
+        AiOptions config,
         CancellationToken cancellationToken = default)
     {
-        if (Cache.TryGetValue(cacheKey, out var cached))
-            return cached with { FromCache = true };
-
-        var config = options.Value;
         if (string.IsNullOrWhiteSpace(config.ApiKey))
         {
             logger.LogDebug("Ai:ApiKey not configured; returning empty AI response.");
             return new AiGenerationResult(string.Empty, 0, 0, tier, FromCache: false, ProviderConfigured: false);
         }
+
+        // FD-21 (PO 2026-10-08): scrub PII from every prompt before it leaves CasaZen.
+        prompt = PiiScrubber.Scrub(prompt);
+
+        if (config.UsesAnthropicMessages())
+            return await GenerateAnthropicAsync(prompt, tier, config, cancellationToken);
 
         var baseUrl = config.OpenAiBaseUrl.TrimEnd('/');
         var payload = new
@@ -53,9 +65,36 @@ public class DeepSeekAiProvider(
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         var content = ExtractCompletionContent(json);
         var (promptTokens, completionTokens) = ExtractUsage(json);
-        var result = new AiGenerationResult(content, promptTokens, completionTokens, tier, false);
-        Cache[cacheKey] = result;
-        return result;
+        return new AiGenerationResult(content, promptTokens, completionTokens, tier, false);
+    }
+
+    private async Task<AiGenerationResult> GenerateAnthropicAsync(
+        string prompt,
+        AiModelTier tier,
+        AiOptions config,
+        CancellationToken cancellationToken)
+    {
+        var baseUrl = config.AnthropicBaseUrl.TrimEnd('/');
+        var payload = new
+        {
+            model = config.Model,
+            max_tokens = config.MaxCompletionTokens,
+            messages = new[] { new { role = "user", content = prompt } },
+        };
+
+        var client = httpClientFactory.CreateClient("DeepSeek");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/v1/messages");
+        request.Headers.Add("x-api-key", config.ApiKey);
+        request.Headers.Add("anthropic-version", "2023-06-01");
+        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        using var response = await client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        var content = DeepSeekWebSearchClient.ExtractTextContent(json) ?? string.Empty;
+        var (promptTokens, completionTokens) = DeepSeekWebSearchClient.ExtractUsage(json);
+        return new AiGenerationResult(content, promptTokens, completionTokens, tier, false);
     }
 
     public static string ExtractCompletionContent(string json)

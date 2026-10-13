@@ -88,18 +88,20 @@ public class PlanLimitAndOrgProvisioningPostgresTests : IAsyncLifetime
     public async Task EnsureOrgForUserAsync_ParallelFirstAccesses_LinkOneOrg()
     {
         var userId = await SeedUserAsync();
+        var email = $"first.{Guid.NewGuid():N}@example.com";
 
         var contexts = Enumerable.Range(0, 6).Select(_ => NewContext()).ToList();
         try
         {
             var orgs = await Task.WhenAll(contexts.Select(db =>
-                new OrgService(db).EnsureOrgForUserAsync(userId, "first@example.com", "Prima Volta")));
+                new OrgService(db).EnsureOrgForUserAsync(userId, email, "Prima Volta")));
 
             Assert.Single(orgs.Select(o => o.Id).Distinct());
             await using var check = NewContext();
             var user = await check.Users.SingleAsync(u => u.Id == userId);
             Assert.Equal(orgs[0].Id, user.OrgId);
-            Assert.Equal(1, await check.Orgs.CountAsync(o => o.Slug.StartsWith($"org-{userId.Replace("|", "-")}")));
+            // The slug is neutral (A1-23): the org is found by the contact email unique to this test.
+            Assert.Equal(1, await check.Orgs.CountAsync(o => o.ContactEmail == email));
         }
         finally
         {
@@ -112,6 +114,7 @@ public class PlanLimitAndOrgProvisioningPostgresTests : IAsyncLifetime
     public async Task EnsureOrgForUserAsync_UserLoadedBeforeAParallelProvisioning_ReturnsThatOrgAndKeepsTheLink()
     {
         var userId = await SeedUserAsync();
+        var email = $"first.{Guid.NewGuid():N}@example.com";
 
         // Request A loads the user (no org yet); request B provisions the org in the meantime.
         await using var requestA = NewContext();
@@ -121,9 +124,9 @@ public class PlanLimitAndOrgProvisioningPostgresTests : IAsyncLifetime
 
         OrgEntity orgB;
         await using (var requestB = NewContext())
-            orgB = await new OrgService(requestB).EnsureOrgForUserAsync(userId, "first@example.com", "Prima Volta");
+            orgB = await new OrgService(requestB).EnsureOrgForUserAsync(userId, email, "Prima Volta");
 
-        var orgA = await new OrgService(requestA).EnsureOrgForUserAsync(userId, "first@example.com", "Prima Volta");
+        var orgA = await new OrgService(requestA).EnsureOrgForUserAsync(userId, email, "Prima Volta");
         userA.FirstName = "Aggiornato";
         await repositoryA.UpdateAsync(userA);
 
@@ -133,7 +136,8 @@ public class PlanLimitAndOrgProvisioningPostgresTests : IAsyncLifetime
         var stored = await check.Users.SingleAsync(u => u.Id == userId);
         Assert.Equal(orgB.Id, stored.OrgId);
         Assert.Equal("Aggiornato", stored.FirstName);
-        Assert.Equal(1, await check.Orgs.CountAsync(o => o.Slug.StartsWith($"org-{userId.Replace("|", "-")}")));
+        // The slug is neutral (A1-23): the org is found by the contact email unique to this test.
+        Assert.Equal(1, await check.Orgs.CountAsync(o => o.ContactEmail == email));
     }
 
     [PostgresFact]

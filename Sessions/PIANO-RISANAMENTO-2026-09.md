@@ -3,6 +3,7 @@
 > **Data audit:** 2026-09-23
 > **Base analizzata:** backend `develop@4cbaeaa`, frontend `develop@0b91e3c`, mobile `develop@4b20215`
 > **Report di dettaglio (con file:riga per ogni difetto):** [`audit-2026-09-23/`](./audit-2026-09-23/README.md)
+> **Aggiornamento 2026-10-02:** il risanamento è stato eseguito. Stato finale di ogni difetto, difetti rimasti parziali e lavoro non svolto: **sezione 9** in fondo. Le sezioni 1-8 sono la fotografia dell'audit del 2026-09-23.
 > **Rapporto con `PLANNING.md`:** la visione e il Golden Journey restano validi. Questo documento dice **cosa manca e cosa è rotto** e **in che ordine sistemarlo**. Fino alla chiusura della Fase 2, qui sotto, non si aggiungono feature nuove.
 
 ---
@@ -435,3 +436,384 @@ Senza queste decisioni alcuni punti restano bloccati. Per ciascuna c'è una racc
   - `A9-trasversale.md`: sicurezza, inventario endpoint, test, CI
 - Visione e Golden Journey: [`PLANNING.md`](./PLANNING.md)
 - Registry spec: [`specs/README.md`](./specs/README.md) (da aggiornare in Fase 0.1)
+
+---
+
+## 9. Stato finale del risanamento (2026-10-02, task FN-05)
+
+> Le sezioni 1-8 sono l'istantanea dell'audit del 2026-09-23 e restano come cronaca: i numeri e gli stati "reale" lì sono **quelli di allora**. Lo stato attuale è qui. Riepilogo narrativo e procedura di rilascio: [`risanamento/RIEPILOGO-FINALE.md`](./risanamento/RIEPILOGO-FINALE.md). Registro spec riallineato: [`specs/README.md`](./specs/README.md).
+
+**Significato degli stati.** *Chiuso* = il task che copre il difetto è `done` in `risanamento/stato/status.json`, ha codice e test sul branch di integrazione `claude/sleepy-edison-oil8ru` e la correzione è verificabile con il commit, il runbook o il test citato. *Parziale* = una parte del difetto resta da fare o non è stata provata. *Aperto* = nessun intervento. **Nessuno di questi stati significa "in produzione"**: il lavoro della prima ondata è su `develop` (PR casazen/backend#451, frontend#209, mobile#5), quello della sessione di ripresa è solo sul branch `claude/sleepy-edison-oil8ru` (procedura in `RIEPILOGO-FINALE.md`); lo stato dei deploy non è registrato in questi documenti e le configurazioni dei servizi esterni spettano al PO (`docs/runbooks/deploy-checklist.md`).
+
+### 9.1 Numeri
+
+| | Totale | Chiusi | Parziali | Aperti |
+|---|---|---|---|---|
+| P0 | 46 | 45 | 1 | 0 |
+| P1 | 149 | 143 | 6 | 0 |
+| P2 | 140 | 139 | 1 | 0 |
+| **Difetti** | **335** | **327** | **8** | **0** |
+
+Task del piano (`risanamento/stato/status.json`): 166 task di risanamento, di cui 163 `done` (FN-05 incluso) e 3 `partial` (RS-7, CO-13, CO-22), più i 3 task aggiunti in corso d'opera `PL14-SUBP`, `LEGAL-TEXTS`, `FIX-DEPLOYCHK` (tutti `done`). I 12 task `AI-01..AI-12` della Wave 8 sono `pending` per scelta: non chiudono difetti e partono solo dopo le risposte del PO.
+
+Lo stato `done` di FN-03 e FN-04 è **parziale nella sostanza**: vedi i difetti A6-04, A6-22, A6-23, A6-24 e A3-23 sotto.
+
+### 9.2 Difetti rimasti parziali o aperti, e perché
+
+- **A1-22** (P1, task PL-04): PL-04 consegna impostazioni org, slug e email pubblica; lo step "Nome attività" nell'onboarding e l'aggiornamento del customer Stripe già creato non sono fatti (DOMANDE-APERTE, PL-04).
+- **A2-17** (P1, task PC-14): PC-14 elimina l'N+1 (una query filtrata per HostScope); la paginazione server-side di GET /api/bookings non è fatta (DOMANDE-APERTE, PC-14).
+- **A3-23** (P1, task FN-03): FN-03: step 4 da UI guest provato in locale; il pagamento con carta Stripe di test gira solo in CI, non provato (runbook golden-journey-l3.md).
+- **A6-04** (P0, task FN-03): FN-03: workflow L3 consegnato e provato in locale 5 volte (variante "paga in struttura"); job GitHub Actions e variante Stripe girano solo in CI e non sono stati provati; richiede segreti GitHub (runbook golden-journey-l3.md).
+- **A6-22** (P1, task FN-04): FN-04: flow Maestro (login M0, schermate M1-M8 per testID) e job su emulatore consegnati ma mai eseguiti (nessun emulatore né Maestro qui); verificati solo `npm run e2e:check`, tsc, eslint, jest (runbook mobile-e2e.md).
+- **A6-23** (P1, task FN-03): FN-03: attori distinti (host, fornitore, guest, admin) provati in locale; la variante con Stripe di test è solo in CI, non provata (runbook golden-journey-l3.md).
+- **A6-24** (P1, task FN-03): FN-03: F1-F2 provati in locale nella variante "paga in struttura"; esecuzione in CI non provata (runbook golden-journey-l3.md).
+- **A7-29** (P2, task LT-15): LT-15 consegna flusso reale su Postgres, matrice dei coefficienti ed e2e; la copertura con coverlet/soglie non è stata aggiunta (DOMANDE-APERTE, LT-15).
+
+Nessun difetto è rimasto del tutto aperto. Restano invece aperti **punti pianificati che non sono difetti dell'audit** (nessun ID `Ax-xx`):
+
+- **CO-13 (partial)**: il file tracciato Alloggiati Web è generato (backend e frontend), il client del web service **non è implementato** (nessuna sandbox, invio irreversibile, decisioni di prodotto mancanti). Il "File Unico" non è generato. Fonte: copie su GitHub dei manuali Rev. 01 del 24/01/2022, da confrontare con il portale (`docs/runbooks/alloggiati.md`). Commit be@c0f81730, fe@ee5e034.
+- **CO-22 (partial, di fatto bloccato)**: ISTAT (#6) e portali regionali (#8, Ross1000 Lombardia). Le specifiche ufficiali non sono verificabili dalla rete della sessione; nessun codice scritto. Runbook `docs/runbooks/ross1000.md`, commit be@0096dcec.
+- **RS-7 (partial)**: tariffe dell'imposta di soggiorno dei comuni pilota **non verificate alla fonte** (domini dei comuni bloccati, dati da estratti di ricerca); per Seveso e Cesano Maderno non è stata trovata un'imposta. Il livello di verifica è riga per riga in `.claude/context/regulations/imposta_soggiorno.md` (§ "Tariffe verificate (2026-09)") e nel CSV `Casazen.Infrastructure/Data/Seeds/tourist-tax/rates.csv`.
+- **AI-01..AI-12**: integrazione con ChatGPT e Claude, solo pianificata (`docs/integrations/ai-assistants-plan.md`).
+
+### 9.3 Stato di tutti i 335 difetti
+
+Colonna *Evidenza*: `be@` commit del backend, `fe@` frontend, `mo@` mobile (primo commit con scope = ID del task); se il task non ha un commit con quello scope, il nome di un runbook (in `docs/runbooks/`) o di una classe di test (in `Casazen.Tests/`) che lo documenta. Per i task dei primi giorni, la cui storia è consolidata nel merge `develop@58843389` (PR #451), l'evidenza è il runbook o il test. I titoli dei difetti sono nell'indice di [`risanamento/PIANO-ESECUZIONE.md`](./risanamento/PIANO-ESECUZIONE.md) e nei report di [`audit-2026-09-23/`](./audit-2026-09-23/README.md).
+
+| Difetto | Sev. | Stato | Task | Evidenza (commit, runbook o test) | Note |
+|---|---|---|---|---|---|
+| A1-01 | P0 | chiuso | PL-01 | PL-01: be@4d596cee fe@8bb9678 |  |
+| A1-02 | P0 | chiuso | FD-14 | FD-14: auth0.md deploy-checklist.md SupplierClaimIntegrationTests.cs |  |
+| A1-03 | P1 | chiuso | FD-18 | FD-18: fe@6811c04 | chiuso lato backend (upgrade solo con subscription); il selettore del piano nell'onboarding resta decorativo: domanda aperta PL-06 |
+| A1-04 | P1 | chiuso | PL-03 | PL-03: be@b78ffa05 fe@dd4bbd3 |  |
+| A1-05 | P1 | chiuso | PL-02 | PL-02: be@2c11ed9e fe@d3daeb4 mo@eaa367d |  |
+| A1-06 | P1 | chiuso | PL-14 | PL-14: be@003ce5fc fe@5141aea |  |
+| A1-07 | P1 | chiuso | PL-12 | PL-12: be@e966d767 fe@35d75fa |  |
+| A1-08 | P1 | chiuso | PL-13 | PL-13: be@8aa3c63e |  |
+| A1-09 | P1 | chiuso | PL-10 | PL-10: be@9ef426fe |  |
+| A1-10 | P1 | chiuso | PL-10 | PL-10: be@9ef426fe |  |
+| A1-11 | P1 | chiuso | PL-10 | PL-10: be@9ef426fe |  |
+| A1-12 | P1 | chiuso | FD-10 | FD-10: deploy-checklist.md direct-booking.md CasazenWebApplicationFactory.cs |  |
+| A1-13 | P1 | chiuso | SU-02 | SU-02: be@97626b5e fe@6be6e23 |  |
+| A1-15 | P1 | chiuso | PL-06 | PL-06: fe@b5963d1 |  |
+| A1-16 | P1 | chiuso | PL-09 | PL-09: be@a7789c73 fe@3151ae4 |  |
+| A1-17 | P1 | chiuso | PL-09 | PL-09: be@a7789c73 fe@3151ae4 |  |
+| A1-18 | P1 | chiuso | PL-01 | PL-01: be@4d596cee fe@8bb9678 |  |
+| A1-22 | P1 | parziale | PL-04 | PL-04: be@7524a174 fe@aa4ace8 | PL-04 consegna impostazioni org, slug e email pubblica; lo step "Nome attività" nell'onboarding e l'aggiornamento del customer Stripe già creato non sono fatti (DOMANDE-APERTE, PL-04) |
+| A1-40 | P1 | chiuso | PL-05 | PL-05: be@904641a2 |  |
+| A1-14 | P2 | chiuso | TN-4 | TN-4: PlanLimitAndOrgProvisioningPostgresTests.cs |  |
+| A1-19 | P2 | chiuso | PL-01 | PL-01: be@4d596cee fe@8bb9678 |  |
+| A1-20 | P2 | chiuso | TN-4 | TN-4: PlanLimitAndOrgProvisioningPostgresTests.cs |  |
+| A1-21 | P2 | chiuso | TN-4 | TN-4: PlanLimitAndOrgProvisioningPostgresTests.cs |  |
+| A1-23 | P2 | chiuso | PL-04 | PL-04: be@7524a174 fe@aa4ace8 |  |
+| A1-24 | P2 | chiuso | FD-05 | FD-05: auth0.md ical.md BookingsControllerTests.cs |  |
+| A1-25 | P2 | chiuso | FD-09 | FD-09: fe@39e6c7f |  |
+| A1-26 | P2 | chiuso | PL-09 | PL-09: be@a7789c73 fe@3151ae4 |  |
+| A1-27 | P2 | chiuso | PL-09 | PL-09: be@a7789c73 fe@3151ae4 |  |
+| A1-28 | P2 | chiuso | TN-1 | TN-1: fe@2859ccd encryption.md gdpr.md FieldEncryptionPostgresTests.cs |  |
+| A1-29 | P2 | chiuso | FD-14 | FD-14: auth0.md deploy-checklist.md SupplierClaimIntegrationTests.cs |  |
+| A1-30 | P2 | chiuso | PL-08 | PL-08: be@7c2c64f0 |  |
+| A1-31 | P2 | chiuso | PL-11 | PL-11: be@8404cbb1 fe@8f1198a |  |
+| A1-32 | P2 | chiuso | PL-11 | PL-11: be@8404cbb1 fe@8f1198a |  |
+| A1-33 | P2 | chiuso | PL-02 | PL-02: be@2c11ed9e fe@d3daeb4 mo@eaa367d |  |
+| A1-34 | P2 | chiuso | FD-17 | FD-17: fe@b12a87d cors-security-headers.md deploy-checklist.md CorsAndSecurityHeadersIntegrationTests.cs |  |
+| A1-35 | P2 | chiuso | PL-07 | PL-07: be@ba321332 |  |
+| A1-36 | P2 | chiuso | PL-16 | PL-16: be@1489a358 fe@a2b1347 |  |
+| A1-37 | P2 | chiuso | PL-15 | PL-15: be@23c789db fe@7647d69 |  |
+| A1-38 | P2 | chiuso | PL-06 | PL-06: fe@b5963d1 |  |
+| A1-39 | P2 | chiuso | PL-06 | PL-06: fe@b5963d1 |  |
+| A1-41 | P2 | chiuso | FD-18 | FD-18: fe@6811c04 |  |
+| A1-43 | P2 | chiuso | FD-04 | FD-04: ci-backend.md CasazenWebApplicationFactory.cs |  |
+| A2-01 | P0 | chiuso | PC-01 | PC-01: be@93263cfe fe@291a198 |  |
+| A2-02 | P0 | chiuso | TN-1 | TN-1: fe@2859ccd encryption.md gdpr.md FieldEncryptionPostgresTests.cs |  |
+| A2-03 | P0 | chiuso | FD-07 | FD-07: fe@e6d60df alloggiati.md deploy-checklist.md CasazenWebApplicationFactory.cs |  |
+| A2-04 | P1 | chiuso | PC-02 | PC-02: be@3feb0e91 fe@5fbbcd9 |  |
+| A2-05 | P1 | chiuso | PC-03 | PC-03: be@5df9f958 fe@e706b7d |  |
+| A2-06 | P1 | chiuso | PC-08 | PC-08: fe@57726c3 |  |
+| A2-07 | P1 | chiuso | PC-07 | PC-07: be@3194ac4b fe@a5d7d2c |  |
+| A2-08 | P1 | chiuso | PC-07 | PC-07: be@3194ac4b fe@a5d7d2c |  |
+| A2-09 | P1 | chiuso | FD-20 | FD-20: fe@0b06afd deploy-checklist.md encryption.md ChildEntityTenantIsolationIntegrationTests.cs |  |
+| A2-10 | P1 | chiuso | PC-10 | PC-10: be@f30fda61 |  |
+| A2-11 | P1 | chiuso | PC-11 | PC-11: be@df8b61c4 fe@b0d6d8e |  |
+| A2-12 | P1 | chiuso | PC-10 | PC-10: be@f30fda61 |  |
+| A2-13 | P1 | chiuso | BK-05 | BK-05: be@da543279 fe@f154190 |  |
+| A2-14 | P1 | chiuso | PC-15 | PC-15: be@b0f7f784 fe@f2a8c09 |  |
+| A2-15 | P1 | chiuso | FD-06 | FD-06: rli.md CalendarTodayArchitectureTests.cs |  |
+| A2-16 | P1 | chiuso | MO-06 | MO-06: be@14e9387e mo@6f95562 |  |
+| A2-17 | P1 | parziale | PC-14 | PC-14: be@a5cb4670 | PC-14 elimina l'N+1 (una query filtrata per HostScope); la paginazione server-side di GET /api/bookings non è fatta (DOMANDE-APERTE, PC-14) |
+| A2-18 | P1 | chiuso | PC-05 | PC-05: be@d7c27339 |  |
+| A2-19 | P1 | chiuso | PC-06 | PC-06: be@e1913159 fe@03823fe |  |
+| A2-20 | P2 | chiuso | PC-11 | PC-11: be@df8b61c4 fe@b0d6d8e |  |
+| A2-21 | P2 | chiuso | FD-16 | FD-16: deploy-checklist.md external-fetch.md ExternalUrlPolicyTests.cs |  |
+| A2-22 | P2 | chiuso | PC-12 | PC-12: be@6f54a57d |  |
+| A2-23 | P2 | chiuso | PC-10 | PC-10: be@f30fda61 |  |
+| A2-24 | P2 | chiuso | PC-13 | PC-13: fe@155072b ical.md |  |
+| A2-25 | P1 | chiuso | PC-09 | PC-09: be@4786923e fe@b8ffcbb mo@dd2698e |  |
+| A2-26 | P1 | chiuso | PC-04 | PC-04: be@9367e11a fe@fa6fc94 |  |
+| A2-27 | P2 | chiuso | PC-02 | PC-02: be@3feb0e91 fe@5fbbcd9 |  |
+| A2-28 | P2 | chiuso | FD-09 | FD-09: fe@39e6c7f |  |
+| A2-29 | P2 | chiuso | PC-16 | PC-16: be@7dd009b8 fe@27ef58b |  |
+| A2-30 | P2 | chiuso | PC-07 | PC-07: be@3194ac4b fe@a5d7d2c |  |
+| A2-31 | P2 | chiuso | FD-07 | FD-07: fe@e6d60df alloggiati.md deploy-checklist.md CasazenWebApplicationFactory.cs |  |
+| A2-32 | P2 | chiuso | FD-17, PC-02 | FD-17: fe@b12a87d cors-security-headers.md deploy-checklist.md CorsAndSecurityHeadersIntegrationTests.cs; PC-02: be@3feb0e91 fe@5fbbcd9 |  |
+| A2-33 | P2 | chiuso | PC-06 | PC-06: be@e1913159 fe@03823fe |  |
+| A2-34 | P2 | chiuso | PC-15 | PC-15: be@b0f7f784 fe@f2a8c09 |  |
+| A2-35 | P2 | chiuso | TN-1 | TN-1: fe@2859ccd encryption.md gdpr.md FieldEncryptionPostgresTests.cs |  |
+| A2-36 | P2 | chiuso | PC-16 | PC-16: be@7dd009b8 fe@27ef58b |  |
+| A2-37 | P2 | chiuso | FD-04 | FD-04: ci-backend.md CasazenWebApplicationFactory.cs |  |
+| A3-01 | P0 | chiuso | BK-01 | BK-01: fe@2a50c26 |  |
+| A3-02 | P0 | chiuso | BK-03 | BK-03: be@eea938f5 fe@201763a |  |
+| A3-03 | P0 | chiuso | PL-10 | PL-10: be@9ef426fe |  |
+| A3-04 | P0 | chiuso | BK-04 | BK-04: be@6d07c631 |  |
+| A3-05 | P0 | chiuso | BK-02 | BK-02: be@446e6136 fe@8647bd6 |  |
+| A3-06 | P0 | chiuso | BK-06 | BK-06: be@c9d08c9b fe@794ccab |  |
+| A3-07 | P0 | chiuso | FD-18 | FD-18: fe@6811c04 |  |
+| A3-08 | P1 | chiuso | BK-16 | BK-16: be@30b5b95f fe@337da2e |  |
+| A3-09 | P1 | chiuso | BK-05 | BK-05: be@da543279 fe@f154190 |  |
+| A3-10 | P1 | chiuso | BK-11 | BK-11: be@7fdb3b1e fe@d24afbe |  |
+| A3-11 | P1 | chiuso | BK-10 | BK-10: be@301927d5 |  |
+| A3-12 | P1 | chiuso | FD-10 | FD-10: deploy-checklist.md direct-booking.md CasazenWebApplicationFactory.cs |  |
+| A3-13 | P1 | chiuso | BK-21 | BK-21: be@3a4e1010 |  |
+| A3-14 | P1 | chiuso | BK-08 | BK-08: be@43f1c58b |  |
+| A3-15 | P1 | chiuso | BK-07 | BK-07: be@c3ce646b fe@953c5cd |  |
+| A3-16 | P1 | chiuso | BK-07 | BK-07: be@c3ce646b fe@953c5cd |  |
+| A3-17 | P1 | chiuso | BK-12 | BK-12: be@9f6df2af fe@2e341d8 |  |
+| A3-18 | P2 | chiuso | BK-13 | BK-13: fe@84c7bab activation-checklist.md |  |
+| A3-19 | P1 | chiuso | BK-09 | BK-09: be@5be36091 fe@d5808a2 |  |
+| A3-20 | P1 | chiuso | BK-15 | BK-15: be@6cbfdc9d fe@85b0c55 |  |
+| A3-21 | P1 | chiuso | BK-14 | BK-14: be@aa7e243a fe@4a0f5dd |  |
+| A3-22 | P1 | chiuso | MO-11 | MO-11: be@3ca50763 mo@f9a53c2 |  |
+| A3-23 | P1 | parziale | FN-03 | FN-03: be@a15df03e fe@8b10749 | FN-03: step 4 da UI guest provato in locale; il pagamento con carta Stripe di test gira solo in CI, non provato (runbook golden-journey-l3.md) |
+| A3-24 | P1 | chiuso | FD-12 | FD-12: ci-backend.md deploy-checklist.md BillingConfigurationTests.cs |  |
+| A3-25 | P1 | chiuso | BK-17 | BK-17: be@59c2be38 fe@cccb9bf |  |
+| A3-26 | P2 | chiuso | PL-15 | PL-15: be@23c789db fe@7647d69 |  |
+| A3-27 | P2 | chiuso | BK-20 | BK-20: be@f083d56b fe@7515086 |  |
+| A3-28 | P2 | chiuso | BK-01 | BK-01: fe@2a50c26 |  |
+| A3-29 | P2 | chiuso | FD-17 | FD-17: fe@b12a87d cors-security-headers.md deploy-checklist.md CorsAndSecurityHeadersIntegrationTests.cs |  |
+| A3-30 | P2 | chiuso | FD-10 | FD-10: deploy-checklist.md direct-booking.md CasazenWebApplicationFactory.cs |  |
+| A3-31 | P2 | chiuso | FN-01 | FN-01: be@6cc2e656 | messaggi BE su .resx; restano circa 370 attributi DataAnnotations con messaggi di default (domanda FN-01) |
+| A3-32 | P2 | chiuso | BK-13 | BK-13: fe@84c7bab activation-checklist.md |  |
+| A3-33 | P2 | chiuso | BK-18 | BK-18: be@38192a19 |  |
+| A3-34 | P2 | chiuso | BK-01 | BK-01: fe@2a50c26 |  |
+| A3-35 | P2 | chiuso | BK-13 | BK-13: fe@84c7bab activation-checklist.md |  |
+| A3-36 | P2 | chiuso | FD-19 | FD-19: be@d00a23b9 |  |
+| A3-37 | P2 | chiuso | FD-18 | FD-18: fe@6811c04 |  |
+| A3-38 | P2 | chiuso | TN-3 | TN-3: alloggiati.md direct-booking.md AuthorizationAttributeTests.cs |  |
+| A3-39 | P2 | chiuso | BK-19 | BK-19: be@e989e46d |  |
+| A3-40 | P2 | chiuso | BK-19 | BK-19: be@e989e46d |  |
+| A3-41 | P2 | chiuso | FD-10 | FD-10: deploy-checklist.md direct-booking.md CasazenWebApplicationFactory.cs |  |
+| A3-42 | P2 | chiuso | BK-09 | BK-09: be@5be36091 fe@d5808a2 |  |
+| A4-01 | P0 | chiuso | FD-14 | FD-14: auth0.md deploy-checklist.md SupplierClaimIntegrationTests.cs |  |
+| A4-02 | P0 | chiuso | SU-02 | SU-02: be@97626b5e fe@6be6e23 |  |
+| A4-03 | P0 | chiuso | SU-01 | SU-01: be@19f6c311 fe@230c149 |  |
+| A4-04 | P1 | chiuso | SU-01 | SU-01: be@19f6c311 fe@230c149 |  |
+| A4-05 | P0 | chiuso | SU-03 | SU-03: be@e74a2317 fe@58eb261 mo@3ce709c |  |
+| A4-06 | P1 | chiuso | FD-13 | FD-13: ci-backend.md cin-format.md CinDeadlineEmailTemplatesTests.cs |  |
+| A4-07 | P1 | chiuso | FD-13 | FD-13: ci-backend.md cin-format.md CinDeadlineEmailTemplatesTests.cs |  |
+| A4-08 | P1 | chiuso | FD-13 | FD-13: ci-backend.md cin-format.md CinDeadlineEmailTemplatesTests.cs |  |
+| A4-09 | P1 | chiuso | SU-05 | SU-05: be@64169bd2 fe@ceae373 | requisiti reali di attivazione; P.IVA non richiesta, nessun campo tariffa (non esiste nel modello; domanda SU-05) |
+| A4-10 | P1 | chiuso | FD-16 | FD-16: deploy-checklist.md external-fetch.md ExternalUrlPolicyTests.cs |  |
+| A4-11 | P2 | chiuso | SU-15 | SU-15: be@b086c2d1 fe@732b7bf |  |
+| A4-12 | P1 | chiuso | SU-04 | SU-04: be@23aea211 fe@4db104d |  |
+| A4-13 | P1 | chiuso | SU-07 | SU-07: be@281a8b1a fe@8f4d773 mo@cbd0e98 |  |
+| A4-14 | P1 | chiuso | SU-08 | SU-08: be@1226598b fe@efaec9c |  |
+| A4-15 | P1 | chiuso | SU-11 | SU-11: be@3a181713 fe@5777c11 |  |
+| A4-16 | P1 | chiuso | FD-08, SU-13 | FD-08: fe@5aaf70e; SU-13: be@97e11e2b fe@7af4bbe |  |
+| A4-17 | P2 | chiuso | SU-10 | SU-10: be@364e710c |  |
+| A4-18 | P2 | chiuso | SU-10 | SU-10: be@364e710c |  |
+| A4-19 | P2 | chiuso | SU-10 | SU-10: be@364e710c |  |
+| A4-20 | P2 | chiuso | FD-13 | FD-13: ci-backend.md cin-format.md CinDeadlineEmailTemplatesTests.cs |  |
+| A4-21 | P2 | chiuso | SU-01 | SU-01: be@19f6c311 fe@230c149 |  |
+| A4-22 | P2 | chiuso | SU-14 | SU-14: be@713a381c |  |
+| A4-23 | P2 | chiuso | SU-02 | SU-02: be@97626b5e fe@6be6e23 |  |
+| A4-24 | P2 | chiuso | SU-01 | SU-01: be@19f6c311 fe@230c149 |  |
+| A4-25 | P2 | chiuso | SU-06 | SU-06: be@19d8b6f0 fe@b524ef3 |  |
+| A4-26 | P2 | chiuso | FD-21 | FD-21: be@896cac90 fe@5016b35 |  |
+| A4-27 | P2 | chiuso | SU-06 | SU-06: be@19d8b6f0 fe@b524ef3 |  |
+| A4-28 | P2 | chiuso | SU-09 | SU-09: be@39dbfedd fe@e1bf950 | timeline, conferma e motivo del rifiuto fatti; nessuna notifica push al rifiuto oltre a quelle esistenti (domanda SU-09) |
+| A4-29 | P2 | chiuso | SU-12 | SU-12: be@025baec8 fe@f36969f |  |
+| A4-30 | P2 | chiuso | FD-14 | FD-14: auth0.md deploy-checklist.md SupplierClaimIntegrationTests.cs |  |
+| A4-31 | P2 | chiuso | SU-05 | SU-05: be@64169bd2 fe@ceae373 |  |
+| A4-32 | P2 | chiuso | SU-16 | SU-16: fe@4e8f1df |  |
+| A4-33 | P2 | chiuso | SU-07 | SU-07: be@281a8b1a fe@8f4d773 mo@cbd0e98 |  |
+| A5-01 | P0 | chiuso | CO-11 | CO-11: fe@0dee055 alloggiati.md hangfire.md AlloggiatiHonestStatusMigrationPostgresTests.cs | stato onesto "da inviare manualmente"; il client del web service non è implementato (CO-13 parziale) |
+| A5-02 | P0 | chiuso | CO-12 | CO-12: be@23c1b0f1 fe@2253b6d |  |
+| A5-03 | P0 | chiuso | CO-11 | CO-11: fe@0dee055 alloggiati.md hangfire.md AlloggiatiHonestStatusMigrationPostgresTests.cs |  |
+| A5-04 | P0 | chiuso | CO-02 | CO-02: fe@1cde0c7 alloggiati.md direct-booking.md CheckInHostFallbackPostgresTests.cs |  |
+| A5-05 | P0 | chiuso | CO-01 | CO-01: fe@4946d40 cin-format.md compliance.md AdminServiceCinCompliancePostgresTests.cs |  |
+| A5-06 | P0 | chiuso | CO-03 | CO-03: fe@28d0509 tourist-tax-rates.md DateTimeUtcNormalizationPostgresTests.cs |  |
+| A5-07 | P0 | chiuso | TN-1 | TN-1: fe@2859ccd encryption.md gdpr.md FieldEncryptionPostgresTests.cs |  |
+| A5-08 | P0 | chiuso | CO-08 | CO-08: be@93c07dc8 fe@0168296 mo@4bd9220 |  |
+| A5-09 | P1 | chiuso | CO-04 | CO-04: be@7182d418 fe@fae928a |  |
+| A5-10 | P1 | chiuso | FD-10 | FD-10: deploy-checklist.md direct-booking.md CasazenWebApplicationFactory.cs |  |
+| A5-11 | P1 | chiuso | CO-10 | CO-10: be@f81aa247 |  |
+| A5-12 | P1 | chiuso | CO-15 | CO-15: be@0f3e8ac7 fe@f324d5d |  |
+| A5-13 | P1 | chiuso | CO-15 | CO-15: be@0f3e8ac7 fe@f324d5d |  |
+| A5-14 | P1 | chiuso | CO-15 | CO-15: be@0f3e8ac7 fe@f324d5d |  |
+| A5-15 | P1 | chiuso | CO-15 | CO-15: be@0f3e8ac7 fe@f324d5d |  |
+| A5-16 | P1 | chiuso | BK-03 | BK-03: be@eea938f5 fe@201763a |  |
+| A5-17 | P1 | chiuso | FD-06 | FD-06: rli.md CalendarTodayArchitectureTests.cs |  |
+| A5-18 | P1 | chiuso | CO-05 | CO-05: fe@3adb832 |  |
+| A5-19 | P1 | chiuso | SU-04 | SU-04: be@23aea211 fe@4db104d |  |
+| A5-20 | P1 | chiuso | CO-06 | CO-06: be@b19aa4da |  |
+| A5-21 | P1 | chiuso | CO-07 | CO-07: be@656f0ab7 fe@6e7dabc |  |
+| A5-22 | P1 | chiuso | CO-18 | CO-18: be@833065f8 fe@95409af |  |
+| A5-23 | P1 | chiuso | CO-19 | CO-19: be@38b6e2a1 fe@b599c43 |  |
+| A5-24 | P1 | chiuso | CO-17 | CO-17: be@dcac8b2e fe@f483dfb |  |
+| A5-25 | P2 | chiuso | CO-10 | CO-10: be@f81aa247 |  |
+| A5-26 | P1 | chiuso | CO-09 | CO-09: be@89dd5038 fe@826852d |  |
+| A5-27 | P2 | chiuso | CO-09 | CO-09: be@89dd5038 fe@826852d |  |
+| A5-28 | P2 | chiuso | CO-02 | CO-02: fe@1cde0c7 alloggiati.md direct-booking.md CheckInHostFallbackPostgresTests.cs |  |
+| A5-29 | P2 | chiuso | CO-16 | CO-16: be@8923bfb2 |  |
+| A5-30 | P1 | chiuso | CO-14 | CO-14: be@53d3ca0c fe@700ec2f |  |
+| A5-31 | P2 | chiuso | CO-20 | CO-20: be@083c9f5c fe@555f54d |  |
+| A5-32 | P2 | chiuso | FN-01 | FN-01: be@6cc2e656 | messaggi BE su .resx; restano circa 370 attributi DataAnnotations con messaggi di default (domanda FN-01) |
+| A5-33 | P2 | chiuso | FD-13 | FD-13: ci-backend.md cin-format.md CinDeadlineEmailTemplatesTests.cs |  |
+| A5-34 | P2 | chiuso | SU-04 | SU-04: be@23aea211 fe@4db104d |  |
+| A5-35 | P1 | chiuso | CO-11 | CO-11: fe@0dee055 alloggiati.md hangfire.md AlloggiatiHonestStatusMigrationPostgresTests.cs |  |
+| A5-36 | P2 | chiuso | CO-06 | CO-06: be@b19aa4da |  |
+| A5-37 | P2 | chiuso | CO-11 | CO-11: fe@0dee055 alloggiati.md hangfire.md AlloggiatiHonestStatusMigrationPostgresTests.cs |  |
+| A6-01 | P0 | chiuso | MO-01 | MO-01: be@4ce7bec8 mo@9c72a17 |  |
+| A6-02 | P0 | chiuso | MO-02 | MO-02: mo@d0efbd6 mobile-release.md |  |
+| A6-03 | P0 | chiuso | SU-03 | SU-03: be@e74a2317 fe@58eb261 mo@3ce709c |  |
+| A6-04 | P0 | parziale | FN-03 | FN-03: be@a15df03e fe@8b10749 | FN-03: workflow L3 consegnato e provato in locale 5 volte (variante "paga in struttura"); job GitHub Actions e variante Stripe girano solo in CI e non sono stati provati; richiede segreti GitHub (runbook golden-journey-l3.md) |
+| A6-05 | P1 | chiuso | MO-03 | MO-03: be@f64bbf2f mo@c205a0a |  |
+| A6-06 | P1 | chiuso | MO-03 | MO-03: be@f64bbf2f mo@c205a0a |  |
+| A6-07 | P1 | chiuso | CO-10 | CO-10: be@f81aa247 |  |
+| A6-08 | P1 | chiuso | MO-04 | MO-04: be@2b066245 |  |
+| A6-09 | P1 | chiuso | MO-11 | MO-11: be@3ca50763 mo@f9a53c2 |  |
+| A6-10 | P1 | chiuso | MO-06 | MO-06: be@14e9387e mo@6f95562 |  |
+| A6-11 | P1 | chiuso | MO-06 | MO-06: be@14e9387e mo@6f95562 |  |
+| A6-12 | P1 | chiuso | MO-06 | MO-06: be@14e9387e mo@6f95562 |  |
+| A6-13 | P1 | chiuso | MO-07 | MO-07: mo@001d5a7 suppliers.md |  |
+| A6-14 | P1 | chiuso | MO-05 | MO-05: be@913f6bcd mo@36053a3 |  |
+| A6-15 | P1 | chiuso | MO-05 | MO-05: be@913f6bcd mo@36053a3 |  |
+| A6-16 | P1 | chiuso | MO-09 | MO-09: mo@6c4cf51 mobile-e2e.md | app: start + riepilogo + conferma esplicita; il backend continua ad accettare il check-out anticipato (domanda MO-09) |
+| A6-17 | P1 | chiuso | MO-08 | MO-08: be@b35d4694 mo@b233308 |  |
+| A6-18 | P1 | chiuso | MO-10 | MO-10: mo@1473e6c mobile-e2e.md suppliers.md | l'app non sceglie più items[0]: scelta manuale come il web; match-supplier con punteggio resta spento (D11), nessun prezzo (domanda MO-10) |
+| A6-19 | P1 | chiuso | MO-03 | MO-03: be@f64bbf2f mo@c205a0a |  |
+| A6-20 | P1 | chiuso | MO-12 | MO-12: be@c8642af3 |  |
+| A6-21 | P2 | chiuso | MO-01 | MO-01: be@4ce7bec8 mo@9c72a17 |  |
+| A6-22 | P1 | parziale | FN-04 | FN-04: be@fa064f8b mo@6105efb | FN-04: flow Maestro (login M0, schermate M1-M8 per testID) e job su emulatore consegnati ma mai eseguiti (nessun emulatore né Maestro qui); verificati solo `npm run e2e:check`, tsc, eslint, jest (runbook mobile-e2e.md) |
+| A6-23 | P1 | parziale | FN-03 | FN-03: be@a15df03e fe@8b10749 | FN-03: attori distinti (host, fornitore, guest, admin) provati in locale; la variante con Stripe di test è solo in CI, non provata (runbook golden-journey-l3.md) |
+| A6-24 | P1 | parziale | FN-03 | FN-03: be@a15df03e fe@8b10749 | FN-03: F1-F2 provati in locale nella variante "paga in struttura"; esecuzione in CI non provata (runbook golden-journey-l3.md) |
+| A6-25 | P2 | chiuso | MO-07 | MO-07: mo@001d5a7 suppliers.md |  |
+| A6-26 | P2 | chiuso | MO-07 | MO-07: mo@001d5a7 suppliers.md |  |
+| A6-27 | P2 | chiuso | MO-13 | MO-13: mo@f61d416 |  |
+| A6-28 | P2 | chiuso | MO-13 | MO-13: mo@f61d416 |  |
+| A6-29 | P2 | chiuso | MO-04 | MO-04: be@2b066245 |  |
+| A6-30 | P2 | chiuso | MO-02 | MO-02: mo@d0efbd6 mobile-release.md |  |
+| A6-31 | P2 | chiuso | MO-01 | MO-01: be@4ce7bec8 mo@9c72a17 |  |
+| A6-32 | P2 | chiuso | MO-13 | MO-13: mo@f61d416 |  |
+| A7-01 | P0 | chiuso | LT-01 | LT-01: be@ca3b4c5a fe@d4359cf |  |
+| A7-02 | P0 | chiuso | LT-02 | LT-02: be@77436ef6 fe@2dd3229 |  |
+| A7-03 | P0 | chiuso | LT-03 | LT-03: be@06eb8bee |  |
+| A7-04 | P0 | chiuso | LT-04 | LT-04: be@f45dcaf5 fe@833536e |  |
+| A7-05 | P0 | chiuso | FD-06 | FD-06: rli.md CalendarTodayArchitectureTests.cs |  |
+| A7-06 | P0 | chiuso | LT-05 | LT-05: be@a978feea fe@6f9642f |  |
+| A7-07 | P1 | chiuso | LT-06 | LT-06: be@ec9f74e4 fe@7cacf10 |  |
+| A7-08 | P1 | chiuso | LT-07 | LT-07: be@b87dff37 fe@f80d2f0 |  |
+| A7-09 | P1 | chiuso | LT-08 | LT-08: be@b66a6d83 fe@f40aaa7 |  |
+| A7-10 | P1 | chiuso | LT-10 | LT-10: be@34b9f939 fe@2f17b56 |  |
+| A7-11 | P1 | chiuso | LT-10 | LT-10: be@34b9f939 fe@2f17b56 |  |
+| A7-12 | P1 | chiuso | LT-10 | LT-10: be@34b9f939 fe@2f17b56 |  |
+| A7-13 | P1 | chiuso | LT-10 | LT-10: be@34b9f939 fe@2f17b56 |  |
+| A7-14 | P1 | chiuso | LT-09 | LT-09: be@af33eaa4 |  |
+| A7-15 | P2 | chiuso | LT-11 | LT-11: be@d1573a59 fe@901fbcc |  |
+| A7-16 | P2 | chiuso | LT-02 | LT-02: be@77436ef6 fe@2dd3229 |  |
+| A7-17 | P2 | chiuso | LT-11 | LT-11: be@d1573a59 fe@901fbcc |  |
+| A7-18 | P1 | chiuso | LT-12 | LT-12: be@8a4ebdea |  |
+| A7-19 | P2 | chiuso | FD-05 | FD-05: auth0.md ical.md BookingsControllerTests.cs |  |
+| A7-20 | P2 | chiuso | LT-02 | LT-02: be@77436ef6 fe@2dd3229 |  |
+| A7-21 | P2 | chiuso | LT-01 | LT-01: be@ca3b4c5a fe@d4359cf |  |
+| A7-22 | P2 | chiuso | LT-13 | LT-13: be@6d04ee15 fe@4337081 |  |
+| A7-23 | P1 | chiuso | LT-10 | LT-10: be@34b9f939 fe@2f17b56 |  |
+| A7-24 | P2 | chiuso | LT-13 | LT-13: be@6d04ee15 fe@4337081 |  |
+| A7-25 | P2 | chiuso | FD-09 | FD-09: fe@39e6c7f |  |
+| A7-26 | P2 | chiuso | LT-11 | LT-11: be@d1573a59 fe@901fbcc |  |
+| A7-27 | P2 | chiuso | LT-11 | LT-11: be@d1573a59 fe@901fbcc |  |
+| A7-28 | P2 | chiuso | LT-14 | LT-14: be@e066d398 fe@dbb56a8 |  |
+| A7-29 | P2 | parziale | LT-15 | LT-15: CanoneConcordatoCoefficientMatrixTests.cs | LT-15 consegna flusso reale su Postgres, matrice dei coefficienti ed e2e; la copertura con coverlet/soglie non è stata aggiunta (DOMANDE-APERTE, LT-15) |
+| A7-30 | P2 | chiuso | FN-05 | FN-05: questo commit | questo task: registro spec allineato (Sessions/specs/README.md) |
+| A7-31 | P2 | chiuso | PL-07 | PL-07: be@ba321332 |  |
+| A8-01 | P0 | chiuso | FD-21 | FD-21: be@896cac90 fe@5016b35 |  |
+| A8-02 | P0 | chiuso | SE-02 | SE-02: be@abfd960a fe@4765769 |  |
+| A8-03 | P0 | chiuso | SE-03 | SE-03: be@3a8f4441 fe@cb46cc5 |  |
+| A8-04 | P1 | chiuso | SE-01 | SE-01: be@c4fd3ad3 fe@a8b7928 |  |
+| A8-05 | P1 | chiuso | SE-01 | SE-01: be@c4fd3ad3 fe@a8b7928 |  |
+| A8-06 | P1 | chiuso | SE-01 | SE-01: be@c4fd3ad3 fe@a8b7928 |  |
+| A8-07 | P1 | chiuso | FD-21 | FD-21: be@896cac90 fe@5016b35 |  |
+| A8-08 | P1 | chiuso | FD-15 | FD-15: fe@9553939 seo-domain.md SeoGeneratedContentTests.cs |  |
+| A8-09 | P1 | chiuso | BK-15 | BK-15: be@6cbfdc9d fe@85b0c55 |  |
+| A8-10 | P1 | chiuso | SE-04 | SE-04: be@df071fea fe@455a6bb |  |
+| A8-11 | P1 | chiuso | SE-04 | SE-04: be@df071fea fe@455a6bb |  |
+| A8-12 | P1 | chiuso | BK-03 | BK-03: be@eea938f5 fe@201763a |  |
+| A8-13 | P1 | chiuso | BK-20 | BK-20: be@f083d56b fe@7515086 |  |
+| A8-14 | P1 | chiuso | FD-21 | FD-21: be@896cac90 fe@5016b35 |  |
+| A8-15 | P1 | chiuso | FD-21 | FD-21: be@896cac90 fe@5016b35 |  |
+| A8-16 | P1 | chiuso | FD-20 | FD-20: fe@0b06afd deploy-checklist.md encryption.md ChildEntityTenantIsolationIntegrationTests.cs |  |
+| A8-17 | P2 | chiuso | PC-15 | PC-15: be@b0f7f784 fe@f2a8c09 |  |
+| A8-18 | P2 | chiuso | SE-04 | SE-04: be@df071fea fe@455a6bb |  |
+| A8-19 | P2 | chiuso | SE-05 | SE-05: be@a76f24ae fe@bb9e213 |  |
+| A8-20 | P2 | chiuso | BK-15 | BK-15: be@6cbfdc9d fe@85b0c55 |  |
+| A8-21 | P2 | chiuso | SE-01 | SE-01: be@c4fd3ad3 fe@a8b7928 |  |
+| A8-22 | P2 | chiuso | FD-10 | FD-10: deploy-checklist.md direct-booking.md CasazenWebApplicationFactory.cs |  |
+| A8-23 | P2 | chiuso | BK-03 | BK-03: be@eea938f5 fe@201763a |  |
+| A8-24 | P2 | chiuso | SU-04 | SU-04: be@23aea211 fe@4db104d |  |
+| A8-25 | P2 | chiuso | SE-05 | SE-05: be@a76f24ae fe@bb9e213 |  |
+| A8-26 | P2 | chiuso | FD-21 | FD-21: be@896cac90 fe@5016b35 |  |
+| A8-27 | P2 | chiuso | SE-05 | SE-05: be@a76f24ae fe@bb9e213 |  |
+| A8-28 | P2 | chiuso | CO-03 | CO-03: fe@28d0509 tourist-tax-rates.md DateTimeUtcNormalizationPostgresTests.cs |  |
+| A8-29 | P1 | chiuso | BK-15 | BK-15: be@6cbfdc9d fe@85b0c55 |  |
+| A8-30 | P2 | chiuso | FN-05 | FN-05: questo commit | questo task: spec seo-funnel allineata ai file reali, AC Test Map aggiunta, PLANNING aggiornato |
+| A9-01 | P0 | chiuso | TN-1 | TN-1: fe@2859ccd encryption.md gdpr.md FieldEncryptionPostgresTests.cs |  |
+| A9-02 | P0 | chiuso | FD-18 | FD-18: fe@6811c04 |  |
+| A9-03 | P0 | chiuso | FD-11 | FD-11: deploy-checklist.md gdpr.md HangfireEnvironmentIsolationPostgresTests.cs |  |
+| A9-04 | P0 | chiuso | FD-07 | FD-07: fe@e6d60df alloggiati.md deploy-checklist.md CasazenWebApplicationFactory.cs |  |
+| A9-05 | P0 | chiuso | CO-11 | CO-11: fe@0dee055 alloggiati.md hangfire.md AlloggiatiHonestStatusMigrationPostgresTests.cs |  |
+| A9-06 | P0 | chiuso | FD-13 | FD-13: ci-backend.md cin-format.md CinDeadlineEmailTemplatesTests.cs |  |
+| A9-07 | P1 | chiuso | FD-05 | FD-05: auth0.md ical.md BookingsControllerTests.cs |  |
+| A9-08 | P1 | chiuso | FD-05 | FD-05: auth0.md ical.md BookingsControllerTests.cs |  |
+| A9-09 | P1 | chiuso | FD-05 | FD-05: auth0.md ical.md BookingsControllerTests.cs |  |
+| A9-10 | P1 | chiuso | FD-10 | FD-10: deploy-checklist.md direct-booking.md CasazenWebApplicationFactory.cs |  |
+| A9-11 | P1 | chiuso | FD-04 | FD-04: ci-backend.md CasazenWebApplicationFactory.cs |  |
+| A9-12 | P1 | chiuso | FD-06 | FD-06: rli.md CalendarTodayArchitectureTests.cs |  |
+| A9-13 | P1 | chiuso | PC-10 | PC-10: be@f30fda61 |  |
+| A9-14 | P1 | chiuso | SU-15 | SU-15: be@b086c2d1 fe@732b7bf |  |
+| A9-15 | P1 | chiuso | BK-02 | BK-02: be@446e6136 fe@8647bd6 |  |
+| A9-16 | P1 | chiuso | FD-13 | FD-13: ci-backend.md cin-format.md CinDeadlineEmailTemplatesTests.cs |  |
+| A9-17 | P1 | chiuso | FD-20 | FD-20: fe@0b06afd deploy-checklist.md encryption.md ChildEntityTenantIsolationIntegrationTests.cs |  |
+| A9-18 | P1 | chiuso | CO-15 | CO-15: be@0f3e8ac7 fe@f324d5d |  |
+| A9-19 | P1 | chiuso | FD-12 | FD-12: ci-backend.md deploy-checklist.md BillingConfigurationTests.cs |  |
+| A9-20 | P1 | chiuso | FD-08 | FD-08: fe@5aaf70e |  |
+| A9-21 | P1 | chiuso | FD-08 | FD-08: fe@5aaf70e |  |
+| A9-22 | P1 | chiuso | FD-08 | FD-08: fe@5aaf70e |  |
+| A9-23 | P1 | chiuso | FD-01 | FD-01: fe@5896e3d ci-frontend.md deploy-checklist.md |  |
+| A9-24 | P1 | chiuso | FD-03 | FD-03: mo@7166ed6 ci-frontend.md |  |
+| A9-25 | P1 | chiuso | FD-09 | FD-09: fe@39e6c7f |  |
+| A9-26 | P1 | chiuso | FD-02 | FD-02: ci-backend.md deploy-checklist.md |  |
+| A9-27 | P2 | chiuso | PL-08 | PL-08: be@7c2c64f0 |  |
+| A9-28 | P2 | chiuso | FD-17 | FD-17: fe@b12a87d cors-security-headers.md deploy-checklist.md CorsAndSecurityHeadersIntegrationTests.cs |  |
+| A9-29 | P2 | chiuso | FD-15 | FD-15: fe@9553939 seo-domain.md SeoGeneratedContentTests.cs |  |
+| A9-30 | P2 | chiuso | CO-16 | CO-16: be@8923bfb2 |  |
+| A9-31 | P2 | chiuso | FD-14 | FD-14: auth0.md deploy-checklist.md SupplierClaimIntegrationTests.cs |  |
+| A9-32 | P2 | chiuso | FD-16 | FD-16: deploy-checklist.md external-fetch.md ExternalUrlPolicyTests.cs |  |
+| A9-33 | P2 | chiuso | FN-02 | FN-02: be@3d48e2a1 fe@61543d4 | rimossi 26 file morti e aggiunto knip bloccante; `tsc -p tsconfig.e2e.json` ha 14 errori preesistenti non legati al task |
+| A9-34 | P2 | chiuso | FD-19 | FD-19: be@d00a23b9 |  |
+| A9-35 | P2 | chiuso | FD-04 | FD-04: ci-backend.md CasazenWebApplicationFactory.cs |  |
+| A9-36 | P2 | chiuso | FD-17 | FD-17: fe@b12a87d cors-security-headers.md deploy-checklist.md CorsAndSecurityHeadersIntegrationTests.cs |  |
+| A9-37 | P2 | chiuso | MO-02 | MO-02: mo@d0efbd6 mobile-release.md |  |
+| A9-38 | P2 | chiuso | PL-01 | PL-01: be@4d596cee fe@8bb9678 |  |
+| A9-39 | P2 | chiuso | BK-05 | BK-05: be@da543279 fe@f154190 |  |
+| A9-40 | P2 | chiuso | PL-14 | PL-14: be@003ce5fc fe@5141aea |  |
+| R-01 | P0 | chiuso | FD-06 | FD-06: rli.md CalendarTodayArchitectureTests.cs |  |
+| R-02 | P0 | chiuso | CO-01 | CO-01: fe@4946d40 cin-format.md compliance.md AdminServiceCinCompliancePostgresTests.cs |  |
+| R-03 | P1 | chiuso | BK-05 | BK-05: be@da543279 fe@f154190 |  |
+| R-04 | P1 | chiuso | BK-01 | BK-01: fe@2a50c26 |  |
+| R-05 | P0 | chiuso | BK-03 | BK-03: be@eea938f5 fe@201763a |  |
+| R-06 | P1 | chiuso | BK-11 | BK-11: be@7fdb3b1e fe@d24afbe |  |
+| R-07 | P1 | chiuso | FD-05 | FD-05: auth0.md ical.md BookingsControllerTests.cs |  |
+| R-08 | P2 | chiuso | FD-09 | FD-09: fe@39e6c7f |  |
+| R-09 | P2 | chiuso | SE-01 | SE-01: be@c4fd3ad3 fe@a8b7928 |  |
+| R-10 | P2 | chiuso | FD-20 | FD-20: fe@0b06afd deploy-checklist.md encryption.md ChildEntityTenantIsolationIntegrationTests.cs |  |
+| R-11 | P2 | chiuso | BK-06 | BK-06: be@c9d08c9b fe@794ccab |  |

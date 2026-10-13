@@ -88,7 +88,10 @@ public record AlloggiatiRowCodes(
 /// <param name="DeclaredGuests">Guests declared on the booking; <paramref name="Guests"/> are the ones registered.</param>
 /// <param name="Guests">One row per guest, in record order (head of family or group before its members).</param>
 /// <param name="DataComplete">Every guest has every field of the record and the order of the guests is valid.</param>
-/// <param name="ExportReady">Data complete and every official code found: the record can be exported (CO-13).</param>
+/// <param name="ExportReady">
+/// Data complete and every official code found: the record file can be built (CO-13). The file is also refused for a stay
+/// of less than 1 or more than 30 days and for a name that cannot be written with A-Z (<c>BuildRecordFileAsync</c>).
+/// </param>
 /// <param name="MissingCodeTables">Official tables not imported yet: their codes cannot be completed.</param>
 public record AlloggiatiGuestSummaryInfo(
     Guid BookingId,
@@ -101,6 +104,14 @@ public record AlloggiatiGuestSummaryInfo(
     bool DataComplete,
     bool ExportReady,
     IReadOnlyList<AlloggiatiCodeTable> MissingCodeTables);
+
+/// <summary>
+/// The Alloggiati Web record file of a stay, ready to download (CO-13): one 168-character line per guest in record order.
+/// Built on request and never stored: it holds the identity data of the guests.
+/// </summary>
+/// <param name="Content">UTF-8 bytes, no byte order mark, lines separated by CR+LF (none after the last).</param>
+/// <param name="FileName">Name without personal data: the arrival date and the start of the booking id.</param>
+public record AlloggiatiRecordFileInfo(Guid BookingId, DateTime ArrivalDate, int LineCount, byte[] Content, string FileName);
 
 /// <summary>
 /// A report that needs a job on the arrival day: returned by <see cref="IAlloggiatiWebService.ReserveReportAsync"/>

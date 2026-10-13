@@ -11,7 +11,7 @@ All anonymous, no rate limit, `Cache-Control: no-store`.
 | Endpoint | Checks | HTTP |
 |---|---|---|
 | `GET /api/health/live` | none: the process answers | always 200 |
-| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `auth0` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
+| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `einvoicing`, `auth0`, `vercel`, `api-url`, `legal`, `comuni` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
 | `GET /api/health` | same as ready | same as ready |
 
 Body (anonymous caller):
@@ -40,9 +40,14 @@ written to the Railway logs by `Microsoft.Extensions.Diagnostics.HealthChecks.De
 |---|---|---|---|
 | `database` | PostgreSQL answers through the app's `AppDbContext` and every EF migration of this build is applied | in-memory database (Development/Testing only) | unreachable, timeout (5 s), **pending migrations**, or no database outside Development/Testing |
 | `hangfire` | storage (this environment's schema, FD-11) answers and **this process's** server sent a heartbeat in the last 2 minutes | only another instance's server is alive | storage unreachable, no live server, or Hangfire not configured outside Development/Testing |
+| `comuni` | the official ISTAT list of the comuni is imported and every `Suppliers:PilotComuni` code is in it (SU-04) | the list is not imported (the API works, the comune pickers say so), or a pilot comune is not an active comune of it: [`comuni-istat.md`](comuni-istat.md) | — |
 | `email` | Resend key, sender and `App__PublicSiteBaseUrl` valid (FD-13) | something missing: emails are skipped. Outside Development/Testing this cannot happen: the app does not start | — |
 | `storage` | S3 (Supabase Storage, FD-07) | local-disk provider (Development/Testing only) | invalid configuration |
 | `stripe` | the four keys below present, right prefixes, secret and publishable key in the same mode (live/test) | anything missing, a placeholder, a wrong prefix or mixed modes: payments are not fully usable | — |
+| `einvoicing` | an SDI e-invoicing provider is configured and `Billing__VatNumber` is set (PL-13) | no SDI provider (always in this build: the e-invoices of the plans are issued by hand, [billing-tax.md](billing-tax.md)); the description says whether `Sdi__ManualIssuanceAccepted` is set and whether `Billing__VatNumber` is missing | — |
+| `vercel` | `Vercel__ApiToken` and `Vercel__ProjectId` set (BK-17): the platform can add a host's custom domain to the Vercel project | either missing: custom domains are not activated, the settings page says so ([`seo-domain.md`](seo-domain.md) section 10) | — |
+| `api-url` | `App__ApiBaseUrl` is an absolute https URL (DEPLOY-CFG): the base of the iCal export links | missing, a placeholder, not an absolute http(s) URL, or plain `http` outside Development/Testing: the export links hosts paste into Airbnb/Booking would point to `https://localhost:5001` | — |
+| `legal` | Terms, Privacy and DPA each have a text file (or an external copy URL) for the configured version, every value the text needs (company data, governing court: `Legal__Controller__*`, `Legal__Terms__GoverningCourt`) and a date in force, and the subprocessor list has its date and no entry "in definizione" (DEPLOY-CFG, PL-14, LEGAL-TEXTS D9) | any of those missing: pages stay "in preparazione" (fail-closed, never a placeholder), hosts accept a version nobody can read. The description names the missing file / variable / provider, never a value. Expected until the drafts are activated: [`legal-documents.md`](legal-documents.md) § 6 | — |
 | `auth0` | `Auth0__Domain`, `Auth0__Audience` and the Management API client (M2M) configured | M2M client missing (role sync off) or the deprecated static `Auth0__ManagementApiToken` in use; in Development/Testing also `Auth0__Domain` / `Auth0__Audience` missing | `Auth0__Domain` / `Auth0__Audience` missing: nobody can sign in. Outside Development/Testing the app does not even start |
 
 `degraded` means "an optional integration is not configured": the deploy is accepted, CI prints a warning for each
@@ -67,7 +72,7 @@ running and the deploy log shows the list of problems.
 | `Storage__*` | FD-07 | `OptionsValidationException: Storage:S3:… is required.` |
 
 Stripe and the Auth0 Management client are **not** validated at startup: they are optional and reported as `degraded`.
-The full list of variables is in [`docs/INFRA.md`](../INFRA.md#variables-required-in-production).
+The full list of variables is in [`deploy-checklist.md`](deploy-checklist.md) (and the short version in [`docs/INFRA.md`](../INFRA.md#variables-required-in-production)).
 
 ## Commit of the running build
 
@@ -84,8 +89,10 @@ The startup log also prints `Commit: <sha>`.
 
 ## CI: `verify-test` / `verify-prod`
 
-`ci-cd.yml` runs `scripts/verify-deploy.sh <url> <github.sha> 1200` after a push to `develop` (test) or `main`
-(production). The script polls `/api/health/ready` every 15 s and:
+`verify-railway-deploy.yml` runs `scripts/verify-deploy.sh <url> <head_sha> 1200` after a successful
+`CI/CD Pipeline` push to `develop` (test) or `main` (production). It is a separate workflow so Railway
+Wait for CI can go green on `Build & Test` and deploy before verify polls. The script polls
+`/api/health/ready` every 15 s and:
 
 - **fails at once** when the GitHub variable (`RAILWAY_TEST_URL` / `RAILWAY_PROD_URL`) is not set;
 - waits until the API exposes the pushed commit (or a later commit of the branch that contains it, when Railway
@@ -101,9 +108,10 @@ Product owner setup (once):
 
 1. GitHub → `casazen/backend` → Settings → Secrets and variables → Actions → **Variables**: `RAILWAY_TEST_URL` and
    `RAILWAY_PROD_URL` = public Railway URLs, without trailing slash. They are now mandatory.
-2. Railway → service → each environment → Settings → **Wait for CI: off**. With it on, Railway waits for the whole
-   `ci-cd.yml` run, which includes the verify job waiting for the deployment: the job times out and Railway skips the
-   deploy. Pull requests are still gated by the `build` job through branch protection.
+2. Railway → service → each environment → Settings → **Wait for CI** may stay on. It waits for the `CI/CD Pipeline`
+   suite (`Build & Test` only). Deploy verification is `verify-railway-deploy.yml` and starts after that suite is
+   green, so the two no longer wait for each other. Watch paths are set only in the Railway dashboard (there is no
+   `railway.toml` in this repo). Pull requests stay gated by `Build & Test`.
 3. Optional: Railway → service → Settings → Deploy → **Healthcheck Path** = `/api/health/ready`. Railway then switches
    traffic to a new deployment only after it answers 200, so a deployment with the database unreachable or migrations
    missing never replaces the running one. Use `/api/health/live` instead if a degraded-but-running container must
@@ -115,10 +123,13 @@ Product owner setup (once):
 |---|---|
 | CI: `API URL not configured` | Set the GitHub variable (setup step 1). |
 | CI: `does not expose the commit of the running build` | The deployment still runs a build older than FD-12 (first deploy: wait, then re-run the job), or it was not triggered from GitHub (no `RAILWAY_GIT_COMMIT_SHA`). |
-| CI: `Railway still serves commit X instead of Y` | The new deployment failed (Railway → Deployments → build/deploy logs: startup validation errors are listed there), was skipped ("Wait for CI" on, setup step 2), or the build took longer than 20 minutes. |
+| CI: `Railway still serves commit X instead of Y` | The new deployment failed (Railway → Deployments → build/deploy logs: startup validation errors are listed there), was skipped (watch paths in the Railway dashboard, or Wait for CI still waiting on a red suite other than `Build & Test`), or the build took longer than 20 minutes. |
 | `database: unhealthy` | Supabase paused or unreachable (free tier pauses after 7 days of inactivity), wrong connection string, or migrations not applied. The startup of a Production container applies them; on a database migrated by hand run `scripts/migrate.sh test|prod`. |
 | `hangfire: unhealthy` | Hangfire storage unreachable or its server not running: no email, Stripe webhook or recurring job is processed. Check the Hangfire schema (runbook [`hangfire.md`](hangfire.md) §5) and the logs of the container. |
 | `hangfire: degraded` | Only another instance's server is alive (e.g. right after a deploy): it should turn `healthy` within a minute. |
 | `stripe: degraded` | Set the missing Stripe variables and create both webhook endpoints: [`docs/INFRA.md` § Stripe](../INFRA.md#stripe-keys-and-webhooks). |
 | `auth0: degraded` | Configure the M2M client ([`auth0.md`](auth0.md) §4-5). |
+| `vercel: degraded` | Set `Vercel__ApiToken` and `Vercel__ProjectId` (and `Vercel__TeamId` for a team project): [`seo-domain.md`](seo-domain.md) section 10. Until then no custom domain is activated. |
+| `api-url: degraded` | Set `App__ApiBaseUrl` to the Railway URL of this environment ([`deploy-checklist.md`](deploy-checklist.md) § 1 step 10). |
+| `legal: degraded` | Provide the texts and dates, and complete the subprocessor details: [`legal-documents.md`](legal-documents.md). Expected until the drafts `2026-10-v1` (or the texts supplied by the product owner) are activated (D14 update 2026-10-01). |
 | `email: degraded` / `storage: degraded` | Only in Development/Testing: see [`email.md`](email.md) and [`storage.md`](storage.md). |

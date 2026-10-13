@@ -27,7 +27,38 @@ public interface INotificationService
     /// sync decides when (once per change it finds); this only renders and delivers.
     /// </summary>
     Task SendOtaStayReviewAlertAsync(OtaStayReviewAlert alert, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tells the host about a scheduled change of rental mode (PM-02): it was programmed, applied, or could not be applied.
+    /// One email to the org's contact address, queued on Hangfire. The mode change service decides when (once per transition
+    /// of the change); this only renders and delivers. False when the email was not queued (no contact address, provider
+    /// not configured, change not found), with a log entry: the change itself is never undone by a failed notice.
+    /// </summary>
+    Task<bool> SendPropertyModeChangeAsync(PropertyModeNotice notice, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Which moment of a scheduled change of rental mode a <see cref="PropertyModeNotice"/> is about.</summary>
+public enum PropertyModeNoticeKind
+{
+    /// <summary>The change was programmed (to confirm it and say how to withdraw it).</summary>
+    Scheduled = 0,
+
+    /// <summary>The property changed mode, on its day.</summary>
+    Applied = 1,
+
+    /// <summary>The change could not be applied on its day; the property kept its mode.</summary>
+    Failed = 2,
+}
+
+/// <summary>
+/// A scheduled change of rental mode to tell the host about (PM-02). <paramref name="EarliestDate"/> is, for a
+/// <see cref="PropertyModeNoticeKind.Failed"/> change that was blocked by stays, blocks or leases, the first day that is free
+/// now (so the e-mail can suggest it); <c>null</c> otherwise.
+/// </summary>
+public sealed record PropertyModeNotice(
+    Guid ChangeId,
+    PropertyModeNoticeKind Kind,
+    DateTime? EarliestDate = null);
 
 /// <summary>
 /// An OTA stay to check (CO-21): <paramref name="ChannelCheckIn"/> and <paramref name="ChannelCheckOut"/> are the dates

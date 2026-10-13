@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Xunit;
 
@@ -63,6 +64,43 @@ public class CancellationRefundPolicyTests
 
         Assert.Equal(CancellationRefundRule.FreeCancellationDeadline, floor.Rule);
         Assert.Equal(100m, floor.Percent);
+    }
+
+    [Fact]
+    public void EffectivePolicy_HostOverrides_ApplyOnShortStayAndNotOnLongStay()
+    {
+        var catalog = new CancellationPolicy { Name = "Ampia", FullRefundHours = 24, PartialRefundHours = 12, PartialRefundPercent = 50m };
+        var property = new Property
+        {
+            CancellationPolicy = catalog,
+            CancellationFullRefundHours = 72,
+            CancellationPartialRefundHours = 48,
+            CancellationPartialRefundPercent = 25m,
+        };
+
+        var shortStay = CancellationRefundPolicy.EffectivePolicy(property, 7);
+        Assert.Equal(72, shortStay!.FullRefundHours);
+        Assert.Equal(48, shortStay.PartialRefundHours);
+        Assert.Equal(25m, shortStay.PartialRefundPercent);
+
+        var longStay = CancellationRefundPolicy.EffectivePolicy(property, 28);
+        Assert.Same(catalog, longStay);
+    }
+
+    [Fact]
+    public void EffectivePolicy_NonRefundable_YieldsZeroOnShortStay()
+    {
+        var property = new Property
+        {
+            CancellationPolicy = new CancellationPolicy { Name = "Ampia", FullRefundHours = 24, PartialRefundHours = 12, PartialRefundPercent = 50m },
+            CancellationRefundType = HostCancellationRefundType.NonRefundable,
+        };
+
+        var policy = CancellationRefundPolicy.EffectivePolicy(property, 3);
+        var booking = new Booking { CheckInDate = CheckIn, CheckOutDate = CheckIn.AddDays(3) };
+        var floor = CancellationRefundPolicy.Evaluate(booking, policy, new DateTimeOffset(2026, 10, 1, 10, 0, 0, TimeSpan.Zero));
+
+        Assert.Equal(0m, floor.Percent);
     }
 
     [Fact]

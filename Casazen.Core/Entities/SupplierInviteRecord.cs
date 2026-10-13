@@ -37,6 +37,12 @@ public class SupplierInviteRecord
 
     public bool IsUsed { get; set; }
 
+    /// <summary>
+    /// UTC moment an admin revoked the invite (SU-12): its link no longer works. The row is kept, so the invites list
+    /// and the audit trail still show it.
+    /// </summary>
+    public DateTime? RevokedAt { get; set; }
+
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

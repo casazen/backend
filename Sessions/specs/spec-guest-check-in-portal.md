@@ -5,12 +5,12 @@ title: Guest self-service check-in portal + Alloggiati auto
 phase: 1
 type: compliance
 priority: P0
-status: specced
+status: partial
 issue:
 depends_on: [compliance-wizards, direct-checkout]
 blocks: [golden-journey-e2e]
 exit_contributes_to: GJ step 6 — guest check-in + Alloggiati; works for direct and OTA bookings
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Guest Check-In Portal (US-020)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 When a booking is **Confirmed** (direct or OTA/iCal), the system emails the guest a secure link to complete check-in data (identity, GDPR consent). On completion, **Alloggiati Web** is enqueued automatically. Host receives alerts if data is missing before arrival.
 
-**Phase:** 1 — MVP · **Type:** compliance · **Status:** specced
+**Phase:** 1 — MVP · **Type:** compliance · **Status:** partial (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

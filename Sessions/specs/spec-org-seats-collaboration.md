@@ -2,6 +2,26 @@
 
 > Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
+> **Revision AM-01 (2026-10-08) — read this before the ACs.** The spec predates the Resend email stack, the plan
+> entitlements and the context RBAC as they are today; AM-01 (wave "redesign", `docs/runbooks/org-team.md`) builds the
+> membership model and this text is corrected to match. What changed:
+>
+> | Was | Is |
+> |---|---|
+> | AC12: `OrgId` added to `UserContextMembership` | **`OrgMember`** (table `OrgMembers`, `ITenantOwned`, `UserId` unique, `OrgRole` Owner/Admin/PropertyManager/Collaborator/Accountant, Status, `PropertyScope`) is the source of truth of "who belongs to which org"; `UserContextMembership` stays the **projection of the permissions**, written in the same transaction by one service (`IOrgMembershipService`) with a reconcile command. **No `OrgId` on the membership: the org is `User.OrgId`.** |
+> | AC8: `org.members.read/invite/manage` under the `admin` context (`RequireContext:admin:org.members.*`) | The **`account`** context ("Amministrazione" of the customer: `org_owner`, `org_admin`, `org_accountant`), permission `org.members.manage` (plus `org.billing.manage/read`, `org.settings.manage`, `org.suppliers.manage`, `org.activity.read`). `admin` stays the console of CasaZen staff (D1). |
+> | AC3: `SeatLimit` from the entitlement | The field is **`MaxSeats`** (`Entitlement:Tiers:{Tier}:MaxSeats`; `SeatLimit` does not exist): Starter 2, Pro 10, Scale unlimited. Seats = active members + pending unexpired invitations; creation and acceptance under an advisory lock above 1_206; with a subscription not in good standing the effective tier drops to Starter (members stay, new invitations are blocked). |
+> | AC5, Dependencies: `SendGridService` | `IEmailQueue` (**Resend**); the link stays in the arguments of the Hangfire job, mitigated by single use and the verified email. |
+> | AC7: `GET /api/invitations/validate?token=…` | **`POST /api/invitations/lookup`** with the token **in the body** (a token in a query string ends up in logs and history), like `POST` accept. |
+> | AC2: `HMACSHA256` hash | SHA-256 of a 256-bit random token, generalizing `SupplierInviteTokens` (an HMAC adds no security at 256 bits and forces a key rotation). |
+> | AC13, AC16, AC17: `/settings/team` | `/app/account/people`; visible to who holds `org.members.manage` in the `account` context. |
+>
+> Division of the work: **AM-01 (done here)** the model, the roles, the `account` context, the backfill of the owners, the
+> veto of the JWT and the immediate deactivation (`member_inactive`); **AM-02** invitations, seats, acceptance and the
+> change of org; **AM-03** the scope per property and the fine permissions; **AM-04** the screens. No custom roles and no
+> transfer of the ownership in this version (D15): only the owner creates an Admin, nobody assigns Owner, the last
+> owner stays (409 `org_last_owner`).
+
 ## Overview
 
 > Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
@@ -13,9 +33,11 @@ credentials.
 This spec **extends the existing context-RBAC subsystem** — `AppContext`,
 `UserContextMembership`, `Role`, `RolePermission`, `ContextAuthorizationService`, and the
 `RequireContext:{context}:{permission}` policy convention registered in
-`ServiceCollectionExtensions.cs`. It **does NOT rebuild RBAC**: invitation acceptance simply
-creates a `UserContextMembership` row bound to an existing `Role` within the `Org`'s context.
-There is **no `Org` seats/invitation mechanism today** — that is the gap this spec closes.
+`ServiceCollectionExtensions.cs`. It **does NOT rebuild RBAC**: invitation acceptance creates an
+`OrgMember` and, through `IOrgMembershipService` in the same transaction, the `UserContextMembership`
+rows (bound to existing `Role` rows) that project its role into permissions.
+Since AM-01 the **org membership model exists** (`OrgMember`, the org roles, the `account` context);
+there is still **no invitation/seats mechanism** — that is the gap this spec closes (AM-02).
 
 The `Org` tenant key and plan entitlement (including seat limits) come from Phase 1's
 `spec-tenant-boundary`; every new table here carries `OrgId` from creation (RF1).
@@ -30,7 +52,8 @@ Stage of entry: **Stage 01 Planning** (create the issue before design)
 > Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 As an `Org` owner/admin (a PM team or agency), I want to invite teammates by email and grant
-them a specific role within a specific context (`short-rent` / `long-rent` / `admin`), so my
+them a specific org role (Admin, Property manager, Collaborator, Accountant) in the areas I choose
+(`short-rent` / `long-rent`; the `account` administration for administrators and accountants), so my
 team operates collaboratively under least-privilege RBAC.
 
 As an invited teammate, I want to accept a secure, single-use, expiring invitation link and be
@@ -47,81 +70,105 @@ granted exactly the seat-scoped access I was offered — no more, no less.
 > Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: New entity `OrgInvitation` (carries `OrgId` from creation — RF1):
-  `{ Id, OrgId (FK), Email, ContextKey, RoleId (FK → existing Role), TokenHash, Status (enum:
-  Pending|Accepted|Revoked|Expired), ExpiresAt, InvitedByUserId, AcceptedByUserId?, AcceptedAt?,
-  CreatedAt, UpdatedAt }`.
+  `{ Id, OrgId (FK), Email (normalized), Role (OrgRole), Areas (short-rent / long-rent), PropertyScope,
+  TokenHash, Status (enum: Pending|Accepted|Revoked|Expired), ExpiresAt, ReminderSentAt?,
+  InvitedByUserId, AcceptedByUserId?, AcceptedAt?, CreatedAt, UpdatedAt }`, with a partial unique
+  index on `(OrgId, Email)` where `Status = Pending`. (AM-01 corrected: the role is an `OrgRole`,
+  not a `RoleId` the inviter picks; the `Role` rows are seeded by AM-01 and chosen by the service.)
 
 - **AC2 (secure invitation token)**: the invitation token is **cryptographically random
   (≥ 256-bit)**, **single-use**, and **expiring** (default **7 days**). Only a **hash** is
-  persisted (`TokenHash`, via `HMACSHA256` — same primitive the `esign` webhook already uses);
+  persisted (`TokenHash`, SHA-256 of the 256-bit token — AM-01 corrected: generalize
+  `SupplierInviteTokens`; an HMAC adds no security at 256 bits and forces a key rotation);
   the raw token appears **only** in the emailed link, is compared in **constant time**
-  (`CryptographicOperations.FixedTimeEquals`), and is **never logged**.
+  (`CryptographicOperations.FixedTimeEquals`), and is **never logged**. "Resend", "Copy link" and the
+  day-3 reminder **rotate** the token (only the hash is stored).
 
-- **AC3 (seat enforcement)**: an `Org` has a `SeatLimit` derived from its plan entitlement
-  (`spec-tenant-boundary`). Active members + outstanding pending invitations are counted; when
-  seats are exhausted, invitation creation and acceptance are blocked with **409 Conflict**
-  (Italian message) — no membership is created beyond the seat limit.
+- **AC3 (seat enforcement)**: an `Org` has `MaxSeats` derived from its plan entitlement
+  (`Entitlement:Tiers:{Tier}:MaxSeats`: Starter 2, Pro 10, Scale unlimited; AM-01 corrected: there
+  is no `SeatLimit`). Active members + outstanding pending, unexpired invitations are counted;
+  when seats are exhausted, invitation creation and acceptance are blocked with **409 Conflict**
+  (Italian message) — no membership is created beyond the seat limit. Creation and acceptance run
+  under an advisory lock (above 1_206, like `CreatePropertyWithinLimitAsync`). With a subscription
+  not in good standing the effective tier drops to Starter: the members stay, new invitations are
+  blocked.
 
-- **AC4 (reuse membership model — do NOT rebuild RBAC)**: accepting an invitation creates a
-  `UserContextMembership { UserId, ContextKey, RoleId, OrgId }` for the invitee. No parallel
-  permission system is introduced; permissions continue to resolve through
+- **AC4 (reuse membership model — do NOT rebuild RBAC)**: accepting an invitation creates an
+  `OrgMember` (`UserId` unique: one org per user) and, in the same transaction, the
+  `UserContextMembership { UserId, ContextKey, RoleId }` rows that project its role, both written by
+  `IOrgMembershipService` (AM-01). **No `OrgId` on the membership: the org is `User.OrgId`.** No
+  parallel permission system is introduced; permissions continue to resolve through
   `ContextAuthorizationService` / `RolePermission`.
 
 - **AC5**: `POST /api/orgs/{orgId}/invitations` — create an invitation and send the email via
-  `SendGridService`. Body: `{ email, contextKey, roleId }`. Requires the `Org`-admin permission
-  (AC8). Returns the created invitation (without the raw token).
+  `IEmailQueue` (Resend, not SendGrid; the link stays in the arguments of the Hangfire job, mitigated
+  by single use and the verified email). Body: `{ email, role, areas, propertyScope }`. Requires
+  `org.members.manage` in the `account` context (AC8). Returns the created invitation (without the
+  raw token).
 
 - **AC6**: `GET /api/orgs/{orgId}/invitations` (list, admin-only) and
   `DELETE /api/orgs/{orgId}/invitations/{id}` (revoke → `Status=Revoked`, frees the reserved
   seat).
 
 - **AC7**: Acceptance flow:
-  - `GET /api/invitations/validate?token=…` — pre-acceptance preview returning `{ orgName,
-    contextKey, roleKey, expiresAt }` for an unexpired, unused token (no membership change).
+  - `POST /api/invitations/lookup` body `{ token }` — pre-acceptance preview returning `{ orgName,
+    role, areas, expiresAt }` for an unexpired, unused token (no membership change). The token goes
+    **in the body**, never in a query string (AM-01 corrected: it was `GET .../validate?token=…`).
   - `POST /api/invitations/accept` (authenticated) body `{ token }` — validates the token
-    (unexpired, `Pending`, hash match), creates the `UserContextMembership`, sets
-    `Status=Accepted` + `AcceptedByUserId`/`AcceptedAt`. A used/expired token returns **410 Gone**.
+    (unexpired, `Pending`, hash match), creates the `OrgMember` and its projection through
+    `IOrgMembershipService.AddMemberAsync`, sets `Status=Accepted` + `AcceptedByUserId`/`AcceptedAt`.
+    A used/expired token returns **410 Gone**.
 
-- **AC8 (least-privilege via existing convention)**: new permissions `org.members.read`,
-  `org.members.invite`, `org.members.manage` are registered in
-  `RegisterContextPolicies` (`ServiceCollectionExtensions.cs`) under the `admin` context,
-  producing policies `RequireContext:admin:org.members.*`. Only `Org` admins may invite/manage.
+- **AC8 (least-privilege via existing convention)**: the permission `org.members.manage` (one
+  permission: invite, change, deactivate, remove) belongs to the **`account`** context
+  ("Amministrazione" of the customer, seeded by AM-01 together with `org.billing.manage/read`,
+  `org.settings.manage`, `org.suppliers.manage`, `org.activity.read`) and gives the policy
+  `RequireContext:account:org.members.manage`, registered by the task that first uses it
+  (`RegisterContextPolicies`, `ServiceCollectionExtensions.cs`). AM-01 corrected: it was
+  `org.members.read/invite/manage` under the `admin` context, which is the console of CasaZen staff
+  (D1) and stays so. Only the owner and the administrators hold it.
 
 - **AC9 (no privilege escalation)**: an inviter **cannot grant a role whose permission set
-  exceeds the inviter's own** within that context; `roleId` must reference an existing `Role`
-  row for the target `ContextKey` (seeded via the `Role`/`RolePermission` `HasData` pattern).
-  Attempts to over-grant return **403**.
+  exceeds the inviter's own**; the invitation names an `OrgRole` and the service picks the seeded
+  `Role` rows (`HasData`, AM-01) of the areas — there are no custom roles (D15). Only the owner
+  creates an Admin and **nobody assigns Owner** (422 `org_owner_not_assignable`, D15: no transfer
+  of the ownership in this version). Attempts to over-grant return **403**.
 
-- **AC10 (member removal)**: `DELETE /api/orgs/{orgId}/members/{userId}` removes the user's
-  `UserContextMembership` for that `Org` (frees a seat). The **last remaining `Org` owner cannot
-  be removed** (returns 409).
+- **AC10 (member removal)**: `DELETE /api/orgs/{orgId}/members/{userId}` removes the `OrgMember`
+  and every membership the org gave (`IOrgMembershipService.RemoveAsync`; frees a seat). The
+  **owner cannot be removed, deactivated or given another role** (409 `org_last_owner`). A member
+  can also be deactivated and reactivated: from the next request a deactivated member gets 403
+  `member_inactive` (AM-01).
 
 - **AC11 (tenant isolation)**: all invitation/member operations are scoped to `OrgId`;
   cross-`Org` access returns **403**, consistent with the tenant boundary.
 
-- **AC12**: Migration `AddOrgInvitations` creates `OrgInvitation` and adds `OrgId` to
-  `UserContextMembership` (extending the existing entity, not replacing it); tables carry `OrgId`
-  from creation and the change **rebases onto `AppDbContextModelSnapshot.cs`** (never hand-merge,
-  RF3). Any new seat `Role`/`RolePermission` rows are seeded via `HasData`.
+- **AC12**: Migration `AddOrgMembership` (AM-01, done) creates `OrgMembers` and seeds the `account`
+  context and the new `Role`/`RolePermission` rows via `HasData`; migration `AddOrgInvitations`
+  (AM-02) creates `OrgInvitations`. **`UserContextMembership` gets no `OrgId`**: the org is
+  `User.OrgId` and the source of truth of the membership is `OrgMember`. Tables carry `OrgId` from
+  creation and the changes **rebase onto `AppDbContextModelSnapshot.cs`** (never hand-merge, RF3);
+  migrations only via `dotnet ef`.
 
 ### Frontend
 
 > Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
-- **AC13**: `team-page.tsx` at `/settings/team` — member list (name, email, context, role,
-  status) with a **seat-usage indicator** (e.g. *"7 / 10 posti"*) and an "Invita membro" button.
+- **AC13**: `team-page.tsx` at `/app/account/people` (AM-01 corrected: not `/settings/team`) —
+  member list (name, email, areas, role, status) with a **seat-usage indicator** (e.g. *"7 / 10
+  posti"*) and an "Invita membro" button.
 
-- **AC14**: Invite dialog — email + context selector + role selector, with validation and
-  explicit **seat-exhausted** and **success** states.
+- **AC14**: Invite dialog — email + role selector + area selector (short-rent / long-rent), with
+  validation and explicit **seat-exhausted** and **success** states.
 
 - **AC15**: Pending-invitations list with **Revoca** (revoke) and **Invia di nuovo** (resend).
 
-- **AC16**: Invitation acceptance page at `/invite/accept?token=…` — calls `validate` to show
+- **AC16**: Invitation acceptance page at `/invite/accept?token=…` — calls `lookup` (POST, token in the body) to show
   `Org` + role, an **Accetta** CTA → `accept` → redirect to the granted context's home;
   expired/used token shows an explicit error state.
 
 - **AC17**: `<ProtectedRoute>` on team-management routes; team management is visible **only** to
-  users holding `org.members.manage` (permission-gated). All end-user strings in Italian
+  users holding `org.members.manage` in the `account` context (permission-gated). All end-user strings in Italian
   ("Team", "Invita membro", "Revoca", "Posti", "Invito scaduto").
 
 - **AC18**: TanStack Query hooks, API client, and types for invitations/members.
@@ -182,11 +229,11 @@ granted exactly the seat-scoped access I was offered — no more, no less.
 | AC9 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
 | AC10 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
 | AC11 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
-| AC12 | L1 | Migration `AddOrgInvitations` creates `OrgInvitation` and adds `OrgId` to | Outcome not met; wrong status; silent no-op |
-| AC13 | L2 + L3 | `team-page.tsx` at `/settings/team` — member list (name, email, context, role, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC14 | L2 + L3 | Invite dialog — email + context selector + role selector, with validation and | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L1 | Migration `AddOrgMembership` (AM-01) creates `OrgMembers`, `AddOrgInvitations` (AM-02) creates `OrgInvitations`; no `OrgId` on the membership | Outcome not met; wrong status; silent no-op |
+| AC13 | L2 + L3 | `team-page.tsx` at `/app/account/people` — member list (name, email, areas, role, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC14 | L2 + L3 | Invite dialog — email + role selector + area selector, with validation and | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
 | AC15 | L2 + L3 | Pending-invitations list with **Revoca** (revoke) and **Invia di nuovo** (resend). | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC16 | L2 + L3 | Invitation acceptance page at `/invite/accept?token=…` — calls `validate` to show | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC16 | L2 + L3 | Invitation acceptance page at `/invite/accept?token=…` — calls `lookup` to show | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
 | AC17 | L2 + L3 | `<ProtectedRoute>` on team-management routes; team management is visible **only** to | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
 | AC18 | L2 + L3 | TanStack Query hooks, API client, and types for invitations/members. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
 
@@ -209,21 +256,22 @@ Rules:
 |---|---|
 | `Casazen.Core/Entities/OrgInvitation.cs` | Create — incl. `OrgId`, `TokenHash`, `Status`, `ExpiresAt`, `RoleId` |
 | `Casazen.Core/Entities/Enums/InvitationStatus.cs` | Create — `Pending/Accepted/Revoked/Expired` |
-| `Casazen.Core/Entities/UserContextMembership.cs` | Modify — add `OrgId` (Org-scoped membership, RF1) — **extend, do not rebuild** |
+| `Casazen.Core/Entities/OrgMember.cs`, `Enums/OrgRole.cs`, `OrgMemberStatus.cs`, `PropertyScope.cs` | **AM-01, done** — the org membership (source of truth), `ITenantOwned` |
+| `Casazen.Core/Entities/UserContextMembership.cs` | **No change** (AM-01 corrected: no `OrgId`, the org is `User.OrgId`); it stays the projection of the permissions — **extend, do not rebuild** |
 | `Casazen.Core/Repositories/IOrgInvitationRepository.cs` | Create |
 | `Casazen.Infrastructure/Repositories/OrgInvitationRepository.cs` | Create — EF Core, `OrgId`-filtered |
-| `Casazen.Core/Services/IOrgMembershipService.cs` | Create — invite/accept/revoke/remove + seat checks |
-| `Casazen.Infrastructure/Services/OrgMembershipService.cs` | Create — token gen/hash (`HMACSHA256`), seat enforcement, membership creation |
-| `Casazen.Infrastructure/Services/ContextAuthorizationService.cs` | Modify — `OrgId`-aware membership lookup in `GetUserContextsAsync`/`HasPermissionAsync` |
-| `Casazen.Web/Controllers/OrgInvitationsController.cs` | Create — create/list/revoke/validate/accept |
+| `Casazen.Core/Services/IOrgMembershipService.cs` | **AM-01, done** — add/change role/deactivate/reactivate/remove/reconcile; AM-02 adds `IOrgInvitationService` (invite/accept/revoke + seat checks) |
+| `Casazen.Infrastructure/Services/OrgMembershipService.cs` | **AM-01, done** — member + projection in one transaction. Token generation/hash (SHA-256) and seat enforcement are AM-02's (`OrgInvitationService`) |
+| `Casazen.Infrastructure/Services/ContextAuthorizationService.cs` | **AM-01, done** — the `account` context, the veto of the token for org members, the deactivated member (no `OrgId` lookup: the org is `User.OrgId`) |
+| `Casazen.Web/Controllers/OrgInvitationsController.cs` | Create — create/list/revoke/lookup/accept |
 | `Casazen.Web/Controllers/OrgMembersController.cs` | Create — list/remove members |
 | `Casazen.Web/DTOs/Org/CreateInvitationRequest.cs` | Create |
 | `Casazen.Web/DTOs/Org/InvitationDto.cs` | Create — never includes the raw token |
 | `Casazen.Web/DTOs/Org/OrgMemberDto.cs` | Create |
-| `Casazen.Web/Extensions/ServiceCollectionExtensions.cs` | Modify — register service/repo; add `org.members.read/invite/manage` in `RegisterContextPolicies` |
-| `Casazen.Infrastructure/Data/AppDbContext.cs` | Modify — `DbSet<OrgInvitation>`, config, indexes (`OrgId`, unique `(OrgId, Email, Status)`); seed any seat `Role`/`RolePermission` via `HasData` |
-| `Casazen.Infrastructure/External/SendGridService.cs` | Modify — send invitation email (raw token in link only) |
-| `Casazen.Infrastructure/Migrations/` | Add migration `AddOrgInvitations` (`OrgId` on new + membership tables; rebase `AppDbContextModelSnapshot.cs`, RF3) |
+| `Casazen.Web/Extensions/ServiceCollectionExtensions.cs` | Modify — register service/repo; the policy `RequireContext:account:org.members.manage` goes in `RegisterContextPolicies` where it is first used (AM-02: an unused registered policy fails the architecture test) |
+| `Casazen.Infrastructure/Data/AppDbContext.cs` | AM-01 (done): `DbSet<OrgMember>` and the seed of the `account` context and roles (`HasData`). AM-02: `DbSet<OrgInvitation>`, config, indexes (`OrgId`, partial unique `(OrgId, Email)` where `Status = Pending`) |
+| `Casazen.Infrastructure/Email/EmailQueue.cs` (`IEmailQueue`) + `Email.Templates.EmailTemplates` (Resend) | Modify — invitation email template, queued with `IEmailQueue` (raw token in the link only); not `SendGridService` |
+| `Casazen.Infrastructure/Migrations/` | AM-01 `AddOrgMembership` (done); AM-02 `AddOrgInvitations` (rebase `AppDbContextModelSnapshot.cs`, RF3) |
 
 ### Frontend — Files to create/modify
 
@@ -235,11 +283,11 @@ Rules:
 | `src/features/team/components/member-list.tsx` | Create |
 | `src/features/team/components/invite-member-dialog.tsx` | Create — email/context/role + seat-exhausted state |
 | `src/features/team/components/pending-invitations.tsx` | Create — revoke/resend |
-| `src/features/team/invitation-accept-page.tsx` | Create — validate → accept |
+| `src/features/team/invitation-accept-page.tsx` | Create — lookup → accept |
 | `src/queries/use-team.ts` | Create — TanStack Query hooks |
 | `src/api/team.api.ts` | Create — team/invitations API client |
 | `src/types/team.types.ts` | Create — invitation/member/seat types |
-| `src/routes/index.tsx` | Modify — add `/settings/team` (protected) + `/invite/accept` |
+| `src/routes/index.tsx` | Modify — add `/app/account/people` (protected) + `/invite/accept` |
 
 ---
 
@@ -252,13 +300,14 @@ Rules:
   only `Org` admins invite/manage, enforced through the `RequireContext:{context}:{permission}`
   convention (AC8). RBAC is **extended, not rebuilt**.
 - **Secure invitation tokens**: ≥ 256-bit random, **single-use**, **expiring** (7-day default),
-  stored **only as an `HMACSHA256` hash**, compared in constant time
+  stored **only as a SHA-256 hash**, compared in constant time
   (`CryptographicOperations.FixedTimeEquals`), raw token only in the email link, **never logged**
   (AC2).
 - **GDPR**: an invitee's email is PII — lawful basis (legitimate interest / contract), data
   minimization, and revoke/erasure of pending invitations on request.
-- **Tenant isolation (RF1)**: `OrgInvitation` and `UserContextMembership` carry `OrgId`; all
-  operations are `OrgId`-scoped (cross-`Org` = 403) and honor plan-entitlement seat limits.
+- **Tenant isolation (RF1)**: `OrgMember` and `OrgInvitation` carry `OrgId` (`ITenantOwned`);
+  `UserContextMembership` does not (the org is `User.OrgId`); all operations are `OrgId`-scoped
+  (cross-`Org` = 403) and honor plan-entitlement seat limits (`MaxSeats`).
 
 ---
 
@@ -267,11 +316,11 @@ Rules:
 > Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **Requires**:
-  - `spec-tenant-boundary` (Phase 1) — `Org`/`OrgId` + plan entitlement (`SeatLimit`).
+  - `spec-tenant-boundary` (Phase 1) — `Org`/`OrgId` + plan entitlement (`MaxSeats`).
   - Context-RBAC — `AppContext`, `UserContextMembership`, `Role`, `RolePermission`,
     `ContextAuthorizationService`, and the `RequireContext:{context}:{permission}` convention in
     `ServiceCollectionExtensions.cs` (extended here, not replaced).
-  - `SendGridService` — invitation emails.
+  - `IEmailQueue` (Resend) — invitation emails.
 - **Blocks**:
   - Phase 2 exit criterion — "team members invited with seat-scoped RBAC".
 - **Related**:

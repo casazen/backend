@@ -387,8 +387,8 @@ public class LeaseSigningServiceTests : IDisposable
             ExternalSigningSessionId = withProviderSigners ? SessionId : null,
             Parties =
             [
-                new Party { Role = PartyRole.Landlord, FirstName = "Mario", LastName = "Rossi", FiscalCode = "RSSMRA80A01H501Z", Citizenship = "IT", ContactEmail = "mario@example.com" },
-                new Party { Role = PartyRole.Tenant, FirstName = "Giulia", LastName = "Verdi", FiscalCode = "VRDGLI85B02F205X", Citizenship = "IT", ContactEmail = "giulia@example.com" },
+                new Party { Role = PartyRole.Landlord, FirstName = "Mario", LastName = "Rossi", FiscalCode = "RSSMRA80A01H501U", Citizenship = "IT", ContactEmail = "mario@example.com" },
+                new Party { Role = PartyRole.Tenant, FirstName = "Giulia", LastName = "Verdi", FiscalCode = "VRDGLI85B02F205A", Citizenship = "IT", ContactEmail = "giulia@example.com" },
             ],
         };
         if (stipula is { } date)

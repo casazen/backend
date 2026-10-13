@@ -1,9 +1,11 @@
 using System.Text.RegularExpressions;
+using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -29,11 +31,6 @@ public partial class FiscalService(
 {
     /// <summary>Taxpayer key of the org tax profile when it has no codice fiscale.</summary>
     private const string OrgProfileKey = "";
-
-    private static readonly Regex TaxpayerFiscalCodePattern = new("^[A-Z0-9]{16}$", RegexOptions.Compiled);
-
-    /// <summary>Codice fiscale of the org: 16 characters for a person, 11 digits for an entity.</summary>
-    private static readonly Regex OrgFiscalCodePattern = new("^([A-Z0-9]{16}|[0-9]{11})$", RegexOptions.Compiled);
 
     private static readonly Regex PartitaIvaPattern = new("^[0-9]{11}$", RegexOptions.Compiled);
 
@@ -142,7 +139,7 @@ public partial class FiscalService(
         CancellationToken cancellationToken = default)
     {
         var normalized = NormalizeFiscalCode(fiscalCode);
-        if (normalized is not null && !TaxpayerFiscalCodePattern.IsMatch(normalized))
+        if (normalized is not null && !ItalianFiscalCode.IsValidPersonCode(normalized))
             throw new DomainRuleException("invalid_taxpayer_fiscal_code", "FiscalTaxpayerCodeInvalid");
 
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
@@ -207,7 +204,7 @@ public partial class FiscalService(
         if (update.FiscalCode is not null)
         {
             var cf = NormalizeFiscalCode(update.FiscalCode);
-            if (cf is not null && !OrgFiscalCodePattern.IsMatch(cf))
+            if (cf is not null && !ItalianFiscalCode.IsValid(cf))
                 throw new FiscalValidationException("fiscal_tax_identifier_invalid", "FiscalTaxIdentifierInvalid");
             org.FiscalCode = cf;
         }
@@ -361,12 +358,17 @@ public partial class FiscalService(
     /// fiscal area: active ones not only let long-term in the year, plus any property with short-term stays in the year.
     /// Only the latter count toward the threshold (fiscale.md C4: apartments let short-term in the tax year).
     /// </summary>
+    /// <param name="scope">
+    /// The caller's reach (AM-03): it only marks which properties the caller may see (<c>YearProperty.InScope</c>), the
+    /// threshold of a taxpayer is always computed on all the org's apartments. <c>null</c> = every property.
+    /// </param>
     private async Task<FiscalYearView> LoadYearAsync(
         Guid orgId,
         string? orgFiscalCode,
         int taxYear,
         bool trackAssignments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        HostScope? scope = null)
     {
         var (yearStart, yearEnd) = YearBounds(taxYear);
         var stays = await db.Bookings.AsNoTracking()
@@ -390,10 +392,28 @@ public partial class FiscalService(
                 .ToListAsync(cancellationToken))
             .ToHashSet();
 
+        // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05, A2-18), tenant filter kept: a property soft-deleted during
+        // or after the tax year was still the org's that year, so its stays keep counting toward the threshold and it
+        // keeps its line in the year's reports. One deleted before the year started is left out.
         var properties = await db.Properties.AsNoTracking()
-            .Where(p => p.OrgId == orgId)
-            .Select(p => new { p.Id, p.Name, p.IsActive, p.TaxpayerFiscalCode, p.OwnerId })
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(p => p.OrgId == orgId && (!p.IsDeleted || p.DeletedAt == null || p.DeletedAt >= yearStart))
+            .Select(p => new { p.Id, p.Name, p.IsActive, p.TaxpayerFiscalCode })
             .ToListAsync(cancellationToken);
+
+        // The properties the caller reaches, only when it does not reach them all: one query in SQL (InScope), because the
+        // list above is the whole org's (the threshold needs it) and the report must show the caller's own lines.
+        HashSet<Guid>? inScope = null;
+        if (scope is { IsOrgWide: false })
+        {
+            inScope = (await db.Properties.AsNoTracking()
+                    .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+                    .Where(p => p.OrgId == orgId)
+                    .InScope(scope)
+                    .Select(p => p.Id)
+                    .ToListAsync(cancellationToken))
+                .ToHashSet();
+        }
 
         var assignmentsQuery = db.PropertyFiscalYears.Where(y => y.OrgId == orgId && y.TaxYear == taxYear);
         if (!trackAssignments)
@@ -407,7 +427,8 @@ public partial class FiscalService(
                 var shortStay = shortStayPropertyIds.Contains(p.Id);
                 var candidate = shortStay || (p.IsActive && !leasedPropertyIds.Contains(p.Id));
                 var taxpayerCode = NormalizeFiscalCode(p.TaxpayerFiscalCode);
-                return new YearProperty(p.Id, p.Name, taxpayerCode ?? orgKey, taxpayerCode, candidate, shortStay, p.OwnerId);
+                return new YearProperty(
+                    p.Id, p.Name, taxpayerCode ?? orgKey, taxpayerCode, candidate, shortStay, inScope is null || inScope.Contains(p.Id));
             })
             .ToDictionary(p => p.Id);
 
@@ -446,7 +467,7 @@ public partial class FiscalService(
         string? TaxpayerFiscalCode,
         bool IsCandidate,
         bool ShortStay,
-        string OwnerId);
+        bool InScope);
 
     private sealed record TaxpayerYear(
         int Index,
@@ -574,6 +595,11 @@ public partial class FiscalService(
         public static bool ImpresaAvailable(TaxpayerYear taxpayer, bool orgHasPartitaIva) =>
             !taxpayer.IsOrgTaxProfile || orgHasPartitaIva;
 
+        /// <summary>
+        /// Builds the row for the property. The regime is never applied automatically; the user must confirm it by calling
+        /// AssignRegimeAsync. <c>RegimeConfirmed</c> is set only when an explicit assignment exists in the database.
+        /// CO-18: CasaZen considers a single owner; co-ownership quota is not calculated (PO 2026-10-08).
+        /// </summary>
         public FiscalPropertyRow BuildRow(YearProperty property, bool orgHasPartitaIva)
         {
             var taxpayer = TaxpayerOf(property);
@@ -602,22 +628,26 @@ public partial class FiscalService(
             return new FiscalPropertyRow(
                 property.Id,
                 property.Name,
-                Recommend(property, taxpayer),
+                Recommend(property, taxpayer, orgHasPartitaIva),
                 assigned,
                 assignment?.IsPrimaryForCedolare == true,
                 property.ShortStay,
                 taxpayer.Index,
                 cedolareRate,
                 taxNote,
-                available);
+                available,
+                RegimeConfirmed: assignment is not null);
         }
 
         /// <summary>
-        /// Informative only (the regime is the taxpayer's choice): within the threshold, 21% for the designated unit (or the
-        /// only apartment), 26% for the others; nothing beyond it, where the accountant decides (fiscale.md C2, C3).
+        /// Informative only (the regime is the taxpayer's choice and is never applied until AssignRegimeAsync): within
+        /// the threshold, 21% for the designated unit (or the only apartment), 26% for the others; past it, impresa
+        /// (regime ordinario) when a partita IVA is available (PO 2026-10-08).
         /// </summary>
-        private StrFiscalRegime? Recommend(YearProperty property, TaxpayerYear taxpayer)
+        private StrFiscalRegime? Recommend(YearProperty property, TaxpayerYear taxpayer, bool orgHasPartitaIva)
         {
+            if (taxpayer.ThresholdExceeded)
+                return ImpresaAvailable(taxpayer, orgHasPartitaIva) ? StrFiscalRegime.RegimeOrdinario : null;
             if (WouldExceedThreshold(property))
                 return null;
             if (taxpayer.ReducedRatePropertyId is Guid reduced)

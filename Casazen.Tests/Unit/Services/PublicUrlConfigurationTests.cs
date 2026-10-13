@@ -71,7 +71,13 @@ public class PublicUrlConfigurationTests
             Mock.Of<IDomainVerificationService>(),
             Mock.Of<IPublicHostResolver>(),
             Options.Create(new PublicHostOptions { BaseDomain = baseDomain }),
-            EmailTestHelpers.Links(publicSite));
+            EmailTestHelpers.Links(publicSite),
+            new PublicOrgSiteUrls(
+                EmailTestHelpers.Links(publicSite),
+                Options.Create(new PublicHostOptions { BaseDomain = baseDomain }),
+                entitlements.Object),
+            Mock.Of<IVercelDomainsClient>(),
+            TimeProvider.System);
     }
 
     private static AppDbContext CreateDb() =>

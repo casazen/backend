@@ -3,7 +3,6 @@ using Casazen.Core.TouristTax;
 
 namespace Casazen.Core.Services;
 
-public record SeoDisclaimersDto(string LastUpdated, string NotLegalAdvice, string AiGenerated);
 /// <summary>
 /// Call to action of a public SEO page (SE-03): <c>SignupUrl</c> is the web app route <c>/signup</c> with the comune and
 /// the default UTM parameters, on <c>App:PublicSiteBaseUrl</c> (relative only when that is not configured, in
@@ -28,10 +27,18 @@ public record PublicTouristTaxRateSummaryDto(
     DateTime? EffectiveTo,
     string? SourceUrl);
 
+/// <summary>
+/// A published SEO page. <c>BodyHtml</c>, <c>Title</c> and <c>MetaDescription</c> are written in <c>ContentLanguage</c>
+/// (<c>it</c>: the regulations are Italian), whatever the language of the visitor: the client marks the text with it
+/// (SE-05, A8-19). <c>AiGenerated</c>: the text was written by an AI model (then reviewed by an admin, SE-01): the client
+/// shows the AI Act transparency notice next to it (A8-27). The last update is <c>LastRefreshedAt</c>; the disclaimers
+/// ("not legal advice", "AI generated") are texts of the client, in the language of the visitor, not of this API.
+/// <c>Cta</c> is <c>null</c> while the flag <c>SeoSignupCta</c> is off (private invitation, SEO-INVITE).
+/// </summary>
 public record SeoPagePublicDto(
     Guid Id, SeoPageType PageType, string Title, string MetaDescription, string BodyHtml,
     string ComuneName, string ComuneCode, string RegionCode, string RegionSlug, string ComuneSlug,
-    string? CanonicalUrl, DateTime? LastRefreshedAt, SeoDisclaimersDto Disclaimers, SeoCtaDto Cta,
+    string? CanonicalUrl, DateTime? LastRefreshedAt, bool AiGenerated, string ContentLanguage, SeoCtaDto? Cta,
     IReadOnlyList<PublicTouristTaxRateSummaryDto> TouristTaxRates);
 
 /// <summary>A published SEO page listed by the public hub; <c>Path</c> is the web app route (<c>/p/…</c>).</summary>
@@ -106,6 +113,12 @@ public record SeoApproveRevisionCommand(Guid PageId, Guid RevisionId, bool Couns
 public record SeoWithdrawCommand(Guid PageId, string? Note, string ActorUserId);
 
 /// <summary>
+/// A draft an admin wrote for <paramref name="PageId"/>. <paramref name="Title"/> and <paramref name="MetaDescription"/>
+/// replace the page's when they are not empty. The text stays a draft until it is approved.
+/// </summary>
+public record SaveSeoDraftCommand(Guid PageId, string BodyHtml, string? Title, string? MetaDescription, string ActorUserId);
+
+/// <summary>
 /// Queues the AI generation. Every generated text is a draft that waits for a review: there is no automatic approval
 /// (SE-01, A8-04).
 /// </summary>
@@ -133,6 +146,9 @@ public static class SeoReviewErrorCodes
 
     /// <summary>409: the page has no published revision to withdraw.</summary>
     public const string PageNotPublished = "seo_page_not_published";
+
+    /// <summary>422: a text written by the admin is too short, markdown, or missing a section and a paragraph.</summary>
+    public const string DraftInvalid = "seo_draft_invalid";
 }
 
 public interface ISeoContentService
@@ -160,6 +176,12 @@ public interface ISeoContentService
     /// (<see cref="SeoReviewErrorCodes.PageNotPublished"/>).
     /// </summary>
     Task<SeoPageAdminDto> WithdrawAsync(SeoWithdrawCommand command, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stores a new draft the admin wrote. It is never published here. Throws <c>NotFoundException</c> or
+    /// <c>DomainRuleException</c> (<see cref="SeoReviewErrorCodes.DraftInvalid"/>).
+    /// </summary>
+    Task<SeoPageAdminDetailDto> SaveManualDraftAsync(SaveSeoDraftCommand command, CancellationToken cancellationToken = default);
 
     Task<PlatformAiBudgetDto> GetPlatformAiBudgetAsync(CancellationToken cancellationToken = default);
 

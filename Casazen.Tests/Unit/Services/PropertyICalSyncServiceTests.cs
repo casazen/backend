@@ -661,6 +661,41 @@ public class PropertyICalSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncAllFeedsAsync_FeedOfASoftDeletedProperty_IsNotDownloaded()
+    {
+        // PC-05: a soft-deleted property keeps its rows, but its calendar is no longer imported.
+        const string ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            END:VCALENDAR
+            """;
+        var databaseName = Guid.NewGuid().ToString();
+        var client = new RoutingExternalHttpClient(new Dictionary<string, Func<string>>
+        {
+            ["https://deleted.example.com/cal.ics"] = () => ics,
+            ["https://live.example.com/cal.ics"] = () => ics,
+        });
+        await using var provider = BuildProvider(databaseName, client);
+
+        var deleted = Guid.NewGuid();
+        await using (var seedScope = provider.CreateAsyncScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Properties.Add(new Property { Id = deleted, Name = "Eliminata", IsDeleted = true, DeletedAt = DateTime.UtcNow });
+            db.SaveChanges();
+            SeedFeed(db, deleted, Guid.NewGuid(), "https://deleted.example.com/cal.ics");
+            SeedFeed(db, Guid.NewGuid(), Guid.NewGuid(), "https://live.example.com/cal.ics");
+        }
+
+        await using (var jobScope = provider.CreateAsyncScope())
+        {
+            await jobScope.ServiceProvider.GetRequiredService<PropertyICalSyncService>().SyncAllFeedsAsync();
+        }
+
+        Assert.Equal(["https://live.example.com/cal.ics"], client.Requests);
+    }
+
+    [Fact]
     public async Task HasOverlappingBlockAsync_ReturnsTrueWhenBlockOverlaps()
     {
         await using var db = CreateDb();

@@ -15,7 +15,8 @@ namespace Casazen.Tests.Integration;
 /// SU-08 (A4-14) over the real pipeline on PostgreSQL: the supplier sees comune, zone, date and stay dates of a request;
 /// street address and host contact only once it took the request (GDPR minimization); never the guest of the stay. The
 /// detail of another supplier's request is 404; the inbox history is paginated server-side with status and period
-/// filters (Europe/Rome days).
+/// filters (Europe/Rome days). SP-04 (decision D9): until the take the supplier does not even see the name of the property
+/// nor the host's notes; it sees the name of the client (the host org), the comune, the postal code, the day and the price.
 /// </summary>
 public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFactory>
 {
@@ -27,6 +28,7 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
     private const string HostDisplayName = "Villa Rosa Affitti";
     private const string HostEmail = "host-su08@example.com";
     private const string OwnerPhone = "+39 333 1112223";
+    private const string HostNotes = "Cambio biancheria per 4 persone";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>Stay of the requests: check-in 9 October 2026, check-out 12 October 2026 (stored as UTC midnight).</summary>
@@ -50,7 +52,7 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
     public SupplierInboxPostgresTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
     [PostgresFact]
-    public async Task GetInboxItem_BeforeTake_ShowsComuneZoneAndDateButNoAddressNorHostContact()
+    public async Task GetInboxItem_BeforeTake_ShowsComuneZoneAndDateButNoPropertyNorNotesNorAddressNorHostContact()
     {
         var w = await SeedWorldAsync();
         using var host = _factory.CreateAuthenticatedClient(w.OwnerId, Host);
@@ -63,7 +65,11 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
         Assert.Equal("Richiesto", detail.GetProperty("status").GetString());
         Assert.Equal("Roma", detail.GetProperty("city").GetString());
         Assert.Equal(PostalCode, detail.GetProperty("postalCode").GetString());
-        Assert.Equal("Casa SU08", detail.GetProperty("propertyName").GetString());
+        // D9: the name of the property and the host's notes come with the take; the client is the host org.
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("propertyName").ValueKind);
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("notes").ValueKind);
+        Assert.Equal(HostDisplayName, detail.GetProperty("clientName").GetString());
+        Assert.Equal(w.HostOrgId, detail.GetProperty("clientId").GetGuid());
         Assert.Equal("2026-10-12", detail.GetProperty("scheduledFor").GetString());
         Assert.Equal("2026-10-09", detail.GetProperty("stay").GetProperty("checkIn").GetString());
         Assert.Equal("2026-10-12", detail.GetProperty("stay").GetProperty("checkOut").GetString());
@@ -77,13 +83,16 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
         Assert.Equal("2026-10-12", item.GetProperty("scheduledFor").GetString());
         Assert.Equal(JsonValueKind.Null, item.GetProperty("address").ValueKind);
         Assert.Equal(JsonValueKind.Null, item.GetProperty("hostContact").ValueKind);
+        Assert.Equal(JsonValueKind.Null, item.GetProperty("propertyName").ValueKind);
+        Assert.Equal(JsonValueKind.Null, item.GetProperty("notes").ValueKind);
 
         foreach (var text in new[] { detailText, inboxText })
         {
             Assert.DoesNotContain(Street, text, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(HostEmail, text, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(OwnerPhone, text, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(HostDisplayName, text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Casa SU08", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(HostNotes, text, StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -102,6 +111,8 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
         Assert.Equal("PresoInCarico", detail.GetProperty("status").GetString());
         Assert.True(detail.GetProperty("contactDisclosed").GetBoolean());
         Assert.Equal(w.Address, detail.GetProperty("address").GetString());
+        Assert.Equal("Casa SU08", detail.GetProperty("propertyName").GetString());
+        Assert.Equal(HostNotes, detail.GetProperty("notes").GetString());
         Assert.Equal("Roma", detail.GetProperty("city").GetString());
         var contact = detail.GetProperty("hostContact");
         Assert.Equal(HostDisplayName, contact.GetProperty("name").GetString());
@@ -229,6 +240,8 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
             Seed(supplierOrg, ServiceRequestStatus.Pagato, completedAt: new DateTime(2026, 8, 31, 21, 30, 0, DateTimeKind.Utc)),
             Seed(supplierOrg, ServiceRequestStatus.Rifiutato, updatedAt: Utc(2026, 9, 20, 9)),
             Seed(supplierOrg, ServiceRequestStatus.Rifiutato, updatedAt: Utc(2026, 8, 5, 9)),
+            // SP-04: a cancelled request belongs to the history too (its date is the one of the cancellation).
+            Seed(supplierOrg, ServiceRequestStatus.Annullato, updatedAt: Utc(2026, 9, 21, 9)),
             // Open work is not history.
             Seed(supplierOrg, ServiceRequestStatus.Richiesto),
             Seed(supplierOrg, ServiceRequestStatus.PresoInCarico),
@@ -246,16 +259,17 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
         var allHistory = (await GetInboxAsync(supplier, "status=history&pageSize=100")).Body;
         var open = (await GetInboxAsync(supplier, "")).Body;
 
-        // 12 completed + 1 paid (Rome 1 September) + 1 rejected in September.
-        Assert.Equal(14, page1.GetProperty("total").GetInt32());
+        // 12 completed + 1 paid (Rome 1 September) + 1 rejected + 1 cancelled in September.
+        Assert.Equal(15, page1.GetProperty("total").GetInt32());
         Assert.Equal(1, page1.GetProperty("page").GetInt32());
         Assert.Equal(5, page1.GetProperty("pageSize").GetInt32());
         var first = page1.GetProperty("items").EnumerateArray().ToList();
         Assert.Equal(5, first.Count);
-        Assert.Equal("Rifiutato", first[0].GetProperty("status").GetString());
-        Assert.Equal(Utc(2026, 9, 13, 9), first[1].GetProperty("completedAt").GetDateTime().ToUniversalTime());
+        Assert.Equal("Annullato", first[0].GetProperty("status").GetString());
+        Assert.Equal("Rifiutato", first[1].GetProperty("status").GetString());
+        Assert.Equal(Utc(2026, 9, 13, 9), first[2].GetProperty("completedAt").GetDateTime().ToUniversalTime());
         var last = page3.GetProperty("items").EnumerateArray().ToList();
-        Assert.Equal(4, last.Count);
+        Assert.Equal(5, last.Count);
         Assert.Equal("Pagato", last[^1].GetProperty("status").GetString());
 
         var rejectedItem = Assert.Single(rejected.GetProperty("items").EnumerateArray());
@@ -263,9 +277,9 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
         var paidItem = Assert.Single(paidInAugust.GetProperty("items").EnumerateArray());
         Assert.Equal(new DateTime(2026, 8, 31, 21, 30, 0, DateTimeKind.Utc), paidItem.GetProperty("completedAt").GetDateTime().ToUniversalTime());
 
-        Assert.Equal(16, allHistory.GetProperty("total").GetInt32());
+        Assert.Equal(17, allHistory.GetProperty("total").GetInt32());
         Assert.All(allHistory.GetProperty("items").EnumerateArray(), item =>
-            Assert.Contains(item.GetProperty("status").GetString(), new[] { "Completato", "Pagato", "Rifiutato" }));
+            Assert.Contains(item.GetProperty("status").GetString(), new[] { "Completato", "Pagato", "Rifiutato", "Annullato" }));
         Assert.Equal(2, open.GetProperty("total").GetInt32());
         Assert.All(open.GetProperty("items").EnumerateArray(), item =>
             Assert.Contains(item.GetProperty("status").GetString(), new[] { "Richiesto", "PresoInCarico" }));
@@ -330,7 +344,7 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
             bookingId = w.BookingId,
             supplierOrgId,
             category = "cleaning",
-            notes = "Cambio biancheria per 4 persone",
+            notes = HostNotes,
         });
         var text = await AssertStatusAsync(HttpStatusCode.Created, response);
         return JsonSerializer.Deserialize<JsonElement>(text, JsonOptions).GetProperty("id").GetGuid();

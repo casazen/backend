@@ -28,7 +28,7 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         logger.LogInformation("Getting OTA integrations for property {PropertyId}", propertyId);
@@ -58,7 +58,7 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         logger.LogInformation("Getting OTA integration {Id} for property {PropertyId}", id, propertyId);
@@ -94,11 +94,11 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         if (request.PropertyId != propertyId)
-            return BadRequest("Property ID in URL must match request body");
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "OtaPropertyIdMismatch");
 
         logger.LogInformation("Creating OTA integration for property {PropertyId}, platform {Platform}",
             propertyId, request.Platform);
@@ -137,7 +137,7 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         logger.LogInformation("Updating OTA integration {Id} for property {PropertyId}", id, propertyId);
@@ -165,7 +165,7 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         logger.LogInformation("Deleting OTA integration {Id} for property {PropertyId}", id, propertyId);

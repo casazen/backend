@@ -1,10 +1,14 @@
 using System.Net.Http.Headers;
+using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit;
+using Casazen.Tests.Unit.Documents;
+using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
 using Hangfire;
 using Hangfire.Common;
@@ -16,9 +20,12 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Moq;
 using Npgsql;
 
@@ -30,6 +37,9 @@ namespace Casazen.Tests.Integration;
 /// <see cref="PostgresTestServer"/>, with every EF migration applied through <c>Database.Migrate()</c>;
 /// the database is dropped when the factory is disposed. Only when no PostgreSQL is available on a
 /// local run does it fall back to EF InMemory, with a warning (never on CI). See FD-04 / A9-11.
+/// The fallback behaves like the PostgreSQL path where it can (QA-INFRA-01): a store of its own for every factory instance
+/// (<see cref="UseDedicatedInMemoryDatabase"/>) and the reference data the migrations seed (contexts, roles and their
+/// permissions) written from the seed data of the model (<see cref="InMemoryReferenceDataSeeder"/>).
 /// </summary>
 public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 {
@@ -41,12 +51,21 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     private readonly object _databaseLock = new();
     private PostgresTestDatabase? _database;
 
+    /// <summary>Name of the InMemory store of this factory; used only when the host runs without PostgreSQL.</summary>
+    private readonly string _inMemoryStoreName = $"casazen-it-{Guid.NewGuid():N}";
+
     public CasazenWebApplicationFactory()
     {
         UsesPostgreSql = ResolveUsesPostgreSql();
     }
 
     public Mock<IBackgroundJobClient> BackgroundJobClientMock { get; } = new();
+
+    /// <summary>
+    /// Loads the 40 official rows of <see cref="ComuneTestData"/> into the test database at startup (SU-04): the comuni the
+    /// tests need, resolved through the real import. A suite that tests the list not being imported returns false.
+    /// </summary>
+    protected virtual bool SeedComuneSample => true;
 
     /// <summary>True when the app runs on a dedicated PostgreSQL database; false only for the local InMemory fallback.</summary>
     public bool UsesPostgreSql { get; }
@@ -71,6 +90,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:DefaultConnection"] = string.Empty,
+                // Quiet by default: a green run printed ~15k lines of host logs. Failures still surface through xUnit.
+                // EF is silenced because tests that probe DB constraints make it log every expected rejection as an error.
+                ["Logging:LogLevel:Default"] = "Warning",
+                ["Logging:LogLevel:Microsoft.EntityFrameworkCore"] = "None",
                 ["Auth0:Domain"] = "test.auth0.com",
                 ["Auth0:Audience"] = "https://test-api.casazen.app",
                 ["Stripe:PublishableKey"] = "pk_test_integration",
@@ -86,14 +109,27 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:GuestBookingLookupPerEmail:PermitLimit"] = "1000",
                 ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
                 ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
+                ["RateLimiting:PublicComuni:PermitLimit"] = "1000",
+                ["RateLimiting:PublicInvitationLookup:PermitLimit"] = "1000",
+                ["RateLimiting:OrgAccessRequest:PermitLimit"] = "1000",
+                ["RateLimiting:PublicSupplierSlots:PermitLimit"] = "1000",
+                ["RateLimiting:PublicSupplierQuote:PermitLimit"] = "1000",
+                ["RateLimiting:PublicSupplierBookingCreate:PermitLimit"] = "1000",
+                ["RateLimiting:SupplierBookingCreatePerEmail:PermitLimit"] = "1000",
+                ["RateLimiting:SupplierBookingManagePerEmail:PermitLimit"] = "1000",
+                // SP-10: with Features:SupplierShowcaseBooking on, the version of the privacy notice is required at startup (the
+                // booking records it); the key of the e-mail index is required outside Development and Testing and is set here so
+                // the tests index the addresses the way a real environment does.
+                ["Suppliers:Showcase:PrivacyNoticeVersion"] = "2026-11-test",
+                ["Suppliers:CustomerIndexKey"] = "test-customer-index-key-0123456789abcdef",
+                // The official comuni list is not loaded into every test database (7,894 rows): tests that need comuni seed the
+                // few they use (ComuneTestData) or import the official file themselves.
+                ["Comuni:SeedOnStartup"] = "false",
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
-                ["Vies:StubMode"] = "true",
                 ["Seo:BootstrapOnStartup"] = "false",
-                ["Billing:Sdi:Enabled"] = "false",
                 ["Billing:PlatformVatNumber"] = "IT12345678901",
-                ["Vies:Enabled"] = "false",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
                 // Base domain of the org subdomains: no default in code (D3, SE-03), the tests configure one.
                 ["PublicHost:BaseDomain"] = "casazen.it",
@@ -104,18 +140,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Legal:Documents:Privacy:Version"] = "2026-06-v1",
                 ["Legal:Documents:Dpa:Version"] = "2026-06-v1",
                 ["Legal:Documents:Subprocessors:Version"] = "2026-06-v1",
-                ["Legal:Documents:Subprocessors:Items:0:Name"] = "Supabase",
-                ["Legal:Documents:Subprocessors:Items:0:Purpose"] = "Database",
-                ["Legal:Documents:Subprocessors:Items:0:Region"] = "EU",
-                ["Legal:Documents:Subprocessors:Items:1:Name"] = "Auth0",
-                ["Legal:Documents:Subprocessors:Items:1:Purpose"] = "Auth",
-                ["Legal:Documents:Subprocessors:Items:1:Region"] = "EU",
-                ["Legal:Documents:Subprocessors:Items:2:Name"] = "Stripe",
-                ["Legal:Documents:Subprocessors:Items:2:Purpose"] = "Payments",
-                ["Legal:Documents:Subprocessors:Items:2:Region"] = "EU",
-                ["Legal:Documents:Subprocessors:Items:3:Name"] = "SendGrid",
-                ["Legal:Documents:Subprocessors:Items:3:Purpose"] = "Email",
-                ["Legal:Documents:Subprocessors:Items:3:Region"] = "EU",
                 ["Compliance:CinGuidanceUrl"] = "https://www.bdsr.it/cin",
                 ["Compliance:CheckoutReminderHourLocal"] = "20",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
@@ -131,6 +155,11 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         {
             if (UsesPostgreSql)
                 UseDedicatedPostgresDatabase(services);
+            else
+                UseDedicatedInMemoryDatabase(services);
+
+            if (SeedComuneSample)
+                services.AddHostedService(serviceProvider => new ComuneSampleSeeder(serviceProvider));
 
             // One Data Protection provider for every test host of the process (PC-11): the EF model is cached per
             // provider (DataProtectionModelCacheKeyFactory), so the hosts share one model instead of building one each,
@@ -165,6 +194,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             RemoveService<IStripeBillingService>(services);
             services.AddSingleton<IStripeBillingService, FakeStripeBillingService>();
 
+            // The payments of the service requests (SP-15a) never reach Stripe: the fake answers the way Stripe does.
+            RemoveService<ISupplierPaymentGateway>(services);
+            services.AddSingleton<ISupplierPaymentGateway, FakeSupplierPaymentGateway>();
+
             RemoveService<IBillingEntryGate>(services);
             services.AddSingleton<IBillingEntryGate>(sp =>
             {
@@ -180,6 +213,11 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             ape.Setup(s => s.EnsureUploadedFileIsOfficialApeAsync(It.IsAny<IFormFile>()))
                 .Returns(Task.CompletedTask);
             services.AddSingleton(ape.Object);
+
+            // PDFsharp/MigraDoc loses words when two documents are rendered at once in one process, and the hosts of a run
+            // render in parallel: the renderer takes its turn, as the unit tests' one does (SerializedPdfRenderer).
+            RemoveService<IPdfDocumentRenderer>(services);
+            services.AddSingleton<IPdfDocumentRenderer>(_ => new SerializedPdfRenderer());
         });
     }
 
@@ -356,6 +394,27 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             .Build());
     }
 
+    /// <summary>
+    /// The local fallback without PostgreSQL (never on CI). The app registers one InMemory store with a fixed name for the whole
+    /// process, so every host shared it: two hosts starting together imported the comuni sample into the same rows
+    /// ("An item with the same key has already been added. Key: 001235"), and a test saw what other classes had written.
+    /// This gives the factory a store of its own, as the PostgreSQL path has a database of its own, and writes the reference
+    /// data into it before anything else starts. A subclass that registers another database afterwards wins, as on PostgreSQL.
+    /// </summary>
+    private void UseDedicatedInMemoryDatabase(IServiceCollection services)
+    {
+        RemoveAllOf<DbContextOptions<AppDbContext>>(services);
+        RemoveAllOf<IDbContextOptionsConfiguration<AppDbContext>>(services);
+        services.AddDbContext<AppDbContext>(options =>
+        {
+            options.UseInMemoryDatabase(_inMemoryStoreName);
+            options.ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning));
+        });
+
+        // First of the hosted services, so that the reference data is there before any start-up service reads the store.
+        services.Insert(0, ServiceDescriptor.Singleton<IHostedService>(serviceProvider => new InMemoryReferenceDataSeeder(serviceProvider)));
+    }
+
     private PostgresTestDatabase EnsureDatabase()
     {
         lock (_databaseLock)
@@ -397,4 +456,54 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             services.Remove(descriptor);
     }
 
+}
+
+/// <summary>Imports the official sample of the comuni list when the host starts (see <see cref="CasazenWebApplicationFactory.SeedComuneSample"/>).</summary>
+internal sealed class ComuneSampleSeeder(IServiceProvider serviceProvider) : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        using var scope = serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (!await db.Comuni.AnyAsync(cancellationToken))
+            await ComuneTestData.ImportSampleAsync(db);
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+/// <summary>
+/// QA-INFRA-01: on the InMemory fallback of a local run, writes the reference data that the migrations seed on PostgreSQL (the
+/// contexts, the roles and their permissions), taken from the seed data of the model (<c>HasData</c>) that the migrations are
+/// generated from, so the tests that need a membership, a role or a context run without PostgreSQL too. It does nothing on any
+/// other provider (a host whose database a test points elsewhere) and when the store already has roles.
+/// </summary>
+internal sealed class InMemoryReferenceDataSeeder(IServiceProvider serviceProvider) : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        using var scope = serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (!db.Database.IsInMemory() || await db.Roles.AnyAsync(cancellationToken))
+            return;
+
+        // EnsureCreated would seed the same rows, but only into a store nobody has touched yet; this works in any state.
+        var model = db.GetService<IDesignTimeModel>().Model;
+        foreach (var entityType in model.GetEntityTypes())
+        {
+            foreach (var row in entityType.GetSeedData())
+            {
+                var entity = Activator.CreateInstance(entityType.ClrType, nonPublic: true)!;
+                // Only the columns: a seed row also carries the navigation lists of the model (shared objects), and adding
+                // them would attach and change the seed of the model itself, which every other host of the process reads.
+                foreach (var (name, value) in row.Where(column => entityType.FindProperty(column.Key) is not null))
+                    entityType.ClrType.GetProperty(name)!.SetValue(entity, value);
+                db.Add(entity);
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

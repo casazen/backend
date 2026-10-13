@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
@@ -23,6 +24,7 @@ namespace Casazen.Web.Controllers;
 public class BookingCancellationController(
     IBookingService bookingService,
     IBookingCancellationService cancellationService,
+    IGuestBookingCancellationService guestCancellationService,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     ILogger<BookingCancellationController> logger) : ControllerBase
@@ -65,13 +67,19 @@ public class BookingCancellationController(
             return NotFound();
 
         var quote = await cancellationService.GetQuoteAsync(id, HttpContext.RequestAborted);
-        var movesMoney = request?.RefundAmount > 0 || quote.RequiresRefundDecision || quote.HasUncollectedIntent;
+
+        // BK-02 / PO 2026-10-08: when the HOST cancels the booking the guest always receives a 100% refund,
+        // regardless of the property's cancellation policy. The host-chosen refund amount from the request body
+        // is ignored and replaced with the full refundable amount.
+        var hostRefundAmount = quote.RefundableAmount > 0 ? quote.RefundableAmount : request?.RefundAmount;
+
+        var movesMoney = hostRefundAmount > 0 || quote.HasUncollectedIntent;
         if (movesMoney && !await authorizationService.IsAuthorizedAsync(User, resource, PaymentOperations.Write))
             return PaymentPermissionMissing();
 
-        logger.LogInformation("Cancelling booking {BookingId}", id);
+        logger.LogInformation("Cancelling booking {BookingId} by host: full refund {RefundAmount}", id, hostRefundAmount);
         var result = await cancellationService.CancelAsync(
-            new BookingCancellationRequest(id, request?.RefundAmount, request?.Reason, User.GetUserId()),
+            new BookingCancellationRequest(id, hostRefundAmount, request?.Reason, User.GetUserId()),
             HttpContext.RequestAborted);
 
         return Ok(new CancelBookingResponse(
@@ -79,6 +87,36 @@ public class BookingCancellationController(
             result.Booking.Status,
             result.Refunds.Select(PaymentRefundDto.From).ToList(),
             result.CanceledIntents));
+    }
+
+    /// <summary>
+    /// Generates a signed one-time cancellation link and emails it to the guest (BK-02, BK-07, PO 2026-10-08).
+    /// Needs <c>booking.write</c> on the booking's property (the host decides when to send the link).
+    /// </summary>
+    [HttpPost("guest-cancel-link")]
+    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    public async Task<IActionResult> SendGuestCancelLink(Guid id)
+    {
+        var booking = await bookingService.GetBookingAsync(id);
+        var resource = booking is null ? null : await ResourceOfAsync(booking);
+        if (booking is null || resource is null ||
+            !await authorizationService.IsAuthorizedAsync(User, resource, BookingOperations.Write))
+            return NotFound();
+
+        try
+        {
+            await guestCancellationService.SendCancelLinkAsync(id, HttpContext.RequestAborted);
+            logger.LogInformation("Guest cancel link for booking {BookingId} sent by host", id);
+            return Ok();
+        }
+        catch (NotFoundException)
+        {
+            return NotFound();
+        }
+        catch (DomainRuleException ex)
+        {
+            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, ex.Code, ex.MessageKey);
+        }
     }
 
     private async Task<HostResource?> ResourceOfAsync(Booking booking)

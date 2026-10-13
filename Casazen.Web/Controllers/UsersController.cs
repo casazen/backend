@@ -3,6 +3,8 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
+using Casazen.Core.Validation;
+using Casazen.Infrastructure.Email;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Users;
 using Casazen.Web.Infrastructure;
@@ -24,13 +26,16 @@ public class UsersController(
     IRequestTenantContext tenantContext,
     ILogger<UsersController> logger,
     IEntitlementService entitlementService,
-    IHostOnboardingGate hostOnboardingGate) : ControllerBase
+    IHostOnboardingGate hostOnboardingGate,
+    PublicSiteLinks publicSiteLinks) : ControllerBase
 {
     /// <summary>
     /// 422 on <c>PUT /api/users/onboarding</c> from a user without an org and without consents: the first org is
     /// created only together with the legal consents. The client answers it with the consents step (A1-01).
     /// </summary>
     public const string ConsentsRequiredCode = "consents_required";
+    public const string ConsentsIncompleteCode = "consents_incomplete";
+    public const string StaleDocumentsCode = "stale_documents";
 
     // ─── Admin endpoints ────────────────────────────────────────────────────
 
@@ -44,7 +49,9 @@ public class UsersController(
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
     {
-        pageSize = Math.Min(pageSize, 100);
+        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
         logger.LogInformation("Admin: listing users page={Page} pageSize={PageSize}", page, pageSize);
         var (users, total) = await userService.GetPagedAsync(search, role, isActive, page, pageSize);
         var userList = users.ToList();
@@ -85,16 +92,7 @@ public class UsersController(
         if (sub == null)
             return Unauthorized();
 
-        // Extract name/email claims from JWT; fall back gracefully
-        var email = User.FindFirst("email")?.Value
-                        ?? User.FindFirst(ClaimTypes.Email)?.Value
-                        ?? string.Empty;
-        var firstName = User.FindFirst("given_name")?.Value
-                        ?? User.FindFirst("name")?.Value?.Split(' ').FirstOrDefault()
-                        ?? string.Empty;
-        var lastName = User.FindFirst("family_name")?.Value
-                        ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
-                        ?? string.Empty;
+        var (email, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
 
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
         return Ok(await ToOwnDetailAsync(user));
@@ -164,8 +162,10 @@ public class UsersController(
     [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> ChangeRole(string id, [FromBody] ChangeRoleDto dto)
     {
-        if (!Enum.TryParse<UserRole>(dto.Role, ignoreCase: true, out var newRole))
-            return BadRequest(new { error = $"Unknown role: {dto.Role}" });
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"), which would
+        // otherwise reach Auth0 sync and persistence as an undefined role (A1-35).
+        if (!EnumNames.TryParseDefined<UserRole>(dto.Role, out var newRole))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "UserRoleUnknown");
 
         var adminSub = GetSub();
         if (adminSub == null)
@@ -192,6 +192,87 @@ public class UsersController(
         }
 
         return Ok(new { id, role = newRole.ToString(), rolesSynced = true });
+    }
+
+    /// <summary>Returns the roles the user currently holds in Auth0, restricted to the ones an admin can manage
+    /// (A1-17: Admin, PropertyOwner, LongTermLandlord, Supplier). Admin only.</summary>
+    [HttpGet("{id}/roles")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<ActionResult<UserRolesDto>> GetRoles(string id)
+    {
+        Auth0UserRolesResult result;
+        try
+        {
+            result = await userService.GetRolesAsync(id, HttpContext.RequestAborted);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+
+        if (!result.Sync.Succeeded)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                result.Sync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
+                "Auth0RoleSyncFailed");
+        }
+
+        return Ok(new UserRolesDto
+        {
+            Id = id,
+            Roles = result.Roles.Where(AdminManageableRoles.All.Contains).Select(r => r.ToString()).ToList(),
+        });
+    }
+
+    /// <summary>
+    /// Grants and revokes roles so the user's Auth0 roles match <paramref name="dto"/> exactly, among the roles an
+    /// admin can manage (A1-17: Admin, PropertyOwner, LongTermLandlord, Supplier — every other current role of the
+    /// user, e.g. Guest from a booking, is left untouched). Admin only.
+    /// </summary>
+    [HttpPut("{id}/roles")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<ActionResult<UserRolesDto>> UpdateRoles(string id, [FromBody] UpdateUserRolesDto dto)
+    {
+        var roles = new List<UserRole>();
+        foreach (var name in dto.Roles.Distinct())
+        {
+            if (!EnumNames.TryParseDefined<UserRole>(name, out var role) || !AdminManageableRoles.All.Contains(role))
+                return this.ApiProblem(
+                    StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "UserRoleNotManageable", name);
+            roles.Add(role);
+        }
+
+        var adminSub = GetSub();
+        if (adminSub == null)
+            return Unauthorized();
+
+        RoleSetUpdateResult result;
+        try
+        {
+            result = await userService.UpdateRolesAsync(id, roles, adminSub, HttpContext.RequestAborted);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+
+        if (!result.RoleSync.Succeeded)
+        {
+            // Same as ChangeRole: the roles are unchanged, so this must not be reported as done. Retrying is safe.
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                result.RoleSync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
+                "Auth0RoleSyncFailed");
+        }
+
+        return Ok(new UserRolesDto
+        {
+            Id = id,
+            Roles = result.Roles.Select(r => r.ToString()).ToList(),
+            RolesGranted = result.RolesGranted.Select(r => r.ToString()).ToList(),
+            RolesRevoked = result.RolesRevoked.Select(r => r.ToString()).ToList(),
+        });
     }
 
     /// <summary>
@@ -235,30 +316,51 @@ public class UsersController(
             localizer[result.Auth0Sync.Succeeded ? "UserReactivated" : "UserReactivatedAuth0NotSynced"]));
     }
 
+    /// <summary>
+    /// Permanently removes a registered account. Admin only. Auth0 is deleted first (<c>delete:users</c>); when that
+    /// fails the CasaZen row stays and the call answers 502 so the admin can retry. 422 <c>cannot_delete_self</c> for
+    /// the caller's own account, <c>cannot_delete_last_admin</c> for the last active admin. The organization and its
+    /// properties stay.
+    /// </summary>
+    [HttpDelete("{id}/account")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<IActionResult> DeleteAccount(string id)
+    {
+        var adminSub = GetSub();
+        if (adminSub == null)
+            return Unauthorized();
+
+        var sync = await userService.DeleteRegisteredUserAsync(id, adminSub, HttpContext.RequestAborted);
+        if (!sync.Succeeded)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                sync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
+                "UserDeleteAuth0Failed");
+        }
+
+        return NoContent();
+    }
+
     private async Task<ActionResult<OnboardingResponseDto>> CompleteOnboardingAsync(
         OnboardingRequestDto dto,
         bool requireConsents)
     {
-        if (!Enum.TryParse<RentalType>(dto.RentalType, ignoreCase: true, out var rentalType))
-            return BadRequest(new { error = $"Unknown rentalType: {dto.RentalType}" });
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "7"), which then reached
+        // MapRentalTypeToRoles as a value nothing was written to handle: ArgumentOutOfRangeException -> 500 instead
+        // of a clean 400 (A1-35, A7-31).
+        if (!EnumNames.TryParseDefined<RentalType>(dto.RentalType, out var rentalType))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "RentalTypeUnknown");
 
         // The requested plan is only validated: the org starts on Starter, paid tiers come from Stripe (#274).
         if (!string.IsNullOrWhiteSpace(dto.PlanTier) && !PlanCatalog.TryParseTier(dto.PlanTier, out _))
-            return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
         var sub = GetSub();
         if (sub == null)
             return Unauthorized();
 
-        var email = User.FindFirst("email")?.Value
-                    ?? User.FindFirst(ClaimTypes.Email)?.Value
-                    ?? string.Empty;
-        var firstName = User.FindFirst("given_name")?.Value
-                        ?? User.FindFirst("name")?.Value?.Split(' ').FirstOrDefault()
-                        ?? string.Empty;
-        var lastName = User.FindFirst("family_name")?.Value
-                       ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
-                       ?? string.Empty;
+        var (email, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
 
         var existingUser = await userService.GetUserAsync(sub);
         var hadOrg = existingUser?.OrgId.HasValue == true;
@@ -285,7 +387,7 @@ public class UsersController(
             sub, rentalType, email, firstName, lastName);
 
         if (user.OrgId is not Guid orgId)
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = "Org provisioning failed." });
+            return this.ApiProblem(StatusCodes.Status500InternalServerError, ProblemCodes.InternalError, "InternalServerErrorDetail");
 
         // TN-4: the rest of this request (consent records, tenant filter) is scoped to the org just created or linked.
         tenantContext.SetOrgId(orgId);
@@ -316,14 +418,21 @@ public class UsersController(
     private ActionResult<OnboardingResponseDto> ToConsentError(ConsentValidationError? error) =>
         error?.Type switch
         {
-            ConsentValidationErrorType.Incomplete => BadRequest(new { error = error.Message }),
-            ConsentValidationErrorType.StaleVersion => BadRequest(new
-            {
-                error = error.Message,
-                staleDocuments = error.StaleDocuments,
-            }),
-            _ => BadRequest(new { error = error?.Message ?? "Invalid consents." }),
+            // The clients recognize a stale legal document by the `staleDocuments` field, kept next to the stable code.
+            ConsentValidationErrorType.StaleVersion => StaleDocumentsProblem(error),
+            _ => this.ApiProblem(StatusCodes.Status400BadRequest, ConsentsIncompleteCode, "ConsentsIncomplete"),
         };
+
+    private ObjectResult StaleDocumentsProblem(ConsentValidationError error)
+    {
+        var problem = ApiProblemDetails.Create(HttpContext, StatusCodes.Status400BadRequest, StaleDocumentsCode, "ConsentsStale");
+        problem.Extensions["staleDocuments"] = error.StaleDocuments ?? [];
+        return new ObjectResult(problem)
+        {
+            StatusCode = StatusCodes.Status400BadRequest,
+            ContentTypes = { ApiProblemDetails.ContentType },
+        };
+    }
 
     // ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -364,10 +473,14 @@ public class UsersController(
     /// <summary>The caller's own profile, with where it stands with the host onboarding gate (PL-02).</summary>
     private async Task<UserDetailDto> ToOwnDetailAsync(User user)
     {
-        var detail = ToDetail(user, await ResolveOrgAsync(user));
+        var org = await ResolveOrgAsync(user);
+        var detail = ToDetail(user, org);
         var onboarding = await hostOnboardingGate.GetStatusAsync(user.Id, HttpContext.RequestAborted);
         detail.OnboardingRequired = !onboarding.IsComplete;
         detail.ConsentsAccepted = onboarding.ConsentsAccepted;
+        // A supplier org owns no properties: the "first property" step is for host orgs only.
+        if (user.OrgId is Guid orgId && org?.OrgType != OrgType.Supplier)
+            detail.HasProperties = await onboardingService.OrgHasPropertiesAsync(orgId, HttpContext.RequestAborted);
         return detail;
     }
 
@@ -394,6 +507,9 @@ public class UsersController(
                 Id = org.Id,
                 Name = org.Name,
                 Slug = org.Slug,
+                PublicSiteUrl = string.IsNullOrWhiteSpace(org.Slug)
+                    ? null
+                    : publicSiteLinks.TryPublicPage($"/book/{Uri.EscapeDataString(org.Slug)}"),
                 PlanTier = entitlementService.ResolveEffectiveTier(org).ToString()
             }
     };

@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
@@ -31,6 +32,24 @@ public record ComplianceActivationStep(string Id, string Label, string Status, b
     /// <c>safety_gas_detector_missing</c>); empty when the step is complete or not blocking.
     /// </summary>
     public IReadOnlyList<ActivationBlocker> Blockers { get; init; } = [];
+
+    /// <summary>
+    /// Non-blocking notes of the step, with stable codes (e.g. <c>cin_istat_comune_mismatch</c>, <c>comune_istat_missing</c>):
+    /// they never keep the step from being complete.
+    /// </summary>
+    public IReadOnlyList<ActivationWarning> Warnings { get; init; } = [];
+}
+
+/// <summary>
+/// A note on an activation step that does not block it (SU-04): stable snake_case <see cref="Code"/> (the frontend translates
+/// it) and the resource key of its message in <c>SharedResources</c>, formatted with <see cref="MessageArgs"/>.
+/// </summary>
+public sealed record ActivationWarning(string Code, string MessageKey, IReadOnlyList<object> MessageArgs)
+{
+    public ActivationWarning(string code, string messageKey)
+        : this(code, messageKey, [])
+    {
+    }
 }
 
 /// <summary>
@@ -204,7 +223,12 @@ public interface IComplianceWizardService
         bool? tosAccepted,
         CancellationToken cancellationToken = default);
 
-    Task<ComplianceSummaryResult> GetSummaryAsync(Guid orgId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// The compliance cockpit of the caller (US-019 AC10): the properties to activate, the check-ins to complete, the
+    /// check-outs due, the Alloggiati to send and the turnovers to close, <b>of the properties <paramref name="scope"/>
+    /// reaches</b> (AM-03: it used to filter by org only, so a member «Solo alcuni» saw the whole org's work).
+    /// </summary>
+    Task<ComplianceSummaryResult> GetSummaryAsync(HostScope scope, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Opens the check-out wizard of a booking the caller has already been authorized on (TN-3), with the rules of
@@ -276,6 +300,12 @@ public sealed record ComplianceSummaryItem
     public Guid? PropertyId { get; }
 
     public Guid? BookingId { get; }
+
+    /// <summary>
+    /// What the item still lacks, with stable codes and fields (SR-03). Empty as the cockpit builds it:
+    /// <see cref="IComplianceMissingService"/> fills it, so a reader that does not show it pays nothing for it.
+    /// </summary>
+    public IReadOnlyList<ComplianceMissing> Missing { get; init; } = [];
 
     /// <summary>True when the target of <paramref name="action"/> is a property, false when it is a booking.</summary>
     public static bool TargetsProperty(ComplianceCockpitAction action) => action == ComplianceCockpitAction.ActivateProperty;

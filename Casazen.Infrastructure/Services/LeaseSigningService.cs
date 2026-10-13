@@ -232,6 +232,7 @@ public class LeaseSigningService(
         var notSignedYet = RliRegistrationDeadline.IsBeforeFullSignature(lease.Status);
         return lease.Parties
             .OrderBy(p => p.Role)
+            .ThenBy(p => p.Position)
             .ThenBy(p => p.LastName, StringComparer.Ordinal)
             .Select(party =>
             {

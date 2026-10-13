@@ -7,7 +7,6 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Documents;
 using Microsoft.EntityFrameworkCore;
@@ -322,7 +321,7 @@ public class FiscalReportsTests
             [new AnnualTaxpayerTotals(0, null, true, false, 70, 864196.90m, 181481.30m, 224690.90m)],
             Rules());
 
-        var pdf = new MigraDocPdfDocumentRenderer().Render(FiscalReportDocuments.Pdf(report));
+        var pdf = new SerializedPdfRenderer().Render(FiscalReportDocuments.Pdf(report));
 
         var pages = PdfTestReader.Pages(pdf);
         Assert.True(pages.Count > 2, $"{pages.Count} pages");
@@ -375,7 +374,7 @@ public class FiscalReportsTests
             new WithholdingTotals(12000000m, 2520000m, 9480000m, 120),
             Rules());
 
-        var pdf = new MigraDocPdfDocumentRenderer().Render(FiscalReportDocuments.Pdf(report));
+        var pdf = new SerializedPdfRenderer().Render(FiscalReportDocuments.Pdf(report));
 
         var pages = PdfTestReader.Pages(pdf);
         Assert.True(pages.Count > 2, $"{pages.Count} pages");
@@ -409,7 +408,7 @@ public class FiscalReportsTests
             stays,
             new TouristTaxTotals(60, 180, 120, 3078m, 6));
 
-        var pdf = new MigraDocPdfDocumentRenderer().Render(FiscalReportDocuments.Pdf(report));
+        var pdf = new SerializedPdfRenderer().Render(FiscalReportDocuments.Pdf(report));
 
         Assert.True(PdfTestReader.Pages(pdf).Count > 1);
         var words = PdfTestReader.BodyWords(pdf);
@@ -564,6 +563,8 @@ public class FiscalReportsTests
     [InlineData(true, "1234", null)]
     [InlineData(null, null, "RSSMRA80A01")]
     [InlineData(false, "12345678901", null)]
+    [InlineData(null, null, "RSSMRA85T10A562X")] // CO-18: structurally valid person code but wrong check character
+    [InlineData(null, null, "12345678901")] // CO-18: structurally valid numeric code but wrong check digit
     public async Task UpdateTaxProfile_InvalidIdentifiers_ThrowsValidation(bool? hasPartitaIva, string? number, string? fiscalCode)
     {
         var orgId = Guid.NewGuid();
@@ -641,7 +642,7 @@ public class FiscalReportsTests
     }
 
     private static FiscalService CreateService(AppDbContext db) =>
-        new(db, new MigraDocPdfDocumentRenderer(), Options.Create(new ShortStayFiscalOptions()), new FakeTimeProvider(Now));
+        new(db, new SerializedPdfRenderer(), Options.Create(new ShortStayFiscalOptions()), new FakeTimeProvider(Now));
 
     private static AppDbContext CreateDb()
     {
@@ -761,5 +762,37 @@ public class FiscalReportsTests
         };
         db.Payments.Add(payment);
         return payment;
+    }
+
+    /// <summary>
+    /// PC-05, A2-18: the EF Core SoftDelete filter on <see cref="Property"/> propagates through
+    /// <c>Include</c>/navigation (it turns the join into a filtered one), so without
+    /// <c>IgnoreQueryFilters([SoftDeleteQueryFilter])</c> a soft-deleted property's payment would silently vanish
+    /// from every fiscal report (<c>FiscalService.Reports.cs</c>, <c>ScopedPayments</c>). This locks in that
+    /// <see cref="FiscalService.GetAnnualReportAsync"/> still reports it.
+    /// </summary>
+    [Fact]
+    public async Task GetAnnualReport_PropertySoftDeletedAfterThePayment_StillReportsItsIncome()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var a = SeedProperty(db, orgId, "A Cedolare 21", taxpayer: TaxpayerX);
+        SeedRegime(db, a, StrFiscalRegime.CedolareSecca21);
+        var stayA = SeedStay(db, a, Day(2026, 3, 1), nights: 3, totalPrice: 1100m, touristTax: 100m);
+        SeedPayment(db, stayA, 1100m, Instant(2026, 3, 1, 10));
+        await db.SaveChangesAsync();
+
+        a.IsDeleted = true;
+        a.DeletedAt = Instant(2026, 6, 1, 0);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var sut = CreateService(db);
+        var report = await sut.GetAnnualReportAsync(new HostScope(orgId, null), TaxYear);
+
+        var line = Assert.Single(report.Properties, l => l.PropertyId == a.Id);
+        Assert.Equal(1100m, line.GrossIncome);
+        Assert.Equal(100m, line.TouristTax);
     }
 }

@@ -35,7 +35,7 @@ public interface IGdprService
 
     /// <summary>
     /// Change of the marketing consent asked by the host. The host can never grant it (only the guest can, on the
-    /// check-in portal): <paramref name="marketingConsent"/> true raises <c>DomainRuleException</c>
+    /// check-in portal or at the checkout of the booking site): <paramref name="marketingConsent"/> true raises <c>DomainRuleException</c>
     /// (<c>gdpr_marketing_consent_host_grant_forbidden</c>, 422). A withdrawal needs the guest's documented request in
     /// <paramref name="note"/> (<c>gdpr_marketing_withdrawal_note_required</c>); withdrawing a consent that is not in
     /// force changes nothing.
@@ -48,7 +48,20 @@ public interface IGdprService
         string? actorUserId,
         CancellationToken cancellationToken = default);
 
-    Task<Dictionary<string, object>> ExportOrgFiscalDataAsync(Guid orgId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// The fiscal data of the org (Partita IVA, codice fiscale, the fiscal years and the taxpayers of the properties) and the
+    /// people who have access. An act of the holder of the org: the endpoint is open to the owner and the administrators only
+    /// (<c>OrgBillingAdmin</c>, AM-03b). The reach of the caller is applied anyway: the sections that belong to a property
+    /// (<c>propertyFiscalYears</c>, <c>propertyTaxpayers</c>) hold only the properties <paramref name="scope"/> reaches, so a
+    /// scope narrower than the org never reads another person's properties. For the holder (an org-wide scope) the answer is
+    /// complete and unchanged.
+    /// </summary>
+    /// <param name="scope">The caller's reach, from <see cref="Casazen.Core.Authorization.IHostScopeResolver"/>; its org must be <paramref name="orgId"/>.</param>
+    Task<Dictionary<string, object>> ExportOrgFiscalDataAsync(
+        Guid orgId,
+        Casazen.Core.Authorization.HostScope scope,
+        CancellationToken cancellationToken = default);
+
     Task AnonymizeOrgFiscalDataAsync(Guid orgId, CancellationToken cancellationToken = default);
 }
 

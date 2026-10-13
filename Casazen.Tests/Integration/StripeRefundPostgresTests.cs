@@ -215,13 +215,12 @@ public class StripeRefundPostgresTests : IAsyncLifetime
             db,
             new FakeStripeBillingService(Config),
             new EntitlementService(db, Config),
-            new VatCalculationService(),
-            Mock.Of<IOssRevenueTracker>(),
-            Mock.Of<ISdiEInvoiceService>(),
+            TestPlatformInvoices.Create(db, new FakeStripeBillingService(Config)),
             Mock.Of<IRentBillingService>(),
             RefundService(db),
             TestCheckoutPaymentSettlement.Create(db, stripe: _stripe.Object, emails: _emails.Object),
             TestDeferredCharges.Create(db, stripe: _stripe.Object, emails: _emails.Object),
+            Mock.Of<ISupplierPaymentWebhookService>(),
             NullLogger<StripeWebhookHandler>.Instance);
         await handler.HandleEventAsync(stripeEvent, source);
     }

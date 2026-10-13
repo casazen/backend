@@ -25,6 +25,13 @@ public sealed class EmailOptions
 
     public string FromName { get; set; } = "CasaZen";
 
+    /// <summary>
+    /// Test-only: base URL of a Resend-compatible mail catcher (<c>Email__ApiUrl</c>), used by the ephemeral stack of the
+    /// Golden Journey L3 (FN-03) so no email leaves the runner. Empty = the real Resend API. Refused outside Development
+    /// and Testing by <see cref="EmailOptionsValidator"/>, so it can never redirect production email.
+    /// </summary>
+    public string? ApiUrl { get; set; }
+
     /// <summary>True when an email can be handed to the provider: known provider, API key and a valid sender.</summary>
     public bool IsConfigured =>
         string.Equals(Provider, ResendProvider, StringComparison.OrdinalIgnoreCase)

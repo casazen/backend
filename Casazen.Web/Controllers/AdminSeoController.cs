@@ -21,6 +21,8 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.AdminOnly)]
 public class AdminSeoController(
     ISeoContentService seoContentService,
+    ISeoComuneCatalog comuneCatalog,
+    IAiRuntimeSettings aiSettings,
     IBackgroundJobClient backgroundJobClient,
     ILogger<AdminSeoController> logger) : ControllerBase
 {
@@ -109,11 +111,12 @@ public class AdminSeoController(
     private string ActorUserId() =>
         User.GetUserId() ?? throw new UnauthorizedAccessException("Admin without subject claim");
 
+    /// <summary>The pilot comuni of the SEO pages, as found in the official ISTAT list (empty until it is imported).</summary>
     [HttpGet("comuni")]
     [ProducesResponseType(typeof(IReadOnlyList<SeoComuneRegistryDto>), StatusCodes.Status200OK)]
-    public ActionResult<IReadOnlyList<SeoComuneRegistryDto>> ListComuni()
+    public async Task<ActionResult<IReadOnlyList<SeoComuneRegistryDto>>> ListComuni(CancellationToken cancellationToken)
     {
-        var items = ItalianComuneRegistry.All
+        var items = (await comuneCatalog.GetPilotsAsync(cancellationToken))
             .Select(c => new SeoComuneRegistryDto(c.Code, c.Name, c.RegionSlug, c.ComuneSlug))
             .ToList();
         return Ok(items);
@@ -128,12 +131,23 @@ public class AdminSeoController(
     [AiRateLimit]
     [ProducesResponseType(typeof(SeoGenerateAcceptedDto), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
-    public ActionResult<SeoGenerateAcceptedDto> Generate([FromBody] SeoGenerateRequestDto request)
+    public async Task<ActionResult<SeoGenerateAcceptedDto>> Generate(
+        [FromBody] SeoGenerateRequestDto request,
+        CancellationToken cancellationToken)
     {
-        var comuneCodes = request.ComuneCodes.Count > 0
+        IReadOnlyList<string> comuneCodes = request.ComuneCodes.Count > 0
             ? request.ComuneCodes
-            : ItalianComuneRegistry.AllCodes;
+            : (await comuneCatalog.GetPilotsAsync(cancellationToken)).Select(c => c.Code).ToList();
+        if (comuneCodes.Count == 0)
+        {
+            // No comune named and none of the pilots found: the official list is not imported (never "0 pages queued").
+            return this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                ComuneErrorCodes.DatasetUnavailable,
+                ComuneErrorCodes.DatasetUnavailableMessageKey);
+        }
 
         var pageTypes = request.PageTypes?.Count > 0
             ? request.PageTypes
@@ -157,6 +171,56 @@ public class AdminSeoController(
             comuneCodes.Count * filteredTypes.Count));
     }
 
+    /// <summary>
+    /// The AI provider in effect. The API key is never returned: only whether one is set and its last characters.
+    /// </summary>
+    [HttpGet("ai")]
+    [ProducesResponseType(typeof(AiAdminSettingsDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<AiAdminSettingsDto>> GetAiSettings(CancellationToken cancellationToken)
+    {
+        return Ok(await aiSettings.GetAdminViewAsync(cancellationToken));
+    }
+
+    /// <summary>
+    /// Saves the provider an admin chose. A key sent here replaces the stored one and is encrypted at rest; it takes
+    /// effect on the next generation, without a restart. <c>Stub</c> sends nothing to an external provider.
+    /// </summary>
+    [HttpPut("ai")]
+    [ProducesResponseType(typeof(AiAdminSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<AiAdminSettingsDto>> UpdateAiSettings(
+        [FromBody] UpdateAiSettingsRequest body,
+        CancellationToken cancellationToken)
+    {
+        var updated = await aiSettings.UpdateAsync(
+            new UpdateAiSettingsCommand(body.Provider, body.ApiKey, body.ClearApiKey, body.Model, body.BaseUrl, ActorUserId()),
+            cancellationToken);
+        logger.LogInformation(
+            "AI provider set to {Provider} by {Actor}; external active: {ExternalActive}",
+            updated.Provider, ActorUserId(), updated.ExternalActive);
+        return Ok(updated);
+    }
+
+    /// <summary>
+    /// Stores a draft the admin wrote for this page. It is not published: the admin still approves the revision they read.
+    /// </summary>
+    [HttpPost("pages/{id:guid}/draft")]
+    [ProducesResponseType(typeof(SeoPageAdminDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<SeoPageAdminDetailDto>> SaveDraft(
+        Guid id,
+        [FromBody] SaveSeoDraftRequest body,
+        CancellationToken cancellationToken)
+    {
+        var detail = await seoContentService.SaveManualDraftAsync(
+            new SaveSeoDraftCommand(id, body.BodyHtml, body.Title, body.MetaDescription, ActorUserId()),
+            cancellationToken);
+        return Ok(detail);
+    }
+
     [HttpGet("budget")]
     [ProducesResponseType(typeof(PlatformAiBudgetDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PlatformAiBudgetDto>> GetBudget(CancellationToken cancellationToken)
@@ -176,3 +240,20 @@ public record ApproveSeoRevisionRequest(
 
 /// <summary>Withdrawal of the published text; <c>Note</c> (optional) is kept in the audit.</summary>
 public record WithdrawSeoPageRequest([param: MaxLength(1000)] string? Note = null);
+
+/// <summary>
+/// Provider saved from the admin panel. <c>ApiKey</c> empty: keep the stored key. <c>ClearApiKey</c>: drop it.
+/// <c>Model</c> empty: use the model of the server configuration.
+/// </summary>
+public record UpdateAiSettingsRequest(
+    [param: Required, MaxLength(32)] string Provider,
+    [param: MaxLength(500)] string? ApiKey = null,
+    bool ClearApiKey = false,
+    [param: MaxLength(100)] string? Model = null,
+    [param: MaxLength(300)] string? BaseUrl = null);
+
+/// <summary>A draft written by the admin. HTML or plain text; it stays unpublished until the review.</summary>
+public record SaveSeoDraftRequest(
+    [param: Required, MaxLength(100_000)] string BodyHtml,
+    [param: MaxLength(300)] string? Title = null,
+    [param: MaxLength(500)] string? MetaDescription = null);

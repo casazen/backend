@@ -1,6 +1,7 @@
 // File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
@@ -13,6 +14,8 @@ using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
+using Casazen.Core.Options;
+using Casazen.Infrastructure.OfficialData;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Services.ICal;
@@ -38,6 +41,14 @@ public static class ServiceCollectionExtensions
     {
         var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
             configuration.GetConnectionString("DefaultConnection"));
+        // Bounded Npgsql pool (HOSTING): the EF contexts of requests and jobs share Database:MaxPoolSize connections.
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            connectionString = DatabaseConnectionSettings
+                .Resolve(configuration, connectionString, hangfireRegistered: false)
+                .ForEntityFramework();
+        }
+
         services.AddDbContext<AppDbContext>(options =>
         {
             if (!string.IsNullOrEmpty(connectionString))
@@ -182,6 +193,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserAuthorizationSnapshotStore>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserAuthorizationCache>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
+        // AM-01: the org's people (OrgMember) and, in the same transaction, the memberships that project their role.
+        services.AddScoped<IOrgMembershipService, OrgMembershipService>();
+        // AM-03: which properties a caller reaches (from the org membership, in the authorization snapshot), and who is the
+        // holder of the org for the acts the law ties to the landlord (RLI delega, IMU communication).
+        services.AddScoped<IHostScopeResolver, HostScopeResolver>();
+        services.AddScoped<IOrgHolderService, OrgHolderService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
         // PL-02: host contexts only after the onboarding and the current consents; refusals answer 403 onboarding_required.
         services.AddScoped<IHostOnboardingGate, HostOnboardingGate>();
@@ -264,15 +281,26 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
         // Host dashboard KPIs per period and iCal feeds widget (PC-16).
         services.AddScoped<IHostDashboardService, HostDashboardService>();
+        // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
+        services.AddScoped<IHostTodayService, HostTodayService>();
+        services.AddScoped<IComplianceMissingService, ComplianceMissingService>();
+        // Lists that hold up with many rows: bookings by days, status and text, a page at a time; payments by booking and period (SR-03).
+        services.AddScoped<IBookingSearchService, BookingSearchService>();
+        services.AddScoped<IPaymentListService, PaymentListService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
         // Refunds and cancellations on Stripe Connect (BK-02, docs/runbooks/stripe.md "Refunds").
         services.AddScoped<PaymentRefundService>();
         services.AddScoped<IPaymentRefundService>(sp => sp.GetRequiredService<PaymentRefundService>());
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
+        // Guest self-service cancellation via signed link (BK-02, BK-07, PO 2026-10-08).
+        services.AddScoped<IGuestBookingCancellationService, GuestBookingCancellationService>();
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();
+        services.AddScoped<ICalendarBlockService, CalendarBlockService>();
+        // Scheduled change of rental mode of a property: preview, creation, the hourly application (PM-02).
+        services.AddScoped<IPropertyModeService, PropertyModeService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
@@ -297,10 +325,12 @@ public static class ServiceCollectionExtensions
         // CO-15: guest data rights and retention per category (docs/runbooks/gdpr.md); no period has a default.
         services.AddScoped<GuestDataEraser>();
         services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
+        services.AddScoped<ILeasePartyPrivacyService, LeasePartyPrivacyService>();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
+        services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
@@ -317,30 +347,62 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
+        services.AddScoped<IOrgBrandingService, OrgBrandingService>();
+        services.AddScoped<IOrgSiteDocumentService, OrgSiteDocumentService>();
+        // The hosts that resolve to no org are remembered, bounded, across requests (BK-16).
+        services.AddSingleton<PublicHostMissCache>();
         services.AddScoped<IPublicHostResolver, PublicHostResolver>();
+        // Origins of the orgs' own sites (subdomains and verified custom domains), public endpoints only (BK-16).
+        services.AddScoped<ICorsOriginSource, OrgHostCorsOriginSource>();
+        // Where an org's public site lives (own host or platform path) and its canonical URLs (BK-16).
+        services.AddScoped<PublicOrgSiteUrls>();
+        // Pages and sitemaps of the public site as crawlers read them (BK-15).
+        services.AddScoped<Casazen.Web.Seo.IPublicSeoService, Casazen.Web.Seo.PublicSeoService>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();
+        services.AddScoped<IDnsRecordLookup, DnsClientRecordLookup>();
+        // Custom domains on the Vercel project: add, verify, remove (BK-17, A3-25); no call without the token and project.
+        // No redirects (the bearer token never follows one to another host) and a bounded answer.
+        services.AddHttpClient<IVercelDomainsClient, Casazen.Infrastructure.External.VercelDomainsClient>(client =>
+                client.MaxResponseContentBufferSize = 1024 * 1024)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddScoped<IDomainVerificationService, DomainVerificationService>();
+        services.AddScoped<IDomainRecheckService, DomainRecheckService>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IOrgDomainService, OrgDomainService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<IBillingCheckoutService, BillingCheckoutService>();
-        services.AddScoped<IVatCalculationService, VatCalculationService>();
-        services.AddScoped<IViesService, ViesService>();
-        services.AddScoped<ISdiEInvoiceService, SdiEInvoiceService>();
+        // PL-13: VAT computed by Stripe Tax (no rate in code); no SDI provider is integrated in this build, so the
+        // e-invoices are issued manually (health check "einvoicing", docs/runbooks/billing-tax.md).
+        services.AddScoped<ISdiEInvoiceProvider, UnconfiguredSdiEInvoiceProvider>();
+        services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
-        services.AddScoped<IOssRevenueTracker, OssRevenueTracker>();
-        services.AddScoped<IRentBillingService, NullRentBillingService>();
+        services.AddScoped<IRentBillingService, RentBillingService>();
+        // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
+        services.AddScoped<IRentRegisterService, RentRegisterService>();
+        services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
         // Guests of a stay and official Alloggiati code tables (CO-12).
         services.AddScoped<IAlloggiatiCodeTableService, AlloggiatiCodeTableService>();
+        services.AddHttpClient<OfficialSourceDownloader>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-official-reference-data/1.0");
+        });
+        services.AddScoped<IOfficialReferenceDataRefreshService, OfficialReferenceDataRefreshService>();
+        services.AddScoped<IComuneOfficialProfileService, ComuneOfficialProfileService>();
+        services.AddOptions<OfficialReferenceDataOptions>()
+            .BindConfiguration(OfficialReferenceDataOptions.SectionName);
         services.AddScoped<IStayGuestService, StayGuestService>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         // D.L. 145/2023 safety checklist of a short-stay property (CO-07).
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
         services.AddScoped<IPropertyComplianceStatusService, PropertyComplianceStatusService>();
+        services.AddSingleton<IDemoEnvironmentGate, Casazen.Web.Demo.HostDemoEnvironmentGate>();
+        services.AddScoped<IDemoEnvironmentService, DemoEnvironmentService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
         // Single PDF renderer (LT-09, A7-14): A4, wrapping, pagination, embedded Unicode fonts. Stateless.
@@ -366,8 +428,54 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
+        // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly
+        // maintenance (reminders, expiry, deletion of the closed ones). All behind the OrgTeam flag at the endpoints.
+        services.AddScoped<IOrgSeatService, OrgSeatService>();
+        services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
+        services.AddScoped<IOrgInvitationService, OrgInvitationService>();
+        services.AddScoped<IOrgTeamService, OrgTeamService>();
+        // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
+        services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();
+        services.AddScoped<IOrgInvitationMaintenanceService, OrgInvitationMaintenanceService>();
+        // AM-02b: the activity log of the org (ids and codes only), written inside the unit of work of the services above and of
+        // the plan and settings of the org; its list and CSV; the requests for access to the administrators; its retention.
+        services.AddScoped<IActivityLog, ActivityLog>();
+        services.AddScoped<IOrgActivityService, OrgActivityService>();
+        services.AddScoped<IOrgAccessRequestService, OrgAccessRequestService>();
+        services.AddScoped<IOrgActivityRetentionService, OrgActivityRetentionService>();
+        services.AddScoped<IAccountEmailResolver, AccountEmailResolver>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
+        // SE-04: events of the SEO funnel (no personal data) and the featured properties of a comune.
+        services.AddScoped<ISeoEventService, SeoEventService>();
+        services.AddScoped<ISeoFeaturedPropertiesService, SeoFeaturedPropertiesService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
+        // The supplier's catalog of services with prices (SP-02): rows keyed by the supplier org, not tenant-filtered.
+        services.AddScoped<ISupplierServiceCatalogService, SupplierServiceCatalogService>();
+        // The supplier's agenda (SP-03): hours, time off, blocks, rules, calendar and the input of the slot planner. Rows keyed
+        // by the supplier org, not tenant-filtered; every write under the SupplierCalendarSync lock.
+        services.AddScoped<ISupplierAgendaService, SupplierAgendaService>();
+        // The anonymous read side of the supplier showcase (SP-09): services, free slots and price estimate, behind the flag
+        // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
+        services.AddSingleton<PublicSupplierSlotCache>();
+        services.AddScoped<IPublicSupplierShowcaseService, PublicSupplierShowcaseService>();
+        // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
+        services.AddScoped<ISupplierAdminService, SupplierAdminService>();
+        // Invitation of new independent hosts by admins and hosts: limits are configuration (HostInvites), validated at startup.
+        services.AddOptions<Casazen.Core.Options.HostInviteOptions>()
+            .BindConfiguration(Casazen.Core.Options.HostInviteOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.HostInviteOptions>, Casazen.Core.Options.HostInviteOptionsValidator>();
+        services.AddScoped<IHostInviteService, HostInviteService>();
+        services.AddScoped<IHostInviteRetentionService, HostInviteRetentionService>();
+
+        // Official ISTAT comuni list (SU-04): read side, import (admin upload and the seed file of the deploy), the SEO view,
+        // the supplier matching by ISTAT code and the validated pilot comuni of the supplier registration.
+        services.AddScoped<IComuneDirectory, ComuneDirectory>();
+        services.AddScoped<IComuneImportService, ComuneImportService>();
+        services.AddScoped<ISeoComuneCatalog, SeoComuneCatalog>();
+        services.AddScoped<ISupplierComuneMatcher, SupplierComuneMatcher>();
+        services.AddScoped<ISupplierPilotComuni, SupplierPilotComuni>();
+        services.AddScoped<IPropertyComuneResolver, PropertyComuneResolver>();
 
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
         services.AddOptions<SupplierRegistrationOptions>()
@@ -375,9 +483,68 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<SupplierRegistrationOptions>, SupplierRegistrationOptionsValidator>();
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
-        services.AddScoped<IServiceRequestService, ServiceRequestService>();
-        // Supplier dashboard KPIs from the service requests (SU-11, A4-15).
+        // Service requests with their time and price (SP-04): the emails and pushes to the two parties, the lifecycle after the
+        // take, the photos of the work; the times and the tolerance are configuration (Suppliers:ServiceRequests), validated at startup.
+        services.AddOptions<Casazen.Core.Options.ServiceRequestOptions>()
+            .BindConfiguration(Casazen.Core.Options.ServiceRequestOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.ServiceRequestOptions>, Casazen.Core.Options.ServiceRequestOptionsValidator>();
+        services.AddScoped<ServiceRequestNotifier>();
+        // Payment of the service requests inside CasaZen (SP-15a, decision D2): direct charge on the supplier's Stripe account with
+        // the platform commission. The commission and the times are configuration (SupplierPayments), validated at startup: the
+        // percentage has no default in code. The gateway is the only place that sets the application fee.
+        services.AddOptions<Casazen.Core.Options.SupplierPaymentsOptions>()
+            .BindConfiguration(Casazen.Core.Options.SupplierPaymentsOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierPaymentsOptions>, Casazen.Core.Options.SupplierPaymentsOptionsValidator>();
+        services.AddSingleton<ISupplierPaymentGateway, StripeSupplierPaymentGateway>();
+        // The payment service holds the payer's side (SP-15a) and, in its own interfaces, the Stripe webhook, the jobs and the admin
+        // refunds (SP-15b): one instance per scope, so they share the payment lock and the way a link is issued.
+        services.AddScoped<SupplierPaymentService>();
+        services.AddScoped<ISupplierPaymentService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentWebhookService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentJobService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentRefundService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierPaymentAdminService, SupplierPaymentAdminService>();
+        services.AddScoped<ISupplierPaymentJobScheduler, SupplierPaymentJobScheduler>();
+        // One instance per request for both doors (SP-11): the hosts' and the suppliers' operations, and the narrow set of what the
+        // customer of a public showcase does to its own request, which only the customer's area (IShowcaseBookingManager) uses.
+        services.AddScoped<ServiceRequestService>();
+        services.AddScoped<IServiceRequestService>(provider => provider.GetRequiredService<ServiceRequestService>());
+        services.AddScoped<IShowcaseRequestCustomerActions>(provider => provider.GetRequiredService<ServiceRequestService>());
+        // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
+        services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
+
+        // Booking from a supplier's public showcase (SP-10, flag SupplierShowcaseBooking): hold, e-mail check, request. The options
+        // (Suppliers:Showcase, and Suppliers:CustomerIndexKey for the HMAC of the customers' e-mail) are validated at startup: with the
+        // flag on, the version of the privacy notice and (outside Development and Testing) the key are required.
+        services.AddOptions<Casazen.Core.Options.ShowcaseBookingOptions>()
+            .BindConfiguration(Casazen.Core.Options.ShowcaseBookingOptions.SectionName)
+            .ValidateOnStart();
+        services.AddOptions<Casazen.Core.Options.ServiceCustomerIndexOptions>()
+            .BindConfiguration(Casazen.Core.Options.ServiceCustomerIndexOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<Casazen.Core.Options.ShowcaseBookingOptionsValidator>();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.ShowcaseBookingOptions>>(
+            provider => provider.GetRequiredService<Casazen.Core.Options.ShowcaseBookingOptionsValidator>());
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.ServiceCustomerIndexOptions>>(
+            provider => provider.GetRequiredService<Casazen.Core.Options.ShowcaseBookingOptionsValidator>());
+        services.AddSingleton<IServiceCustomerIndex, ServiceCustomerIndex>();
+        services.AddScoped<IShowcaseHoldReader, ShowcaseHoldReader>();
+        services.AddScoped<IServiceCustomerReader, ServiceCustomerReader>();
+        services.AddScoped<ShowcaseBookingNotifier>();
+        services.AddScoped<IShowcaseBookingService, ShowcaseBookingService>();
+        // The customer's own area of a booking (SP-11): find it with the code and the e-mail, cancel it, move it, answer a proposed time.
+        services.AddScoped<IShowcaseBookingManager, ShowcaseBookingManager>();
+        // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the
+        // customers' data: their recurring jobs are registered whatever the flags say.
+        services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
+        services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();
+        services.AddScoped<IServiceCustomerPrivacyService, ServiceCustomerPrivacyService>();
+        // Supplier dashboard KPIs from the service requests (SU-11, A4-15) and the money of the console home (SP-04).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
+        // The home ("Oggi") and the activation checklist of the supplier console (SP-04).
+        services.AddScoped<ISupplierTodayService, SupplierTodayService>();
         // Supplier inbox, history and request detail: address, date and host contact after the take (SU-08, A4-14).
         services.AddScoped<ISupplierServiceRequestReader, SupplierServiceRequestReader>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();

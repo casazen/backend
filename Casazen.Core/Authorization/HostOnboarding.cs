@@ -1,20 +1,23 @@
 namespace Casazen.Core.Authorization;
 
 /// <summary>
-/// Host onboarding gate (PL-02, A1-05): the host contexts (<c>short-rent</c>, <c>long-rent</c>) and their permissions
-/// are granted only after the onboarding is completed (<c>User.OnboardingCompletedAt</c>) and the Terms of Service,
-/// Privacy notice and DPA of the <b>current</b> versions have been accepted for the user's org. Until then the API
-/// answers 403 with <see cref="RequiredCode"/>, whatever the JWT roles or the DB role say. Admin and supplier contexts
-/// are not host contexts and never wait for it.
+/// Host onboarding gate (PL-02, A1-05): the host contexts (<c>short-rent</c>, <c>long-rent</c> and, since AM-01, the
+/// org's <c>account</c>) and their permissions are granted only after the onboarding is completed
+/// (<c>User.OnboardingCompletedAt</c>) and the Terms of Service, Privacy notice and DPA of the <b>current</b> versions
+/// have been accepted for the user's org. Until then the API answers 403 with <see cref="RequiredCode"/>, whatever the
+/// JWT roles or the DB role say. Admin and supplier contexts are not host contexts and never wait for it.
 /// </summary>
 public static class HostOnboarding
 {
     /// <summary>Stable <c>code</c> of the 403 ProblemDetails; the web app opens the onboarding, the mobile app its activation screen.</summary>
     public const string RequiredCode = "onboarding_required";
 
-    /// <summary>Contexts withheld until the host onboarding is complete.</summary>
+    /// <summary>
+    /// Contexts withheld until the host onboarding is complete: the two rental contexts and the org's account
+    /// (<see cref="AccountContext"/>, AM-01). It is not exempt from the onboarding and consents of the web app.
+    /// </summary>
     public static readonly IReadOnlySet<string> HostContextKeys =
-        new HashSet<string>(["short-rent", "long-rent"], StringComparer.OrdinalIgnoreCase);
+        new HashSet<string>(["short-rent", "long-rent", AccountContext.Key], StringComparer.OrdinalIgnoreCase);
 
     public static bool IsHostContext(string contextKey) => HostContextKeys.Contains(contextKey);
 }

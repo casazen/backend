@@ -28,6 +28,7 @@ public class BookingApprovalController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     ILogger<BookingApprovalController> logger,
     TimeProvider? timeProvider = null) : ControllerBase
 {
@@ -40,7 +41,8 @@ public class BookingApprovalController(
         CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return Unauthorized();
 
         var requests = await onSiteRequests.GetAwaitingHostApprovalAsync(scope, cancellationToken);

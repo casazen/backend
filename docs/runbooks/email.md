@@ -41,6 +41,7 @@ Railway → service `casazen/backend` → environment → **Variables**:
 
 Notes:
 
+- `Email__ApiUrl` is a **test-only** override (mail catcher of the E2E stack, `golden-journey-l3.md`): never set it on Railway. Outside Development/Testing the app refuses to start with it.
 - The old variable `Email__ResendApiKey` is still read when `Email__ApiKey` is empty. Rename it to `Email__ApiKey` and delete the old one. If `Email__ApiKey` already exists with a SendGrid key (`SG.…`), replace it with the Resend key: validation rejects keys that do not start with `re_`.
 - `Email__SendGridApiKey`, `Email__Smtp*`, `SendGrid__ApiKey`, `App__SupplierLoginUrl` and `App__FrontendBaseUrl` are no longer read: delete them.
 - **Set the variables before the release reaches `main`.** From this version the production service does not start without `Email__ApiKey`, `Email__FromAddress` and `App__PublicSiteBaseUrl`: the deploy log shows lines such as `Email__FromAddress is missing: set a sender of the domain verified on Resend.`
@@ -69,6 +70,9 @@ On the **test** environment first, then on production after the release:
 ## Data kept in Hangfire
 
 The queued job carries recipient, subject and HTML. The check-in link job carries only the session id and the raw token (the email is built when it is sent). Hangfire removes succeeded jobs after 24 hours; failed deliveries are deleted after the last retry (each failure is logged without the recipient address).
+The `org-invitation` and `org-invitation-reminder` jobs (AM-02) carry the HTML with the **live link and its secret token**: it
+is readable in the job arguments until Hangfire removes the succeeded job (24 hours), so the Hangfire schema and dashboard
+stay restricted; after that only the SHA-256 of the token exists (`docs/runbooks/org-team.md` section 15).
 
 ## Complete list of emails
 
@@ -95,9 +99,30 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `alloggiati-failed` | host | Alloggiati Web communication rejected or failed | same, once per stay |
 | `checkout-reminder` | host | check-out day of a confirmed or checked-in stay, 20:00 property time | same, once per check-out date |
 | `property-compliance-suspended` | host | an active property lost an activation requirement (CIN, required document, safety checklist, base data) and was suspended from the booking site; the first check of a property published before CO-06 only with `Compliance__StatusCheck__NotifyOnFirstCheck=true` ([compliance.md](compliance.md#3-email-to-the-host)) | `PropertyComplianceStatusService` (request or `property-compliance-check` job), queued, once per suspension |
+| `property-mode-change-scheduled` | host | a change of rental mode (short stays ↔ long-term) was programmed: the day, what closes, how to withdraw it (PM-02, [property-rental-mode.md §8.6](property-rental-mode.md#86-e-mails-to-the-host)) | `PropertyModeService.ScheduleAsync` → `NotificationService`, queued, once per change |
+| `property-mode-change-applied` | host | the property changed mode at midnight of Rome | `property-mode-change` job → `NotificationService`, queued, once per change |
+| `property-mode-change-failed` | host | the job could not apply the change (stays, imported blocks or leases in the way): why and the first free day | same, once per change |
 | `service-request-created` | supplier | new service request | `ServiceRequestService`, queued |
 | `service-request-status-changed` | host | request taken / completed / rejected by the supplier | `ServiceRequestService`, queued |
+| `service-payment-request`, `service-payment-reminder` | host org (the payer) | a service paid inside CasaZen was completed / the supplier asks again: the price, who asks and the link of the payment page (valid `SupplierPayments__PaymentLinkValidityDays`); never the commission (SP-15a) | `ServiceRequestService` (completion, confirmation of the amount) and `SupplierPaymentService.RequestPaymentAsync`, queued after the save; a link that cannot be queued is taken back |
+| `service-payment-received` | supplier | a payment made online was received: gross, CasaZen commission, net before Stripe's fees, no payout date promised (SP-15a template, sent by the webhook and the sync job of SP-15b when a payment is recorded as paid, once) | `SupplierPaymentService.Webhook` / `.Notices` (SP-15b), queued after the commit |
+| `service-payment-offline-recorded` | host org (the payer) | the supplier recorded a payment received outside CasaZen, with its reason (SP-15a) | `SupplierPaymentService.RecordOfflineAsync`, queued |
+| `service-payment-failed` | host org (the payer) | a payment that was in flight (a SEPA debit) failed afterwards: what failed, the price, **a new link** (the previous one stops working); never the commission (SP-15b) | `SupplierPaymentService.Notices`, queued after the commit of the webhook or the sync |
+| `service-payment-refunded-payer` | host org (the payer) | a refund of the payment succeeded: how much, and that the time to reach the bank depends on the bank; never the commission, no date promised (SP-15b) | `SupplierPaymentService.Notices`, queued |
+| `service-payment-refunded-supplier` | supplier | the same refund: how much went back to the payer from its Stripe balance and, when the payment carried a commission, the part of CasaZen's commission that came back to it (SP-15b) | `SupplierPaymentService.Notices`, queued |
+| `service-payment-admin-alert` | the active platform admins (users with the `Admin` role that have an email) | a payment to review (what Stripe reported does not match what was asked for, or a charge for a payment already withdrawn) or a dispute on a payment: ids, supplier name, amount and Stripe's codes, **no data of the payer** (SP-15b; with no admin email an error is logged) | `SupplierPaymentService.Notices`, queued |
 | `supplier-invite` | prospective supplier | invite by a platform admin | `SupplierService`, queued |
+| `supplier-booking-verification` | customer of a supplier's showcase | the customer booked a slot: the link that checks its address (SP-10) | `ShowcaseBookingNotifier`, queued |
+| `supplier-booking-receipt` | customer | the address is checked: code, time by which the supplier answers, estimate | same |
+| `supplier-booking-new-request` | supplier | the address is checked: new request with comune and "Nome C." only (D9) | same |
+| `supplier-booking-accepted`, `-declined`, `-time-proposed`, `-cancelled`, `-expired` | customer | the supplier took, refused, proposed another time for, or cancelled the request; nobody answered in time (the job) | `ServiceRequestNotifier` → `ShowcaseBookingNotifier`, queued |
+| `supplier-booking-reminder` | customer | 18:00 (Rome) of the day before the work, once, if the supplier took the request before that time | `service-request-reminders` job → `ShowcaseBookingNotifier`, queued |
+| `supplier-booking-cancellation-receipt`, `-proposal-expired` | customer | it cancelled its request (receipt); the day to answer the time the supplier proposed passed and the request was cancelled (SP-11) | `ShowcaseBookingNotifier`, queued |
+| `supplier-booking-cancelled-by-customer`, `-rescheduled-by-customer`, `-proposal-answered-by-customer`, `-proposal-lapsed` | supplier | the customer cancelled, moved, accepted or turned down the proposed time, or let it lapse; comune and "Nome C." only, plus a push (SP-11) | `ShowcaseBookingNotifier`, queued |
+| `org-invitation` | invitee | an owner or administrator invites a person to the org team, or sends the invitation again (AM-02): the link carries the secret token and works for 7 days; a newer link replaces it | `OrgInvitationService`, queued after the commit; language chosen by the inviter |
+| `org-invitation-reminder` | invitee | the third day after the invitation, while it is pending, with a **new link** (AM-02) | `org-invitation-maintenance` job, queued, once per invitation; only with `Features__OrgTeam` on |
+| `org-invitation-expired` | inviter (the owner when the inviter no longer manages the org) | nobody accepted within 7 days: the seat is free again (AM-02) | same job, queued, once per invitation; only with the flag on; Italian |
+| `org-access-request` | the active owner and administrators of the org, but the person who asks (AM-02b) | a member asked for access to an area or a page (`POST /api/orgs/me/access-requests`): who asks, its role, what for, its note if it wrote one (200 characters at most, HTML-encoded, in the email and nowhere else) and the link to the people page | `OrgAccessRequestService`, queued after the commit, one for each recipient; the language of the request (`Accept-Language` it/en, Italian otherwise); at most three requests a day for each person |
 | `rli-deadline-reminder`, `rli-deadline-overdue`, `rli-extra-eu-notice` | landlord | RLI registration deadline / extra-EU tenant (long rents) | `RliDeadlineReminderJob` (job) |
 
 Not sent by design: bookings entered by the host (`Manual`, PC-01) and the host's own confirmations or cancellations get no email to the host; manual bookings get no confirmation to the guest (the host can send the check-in link). There is no guest self-service cancellation yet, so no "cancelled by the guest" email to the host. No email for the CIN deadline alert (CO-20: only logged as not delivered).
@@ -122,7 +147,54 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 
 ### Language
 
-The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done.
+The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done. The exception is the org team (AM-02): the invitation and its reminder go out
+in the language the inviter chose (`it`, the default, or `en`, stored on the invitation); the note to the inviter is in Italian.
+
+## Showcase booking emails (SP-10)
+
+Code: `Casazen.Infrastructure/Services/ShowcaseBookingNotifier.cs` (what is sent, when, to whom), `EmailTemplates.SupplierBooking.cs` (the nine templates),
+texts `SupplierBooking*` in `EmailTexts.resx` and `EmailTexts.en.resx`. Details of the flow: [suppliers.md § 23.8](suppliers.md#23-booking-from-the-suppliers-showcase-hold-e-mail-check-request--sp-10).
+
+- **Who and in which language.** The customer in the language it chose when it booked (`it` or `en`, `ServiceCustomerLocales`); the supplier always in Italian.
+  The customer's address is the one it typed; a customer whose data were anonymized (retention) is not written to.
+- **After the commit, by the winner only.** The verification e-mail is rendered **before** the hold is saved (a missing `App__PublicSiteBaseUrl` stops the
+  booking instead of sending a link to nothing) and queued after it; the others are queued after the change that causes them is saved and only by the party
+  that won the transition (a race loser sends nothing). A failure to queue is logged and never undoes the change.
+- **The supplier never learns more than D9 allows**: comune, "Nome C.", time and estimate; not the address, the contacts or the full name.
+- **Only what is true** (D24): no "guaranteed price", no "answers in an hour", nothing about payment. The reminder is promised in the e-mail of the take only
+  when it will really be sent. A test searches every template, in both languages, for the phrases that must never appear.
+- **Links** (all built by `PublicSiteLinks`): `…/fornitori/{slug}/conferma?hold={id}&token={token}` (the token is single use and works for 30 minutes),
+  `…/fornitori/{slug}/richiesta?code={code}` (the page of the request, SP-11), `…/fornitori/{slug}` and the supplier's inbox.
+- **What Hangfire keeps.** Like every queued e-mail the job carries the recipient, the subject and the HTML for 24 hours: the customer's e-mails carry its first
+  name and the verification e-mail the link with the token (single use, valid for the minutes of the hold). It is outside the encryption at rest of the
+  booking ([suppliers.md § 23.7](suppliers.md#237-privacy-and-encryption)) and the same for every e-mail of the product.
+
+## Showcase booking emails: the customer's own area (SP-11)
+
+Code: `ShowcaseBookingNotifier` (`NotifyCancelledByCustomerAsync`, `NotifyRescheduledByCustomerAsync`, `NotifyProposalAnsweredByCustomerAsync`,
+`NotifySupplierOfLapsedProposalAsync`, and `NotifyCustomerOfStatusAsync` for the lapsed proposal), `EmailTemplates.SupplierBooking.cs` (the six templates) and
+`EmailTemplates.Push.cs` (the four pushes), texts `SupplierBooking*` in `EmailTexts.resx` and `EmailTexts.en.resx`. Flow and rules:
+[suppliers.md § 24](suppliers.md#24-the-customers-own-area-find-cancel-move-and-answer-a-proposed-time--sp-11). Same rules as the SP-10 ones
+above: after the commit, by the winner of the transition only, a failure is logged and never undoes the change, the customer in its language and the
+supplier in Italian, the supplier reads comune and "Nome C." only (D9).
+
+| Template | To | When |
+|---|---|---|
+| `supplier-booking-cancellation-receipt` | customer | it cancelled its request: what was cancelled, that nothing is owed, the reason it gave, the link to the supplier's showcase |
+| `supplier-booking-cancelled-by-customer` | supplier | the customer cancelled: service, comune, "Nome C.", time, its reason, and for a taken job cancelled inside the free notice that the notice was short (+ push `service-request-cancelled`) |
+| `supplier-booking-rescheduled-by-customer` | supplier | the customer moved a new request to another time: both times, the time to answer by, that a proposal of the supplier no longer applies (+ push `service-request-rescheduled`, new type) |
+| `supplier-booking-proposal-answered-by-customer` | supplier | the customer accepted the proposed time (the request is taken) or turned it down (+ push `service-request-proposal-accepted` / `-rejected`) |
+| `supplier-booking-proposal-expired` | customer | the day to answer the proposed time passed and the request was cancelled (reason `ProposalNotAnswered`) |
+| `supplier-booking-proposal-lapsed` | supplier | the same event, told to the supplier: it was the customer who did not answer (+ push `service-request-cancelled`) |
+
+When the customer **accepts** the proposed time it also gets the e-mail of a taken request (`supplier-booking-accepted`) with the new time: it took the
+request on the supplier's behalf. The customer gets nothing for moving the booking or for turning a proposal down: the page it is on answers with the booking.
+
+- **Only what is true** (D24). "Nothing is owed" is true in v1 (D6); no refund is mentioned because none exists; the short notice is said only to the
+  supplier and only when it was short; a lapsed proposal is told as what it is (the customer did not answer), never as the supplier's silence. The
+  banned-phrase test (`SupplierBookingEmailTemplatesTests`) covers the six templates, every variant of them, in both languages.
+- **Pushes**: the supplier's devices, deduplicated by `PushDeliveryKeys` (`service-request:{id}:rescheduled:{time}` is new; the others reuse the key of
+  the status or of the answer). The mobile app does not know the type `service-request-rescheduled` yet (mobile follow-up): until it does, it is for the app to handle an unknown type.
 
 ## Adding a new email
 

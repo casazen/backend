@@ -61,6 +61,33 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(0, await CountRequestsAsync(s.PropertyId));
     }
 
+    /// <summary>
+    /// PL-07 (A1-35, A7-31): an enum field set to a value no member declares (as a number or a numeric string) is a
+    /// 400 validation_error from the JSON converter, instead of an undefined urgency stored with the request.
+    /// </summary>
+    [Theory]
+    [InlineData(7)]
+    [InlineData("7")]
+    public async Task Create_WithUndefinedUrgency_Returns400WithoutCreating(object urgency)
+    {
+        var s = await SeedScenarioAsync();
+        using var client = _factory.CreateAuthenticatedClient(s.HostId, "PropertyOwner");
+
+        var response = await client.PostAsJsonAsync("/api/service-requests", new
+        {
+            propertyId = s.PropertyId,
+            bookingId = s.BookingId,
+            supplierOrgId = s.SupplierOrgId,
+            category = "cleaning",
+            urgency,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("validation_error", problem.GetProperty("code").GetString());
+        Assert.Equal(0, await CountRequestsAsync(s.PropertyId));
+    }
+
     [Fact]
     public async Task GetInbox_AsSupplier_ReturnsCreatedRequest()
     {

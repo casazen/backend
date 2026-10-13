@@ -5,12 +5,12 @@ title: Service request host→supplier (v0 + payment tracking)
 phase: 1
 type: feature
 priority: P0
-status: specced
+status: shipped
 issue:
 depends_on: [supplier-console-web, tenant-boundary]
 blocks: [golden-journey-e2e, compliance-wizards]
 exit_contributes_to: GJ steps 7–10; ecosystem supply loop
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Micro-Marketplace v0 (US-021)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 Minimal **host → supplier** service loop: create `ServiceRequest`, supplier **presa in carico**, complete work, host marks payment. No full marketplace Connect take-rate in MVP — payment tracking + optional Stripe link later.
 
-**Phase:** 1 — MVP · **Type:** feature · **Status:** specced
+**Phase:** 1 — MVP · **Type:** feature · **Status:** shipped (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

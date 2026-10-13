@@ -21,7 +21,7 @@ public class UserAuthorizationCacheTests
     private const string UserId = "auth0|cache-user";
 
     /// <summary>Current legal document versions: the defaults, no configuration.</summary>
-    private static readonly LegalDocumentService Legal = new(new ConfigurationBuilder().Build());
+    private static readonly LegalDocumentService Legal = new(new ConfigurationBuilder().Build(), NullLogger<LegalDocumentService>.Instance);
 
     [Fact]
     public async Task GetAsync_SameRequestTwice_ReadsDatabaseOnce()

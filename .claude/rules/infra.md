@@ -14,7 +14,7 @@ Full setup guide: `docs/INFRA.md`
 
 - **Railway** deploys `casazen/backend` via GitHub integration — not via `railway up` in Actions
 - **Vercel** deploys `casazen/frontend` via GitHub integration
-- **GitHub Actions** (`ci-cd.yml`): build, test, format; `verify-test` / `verify-prod` curl health URLs only
+- **GitHub Actions** (`ci-cd.yml`): build, test, format. `verify-railway-deploy.yml` curls health URLs after that suite is green
 - **PR comments** (`deploy-preview.yml`): links to Railway test URL + Vercel preview — no deploy
 
 ## Database
@@ -55,7 +55,7 @@ HTTPS is NOT used inside the container — Railway handles it externally.
 
 | Where | What |
 |---|---|
-| **Railway** (test + prod) | `ConnectionStrings__DefaultConnection`, Auth0, Stripe, SendGrid, CORS, Hangfire |
+| **Railway** (test + prod) | `ConnectionStrings__DefaultConnection`, Auth0, Stripe, Resend (`Email__ApiKey`), CORS, Hangfire |
 | **Vercel** | All `VITE_*` |
 | **GitHub Variables** | `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL` (public URLs for CI only) |
 | **GitHub Secrets (optional)** | `SUPABASE_ANON_KEY` for keep-alive workflow |

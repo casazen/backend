@@ -59,15 +59,26 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         Assert.Equal(CommitSha, body.RootElement.GetProperty("commit").GetString());
 
         var checks = ReadChecks(body);
-        Assert.Equal(new[] { "auth0", "database", "email", "hangfire", "storage", "stripe" }, checks.Keys.Order().ToArray());
+        Assert.Equal(
+            new[] { "api-url", "auth0", "comuni", "database", "db-connections", "einvoicing", "email", "hangfire", "legal", "storage", "stripe", "vercel" },
+            checks.Keys.Order().ToArray());
         // Factory: Stripe secret key and Connect webhook secret are appsettings placeholders, no email provider,
         // no Hangfire (no connection string at startup), no Auth0 M2M client, local-disk storage.
         Assert.Equal("degraded", checks["stripe"]);
         Assert.Equal("degraded", checks["email"]);
         Assert.Equal("degraded", checks["hangfire"]);
         Assert.Equal("degraded", checks["auth0"]);
+        // BK-17 (D9): no Vercel token and project, so custom domains cannot be activated.
+        Assert.Equal("degraded", checks["vercel"]);
         Assert.Equal("degraded", checks["storage"]);
+        // LEGAL-TEXTS (D9): the versions in force (2026-06-v1) have no text, so the legal documents are not published.
+        // DEPLOY-CFG: the factory sets App:ApiBaseUrl (https) but publishes no legal text and no date in force.
+        Assert.Equal("healthy", checks["api-url"]);
+        Assert.Equal("degraded", checks["legal"]);
+        Assert.Equal("degraded", checks["einvoicing"]); // PL-13: no SDI provider in this build
         Assert.Equal(_factory.UsesPostgreSql ? "healthy" : "degraded", checks["database"]);
+        // The factory loads the official sample of the ISTAT list (SU-04): a list in place and every configured pilot comune in it.
+        Assert.Equal("healthy", checks["comuni"]);
     }
 
     [Fact]
@@ -180,6 +191,9 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
     private sealed class UnreachableDatabaseFactory : CasazenWebApplicationFactory
     {
         public const string UnreachableDatabaseName = "fd12_unreachable";
+
+        // The sample of the ISTAT list is written to the database at startup: this one is never reachable.
+        protected override bool SeedComuneSample => false;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {

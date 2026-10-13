@@ -1,0 +1,98 @@
+<!--
+  Bozza redatta da un agente AI su incarico del PO: richiede revisione di un legale prima dell'uso in produzione.
+  Informativa Privacy (artt. 13 e 14 GDPR), versione 2026-10-v1 (italiano, testo di riferimento). Sezioni identiche alla versione inglese.
+  I segnaposto {{...}} sono sostituiti dalla configurazione (docs/runbooks/legal-documents.md): se un dato obbligatorio manca
+  il documento non viene pubblicato. L'elenco dei sub-responsabili non è ripetuto qui: è la pagina dinamica /legale/sub-responsabili.
+  Non modificare questo file dopo che una versione è stata accettata: serve una nuova versione.
+-->
+<h2>1. Titolare del trattamento e contatti</h2>
+<p><strong>1.1</strong> Il titolare del trattamento dei dati descritti nelle sezioni 3 e 5 è <strong>{{Controller.Name}}</strong>, con sede legale in {{Controller.Address}}, partita IVA {{Controller.VatId}} (di seguito «CasaZen», «noi»).</p>
+<p><strong>1.2</strong> Per qualsiasi questione sulla protezione dei dati puoi scrivere a <a href="mailto:{{Controller.PrivacyEmail}}">{{Controller.PrivacyEmail}}</a> o alla PEC {{Controller.Pec}}.</p>
+{{#if Controller.DpoEmail}}<p><strong>1.3</strong> Il responsabile della protezione dei dati è raggiungibile a <a href="mailto:{{Controller.DpoEmail}}">{{Controller.DpoEmail}}</a>.</p>{{/if}}
+
+<h2>2. A chi si rivolge questa informativa e quali sono i nostri ruoli</h2>
+<p><strong>2.1</strong> Questa informativa è rivolta a: proprietari, gestori e agenzie che usano CasaZen (i «Clienti») e ai loro collaboratori; ai professionisti che si registrano come fornitori (i «Fornitori»); a chi visita le pagine pubbliche di CasaZen o ci scrive. Descrive i dati che trattiamo come <strong>titolari</strong>, ai sensi degli artt. 13 e 14 del Regolamento (UE) 2016/679 («GDPR»).</p>
+<p><strong>2.2</strong> Per i dati delle persone che il Cliente ospita o a cui loca un immobile (ospiti, accompagnatori, conduttori e altri soggetti) <strong>il titolare è il Cliente</strong>: CasaZen li tratta come <strong>responsabile del trattamento</strong> per suo conto, secondo l'<a href="{{Site.BaseUrl}}/legale/dpa">Accordo sul trattamento dei dati (DPA)</a> e con le informazioni della sezione 4. Se sei un ospite o un conduttore, l'informativa sul trattamento dei tuoi dati è quella che ti dà la struttura (il Cliente), a cui puoi rivolgere le richieste sui tuoi diritti.</p>
+<p><strong>2.3</strong> Il Servizio è destinato a persone maggiorenni che agiscono per la propria attività.</p>
+
+<h2>3. Quali dati trattiamo come titolare, da dove provengono e perché</h2>
+<p><strong>3.1</strong> <em>Account e identità</em>: nome, cognome, email, telefono, identificativo dell'account presso il servizio di autenticazione, ruoli e Organizzazione di appartenenza, contesti di lavoro, stato dell'account. Provengono da te, dal servizio di autenticazione (identificativo, email, verifica dell'email) o, per i collaboratori e i Fornitori invitati, da chi li ha invitati. Il conferimento è necessario per usare il Servizio.</p>
+<p><strong>3.2</strong> <em>Organizzazione e dati fiscali</em>: denominazione, indirizzo web del sito di prenotazione, email di contatto (pubblicata solo se scegli di renderla pubblica), codice fiscale e partita IVA, regime fiscale e dati fiscali dei proprietari degli immobili che inserisci. Provengono da te.</p>
+<p><strong>3.3</strong> <em>Abbonamento, fatturazione e pagamenti</em>: piano, stato dell'abbonamento, paese e partita IVA di fatturazione, identificativi dei clienti e degli abbonamenti presso Stripe, esito dei pagamenti. I dati della carta sono raccolti direttamente da Stripe e non li riceviamo. Per l'incasso dei pagamenti degli ospiti sul tuo account Stripe Connect, Stripe raccoglie direttamente i dati di identificazione e verifica richiesti dalla normativa; a noi arrivano lo stato dell'account e gli identificativi, e i campi ancora da completare.</p>
+<p><strong>3.4</strong> <em>Profilo Fornitore e richieste di intervento</em>: denominazione, email, telefono, comuni serviti, categorie, descrizione, foto, disponibilità, calendario collegato; le richieste ricevute e il loro stato. Denominazione, categorie, comuni, descrizione, foto e disponibilità sono visibili sulla pagina pubblica del Fornitore.</p>
+<p><strong>3.5</strong> <em>Accettazioni e consensi</em>: quando accetti i documenti legali registriamo quale documento e quale versione, data e ora, utente, Organizzazione e indirizzo IP, per poter dimostrare l'accettazione.</p>
+<p><strong>3.6</strong> <em>Attribuzione delle iscrizioni</em>: se arrivi da una pagina informativa di CasaZen o da un link con parametri di campagna, dopo la prima registrazione associamo alla tua nuova Organizzazione la pagina di arrivo, il comune della pagina, il dominio del sito di provenienza e gli eventuali parametri UTM. Non contiene dati personali diretti.</p>
+<p><strong>3.7</strong> <em>Dati tecnici e di sicurezza</em>: indirizzo IP (usato per limitare gli accessi abusivi e registrato con le accettazioni; i fornitori di hosting possono registrarlo nei propri registri di accesso), data e ora delle richieste, tipo di richiesta e di errore, registri tecnici in cui gli indirizzi email sono mascherati, eventi di sicurezza; per l'app mobile, il codice per le notifiche push, la piattaforma e un identificativo del dispositivo.</p>
+<p><strong>3.8</strong> <em>Comunicazioni</em>: le email di servizio che ti inviamo (ad esempio inviti, conferme, avvisi di scadenza o di sospensione), le notifiche push e i messaggi che ci invii.</p>
+<p><strong>3.9</strong> Non effettuiamo profilazione e non vendiamo dati personali.</p>
+
+<h2>4. Dati degli ospiti, dei conduttori e di altre persone (CasaZen come responsabile)</h2>
+<p><strong>4.1</strong> Per conto dei Clienti il Servizio tratta, secondo le funzioni che il Cliente usa: dati anagrafici e di contatto; data e luogo di nascita, cittadinanza e sesso; tipo, numero, luogo di rilascio e scadenza del documento d'identità ed eventuale copia caricata; date e importi delle prenotazioni, richieste speciali, pagamenti e rimborsi; dati dei componenti del gruppo; dati delle parti dei contratti di locazione (nome, codice fiscale, cittadinanza, email); stato del check-in e delle comunicazioni obbligatorie; consensi e informative mostrate.</p>
+<p><strong>4.2</strong> Le finalità, le basi giuridiche e i tempi di questi trattamenti sono decisi dal Cliente, che è tenuto a informare gli interessati. CasaZen li usa solo per eseguire il Servizio e le istruzioni del Cliente (DPA). Per esercitare i diritti su questi dati rivolgiti alla struttura; se scrivi a noi, inoltriamo la richiesta al Cliente senza ritardo.</p>
+<p><strong>4.3</strong> <em>Tempi di conservazione applicati dal Servizio per conto dei Clienti.</em> Il Servizio applica ogni notte i periodi seguenti a ciascuna categoria. Se per una categoria non è configurato alcun periodo, il Servizio non cancella nulla in automatico: i dati restano finché il Cliente non ne dispone la cancellazione o l'anonimizzazione con gli strumenti del Servizio.</p>
+<table>
+<thead><tr><th>Categoria</th><th>Periodo applicato dal Servizio</th></tr></thead>
+<tbody>
+<tr><td>Copie dei documenti d'identità caricate</td><td>{{#if Retention.DocumentScans}}{{Retention.DocumentScans}} dopo l'ultimo check-out dell'ospite{{#else}}nessun periodo applicato{{/if}}</td></tr>
+<tr><td>Dati per la comunicazione Alloggiati Web (nascita, cittadinanza, sesso, documento) e dati dei componenti del gruppo</td><td>{{#if Retention.AlloggiatiData}}{{Retention.AlloggiatiData}} dopo il check-out del soggiorno{{#else}}nessun periodo applicato{{/if}}</td></tr>
+<tr><td>Consenso al marketing dell'ospite</td><td>{{#if Retention.Marketing}}{{Retention.Marketing}} dalla data del consenso{{#else}}nessuna durata massima: il consenso dura fino alla revoca{{/if}}</td></tr>
+<tr><td>Dati fiscali e contabili dell'ospite (anonimizzazione del record)</td><td>{{#if Retention.FiscalData}}{{Retention.FiscalData}} dopo l'ultimo check-out dell'ospite{{#else}}nessun periodo applicato{{/if}}</td></tr>
+<tr><td>Dati delle parti dei contratti di locazione</td><td>{{#if Retention.LeaseParties}}{{Retention.LeaseParties}} dalla data di fine del contratto{{#else}}nessun periodo applicato; l'anonimizzazione avviene su richiesta, dopo la fine del contratto{{/if}}</td></tr>
+</tbody>
+</table>
+
+<h2>5. Finalità, basi giuridiche e conferimento</h2>
+<table>
+<thead><tr><th>Finalità</th><th>Base giuridica (GDPR)</th><th>Conferimento</th></tr></thead>
+<tbody>
+<tr><td>Creare e gestire l'account, fornire il Servizio, assistenza</td><td>Esecuzione del contratto (art. 6.1.b)</td><td>Necessario: senza questi dati non possiamo fornire il Servizio</td></tr>
+<tr><td>Abbonamento, fatturazione, incassi e adempimenti contabili e fiscali</td><td>Esecuzione del contratto (art. 6.1.b); obbligo di legge (art. 6.1.c)</td><td>Necessario per l'abbonamento e per la fatturazione</td></tr>
+<tr><td>Marketplace: mettere in contatto Clienti e Fornitori e trasmettere le richieste</td><td>Esecuzione del contratto (art. 6.1.b)</td><td>Necessario per usare il marketplace</td></tr>
+<tr><td>Comunicazioni di servizio (inviti, conferme, avvisi, scadenze, sospensioni)</td><td>Esecuzione del contratto (art. 6.1.b); legittimo interesse a informarti sul Servizio che usi (art. 6.1.f)</td><td>Necessario per il funzionamento del Servizio</td></tr>
+<tr><td>Sicurezza, prevenzione di frodi e abusi, limitazione degli accessi, registri tecnici, continuità del Servizio</td><td>Legittimo interesse alla sicurezza e all'integrità del Servizio (art. 6.1.f)</td><td>Necessario per il funzionamento tecnico</td></tr>
+<tr><td>Dimostrare le accettazioni dei documenti legali e dei consensi</td><td>Legittimo interesse a dimostrare la conformità (art. 6.1.f); art. 7.1 GDPR</td><td>Necessario per completare la registrazione</td></tr>
+<tr><td>Misurare da dove provengono le iscrizioni (attribuzione) e migliorare le pagine informative</td><td>Legittimo interesse a valutare l'efficacia delle nostre pagine, con dati minimi (art. 6.1.f); puoi opporti (sezione 10)</td><td>Facoltativo: non condiziona la registrazione</td></tr>
+<tr><td>Tutelare i nostri diritti, anche in giudizio, e rispondere a richieste di autorità</td><td>Legittimo interesse (art. 6.1.f); obbligo di legge (art. 6.1.c)</td><td>Non applicabile</td></tr>
+</tbody>
+</table>
+<p><strong>5.1</strong> Non inviamo comunicazioni promozionali. Se in futuro le introduciamo, lo faremo nel rispetto della normativa applicabile e, dove richiesto, con il tuo consenso, che potrai revocare in ogni momento.</p>
+
+<h2>6. A chi comunichiamo i dati</h2>
+<p><strong>6.1</strong> <em>Fornitori di servizi (sub-responsabili e responsabili).</em> Ci avvaliamo di fornitori che trattano dati per nostro conto, ad esempio per database e archiviazione di file, autenticazione, pagamenti, email transazionali, notifiche push, hosting dell'API e dell'applicazione web. L'elenco aggiornato, con finalità, sede e luogo del trattamento di ciascuno, è sempre disponibile sulla pagina <a href="{{Site.BaseUrl}}/legale/sub-responsabili">sub-responsabili</a>, che riflette la configurazione in uso e non ripetiamo qui.</p>
+<p><strong>6.2</strong> <em>Stripe.</em> Per i pagamenti Stripe ci fornisce un servizio e, per alcune attività (ad esempio la verifica dell'identità richiesta dalla normativa, la prevenzione delle frodi, gli obblighi di legge), tratta i dati come titolare autonomo secondo la propria informativa.</p>
+<p><strong>6.3</strong> <em>Altri utenti del Servizio.</em> Quando un Cliente invia una richiesta a un Fornitore, il Fornitore riceve le informazioni descritte nei Termini di Servizio (dopo l'accettazione, anche indirizzo e contatti del Cliente) e le tratta come titolare autonomo. Le informazioni che scegli di pubblicare (pagina pubblica del Fornitore, sito di prenotazione del Cliente) sono visibili a chiunque.</p>
+<p><strong>6.4</strong> <em>Altri destinatari.</em> Consulenti professionali e revisori vincolati alla riservatezza; autorità, quando la legge lo impone; l'eventuale acquirente dell'azienda o di un ramo d'azienda, in caso di operazioni societarie, con le tutele di legge.</p>
+
+<h2>7. Trasferimenti fuori dallo Spazio economico europeo</h2>
+<p><strong>7.1</strong> Alcuni fornitori possono avere sede o trattare dati anche fuori dallo Spazio economico europeo. Per ciascuno, la pagina dei <a href="{{Site.BaseUrl}}/legale/sub-responsabili">sub-responsabili</a> indica la società, il luogo del trattamento e lo strumento che rende lecito il trasferimento (decisione di adeguatezza della Commissione europea, art. 45 GDPR; clausole contrattuali standard o altre garanzie adeguate, art. 46 GDPR). Dove un'informazione è indicata come «in definizione», la pagina riflette lo stato effettivo della documentazione, che completiamo appena possibile. Puoi chiedere una copia delle garanzie scrivendo ai recapiti della sezione 1.</p>
+
+<h2>8. Per quanto tempo conserviamo i dati</h2>
+<p><strong>8.1</strong> <em>Account e Organizzazione</em>: per la durata del rapporto. Alla chiusura dell'Organizzazione cancelliamo o rendiamo anonimi i dati entro {{Terms.DataReturnDays}} giorni dalla cessazione, salvo quanto dobbiamo conservare per legge o per tutelare un diritto in giudizio. Non è oggi attiva una cancellazione automatica degli account inattivi.</p>
+<p><strong>8.2</strong> <em>Fatture e dati contabili e fiscali</em>: per il tempo previsto dalla legge per le scritture contabili e i documenti fiscali.</p>
+<p><strong>8.3</strong> <em>Prove di accettazione dei documenti legali</em>: per tutta la durata del rapporto e, dopo, per il tempo necessario a difendere i nostri diritti.</p>
+<p><strong>8.4</strong> <em>Registri tecnici e di sicurezza</em>: per il tempo necessario alla sicurezza e alla diagnosi dei problemi, secondo i tempi di conservazione dei fornitori di hosting; non è oggi configurato un periodo unico.</p>
+<p><strong>8.5</strong> <em>Attribuzione delle iscrizioni</em>: nel tuo browser per al massimo 30 giorni se non completi la registrazione; nei nostri sistemi insieme ai dati dell'Organizzazione.</p>
+<p><strong>8.6</strong> <em>Dati degli ospiti</em>: sezione 4.3. Le copie di sicurezza gestite dai fornitori di infrastruttura scadono secondo i loro tempi.</p>
+
+<h2>9. Decisioni automatizzate e intelligenza artificiale</h2>
+<p><strong>9.1</strong> Non adottiamo decisioni basate unicamente sul trattamento automatizzato che producano effetti giuridici nei tuoi confronti o che incidano in modo analogo significativamente su di te (art. 22 GDPR), né profiliamo gli utenti.</p>
+<p><strong>9.2</strong> Alcune funzioni applicano regole automatiche basate su criteri oggettivi e noti: la sospensione della pubblicazione di un immobile quando mancano requisiti obbligatori (ad esempio CIN o documenti), il ritorno ai limiti del piano base dopo un insoluto, la scadenza delle richieste di prenotazione non confermate. Puoi chiedere un riesame con intervento di una persona scrivendo ai recapiti della sezione 1.</p>
+<p><strong>9.3</strong> I suggerimenti stagionali di prezzo applicano le regole che imposti tu al prezzo che indichi; non usano intelligenza artificiale. Usiamo modelli di intelligenza artificiale solo per redigere bozze di testi informativi pubblici, riviste da una persona, senza inviare dati personali di ospiti, Clienti o Fornitori.</p>
+
+<h2>10. I tuoi diritti e come esercitarli</h2>
+<p><strong>10.1</strong> Per i dati di cui siamo titolari puoi chiedere: accesso (art. 15); rettifica (art. 16); cancellazione (art. 17); limitazione (art. 18); portabilità dei dati forniti con il tuo consenso o per contratto (art. 20); opposizione ai trattamenti fondati sul legittimo interesse (art. 21); revoca del consenso, dove il trattamento si fonda sul consenso, senza effetto sul trattamento già avvenuto (art. 7.3).</p>
+<p><strong>10.2</strong> Per esercitarli scrivi a <a href="mailto:{{Controller.PrivacyEmail}}">{{Controller.PrivacyEmail}}</a> o alla PEC {{Controller.Pec}}. Possiamo chiederti di verificare la tua identità. Rispondiamo senza ingiustificato ritardo e comunque entro un mese dalla richiesta, prorogabile di due mesi in casi complessi, informandoti del motivo (art. 12.3 GDPR). L'esercizio è gratuito, salvo richieste manifestamente infondate o eccessive. Molti dati dell'account puoi modificarli direttamente nelle impostazioni del profilo.</p>
+<p><strong>10.3</strong> Il Servizio mette a disposizione dei Clienti gli strumenti per esercitare i diritti degli ospiti e dei conduttori (esportazione, cancellazione, anonimizzazione, revoca del consenso marketing su richiesta documentata della persona, richiesta di cancellazione delle parti di un contratto di locazione, esportazione e anonimizzazione dei dati fiscali dell'Organizzazione), descritti nel DPA.</p>
+<p><strong>10.4</strong> Hai diritto di proporre reclamo all'autorità di controllo, in Italia il Garante per la protezione dei dati personali (<a href="https://www.garanteprivacy.it">www.garanteprivacy.it</a>), ai sensi dell'art. 77 GDPR, e di agire in giudizio (art. 79 GDPR).</p>
+
+<h2>11. Cookie, archiviazione nel dispositivo e strumenti di tracciamento</h2>
+<p><strong>11.1</strong> Le API di CasaZen non impostano cookie. Il sito e l'app non usano cookie di profilazione, strumenti pubblicitari, pixel o servizi di analisi di terzi.</p>
+<p><strong>11.2</strong> <em>Archiviazione tecnica, necessaria al funzionamento.</em> Il browser conserva i dati della sessione di accesso (gestita dal servizio di autenticazione, che può impostare propri cookie tecnici sul suo dominio), la lingua scelta, il contesto di lavoro attivo, lo stato di un pagamento in corso e le protezioni contro i cicli di accesso. Durante i pagamenti la pagina carica gli strumenti di Stripe, che può usare tecnologie proprie per la sicurezza e la prevenzione delle frodi secondo la propria informativa. Dove mostrato, il browser ricorda anche la scelta sui cookie.</p>
+<p><strong>11.3</strong> <em>Attribuzione delle iscrizioni.</em> Alla prima pagina pubblica visitata salviamo nella scheda del browser (si cancella alla chiusura della scheda) la pagina di arrivo, il dominio di provenienza e gli eventuali parametri UTM. Se avvii la registrazione, li copiamo nel browser per al massimo 30 giorni e, dopo la creazione dell'Organizzazione, li inviamo ai nostri sistemi (sezione 3.6). Puoi cancellarli in qualsiasi momento dai dati del sito nelle impostazioni del browser.</p>
+<p><strong>11.4</strong> Possiamo conservare nel browser per sette giorni un codice temporaneo per collegare il tuo profilo Fornitore dopo la registrazione.</p>
+
+<h2>12. Sicurezza</h2>
+<p><strong>12.1</strong> Adottiamo misure tecniche e organizzative adeguate (art. 32 GDPR). Sono descritte nel <a href="{{Site.BaseUrl}}/legale/dpa">DPA</a>, tra cui separazione dei dati per Organizzazione, accesso per ruoli, cifratura dei dati più sensibili, archiviazione privata dei documenti con collegamenti temporanei firmati e registri tecnici senza dati personali in chiaro.</p>
+
+<h2>13. Modifiche a questa informativa</h2>
+<p><strong>13.1</strong> Possiamo aggiornare questa informativa. Le modifiche sostanziali sono comunicate ai Clienti con il preavviso previsto dai Termini di Servizio e danno luogo a una nuova versione, che l'app chiede di accettare.</p>

@@ -1,7 +1,10 @@
 using System.Reflection;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Options;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
@@ -35,6 +38,13 @@ public class AppDbContext(
 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Org> Orgs { get; set; } = null!;
+    public DbSet<OrgSlugAlias> OrgSlugAliases { get; set; } = null!;
+
+    // Operator privacy notice and booking terms of the public site, versioned (BK-14, A3-21)
+    public DbSet<OrgSiteDocument> OrgSiteDocuments { get; set; } = null!;
+
+    /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
+    public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
@@ -64,29 +74,75 @@ public class AppDbContext(
     public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
     public DbSet<AlloggiatiCodeTableImport> AlloggiatiCodeTableImports { get; set; } = null!;
     public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
+
+    // Official ISTAT list of the comuni and the log of its imports (SU-04)
+    public DbSet<Comune> Comuni { get; set; } = null!;
+    public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
+    public DbSet<OfficialSourceFetch> OfficialSourceFetches { get; set; } = null!;
+    public DbSet<ComuneOfficialProfile> ComuneOfficialProfiles { get; set; } = null!;
+    public DbSet<ComuneOfficialProfileVersion> ComuneOfficialProfileVersions { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
     public DbSet<SeasonalPriceSuggestion> SeasonalPriceSuggestions { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
+    public DbSet<TestDataMarker> TestDataMarkers { get; set; } = null!;
+    public DbSet<DemoEnvironmentSetting> DemoEnvironmentSettings { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
     public DbSet<SeoContentReviewEvent> SeoContentReviewEvents { get; set; } = null!;
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
+    public DbSet<PlatformAiSettings> PlatformAiSettings { get; set; } = null!;
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
-    public DbSet<PlatformBillingMetrics> PlatformBillingMetrics { get; set; } = null!;
 
     // Supplier console (US-022 / #292)
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
+
+    /// <summary>
+    /// Price catalog of the suppliers (SP-02). Keyed by the supplier org, <b>not</b> tenant-filtered (see the TN-2
+    /// allow-list): only <c>SupplierServiceCatalogService</c> reads and writes it, always with an explicit
+    /// <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<SupplierServiceListing> SupplierServiceListings { get; set; } = null!;
+
+    /// <summary>
+    /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
+    /// keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list): only <c>SupplierAgendaService</c>
+    /// (and the supplier repair) reads and writes them, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<SupplierWorkingHours> SupplierWorkingHours { get; set; } = null!;
+    public DbSet<SupplierTimeOff> SupplierTimeOff { get; set; } = null!;
+    public DbSet<SupplierBusyWindow> SupplierBusyWindows { get; set; } = null!;
+    public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
+    public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
+    public DbSet<HostInviteRecord> HostInviteRecords { get; set; } = null!;
+    public DbSet<HostInviteAuditEntry> HostInviteAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
+
+    /// <summary>
+    /// The booking from a supplier's public showcase (SP-10): the private customers and the holds that wait for the e-mail check.
+    /// Both keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list); only the booking service and the
+    /// few readers listed in <c>ShowcaseBookingTenancyTests</c> touch them, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<ServiceCustomer> ServiceCustomers { get; set; } = null!;
+    public DbSet<ShowcaseBookingHold> ShowcaseBookingHolds { get; set; } = null!;
+
+    // Payment of the service requests inside CasaZen (SP-15a): two parties, not tenant-filtered.
+    public DbSet<ServiceRequestPayment> ServiceRequestPayments { get; set; } = null!;
+
+    // The refunds of a service payment (SP-15b): they belong to the payment, so they are not tenant-filtered either.
+    public DbSet<ServiceRequestPaymentRefund> ServiceRequestPaymentRefunds { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
     public DbSet<PropertyICalExport> PropertyICalExports { get; set; } = null!;
+
+    // Scheduled changes of the rental mode of a property, and their history (PM-02)
+    public DbSet<PropertyModeChange> PropertyModeChanges { get; set; } = null!;
 
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
@@ -96,6 +152,9 @@ public class AppDbContext(
 
     // Push messages per event and device, with their Expo ticket (MO-04)
     public DbSet<PushDelivery> PushDeliveries { get; set; } = null!;
+
+    // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
+    public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
 
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
@@ -118,9 +177,16 @@ public class AppDbContext(
     public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
+    public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
+    public DbSet<OrgMember> OrgMembers { get; set; } = null!;
+    public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
+    public DbSet<PropertyMemberAccess> PropertyMemberAccesses { get; set; } = null!;
+
+    // Who did what in an org, as ids and codes (AM-02b)
+    public DbSet<OrgActivityEntry> OrgActivityEntries { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -283,6 +349,62 @@ public class AppDbContext(
             .HasForeignKey(e => e.ImportId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // SU-04: official ISTAT list of the comuni. The ISTAT code is the key; the cadastral code is unique among the active
+        // comuni only (a comune that changes province gets a new ISTAT code and keeps its cadastral code, so the old row,
+        // deactivated, and the new one coexist).
+        modelBuilder.Entity<Comune>(entity =>
+        {
+            entity.HasIndex(c => c.CadastralCode)
+                .IsUnique()
+                .HasFilter("\"IsActive\"")
+                .HasDatabaseName("IX_Comuni_CadastralCode_Active");
+            entity.HasIndex(c => c.CadastralCode);
+            entity.HasIndex(c => c.NormalizedName);
+            entity.HasIndex(c => c.ProvinceCode);
+            entity.HasIndex(c => c.RegionIstatCode);
+            entity.HasOne(c => c.SourceImport)
+                .WithMany()
+                .HasForeignKey(c => c.SourceImportId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.SourceImportId);
+        });
+        modelBuilder.Entity<ComuneImport>(entity =>
+        {
+            entity.HasIndex(i => i.ImportedAt);
+            entity.HasIndex(i => i.ReferenceDate);
+        });
+        modelBuilder.Entity<OfficialSourceFetch>(entity =>
+        {
+            entity.HasIndex(f => new { f.Dataset, f.RetrievedAt });
+            entity.HasIndex(f => f.IstatCode);
+        });
+        modelBuilder.Entity<ComuneOfficialProfile>(entity =>
+        {
+            entity.Property(p => p.IstatCode).HasMaxLength(6).IsRequired();
+            entity.HasMany(p => p.Versions)
+                .WithOne()
+                .HasForeignKey(v => v.IstatCode)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ComuneOfficialProfileVersion>(entity =>
+        {
+            entity.Property(v => v.IstatCode).HasMaxLength(6).IsRequired();
+            if (Database.IsNpgsql())
+                entity.Property(v => v.ExtractJson).HasColumnType("jsonb");
+            entity.HasIndex(v => new { v.IstatCode, v.VersionNumber }).IsUnique();
+            if (Database.IsNpgsql())
+            {
+                entity.HasIndex(v => v.IstatCode)
+                    .IsUnique()
+                    .HasFilter("\"IsCurrent\"")
+                    .HasDatabaseName("IX_ComuneOfficialProfileVersions_IstatCode_Current");
+            }
+            else
+            {
+                entity.HasIndex(v => v.IstatCode);
+            }
+        });
+
         // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
         modelBuilder.Entity<PropertyQuesturaCredentials>(entity =>
         {
@@ -301,29 +423,69 @@ public class AppDbContext(
             .HasIndex(b => new { b.OrgId, b.BookingCode })
             .IsUnique();
 
-        // Precision for GPS coordinates
+        // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
+        // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
         modelBuilder.Entity<Property>()
             .Property(p => p.Latitude)
-            .HasPrecision(18, 2);
+            .HasPrecision(9, PropertyAddress.CoordinateScale);
 
         modelBuilder.Entity<Property>()
             .Property(p => p.Longitude)
-            .HasPrecision(18, 2);
+            .HasPrecision(9, PropertyAddress.CoordinateScale);
+
+        // DB-03: the stay rules the public quote and checkout read (minimum stay, weekend surcharge). The host forms and the
+        // property service validate them; the constraints keep any other writer honest. Both columns are nullable or 0 for
+        // every row that existed before them, so the migration changes no behavior (docs/runbooks/direct-booking.md § 11).
+        modelBuilder.Entity<Property>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_Properties_MinNights",
+                $"\"MinNights\" IS NULL OR \"MinNights\" BETWEEN {PropertyStayRules.MinMinNights} AND {PropertyStayRules.MaxMinNights}");
+            t.HasCheckConstraint(
+                "CK_Properties_WeekendSurchargePercent",
+                $"\"WeekendSurchargePercent\" BETWEEN 0 AND {(int)PropertyStayRules.MaxWeekendSurchargePercent}");
+        });
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
-        // Unique constraint on property address for active properties only
-        // Allows soft-deleted properties to be re-created at same address
+        // SU-04: the comune chosen from the official list; the region follows it.
+        modelBuilder.Entity<Property>().HasIndex(p => p.ComuneIstatCode);
+
+        // PM-01: the lists of the host areas filter the properties of an org by rental mode (GET /api/properties?mode=), and
+        // the jobs and the public site read the short-rent ones; the column is stored as an integer (append only) and the
+        // existing rows keep the default 0 = Short (migration AddPropertyRentalMode, docs/runbooks/property-rental-mode.md).
+        modelBuilder.Entity<Property>().HasIndex(p => new { p.OrgId, p.RentalMode });
+
+        // Unique address PER ORG and per unit (PC-06, A2-19). Before, the index was global: a host with two apartments in
+        // the same building could not create the second, and a host whose address was already used by ANOTHER org got a
+        // 409 that revealed a datum of that tenant. "AddressKey" is a stored generated column (shadow property): street,
+        // city, postal code and unit with case and runs of spaces ignored, so "Via Roma  1" and "via roma 1" are the same
+        // address; it is computed by the database, so every writer of the table is covered and the application never
+        // builds the key (never check-then-insert: the loser of two parallel creates gets 23505 on this index).
+        // A soft-deleted property (PC-05, IsDeleted) frees its address, so it can be re-created there. A paused one
+        // (PC-03, IsPaused) keeps it: pausing is temporary and the property stays the host's.
         modelBuilder.Entity<Property>()
-            .HasIndex(p => new { p.Address, p.City, p.PostalCode, p.IsActive })
+            .Property<string>("AddressKey")
+            .HasColumnType("text")
+            .HasComputedColumnSql(
+                "lower(regexp_replace(btrim(\"Address\"), '\\s+', ' ', 'g')) || '|' || "
+                + "lower(regexp_replace(btrim(\"City\"), '\\s+', ' ', 'g')) || '|' || "
+                + "lower(btrim(\"PostalCode\")) || '|' || "
+                + "lower(regexp_replace(btrim(coalesce(\"Unit\", '')), '\\s+', ' ', 'g'))",
+                stored: true);
+
+        modelBuilder.Entity<Property>()
+            .HasIndex("OrgId", "AddressKey")
             .IsUnique()
-            .HasFilter("\"IsActive\" = true");
+            .HasDatabaseName(PropertyAddress.UniqueIndexName)
+            .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
 
         modelBuilder.Entity<Property>()
             .HasIndex(p => new { p.OrgId, p.Slug })
             .IsUnique()
-            .HasFilter("\"Slug\" IS NOT NULL")
+            // A soft-deleted property (PC-05) frees its slug: SlugExistsInOrgAsync no longer sees it either.
+            .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false")
             .HasDatabaseName("UIX_Properties_OrgId_Slug");
 
         modelBuilder.Entity<Booking>().HasIndex(b => b.PropertyId);
@@ -471,6 +633,22 @@ public class AppDbContext(
             .HasConversion<string>()
             .HasMaxLength(100);
 
+        // Demo environment: one platform row, and one marker per invented row so a reset never touches host data.
+        modelBuilder.Entity<DemoEnvironmentSetting>(entity =>
+        {
+            entity.Property(s => s.TemplateVersion).HasMaxLength(40);
+            entity.Property(s => s.LastResetBy).HasMaxLength(255);
+        });
+        modelBuilder.Entity<TestDataMarker>(entity =>
+        {
+            entity.Property(m => m.EntityType).HasMaxLength(TestDataMarker.EntityTypeMaxLength);
+            entity.Property(m => m.Origin).HasMaxLength(TestDataMarker.OriginMaxLength);
+            entity.Property(m => m.TemplateKey).HasMaxLength(TestDataMarker.TemplateKeyMaxLength);
+            entity.HasIndex(m => new { m.EntityType, m.EntityId }).IsUnique();
+            entity.HasIndex(m => new { m.OrgId, m.Origin });
+            entity.HasOne<Org>().WithMany().HasForeignKey(m => m.OrgId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         // LeaseContract → Property (restrict to preserve history)
         modelBuilder.Entity<LeaseContract>()
             .HasOne(l => l.Property)
@@ -496,8 +674,10 @@ public class AppDbContext(
             .HasForeignKey(p => p.LeaseContractId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // LT-14: several parties per role, in the order entered.
         modelBuilder.Entity<Party>()
-            .HasIndex(p => new { p.LeaseContractId, p.Role });
+            .HasIndex(p => new { p.LeaseContractId, p.Role, p.Position })
+            .IsUnique();
 
         // LeaseRegistration → LeaseContract (1-to-1, cascade)
         modelBuilder.Entity<LeaseRegistration>()
@@ -616,6 +796,10 @@ public class AppDbContext(
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => e.OrgId);
 
+        // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasIndex(e => new { e.OrgId, e.DueDate });
+
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).
         modelBuilder.Entity<Org>()
@@ -624,6 +808,33 @@ public class AppDbContext(
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.StripeCustomerId);
+
+        // Previous public slugs of an org (PL-04, A1-23): shared links keep resolving and the value stays reserved.
+        modelBuilder.Entity<OrgSlugAlias>()
+            .HasOne(a => a.Org)
+            .WithMany()
+            .HasForeignKey(a => a.OrgId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<OrgSlugAlias>()
+            .HasIndex(a => a.OrgId);
+
+        // Operator documents of the public site (BK-14, A3-21): immutable versions numbered per org and kind. The unique
+        // index is the guarantee of the numbering under concurrent publishes (23505, the loser takes the next number).
+        modelBuilder.Entity<OrgSiteDocument>(entity =>
+        {
+            entity.HasOne(d => d.Org)
+                .WithMany()
+                .HasForeignKey(d => d.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(d => d.Kind).HasConversion<string>().HasMaxLength(20);
+            entity.Property(d => d.Source).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasIndex(d => new { d.OrgId, d.Kind, d.Version })
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgSiteDocuments_Org_Kind_Version");
+        });
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.CustomDomain)
@@ -662,20 +873,6 @@ public class AppDbContext(
         modelBuilder.Entity<PlatformInvoice>()
             .Property(i => i.TotalAmount)
             .HasPrecision(18, 2);
-
-        modelBuilder.Entity<PlatformBillingMetrics>()
-            .Property(m => m.EuB2cCrossBorderRevenue)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<PlatformBillingMetrics>().HasData(
-            new PlatformBillingMetrics
-            {
-                Id = 1,
-                CalendarYear = 2026,
-                EuB2cCrossBorderRevenue = 0m,
-                OssThresholdReached = false,
-                UpdatedAt = new DateTime(2026, 6, 11, 0, 0, 0, DateTimeKind.Utc),
-            });
 
         // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
         modelBuilder.Entity<Property>().HasIndex(p => p.OrgId);
@@ -800,6 +997,126 @@ public class AppDbContext(
             .HasForeignKey(m => m.RoleId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // ─── Org membership (AM-01) ─────────────────────────────────────────────
+        modelBuilder.Entity<OrgMember>(entity =>
+        {
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(m => m.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(m => m.User)
+                .WithMany()
+                .HasForeignKey(m => m.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One org per user. It is also what two parallel onboardings of the same user race on: the loser gets 23505.
+            entity.HasIndex(m => m.UserId)
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgMembers_UserId");
+
+            // The tenant filter reads by OrgId; the team page lists an org's people and finds its owner.
+            entity.HasIndex(m => new { m.OrgId, m.Role })
+                .HasDatabaseName("IX_OrgMembers_OrgId_Role");
+        });
+
+        // ─── Org invitations (AM-02) ────────────────────────────────────────────
+        modelBuilder.Entity<OrgInvitation>(entity =>
+        {
+            // The invitations of an org go with it.
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(i => i.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The link finds its invitation by the hash of the token; rotating the token swaps the hash, so it is unique.
+            entity.HasIndex(i => i.TokenHash)
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgInvitations_TokenHash");
+
+            // At most one pending invitation per org and email: two parallel invitations of the same person race on this
+            // (the loser gets 23505, answered as 409). Filter on Status = Pending (1), which is explicit and never reused.
+            entity.HasIndex(i => new { i.OrgId, i.Email })
+                .IsUnique()
+                .HasFilter($"\"Status\" = {(int)OrgInvitationStatus.Pending}")
+                .HasDatabaseName("UIX_OrgInvitations_OrgId_Email_Pending");
+
+            // The tenant filter reads by OrgId; the team page lists an org's open invitations and the seat count counts them.
+            entity.HasIndex(i => new { i.OrgId, i.Status })
+                .HasDatabaseName("IX_OrgInvitations_OrgId_Status");
+
+            // The maintenance job scans by state and date: the invitations to remind, expire or delete.
+            entity.HasIndex(i => new { i.Status, i.ExpiresAt })
+                .HasDatabaseName("IX_OrgInvitations_Status_ExpiresAt");
+        });
+
+        // ─── Property scope of the org members (AM-03) ──────────────────────────
+        modelBuilder.Entity<PropertyMemberAccess>(entity =>
+        {
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(a => a.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // The grants of a property go with it (it is soft-deleted, so in practice never) and the grants of a person go
+            // with the account.
+            entity.HasOne(a => a.Property)
+                .WithMany(p => p.MemberAccesses)
+                .HasForeignKey(a => a.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A member reaches a property once: the second grant of the same pair loses the race on this index (23505).
+            // It also serves the EXISTS of every list (UserId first) and the reads of the member's own grants.
+            entity.HasIndex(a => new { a.UserId, a.PropertyId })
+                .IsUnique()
+                .HasDatabaseName("UIX_PropertyMemberAccesses_UserId_PropertyId");
+
+            // «Chi può accedere» per property, and the tenant filter (OrgId) of every read.
+            entity.HasIndex(a => new { a.PropertyId })
+                .HasDatabaseName("IX_PropertyMemberAccesses_PropertyId");
+            entity.HasIndex(a => new { a.OrgId, a.UserId })
+                .HasDatabaseName("IX_PropertyMemberAccesses_OrgId_UserId");
+        });
+
+        // ─── Activity log of the org (AM-02b) ───────────────────────────────────────────────────────────────
+        modelBuilder.Entity<OrgActivityEntry>(entity =>
+        {
+            // The log of an org goes with it. No foreign key to the account: the history outlives it and holds ids only.
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(e => e.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The page of the people who administer the org: the newest lines of one org (the tenant filter reads OrgId too).
+            entity.HasIndex(e => new { e.OrgId, e.When })
+                .IsDescending(false, true)
+                .HasDatabaseName("IX_OrgActivityEntries_OrgId_When");
+
+            // The filter by event, and the count of the access requests of one person.
+            entity.HasIndex(e => new { e.OrgId, e.Type })
+                .HasDatabaseName("IX_OrgActivityEntries_OrgId_Type");
+
+            // The retention deletes across every org what is older than the cutoff.
+            entity.HasIndex(e => e.When)
+                .HasDatabaseName("IX_OrgActivityEntries_When");
+        });
+
+        // The member in charge of a property (AM-03): notified together with the org's administrators. The account can go;
+        // the property keeps its history and is simply left without a named person.
+        modelBuilder.Entity<Property>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(p => p.ResponsibleUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Property>()
+            .HasIndex(p => p.ResponsibleUserId)
+            .HasDatabaseName("IX_Properties_ResponsibleUserId");
+
         modelBuilder.Entity<ConsentRecord>()
             .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
 
@@ -820,6 +1137,17 @@ public class AppDbContext(
                 .HasDatabaseName("IX_SignupAttributions_RecordedAt");
         });
 
+        // SEO funnel events (SE-04): platform data without an org or a person; the report groups by comune over a window,
+        // the nightly retention deletes by date.
+        modelBuilder.Entity<SeoEvent>(entity =>
+        {
+            entity.HasIndex(e => e.OccurredAt)
+                .HasDatabaseName("IX_SeoEvents_OccurredAt");
+
+            entity.HasIndex(e => new { e.ComuneCode, e.OccurredAt })
+                .HasDatabaseName("IX_SeoEvents_ComuneCode_OccurredAt");
+        });
+
         // ─── Supplier console (US-022 / #292) ────────────────────────────────────
         modelBuilder.Entity<SupplierProfile>()
             .HasOne(sp => sp.Org)
@@ -830,10 +1158,23 @@ public class AppDbContext(
         modelBuilder.Entity<SupplierProfile>()
             .HasIndex(sp => sp.Status);
 
+        // SU-04: comuni chosen from the official list. A column added to a table with rows: the profiles that exist start
+        // with none (nothing is inferred from the free-text ComuniJson).
+        modelBuilder.Entity<SupplierProfile>()
+            .Property(sp => sp.ComuneIstatCodesJson)
+            .HasDefaultValueSql("'[]'::jsonb");
+
         modelBuilder.Entity<SupplierProfile>()
             .HasIndex(sp => sp.ClaimTokenHash)
             .IsUnique()
             .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
+
+        // SU-13: the slug of the public showcase is unique (profiles without one are not constrained).
+        modelBuilder.Entity<SupplierProfile>()
+            .HasIndex(sp => sp.ShowcaseSlug)
+            .IsUnique()
+            .HasFilter("\"ShowcaseSlug\" IS NOT NULL")
+            .HasDatabaseName("UIX_SupplierProfiles_ShowcaseSlug");
 
         // One profile per email (SU-14): the unique index on lower(btrim("Email")) is an expression index that EF cannot
         // model; it is created by the migration SupplierProfileEmailUnique (see SupplierProfileEmailIndex).
@@ -848,6 +1189,132 @@ public class AppDbContext(
             .HasIndex(sa => new { sa.OrgId, sa.Date })
             .IsUnique();
 
+        // SP-02: the supplier's service catalog. Children of the supplier profile (cascade, like the availability days: the
+        // repair moves them to the keeper before it deletes a duplicate profile). The slug is unique among the services
+        // that are not deleted, so a deleted one frees it; xmin is the concurrency token. The checks mirror
+        // SupplierServiceListingRules (looser where the rule is a product bound, e.g. the shortest duration).
+        modelBuilder.Entity<SupplierServiceListing>(entity =>
+        {
+            entity.HasOne(l => l.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(l => l.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(l => l.Version).IsRowVersion();
+
+            entity.HasIndex(l => new { l.OrgId, l.Slug })
+                .IsUnique()
+                .HasFilter("\"DeletedAt\" IS NULL")
+                .HasDatabaseName("UIX_SupplierServiceListings_OrgId_Slug");
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_SupplierServiceListings_PriceFromCents", "\"PriceFromCents\" IS NULL OR \"PriceFromCents\" > 0");
+                t.HasCheckConstraint(
+                    "CK_SupplierServiceListings_DurationMinutes", "\"DurationMinutes\" IS NULL OR \"DurationMinutes\" > 0");
+                t.HasCheckConstraint(
+                    "CK_SupplierServiceListings_MinNoticeHours", "\"MinNoticeHours\" IS NULL OR \"MinNoticeHours\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_SupplierServiceListings_WeekdaysMask", "\"WeekdaysMask\" BETWEEN 0 AND 127");
+            });
+        });
+
+        // SP-03: the supplier's agenda. Children of the supplier profile in cascade, like the availability days and the
+        // catalog: the repair moves them to the keeper before it deletes a duplicate profile. The checks mirror
+        // SupplierAgendaRules / SupplierAgendaLimits (the rules refuse first; the database is the last guard).
+        modelBuilder.Entity<SupplierWorkingHours>(entity =>
+        {
+            entity.HasOne(h => h.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(h => h.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One band per weekday and start: the same band twice is never meant. The overlap of two bands and the limit of
+            // three a day need more than a unique index: the service decides both under the agenda lock.
+            entity.HasIndex(h => new { h.OrgId, h.Weekday, h.StartMinute })
+                .IsUnique()
+                .HasDatabaseName("UIX_SupplierWorkingHours_OrgId_Weekday_StartMinute");
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_SupplierWorkingHours_Weekday", "\"Weekday\" BETWEEN 0 AND 6");
+                t.HasCheckConstraint(
+                    "CK_SupplierWorkingHours_Minutes",
+                    $"\"StartMinute\" >= 0 AND \"StartMinute\" < \"EndMinute\" AND \"EndMinute\" <= {SupplierAgendaLimits.MinutesPerDay}");
+            });
+        });
+
+        modelBuilder.Entity<SupplierTimeOff>(entity =>
+        {
+            entity.HasOne(t => t.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(t => t.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(t => new { t.OrgId, t.FromDate })
+                .HasDatabaseName("IX_SupplierTimeOff_OrgId_FromDate");
+
+            entity.ToTable(t => t.HasCheckConstraint("CK_SupplierTimeOff_Dates", "\"FromDate\" <= \"ToDate\""));
+        });
+
+        modelBuilder.Entity<SupplierBusyWindow>(entity =>
+        {
+            entity.HasOne(w => w.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(w => w.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The planner and the calendar read the windows of one supplier by time.
+            entity.HasIndex(w => new { w.OrgId, w.StartUtc })
+                .HasDatabaseName("IX_SupplierBusyWindows_OrgId_StartUtc");
+
+            // SP-05: the iCal sync writes one row per occurrence of a feed event and finds it again by this key at every sync
+            // (the UID, and the start because a series repeats the UID), so the same occurrence is never stored twice. The
+            // windows the supplier sets by hand have no ExternalUid and are outside the index.
+            entity.HasIndex(w => new { w.OrgId, w.ExternalUid, w.StartUtc })
+                .IsUnique()
+                .HasFilter("\"ExternalUid\" IS NOT NULL")
+                .HasDatabaseName("UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc");
+
+            entity.ToTable(t => t.HasCheckConstraint("CK_SupplierBusyWindows_Interval", "\"StartUtc\" < \"EndUtc\""));
+        });
+
+        modelBuilder.Entity<SupplierSettings>(entity =>
+        {
+            // One row per supplier: the key is the supplier org, which is also the foreign key.
+            entity.HasOne(s => s.SupplierProfile)
+                .WithOne()
+                .HasForeignKey<SupplierSettings>(s => s.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The bounds are the ones of SupplierAgendaLimits (a constant, so the rules and the database cannot drift).
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_BufferMinutes",
+                    $"\"BufferMinutes\" BETWEEN {SupplierAgendaLimits.MinBufferMinutes} AND {SupplierAgendaLimits.MaxBufferMinutes}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_MaxJobsPerDay",
+                    $"\"MaxJobsPerDay\" BETWEEN {SupplierAgendaLimits.MinJobsPerDay} AND {SupplierAgendaLimits.MaxJobsPerDayLimit}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_MinNoticeHours",
+                    $"\"MinNoticeHours\" BETWEEN {SupplierAgendaLimits.MinNoticeHours} AND {SupplierAgendaLimits.MaxNoticeHours}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_HorizonDays",
+                    $"\"HorizonDays\" BETWEEN {SupplierAgendaLimits.MinHorizonDays} AND {SupplierAgendaLimits.MaxHorizonDays}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_SlotStepMinutes",
+                    $"\"SlotStepMinutes\" BETWEEN {SupplierAgendaLimits.MinSlotStepMinutes} AND {SupplierAgendaLimits.MaxSlotStepMinutes}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_ParallelJobs",
+                    $"\"ParallelJobs\" BETWEEN {SupplierAgendaLimits.MinParallelJobs} AND {SupplierAgendaLimits.MaxParallelJobs}");
+                t.HasCheckConstraint(
+                    "CK_SupplierSettings_RespondWithinMinutes",
+                    $"\"RespondWithinMinutes\" BETWEEN {SupplierAgendaLimits.MinRespondWithinMinutes} AND {SupplierAgendaLimits.MaxRespondWithinMinutes}");
+            });
+        });
+
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => i.Email);
 
@@ -858,6 +1325,37 @@ public class AppDbContext(
             .HasIndex(i => i.TokenHash)
             .IsUnique()
             .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
+
+        // Audit trail of the admin actions on suppliers and invites (SU-12): read per supplier, newest first. No foreign
+        // key: the trail outlives a supplier org deleted by the fix-orphaned repair.
+        modelBuilder.Entity<SupplierAdminAuditEntry>()
+            .HasIndex(e => new { e.SupplierOrgId, e.OccurredAt });
+
+        // ─── Host invites (invitation of new independent hosts) ──────────────────
+        modelBuilder.Entity<HostInviteRecord>(entity =>
+        {
+            // The link finds its invite by the hash of the token; sending it again swaps the hash, so it is unique.
+            entity.HasIndex(i => i.TokenHash)
+                .IsUnique()
+                .HasDatabaseName("UIX_HostInviteRecords_TokenHash");
+
+            // The duplicate check and the lists of an inviter, newest first.
+            entity.HasIndex(i => new { i.InvitedByUserId, i.Email })
+                .HasDatabaseName("IX_HostInviteRecords_InvitedByUserId_Email");
+
+            // The pending cap of a host org and the admin list by creation date.
+            entity.HasIndex(i => new { i.InvitedByOrgId, i.CreatedAt })
+                .HasDatabaseName("IX_HostInviteRecords_InvitedByOrgId_CreatedAt");
+        });
+
+        // Audit trail and source of the daily quota: read by host org and time window. No foreign key: it outlives a purged invite.
+        modelBuilder.Entity<HostInviteAuditEntry>(entity =>
+        {
+            entity.HasIndex(e => new { e.ActorOrgId, e.OccurredAt })
+                .HasDatabaseName("IX_HostInviteAuditEntries_ActorOrgId_OccurredAt");
+            entity.HasIndex(e => e.InviteId)
+                .HasDatabaseName("IX_HostInviteAuditEntries_InviteId");
+        });
 
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()
@@ -895,6 +1393,245 @@ public class AppDbContext(
         modelBuilder.Entity<ServiceRequest>()
             .Property(sr => sr.Version)
             .IsRowVersion();
+
+        // SP-04: a request has an optional catalog service (set to null if the service is ever removed for good; the catalog
+        // deletes softly and the request keeps its own copy of the name), and the planner and the console read a supplier's
+        // requests by the time of the work.
+        modelBuilder.Entity<ServiceRequest>()
+            .HasOne<SupplierServiceListing>()
+            .WithMany()
+            .HasForeignKey(sr => sr.ServiceListingId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ServiceRequest>()
+            .HasIndex(sr => new { sr.SupplierOrgId, sr.ScheduledStartUtc });
+
+        // The JSON columns are added to a table that already has rows: the database gives those the empty list (an empty string
+        // is not valid jsonb), the entity gives it to the new ones.
+        modelBuilder.Entity<ServiceRequest>(entity =>
+        {
+            entity.Property(sr => sr.OptionsJson).HasDefaultValue("[]");
+            entity.Property(sr => sr.PriceLinesJson).HasDefaultValue("[]");
+            entity.Property(sr => sr.WorkPhotosJson).HasDefaultValue("[]");
+        });
+
+        // The checks mirror ServiceRequestLimits and the rules of the service: a bad row is refused by the database too. A
+        // time has both ends or none, a proposal has its start, end and instant or none, an amount is from 1 cent to the bound.
+        modelBuilder.Entity<ServiceRequest>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_ServiceRequests_ScheduledInterval",
+                "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR "
+                + "(\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
+            t.HasCheckConstraint(
+                "CK_ServiceRequests_ProposedInterval",
+                "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR "
+                + "(\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL "
+                + "AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
+            t.HasCheckConstraint(
+                "CK_ServiceRequests_Amounts",
+                $"(\"EstimatedAmountCents\" IS NULL OR \"EstimatedAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents}) AND "
+                + $"(\"QuotedAmountCents\" IS NULL OR \"QuotedAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents}) AND "
+                + $"(\"FinalAmountCents\" IS NULL OR \"FinalAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents})");
+        });
+
+        // ─── Booking from the public showcase of a supplier (SP-10, decision D34 revised) ─────────────────────────────
+        // A showcase request belongs to the supplier (OrgId = the supplier org), has no property and no booking, and carries its
+        // customer, its public code and the place of the work. The database keeps that true: the context, the source and these
+        // columns go together (PropertyId and BookingId are nullable only because of it). The host contexts keep what they had
+        // (a property, never a customer, a code or a place of their own); nothing is asked of BookingId there, which older
+        // requests leave empty. The check holds for every row that exists before this migration.
+        modelBuilder.Entity<ServiceRequest>(entity =>
+        {
+            entity.HasOne(sr => sr.Customer)
+                .WithMany()
+                .HasForeignKey(sr => sr.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(sr => sr.CustomerId).HasDatabaseName("IX_ServiceRequests_CustomerId");
+
+            // The code is unique for the supplier among its showcase requests (the host requests have none).
+            entity.HasIndex(sr => new { sr.SupplierOrgId, sr.PublicCode })
+                .IsUnique()
+                .HasFilter("\"PublicCode\" IS NOT NULL")
+                .HasDatabaseName("UIX_ServiceRequests_SupplierOrgId_PublicCode");
+
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_ServiceRequests_Context",
+                $"(\"RentalContext\" = {(int)ServiceRequestRentalContext.Showcase} "
+                + "AND \"PropertyId\" IS NULL AND \"BookingId\" IS NULL "
+                + $"AND \"Source\" = {(int)ServiceRequestSource.Showcase} "
+                + "AND \"CustomerId\" IS NOT NULL AND \"PublicCode\" IS NOT NULL AND \"LocationCity\" IS NOT NULL) OR "
+                + $"(\"RentalContext\" IN ({(int)ServiceRequestRentalContext.ShortRent}, {(int)ServiceRequestRentalContext.LongRent}) "
+                + "AND \"PropertyId\" IS NOT NULL "
+                + $"AND \"Source\" = {(int)ServiceRequestSource.Host} "
+                + "AND \"CustomerId\" IS NULL AND \"PublicCode\" IS NULL "
+                + "AND \"LocationComuneIstat\" IS NULL AND \"LocationCity\" IS NULL AND \"LocationPostalCode\" IS NULL "
+                + "AND \"LocationAddress\" IS NULL AND \"LocationFloor\" IS NULL AND \"LocationAccessNotes\" IS NULL)"));
+        });
+
+        modelBuilder.Entity<ServiceCustomer>(entity =>
+        {
+            // A child of the supplier profile like the agenda: the repair moves the customers before it deletes a profile.
+            entity.HasOne(c => c.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(c => c.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One customer per supplier and address; the HMAC of the address is the only thing the address is found by.
+            entity.HasIndex(c => new { c.OrgId, c.EmailHash })
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceCustomers_OrgId_EmailHash");
+        });
+
+        modelBuilder.Entity<ShowcaseBookingHold>(entity =>
+        {
+            entity.HasOne(h => h.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(h => h.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The request born from the hold. Set to null if the request is ever removed for good: the hold only remembers it.
+            entity.HasOne<ServiceRequest>()
+                .WithMany()
+                .HasForeignKey(h => h.ServiceRequestId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // The column says what it holds: encrypted at rest through the value converter of EncryptedColumns.
+            entity.Property(h => h.Payload).HasColumnName("PayloadEncrypted");
+
+            // The same client request id is the same hold (idempotency); a code is unique among the supplier's holds.
+            entity.HasIndex(h => new { h.OrgId, h.ClientRequestId })
+                .IsUnique()
+                .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_ClientRequestId");
+            entity.HasIndex(h => new { h.OrgId, h.PublicCode })
+                .IsUnique()
+                .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_PublicCode");
+
+            // The planner reads the holds of one supplier by time; the upkeep job reads the expired ones of every supplier; the
+            // cap of unverified bookings counts the ones of one address.
+            entity.HasIndex(h => new { h.OrgId, h.StartUtc }).HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_StartUtc");
+            entity.HasIndex(h => h.ExpiresAt).HasDatabaseName("IX_ShowcaseBookingHolds_ExpiresAt");
+            entity.HasIndex(h => new { h.OrgId, h.EmailHash }).HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_EmailHash");
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_ShowcaseBookingHolds_Interval", "\"StartUtc\" < \"EndUtc\"");
+                t.HasCheckConstraint("CK_ShowcaseBookingHolds_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
+            });
+        });
+
+        // ─── Payment of the service requests inside CasaZen (SP-15a) ─────────────
+        // The commission a supplier is charged instead of the platform's (an admin sets it, SP-15b): a percentage, 0 to 50.
+        modelBuilder.Entity<SupplierProfile>().ToTable(t =>
+            t.HasCheckConstraint(
+                "CK_SupplierProfiles_CommissionPercentOverride",
+                $"\"CommissionPercentOverride\" IS NULL OR \"CommissionPercentOverride\" BETWEEN 0 AND {(int)SupplierPaymentsOptions.MaxCommissionPercent}"));
+
+        // One payment per request that is not canceled: the live one. A canceled row (replaced by an offline record, or withdrawn)
+        // frees the request, so the index ignores it. The creation paths also take the advisory lock ServiceRequestPayment; this
+        // index is what makes a second live payment impossible even if one of them did not.
+        modelBuilder.Entity<ServiceRequestPayment>(entity =>
+        {
+            entity.HasOne(p => p.ServiceRequest)
+                .WithMany()
+                .HasForeignKey(p => p.ServiceRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(p => p.SupplierOrg)
+                .WithMany()
+                .HasForeignKey(p => p.SupplierOrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(p => p.PayerOrg)
+                .WithMany()
+                .HasForeignKey(p => p.PayerOrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(p => p.ServiceRequestId)
+                .IsUnique()
+                .HasDatabaseName(ServiceCharges.LivePaymentIndexName)
+                .HasFilter($"\"Status\" <> {(int)ServicePaymentStatus.Canceled}");
+
+            // A PaymentIntent belongs to one payment: the webhook finds its payment by it (SP-15b).
+            entity.HasIndex(p => p.StripePaymentIntentId)
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPayments_StripePaymentIntentId")
+                .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
+
+            entity.HasIndex(p => new { p.SupplierOrgId, p.Status });
+            entity.HasIndex(p => p.PayerOrgId);
+
+            // The JSON column is added to no existing rows, but the database gives it the empty list like the other jsonb columns.
+            entity.Property(p => p.LineItemsJson).HasDefaultValue("[]");
+
+            // The checks mirror the rules of the service: a bad row is refused by the database too. The amounts follow
+            // SupplierCommission (the fee is strictly below the amount, or 0 for none, and the net is what is left), the percentage
+            // is the one of the options, a host payer has its org, and a payment that was paid says when and how.
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_Amounts",
+                    $"\"AmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents} AND \"ApplicationFeeCents\" >= 0 "
+                    + "AND \"ApplicationFeeCents\" < \"AmountCents\" AND \"NetCents\" = \"AmountCents\" - \"ApplicationFeeCents\" "
+                    + "AND \"RefundedCents\" BETWEEN 0 AND \"AmountCents\" AND \"PaymentIntentCount\" >= 0 AND \"SentCount\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_CommissionPercent",
+                    $"\"CommissionPercent\" BETWEEN 0 AND {(int)SupplierPaymentsOptions.MaxCommissionPercent}");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_FeeVat",
+                    "(\"FeeVatMode\" IS NULL AND \"FeeVatCents\" IS NULL) OR "
+                    + "(\"FeeVatMode\" IS NOT NULL AND \"FeeVatCents\" IS NOT NULL AND \"FeeVatCents\" >= 0)");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_Payer",
+                    $"(\"PayerKind\" = {(int)ServicePayerKind.Host} AND \"PayerOrgId\" IS NOT NULL) OR \"PayerKind\" = {(int)ServicePayerKind.Private}");
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPayments_Paid",
+                    $"\"Status\" NOT IN ({(int)ServicePaymentStatus.Paid}, {(int)ServicePaymentStatus.PartiallyRefunded}, {(int)ServicePaymentStatus.Refunded}) "
+                    + "OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
+            });
+        });
+
+        // ─── Refunds of the service payments and the commission period (SP-15b) ─────────────
+        // The end of a commission period only makes sense with the percentage it ends.
+        modelBuilder.Entity<SupplierProfile>().ToTable(t =>
+            t.HasCheckConstraint(
+                "CK_SupplierProfiles_CommissionOverrideUntil",
+                "\"CommissionOverrideUntil\" IS NULL OR \"CommissionPercentOverride\" IS NOT NULL"));
+
+        // A refund belongs to its payment: restrict, so a payment with refunds is never deleted. The sequence is the n of the
+        // idempotency key and is unique within the payment; a Stripe refund and a key belong to one refund each.
+        modelBuilder.Entity<ServiceRequestPaymentRefund>(entity =>
+        {
+            entity.HasOne(r => r.ServiceRequestPayment)
+                .WithMany()
+                .HasForeignKey(r => r.ServiceRequestPaymentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(r => new { r.ServiceRequestPaymentId, r.Sequence })
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_Payment_Sequence");
+            entity.HasIndex(r => r.StripeRefundId)
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_StripeRefundId")
+                .HasFilter("\"StripeRefundId\" IS NOT NULL");
+            entity.HasIndex(r => r.IdempotencyKey)
+                .IsUnique()
+                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_IdempotencyKey")
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+            // The sync job looks for the refunds that wait for Stripe, by status.
+            entity.HasIndex(r => r.Status);
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPaymentRefunds_Amounts",
+                    $"\"AmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents} AND \"Sequence\" >= 1 "
+                    + "AND (\"ApplicationFeeRefundedCents\" IS NULL OR \"ApplicationFeeRefundedCents\" >= 0)");
+                // A refund that succeeded says when.
+                t.HasCheckConstraint(
+                    "CK_ServiceRequestPaymentRefunds_Succeeded",
+                    $"\"Status\" <> {(int)ServicePaymentRefundStatus.Succeeded} OR \"CompletedAt\" IS NOT NULL");
+            });
+        });
 
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         modelBuilder.Entity<CalendarBlock>()
@@ -968,6 +1705,33 @@ public class AppDbContext(
             .HasIndex(e => e.PropertyId)
             .IsUnique();
 
+        // ─── Scheduled change of rental mode (PM-02) ────────────────────────────
+        modelBuilder.Entity<PropertyModeChange>(entity =>
+        {
+            // The history goes with the property (a property is soft-deleted, so in practice it stays for good).
+            entity.HasOne(c => c.Property)
+                .WithMany()
+                .HasForeignKey(c => c.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(c => c.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One change waiting for its day per property. The creation takes the property dates lock first, so this is the
+            // net under it: a writer that skipped the lock gets 23505 on this index and answers property_mode_change_exists.
+            entity.HasIndex(c => c.PropertyId)
+                .IsUnique()
+                .HasFilter($"\"Status\" = {(int)PropertyModeChangeStatus.Scheduled}")
+                .HasDatabaseName(PropertyModeChange.OneScheduledIndexName);
+
+            // The hourly job: the scheduled changes whose day has come.
+            entity.HasIndex(c => new { c.Status, c.EffectiveDate });
+
+            // The history of a property, newest first.
+            entity.HasIndex(c => new { c.PropertyId, c.CreatedAt });
+        });
+
         modelBuilder.Entity<PropertyICalExport>()
             .HasIndex(e => e.ExportToken)
             .IsUnique();
@@ -993,6 +1757,10 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = "ota.write" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.read" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.write" },
+            // AM-03: carved out of property.write, guest.write and booking.write; the owner keeps doing all of it.
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ServiceRequestWrite },
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestManage },
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.AlloggiatiSubmit },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },
             new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
@@ -1008,6 +1776,18 @@ public class AppDbContext(
             new RolePermission { RoleId = 3, PermissionKey = "admin.jobs.read" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.tax.manage" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.seo.read" });
+
+        // AM-01: the account context and the roles of the org team. OrgRoleCatalog is the source (ids 4 to 12); the tests
+        // compare this seed with it and with OrgOwnerRoles.
+        modelBuilder.Entity<AppContextEntity>().HasData(
+            new AppContextEntity { Key = AccountContext.Key, DisplayName = AccountContext.DisplayName });
+
+        modelBuilder.Entity<Role>().HasData(
+            OrgRoleCatalog.SeededRoles.Select(r => new Role { Id = r.Id, ContextKey = r.ContextKey, RoleKey = r.RoleKey }));
+
+        modelBuilder.Entity<RolePermission>().HasData(
+            OrgRoleCatalog.SeededRoles.SelectMany(r =>
+                r.Permissions.Select(p => new RolePermission { RoleId = r.Id, PermissionKey = p })));
 
         // Guest check-in session (US-020 / #296)
         modelBuilder.Entity<GuestCheckInSession>(entity =>
@@ -1066,11 +1846,57 @@ public class AppDbContext(
                 .HasDatabaseName("IX_DeviceRegistrations_UserId");
         });
 
+        // ─── In-app notifications (UI-12a) ──────────────────────────────────────
+        modelBuilder.Entity<InAppNotification>(entity =>
+        {
+            // The notifications of an org go with it (the one place an org is deleted, the merge of two duplicate supplier orgs,
+            // must not be stopped by them), and the ones of a person go with the account (erasure).
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(n => n.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Once per event and user: the job that writes them, retried by Hangfire or queued twice for the same event, loses
+            // the race on this index (23505) and re-reads. The key is the one of the push of the event.
+            entity.HasIndex(n => new { n.DeliveryKey, n.UserId })
+                .IsUnique()
+                .HasDatabaseName(InAppNotification.OncePerEventAndUserIndexName);
+
+            // The bell: the unread count of a user, and its list (newest first, optionally only the unread ones).
+            entity.HasIndex(n => new { n.UserId, n.ReadAt, n.CreatedAt })
+                .HasDatabaseName("IX_InAppNotifications_UserId_ReadAt_CreatedAt");
+
+            // The tenant filter of every read, and the cascade of an org.
+            entity.HasIndex(n => n.OrgId)
+                .HasDatabaseName("IX_InAppNotifications_OrgId");
+
+            // The daily retention deletes by age, whoever the user is.
+            entity.HasIndex(n => n.CreatedAt)
+                .HasDatabaseName("IX_InAppNotifications_CreatedAt");
+        });
+
+        // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
+        // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,
+        // admin cross-org reads) still excludes deleted properties, and IgnoreQueryFilters([SoftDeleteQueryFilter])
+        // (fiscal/compliance reporting) still respects tenant isolation.
+        modelBuilder.Entity<Property>().HasQueryFilter(SoftDeleteQueryFilter, p => !p.IsDeleted);
+
         ApplyTenantQueryFilters(modelBuilder);
     }
 
     /// <summary>Key of the global tenant query filter, for <c>IgnoreQueryFilters([TenantQueryFilter])</c>.</summary>
     public const string TenantQueryFilter = "Tenant";
+
+    /// <summary>
+    /// Key of the global soft-delete filter on <see cref="Property"/> (PC-05), for
+    /// <c>IgnoreQueryFilters([SoftDeleteQueryFilter])</c> where a deleted property's historical data must still be
+    /// reachable (fiscal reports, compliance exports).
+    /// </summary>
+    public const string SoftDeleteQueryFilter = "SoftDelete";
 
     private static readonly MethodInfo ApplyTenantQueryFilterMethod = typeof(AppDbContext)
         .GetMethod(nameof(ApplyTenantQueryFilter), BindingFlags.Instance | BindingFlags.NonPublic)!;

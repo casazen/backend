@@ -317,33 +317,64 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
         Assert.Empty(_sent);
     }
 
-    [Theory]
-    [InlineData(6, null)]
-    [InlineData(5, Questura.BeforeDelivery)]
-    [InlineData(3, Questura.BeforeDelivery)]
-    [InlineData(2, Questura.Delivery)]
-    [InlineData(1, Questura.Delivery)]
-    [InlineData(0, Questura.Deadline)]
-    [InlineData(-1, Questura.Overdue)]
-    [InlineData(-90, Questura.Overdue)]
-    public void QuesturaThresholds_Reached_MostUrgentThresholdOfTheDay(int daysToDeadline, string? expected)
+    // The pure threshold theories (QuesturaThresholds.Reached, Thresholds.Reached) are in RliDeadlineThresholdsTests: this class
+    // creates a PostgreSQL database for every test, which they do not need.
+
+    [PostgresFact]
+    public async Task ExecuteAsync_TwoLandlords_RemindsEachLandlordOnce()
     {
-        Assert.Equal(expected, Questura.Reached(daysToDeadline));
+        // LT-14 (A7-28): co-owners each have the registration obligation; a repeated address gets one email.
+        var lease = await SeedLeaseAsync(
+            LeaseStatus.Signed, StartOctober, SignedAt, coLandlordEmails: ["coowner@example.com", "HOST@example.com"]);
+
+        await RunAsync("2026-08-16T08:00:00Z");
+        await RunAsync("2026-08-17T08:00:00Z");
+
+        Assert.Equal(["host@example.com", "coowner@example.com"], _sent.Select(m => m.To));
+        Assert.Equal([$"t-15:{Deadline}", $"t-15:{Deadline}"], await PayloadsAsync(lease));
     }
 
-    [Theory]
-    [InlineData(16, null)]
-    [InlineData(15, RliDeadlineReminderJob.Thresholds.Days15)]
-    [InlineData(8, RliDeadlineReminderJob.Thresholds.Days15)]
-    [InlineData(7, RliDeadlineReminderJob.Thresholds.Days7)]
-    [InlineData(2, RliDeadlineReminderJob.Thresholds.Days7)]
-    [InlineData(1, RliDeadlineReminderJob.Thresholds.Days1)]
-    [InlineData(0, RliDeadlineReminderJob.Thresholds.Days1)]
-    [InlineData(-1, RliDeadlineReminderJob.Thresholds.Overdue)]
-    [InlineData(-40, RliDeadlineReminderJob.Thresholds.Overdue)]
-    public void Thresholds_Reached_MostUrgentThresholdOfTheDay(int daysRemaining, string? expected)
+    [PostgresFact]
+    public async Task ExecuteAsync_SendToOneLandlordFails_RetriesOnlyThatLandlord()
     {
-        Assert.Equal(expected, RliDeadlineReminderJob.Thresholds.Reached(daysRemaining));
+        var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, coLandlordEmails: ["coowner@example.com"]);
+        _email
+            .Setup(s => s.SendEmailAsync("coowner@example.com", It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new EmailSendResult(false, "smtp down"));
+
+        await RunAsync("2026-08-16T08:00:00Z");
+        Assert.Equal([$"t-15:{Deadline}"], await PayloadsAsync(lease));
+
+        _email
+            .Setup(s => s.SendEmailAsync("coowner@example.com", It.IsAny<string>(), It.IsAny<string>()))
+            .Callback<string, string, string>((to, subject, body) => _sent.Add((to, subject, body)))
+            .ReturnsAsync(EmailSendResult.Sent());
+        await RunAsync("2026-08-17T08:00:00Z");
+
+        Assert.Equal(["host@example.com", "coowner@example.com"], _sent.Select(m => m.To));
+        Assert.Equal([$"t-15:{Deadline}", $"t-15:{Deadline}"], await PayloadsAsync(lease));
+    }
+
+    [PostgresFact]
+    public async Task ExecuteAsync_ThresholdRecordedBeforeLt14_IsNotSentAgain()
+    {
+        // A reminder recorded with the bare payload (first landlord only, before LT-14) counts as sent to all.
+        var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, coLandlordEmails: ["coowner@example.com"]);
+        await using (var db = _database!.CreateContext())
+        {
+            db.LeaseEvents.Add(new LeaseEvent
+            {
+                LeaseContractId = lease,
+                EventType = LeaseEventType.DeadlineReminderSent,
+                Payload = $"t-15:{Deadline}",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await RunAsync("2026-08-16T08:00:00Z");
+
+        Assert.Empty(_sent);
+        Assert.Equal([$"t-15:{Deadline}"], await RawPayloadsAsync(lease));
     }
 
     private async Task RunAsync(string utcNow)
@@ -354,7 +385,11 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
         await job.ExecuteAsync();
     }
 
-    private async Task<List<string?>> PayloadsAsync(Guid leaseId)
+    /// <summary>Thresholds sent, without the landlord suffix (<c>:{partyId}</c>, LT-14), one per landlord reached.</summary>
+    private async Task<List<string?>> PayloadsAsync(Guid leaseId) =>
+        (await RawPayloadsAsync(leaseId)).Select(p => p is null ? null : p[..p.LastIndexOf(':')]).ToList();
+
+    private async Task<List<string?>> RawPayloadsAsync(Guid leaseId)
     {
         await using var db = _database!.CreateContext();
         return await db.LeaseEvents
@@ -374,7 +409,8 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
         bool extraEu = false,
         DateTime? deliveryDate = null,
         DateTime? questuraCommunicationDate = null,
-        DateTime? endDate = null)
+        DateTime? endDate = null,
+        params string[] coLandlordEmails)
     {
         var org = new OrgEntity { Name = "Org LT-04", Slug = $"lt04-{Guid.NewGuid():N}", DisplayName = "Org LT-04", IsActive = true };
         var property = new Property
@@ -398,7 +434,6 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
             StartDate = startDate,
             EndDate = endDate ?? startDate.AddYears(4),
             MonthlyRent = 800m,
-            DataRetentionUntil = startDate.AddYears(10),
             PropertyDeliveryDate = deliveryDate,
             QuesturaCommunicationDate = questuraCommunicationDate,
             Parties =
@@ -417,13 +452,27 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
                     Role = PartyRole.Tenant,
                     FirstName = "John",
                     LastName = "Doe",
-                    FiscalCode = "XXXXXX00A00A000X",
+                    FiscalCode = "XXXXXX00A00A000T",
                     Citizenship = extraEu ? "US" : "IT",
                     ContactEmail = "tenant@example.com",
                     IsExtraEU = extraEu,
                 },
             ],
         };
+        foreach (var (email, index) in coLandlordEmails.Select((email, index) => (email, index)))
+        {
+            lease.Parties.Add(new Party
+            {
+                Role = PartyRole.Landlord,
+                Position = index + 1,
+                FirstName = "Co",
+                LastName = $"Proprietario {index + 1}",
+                FiscalCode = "BNCMRA70C10F205H",
+                Citizenship = "IT",
+                ContactEmail = email,
+            });
+        }
+
         if (signedAt is { } signed)
             lease.RecordStipula(signed);
 

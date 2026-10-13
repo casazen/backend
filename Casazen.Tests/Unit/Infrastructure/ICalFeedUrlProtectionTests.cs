@@ -5,6 +5,7 @@ using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Microsoft.Extensions.Caching.Memory;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -69,10 +70,15 @@ public class ICalFeedUrlProtectionTests
     {
         var first = new EphemeralDataProtectionProvider();
         var second = new EphemeralDataProtectionProvider();
-        using var firstContext = NewContext(first);
-        using var secondContext = NewContext(second);
-        using var sameProviderContext = NewContext(first);
-        using var withoutProvider = NewContext(null);
+        // QA-INFRA-01: the model cache of EF is one per process and holds about forty models, a provider each; once it is full
+        // a new model is not cached at all, and "the same provider shares one" then depends on how many providers the tests
+        // that ran before had created, i.e. on the order and the speed of the whole run. The contexts of this test get a
+        // cache of their own, which nobody else fills.
+        using var modelCache = new MemoryCache(new MemoryCacheOptions());
+        using var firstContext = NewContext(first, modelCache);
+        using var secondContext = NewContext(second, modelCache);
+        using var sameProviderContext = NewContext(first, modelCache);
+        using var withoutProvider = NewContext(null, modelCache);
 
         var payload = (string)ImportUrlConverter(secondContext)!.ConvertToProvider(Url)!;
 
@@ -84,9 +90,12 @@ public class ICalFeedUrlProtectionTests
         Assert.Null(ImportUrlConverter(withoutProvider));
     }
 
-    private static AppDbContext NewContext(IDataProtectionProvider? provider) =>
+    private static AppDbContext NewContext(IDataProtectionProvider? provider, IMemoryCache modelCache) =>
         new(
-            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .UseMemoryCache(modelCache)
+                .Options,
             tenantContext: null,
             provider);
 

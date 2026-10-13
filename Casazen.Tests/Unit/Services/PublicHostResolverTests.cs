@@ -119,28 +119,108 @@ public class PublicHostResolverTests
     }
 
     [Fact]
-    public async Task ResolveAsync_DoesNotCacheUnresolvedCustomDomain()
+    public async Task ResolveAsync_UnresolvedHost_IsRememberedUntilItIsInvalidated()
     {
+        // BK-16: a host that resolves to nothing is remembered (the CORS check asks about every foreign origin), and a
+        // domain that gets verified is picked up at once because the verification invalidates the host.
         var org = BuildOrg("villa-mare", PublicHostMode.CustomDomain);
         org.CustomDomain = "pending.example.it";
         org.DomainVerificationStatus = DomainVerificationStatus.Verified;
-        var lookupCount = 0;
+        var verified = false;
 
         _orgService.Setup(s => s.GetByVerifiedCustomDomainAsync("pending.example.it", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => lookupCount++ == 0 ? null : org);
+            .ReturnsAsync(() => verified ? org : null);
         _orgService.Setup(s => s.GetBySubdomainOrSlugAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((OrgEntity?)null);
 
         var beforeVerify = await _resolver.ResolveAsync("pending.example.it", CancellationToken.None);
-        var afterVerify = await _resolver.ResolveAsync("pending.example.it", CancellationToken.None);
+        var rememberedMiss = await _resolver.ResolveAsync("PENDING.example.it:443", CancellationToken.None);
+        verified = true;
+        var stillRemembered = await _resolver.ResolveAsync("pending.example.it", CancellationToken.None);
+        _resolver.InvalidateCacheForHost("pending.example.it");
+        var afterInvalidation = await _resolver.ResolveAsync("pending.example.it", CancellationToken.None);
 
         Assert.Null(beforeVerify);
-        Assert.NotNull(afterVerify);
-        Assert.Equal("villa-mare", afterVerify!.Slug);
+        Assert.Null(rememberedMiss);
+        Assert.Null(stillRemembered);
+        Assert.NotNull(afterInvalidation);
+        Assert.Equal("villa-mare", afterInvalidation!.Slug);
         _orgService.Verify(
             s => s.GetByVerifiedCustomDomainAsync("pending.example.it", It.IsAny<CancellationToken>()),
             Times.Exactly(2));
     }
+
+    [Fact]
+    public async Task ResolveAsync_ResolvedHost_IsServedFromTheCacheUntilItIsInvalidated()
+    {
+        var org = BuildOrg("villa-mare", PublicHostMode.CustomDomain);
+        org.CustomDomain = "www.villa-mare.it";
+        org.DomainVerificationStatus = DomainVerificationStatus.Verified;
+        _orgService.Setup(s => s.GetByVerifiedCustomDomainAsync("www.villa-mare.it", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+
+        await _resolver.ResolveAsync("www.villa-mare.it", CancellationToken.None);
+        await _resolver.ResolveAsync("www.villa-mare.it", CancellationToken.None);
+        _resolver.InvalidateCacheForHost("www.villa-mare.it");
+        await _resolver.ResolveAsync("www.villa-mare.it", CancellationToken.None);
+
+        _orgService.Verify(
+            s => s.GetByVerifiedCustomDomainAsync("www.villa-mare.it", It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+    }
+
+    [Theory]
+    [InlineData(CasazenPathMode)]
+    [InlineData(CustomDomainMode)]
+    public async Task ResolveAsync_SubdomainOfAnOrgThatDidNotChooseTheSubdomainMode_ReturnsNull(string mode)
+    {
+        // BK-16 (A3-08): no wildcard on the base domain, only the orgs that opted in are served on a label.
+        var org = BuildOrg("villa-mare", Enum.Parse<PublicHostMode>(mode));
+        _orgService.Setup(s => s.GetByVerifiedCustomDomainAsync("villa-mare.casazen.it", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OrgEntity?)null);
+        _orgService.Setup(s => s.GetBySubdomainOrSlugAsync("villa-mare", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+
+        var result = await _resolver.ResolveAsync("villa-mare.casazen.it", CancellationToken.None);
+
+        Assert.Null(result);
+    }
+
+    [Theory]
+    [InlineData("evil.test/path")]
+    [InlineData("villa-mare.casazen.it\"><script>")]
+    [InlineData("a b")]
+    [InlineData("-x.casazen.it")]
+    [InlineData("https://villa-mare.casazen.it")]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task ResolveAsync_NotAHostName_ReturnsNullWithoutAnyLookup(string host)
+    {
+        var result = await _resolver.ResolveAsync(host, CancellationToken.None);
+
+        Assert.Null(result);
+        _orgService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_AnswersAreCachedPerHostAndNeverAcrossHosts()
+    {
+        var org = BuildOrg("villa-mare", PublicHostMode.CasazenSubdomain);
+        org.Subdomain = "villa-mare";
+        _orgService.Setup(s => s.GetByVerifiedCustomDomainAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OrgEntity?)null);
+        _orgService.Setup(s => s.GetBySubdomainOrSlugAsync("villa-mare", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+        _orgService.Setup(s => s.GetBySubdomainOrSlugAsync("other", It.IsAny<CancellationToken>())).ReturnsAsync((OrgEntity?)null);
+
+        var found = await _resolver.ResolveAsync("villa-mare.casazen.it", CancellationToken.None);
+        var missing = await _resolver.ResolveAsync("other.casazen.it", CancellationToken.None);
+
+        Assert.NotNull(found);
+        Assert.Null(missing);
+    }
+
+    private const string CasazenPathMode = nameof(PublicHostMode.CasazenPath);
+    private const string CustomDomainMode = nameof(PublicHostMode.CustomDomain);
 
     [Theory]
     [InlineData("api.casazen.it")]

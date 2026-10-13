@@ -51,7 +51,11 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         var owner = NewOwner();
         var property = await _factory.SeedPropertyAsync(owner);
         for (var i = 0; i < 3; i++)
-            await AddGuestAsync(property.OrgId, $"page{i}.{Guid.NewGuid():N}@example.com", createdAt: DateTime.UtcNow.AddMinutes(i));
+        {
+            var guestId = await AddGuestAsync(property.OrgId, $"page{i}.{Guid.NewGuid():N}@example.com", createdAt: DateTime.UtcNow.AddMinutes(i));
+            // PO 2026-10-08: the host guest list is bookers only (Guests with at least one Booking).
+            await AddBookingAsync(property, guestId, BookingStatus.Confirmed, daysFromToday: 10 + i);
+        }
 
         using var client = _factory.CreateAuthenticatedClient(owner, OwnerRole);
         using var page1 = await ReadJsonAsync(await client.GetAsync("/api/guests?page=1&pageSize=2"));

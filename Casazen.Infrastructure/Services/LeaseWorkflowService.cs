@@ -46,11 +46,9 @@ public class LeaseWorkflowService(
             ? await AssessConcordatoRentAsync(propertyId, request, term)
             : null;
 
+        // LT-14 (A7-28): one or more landlords and tenants, each with a valid fiscal code, none twice.
         var parties = request.Parties.ToList();
-        if (!parties.Any(p => p.Role == PartyRole.Landlord))
-            throw new InvalidOperationException("At least one Landlord party is required.");
-        if (!parties.Any(p => p.Role == PartyRole.Tenant))
-            throw new InvalidOperationException("At least one Tenant party is required.");
+        LeasePartyRules.Ensure(parties.Select(p => (p.Role, (string?)p.FiscalCode)).ToList());
 
         var lease = new LeaseContract
         {
@@ -61,14 +59,16 @@ public class LeaseWorkflowService(
             MonthlyRent = request.MonthlyRent,
             SecurityDeposit = request.SecurityDeposit,
             ConcordatoAssessment = concordato,
-            // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04).
-            DataRetentionUntil = request.StartDate.AddYears(10),
-            Parties = parties.Select(p => new Party
+            // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04). No retention date
+            // either: it is computed from the end date and Gdpr:Retention:LeaseParties (LT-12, LeasePartyPrivacyService).
+            Parties = parties.Select((p, index) => new Party
             {
                 Role = p.Role,
+                // Order among the parties of the same role, as entered.
+                Position = parties.Take(index).Count(previous => previous.Role == p.Role),
                 FirstName = p.FirstName,
                 LastName = p.LastName,
-                FiscalCode = p.FiscalCode,
+                FiscalCode = ItalianFiscalCode.Normalize(p.FiscalCode),
                 Citizenship = EuMemberStates.NormalizeCode(p.Citizenship),
                 ContactEmail = p.ContactEmail,
                 // Not an EU citizen (27 member states, EuMemberStates): the Questura communication applies (LT-07).
@@ -102,13 +102,26 @@ public class LeaseWorkflowService(
         // The deadline of a lease not signed yet depends on today (LT-04): resolved here, not stored.
         var today = _clock.TodayInRome();
         var summaries = await leaseRepository.GetSummariesAsync(scope, propertyId);
-        return summaries
+        return WithResolvedDeadline(summaries, today);
+    }
+
+    public async Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, LeaseListQuery query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        // The views, the overdue installments and the deadline of a lease not signed yet all depend on today (Rome).
+        var today = _clock.TodayInRome();
+        var summaries = await leaseRepository.GetSummariesAsync(scope, query, today);
+        return WithResolvedDeadline(summaries, today);
+    }
+
+    private static IReadOnlyList<LeaseSummaryDto> WithResolvedDeadline(IReadOnlyList<LeaseSummaryDto> summaries, DateTime today) =>
+        summaries
             .Select(s => s with
             {
                 RegistrationDeadline = RliRegistrationDeadline.Resolve(s.Status, s.StipulaDate, s.StartDate, today),
             })
             .ToList();
-    }
 
     public Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId)
         => leaseRepository.GetByIdWithDetailsAsync(leaseId);

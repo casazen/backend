@@ -55,7 +55,7 @@ public class TouristTaxRatesController(
         var rate = await touristTaxService.GetTaxRateAsync(city, effectiveDate);
 
         if (rate == null)
-            return NotFound($"No tax rate found for city: {city}");
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "TouristTaxRateNotFound");
 
         return Ok(rate);
     }

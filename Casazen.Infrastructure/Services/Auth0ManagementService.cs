@@ -82,6 +82,46 @@ public class Auth0ManagementService(
             cancellationToken);
 
     /// <inheritdoc />
+    public async Task<Auth0SyncResult> DeleteUserAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        if (!tokenProvider.IsConfigured)
+        {
+            logger.LogWarning(
+                "Auth0ManagementService: Management API not configured — cannot delete user {UserId}", userId);
+            return Auth0SyncResult.NotConfigured;
+        }
+
+        try
+        {
+            await ExecuteAsync(client => client.Users.DeleteAsync(userId), cancellationToken);
+            logger.LogInformation("Auth0ManagementService: deleted Auth0 user {UserId}", userId);
+            return Auth0SyncResult.Synced;
+        }
+        catch (ErrorApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            logger.LogInformation("Auth0ManagementService: Auth0 user {UserId} is already gone", userId);
+            return Auth0SyncResult.Synced;
+        }
+        catch (Auth0ManagementTokenException ex)
+        {
+            logger.LogError(ex, "Auth0ManagementService: No Management API token — cannot delete user {UserId}", userId);
+            return Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode);
+        }
+        catch (RateLimitApiException ex)
+        {
+            logger.LogError(ex, "Auth0ManagementService: Rate limited while deleting user {UserId}", userId);
+            return Auth0SyncResult.Failed(Auth0SyncResult.RateLimitedCode);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex,
+                "Auth0ManagementService: Failed to delete user {UserId} (status {StatusCode})",
+                userId, (ex as ErrorApiException)?.StatusCode);
+            return Auth0SyncResult.Failed(Auth0SyncResult.ApiErrorCode);
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<Auth0UserRolesResult> GetUserRolesAsync(string userId, CancellationToken cancellationToken = default)
     {
         var roles = new List<UserRole>();
@@ -124,7 +164,15 @@ public class Auth0ManagementService(
 
         try
         {
-            var auth0User = await ExecuteAsync(client => client.Users.GetAsync(userId), CancellationToken.None);
+            // Ask for the profile fields by name. GetAsync otherwise sends include_fields=true with an empty
+            // fields list, and Auth0 answers with a user that has no email and no name — the admin list then
+            // shows a dash and the raw user id.
+            var auth0User = await ExecuteAsync(
+                client => client.Users.GetAsync(
+                    userId,
+                    "email,given_name,family_name,name,nickname,email_verified",
+                    includeFields: true),
+                CancellationToken.None);
             if (auth0User is null)
                 return null;
 

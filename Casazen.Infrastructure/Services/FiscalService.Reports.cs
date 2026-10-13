@@ -1,9 +1,12 @@
+using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.OfficialData;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
@@ -13,6 +16,10 @@ namespace Casazen.Infrastructure.Services;
 /// only where fiscale.md documents the computation (cedolare secca), OTA withholding detail, tourist tax per comune and
 /// month from the amounts recorded by the tourist tax engine (BK-03). Documents in <see cref="FiscalReportDocuments"/>.
 /// </summary>
+/// <remarks>
+/// CO-18 (PO 2026-10-08): CasaZen considers a single owner per property. No co-ownership quota is ever computed or
+/// applied; the full amounts are attributed to the single taxpayer recorded on the property (or to the org tax profile).
+/// </remarks>
 public partial class FiscalService
 {
     public async Task<AnnualIncomeReport> GetAnnualReportAsync(
@@ -25,13 +32,14 @@ public partial class FiscalService
         ValidateTaxYear(taxYear);
         var range = ValidateYearPeriod(taxYear, period);
         var org = await LoadReportOrgAsync(scope.OrgId, cancellationToken);
-        var view = await LoadYearAsync(scope.OrgId, org.FiscalCode, taxYear, trackAssignments: false, cancellationToken);
+        var view = await LoadYearAsync(scope.OrgId, org.FiscalCode, taxYear, trackAssignments: false, cancellationToken, scope);
 
         var payments = await SettledIn(ScopedPayments(scope), range).ToListAsync(cancellationToken);
 
-        // Every property shown in the fiscal area for the year, plus any other one with income in the period.
+        // Every property shown in the fiscal area for the year (the ones the caller reaches), plus any other one with income
+        // in the period (the payments are already the caller's).
         var reportProperties = view.Candidates
-            .Where(p => scope.OwnerId is null || p.OwnerId == scope.OwnerId)
+            .Where(p => p.InScope)
             .ToDictionary(p => p.Id, p => p.Name);
         foreach (var property in payments.Select(p => p.Booking.Property))
             reportProperties.TryAdd(property.Id, property.Name);
@@ -72,7 +80,8 @@ public partial class FiscalService
         return new AnnualIncomeReport(
             taxYear,
             FiscalCopy.PackLabel,
-            FiscalCopy.Disclaimer,
+            // CO-18 (PO 2026-10-08): disclaimer from configuration (ShortStayFiscal:Disclaimer); default is the PO-approved text.
+            _rules.Disclaimer,
             lines,
             totals,
             range,
@@ -130,7 +139,8 @@ public partial class FiscalService
             byOta,
             lines,
             range,
-            FiscalCopy.Disclaimer,
+            // CO-18 (PO 2026-10-08): disclaimer from configuration (ShortStayFiscal:Disclaimer).
+            _rules.Disclaimer,
             org.Name,
             _clock.TodayInRomeAsDateOnly(),
             new WithholdingTotals(lines.Sum(l => l.Gross), lines.Sum(l => l.Withholding), lines.Sum(l => l.Net), lines.Count),
@@ -151,9 +161,12 @@ public partial class FiscalService
         // Stay dates are stored as midnight UTC of the calendar date (FD-06).
         var from = period.From.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var toExclusive = period.To.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05): b.Property may since have been soft-deleted — the
+        // tourist tax history of a stay stays reportable regardless.
         var stays = await db.Bookings.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .InScope(scope)
             .Where(b => b.OrgId == scope.OrgId
-                && (scope.OwnerId == null || b.Property.OwnerId == scope.OwnerId)
                 && b.CheckInDate >= from
                 && b.CheckInDate < toExclusive
                 && (b.Status == BookingStatus.Confirmed
@@ -166,6 +179,7 @@ public partial class FiscalService
                 b.PropertyId,
                 PropertyName = b.Property.Name,
                 b.Property.City,
+                b.Property.ComuneIstatCode,
                 b.CheckInDate,
                 b.CheckOutDate,
                 b.NumberOfGuests,
@@ -244,7 +258,55 @@ public partial class FiscalService
                 lines.Sum(l => l.Nights),
                 lines.Sum(l => l.Guests),
                 lines.Sum(l => l.Amount),
-                lines.Count(l => l.Amount <= 0)));
+                lines.Count(l => l.Amount <= 0)),
+            await LoadRemittanceNotesAsync(stays.Select(s => s.ComuneIstatCode), cancellationToken));
+    }
+
+    private async Task<IReadOnlyList<TouristTaxRemittanceNote>> LoadRemittanceNotesAsync(
+        IEnumerable<string?> istatCodes,
+        CancellationToken cancellationToken)
+    {
+        var codes = istatCodes.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToList();
+        if (codes.Count == 0)
+            return [];
+
+        var versions = await db.ComuneOfficialProfileVersions.AsNoTracking()
+            .Where(v => v.IsCurrent && codes.Contains(v.IstatCode) && v.ExtractJson != null)
+            .ToListAsync(cancellationToken);
+        if (versions.Count == 0)
+            return [];
+
+        var comuniByCode = await db.Comuni.AsNoTracking()
+            .Where(c => codes.Contains(c.IstatCode))
+            .ToDictionaryAsync(c => c.IstatCode, cancellationToken);
+
+        var notes = new List<TouristTaxRemittanceNote>();
+        foreach (var version in versions)
+        {
+            ComuneOfficialExtractDto? extract;
+            try
+            {
+                extract = JsonSerializer.Deserialize<ComuneOfficialExtractDto>(
+                    version.ExtractJson!, ComuneOfficialExtractValidator.JsonOptions);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            var text = extract?.Remittance?.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            var name = comuniByCode.TryGetValue(version.IstatCode, out var comune)
+                ? comune.Name
+                : version.IstatCode;
+            notes.Add(new TouristTaxRemittanceNote(name, text));
+        }
+
+        return notes
+            .OrderBy(n => n.Comune, StringComparer.CurrentCulture)
+            .ToList();
     }
 
     public byte[] ToCsv(AnnualIncomeReport report) => FiscalReportDocuments.Csv(report);
@@ -351,12 +413,18 @@ public partial class FiscalService
         return (string.IsNullOrWhiteSpace(org.DisplayName) ? org.Name : org.DisplayName, org.FiscalCode);
     }
 
-    /// <summary>Payments of the scope: the org, and only the caller's own properties without org-wide access (TN-3).</summary>
+    /// <summary>
+    /// Payments of the scope: the org, and only the properties the caller reaches without org-wide access (TN-3, AM-03).
+    /// IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05): a payment's property may since have been soft-deleted —
+    /// the fiscal history it is part of must stay reportable, so <c>p.Booking.Property</c> still resolves.
+    /// </summary>
     private IQueryable<Payment> ScopedPayments(HostScope scope) =>
         db.Payments.AsNoTracking()
             .Include(p => p.Booking)
             .ThenInclude(b => b.Property)
-            .Where(p => p.OrgId == scope.OrgId && (scope.OwnerId == null || p.Booking.Property.OwnerId == scope.OwnerId));
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(p => p.OrgId == scope.OrgId)
+            .InScope(scope);
 
     /// <summary>
     /// Payments completed (or partially refunded) in <paramref name="period"/>: payment date (processing, else creation) in

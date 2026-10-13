@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Services;
@@ -46,6 +47,42 @@ public sealed record CancellationRefundFloor(CancellationRefundRule Rule, decima
 /// </remarks>
 public static class CancellationRefundPolicy
 {
+    /// <summary>Long-stay (28+ nights): host overrides are ignored, the catalog policy stays (PO 2026-10-08).</summary>
+    public const int LongStayNightsUnchanged = 28;
+
+    /// <summary>
+    /// Policy used for a stay: catalog, or the host's percentages / periods / refund type when the stay is shorter than
+    /// <see cref="LongStayNightsUnchanged"/>.
+    /// </summary>
+    public static CancellationPolicy? EffectivePolicy(Property? property, int nights)
+    {
+        var catalog = property?.CancellationPolicy;
+        if (catalog is null)
+            return null;
+        if (nights >= LongStayNightsUnchanged)
+            return catalog;
+        if (property!.CancellationRefundType == HostCancellationRefundType.NonRefundable)
+        {
+            return new CancellationPolicy
+            {
+                Name = catalog.Name,
+                Description = catalog.Description,
+                FullRefundHours = int.MaxValue,
+                PartialRefundHours = 0,
+                PartialRefundPercent = 0m,
+            };
+        }
+
+        return new CancellationPolicy
+        {
+            Name = catalog.Name,
+            Description = catalog.Description,
+            FullRefundHours = property.CancellationFullRefundHours ?? catalog.FullRefundHours,
+            PartialRefundHours = property.CancellationPartialRefundHours ?? catalog.PartialRefundHours,
+            PartialRefundPercent = property.CancellationPartialRefundPercent ?? catalog.PartialRefundPercent,
+        };
+    }
+
     public static CancellationRefundFloor Evaluate(Booking booking, CancellationPolicy? policy, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(booking);

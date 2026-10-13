@@ -1,3 +1,4 @@
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Storage;
@@ -89,7 +90,7 @@ public class ImageStorageServiceTests : IDisposable
     [Fact]
     public async Task UploadImageAsync_WithInvalidFile_ThrowsAndStoresNothing()
     {
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<DomainRuleException>(() =>
             _service.UploadImageAsync(CreateFormFile("test.txt", "text/plain", 1024), Guid.NewGuid()));
 
         Assert.False(Directory.Exists(Path.Combine(_root, "public")) && Directory.EnumerateFiles(Path.Combine(_root, "public"), "*", SearchOption.AllDirectories).Any());

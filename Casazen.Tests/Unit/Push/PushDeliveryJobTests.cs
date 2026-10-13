@@ -30,24 +30,143 @@ public class PushDeliveryJobTests : IDisposable
     // ─── recipients ───
 
     [Fact]
-    public async Task SendAsync_PropertyHosts_SendsOnlyToTheOwnerAndTheOrgWideRolesOfItsOrg()
+    public async Task SendAsync_PropertyHosts_SendsToTheMemberInChargeAndTheAdministratorsOfItsOrg()
     {
         var world = await SeedWorldAsync();
 
         await Job().SendAsync("key-property", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
 
+        // The manager is in charge (Property.ResponsibleUserId), the owner is an administrator.
         Assert.Equal(["ExponentPushToken[manager]", "ExponentPushToken[owner-a]"], SentTokens());
     }
 
     [Fact]
-    public async Task SendAsync_BookingHosts_SendsOnlyToTheOwnerAndTheOrgWideRolesOfItsOrg()
+    public async Task SendAsync_BookingHosts_SendsToTheMemberInChargeAndTheAdministratorsOfItsOrg()
     {
         var world = await SeedWorldAsync();
 
         await Job().SendAsync("key-booking", Push(PushAudience.BookingHosts(world.BookingId)), CancellationToken.None);
 
-        // Not owner B (another owner of the org), not the owner's phone registered under an old org, not the supplier.
+        // Not owner B (a user of the org that is neither in charge nor an administrator), not the owner's phone registered
+        // under an old org, not the supplier.
         Assert.Equal(["ExponentPushToken[manager]", "ExponentPushToken[owner-a]"], SentTokens());
+    }
+
+    // ─── AM-03: who is told is the member in charge and the administrators, not whoever has a user role ───
+
+    private async Task SetResponsibleAsync(Guid propertyId, string? userId)
+    {
+        var property = await _db.Properties.SingleAsync(p => p.Id == propertyId);
+        property.ResponsibleUserId = userId;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+    }
+
+    [Fact]
+    public async Task SendAsync_NobodyInCharge_TheCreatorAndTheAdministratorsAreTold_NotAPropertyManager()
+    {
+        var world = await SeedWorldAsync();
+        await SetResponsibleAsync(world.PropertyId, null);
+
+        await Job().SendAsync("key-nobody", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
+
+        // The creator is the owner (an administrator too); the property manager is org-wide but not in charge.
+        Assert.Equal(["ExponentPushToken[owner-a]"], SentTokens());
+    }
+
+    [Fact]
+    public async Task SendAsync_NobodyInCharge_AManagerWhoCreatedThePropertyKeepsHearingAboutIt()
+    {
+        var world = await SeedWorldAsync();
+        var property = await _db.Properties.SingleAsync(p => p.Id == world.PropertyId);
+        property.OwnerId = "auth0|manager";
+        property.ResponsibleUserId = null;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Job().SendAsync("key-creator", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
+
+        Assert.Equal(["ExponentPushToken[manager]", "ExponentPushToken[owner-a]"], SentTokens());
+    }
+
+    [Fact]
+    public async Task SendAsync_AnAdministratorOfTheOrg_IsToldWhoeverIsInCharge()
+    {
+        var world = await SeedWorldAsync();
+        _db.Users.Add(NewUser("auth0|admin", world.OrgId, UserRole.None));
+        _db.OrgMembers.Add(NewMember("auth0|admin", world.OrgId, OrgRole.Admin));
+        _db.DeviceRegistrations.Add(NewDevice("auth0|admin", world.OrgId, "ExponentPushToken[admin]"));
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Job().SendAsync("key-admin", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
+
+        Assert.Equal(
+            ["ExponentPushToken[admin]", "ExponentPushToken[manager]", "ExponentPushToken[owner-a]"], SentTokens());
+    }
+
+    [Fact]
+    public async Task SendAsync_ATeamMemberWhoIsNeitherInChargeNorAnAdministrator_IsNotTold()
+    {
+        var world = await SeedWorldAsync();
+        foreach (var (id, role) in new[] { ("accountant", OrgRole.Accountant), ("collab", OrgRole.Collaborator), ("pm2", OrgRole.PropertyManager) })
+        {
+            _db.Users.Add(NewUser($"auth0|{id}", world.OrgId, UserRole.None));
+            _db.OrgMembers.Add(NewMember($"auth0|{id}", world.OrgId, role));
+            _db.DeviceRegistrations.Add(NewDevice($"auth0|{id}", world.OrgId, $"ExponentPushToken[{id}]"));
+        }
+
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Job().SendAsync("key-others", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
+
+        Assert.Equal(["ExponentPushToken[manager]", "ExponentPushToken[owner-a]"], SentTokens());
+    }
+
+    [Fact]
+    public async Task SendAsync_AUserWithTheAdminUserRoleIsNotAnAdministratorOfTheOrg()
+    {
+        // The old rule told every user whose User.Role is Admin or PropertyManager: a platform admin in the org's rows was an
+        // org administrator. An administrator of the org is an Owner or Admin member.
+        var world = await SeedWorldAsync();
+        _db.Users.Add(NewUser("auth0|platform-admin", world.OrgId, UserRole.Admin));
+        _db.DeviceRegistrations.Add(NewDevice("auth0|platform-admin", world.OrgId, "ExponentPushToken[platform-admin]"));
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Job().SendAsync("key-platform-admin", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
+
+        Assert.DoesNotContain("ExponentPushToken[platform-admin]", SentTokens());
+    }
+
+    [Fact]
+    public async Task SendAsync_ADeactivatedMemberIsNeverTold_NeitherInChargeNorAdministrator()
+    {
+        var world = await SeedWorldAsync();
+        foreach (var member in await _db.OrgMembers.ToListAsync())
+            member.Status = OrgMemberStatus.Deactivated;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Job().SendAsync("key-deactivated", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
+
+        Assert.Empty(_expo.SendRequests);
+    }
+
+    [Fact]
+    public async Task SendAsync_APersonInChargeOfAnotherOrg_IsNotToldAboutThisOnes()
+    {
+        var world = await SeedWorldAsync();
+        // The named person works in another org by now (its user row says so): the administrators still hear about it.
+        var user = await _db.Users.SingleAsync(u => u.Id == "auth0|manager");
+        user.OrgId = Guid.NewGuid();
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Job().SendAsync("key-elsewhere", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
+
+        Assert.Equal(["ExponentPushToken[owner-a]"], SentTokens());
     }
 
     [Fact]
@@ -278,6 +397,8 @@ public class PushDeliveryJobTests : IDisposable
         {
             OrgId = org.Id,
             OwnerId = "auth0|owner-a",
+            // AM-03: the manager is in charge of this property; the owner (an administrator of the org) is told as well.
+            ResponsibleUserId = "auth0|manager",
             Name = "Villa",
             Address = "Via Test 1",
             City = "Roma",
@@ -309,6 +430,9 @@ public class PushDeliveryJobTests : IDisposable
             NewUser("auth0|supplier-member", supplierOrg.Id, UserRole.Supplier, supplierOrgId: supplierOrg.Id),
             NewUser("auth0|supplier-host-too", otherHostOrg.Id, UserRole.PropertyOwner, supplierOrgId: supplierOrg.Id),
             NewUser("auth0|supplier-inactive", supplierOrg.Id, UserRole.Supplier, supplierOrgId: supplierOrg.Id, active: false));
+        _db.OrgMembers.AddRange(
+            NewMember("auth0|owner-a", org.Id, OrgRole.Owner),
+            NewMember("auth0|manager", org.Id, OrgRole.PropertyManager));
         _db.DeviceRegistrations.AddRange(
             NewDevice("auth0|owner-a", org.Id, "ExponentPushToken[owner-a]"),
             NewDevice("auth0|owner-b", org.Id, "ExponentPushToken[owner-b]"),
@@ -333,6 +457,14 @@ public class PushDeliveryJobTests : IDisposable
         SupplierOrgId = supplierOrgId,
         Role = role,
         IsActive = active,
+    };
+
+    private static OrgMember NewMember(string userId, Guid orgId, OrgRole role, OrgMemberStatus status = OrgMemberStatus.Active) => new()
+    {
+        UserId = userId,
+        OrgId = orgId,
+        Role = role,
+        Status = status,
     };
 
     private static DeviceRegistration NewDevice(string userId, Guid orgId, string pushToken) => new()

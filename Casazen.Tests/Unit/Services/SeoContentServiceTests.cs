@@ -17,6 +17,10 @@ namespace Casazen.Tests.Unit.Services;
 
 public class SeoContentServiceTests
 {
+    /// <summary>The comuni of the tests, as the SEO catalog gives them (Como, Bellagio, Menaggio, Palermo: official codes of the ISTAT list).</summary>
+    private static readonly ISeoComuneCatalog Catalog = new StaticSeoComuneCatalog(
+        ComuneTestData.ComoInfo, ComuneTestData.BellagioInfo, ComuneTestData.MenaggioInfo, ComuneTestData.PalermoInfo);
+
     private static readonly TimeProvider Today = new FixedTimeProvider(new DateTimeOffset(2026, 9, 24, 10, 0, 0, TimeSpan.Zero));
 
     /// <summary>The real quote service (the only tourist tax engine) over a repository holding <paramref name="rates"/>.</summary>
@@ -33,6 +37,7 @@ public class SeoContentServiceTests
         new(
             seoRepo,
             QuoteService(rates),
+            Catalog,
             Mock.Of<IAiProvider>(),
             EmailTestHelpers.Links("https://public.test"),
             Mock.Of<ILogger<SeoContentService>>(),
@@ -163,12 +168,13 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             aiProvider.Object,
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var generated = await service.GeneratePagesForComuneBatchAsync(
-            ItalianComuneRegistry.AllCodes.Take(3).ToList(),
+            new List<string> { "013075", "013250", "013145" },
             [SeoPageType.ComplianceGuide, SeoPageType.TouristTaxCalc],
             forceRegenerate: true);
 
@@ -182,7 +188,7 @@ public class SeoContentServiceTests
     [Fact]
     public async Task RefreshStalePagesAsync_BudgetExhausted_StopsAtFirstRefusedCall()
     {
-        var codes = ItalianComuneRegistry.AllCodes.Take(3).ToList();
+        var codes = new List<string> { "013075", "013250", "013145" };
         var seoRepo = new Mock<ISeoContentRepository>();
         seoRepo.Setup(r => r.GetPagesNeedingRefreshAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(codes.Select(code => new SeoContentPage
@@ -200,6 +206,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             aiProvider.Object,
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
@@ -285,6 +292,47 @@ public class SeoContentServiceTests
     }
 
     [Fact]
+    public async Task SaveManualDraftAsync_PlainText_StoresAPublishableDraftAndDoesNotApprove()
+    {
+        var page = new SeoContentPage
+        {
+            Id = Guid.NewGuid(),
+            Slug = "affitti-brevi/lombardia/como",
+            ComuneCode = "013075",
+            RegionCode = "LOM",
+            PageType = SeoPageType.ComplianceGuide,
+            Title = "Affitti brevi a Como",
+            MetaDescription = "Guida",
+        };
+        var stored = new List<SeoContentRevision>();
+        var seoRepo = new Mock<ISeoContentRepository>();
+        seoRepo.Setup(r => r.GetByIdAsync(page.Id, It.IsAny<CancellationToken>())).ReturnsAsync(page);
+        seoRepo.Setup(r => r.UpsertPageAsync(It.IsAny<SeoContentPage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SeoContentPage p, CancellationToken _) => p);
+        seoRepo.Setup(r => r.AddRevisionAsync(It.IsAny<SeoContentRevision>(), It.IsAny<CancellationToken>()))
+            .Callback<SeoContentRevision, CancellationToken>((revision, _) => stored.Add(revision))
+            .Returns(Task.CompletedTask);
+        seoRepo.Setup(r => r.GetLatestRevisionAsync(page.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => stored.LastOrDefault());
+        seoRepo.Setup(r => r.GetReviewEventsAsync(page.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<SeoReviewEventSummary>());
+        var service = CreateService(seoRepo.Object);
+        var paragraph = new string('a', 320);
+
+        var detail = await service.SaveManualDraftAsync(
+            new SaveSeoDraftCommand(page.Id, $"{paragraph}\n\n{paragraph}", "Titolo nuovo", null, "auth0|admin"));
+
+        var revision = Assert.Single(stored);
+        Assert.Equal(SeoContentStatus.Manual, revision.ContentStatus);
+        Assert.Contains("<h2>Titolo nuovo</h2>", revision.BodyHtml);
+        Assert.Equal("manual", revision.SourceDataVersion);
+        Assert.Equal(0, revision.PromptTokens);
+        Assert.Equal(SeoContentStatus.Manual, detail.PendingRevision!.ContentStatus);
+        Assert.False(detail.Page.IsPublished);
+        seoRepo.Verify(r => r.ApproveRevisionAsync(It.IsAny<SeoContentReviewEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task WithdrawAsync_PageNotPublished_ThrowsConflict()
     {
         var seoRepo = new Mock<ISeoContentRepository>();
@@ -305,6 +353,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             new StubAiProvider(NullLogger<StubAiProvider>.Instance),
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>(),
@@ -317,7 +366,7 @@ public class SeoContentServiceTests
         Assert.Equal(SeoContentStatus.AiProviderNotConfigured, revision.ContentStatus);
         Assert.Equal(string.Empty, revision.BodyHtml);
         Assert.Equal(0, revision.PromptTokens);
-        Assert.Equal(SeoContentPrompt.Version, revision.PromptVersion);
+        Assert.Equal(SeoContentPrompt.LombardyGuideVersion, revision.PromptVersion);
         seoRepo.Verify(r => r.ApproveRevisionAsync(It.IsAny<SeoContentReviewEvent>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -330,7 +379,7 @@ public class SeoContentServiceTests
             .Setup(a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AiGenerationResult(SeoGeneratedContentTests.ValidHtml(), 50, 500, AiModelTier.Economy, FromCache: false));
         var service = new SeoContentService(
-            seoRepo.Object, QuoteService(), aiProvider.Object, EmailTestHelpers.Links(),
+            seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>(), Today);
 
         await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: true);
@@ -356,7 +405,7 @@ public class SeoContentServiceTests
             {
                 PageId = existing.Id,
                 ContentStatus = SeoContentStatus.AiProviderNotConfigured,
-                PromptVersion = SeoContentPrompt.Version,
+                PromptVersion = SeoContentPrompt.LombardyGuideVersion,
                 SourceDataVersion = "013075:::",
             });
         var aiProvider = new Mock<IAiProvider>();
@@ -364,13 +413,177 @@ public class SeoContentServiceTests
             .Setup(a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AiGenerationResult(SeoGeneratedContentTests.ValidHtml(), 50, 500, AiModelTier.Economy, FromCache: false));
         var service = new SeoContentService(
-            seoRepo.Object, QuoteService(), aiProvider.Object, EmailTestHelpers.Links(),
+            seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>(), Today);
 
         var generated = await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
 
         Assert.Equal(1, generated);
         Assert.Equal(SeoContentStatus.Generated, Assert.Single(stored).ContentStatus);
+    }
+
+    [Fact]
+    public async Task GeneratePagesForComuneBatchAsync_LombardyGuideOfThePreviousPrompt_IsGeneratedAgain()
+    {
+        // The Lombardy guides gained the regional section: their texts of the previous prompt are regenerated as drafts.
+        var (seoRepo, stored, aiProvider) = ExistingGeneratedPage("013075", SeoPageType.ComplianceGuide, SeoContentPrompt.Version);
+        var service = new SeoContentService(
+            seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
+            Mock.Of<ILogger<SeoContentService>>(), Today);
+
+        var generated = await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+
+        Assert.Equal(1, generated);
+        Assert.Equal(SeoContentPrompt.LombardyGuideVersion, Assert.Single(stored).PromptVersion);
+    }
+
+    [Fact]
+    public async Task GeneratePagesForComuneBatchAsync_PageWhosePromptDidNotChange_IsNotGeneratedAgain()
+    {
+        // A guide outside Lombardy keeps its prompt version: no paid call and no new review for an unchanged text.
+        var (seoRepo, stored, aiProvider) = ExistingGeneratedPage("082053", SeoPageType.ComplianceGuide, SeoContentPrompt.Version);
+        var service = new SeoContentService(
+            seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
+            Mock.Of<ILogger<SeoContentService>>(), Today);
+
+        var generated = await service.GeneratePagesForComuneBatchAsync(["082053"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+
+        Assert.Equal(0, generated);
+        Assert.Empty(stored);
+        aiProvider.Verify(
+            a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>A page whose latest revision is a generated text of <paramref name="promptVersion"/> with unchanged data.</summary>
+    private static (Mock<ISeoContentRepository> Repo, List<SeoContentRevision> Stored, Mock<IAiProvider> Provider) ExistingGeneratedPage(
+        string comuneCode, SeoPageType pageType, string promptVersion)
+    {
+        var seoRepo = GenerationRepository(out var stored);
+        var existing = new SeoContentPage { Id = Guid.NewGuid(), ComuneCode = comuneCode, PageType = pageType };
+        seoRepo.Setup(r => r.GetPageAsync(comuneCode, pageType, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        seoRepo.Setup(r => r.GetLatestRevisionAsync(existing.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeoContentRevision
+            {
+                PageId = existing.Id,
+                ContentStatus = SeoContentStatus.Generated,
+                PromptVersion = promptVersion,
+                SourceDataVersion = $"{comuneCode}:::",
+            });
+        var aiProvider = new Mock<IAiProvider>();
+        aiProvider
+            .Setup(a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiGenerationResult(SeoGeneratedContentTests.ValidHtml(), 50, 500, AiModelTier.Economy, FromCache: false));
+        return (seoRepo, stored, aiProvider);
+    }
+
+    // A8-25 (SE-05): the answers are cached in a bounded cache with a time to live; "regenerate" really regenerates.
+    private static (SeoContentService Service, Mock<IAiProvider> Provider, List<SeoContentRevision> Stored, AiResponseCache Cache) CachedService(
+        bool providerConfigured = true,
+        string? content = null)
+    {
+        var seoRepo = GenerationRepository(out var stored);
+        var calls = 0;
+        var aiProvider = new Mock<IAiProvider>();
+        aiProvider
+            .Setup(a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new AiGenerationResult(
+                content ?? SeoGeneratedContentTests.ValidHtml($"risposta {++calls}"), 50, 500, AiModelTier.Economy, FromCache: false, providerConfigured));
+        var cache = new AiResponseCache(Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.AiCacheOptions()));
+        var service = new SeoContentService(
+            seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
+            Mock.Of<ILogger<SeoContentService>>(), Today, cache);
+        return (service, aiProvider, stored, cache);
+    }
+
+    [Fact]
+    public async Task GeneratePagesForComuneBatchAsync_SameDataRetried_ReusesTheCachedAnswerWithoutPayingAgain()
+    {
+        var (service, provider, stored, _) = CachedService();
+
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+
+        provider.Verify(
+            a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        Assert.Equal(2, stored.Count);
+        Assert.Equal(stored[0].BodyHtml, stored[1].BodyHtml);
+        // The second revision cost no tokens.
+        Assert.Equal(50, stored[0].PromptTokens);
+        Assert.Equal(0, stored[1].PromptTokens);
+    }
+
+    [Fact]
+    public async Task GeneratePagesForComuneBatchAsync_ForceRegenerate_BypassesTheCacheAndReplacesTheEntry()
+    {
+        var (service, provider, stored, _) = CachedService();
+
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: true);
+        // The regenerated text is what the cache holds now.
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+
+        provider.Verify(
+            a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+        Assert.Equal(3, stored.Count);
+        Assert.NotEqual(stored[0].BodyHtml, stored[1].BodyHtml);
+        Assert.Equal(stored[1].BodyHtml, stored[2].BodyHtml);
+        Assert.Equal(50, stored[1].PromptTokens);
+    }
+
+    [Fact]
+    public async Task GeneratePagesForComuneBatchAsync_PlaceholderAnswer_IsNeverCached()
+    {
+        // The stub provider (no API key) answers a placeholder: keeping it would only hide the missing configuration.
+        var (service, provider, _, cache) = CachedService(providerConfigured: false);
+
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+
+        provider.Verify(
+            a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+        Assert.Equal(0, cache.Count);
+    }
+
+    [Fact]
+    public async Task GetComplianceGuideAsync_ApprovedGeneratedRevision_IsMarkedAiGeneratedAndItalian()
+    {
+        // SE-05 (A8-19, A8-27): the API tells the client to show the AI notice and the language of the text.
+        var revision = new SeoContentRevision { Id = Guid.NewGuid(), BodyHtml = "<p>Guida</p>", ContentStatus = SeoContentStatus.Generated };
+        var page = new SeoContentPage
+        {
+            Id = Guid.NewGuid(),
+            ComuneCode = "013075",
+            PageType = SeoPageType.ComplianceGuide,
+            LegalReviewStatus = LegalReviewStatus.Reviewed,
+            PublishedRevisionId = revision.Id,
+            PublishedRevision = revision,
+        };
+        var seoRepo = new Mock<ISeoContentRepository>();
+        seoRepo.Setup(r => r.GetPublishedPageAsync(SeoPageType.ComplianceGuide, "lombardia", "como", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(page);
+        var service = CreateService(seoRepo.Object, ComoRate());
+
+        var dto = await service.GetComplianceGuideAsync("lombardia", "como");
+
+        Assert.True(dto!.AiGenerated);
+        Assert.Equal("it", dto.ContentLanguage);
+    }
+
+    [Fact]
+    public async Task GetTouristTaxPageAsync_PageWithoutAnApprovedGeneratedRevision_IsNotMarkedAiGenerated()
+    {
+        var page = new SeoContentPage { Id = Guid.NewGuid(), ComuneCode = "013075", PageType = SeoPageType.TouristTaxCalc };
+        var seoRepo = new Mock<ISeoContentRepository>();
+        seoRepo.Setup(r => r.GetPublishedTouristTaxPageAsync("como", It.IsAny<CancellationToken>())).ReturnsAsync(page);
+        var service = CreateService(seoRepo.Object, ComoRate());
+
+        var dto = await service.GetTouristTaxPageAsync("como");
+
+        Assert.False(dto!.AiGenerated);
     }
 
     /// <summary>A repository for a generation from scratch, collecting the stored revisions.</summary>
@@ -421,6 +634,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             aiProvider.Object,
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
@@ -462,6 +676,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             Mock.Of<IAiProvider>(),
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());

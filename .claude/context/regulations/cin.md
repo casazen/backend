@@ -115,7 +115,7 @@ Cosa se ne ricava con certezza:
 | `IT048017A1FOG7WU8P` | Firenze, NH Firenze | 048·017·A1·FOG7WU8P | minorhotels.com |
 | `IT048017B42742QNBZ` | Firenze, Max Studios | 048·017·B4·2742QNBZ | florence-hotels365.com |
 
-Anche gli esempi vengono da estratti WebSearch delle pagine indicate. I codici ISTAT incorporati (058091 Roma, 027042 Venezia, 015146 Milano, 048017 Firenze) coincidono con quelli di `Casazen.Core/Regulatory/ItalianComuneRegistry.cs`. Le lettere `I` e `O` compaiono nella parte casuale, quindi non si escludono caratteri ambigui.
+Anche gli esempi vengono da estratti WebSearch delle pagine indicate. I codici ISTAT incorporati (058091 Roma, 027042 Venezia, 015146 Milano, 048017 Firenze) coincidono con quelli dell'elenco ufficiale ISTAT dei comuni (`Casazen.Infrastructure/Data/Seeds/comuni-istat.csv`, aggiornato al 21/02/2026). Le lettere `I` e `O` compaiono nella parte casuale, quindi non si escludono caratteri ambigui.
 
 ### Regex consigliata
 
@@ -142,7 +142,7 @@ Versione con gruppi, per il controllo ISTAT (.NET):
 - Regex applicata dopo la normalizzazione: `^IT\d{6}[A-Z0-9]{2}[A-Z0-9]{1,8}$` (solo cifre ASCII). Per scelta del piano di risanamento la categoria accetta qualsiasi coppia alfanumerica, perché il testo ufficiale dice solo "2 caratteri".
 - Con `[A-Z0-9]{2}` il vecchio formato inventato normalizzato (`IT` + 15 cifre) passerebbe, quindi `CinFormat` lo rifiuta con una regola esplicita: `^IT\d{15}$`.
 - La migrazione `NormalizeCinCodes` salva in forma normalizzata i CIN già presenti. Quelli che restano fuori formato non vengono cancellati: lo stato calcolato li mostra come "non valido". Dettagli in `docs/runbooks/cin-format.md`.
-- Controllo ISTAT: predisposto (`CinFormat.HasIstatComuneMismatch`, solo avviso) ma non ancora collegato, perché la property ha solo la città in testo libero. Si collega quando arriva l'anagrafica ISTAT (SU-04).
+- Controllo ISTAT: collegato (SU-04). `CinFormat.HasIstatComuneMismatch` confronta il codice ISTAT del CIN con il comune che l'host sceglie dall'elenco ufficiale (`Property.ComuneIstatCode`, mai ricavato dalla città in testo libero): solo avviso non bloccante (`cin_istat_comune_mismatch`, `cinIstatMismatch`). Una property senza comune scelto non viene confrontata. Dettagli in `docs/runbooks/comuni-istat.md`.
 
 ### Normalizzazione (prima di validare e salvare)
 
@@ -167,7 +167,7 @@ Versione con gruppi, per il controllo ISTAT (.NET):
 - Il confronto con il comune della property deve dare **solo un avviso non bloccante**, mai un rifiuto, per tre motivi:
   1. Il CIN resta invariato dopo variazioni di localizzazione (fonte ufficiale, vedi sopra).
   2. I codici ISTAT cambiano con fusioni di comuni e riordini provinciali, mentre il CIN no.
-  3. `ItalianComuneRegistry` oggi contiene solo 12 comuni: per gli altri il confronto non è possibile e va saltato, non trattato come mancata corrispondenza.
+  3. Se la property non ha un comune scelto dall'elenco ISTAT il confronto non è possibile e va saltato, non trattato come mancata corrispondenza.
 - Non validare la **categoria** (`A1`, `C2`…) contro il tipo di property, per lo stesso motivo dell'invarianza.
 - **Esistenza del CIN**: la BDSR ha una pagina pubblica di consultazione (`https://bdsr.ministeroturismo.gov.it/ricerca-cin`). Non è stata trovata un'API documentata, quindi la verifica di esistenza resta manuale e fuori dal perimetro della validazione.
 

@@ -5,12 +5,12 @@ title: Golden Journey E2E — web 12-step + app host + fornitore mobile
 phase: 1
 type: ops
 priority: P0
-status: specced
+status: partial
 issue:
 depends_on: [ical-calendar-sync, compliance-wizards, guest-check-in-portal, micro-marketplace-v0, supplier-console-web, public-site-design-system, native-host-app]
 blocks: []
 exit_contributes_to: MVP exit — product acceptance when all GJ gates pass
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Golden Journey E2E (GJ-001)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 Defines the **product acceptance harness** for CasaZen MVP: a 12-step end-to-end journey (supplier → host → guest → service → checkout) verified on **web (Playwright)**, **host native app (Maestro/Detox)**, and **supplier mobile web**. Supersedes `spec-production-e2e-flow-verification.md` as the canonical gate.
 
-**Phase:** 1 — MVP · **Type:** ops · **Status:** specced
+**Phase:** 1 — MVP · **Type:** ops · **Status:** partial (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

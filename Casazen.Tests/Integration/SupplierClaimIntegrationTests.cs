@@ -49,7 +49,8 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var user = await db.Users.SingleAsync(u => u.Id == userId);
             Assert.Equal(orgId, user.SupplierOrgId);
-            Assert.Equal(orgId, user.OrgId);
+            // PL-05 (A1-40): the supplier org is never written into OrgId, which is the host org only.
+            Assert.Null(user.OrgId);
             var profile = await db.SupplierProfiles.SingleAsync(p => p.OrgId == orgId);
             Assert.Equal(SupplierClaimTokens.Hash(token), profile.ClaimTokenHash);
             Assert.NotEqual(token, profile.ClaimTokenHash);
@@ -313,7 +314,8 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
         Assert.Equal(HttpStatusCode.OK, me.StatusCode);
         var body = await me.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(orgId, body.GetProperty("supplierOrgId").GetGuid());
-        Assert.Equal(orgId, body.GetProperty("orgId").GetGuid());
+        // PL-05 (A1-40): a supplier-only account has no host org.
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("orgId").ValueKind);
     }
 
     [PostgresFact]

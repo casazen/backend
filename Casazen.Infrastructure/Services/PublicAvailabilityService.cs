@@ -41,8 +41,9 @@ public sealed class PublicAvailabilityService(
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(p => p.Id == propertyId)
             .Where(PublicListing.IsPublished)
-            .AnyAsync(cancellationToken);
-        if (!published)
+            .Select(p => new { p.MinNights })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (published is null)
         {
             throw new NotFoundException("Property not published on the booking site")
             {
@@ -74,6 +75,6 @@ public sealed class PublicAvailabilityService(
         foreach (var block in blocks)
             nights.UnionWith(PropertyOccupancy.NightsIn(block.Start, block.End, from, to));
 
-        return new PublicAvailability(propertyId, from, to, [.. nights]);
+        return new PublicAvailability(propertyId, from, to, [.. nights], published.MinNights);
     }
 }

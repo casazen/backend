@@ -1,6 +1,8 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
@@ -26,6 +28,7 @@ public class BookingService(
     ILogger<BookingService> logger,
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     OnSiteRequestNotifier onSiteNotifier,
+    IPricingAdapterService pricingAdapterService,
     TimeProvider? timeProvider = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -35,20 +38,21 @@ public class BookingService(
         return await repository.GetByIdAsync(id);
     }
 
-    public async Task<IEnumerable<Booking>> GetPropertyBookingsAsync(Guid propertyId)
-    {
-        return await repository.GetByPropertyAsync(propertyId);
-    }
+    public Task<IReadOnlyList<Booking>> GetBookingsAsync(
+        HostScope scope,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default) =>
+        repository.GetByScopeAsync(scope, propertyId, guestId, cancellationToken);
 
-    public async Task<IEnumerable<Booking>> GetGuestBookingsAsync(Guid guestId)
-    {
-        return await repository.GetByGuestAsync(guestId);
-    }
-
-    public async Task<IEnumerable<Booking>> GetAllBookingsAsync()
-    {
-        return await repository.GetAllAsync();
-    }
+    public Task<(IReadOnlyList<Booking> Items, int TotalCount)> GetPagedBookingsAsync(
+        HostScope scope,
+        int page,
+        int pageSize,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default) =>
+        repository.GetPagedByScopeAsync(scope, page, pageSize, propertyId, guestId, cancellationToken);
 
     public async Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest)
     {
@@ -56,6 +60,13 @@ public class BookingService(
         ArgumentNullException.ThrowIfNull(guest);
         if (booking.OrgId == Guid.Empty)
             throw new ArgumentException("A manual booking must carry the org of its property.", nameof(booking));
+
+        // PM-01: a property in long-term mode takes no stay (422). The host endpoint refuses it earlier, with the property
+        // it has already read; this is the check of the service that writes the booking. A property that is not found is
+        // left to the checks below and to the foreign key, as before.
+        var property = await propertyRepository.GetRecordAsync(booking.PropertyId);
+        if (property is not null)
+            PropertyRentalModeRules.EnsureShortRent(property);
 
         // A booking entered by the host is a confirmed stay from the start: it occupies its dates on the booking site
         // and in the iCal export, and the checkout hold expiry never cancels it (PC-01, A2-01).
@@ -113,12 +124,21 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.ConsentOutdated, "DirectBookingConsentOutdated");
         }
 
+        // DB-03: the optional "send me offers" box. As on the check-in portal (CO-15) it exists only with a versioned text
+        // (Gdpr:MarketingConsentVersion): the version is recorded with the consent as the proof of what the guest agreed to.
+        // Without one a consent cannot be recorded properly, so it is refused instead of silently dropped.
+        var marketingVersion = GdprOptions.Normalize(
+            configuration[$"{GdprOptions.SectionName}:{nameof(GdprOptions.MarketingConsentVersion)}"]);
+        if (input.MarketingConsent && marketingVersion is null)
+        {
+            throw new DomainRuleException(
+                DirectBookingErrorCodes.MarketingConsentUnavailable, "DirectBookingMarketingConsentUnavailable");
+        }
+
         var property = await GetBookablePropertyAsync(input.PropertyId);
 
         var org = await orgService.GetByIdAsync(property.OrgId);
-        if (org is null ||
-            string.IsNullOrWhiteSpace(org.StripeConnectedAccountId) ||
-            !org.ConnectChargesEnabled)
+        if (org is null || !org.CanTakeDirectPayments)
         {
             throw new DomainConflictException(DirectBookingErrorCodes.PaymentsNotReady, "DirectBookingPaymentsNotReady");
         }
@@ -149,15 +169,17 @@ public class BookingService(
                 DirectBookingErrorCodes.DeferredPaymentUnavailable, "DirectBookingDeferredPaymentUnavailable");
         }
 
-        var pendingTtlMinutes = GetPendingDirectTtlMinutes();
-
-        if (!await IsPropertyAvailableAsync(input.PropertyId, checkIn, checkOut, pendingTtlMinutes))
-        {
-            throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
-        }
-
-        var guest = await CreateGuestSnapshotWithConsentAsync(
+        // BK-18 (A3-33): the guest snapshot (personal data and consent) is only built in memory here. It is written with
+        // the booking, in the same insert under the property lock, once the stay is validated and the dates are free: a
+        // rejected checkout leaves no guest behind.
+        var guest = NewGuestSnapshotWithConsent(
             property.OrgId, input.Guest, input.ConsentVersion, input.ConsentIpAddress);
+
+        // DB-03: the optional marketing consent is recorded on the guest and in the append-only register of the privacy
+        // history (version of the text, time, source, IP), in the same insert as the booking and the guest.
+        var marketingConsent = input.MarketingConsent && marketingVersion is not null
+            ? RecordMarketingConsent(guest, marketingVersion, input.ConsentIpAddress)
+            : null;
 
         var basePrice = price.BasePrice;
         var touristTaxAmount = price.TouristTax.AmountOrZero;
@@ -173,6 +195,7 @@ public class BookingService(
             PropertyId = input.PropertyId,
             OrgId = property.OrgId,
             GuestId = guest.Id,
+            Guest = guest,
             CheckInDate = checkIn,
             CheckOutDate = checkOut,
             NumberOfAdults = input.NumberOfAdults,
@@ -214,15 +237,23 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.InvalidStay, "DirectBookingInvalidStay");
         }
 
+        if (!await IsPropertyAvailableAsync(input.PropertyId, checkIn, checkOut, GetPendingDirectTtlMinutes()))
+        {
+            throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
+        }
+
         Booking createdBooking;
         try
         {
-            createdBooking = await repository.AddAsync(booking);
+            // Booking and guest snapshot (and the marketing consent, when the guest gave it) in one insert: a concurrent
+            // checkout that takes the dates first leaves none of them.
+            createdBooking = marketingConsent is null
+                ? await repository.AddAsync(booking)
+                : await repository.AddWithGuestConsentAsync(booking, marketingConsent);
         }
         catch (InvalidOperationException ex) when (
             ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
         {
-            await guestRepository.DeleteAsync(guest.Id);
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
@@ -238,21 +269,31 @@ public class BookingService(
         string? clientSecret = null;
         string? setupIntentClientSecret = null;
 
-        switch (input.PaymentOption)
+        try
         {
-            case PaymentOption.Immediate:
-                clientSecret = await HandleImmediatePaymentAsync(
-                    createdBooking, org.StripeConnectedAccountId!, amountCents, currency, metadata);
-                break;
+            switch (input.PaymentOption)
+            {
+                case PaymentOption.Immediate:
+                    clientSecret = await HandleImmediatePaymentAsync(
+                        createdBooking, org.StripeConnectedAccountId!, amountCents, currency, metadata);
+                    break;
 
-            case PaymentOption.OnCancellationDeadline:
-                setupIntentClientSecret = await HandleDeferredPaymentAsync(
-                    createdBooking, org.StripeConnectedAccountId!, guest, amountCents, currency, metadata);
-                break;
+                case PaymentOption.OnCancellationDeadline:
+                    setupIntentClientSecret = await HandleDeferredPaymentAsync(
+                        createdBooking, org.StripeConnectedAccountId!, guest, amountCents, currency, metadata);
+                    break;
 
-            case PaymentOption.OnSite:
-                await OpenOnSiteRequestAsync(createdBooking, onSiteEmailToken!);
-                break;
+                case PaymentOption.OnSite:
+                    await OpenOnSiteRequestAsync(createdBooking, onSiteEmailToken!);
+                    break;
+            }
+        }
+        catch (Exception)
+        {
+            // BK-18 (A3-33): the guest never got a payment to complete, so the attempt is not a booking. It is removed
+            // with its guest snapshot instead of staying as a cancelled booking that keeps the guest's personal data.
+            await DiscardFailedCheckoutAsync(createdBooking.Id);
+            throw;
         }
 
         var publishableKey = configuration["Stripe:PublishableKey"] ?? string.Empty;
@@ -289,11 +330,21 @@ public class BookingService(
             cancellationToken);
     }
 
-    /// <summary>An active property whose compliance allows public bookings; 404 otherwise.</summary>
+    /// <summary>
+    /// A short-rent, active, unpaused property whose compliance allows public bookings: the same rule as
+    /// <see cref="PublicListing.IsPublished"/>. 404 when it does not exist or is not published (PC-03, A2-05); a property in
+    /// long-term mode (PM-01) is answered with the reason, 422 <c>property_not_bookable_in_long_mode</c>, whatever its
+    /// other state: the public pages never lead to it, so this is a stale page or a hand-made request.
+    /// </summary>
     private async Task<Property> GetBookablePropertyAsync(Guid propertyId)
     {
         var property = await propertyRepository.GetByIdAsync(propertyId);
-        if (property is null || !property.IsActive || property.ComplianceStatus != PropertyComplianceStatus.Active)
+        if (property is null)
+            throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
+
+        PropertyRentalModeRules.EnsureShortRent(property);
+
+        if (!property.IsActive || property.IsPaused || property.ComplianceStatus != PropertyComplianceStatus.Active)
             throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
 
         return property;
@@ -310,6 +361,10 @@ public class BookingService(
     {
         ArgumentNullException.ThrowIfNull(property);
 
+        // PM-01: the stays of a property in long-term mode are not priced nor entered (host quote, new and changed manual
+        // booking). Before the guests check: a long-term property has no guest capacity, "0 guests" would hide the reason.
+        PropertyRentalModeRules.EnsureShortRent(property);
+
         if (numberOfAdults + numberOfChildren > property.MaxGuests)
             throw new DomainRuleException(BookingErrorCodes.TooManyGuests, "BookingTooManyGuests", property.MaxGuests);
 
@@ -322,7 +377,12 @@ public class BookingService(
             property, checkIn, checkOut, numberOfAdults, numberOfChildren, childrenAges, cancellationToken);
     }
 
-    /// <summary>Guests within the capacity and a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights.</summary>
+    /// <summary>
+    /// Guests within the capacity and a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights, not shorter than
+    /// the minimum stay of the property (DB-03, 422 <see cref="DirectBookingErrorCodes.MinNightsNotMet"/>). The minimum is a
+    /// rule of the guests' quote and checkout, the two callers of this method: the host's own prices and bookings
+    /// (<see cref="PriceHostStayAsync"/>, manual bookings) do not go through it, a stay entered by hand can be shorter.
+    /// </summary>
     private static (DateTime CheckIn, DateTime CheckOut) ValidateStay(
         Property property,
         DateTime checkInDate,
@@ -341,14 +401,21 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.InvalidStay, "DirectBookingInvalidStay");
         }
 
+        if (property.MinNights is { } minNights && (checkOut - checkIn).Days < minNights)
+        {
+            throw new DomainRuleException(DirectBookingErrorCodes.MinNightsNotMet, "DirectBookingMinNightsNotMet", minNights);
+        }
+
         return (checkIn, checkOut);
     }
 
     /// <summary>
-    /// Nightly rate x nights + cleaning fee, plus the tourist tax of <see cref="ITouristTaxQuoteService"/> when it can
+    /// The nights (<see cref="StayPricing.Lodging"/>: nightly rate, with the weekend surcharge of the property on its Friday
+    /// and Saturday nights) + the cleaning fee, plus the tourist tax of <see cref="ITouristTaxQuoteService"/> when it can
     /// be calculated. The property has no accommodation category (yet): only the rates for every accommodation of the
-    /// comune apply. The night price for percentage rates is the nightly rate, cleaning excluded. The payment options come
-    /// from the free refund deadline of the stay (<see cref="DirectBookingPaymentRules"/>, A3-16).
+    /// comune apply. The night price for percentage rates is the price of that night, cleaning excluded (the nightly rate,
+    /// or the rate with the surcharge on a weekend night). The payment options come from the free refund deadline of the
+    /// stay (<see cref="DirectBookingPaymentRules"/>, A3-16). With no surcharge, the default, the price is what it always was.
     /// </summary>
     private async Task<DirectBookingQuote> PriceStayAsync(
         Property property,
@@ -360,17 +427,25 @@ public class BookingService(
         CancellationToken cancellationToken = default)
     {
         var nights = (checkOut - checkIn).Days;
-        var basePrice = property.NightlyRate * nights + property.CleaningFee;
+        var checkInDate = RomeCalendar.DateInRome(checkIn);
+
+        // PC-15: a price the host confirmed for a date is the price of that night (neither the rate nor the weekend surcharge
+        // of DB-03 applies to it); the nights without one cost the rate, plus the surcharge on a Friday or a Saturday.
+        var hostPrices = await pricingAdapterService.GetAppliedNightlyPricesAsync(
+            property.Id, checkInDate, checkInDate.AddDays(nights), cancellationToken);
+        var lodging = StayPricing.Lodging(checkInDate, nights, property.NightlyRate, property.WeekendSurchargePercent, hostPrices);
+        var basePrice = lodging.Total + property.CleaningFee;
         var touristTax = await touristTaxQuoteService.QuoteAsync(
             TouristTaxComune.ForProperty(property),
             new TouristTaxStay(
-                RomeCalendar.DateInRome(checkIn),
+                checkInDate,
                 RomeCalendar.DateInRome(checkOut),
                 adults,
                 children,
                 childrenAges,
                 AccommodationCategory: null,
-                NightlyPrice: property.NightlyRate),
+                NightlyPrice: property.NightlyRate,
+                NightlyPrices: StayPricing.NightPrices(checkInDate, lodging)),
             cancellationToken);
 
         var freeRefundDeadline = DirectBookingPaymentRules.FreeRefundDeadline(checkIn, property.CancellationPolicy);
@@ -387,7 +462,8 @@ public class BookingService(
             basePrice + touristTax.AmountOrZero,
             "EUR",
             freeRefundDeadline,
-            DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome()));
+            DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome()),
+            lodging);
     }
 
     private async Task<string> HandleImmediatePaymentAsync(
@@ -409,9 +485,6 @@ public class BookingService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Stripe PaymentIntent creation failed for booking {BookingId}", booking.Id);
-            booking.Status = BookingStatus.Cancelled;
-            booking.UpdatedAt = DateTime.UtcNow;
-            await repository.UpdateAsync(booking);
             throw new PaymentProcessingException("Payment initialization failed", ex);
         }
 
@@ -459,9 +532,6 @@ public class BookingService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Stripe SetupIntent creation failed for booking {BookingId}", booking.Id);
-            booking.Status = BookingStatus.Cancelled;
-            booking.UpdatedAt = DateTime.UtcNow;
-            await repository.UpdateAsync(booking);
             throw new PaymentProcessingException("Payment initialization failed", ex);
         }
 
@@ -579,7 +649,55 @@ public class BookingService(
 
     private int GetPendingDirectTtlMinutes() => CheckoutHolds.GetTtlMinutes(configuration);
 
-    private async Task<Guest> CreateGuestSnapshotWithConsentAsync(
+    /// <summary>
+    /// Removes a checkout whose payment could not be started (BK-18). Best effort: when the removal fails too, the attempt
+    /// stays a pending hold that the checkout hold expiry cancels, and the original error is still the answer.
+    /// </summary>
+    private async Task DiscardFailedCheckoutAsync(Guid bookingId)
+    {
+        try
+        {
+            await repository.DiscardCheckoutAttemptAsync(bookingId);
+            logger.LogWarning("Direct checkout {BookingId} discarded with its guest snapshot: payment not started", bookingId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Direct checkout {BookingId} could not be discarded after its payment failed to start; it stays a pending hold",
+                bookingId);
+        }
+    }
+
+    /// <summary>
+    /// The guest of the checkout agreed to receive offers (DB-03): marks the snapshot (<c>Guest.MarketingConsent</c> and its
+    /// date) and returns the row of the append-only register of the privacy history (CO-15), with the version of the text the
+    /// guest saw, the source, the time and the IP, as the check-in portal records its own. Not saved: it is written with the
+    /// booking and the guest, in one transaction.
+    /// </summary>
+    private GuestConsentRecord RecordMarketingConsent(Guest guest, string version, string consentIpAddress)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        guest.MarketingConsent = true;
+        guest.MarketingConsentDate = now;
+
+        return new GuestConsentRecord
+        {
+            OrgId = guest.OrgId,
+            GuestId = guest.Id,
+            Purpose = GuestConsentPurpose.Marketing,
+            Action = GuestConsentAction.Granted,
+            Version = version,
+            Source = GuestConsentSource.BookingCheckout,
+            IpAddress = string.IsNullOrWhiteSpace(consentIpAddress)
+                ? null
+                : (consentIpAddress.Length > 50 ? consentIpAddress[..50] : consentIpAddress),
+            RecordedAt = now,
+        };
+    }
+
+    /// <summary>The guest of a direct checkout with its consent, not saved: it is written with its booking.</summary>
+    private static Guest NewGuestSnapshotWithConsent(
         Guid orgId,
         DirectBookingGuestInput guestInput,
         string consentVersion,
@@ -587,7 +705,7 @@ public class BookingService(
     {
         var now = DateTime.UtcNow;
 
-        var guest = new Guest
+        return new Guest
         {
             OrgId = orgId,
             FirstName = guestInput.FirstName,
@@ -603,7 +721,5 @@ public class BookingService(
             CreatedAt = now,
             UpdatedAt = now,
         };
-
-        return await guestRepository.AddAsync(guest);
     }
 }

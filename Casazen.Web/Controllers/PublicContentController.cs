@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
@@ -18,7 +19,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/public")]
 [AllowAnonymous]
-public class PublicContentController(ISeoContentService seoContentService) : ControllerBase
+public class PublicContentController(ISeoContentService seoContentService, IFeatureFlags featureFlags) : ControllerBase
 {
 
     /// <summary>
@@ -40,7 +41,7 @@ public class PublicContentController(ISeoContentService seoContentService) : Con
     {
         var page = await seoContentService.GetComplianceGuideAsync(regionSlug, comuneSlug, cancellationToken);
 
-        return page is null ? NotFound() : Ok(page);
+        return page is null ? NotFound() : Ok(WithSignupCtaWhenEnabled(page));
     }
 
     [HttpGet("content/tassa-soggiorno/{comuneSlug}")]
@@ -52,8 +53,12 @@ public class PublicContentController(ISeoContentService seoContentService) : Con
     {
         var page = await seoContentService.GetTouristTaxPageAsync(comuneSlug, cancellationToken);
 
-        return page is null ? NotFound() : Ok(page);
+        return page is null ? NotFound() : Ok(WithSignupCtaWhenEnabled(page));
     }
+
+    /// <summary>The page without its call to action to sign up while CasaZen is on private invitation (SEO-INVITE).</summary>
+    private SeoPagePublicDto WithSignupCtaWhenEnabled(SeoPagePublicDto page) =>
+        featureFlags.IsEnabled(FeatureFlags.SeoSignupCta) ? page : page with { Cta = null };
 
     /// <summary>
     /// Public tourist tax calculator of a comune page (A8-12, A8-23), with the engine of the checkout (BK-03). A comune

@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
@@ -43,6 +44,10 @@ public class ComplianceWizardService(
         var property = await LoadPropertyAsync(propertyId, cancellationToken)
             ?? throw new KeyNotFoundException($"Property {propertyId} not found");
 
+        // PM-01: activating the listing publishes the property on the booking site; a property in long-term mode is never
+        // published (422 property_not_bookable_in_long_mode), whatever its other data say.
+        PropertyRentalModeRules.EnsureShortRent(property);
+
         if (tosAccepted != true)
             throw new DomainConflictException("activation_tos_required", "ActivationTosRequired");
 
@@ -55,13 +60,21 @@ public class ComplianceWizardService(
         return (property, check.IncompleteSteps);
     }
 
-    public async Task<ComplianceSummaryResult> GetSummaryAsync(Guid orgId, CancellationToken cancellationToken = default)
+    public async Task<ComplianceSummaryResult> GetSummaryAsync(HostScope scope, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+        var orgId = scope.OrgId;
         var today = _clock.TodayInRome();
 
+        // AM-03: every section is the caller's own (the properties and stays it reaches), not the whole org's.
+        // "Activate the property": the short-rent ones only (PM-01). A property in long-term mode has no listing to
+        // activate. The sections about stays (check-in, check-out, Alloggiati, turnovers) are not filtered by rental
+        // mode: they are duties of stays that happened, whatever the property is now.
         var pendingProperties = await db.Properties
             .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.OrgId == orgId && p.ComplianceStatus != PropertyComplianceStatus.Active)
+            .InScope(scope)
             .OrderBy(p => p.Name)
             .Select(p => new { p.Id, p.Name })
             .ToListAsync(cancellationToken);
@@ -70,6 +83,7 @@ public class ComplianceWizardService(
             .AsNoTracking()
             .Include(b => b.Guest)
             .Where(b => b.OrgId == orgId)
+            .InScope(scope)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
             .Where(b => b.CheckInDate.Date <= today.AddDays(1))
             .ToListAsync(cancellationToken);
@@ -93,6 +107,7 @@ public class ComplianceWizardService(
         var checkoutDue = (await db.Bookings
                 .AsNoTracking()
                 .Where(b => b.OrgId == orgId)
+                .InScope(scope)
                 .Where(StayLifecycleRules.CheckOutDue(today))
                 .OrderBy(b => b.CheckOutDate)
                 .Select(b => new { b.Id, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
@@ -100,8 +115,8 @@ public class ComplianceWizardService(
             .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName))
             .ToList();
 
-        var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(orgId, today, cancellationToken);
-        var turnoversPending = await GetTurnoversPendingAsync(orgId, cancellationToken);
+        var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(scope, today, cancellationToken);
+        var turnoversPending = await GetTurnoversPendingAsync(scope, cancellationToken);
 
         return new ComplianceSummaryResult(
             new ComplianceSummarySection(
@@ -124,11 +139,12 @@ public class ComplianceWizardService(
     /// (a stay closed before CO-17 has none and is not listed). A later stay of the same property whose arrival is
     /// registered closes it: the property was obviously ready for it.
     /// </summary>
-    private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(Guid orgId, CancellationToken cancellationToken)
+    private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(HostScope scope, CancellationToken cancellationToken)
     {
         var pending = db.StayCheckouts
             .AsNoTracking()
-            .Where(c => c.OrgId == orgId && c.CompletedAt != null && c.PropertyReadyAt == null)
+            .Where(c => c.OrgId == scope.OrgId && c.CompletedAt != null && c.PropertyReadyAt == null)
+            .InScope(scope)
             .Where(c => c.Booking.Status == BookingStatus.CheckedOut)
             .Where(c => !db.Bookings.Any(next =>
                 next.PropertyId == c.Booking.PropertyId
@@ -165,13 +181,14 @@ public class ComplianceWizardService(
     /// the host, with or without a report row: CasaZen does not transmit, so nothing turns "done" on its own.
     /// </summary>
     private async Task<(ComplianceSummarySection Failures, ComplianceSummarySection ManualRequired)> GetAlloggiatiSectionsAsync(
-        Guid orgId,
+        HostScope scope,
         DateTime today,
         CancellationToken cancellationToken)
     {
         var stays = await db.Bookings
             .AsNoTracking()
-            .Where(b => b.OrgId == orgId)
+            .Where(b => b.OrgId == scope.OrgId)
+            .InScope(scope)
             .Where(b => b.Status == BookingStatus.Confirmed
                 || b.Status == BookingStatus.CheckedIn
                 || b.Status == BookingStatus.CheckedOut)
@@ -365,8 +382,8 @@ public class ComplianceWizardService(
         // re-evaluation after every change and the nightly check (CO-06).
         var blockingSteps = await complianceStatus.GetBlockingStepsAsync(property, cancellationToken);
 
-        var regionCode = await ResolveRegionCodeAsync(property.City, cancellationToken);
-        var touristTax = await ResolveTouristTaxAsync(property.City, cancellationToken);
+        // The regional documents are decided by the region of the comune the host chose (PropertyComplianceStatusService, SU-04).
+        var touristTax = await ResolveTouristTaxAsync(property, cancellationToken);
 
         // Any import feed of the property (PC-11: Airbnb, Booking.com, ... each its own feed).
         var icalComplete = await db.PropertyICalFeeds
@@ -380,8 +397,11 @@ public class ComplianceWizardService(
                 "ical",
                 "Sincronizzazione calendario",
                 icalComplete ? "complete" : "warning",
-                false,
-                icalComplete ? null : "Consigliato: collega feed iCal OTA"),
+                false)
+            {
+                LabelKey = "ActivationStepIcal",
+                MessageKey = icalComplete ? null : "ActivationIcalRecommended",
+            },
         ];
     }
 
@@ -397,6 +417,7 @@ public class ComplianceWizardService(
             touristTax.Rate is null ? "warning" : "complete",
             false)
         {
+            LabelKey = "ActivationStepTouristTax",
             TouristTax = touristTax,
         };
 
@@ -412,38 +433,63 @@ public class ComplianceWizardService(
     }
 
     private async Task<TouristTaxActivationInfo> ResolveTouristTaxAsync(
-        string? propertyCity,
+        Property property,
         CancellationToken cancellationToken)
     {
-        var city = propertyCity?.Trim() ?? string.Empty;
+        var city = property.City?.Trim() ?? string.Empty;
         if (city.Length == 0)
             return new TouristTaxActivationInfo(city, null, null);
 
-        // Same lookup as the checkout and the calculator (BK-03): comune by normalized name, rate in force today in
-        // Europe/Rome and in season. The property has no accommodation category, so category rates do not apply.
+        // Same lookup as the checkout and the calculator (BK-03): by the ISTAT code of the comune the host chose (SU-04),
+        // by the normalized city name for a property without one; rate in force today in Europe/Rome and in season. The
+        // property has no accommodation category, so category rates do not apply.
         var today = _clock.TodayInRomeAsDateOnly();
         var ratesInForce = await touristTaxQuoteService.GetRatesInForceAsync(
-            new TouristTaxComune(null, city), today, cancellationToken);
+            TouristTaxComune.ForProperty(property), today, cancellationToken);
         var rate = TouristTaxCalculator.RateFor(ratesInForce, today);
         var categoryRequired = rate is null
             && ratesInForce.Any(r => !string.IsNullOrWhiteSpace(r.AccommodationCategory));
 
         // Only a page with an approved revision is public (SE-01); the wizard never links a draft or a withdrawn page.
+        // The page of a comune is found by its ISTAT code: the one the host chose from the official list, or, for a property
+        // without one, the comune that has exactly this name (a link to show, never stored).
         string? publicPageSlug = null;
-        var comune = ItalianComuneRegistry.GetByName(city);
-        if (comune is not null)
+        var pageCode = property.ComuneIstatCode ?? await FindComuneCodeByUniqueNameAsync(city, cancellationToken);
+        if (pageCode is { } istatCode)
         {
             var hasPublicPage = await db.SeoContentPages
                 .AsNoTracking()
                 .AnyAsync(p => p.PageType == SeoPageType.TouristTaxCalc
-                               && p.ComuneCode == comune.Code
+                               && p.ComuneCode == istatCode
                                && p.PublishedRevisionId != null,
                     cancellationToken);
             if (hasPublicPage)
-                publicPageSlug = comune.ComuneSlug;
+            {
+                var name = await db.Comuni.AsNoTracking()
+                    .Where(c => c.IstatCode == istatCode)
+                    .Select(c => c.Name)
+                    .FirstOrDefaultAsync(cancellationToken);
+                publicPageSlug = string.IsNullOrEmpty(name) ? null : ComuneNames.Slugify(name);
+            }
         }
 
         return new TouristTaxActivationInfo(city, rate, publicPageSlug) { CategoryRequired = categoryRequired };
+    }
+
+    /// <summary>ISTAT code of the only active comune with this name; <c>null</c> when none or more than one has it.</summary>
+    private async Task<string?> FindComuneCodeByUniqueNameAsync(string city, CancellationToken cancellationToken)
+    {
+        var normalized = ComuneNames.Normalize(city);
+        if (normalized.Length == 0)
+            return null;
+
+        var codes = await db.Comuni
+            .AsNoTracking()
+            .Where(c => c.IsActive && c.NormalizedName == normalized)
+            .Select(c => c.IstatCode)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        return codes.Count == 1 ? codes[0] : null;
     }
 
     /// <summary>
@@ -512,14 +558,4 @@ public class ComplianceWizardService(
         return [departure, alloggiatiStep, cleaning, touristTax, propertyReady];
     }
 
-    private async Task<string> ResolveRegionCodeAsync(string city, CancellationToken cancellationToken)
-    {
-        var rate = await db.TouristTaxRates
-            .AsNoTracking()
-            .Where(t => t.IsActive && t.City.ToLower() == city.ToLower())
-            .Select(t => t.RegionCode)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return string.IsNullOrWhiteSpace(rate) ? "default" : rate;
-    }
 }

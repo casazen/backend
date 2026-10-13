@@ -1,10 +1,11 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// Alloggiati Web communications (art. 109 TULPS). CasaZen does not transmit to the Questura yet (the web service
-/// client is CO-13): on the arrival day a report becomes <see cref="AlloggiatiWebStatus.DaInviareManualmente"/> and
+/// Alloggiati Web communications (art. 109 TULPS). CasaZen does not transmit to the Questura yet (CO-13 builds the record
+/// file the host uploads on the portal, not a web service client): on the arrival day a report becomes <see cref="AlloggiatiWebStatus.DaInviareManualmente"/> and
 /// the host sends it on the portal, then records it with <see cref="MarkSentManuallyAsync"/>. No method ever sets
 /// <see cref="AlloggiatiWebStatus.Inviato"/> without a real receipt.
 /// </summary>
@@ -20,13 +21,26 @@ public interface IAlloggiatiWebService
     /// <summary>Status of the communication of a booking. Throws <c>NotFoundException</c> for an unknown booking.</summary>
     Task<AlloggiatiStatusInfo> GetStatusAsync(Guid bookingId);
 
-    Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(Guid orgId, Guid? propertyId);
+    /// <summary>
+    /// The communications of the active bookings of <paramref name="scope"/> (the org and, for a restricted scope, the
+    /// properties the caller reaches, AM-03), by arrival, optionally of one property.
+    /// </summary>
+    Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(HostScope scope, Guid? propertyId);
 
     /// <summary>
     /// Per-guest data the host copies on the portal, in the order of the record. Throws <c>NotFoundException</c>
     /// for an unknown booking.
     /// </summary>
     Task<AlloggiatiGuestSummaryInfo> GetGuestSummaryAsync(Guid bookingId);
+
+    /// <summary>
+    /// The record file the host uploads on the Alloggiati Web portal (CO-13): one 168-character line per guest of the stay
+    /// in record order, built from the data and the imported official codes. It is not a communication: no status
+    /// changes, nothing is stored or transmitted. Throws <c>NotFoundException</c> for an unknown booking and
+    /// <c>DomainRuleException</c> when the file cannot be built (data incomplete or codes to complete, stay of less than 1
+    /// or more than 30 days, a name that cannot be written with the letters the portal accepts).
+    /// </summary>
+    Task<AlloggiatiRecordFileInfo> BuildRecordFileAsync(Guid bookingId);
 
     /// <summary>
     /// Idempotency step of the scheduling: makes sure the booking's guest has its report and says whether a job

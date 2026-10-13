@@ -166,7 +166,7 @@ public class GuestsController(
     public async Task<ActionResult<GuestDto>> Create([FromBody] CreateGuestRequest request)
     {
         if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+            return ValidationProblem(ModelState);
 
         logger.LogInformation("Creating guest");
 
@@ -201,7 +201,7 @@ public class GuestsController(
     public async Task<ActionResult<GuestDto>> Update(Guid id, [FromBody] UpdateGuestRequest request)
     {
         if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+            return ValidationProblem(ModelState);
 
         logger.LogInformation("Updating guest: {GuestId}", id);
 
@@ -230,10 +230,11 @@ public class GuestsController(
     /// <summary>
     /// Deletes a guest of the caller's org. Without bookings the row is removed; with past bookings it is
     /// kept (Restrict FK) but marked deleted and anonymized; with an open booking the answer is
-    /// 409 <c>guest_has_open_bookings</c>. Never a 500 for the foreign key (A9-11).
+    /// 409 <c>guest_has_open_bookings</c>. Never a 500 for the foreign key (A9-11). It needs <c>guest.manage</c> (AM-03), not
+    /// <c>guest.write</c>: a collaborator registers and corrects guests but does not delete them.
     /// </summary>
     [HttpDelete("{id}")]
-    [Authorize(Policy = "RequireContext:short-rent:guest.write")]
+    [Authorize(Policy = CasazenPolicies.GuestManage)]
     public async Task<IActionResult> Delete(Guid id)
     {
         logger.LogInformation("Deleting guest: {GuestId}", id);

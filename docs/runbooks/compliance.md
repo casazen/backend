@@ -18,7 +18,7 @@ its own: its four blocking steps and their blocker codes are this evaluation.
 |---|---|---|
 | `base-data` | `activation_base_data_incomplete` | name, address, city, max guests > 0, nightly rate > 0 |
 | `cin` | `activation_cin_missing`, `activation_cin_invalid` | `CinFormat` (CO-01, [cin-format.md](cin-format.md)) |
-| `documents` | `activation_documents_missing` | `Compliance:RequiredDocuments` (in practice the `default` list, `CinCertificate`: A5-19 is open in SU-04) |
+| `documents` | `activation_documents_missing` | `Compliance:RequiredDocuments` by the **region** of the property (`Property.RegionCode`, `LOM`, `LAZ`, from the comune the host chose from the ISTAT list, SU-04/A5-19: [comuni-istat.md](comuni-istat.md)); `default` for a property with no comune chosen or a region without an entry |
 | `safety` | `safety_*` | `SafetyChecklistRules` (CO-07): required items, facts and the final confirmation with the current text version |
 
 The tourist tax and the iCal feed are warnings: they never block, never suspend.
@@ -45,9 +45,12 @@ activation. The frontend needs no change: the wizard shows the current status an
 | Safety checklist saved (`PUT …/compliance/safety-checklist`) | `PropertySafetyChecklistService.SaveAsync` |
 | Activation completed with blockers left | `ComplianceWizardService.CompleteActivationAsync` → `ActivateAsync` |
 | Every night, every active or suspended property | job `property-compliance-check` ([hangfire.md §10](hangfire.md#10-property-compliance-check-co-06)) |
+| A property goes back from long-term to short stays (scheduled change, PM-02) | `PropertyModeService`, right after the mode is saved |
 
 Only an `Active` property (suspension) or a `Suspended` one (reactivation) can change on a re-evaluation; a pending one
-is left as it is.
+is left as it is. A property in long-term mode (`RentalMode.Long`, PM-01) is not evaluated at all and cannot be activated:
+[property-rental-mode.md](property-rental-mode.md). Its status is frozen while it is long-term, so when it comes back to
+short stays (PM-02) it is evaluated at once: one that lost a requirement in the meantime is suspended, with the usual e-mail.
 
 Saving the safety checklist **without** the final confirmation clears the confirmation (CO-07, SC-08): on an active
 property that is a missing requirement, so the property is suspended until the host saves it again with the
@@ -229,4 +232,7 @@ SELECT "Id" FROM casazen_prod."Properties" WHERE "ComplianceStatus" = 1 AND "Com
 - No email on the reactivation (section 3).
 - The iCal export keeps exporting the busy nights of a suspended property (section 2). Whether it should also close the
   whole calendar on the OTAs while the CIN is missing is a product decision (DUBBI CO-06).
-- Required documents per region: A5-19 (SU-04).
+- Required documents per region: done by SU-04 (A5-19). A property already `Active` that lacks a document required by its
+  region (e.g. the APE in Lombardia) is suspended at its next evaluation, once the host chooses the comune: warn the hosts
+  or complete the documents first (see [comuni-istat.md](comuni-istat.md)). Non-blocking notes of the wizard (`warnings`
+  of a step): `comune_istat_missing` on `base-data`, `cin_istat_comune_mismatch` on `cin`.

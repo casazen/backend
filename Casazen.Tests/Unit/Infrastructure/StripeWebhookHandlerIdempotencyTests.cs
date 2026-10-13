@@ -7,6 +7,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Repositories;
+using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -158,13 +159,12 @@ public class StripeWebhookHandlerIdempotencyTests
             db,
             Mock.Of<IStripeBillingService>(),
             Mock.Of<IEntitlementService>(),
-            Mock.Of<IVatCalculationService>(),
-            Mock.Of<IOssRevenueTracker>(),
-            Mock.Of<ISdiEInvoiceService>(),
+            Mock.Of<IPlatformInvoiceService>(),
             Mock.Of<IRentBillingService>(),
             Mock.Of<IPaymentRefundService>(),
             TestCheckoutPaymentSettlement.Create(db, paymentRepository),
             TestDeferredCharges.Create(db),
+            Mock.Of<ISupplierPaymentWebhookService>(),
             NullLogger<StripeWebhookHandler>.Instance);
 
     private static Event DirectBookingSucceededEvent(string eventId, string paymentIntentId) =>

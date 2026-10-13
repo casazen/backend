@@ -1,13 +1,36 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 
 namespace Casazen.Core.Repositories;
 
 public interface IBookingRepository
 {
     Task<Booking?> GetByIdAsync(Guid id);
-    Task<IEnumerable<Booking>> GetByPropertyAsync(Guid propertyId);
-    Task<IEnumerable<Booking>> GetByGuestAsync(Guid guestId);
-    Task<IEnumerable<Booking>> GetAllAsync();
+
+    /// <summary>
+    /// Bookings in the caller's <paramref name="scope"/> (TN-3: the org and, for a non org-wide role, the properties the
+    /// caller owns), optionally of one property and/or one guest, with their property and guest, latest check-in first.
+    /// One SQL query whatever the number of bookings (A2-17).
+    /// </summary>
+    Task<IReadOnlyList<Booking>> GetByScopeAsync(
+        HostScope scope,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Paged version of <see cref="GetByScopeAsync"/> (PC-14): returns the matching bookings for the requested
+    /// <paramref name="page"/> (1-indexed) and <paramref name="pageSize"/>, together with the total count for pagination
+    /// controls. Same filters and ordering as the non-paged overload.
+    /// </summary>
+    Task<(IReadOnlyList<Booking> Items, int TotalCount)> GetPagedByScopeAsync(
+        HostScope scope,
+        int page,
+        int pageSize,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Bookings of the property shown by the host calendar from <paramref name="startDate"/> to <paramref name="endDate"/>
     /// (stay dates, both included: <see cref="Services.HostCalendarRange.BookingShownIn"/>) that take their dates: not cancelled and, when
@@ -28,8 +51,25 @@ public interface IBookingRepository
     Task<bool> IsAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut, int? directPendingTtlMinutes = null);
 
     Task<Booking> AddAsync(Booking booking);
+
+    /// <summary>
+    /// <see cref="AddAsync(Booking)"/> for the booking of a public checkout whose guest ticked the optional "send me offers"
+    /// box (DB-03): the booking, its guest snapshot and the record of the marketing consent
+    /// (<see cref="GuestConsentRecord.GuestId"/> is the booking's guest) are written in the same transaction, under the same
+    /// property lock and overlap checks. A checkout that loses the dates to a concurrent one leaves no consent behind either.
+    /// </summary>
+    Task<Booking> AddWithGuestConsentAsync(Booking booking, GuestConsentRecord consent);
+
     Task<Booking> UpdateAsync(Booking booking);
     Task DeleteAsync(Guid id);
+
+    /// <summary>
+    /// Removes a direct checkout whose payment could not be started (BK-18, A3-33): the booking, its payment rows and its
+    /// guest snapshot, in one transaction under the property lock. The guest is kept when anything else still references
+    /// it (another booking, an Alloggiati report). Nothing happens when the booking does not exist.
+    /// </summary>
+    Task DiscardCheckoutAttemptAsync(Guid bookingId);
+
     Task<Booking?> GetByExternalIdAsync(Guid propertyId, string externalId, BookingSource source);
     Task<Booking> UpsertOtaBookingAsync(Booking booking);
 }

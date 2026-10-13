@@ -21,6 +21,7 @@ public class NoHardcodedPublicDomainTests
     [
         "https://casazen.app/roles",
         "https://casazen.app/email",
+        "https://casazen.app/name",
     ];
 
     /// <summary>

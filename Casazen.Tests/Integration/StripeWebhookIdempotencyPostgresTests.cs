@@ -367,13 +367,12 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
             db,
             new FakeStripeBillingService(Config),
             entitlement ?? new EntitlementService(db, Config),
-            new VatCalculationService(),
-            Mock.Of<IOssRevenueTracker>(),
-            Mock.Of<ISdiEInvoiceService>(),
+            TestPlatformInvoices.Create(db, new FakeStripeBillingService(Config)),
             Mock.Of<IRentBillingService>(),
             Mock.Of<IPaymentRefundService>(),
             TestCheckoutPaymentSettlement.Create(db, paymentRepository),
             TestDeferredCharges.Create(db),
+            Mock.Of<ISupplierPaymentWebhookService>(),
             NullLogger<StripeWebhookHandler>.Instance);
 
     private async Task<OrgEntity> SeedOrgAsync(SubscriptionStatus status, PlanTier tier, bool withSubscription = true)

@@ -27,7 +27,7 @@ public class PublicHostController(IPublicHostResolver hostResolver) : Controller
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(host))
-            return BadRequest(new { error = "host query parameter is required" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "HostQueryRequired");
 
         var result = await hostResolver.ResolveAsync(host, cancellationToken);
         return result is null ? NotFound() : Ok(result);

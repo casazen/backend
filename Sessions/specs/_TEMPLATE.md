@@ -5,7 +5,7 @@ title: Short human title
 phase: 1                      # 0 | 1 | 1.5 | 2 | 3 | 4 | ops | compliance | maintenance
 type: feature                 # feature | enabler | fix | compliance | ops | spike
 priority: P1                  # P0 (now) | P1 (this phase) | P2 (next) | P3 (later) | —
-status: specced               # idea | specced | planned | in-dev | shipped | blocked | deferred | frozen
+status: specced               # idea | specced | planned | in-dev | in-progress | partial | shipped | blocked | deferred | frozen (see README: shipped = code + tests + required E2E run)
 issue:                        # GitHub issue # when planned+ (e.g. 271)
 depends_on: []                # slugs of other specs
 blocks: []                    # slugs this unblocks
@@ -153,6 +153,23 @@ Rules:
 ## Out of Scope
 
 - Explicit non-goals (prevents silent scope creep)
+
+---
+
+## Demo seed
+
+**Required for every feature** that adds or changes something a host, a guest, a supplier or a staff user can see or do.
+
+The demo environment (`DemoShowcaseCatalog`, `IDemoEnvironmentService`, admin page `/app/admin/demo`) is how a test installation publishes listings without a real CIN and how a client is shown the product. Invented data must stay in the official formats and be marked as test (`IsTestData`, `TestDataMarkers`).
+
+In the same change as the feature:
+
+- Add a scenario id to `DemoShowcaseCatalog.Scenarios` and a template row (property, booking, document or the new entity) that exercises the new flow with clean, format-valid, obviously invented data.
+- Mark every new row with `TestDataMarkers` (`TestDataEntities` when it is a new table) so **Reimposta la vetrina** deletes it and recreates it, and never deletes host data.
+- Extend `DemoShowcaseTests` so a missing scenario fails the build.
+- Do not weaken CIN, document or safety checks to “accept test data”. The seed passes the same rules as production.
+
+Runbook: `docs/runbooks/demo-environment.md`.
 
 ---
 

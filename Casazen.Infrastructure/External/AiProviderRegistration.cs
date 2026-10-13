@@ -3,42 +3,29 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
 
 public static class AiProviderRegistration
 {
     /// <summary>
-    /// The AI provider (section <c>Ai</c>, runbook <c>docs/runbooks/ai.md</c>). Registered once, from Program.cs.
-    /// With an external provider active (<see cref="AiOptions.IsExternalProviderActive"/>) every call goes through the
-    /// platform budget (<see cref="BudgetGuardedAiProvider"/>); otherwise the stub answers without any external call.
+    /// The AI provider (section <c>Ai</c>, plus the admin override). Registered once, from Program.cs.
+    /// <see cref="SwitchingAiProvider"/> reads the settings of each call: an active external provider goes through the
+    /// platform budget (<see cref="BudgetGuardedAiProvider"/>); otherwise nothing is sent outside.
     /// </summary>
     public static IServiceCollection AddCasazenAiProvider(this IServiceCollection services, IConfiguration configuration)
     {
         var section = configuration.GetSection(AiOptions.SectionName);
         services.Configure<AiOptions>(section);
+        // Bounded, expiring cache of the answers (A8-25): one per process, shared by every AI caller.
+        services.Configure<AiCacheOptions>(section.GetSection("Cache"));
+        services.AddSingleton<IAiResponseCache, AiResponseCache>();
         services.AddScoped<IAiBudgetGuard, PlatformAiBudgetGuard>();
-
-        var options = section.Get<AiOptions>() ?? new AiOptions();
-        if (options.IsExternalProviderActive())
-        {
-            services.AddScoped<DeepSeekAiProvider>();
-            services.AddScoped<IAiProvider>(sp => new BudgetGuardedAiProvider(
-                sp.GetRequiredService<DeepSeekAiProvider>(),
-                sp.GetRequiredService<IAiBudgetGuard>(),
-                options.MaxCompletionTokens,
-                sp.GetRequiredService<ILogger<BudgetGuardedAiProvider>>()));
-        }
-        else if (string.Equals(options.Provider, AiOptions.DeepSeekProvider, StringComparison.OrdinalIgnoreCase))
-        {
-            // DeepSeek without an API key answers empty without any call: nothing to budget.
-            services.AddScoped<IAiProvider, DeepSeekAiProvider>();
-        }
-        else
-        {
-            services.AddScoped<IAiProvider, StubAiProvider>();
-        }
+        // The admin panel can switch the provider without a restart: each call reads the settings in effect.
+        services.AddSingleton<IAiRuntimeSettings, AiRuntimeSettings>();
+        services.AddScoped<DeepSeekAiProvider>();
+        services.AddScoped<StubAiProvider>();
+        services.AddScoped<IAiProvider, SwitchingAiProvider>();
 
         services.AddHttpClient("DeepSeek", client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<IWebSearchClient, DeepSeekWebSearchClient>();

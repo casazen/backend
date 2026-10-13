@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Models;
@@ -62,7 +63,10 @@ public class GdprService(
         var guest = await db.Guests.AsNoTracking().FirstOrDefaultAsync(g => g.Id == guestId && g.OrgId == orgId, cancellationToken)
             ?? throw GuestNotFound(guestId);
 
+        // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05), tenant filter kept: b.Property.Name joins the property,
+        // and a stay at a since soft-deleted property is still the guest's data (GDPR art. 15/20 export).
         var bookings = await db.Bookings.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(b => b.GuestId == guest.Id && b.OrgId == orgId)
             .OrderBy(b => b.CheckInDate).ThenBy(b => b.Id)
             .Select(b => new
@@ -386,18 +390,43 @@ public class GdprService(
 
     private static string Truncate(string value, int maxLength) => value.Length > maxLength ? value[..maxLength] : value;
 
-    public async Task<Dictionary<string, object>> ExportOrgFiscalDataAsync(Guid orgId, CancellationToken cancellationToken = default)
+    public async Task<Dictionary<string, object>> ExportOrgFiscalDataAsync(
+        Guid orgId,
+        HostScope scope,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+        if (scope.OrgId != orgId)
+            throw new ArgumentException("The scope of the caller belongs to another org.", nameof(scope));
+
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
             ?? throw new KeyNotFoundException("Org not found");
-        var years = await db.PropertyFiscalYears.AsNoTracking()
-            .Where(y => y.OrgId == orgId)
+
+        var (fiscalYears, taxpayers) = OrgPropertySections(db, orgId, scope);
+        var years = await fiscalYears
             .Select(y => new { y.PropertyId, y.TaxYear, Regime = y.Regime.ToString(), y.IsPrimaryForCedolare })
             .ToListAsync(cancellationToken);
         // Taxpayers recorded per property (CO-18).
-        var propertyTaxpayers = await db.Properties.AsNoTracking()
-            .Where(p => p.OrgId == orgId && p.TaxpayerFiscalCode != null)
+        var propertyTaxpayers = await taxpayers
             .Select(p => new { PropertyId = p.Id, FiscalCode = p.TaxpayerFiscalCode })
+            .ToListAsync(cancellationToken);
+        // The people of the org (AM-02): who has access, with which role and since when. Opaque ids and no names or
+        // emails: the names are on the people page of the account, where whoever manages them can already see them. The
+        // roster is the org's, not a property's, so it is not narrowed by the scope: the endpoint is the holder's (AM-03b).
+        // Tenant filter kept, like the rest.
+        var members = await db.OrgMembers.AsNoTracking()
+            .Where(m => m.OrgId == orgId)
+            .OrderBy(m => m.CreatedAt)
+            .Select(m => new
+            {
+                m.UserId,
+                Role = m.Role.ToString(),
+                Status = m.Status.ToString(),
+                PropertyScope = m.PropertyScope.ToString(),
+                m.CreatedAt,
+                m.CreatedByUserId,
+                m.DeactivatedAt,
+            })
             .ToListAsync(cancellationToken);
         return new Dictionary<string, object>
         {
@@ -407,8 +436,35 @@ public class GdprService(
             ["fiscalDataRetentionUntil"] = org.FiscalDataRetentionUntil?.ToString("O") ?? "",
             ["propertyFiscalYears"] = years,
             ["propertyTaxpayers"] = propertyTaxpayers,
+            ["members"] = members,
             ["exportedAt"] = DateTime.UtcNow.ToString("O"),
         };
+    }
+
+    /// <summary>
+    /// The two sections of the org export that belong to a property (AM-03b): the fiscal years and the taxpayers recorded on the
+    /// properties. The endpoint is the holder's (<c>OrgBillingAdmin</c>), whose scope is the whole org and for whom the queries are
+    /// the plain ones of before; a scope narrower than the org (an account of before the team that created only some of the
+    /// properties, or any caller a later policy lets in) gets only the properties it reaches, decided in the same statement as the
+    /// rest (an <c>EXISTS</c> on its grants or on the creator, <c>InScope</c>), never a list of ids loaded first.
+    /// <c>IgnoreQueryFilters([SoftDeleteQueryFilter])</c> (PC-05), tenant filter kept: the fiscal years still name a since
+    /// soft-deleted property, and its taxpayer belongs to the same fiscal record.
+    /// </summary>
+    internal static (IQueryable<PropertyFiscalYear> FiscalYears, IQueryable<Property> Taxpayers) OrgPropertySections(
+        AppDbContext db,
+        Guid orgId,
+        HostScope scope)
+    {
+        var propertiesOfOrg = db.Properties.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(p => p.OrgId == orgId);
+        var fiscalYears = db.PropertyFiscalYears.AsNoTracking().Where(y => y.OrgId == orgId);
+        var taxpayers = propertiesOfOrg.Where(p => p.TaxpayerFiscalCode != null);
+        if (scope.IsOrgWide)
+            return (fiscalYears, taxpayers);
+
+        var reachable = propertiesOfOrg.InScope(scope).Select(p => p.Id);
+        return (fiscalYears.Where(y => reachable.Contains(y.PropertyId)), taxpayers.InScope(scope));
     }
 
     public async Task AnonymizeOrgFiscalDataAsync(Guid orgId, CancellationToken cancellationToken = default)
@@ -421,7 +477,10 @@ public class GdprService(
         org.PartitaIvaNumber = "00000000000";
         org.UpdatedAt = DateTime.UtcNow;
         // Codici fiscali of the taxpayers recorded on the org's properties (CO-18): removed, the org profile applies again.
+        // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05), tenant filter kept: a soft-deleted property keeps its row,
+        // so its codice fiscale must be anonymized too.
         var properties = await db.Properties
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == orgId && p.TaxpayerFiscalCode != null)
             .ToListAsync(cancellationToken);
         foreach (var property in properties)

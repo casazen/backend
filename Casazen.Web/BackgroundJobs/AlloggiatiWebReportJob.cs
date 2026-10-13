@@ -5,8 +5,8 @@ namespace Casazen.Web.BackgroundJobs;
 
 /// <summary>
 /// Arrival-day step of an Alloggiati Web communication, scheduled by <see cref="IAlloggiatiReportScheduler"/> at the
-/// start of the arrival day in Europe/Rome. CasaZen does not transmit yet (CO-13): the report becomes "to send
-/// manually" and the host sends it on the Questura portal.
+/// start of the arrival day in Europe/Rome. CasaZen does not transmit (no web service client): the report becomes "to send
+/// manually" and the host sends it on the Questura portal, typing it or uploading the record file (CO-13).
 /// </summary>
 public class AlloggiatiWebReportJob(
     IAlloggiatiWebService alloggiatiWebService,

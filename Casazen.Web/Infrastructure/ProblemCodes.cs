@@ -33,6 +33,14 @@ public static class ProblemCodes
     /// </summary>
     public const string AccountInactive = "account_inactive";
 
+    /// <summary>
+    /// 403: the caller's access to its org was deactivated by the org (AM-01, <c>OrgMember.Status</c>), while its CasaZen
+    /// account is fine. Every authenticated request is refused with it from the very next one
+    /// (<see cref="Casazen.Web.Middleware.InactiveAccountMiddleware"/>); <see cref="AccountInactive"/> wins when both apply.
+    /// The web app shows the "access deactivated" page (AM-04).
+    /// </summary>
+    public const string MemberInactive = "member_inactive";
+
     /// <summary>429 from a rate limiting policy (with <c>Retry-After</c>), see <c>RateLimitingServiceCollectionExtensions</c>.</summary>
     public const string RateLimited = "rate_limited";
 

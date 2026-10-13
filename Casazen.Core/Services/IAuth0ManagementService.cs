@@ -39,6 +39,12 @@ public interface IAuth0ManagementService
     Task<Auth0SyncResult> SetBlockedAsync(string userId, bool blocked, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Deletes the Auth0 account (<c>DELETE /api/v2/users/{id}</c>, scope <c>delete:users</c>).
+    /// A user Auth0 no longer has counts as deleted, so a retry can finish removing the CasaZen row.
+    /// </summary>
+    Task<Auth0SyncResult> DeleteUserAsync(string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The CasaZen roles the user holds in Auth0 (<c>GET /users/{id}/roles</c>); roles of other applications of the
     /// tenant are left out. Used before a deactivation removes them, so the reactivation gives back exactly those.
     /// </summary>

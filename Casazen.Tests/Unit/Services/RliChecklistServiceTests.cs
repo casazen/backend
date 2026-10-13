@@ -305,7 +305,7 @@ public class RliChecklistServiceTests
                     Role = PartyRole.Tenant,
                     FirstName = "A",
                     LastName = "B",
-                    FiscalCode = "XXXXXX00A00A000X",
+                    FiscalCode = "XXXXXX00A00A000T",
                     Citizenship = extraEu ? "US" : "IT",
                     ContactEmail = "t@example.com",
                     IsExtraEU = extraEu,

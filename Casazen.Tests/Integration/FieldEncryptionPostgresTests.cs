@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -232,9 +233,13 @@ public class FieldEncryptionPostgresTests
         Assert.ThrowsAny<CryptographicException>(() => firstProtector.Unprotect(secondPayload));
         Assert.ThrowsAny<CryptographicException>(() => secondProtector.Unprotect(firstPayload));
 
-        await using var firstContext = NewContext(database, first);
-        await using var sameProvider = NewContext(database, first);
-        await using var otherProvider = NewContext(database, second);
+        // QA-INFRA-01: EF's model cache is process-wide and holds about forty models (one per provider). Once it is
+        // full a new model is not cached, so "same provider shares one model" depended on how many providers earlier
+        // tests had created. These three contexts use a MemoryCache of their own, like ICalFeedUrlProtectionTests.
+        using var modelCache = new MemoryCache(new MemoryCacheOptions());
+        await using var firstContext = NewContext(database, first, modelCache);
+        await using var sameProvider = NewContext(database, first, modelCache);
+        await using var otherProvider = NewContext(database, second, modelCache);
         Assert.Same(firstContext.Model, sameProvider.Model);
         Assert.NotSame(firstContext.Model, otherProvider.Model);
         Assert.Equal(DocumentNumber, (await firstContext.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId)).DocumentNumber);
@@ -251,7 +256,7 @@ public class FieldEncryptionPostgresTests
 
     /// <summary>
     /// Org, property, a guest with a document and one without, a booking with its stay guest, and the Questura
-    /// credentials of the property: through the model, or by SQL with the columns before CO-14.
+    /// credentials of the property: through the model, or by SQL with the columns that exist before CO-14.
     /// </summary>
     private static async Task<Seed> SeedAsync(AppDbContext db, bool credentialsBySql)
     {
@@ -312,21 +317,19 @@ public class FieldEncryptionPostgresTests
         };
         if (credentialsBySql)
         {
-            // CO-15: the model's "Guests" and "StayGuests" no longer match the table at this point ("AlloggiatiDataErasedAt"
-            // and "AnonymizedAt" do not exist yet, "DataRetentionUntil" still required on Guests): write them by SQL with
-            // the columns before CO-15, like the credentials below are written with the columns before CO-14. The guests
-            // must exist before the booking and the stay guest, which have a foreign key to them.
-            db.AddRange(org, property);
-            await db.SaveChangesAsync();
+            // Every row is written by SQL naming only the columns that exist at this migration point, never through the
+            // model: the model has the columns of all the later migrations (PC-03 pause, PC-05 soft delete, SU-04 comune, PC-06
+            // unit, CO-21 iCal stays, PM-01 rental mode, and the next one), which do not exist yet. The Legacy*Rows helpers
+            // (Org, Property, Booking) are checked against the schema of this point by LegacyRowsSchemaTests; the guests and the
+            // stay guest need their own statements: the model's "Guests" and "StayGuests" no longer match the table at this
+            // point ("AlloggiatiDataErasedAt" and "AnonymizedAt" do not exist yet, "DataRetentionUntil" is still required on
+            // Guests), like the credentials below are written with the columns before CO-14. The guests must exist before the
+            // booking and the stay guest, which have a foreign key to them.
+            await LegacyOrgRows.InsertAsync(db, org);
+            await LegacyPropertyRows.InsertAsync(db, property);
             await InsertGuestBeforeCo15Async(db, guest);
             await InsertGuestBeforeCo15Async(db, empty);
-            // CO-21 (unrelated to CO-15) added 4 nullable Bookings columns after this migration point too. They have no
-            // constraint of their own, so it is simplest to create them here just for the insert below and drop them
-            // again right after: the real migration (already ahead in the migrations list) recreates them properly.
-            await AddBookingsColumnsBeforeCo21Async(db);
-            db.Add(booking);
-            await db.SaveChangesAsync();
-            await DropBookingsColumnsBeforeCo21Async(db);
+            await LegacyBookingRows.InsertAsync(db, booking);
             await InsertStayGuestBeforeCo15Async(db, stay);
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO "PropertyQuesturaCredentials" ("Id", "PropertyId", "Username", "PasswordEncrypted", "WsKey", "CreatedAt")
@@ -375,25 +378,6 @@ public class FieldEncryptionPostgresTests
                 {guest.MarketingConsentDate}, {guest.CreatedAt.AddYears(7)}, {guest.DataProcessingPurpose}, {guest.IsDeleted},
                 {guest.DeletedAt}, {guest.DeletionReason}, {guest.CreatedAt}, {guest.UpdatedAt})
             """);
-
-    /// <summary>
-    /// Adds the 4 nullable "Bookings" columns of the CO-21 migration (<c>AddOtaStayFromICalBlock</c>), so the
-    /// model-based insert of a booking works at this "before CO-15" migration point too. Paired with
-    /// <see cref="DropBookingsColumnsBeforeCo21Async"/>.
-    /// </summary>
-    private static Task AddBookingsColumnsBeforeCo21Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
-        ALTER TABLE "Bookings" ADD COLUMN "ChannelLabel" character varying(60);
-        ALTER TABLE "Bookings" ADD COLUMN "ICalFeedId" uuid;
-        ALTER TABLE "Bookings" ADD COLUMN "OtaReviewRaisedAt" timestamp with time zone;
-        ALTER TABLE "Bookings" ADD COLUMN "OtaReviewReason" integer;
-        """);
-
-    private static Task DropBookingsColumnsBeforeCo21Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
-        ALTER TABLE "Bookings" DROP COLUMN "ChannelLabel";
-        ALTER TABLE "Bookings" DROP COLUMN "ICalFeedId";
-        ALTER TABLE "Bookings" DROP COLUMN "OtaReviewRaisedAt";
-        ALTER TABLE "Bookings" DROP COLUMN "OtaReviewReason";
-        """);
 
     /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>
     private static Task InsertStayGuestBeforeCo15Async(AppDbContext db, StayGuest stay) =>
@@ -468,8 +452,18 @@ public class FieldEncryptionPostgresTests
     private static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter? DocumentNumberConverter(AppDbContext db) =>
         db.Model.FindEntityType(typeof(Guest))!.FindProperty(nameof(Guest.DocumentNumber))!.GetValueConverter();
 
-    private static AppDbContext NewContext(PostgresTestDatabase database, IDataProtectionProvider provider) =>
-        new(database.CreateOptions(), tenantContext: null, provider);
+    private static AppDbContext NewContext(
+        PostgresTestDatabase database,
+        IDataProtectionProvider provider,
+        IMemoryCache? modelCache = null)
+    {
+        var options = modelCache is null
+            ? database.CreateOptions()
+            : new DbContextOptionsBuilder<AppDbContext>(database.CreateOptions())
+                .UseMemoryCache(modelCache)
+                .Options;
+        return new AppDbContext(options, tenantContext: null, provider);
+    }
 
     private static IDataProtectionProvider Provider(IServiceProvider services) =>
         services.GetRequiredService<IDataProtectionProvider>();

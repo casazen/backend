@@ -1,0 +1,134 @@
+name: E2E Golden Journey
+
+# Real end-to-end gate (FN-03; replaces the former `echo`-only workflow removed by FD-02): the Golden Journey from the
+# UI (Playwright, frontend repo) against THIS backend, a throw-away PostgreSQL, a mock IdP and a mock mail catcher.
+# Four distinct actors: platform admin, host, supplier (phone viewport, F1-F2) and anonymous guest. Stripe test mode
+# runs when the secrets exist; without them that variant is SKIPPED loudly (annotation + job summary), never silently.
+# Runbook: docs/runbooks/golden-journey-l3.md. No `continue-on-error`, no `echo` placeholder.
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  gj-l3:
+    name: Golden Journey L3
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Throw-away service container: the password below is not a secret.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      E2E_BACKEND_DIR: ${{ github.workspace }}/backend
+      E2E_BACKEND_NO_BUILD: '1'
+      # Secrets are exposed as env and tested through env.*: the `secrets` context is not allowed in a step `if:`.
+      FRONTEND_REPO_TOKEN: ${{ secrets.FRONTEND_REPO_TOKEN }}
+      STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+      STRIPE_TEST_PUBLISHABLE_KEY: ${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}
+    steps:
+      - name: Frontend repository token present
+        if: ${{ env.FRONTEND_REPO_TOKEN == '' }}
+        run: |
+          echo "::error title=Golden Journey L3 cannot run::Secret FRONTEND_REPO_TOKEN (read access to casazen/frontend) is not set or not available to this run (fork PR?). This gate is NOT skipped silently: it fails. See docs/runbooks/golden-journey-l3.md section 3."
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          path: backend
+      - name: Pick the matching frontend ref
+        id: other
+        env:
+          OTHER_REPO: casazen/frontend
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          BASE_REF: ${{ github.base_ref || github.ref_name }}
+        run: |
+          # A change that spans both repos lives on the SAME branch name in each: use it when it exists, because the
+          # base branch does not have the other half of the change yet. Otherwise fall back to the base branch.
+          # (The token is a secret: GitHub masks it in the log.)
+          if git ls-remote --exit-code --heads "https://x-access-token:${FRONTEND_REPO_TOKEN}@github.com/${OTHER_REPO}.git" "refs/heads/${HEAD_REF}" > /dev/null 2>&1; then
+            echo "ref=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+            echo "Using ${OTHER_REPO} on the same branch: ${HEAD_REF}"
+          else
+            echo "ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
+            echo "Branch ${HEAD_REF} does not exist in ${OTHER_REPO}: using its base branch ${BASE_REF}"
+          fi
+      - uses: actions/checkout@v4
+        with:
+          repository: casazen/frontend
+          ref: ${{ steps.other.outputs.ref }}
+          token: ${{ secrets.FRONTEND_REPO_TOKEN }}
+          path: frontend
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Stripe CLI (only when the Stripe test secrets exist)
+        if: ${{ env.STRIPE_TEST_SECRET_KEY != '' }}
+        run: |
+          curl -s https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/public | gpg --dearmor | sudo tee /usr/share/keyrings/stripe.gpg >/dev/null
+          echo "deb [signed-by=/usr/share/keyrings/stripe.gpg] https://packages.stripe.dev/stripe-cli-debian-local stable main" | sudo tee /etc/apt/sources.list.d/stripe.list
+          sudo apt-get update && sudo apt-get install -y stripe
+      - name: Build backend
+        run: dotnet build backend/Casazen.Web -c Release
+      - name: Install frontend and Chromium
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Golden Journey L3 (stack up, suite, stack down)
+        working-directory: frontend
+        run: bash e2e/stack/ci-run.sh
+      - name: Show the failed tests and the stack logs
+        # Only on failure. The same files are uploaded as an artifact, but the job log is what is read first.
+        if: ${{ failure() }}
+        working-directory: frontend
+        run: |
+          strip() { sed 's/\x1b\[[0-9;]*[A-Za-z]//g'; }
+          echo "::group::Failed tests (playwright-report.json)"
+          if [ -f playwright-report.json ]; then
+            jq -r '.. | objects | select(has("results")) | select(any(.results[]; .status=="failed" or .status=="timedOut")) | "### \(.projectName // "") \(.status // "")", (.results[-1].error.message // "no error message")' playwright-report.json 2>/dev/null | strip | head -150 || true
+          else
+            echo "no playwright-report.json: the suite did not run to the end"
+          fi
+          echo "::endgroup::"
+          for f in e2e/.stack/*.log; do
+            [ -f "$f" ] || continue
+            echo "::group::Last 120 lines of $f"
+            tail -n 120 "$f" | strip
+            echo "::endgroup::"
+          done
+          ls -la e2e/.stack e2e/.auth 2>/dev/null || true
+      - name: Upload logs and traces
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gj-l3-logs
+          if-no-files-found: ignore
+          path: |
+            frontend/e2e/.stack/*.log
+            frontend/test-results/
+            frontend/playwright-report.json
+            frontend/e2e/.auth/gj-seed.json

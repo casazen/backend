@@ -1,7 +1,8 @@
 namespace Casazen.Infrastructure.Services.ICal;
 
 /// <summary>
-/// One busy occurrence of a feed event, as calendar dates in Europe/Rome (never instants of the server's zone).
+/// One busy occurrence of a feed event, as calendar dates in Europe/Rome and as the UTC instants it covers (never
+/// instants of the server's zone).
 /// </summary>
 /// <param name="Uid">UID of the event as written in the feed, or null when the event has none.</param>
 /// <param name="Summary">SUMMARY without control characters, or null.</param>
@@ -11,14 +12,34 @@ namespace Casazen.Infrastructure.Services.ICal;
 /// otherwise. Equal to <paramref name="StartDate"/> when the event covers no night (e.g. 10:00-12:00).
 /// </param>
 /// <param name="LastDay">Last calendar day the event touches (inclusive), for day-based calendars (suppliers).</param>
+/// <param name="StartUtc">
+/// First instant the event covers (SP-05). A timed event: DTSTART as an instant (<c>Z</c> as is, <c>TZID</c> by the wall clock
+/// of that zone, a floating time or an unknown <c>TZID</c> by the wall clock of Europe/Rome). An all-day event: the start of
+/// its first day in Europe/Rome.
+/// </param>
+/// <param name="EndUtc">
+/// Instant the event ends, exclusive (SP-05): DTEND (or DTSTART plus DURATION) as an instant, equal to
+/// <paramref name="StartUtc"/> for a timed event with no length. An all-day event: the start of the day after its last day
+/// in Europe/Rome.
+/// </param>
+/// <param name="IsAllDay">
+/// True for a <c>VALUE=DATE</c> event (SP-05): calendar days, no hours. The supplier sync closes these days; a timed event
+/// with a length becomes a window of hours instead.
+/// </param>
 public sealed record ICalOccurrence(
     string? Uid,
     string? Summary,
     DateOnly StartDate,
     DateOnly EndDate,
-    DateOnly LastDay)
+    DateOnly LastDay,
+    DateTime StartUtc,
+    DateTime EndUtc,
+    bool IsAllDay)
 {
     public bool HasNights => EndDate > StartDate;
+
+    /// <summary>True when the event covers a stretch of time (<see cref="EndUtc"/> after <see cref="StartUtc"/>).</summary>
+    public bool HasDuration => EndUtc > StartUtc;
 }
 
 /// <summary>

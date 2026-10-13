@@ -37,6 +37,21 @@ public class GdprRetentionOptions
     public RetentionPeriodOptions Marketing { get; set; } = new();
     public RetentionPeriodOptions FiscalData { get; set; } = new();
 
+    /// <summary>
+    /// Personal data of the parties of a long-term lease (LT-12, A7-18), counted from the lease's end date. Not a
+    /// <see cref="GuestDataCategory"/>: applied by <c>LeasePartyRetentionService</c>. Same rule: no period, no source,
+    /// nothing anonymized (an erasure request is still honoured once the lease has ended).
+    /// </summary>
+    public RetentionPeriodOptions LeaseParties { get; set; } = new();
+
+    /// <summary>
+    /// Personal data of the private customers of the suppliers (SP-10): the customers who booked from a supplier's public
+    /// showcase and the place of their requests, counted from the last request of the customer. Not a
+    /// <see cref="GuestDataCategory"/>: applied by <c>ServiceCustomerPrivacyService</c>. Same rule: no period, no source,
+    /// nothing anonymized by retention (the period and its legal source are a decision of the product owner and legal).
+    /// </summary>
+    public RetentionPeriodOptions SupplierCustomers { get; set; } = new();
+
     public RetentionPeriodOptions For(GuestDataCategory category) => category switch
     {
         GuestDataCategory.DocumentScans => DocumentScans,

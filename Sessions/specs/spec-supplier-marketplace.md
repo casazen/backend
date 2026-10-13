@@ -198,6 +198,15 @@ Rules:
 | `Casazen.Web/Program.cs` | Modify — register `Dac7ReportJob` in `ConfigureRecurringJobs` (annual cadence) |
 | `Casazen.Web/Extensions/ServiceCollectionExtensions.cs` | Modify — supplier/operator marketplace policies + Scale/Pro plan entitlement |
 
+> **Implementation note (SP-02, 2026-10-08).** `SupplierServiceListing` shipped as the supplier's price catalog
+> (`api/supplier/services`, runbook `docs/runbooks/suppliers.md` section 19) with two differences from the table above.
+> (1) It is keyed by the **supplier** org (`OrgId` = `SupplierProfile.OrgId`) and is **not** `ITenantOwned`, so there is no
+> `OrgId` query filter on it: a supplier acts as `User.SupplierOrgId` and a supplier-only account has no `User.OrgId`, which
+> the host-org filter would turn into zero rows. It is in the allow-list of `TenantQueryFilterArchitectureTests` and every
+> statement carries an explicit `OrgId` predicate (AC1's "carrying `OrgId`" holds: `NOT NULL` and a foreign key to the
+> supplier profile). (2) It has **no service area**: where a supplier works stays the comuni of its `SupplierProfile`
+> (SU-04). Orders, transactions, payouts and DAC7 are not part of SP-02.
+
 ### Frontend — Files to create/modify
 
 > Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).

@@ -18,6 +18,28 @@ public class OrgDomainConfigDto
     public bool CanUseCustomDomain { get; set; }
     public DnsInstructionsDto? DnsInstructions { get; set; }
     public PublicUrlsDto PublicUrls { get; set; } = new();
+
+    /// <summary>Why the domain is pending or failed, when it was last checked and whether the platform can activate it (BK-17).</summary>
+    public DomainStatusDto Status { get; set; } = new();
+}
+
+/// <summary>
+/// Honest state of the custom domain (BK-17, A3-25). <see cref="Detail"/> is a stable code the web app explains in the user's
+/// language; <see cref="Message"/> is the same explanation from the server (the language of the request), for a client that
+/// does not know the code.
+/// </summary>
+public class DomainStatusDto
+{
+    public string? Detail { get; set; }
+    public string? Message { get; set; }
+    public DateTime? CheckedAt { get; set; }
+    public DateTime? VerifiedAt { get; set; }
+
+    /// <summary>False while the platform has no Vercel token and project: no domain can be activated, whatever the host does.</summary>
+    public bool ActivationAvailable { get; set; }
+
+    /// <summary>The periodic check still runs for this domain.</summary>
+    public bool AutoCheckActive { get; set; }
 }
 
 /// <summary>Request body for <c>POST /api/orgs/{orgId}/domain</c>.</summary>
@@ -42,8 +64,16 @@ public class OrgDomainVerifyResultDto
     public string CustomDomain { get; set; } = string.Empty;
     public DateTime CheckedAt { get; set; }
 
-    /// <summary>Italian user-facing hint, populated on <c>Failed</c>.</summary>
+    /// <summary>Why the domain is not verified (a stable code), <c>null</c> when it is.</summary>
+    public string? Detail { get; set; }
+
+    /// <summary>The explanation of <see cref="Detail"/> in the language of the request; <c>null</c> when verified.</summary>
     public string? Message { get; set; }
+
+    /// <summary>Vercel's own TXT record, only with <c>vercel_verification_pending</c>.</summary>
+    public string? VercelTxtHost { get; set; }
+
+    public string? VercelTxtValue { get; set; }
 }
 
 /// <summary>CNAME/TXT records the owner must add at their DNS provider to activate a custom domain.</summary>
@@ -54,6 +84,14 @@ public class DnsInstructionsDto
     public string TxtHost { get; set; } = string.Empty;
     public string TxtValue { get; set; } = string.Empty;
     public string SslNote { get; set; } = string.Empty;
+
+    /// <summary>IPv4 addresses for an A record, the alternative to the CNAME for the root of a domain (which cannot have a CNAME).</summary>
+    public IReadOnlyList<string> ARecordValues { get; set; } = [];
+
+    /// <summary>Vercel's own verification TXT record, only when Vercel asks for it (domain used on another Vercel account).</summary>
+    public string? VercelTxtHost { get; set; }
+
+    public string? VercelTxtValue { get; set; }
 }
 
 /// <summary>Preview links for each publication mode, for the settings panel.</summary>

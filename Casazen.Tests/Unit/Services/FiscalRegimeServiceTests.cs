@@ -185,7 +185,8 @@ public class FiscalRegimeServiceTests
         Assert.True(taxpayer.ThresholdExceeded);
         Assert.All(snapshot.Properties, p =>
         {
-            Assert.Null(p.RecommendedRegime);
+            Assert.Equal(StrFiscalRegime.RegimeOrdinario, p.RecommendedRegime);
+            Assert.False(p.RegimeConfirmed);
             Assert.Equal(FiscalTaxNotes.ThresholdExceeded, p.TaxNote);
         });
 
@@ -366,6 +367,7 @@ public class FiscalRegimeServiceTests
     [InlineData("12345678901")]
     [InlineData("RSSMRA80A01H501U9")]
     [InlineData("RSSMRA80-01H501U")]
+    [InlineData("RSSMRA85T10A562X")] // CO-18: structurally valid but wrong check character
     public async Task SetPropertyTaxpayer_InvalidCode_ThrowsDomainRule(string fiscalCode)
     {
         var orgId = Guid.NewGuid();

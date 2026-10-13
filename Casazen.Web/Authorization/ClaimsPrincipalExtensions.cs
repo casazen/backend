@@ -26,21 +26,45 @@ public static class ClaimsPrincipalExtensions
         return roles;
     }
 
-    /// <summary>True when the caller sees every property of the org (<see cref="HostRoles.OrgWide"/>).</summary>
-    public static bool HasOrgWideHostAccess(this ClaimsPrincipal user) =>
-        user.GetRoles().Overlaps(HostRoles.OrgWide);
-
     /// <summary>
-    /// The caller's scope on the host data of <paramref name="orgId"/> for list queries: the whole org for org-wide
-    /// roles, otherwise only the properties the caller owns. <c>null</c> when the caller has no user id (never
-    /// widened to the whole org).
+    /// The caller's scope on the host data of <paramref name="orgId"/> for list queries (AM-03): what its org membership
+    /// says (every property, or only the ones it was given), read from the database through the authorization snapshot;
+    /// the token decides only for an account that is in no org team (<see cref="IHostScopeResolver"/>). <c>null</c> when the
+    /// caller has no user id, is deactivated or belongs to another org: never widened to the whole org.
     /// </summary>
-    public static HostScope? GetHostScope(this ClaimsPrincipal user, Guid orgId)
+    public static Task<HostScope?> ResolveHostScopeAsync(
+        this IHostScopeResolver resolver,
+        ClaimsPrincipal user,
+        Guid orgId,
+        CancellationToken cancellationToken = default)
     {
-        if (user.HasOrgWideHostAccess())
-            return new HostScope(orgId, null);
+        ArgumentNullException.ThrowIfNull(resolver);
+        ArgumentNullException.ThrowIfNull(user);
 
         var userId = user.GetUserId();
-        return string.IsNullOrWhiteSpace(userId) ? null : new HostScope(orgId, userId);
+        return string.IsNullOrWhiteSpace(userId)
+            ? Task.FromResult<HostScope?>(null)
+            : resolver.ResolveAsync(userId, user.GetRoles(), orgId, cancellationToken);
+    }
+
+    /// <summary>
+    /// True when the caller reaches the property of a row (<see cref="IHostScopeResolver.CanReachPropertyAsync"/>); the
+    /// check behind <see cref="HostResourceAuthorizationHandler"/>.
+    /// </summary>
+    public static Task<bool> CanReachPropertyAsync(
+        this IHostScopeResolver resolver,
+        ClaimsPrincipal user,
+        HostResource resource,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(resource);
+
+        var userId = user.GetUserId();
+        return string.IsNullOrWhiteSpace(userId)
+            ? Task.FromResult(false)
+            : resolver.CanReachPropertyAsync(
+                userId, user.GetRoles(), resource.OrgId, resource.PropertyId, resource.PropertyOwnerId, cancellationToken);
     }
 }

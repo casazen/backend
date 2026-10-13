@@ -1,4 +1,6 @@
+using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Admin;
 using Casazen.Web.DTOs.Orgs;
@@ -58,35 +60,30 @@ public class AdminController(
         if (!string.IsNullOrWhiteSpace(cinStatus) &&
             cinStatus != "valid" && cinStatus != "missing" && cinStatus != "invalid")
         {
-            return BadRequest(new { error = $"Unknown cinStatus value '{cinStatus}'" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "CinStatusUnknown");
         }
 
-        pageSize = Math.Min(pageSize, 100);
+        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
-        try
+        var (items, total) = await adminService.GetCinComplianceAsync(cinStatus, page, pageSize);
+        return Ok(new PagedResultDto<CinComplianceItemDto>
         {
-            var (items, total) = await adminService.GetCinComplianceAsync(cinStatus, page, pageSize);
-            return Ok(new PagedResultDto<CinComplianceItemDto>
+            Items = items.Select(i => new CinComplianceItemDto
             {
-                Items = items.Select(i => new CinComplianceItemDto
-                {
-                    PropertyId = i.PropertyId,
-                    PropertyName = i.PropertyName,
-                    OwnerId = i.OwnerId,
-                    OwnerEmail = i.OwnerEmail,
-                    CinCode = i.CinCode,
-                    CinStatus = i.CinStatus,
-                    City = i.City
-                }),
-                TotalCount = total,
-                Page = page,
-                PageSize = pageSize
-            });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+                PropertyId = i.PropertyId,
+                PropertyName = i.PropertyName,
+                OwnerId = i.OwnerId,
+                OwnerEmail = i.OwnerEmail,
+                CinCode = i.CinCode,
+                CinStatus = i.CinStatus,
+                City = i.City
+            }),
+            TotalCount = total,
+            Page = page,
+            PageSize = pageSize
+        });
     }
 
     /// <summary>Returns the status of all registered Hangfire recurring jobs. Admin only.</summary>
@@ -107,8 +104,9 @@ public class AdminController(
     /// <summary>
     /// Updates an org's plan tier. Admin only. A plan driven by a live Stripe subscription is never overwritten
     /// (409 <c>managed_by_stripe</c>: the next webhook would silently undo it, A1-41), and without a subscription a
-    /// paid tier would not take effect (<see cref="IEntitlementService.ResolveEffectiveTier"/>), so an upgrade is
-    /// refused with 409 <c>subscription_required</c> instead of reporting a change that does nothing (#274).
+    /// paid tier would not take effect (<see cref="IEntitlementService.ResolvePaidTier"/>), so an upgrade is
+    /// refused with 409 <c>subscription_required</c> instead of reporting a change that does nothing (#274). The open access
+    /// (<c>Entitlement:OpenAccess</c>, BL-01) changes none of this: the rules compare with the tier the org pays for.
     /// </summary>
     [HttpPatch("orgs/{orgId:guid}/plan")]
     [ProducesResponseType(typeof(EntitlementDto), StatusCodes.Status200OK)]
@@ -121,7 +119,7 @@ public class AdminController(
         CancellationToken cancellationToken)
     {
         if (!PlanCatalog.TryParseTier(dto.PlanTier, out var planTier))
-            return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
         logger.LogInformation("Admin plan change requested for org {OrgId} -> {PlanTier}", orgId, planTier);
 
@@ -129,7 +127,7 @@ public class AdminController(
         if (org is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
-        var outcome = PlanChangePolicy.EvaluateManualChange(org, entitlementService.ResolveEffectiveTier(org), planTier);
+        var outcome = PlanChangePolicy.EvaluateManualChange(org, entitlementService.ResolvePaidTier(org), planTier);
         if (outcome != ManualPlanChangeOutcome.Allowed)
         {
             logger.LogWarning(
@@ -139,7 +137,9 @@ public class AdminController(
                 : this.ApiProblem(StatusCodes.Status409Conflict, PlanProblemCodes.SubscriptionRequired, "SubscriptionRequired");
         }
 
-        var updated = await orgService.UpdatePlanTierAsync(orgId, planTier, cancellationToken);
+        // The org's activity log says that CasaZen staff changed the plan (the actor is the staff account, an id).
+        var updated = await orgService.UpdatePlanTierAsync(
+            orgId, planTier, User.GetUserId(), PlanChangeSource.Staff, cancellationToken);
         if (updated is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
@@ -148,6 +148,7 @@ public class AdminController(
         {
             OrgId = entitlement.OrgId,
             PlanTier = entitlement.PlanTier,
+            OpenAccess = entitlement.OpenAccess,
             Limits = new EntitlementLimitsDto { MaxProperties = entitlement.MaxProperties },
             Usage = new EntitlementUsageDto { Properties = entitlement.PropertyCount },
             CanAddProperty = entitlement.CanAddProperty

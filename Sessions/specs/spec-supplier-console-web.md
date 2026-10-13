@@ -5,12 +5,12 @@ title: Supplier web console — onboarding, inbox, incarichi
 phase: 1
 type: feature
 priority: P0
-status: specced
+status: shipped
 issue:
 depends_on: [tenant-boundary, role-onboarding]
 blocks: [micro-marketplace-v0, golden-journey-e2e]
 exit_contributes_to: GJ steps 1–2, 8–9; supplier ecosystem surface
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Supplier Console Web (US-022)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 Authenticated **supplier** surface (separate from host console): signup/invite, activation wizard → `Active`, inbox for service requests, availability calendar, profile management. MVP must be **mobile-responsive** for steps 8–9 on phone browser.
 
-**Phase:** 1 — MVP · **Type:** feature · **Status:** specced
+**Phase:** 1 — MVP · **Type:** feature · **Status:** shipped (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

@@ -116,7 +116,7 @@ public class SeoPublicDomainTests
 
         Assert.Equal(
             $"{PublicSite}/signup?comune=como&utm_source=seo-compliance&utm_medium=cta&utm_content={utmContent}",
-            dto!.Cta.SignupUrl);
+            dto!.Cta!.SignupUrl);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class SeoPublicDomainTests
 
         Assert.Equal(
             "/signup?comune=como&utm_source=seo-compliance&utm_medium=cta&utm_content=compliance-guide",
-            dto!.Cta.SignupUrl);
+            dto!.Cta!.SignupUrl);
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class SeoPublicDomainTests
         SetupPages(
             Page("013075", SeoPageType.ComplianceGuide, "Affitti brevi a Como"),
             Page("013075", SeoPageType.TouristTaxCalc, "Tassa di soggiorno a Como"),
-            Page("013040", SeoPageType.TouristTaxCalc, "Tassa di soggiorno a Bellagio"));
+            Page("013250", SeoPageType.TouristTaxCalc, "Tassa di soggiorno a Bellagio"));
         SetupRateInForce("013075");
 
         var result = await CreateService(PublicSite).GetPublishedPagesAsync();
@@ -177,6 +177,7 @@ public class SeoPublicDomainTests
         new(
             _seoRepo.Object,
             _taxQuotes.Object,
+            new StaticSeoComuneCatalog(ComuneTestData.ComoInfo, ComuneTestData.BellagioInfo, ComuneTestData.MenaggioInfo),
             Mock.Of<IAiProvider>(),
             EmailTestHelpers.Links(publicSiteBaseUrl),
             Mock.Of<ILogger<SeoContentService>>(),

@@ -1,8 +1,9 @@
 name: CI/CD Pipeline
 
-# Backend gates: NuGet vulnerability gate, build, tests on PostgreSQL, format; deploy verification on push.
-# There is no backend Golden Journey E2E gate yet: the former e2e-golden-journey.yml only ran `echo` and was
-# removed (FD-02, A9-24). The real end-to-end gate arrives with task FN-03. Runbook: docs/runbooks/ci-backend.md.
+# Backend gates: NuGet vulnerability gate, build, tests on PostgreSQL, format.
+# Deploy verification after a green push is verify-railway-deploy.yml (not this suite).
+# The former `echo`-only e2e-golden-journey.yml was removed (FD-02, A9-24); the real end-to-end gate (UI, ephemeral stack)
+# is now e2e-golden-journey.yml (FN-03, docs/runbooks/golden-journey-l3.md). Runbook: docs/runbooks/ci-backend.md.
 
 on:
   push:
@@ -59,152 +60,11 @@ jobs:
 
       - name: Test
         run: |
-          dotnet test --configuration Release --no-build --verbosity normal --maxcpucount
+          dotnet test --configuration Release --no-build --verbosity minimal --maxcpucount
 
       - name: Check formatting
         run: dotnet format --verify-no-changes
 
-  # Railway deploys via GitHub integration (push to develop → test environment).
-  # This job waits until the test API runs THIS commit and is ready (FD-12): /api/health/ready exposes the
-  # commit Railway deployed (RAILWAY_GIT_COMMIT_SHA). It fails when RAILWAY_TEST_URL is not configured.
-  # Railway's "Wait for CI" must stay off: it would wait for this job, which waits for the deploy.
-  verify-test:
-    name: Verify Railway Test (native deploy)
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    environment:
-      name: test
-      url: ${{ vars.RAILWAY_TEST_URL }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Wait for this commit to be deployed and ready
-        env:
-          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
-        run: bash scripts/verify-deploy.sh "$RAILWAY_TEST_URL" "${{ github.sha }}" 1200
-
-      - name: Smoke test (auth gate — expect 401, never 500)
-        env:
-          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
-        run: |
-          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
-            "${RAILWAY_TEST_URL}/api/properties")
-          if [ "$STATUS" = "500" ]; then
-            echo "❌ /api/properties returned 500 — likely pending EF migration (AddContextAuthorization)"
-            exit 1
-          fi
-          if [ "$STATUS" != "401" ]; then
-            echo "❌ Expected 401 on /api/properties, got $STATUS"
-            exit 1
-          fi
-          echo "✅ Auth gate OK"
-
-      - name: Smoke test (bookings — never 500 without auth)
-        env:
-          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
-        run: |
-          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
-            "${RAILWAY_TEST_URL}/api/bookings")
-          if [ "$STATUS" = "500" ]; then
-            echo "❌ /api/bookings returned 500 — likely pending EF migration"
-            exit 1
-          fi
-          if [ "$STATUS" != "401" ]; then
-            echo "❌ Expected 401 on /api/bookings, got $STATUS"
-            exit 1
-          fi
-          echo "✅ Bookings auth gate OK"
-
-      - name: Smoke test (users/me, contexts — never 500 without auth)
-        env:
-          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
-        run: |
-          for PATH_SUFFIX in users/me me/contexts users; do
-            STATUS=$(curl -o /dev/null -sw "%{http_code}" \
-              "${RAILWAY_TEST_URL}/api/${PATH_SUFFIX}")
-            if [ "$STATUS" = "500" ]; then
-              echo "❌ /api/${PATH_SUFFIX} returned 500 — run scripts/migrate.ps1 -Target test"
-              exit 1
-            fi
-            if [ "$STATUS" != "401" ]; then
-              echo "❌ Expected 401 on /api/${PATH_SUFFIX}, got $STATUS"
-              exit 1
-            fi
-            echo "✅ /api/${PATH_SUFFIX} auth gate OK"
-          done
-
-      - name: Verify pricing adapter endpoint (auth gate — never 500)
-        env:
-          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
-          TEST_PROPERTY_ID: ${{ vars.TEST_PROPERTY_ID }}
-        run: |
-          PROPERTY_ID="${TEST_PROPERTY_ID:-00000000-0000-0000-0000-000000000001}"
-          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
-            "${RAILWAY_TEST_URL}/api/pricing-adapter/config/${PROPERTY_ID}")
-          if [ "$STATUS" = "500" ]; then
-            echo "❌ /api/pricing-adapter/config returned 500"
-            exit 1
-          fi
-          if [ "$STATUS" != "401" ] && [ "$STATUS" != "404" ] && [ "$STATUS" != "200" ]; then
-            echo "❌ Unexpected status on pricing-adapter config: $STATUS"
-            exit 1
-          fi
-          echo "✅ Pricing adapter auth gate OK (status $STATUS)"
-
-  # Railway deploys production via GitHub integration (push to main → production environment).
-  # Same verification as verify-test (FD-12): this commit deployed and /api/health/ready answering 200.
-  verify-prod:
-    name: Verify Railway Production (native deploy)
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment:
-      name: production
-      url: ${{ vars.RAILWAY_PROD_URL }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Wait for this commit to be deployed and ready
-        env:
-          RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
-        run: bash scripts/verify-deploy.sh "$RAILWAY_PROD_URL" "${{ github.sha }}" 1200
-
-      - name: Smoke test production (auth gate)
-        env:
-          RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
-        run: |
-          for PATH_SUFFIX in properties bookings users/me me/contexts orgs/me/entitlement; do
-            STATUS=$(curl -o /dev/null -sw "%{http_code}" \
-              "${RAILWAY_PROD_URL}/api/${PATH_SUFFIX}")
-            if [ "$STATUS" = "500" ]; then
-              echo "❌ /api/${PATH_SUFFIX} returned 500 — run scripts/migrate.ps1 -Target prod"
-              exit 1
-            fi
-            if [ "$STATUS" != "401" ]; then
-              echo "❌ Expected 401 on /api/${PATH_SUFFIX}, got $STATUS"
-              exit 1
-            fi
-            echo "✅ Production /api/${PATH_SUFFIX} auth gate OK"
-          done
-
-      - name: Production FE bundle sanity (must serve SPA, not placeholder)
-        run: |
-          BODY=$(curl -sf "https://casazen-app.vercel.app" || true)
-          if [ -z "$BODY" ]; then
-            echo "❌ Production FE unreachable at https://casazen-app.vercel.app"
-            exit 1
-          fi
-          if ! echo "$BODY" | grep -q 'id="root"'; then
-            echo "❌ Production FE missing React root — check Vercel Production deploy"
-            exit 1
-          fi
-          echo "✅ Production FE SPA shell OK (casazen-app.vercel.app)"
+  # Deploy verification (FD-12) lives in verify-railway-deploy.yml and starts after this
+  # workflow succeeds. It must not share this check suite: Railway Wait for CI waits for
+  # CI/CD Pipeline, and verify waits for the native deploy of the same SHA.

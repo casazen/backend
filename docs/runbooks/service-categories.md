@@ -10,14 +10,18 @@ data and how to check it after the deploy.
 
 | Where | Behaviour | Code |
 |---|---|---|
-| Source of truth | Ten stable lowercase English codes, in display order: `cleaning`, `maintenance`, `plumbing`, `laundry`, `linen`, `check-in`, `gardening`, `events`, `rental`, `excursions` | `Casazen.Core/Suppliers/ServiceCategories.cs` |
+| Source of truth | Eleven stable lowercase English codes, in display order: `cleaning`, `maintenance`, `plumbing`, `laundry`, `linen`, `check-in`, `gardening`, `events`, `rental`, `excursions`, `electrical` (the last one added by SP-02) | `Casazen.Core/Suppliers/ServiceCategories.cs` |
 | Catalog API | `GET /api/service-categories` (any signed-in user) → `{ "items": [{ "code": "cleaning" }, ...] }` | `ServiceCategoriesController` |
 | Writes | Supplier profile (`PUT /api/supplier/profile`), admin invite (`POST /api/admin/suppliers/invite`), service request (`POST /api/service-requests`, checkout wizard) accept only codes. Input is trimmed and lower-cased first (`" Cleaning "` → `cleaning`), duplicates removed. Anything else → **422** `invalid_service_category` (message `ServiceCategoryInvalid`, IT/EN), nothing saved | `ServiceCategories.Require/RequireAll` |
 | Search | `GET /api/suppliers?category=<code>` filters by code; a supplier matches only if it declared the code (no categories = no match). An unknown code → 422 `invalid_service_category` instead of an empty list. `POST /api/service-requests/match-supplier` (AI match, behind the `AiSupplierDiscovery` flag, FD-21) filters the same way and rejects a value that is not exactly a code with 400 `validation_error` (`[ServiceCategoryCode]`) | `SupplierService.GetActiveByComune`, `SupplierMatchService`, `ServiceCategoryCodeAttribute` |
 | Labels | Clients translate the code: web `serviceRequest.categories.<code>` (`it.json`/`en.json`), app `src/i18n/locales/{it,en}.ts`, emails `ServiceCategory_<code>` (`EmailTexts*.resx`) | frontend, mobile, `EmailTemplates.ServiceCategoryLabel` |
 
-The list is the union of what the three clients already offered; no category was invented. Doubtful synonyms were
+The first ten are the union of what the three clients already offered; no category was invented. Doubtful synonyms were
 kept distinct: `laundry` (web) and `linen` (app) are two categories, `check-in` (app) is its own category.
+`electrical` (SP-02, redesign wave) is the electrician of the redesigned supplier console; it is the last code, so the
+order the clients show does not change. It needs its label in the web (`serviceRequest.categories.electrical`) and the app
+(`i18n.test.ts` lists the codes): until they have it they show the raw code. The supplier catalog
+(`api/supplier/services`, `suppliers.md` section 19) uses the same codes.
 Never rename a code: it is stored in the database and used as an i18n key. A new category needs the constant in
 `ServiceCategories`, its labels in web, app and `EmailTexts`, and the updated lists in the tests that pin them
 (`ServiceCategoriesTests`, `i18n.test.ts` on web and app).
@@ -53,16 +57,16 @@ migrations when the backend starts on Railway; no manual step is needed.
    ```sql
    SELECT 'SupplierProfiles' AS tbl, p."OrgId"::text AS id, v AS value
    FROM "SupplierProfiles" p, jsonb_array_elements_text(p."CategoriesJson") v
-   WHERE v NOT IN ('cleaning','maintenance','plumbing','laundry','linen','check-in','gardening','events','rental','excursions')
+   WHERE v NOT IN ('cleaning','maintenance','plumbing','laundry','linen','check-in','gardening','events','rental','excursions','electrical')
    UNION ALL
    SELECT 'SupplierInviteRecords', i."Id"::text, v
    FROM "SupplierInviteRecords" i, jsonb_array_elements_text(i."CategoriesJson") v
    WHERE i."CategoriesJson" IS NOT NULL
-     AND v NOT IN ('cleaning','maintenance','plumbing','laundry','linen','check-in','gardening','events','rental','excursions')
+     AND v NOT IN ('cleaning','maintenance','plumbing','laundry','linen','check-in','gardening','events','rental','excursions','electrical')
    UNION ALL
    SELECT 'ServiceRequests', s."Id"::text, s."Category"
    FROM "ServiceRequests" s
-   WHERE s."Category" NOT IN ('cleaning','maintenance','plumbing','laundry','linen','check-in','gardening','events','rental','excursions');
+   WHERE s."Category" NOT IN ('cleaning','maintenance','plumbing','laundry','linen','check-in','gardening','events','rental','excursions','electrical');
    ```
 
 2. For each unmapped value decide with the product owner which code it means, then fix it by hand (for example

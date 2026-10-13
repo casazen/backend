@@ -326,11 +326,23 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
 internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
 {
     private readonly ConcurrentDictionary<string, StripeConnectException> _getAccountFailures = new();
+    private readonly ConcurrentDictionary<string, StripeConnectException> _loginLinkFailures = new();
     private readonly ConcurrentQueue<string> _idempotencyKeys = new();
     private int _createAccountCallCount;
+    private int _getAccountCallCount;
+    private int _onboardingLinkCallCount;
+    private int _loginLinkCallCount;
 
     public int CreateAccountCallCount => Volatile.Read(ref _createAccountCallCount);
+
+    /// <summary>Reads of <c>GET /v1/accounts/{id}</c>, to prove that a status read without <c>refresh</c> never reaches Stripe.</summary>
+    public int GetAccountCallCount => Volatile.Read(ref _getAccountCallCount);
+    public int OnboardingLinkCallCount => Volatile.Read(ref _onboardingLinkCallCount);
+
+    /// <summary>Calls of <see cref="CreateDashboardLoginLinkAsync"/> (SP-14).</summary>
+    public int LoginLinkCallCount => Volatile.Read(ref _loginLinkCallCount);
     public string? LastAccountId { get; private set; }
+    public string? LastLoginLinkAccountId { get; private set; }
     public ConnectAccountSnapshot? NextSnapshot { get; set; }
     public TimeSpan CreateDelay { get; set; }
     public string? LastReturnUrl { get; private set; }
@@ -340,9 +352,14 @@ internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
     public void Reset()
     {
         Interlocked.Exchange(ref _createAccountCallCount, 0);
+        Interlocked.Exchange(ref _getAccountCallCount, 0);
+        Interlocked.Exchange(ref _onboardingLinkCallCount, 0);
+        Interlocked.Exchange(ref _loginLinkCallCount, 0);
         _getAccountFailures.Clear();
+        _loginLinkFailures.Clear();
         _idempotencyKeys.Clear();
         LastAccountId = null;
+        LastLoginLinkAccountId = null;
         NextSnapshot = null;
         CreateDelay = TimeSpan.Zero;
         LastReturnUrl = null;
@@ -354,6 +371,12 @@ internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
         _getAccountFailures[accountId] = StripeConnectGateway.ToConnectException(
             StripeConnectGatewayTests.StripeError(status, code),
             "read the connected account");
+
+    /// <summary><c>POST /v1/accounts/{accountId}/login_links</c> answers with this Stripe error.</summary>
+    public void FailLoginLink(string accountId, HttpStatusCode status, string? code) =>
+        _loginLinkFailures[accountId] = StripeConnectGateway.ToConnectException(
+            StripeConnectGatewayTests.StripeError(status, code),
+            "create the Express dashboard login link");
 
     public async Task<string> CreateExpressAccountAsync(
         string email,
@@ -372,6 +395,7 @@ internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
 
     public Task<ConnectAccountSnapshot> GetAccountAsync(string connectedAccountId, CancellationToken cancellationToken = default)
     {
+        Interlocked.Increment(ref _getAccountCallCount);
         if (_getAccountFailures.TryGetValue(connectedAccountId, out var failure))
             return Task.FromException<ConnectAccountSnapshot>(failure);
 
@@ -392,8 +416,19 @@ internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
         string refreshUrl,
         CancellationToken cancellationToken = default)
     {
+        Interlocked.Increment(ref _onboardingLinkCallCount);
         LastReturnUrl = returnUrl;
         LastRefreshUrl = refreshUrl;
         return Task.FromResult($"https://connect.stripe.test/onboard/{connectedAccountId}");
+    }
+
+    public Task<string> CreateDashboardLoginLinkAsync(string connectedAccountId, CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref _loginLinkCallCount);
+        LastLoginLinkAccountId = connectedAccountId;
+        if (_loginLinkFailures.TryGetValue(connectedAccountId, out var failure))
+            return Task.FromException<string>(failure);
+
+        return Task.FromResult($"https://connect.stripe.test/express/{connectedAccountId}");
     }
 }

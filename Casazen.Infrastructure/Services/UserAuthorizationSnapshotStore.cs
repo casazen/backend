@@ -13,11 +13,18 @@ namespace Casazen.Infrastructure.Services;
 /// DB-side authorization data of a user, read once and shared by the JWT supplier backfill, the
 /// context policies and the host onboarding gate (PL-02).
 /// </summary>
-/// <param name="OrgId">The user's org (<c>User.OrgId</c>): the consents below are the ones recorded for it.</param>
+/// <param name="OrgId">
+/// The user's host org (<c>User.OrgId</c>, only when it is a <c>Host</c> org, PL-05): the consents below are the ones
+/// recorded for it.
+/// </param>
 /// <param name="OnboardingCompletedAt">When the user completed the onboarding; <c>null</c> when never.</param>
 /// <param name="AcceptedConsents">
 /// Consents recorded by the user for <paramref name="OrgId"/>, as <see cref="ConsentKey"/> values (type and version):
 /// the gate compares them with the current versions when it evaluates, so a new document version applies at once.
+/// </param>
+/// <param name="OrgMember">
+/// The user's org membership (AM-01): what the user is in its org and whether it may still use it; <c>null</c> for a
+/// user that is in no org team (a supplier, a user who never onboarded, an owner of before the backfill).
 /// </param>
 public sealed record UserAuthorizationSnapshot(
     bool Exists,
@@ -27,10 +34,14 @@ public sealed record UserAuthorizationSnapshot(
     IReadOnlyList<ContextAccess> Memberships,
     Guid? OrgId = null,
     DateTime? OnboardingCompletedAt = null,
-    IReadOnlySet<string>? AcceptedConsents = null)
+    IReadOnlySet<string>? AcceptedConsents = null,
+    OrgMemberSnapshot? OrgMember = null)
 {
     public static UserAuthorizationSnapshot Missing { get; } =
         new(Exists: false, IsActive: true, Role: UserRole.None, SupplierOrgId: null, Memberships: []);
+
+    /// <summary>True when the user is a member of an org that was deactivated (<see cref="OrgMemberStatus.Deactivated"/>).</summary>
+    public bool IsOrgMemberDeactivated => OrgMember is { Status: OrgMemberStatus.Deactivated };
 
     /// <summary>Key of an accepted consent in <see cref="AcceptedConsents"/>.</summary>
     public static string ConsentKey(ConsentType type, string version) => $"{type}:{version}";
@@ -39,6 +50,20 @@ public sealed record UserAuthorizationSnapshot(
     public bool HasAccepted(ConsentType type, string version) =>
         AcceptedConsents?.Contains(ConsentKey(type, version)) == true;
 }
+
+/// <summary>What a user is in its org (<see cref="OrgMember"/>), as the authorization reads it.</summary>
+/// <param name="PropertyScope">Every property of the org, or only the ones in <paramref name="GrantedPropertyIds"/> (AM-03).</param>
+/// <param name="GrantedPropertyIds">
+/// The properties a member «Solo alcuni» was given (<see cref="PropertyMemberAccess"/>), read with the member and cached with
+/// it (a single-resource check needs no query); <c>null</c> for everybody else, and for a member whose scope is not restricted.
+/// The lists never use it: they say <c>EXISTS</c> in SQL.
+/// </param>
+public sealed record OrgMemberSnapshot(
+    Guid OrgId,
+    OrgRole Role,
+    OrgMemberStatus Status,
+    PropertyScope PropertyScope = PropertyScope.All,
+    IReadOnlySet<Guid>? GrantedPropertyIds = null);
 
 public interface IUserAuthorizationSnapshotStore : IUserAuthorizationCache
 {
@@ -106,7 +131,16 @@ public sealed class UserAuthorizationSnapshotStore(
         var user = await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new { u.IsActive, u.Role, u.SupplierOrgId, u.OrgId, u.OnboardingCompletedAt })
+            .Select(u => new
+            {
+                u.IsActive,
+                u.Role,
+                u.SupplierOrgId,
+                // PL-05 (A1-40): only a Host org counts as the user's org for the host gate. A legacy OrgId that points
+                // to a supplier org (pre-PL-05 supplier-only accounts) is no host org: its consents never open host contexts.
+                OrgId = u.OrgId != null && u.Org!.OrgType == OrgType.Host ? u.OrgId : null,
+                u.OnboardingCompletedAt,
+            })
             .FirstOrDefaultAsync(cancellationToken);
 
         if (user is null)
@@ -121,14 +155,40 @@ public sealed class UserAuthorizationSnapshotStore(
             .OrderBy(m => m.ContextKey)
             .ToListAsync(cancellationToken);
 
-        var access = memberships
-            .Select(m => new ContextAccess(
-                m.ContextKey,
-                m.Context.DisplayName,
-                m.Role.RoleKey,
-                m.Role.Permissions.Select(p => p.PermissionKey).OrderBy(p => p).ToList(),
-                ContextAuthorizationService.GetDefaultRoute(m.ContextKey)))
-            .ToList();
+        // AM-01: what the user is in its org. IgnoreQueryFilters for the same reason as the consents below (the snapshot
+        // is read while the JWT is validated, before the request tenant exists); scoped to this user explicitly.
+        var orgMember = await db.OrgMembers
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(m => m.UserId == userId)
+            .Select(m => new OrgMemberSnapshot(m.OrgId, m.Role, m.Status, m.PropertyScope, null))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // AM-03: the properties of a member «Solo alcuni». Only a collaborator can be restricted (HostScopeResolver), so only
+        // its grants are read; IgnoreQueryFilters for the same reason as above, scoped to this user and its org explicitly.
+        if (orgMember is { Role: OrgRole.Collaborator, PropertyScope: PropertyScope.Selected })
+        {
+            var granted = await db.PropertyMemberAccesses
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(a => a.UserId == userId && a.OrgId == orgMember.OrgId)
+                .Select(a => a.PropertyId)
+                .ToListAsync(cancellationToken);
+            orgMember = orgMember with { GrantedPropertyIds = granted.ToHashSet() };
+        }
+
+        // A deactivated member reaches nothing, whatever its memberships say: this closes the cached read while the
+        // request tenant (member_inactive) already refuses the call itself.
+        var access = orgMember is { Status: OrgMemberStatus.Deactivated }
+            ? []
+            : memberships
+                .Select(m => new ContextAccess(
+                    m.ContextKey,
+                    m.Context.DisplayName,
+                    m.Role.RoleKey,
+                    m.Role.Permissions.Select(p => p.PermissionKey).OrderBy(p => p).ToList(),
+                    ContextAuthorizationService.GetDefaultRoute(m.ContextKey)))
+                .ToList();
 
         // Consents of the user's current org only (PL-02). IgnoreQueryFilters: the snapshot is read while the JWT is
         // validated, before the request tenant is resolved (the tenant filter would match nothing); the query is
@@ -155,6 +215,7 @@ public sealed class UserAuthorizationSnapshotStore(
             access,
             user.OrgId,
             user.OnboardingCompletedAt,
-            acceptedConsents);
+            acceptedConsents,
+            orgMember);
     }
 }

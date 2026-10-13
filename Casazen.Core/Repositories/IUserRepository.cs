@@ -20,6 +20,12 @@ public interface IUserRepository
     Task UpdateAsync(User user);
 
     /// <summary>
+    /// Removes the account. Memberships and property grants cascade; a property that named this user as responsible
+    /// is left without one. Push tokens of the account are removed too (they have no foreign key).
+    /// </summary>
+    Task DeleteAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Sets <c>IsActive</c> of user <paramref name="id"/> (PL-03). A deactivation runs under a transaction-scoped
     /// advisory lock and changes nothing when <paramref name="actorId"/> was deactivated meanwhile
     /// (<see cref="UserActivationOutcome.ActorInactive"/>) or when the user is the last active platform admin
@@ -31,6 +37,14 @@ public interface IUserRepository
         bool isActive,
         string actorId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when at least one active user other than <paramref name="excludingUserId"/> holds
+    /// <see cref="UserRole.Admin"/> (A1-17). Guards the removal of the Admin role via
+    /// <see cref="Casazen.Core.Services.IUserService.UpdateRolesAsync"/> the same way <see cref="SetActiveAsync"/>
+    /// guards a deactivation, so the platform can never end up with zero active administrators.
+    /// </summary>
+    Task<bool> HasOtherActiveAdminAsync(string excludingUserId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Result of <see cref="IUserRepository.SetActiveAsync"/>.</summary>

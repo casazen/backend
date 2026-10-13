@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
 
 namespace Casazen.Web.DTOs.Supplier;
@@ -55,7 +56,15 @@ public class UpdateSupplierProfileRequest
 
     public IEnumerable<string>? Categories { get; set; }
 
+    /// <summary>Comuni written as text (kept as written; the web app sends only the ones it could not match to the list).</summary>
     public IEnumerable<string>? Comuni { get; set; }
+
+    /// <summary>
+    /// ISTAT codes of the comuni chosen from the official list (SU-04): replaces the stored ones; omitted keeps them. 422
+    /// <c>comune_istat_unknown</c> for a code that is not an active comune of the list, <c>comuni_dataset_unavailable</c>
+    /// while the list is not imported.
+    /// </summary>
+    public IEnumerable<string>? ComuneIstatCodes { get; set; }
 
     [MaxLength(2000)]
     public string? Bio { get; set; }
@@ -67,6 +76,24 @@ public class CompleteActivationRequest
 {
     [Required]
     public bool TosAccepted { get; set; }
+
+    /// <summary>The Terms of Service version the supplier saw (<c>tos.currentVersion</c> of the activation status); 409 when it is not the current one.</summary>
+    [Required, MaxLength(100)]
+    public string TosVersion { get; set; } = string.Empty;
+}
+
+/// <summary>Re-acceptance of the current Terms of Service by an active supplier.</summary>
+public class AcceptSupplierTosRequest
+{
+    [Required, MaxLength(100)]
+    public string TosVersion { get; set; } = string.Empty;
+}
+
+/// <summary>The wizard step (1-5) the supplier reached.</summary>
+public class SetActivationStepRequest
+{
+    [Range(1, 5)]
+    public int Step { get; set; }
 }
 
 public class UpdateAvailabilityRequest
@@ -179,7 +206,15 @@ public class SupplierProfileDto
     public string Phone { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public IEnumerable<string> Categories { get; set; } = [];
+
+    /// <summary>Comuni written as text before the official list (or while it is not imported): shown as written.</summary>
     public IEnumerable<string> Comuni { get; set; } = [];
+
+    /// <summary>ISTAT codes of the comuni chosen from the official list (SU-04).</summary>
+    public IEnumerable<string> ComuneIstatCodes { get; set; } = [];
+
+    /// <summary>The chosen comuni with name, province and region; a stored code that is not in the list is only in <see cref="ComuneIstatCodes"/>.</summary>
+    public IEnumerable<ComuneDto> OperatingComuni { get; set; } = [];
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
     public DateTime? TosAcceptedAt { get; set; }
@@ -187,16 +222,40 @@ public class SupplierProfileDto
 
 public class ActivationStatusDto
 {
+    /// <summary><c>Pending</c> (never activated), <c>Active</c> or <c>Suspended</c>.</summary>
     public string Status { get; set; } = string.Empty;
+
+    /// <summary>Step number (1-5) to open: saved by the server, so the wizard resumes where the supplier stopped.</summary>
+    public int CurrentStep { get; set; }
+
     public IEnumerable<ActivationStepDto> Steps { get; set; } = [];
+    public SupplierTosDto Tos { get; set; } = new();
 }
 
 public class ActivationStepDto
 {
+    /// <summary><c>identity</c>, <c>services</c>, <c>showcase</c>, <c>profile</c>, <c>terms</c>.</summary>
     public string Id { get; set; } = string.Empty;
-    public string Label { get; set; } = string.Empty;
+
+    /// <summary><c>completed</c> or <c>pending</c>.</summary>
     public string Status { get; set; } = string.Empty;
+
+    /// <summary>Stable code of the first missing requirement (the client translates it), null when the step is complete.</summary>
     public string? Blocker { get; set; }
+
+    /// <summary>False for a step that never blocks the activation.</summary>
+    public bool Required { get; set; }
+}
+
+public class SupplierTosDto
+{
+    public string CurrentVersion { get; set; } = string.Empty;
+    public string? AcceptedVersion { get; set; }
+    public DateTime? AcceptedAt { get; set; }
+    public bool ReacceptanceRequired { get; set; }
+
+    /// <summary>The supplier cannot take, complete or reject requests until it accepts the current version.</summary>
+    public bool BlocksActions { get; set; }
 }
 
 public class CompleteActivationResponse
@@ -249,15 +308,19 @@ public class SupplierPickerDto
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
 
-    /// <summary>The supplier as a host sees it when choosing one (short-rent and long-rent search alike).</summary>
-    public static SupplierPickerDto From(SupplierProfile sp) => new()
+    /// <summary>
+    /// The supplier as a host sees it when choosing one (short-rent and long-rent search alike). <c>comuni</c> lists the names
+    /// of the comuni the supplier chose from the official list (<paramref name="listed"/>, by ISTAT code) and then what it
+    /// wrote as text.
+    /// </summary>
+    public static SupplierPickerDto From(SupplierProfile sp, IReadOnlyDictionary<string, Comune>? listed = null) => new()
     {
         OrgId = sp.OrgId,
         LegalName = sp.LegalName,
         Phone = sp.Phone,
         Email = sp.Email,
         Categories = JsonSerializer.Deserialize<IEnumerable<string>>(sp.CategoriesJson, JsonOpts) ?? [],
-        Comuni = JsonSerializer.Deserialize<IEnumerable<string>>(sp.ComuniJson, JsonOpts) ?? [],
+        Comuni = SupplierComuniView.Names(sp, listed),
         Bio = sp.Bio,
         PhotoUrls = JsonSerializer.Deserialize<IEnumerable<string>>(sp.PhotoUrlsJson, JsonOpts) ?? [],
     };
@@ -344,6 +407,21 @@ public class SupplierDuplicateMergeDto
     public int OrgMembersMoved { get; set; }
 
     public int DevicesMoved { get; set; }
+
+    /// <summary>
+    /// Services of the duplicate's price catalog (SP-02) that moved to the keeper, the deleted ones too; a slug the keeper
+    /// already uses got the next free suffix.
+    /// </summary>
+    public int ServiceListingsMoved { get; set; }
+
+    /// <summary>
+    /// Rows of the duplicate's agenda (SP-03) that moved to the keeper: time off, blocks and extra openings, and the weekly
+    /// hours and settings when the keeper had none (the keeper's own stay as they are).
+    /// </summary>
+    public int AgendaRowsMoved { get; set; }
+
+    /// <summary>Showcase requests and private customers of the duplicate that went to the keeper (SP-10); its unverified holds are dropped.</summary>
+    public int ShowcaseRowsMoved { get; set; }
 
     /// <summary>False when the duplicate org also holds host data: only its supplier profile was removed.</summary>
     public bool DuplicateOrgDeleted { get; set; }
@@ -442,4 +520,67 @@ public class SupplierKpisDto
 public class SupplierPhotoUploadResponse
 {
     public IEnumerable<string> Urls { get; set; } = [];
+}
+
+// ─── Public showcase (SU-13) ──────────────────────────────────────────────────
+
+/// <summary>
+/// What the public page <c>/fornitori/{slug}</c> shows of a supplier (<c>GET /api/public/suppliers/{slug}</c>) and what the
+/// owner previews (<c>GET /api/supplier/showcase</c>): never the phone, the email, the VAT number or the status.
+/// </summary>
+public class SupplierShowcaseDto
+{
+    /// <summary>Null in the preview of a profile that has no public address yet (never activated).</summary>
+    public string? Slug { get; set; }
+
+    public string LegalName { get; set; } = string.Empty;
+    public IReadOnlyList<string> Categories { get; set; } = [];
+
+    /// <summary>The comuni by name: the ones chosen from the official list, then what the supplier wrote.</summary>
+    public IReadOnlyList<string> Comuni { get; set; } = [];
+
+    public string? Bio { get; set; }
+    public IReadOnlyList<string> PhotoUrls { get; set; } = [];
+
+    /// <summary>The next 14 days (Europe/Rome) the supplier saved an availability for.</summary>
+    public IReadOnlyList<AvailabilityEntryDto> Availability { get; set; } = [];
+
+    /// <summary>
+    /// SP-09: the published services with their "from" price, unit and VAT declaration (<see cref="PublicSupplierServiceDto"/>).
+    /// <b>Left out of the answer (not an empty list) while the feature flag <c>SupplierShowcaseBooking</c> is off</b> and in the
+    /// owner's preview: the page then reads exactly as it did before SP-09. Present and possibly empty once the flag is on.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<PublicSupplierServiceDto>? Services { get; set; }
+
+    /// <summary>
+    /// SP-09: the typical time the supplier takes to answer, in minutes: the <b>median</b> over the requests it really took in
+    /// the last 90 days, shown only when there are at least 5 (never written by hand). Left out of the answer when not
+    /// measured, while the flag is off, and in the owner's preview.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MedianResponseMinutes { get; set; }
+}
+
+/// <summary>The owner's preview of the public showcase and where it will be (or is) published.</summary>
+public class SupplierShowcasePreviewDto
+{
+    public SupplierShowcaseDto Showcase { get; set; } = new();
+
+    /// <summary><c>Pending</c>, <c>Active</c> or <c>Suspended</c>.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>True only for an active supplier with a slug: the public page answers 200.</summary>
+    public bool Published { get; set; }
+
+    public string? Slug { get; set; }
+
+    /// <summary>Path of the page in the web app (<c>/fornitori/{slug}</c>); null until the profile has a slug.</summary>
+    public string? PublicPath { get; set; }
+
+    /// <summary>Absolute URL on <c>App:PublicSiteBaseUrl</c>; null when the slug or the public URL is not configured.</summary>
+    public string? PublicUrl { get; set; }
+
+    /// <summary>Always false in v0: the public page is <c>noindex</c> and in <c>robots.txt</c>.</summary>
+    public bool Indexable { get; set; }
 }

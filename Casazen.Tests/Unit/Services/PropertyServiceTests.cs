@@ -6,9 +6,11 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -147,18 +149,58 @@ public class PropertyServiceTests
     }
 
     [Fact]
-    public async Task DeletePropertyAsync_WithValidId_DeletesProperty()
+    public async Task DeletePropertyAsync_NothingToCome_SoftDeletesWithTheClockInstantAndRomeDate()
     {
-        // Arrange
+        // 23:30 UTC on 30 Sept is already 1 Oct in Rome: "today" for the stays is the Rome date.
+        var now = new DateTimeOffset(2026, 9, 30, 23, 30, 0, TimeSpan.Zero);
+        var service = new PropertyService(
+            _mockRepository.Object,
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
+            new Mock<ILogger<PropertyService>>().Object,
+            new FakeTimeProvider(now));
         var propertyId = Guid.NewGuid();
-        _mockRepository.Setup(x => x.DeleteAsync(propertyId)).Returns(Task.CompletedTask);
+        _mockRepository
+            .Setup(x => x.SoftDeleteAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PropertySoftDeleteOutcome.Deleted);
 
-        // Act
-        var result = await _service.DeletePropertyAsync(propertyId);
+        var result = await service.DeletePropertyAsync(propertyId);
 
-        // Assert
         Assert.True(result);
-        _mockRepository.Verify(x => x.DeleteAsync(propertyId), Times.Once);
+        _mockRepository.Verify(x => x.SoftDeleteAsync(
+            propertyId,
+            now.UtcDateTime,
+            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeletePropertyAsync_AlreadyDeletedOrUnknown_ReturnsFalse()
+    {
+        var propertyId = Guid.NewGuid();
+        _mockRepository
+            .Setup(x => x.SoftDeleteAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PropertySoftDeleteOutcome.NotFound);
+
+        Assert.False(await _service.DeletePropertyAsync(propertyId));
+    }
+
+    [Theory]
+    [InlineData(PropertySoftDeleteOutcome.HasUpcomingStays, PropertyService.HasUpcomingBookingsCode, "PropertyHasUpcomingBookings")]
+    [InlineData(PropertySoftDeleteOutcome.HasActiveLeases, PropertyService.HasActiveLeasesCode, "PropertyHasActiveLeases")]
+    public async Task DeletePropertyAsync_StayOrLeaseStillToCome_ThrowsConflict(
+        PropertySoftDeleteOutcome outcome, string expectedCode, string expectedKey)
+    {
+        // PC-05, A2-18: a guest or tenant already booked must never lose their stay to a delete.
+        var propertyId = Guid.NewGuid();
+        _mockRepository
+            .Setup(x => x.SoftDeleteAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outcome);
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => _service.DeletePropertyAsync(propertyId));
+
+        Assert.Equal(expectedCode, error.Code);
+        Assert.Equal(expectedKey, error.MessageKey);
     }
 
     [Fact]
@@ -238,6 +280,68 @@ public class PropertyServiceTests
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Property>()), Times.Never);
     }
 
+    // ─── Pause / Activate (PC-03, A2-05) ────────────────────────────────────────
+
+    [Fact]
+    public async Task PausePropertyAsync_NotPaused_SetsIsPausedAndPausedAtAndSaves()
+    {
+        var now = new DateTimeOffset(2026, 7, 14, 9, 30, 0, TimeSpan.Zero);
+        var service = new PropertyService(
+            _mockRepository.Object,
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
+            new Mock<ILogger<PropertyService>>().Object,
+            new FakeTimeProvider(now));
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsActive = true, IsPaused = false, PausedAt = null };
+        _mockRepository.Setup(x => x.UpdateAsync(property)).ReturnsAsync(property);
+
+        var result = await service.PausePropertyAsync(property);
+
+        Assert.True(result.IsPaused);
+        Assert.Equal(now.UtcDateTime, result.PausedAt);
+        Assert.Equal(DateTimeKind.Utc, result.PausedAt!.Value.Kind);
+        // Pausing never touches the active flag: the host still sees and edits the property.
+        Assert.True(result.IsActive);
+        _mockRepository.Verify(x => x.UpdateAsync(property), Times.Once);
+    }
+
+    [Fact]
+    public async Task PausePropertyAsync_AlreadyPaused_IsIdempotentAndKeepsTheOriginalPausedAt()
+    {
+        var originalPausedAt = DateTime.UtcNow.AddDays(-3);
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsPaused = true, PausedAt = originalPausedAt };
+
+        var result = await _service.PausePropertyAsync(property);
+
+        Assert.True(result.IsPaused);
+        Assert.Equal(originalPausedAt, result.PausedAt);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ActivatePropertyAsync_Paused_ClearsIsPausedAndPausedAtAndSaves()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsPaused = true, PausedAt = DateTime.UtcNow };
+        _mockRepository.Setup(x => x.UpdateAsync(property)).ReturnsAsync(property);
+
+        var result = await _service.ActivatePropertyAsync(property);
+
+        Assert.False(result.IsPaused);
+        Assert.Null(result.PausedAt);
+        _mockRepository.Verify(x => x.UpdateAsync(property), Times.Once);
+    }
+
+    [Fact]
+    public async Task ActivatePropertyAsync_AlreadyActive_IsIdempotentAndDoesNotSave()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsPaused = false, PausedAt = null };
+
+        var result = await _service.ActivatePropertyAsync(property);
+
+        Assert.False(result.IsPaused);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
+    }
+
     [Fact]
     public async Task GetPropertyRecordAsync_ReadsTheRowWithoutRelations()
     {
@@ -250,156 +354,105 @@ public class PropertyServiceTests
         _mockRepository.Verify(x => x.GetByIdAsync(It.IsAny<Guid>()), Times.Never);
     }
 
-    // Image Management Tests
+    // ─── Unique address, unit and coordinates (PC-06, A2-19, A2-33) ──────────────
+
+    private static DbUpdateException UniqueViolation(string constraintName) =>
+        new("save failed", new PostgresException(
+            "duplicate key value violates unique constraint", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation,
+            constraintName: constraintName));
 
     [Fact]
-    public async Task AddImageAsync_WithValidPropertyAndUrl_AddsImage()
+    public async Task CreatePropertyAsync_AddressIndexViolation_ThrowsDuplicateAddressConflict()
     {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var property = new Property
-        {
-            Id = propertyId,
-            Name = "Test Property",
-            PhotoUrls = new List<string>()
-        };
-        var imageUrl = "/uploads/properties/test.jpg";
+        var property = new Property { Name = "Casa", OrgId = Guid.NewGuid(), Address = "Via Roma 1", City = "Milano" };
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>())).ThrowsAsync(UniqueViolation(PropertyAddress.UniqueIndexName));
 
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync(property);
-        _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Property>())).ReturnsAsync(property);
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.CreatePropertyAsync(property));
 
-        // Act
-        var result = await _service.AddImageAsync(propertyId, imageUrl);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Contains(imageUrl, result.PhotoUrls);
-        _mockRepository.Verify(x => x.GetByIdAsync(propertyId), Times.Once);
-        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Once);
+        Assert.Equal("duplicate_property_address", ex.Code);
+        Assert.Equal("PropertyAddressTaken", ex.MessageKey);
     }
 
     [Fact]
-    public async Task AddImageAsync_WithNonExistentProperty_ThrowsException()
+    public async Task CreatePropertyAsync_SlugIndexViolation_ThrowsDuplicateSlugConflictNotAnAddressOne()
     {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var imageUrl = "/uploads/properties/test.jpg";
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync((Property?)null);
+        // Two parallel creates with the same name: the loser must not be told that its ADDRESS is taken.
+        var property = new Property { Name = "Casa", OrgId = Guid.NewGuid(), Address = "Via Roma 1", City = "Milano" };
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>())).ThrowsAsync(UniqueViolation("UIX_Properties_OrgId_Slug"));
 
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.AddImageAsync(propertyId, imageUrl));
-        _mockRepository.Verify(x => x.GetByIdAsync(propertyId), Times.Once);
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.CreatePropertyAsync(property));
+
+        Assert.Equal("duplicate_property_slug", ex.Code);
+    }
+
+    [Fact]
+    public async Task CreatePropertyAsync_AnotherDatabaseError_IsNotTurnedIntoAConflict()
+    {
+        var property = new Property { Name = "Casa", OrgId = Guid.NewGuid(), Address = "Via Roma 1", City = "Milano" };
+        var failure = UniqueViolation("IX_Something_Else");
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>())).ThrowsAsync(failure);
+
+        var thrown = await Assert.ThrowsAsync<DbUpdateException>(() => _service.CreatePropertyAsync(property));
+
+        Assert.Same(failure, thrown);
+    }
+
+    [Fact]
+    public async Task UpdatePropertyAsync_AddressIndexViolation_ThrowsDuplicateAddressConflict()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Casa", OrgId = Guid.NewGuid(), Address = "Via Roma 1", City = "Milano" };
+        _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Property>())).ThrowsAsync(UniqueViolation(PropertyAddress.UniqueIndexName));
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.UpdatePropertyAsync(property));
+
+        Assert.Equal("duplicate_property_address", ex.Code);
+    }
+
+    [Fact]
+    public async Task CreatePropertyAsync_UnitAndCoordinates_AreStoredNormalizedAndRounded()
+    {
+        var property = new Property
+        {
+            Name = "Casa",
+            OrgId = Guid.NewGuid(),
+            Unit = "  Scala  B ",
+            Latitude = 41.9027825m,
+            Longitude = 12.4963664m,
+        };
+        Property? stored = null;
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>()))
+            .Callback((Property p) => stored = p)
+            .ReturnsAsync((Property p) => p);
+
+        await _service.CreatePropertyAsync(property);
+
+        Assert.Equal("Scala B", stored!.Unit);
+        Assert.Equal(41.902783m, stored.Latitude);
+        Assert.Equal(12.496366m, stored.Longitude);
+    }
+
+    [Theory]
+    [InlineData(91, 0)]
+    [InlineData(-90.1, 0)]
+    [InlineData(0, 181)]
+    [InlineData(1234.5, 9999)]
+    public async Task CreatePropertyAsync_CoordinateOutsideTheEarth_IsRefusedBeforeTheInsert(double latitude, double longitude)
+    {
+        var property = new Property { Name = "Casa", OrgId = Guid.NewGuid(), Latitude = (decimal)latitude, Longitude = (decimal)longitude };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.CreatePropertyAsync(property));
+
+        Assert.Equal("property_coordinates_invalid", ex.Code);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdatePropertyAsync_CoordinateOutsideTheEarth_IsRefusedBeforeTheUpdate()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Casa", OrgId = Guid.NewGuid(), Latitude = 95m };
+
+        await Assert.ThrowsAsync<DomainRuleException>(() => _service.UpdatePropertyAsync(property));
+
         _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task RemoveImageAsync_WithValidIndex_RemovesImage()
-    {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var property = new Property
-        {
-            Id = propertyId,
-            Name = "Test Property",
-            PhotoUrls = new List<string> { "/uploads/1.jpg", "/uploads/2.jpg", "/uploads/3.jpg" }
-        };
-
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync(property);
-        _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Property>())).ReturnsAsync(property);
-
-        // Act
-        var result = await _service.RemoveImageAsync(propertyId, 1);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal(2, result.PhotoUrls.Count);
-        Assert.DoesNotContain("/uploads/2.jpg", result.PhotoUrls);
-        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task RemoveImageAsync_WithInvalidIndex_ThrowsException()
-    {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var property = new Property
-        {
-            Id = propertyId,
-            Name = "Test Property",
-            PhotoUrls = new List<string> { "/uploads/1.jpg" }
-        };
-
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync(property);
-
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => _service.RemoveImageAsync(propertyId, 5));
-    }
-
-    [Fact]
-    public async Task ReorderImagesAsync_WithValidUrls_ReordersImages()
-    {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var property = new Property
-        {
-            Id = propertyId,
-            Name = "Test Property",
-            PhotoUrls = new List<string> { "/uploads/1.jpg", "/uploads/2.jpg", "/uploads/3.jpg" }
-        };
-
-        var newOrder = new List<string> { "/uploads/3.jpg", "/uploads/1.jpg", "/uploads/2.jpg" };
-
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync(property);
-        _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Property>())).ReturnsAsync(property);
-
-        // Act
-        var result = await _service.ReorderImagesAsync(propertyId, newOrder);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal(newOrder[0], result.PhotoUrls[0]);
-        Assert.Equal(newOrder[1], result.PhotoUrls[1]);
-        Assert.Equal(newOrder[2], result.PhotoUrls[2]);
-        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task ReorderImagesAsync_WithInvalidUrls_ThrowsException()
-    {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var property = new Property
-        {
-            Id = propertyId,
-            Name = "Test Property",
-            PhotoUrls = new List<string> { "/uploads/1.jpg", "/uploads/2.jpg" }
-        };
-
-        var invalidOrder = new List<string> { "/uploads/1.jpg", "/uploads/INVALID.jpg" };
-
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync(property);
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.ReorderImagesAsync(propertyId, invalidOrder));
-    }
-
-    [Fact]
-    public async Task ReorderImagesAsync_WithWrongCount_ThrowsException()
-    {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var property = new Property
-        {
-            Id = propertyId,
-            Name = "Test Property",
-            PhotoUrls = new List<string> { "/uploads/1.jpg", "/uploads/2.jpg" }
-        };
-
-        var wrongCount = new List<string> { "/uploads/1.jpg" }; // Missing one URL
-
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync(property);
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.ReorderImagesAsync(propertyId, wrongCount));
     }
 }

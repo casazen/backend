@@ -190,9 +190,8 @@ namespace Casazen.Infrastructure.Migrations
                     v_groups, v_merged, v_requests, v_kept_orgs;
 
                 IF cardinality(v_blocked) > 0 THEN
-                    RAISE EXCEPTION 'SupplierProfileEmailUnique: % supplier email group(s) need a manual decision and were not merged: %',
-                        cardinality(v_blocked), array_to_string(v_blocked, '; ')
-                        USING HINT = 'Nothing was changed and the unique email index was not created. See docs/runbooks/suppliers.md section 9.';
+                    RAISE NOTICE 'SupplierProfileEmailUnique: % supplier email group(s) need a manual decision and were not merged: %. Deploy continues; unique index is skipped until an admin report is resolved (PO 2026-10-08). See docs/runbooks/suppliers.md section 9. Groups: %',
+                        cardinality(v_blocked), cardinality(v_blocked), array_to_string(v_blocked, '; ');
                 END IF;
             END $$;
             """;
@@ -208,7 +207,26 @@ namespace Casazen.Infrastructure.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(MergeDuplicatesSql);
-            migrationBuilder.Sql(CreateIndexSql);
+            // PO 2026-10-08: remaining duplicates are a report, not a deploy blocker. The unique index is created
+            // only when no duplicate email group is left.
+            migrationBuilder.Sql("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                          FROM "SupplierProfiles"
+                         WHERE btrim("Email") <> ''
+                         GROUP BY lower(btrim("Email"))
+                        HAVING count(*) > 1
+                    ) THEN
+                        RAISE NOTICE 'SupplierProfileEmailUnique: duplicate emails remain; unique index not created.';
+                    ELSE
+                        CREATE UNIQUE INDEX IF NOT EXISTS "UIX_SupplierProfiles_NormalizedEmail"
+                            ON "SupplierProfiles" (lower(btrim("Email")))
+                            WHERE btrim("Email") <> '';
+                    END IF;
+                END $$;
+                """);
         }
 
         /// <inheritdoc />

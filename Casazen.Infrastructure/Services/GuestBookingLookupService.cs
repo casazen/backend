@@ -115,6 +115,9 @@ public sealed class GuestBookingLookupService(
         if (!BookingCodes.TryNormalize(credentials.BookingCode, out var code) || slug.Length == 0 || email.Length == 0)
             throw NotFound();
 
+        // The slug of the link may be a previous slug of the org (PL-04): links in older emails keep working.
+        var orgId = await OrgService.ResolveOrgIdBySlugAsync(db, slug, cancellationToken) ?? throw NotFound();
+
         // Anonymous request: the tenant filter is off, the org comes from the site and code + email are the access check.
         var booking = await db.Bookings
             .AsNoTracking()
@@ -126,7 +129,7 @@ public sealed class GuestBookingLookupService(
             .Where(b =>
                 b.BookingCode == code &&
                 b.Source == BookingSource.Direct &&
-                b.Org.Slug == slug &&
+                b.OrgId == orgId &&
                 b.Org.IsActive &&
                 b.Guest.Email.Trim().ToLower() == email)
             .SingleOrDefaultAsync(cancellationToken);

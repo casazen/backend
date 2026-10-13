@@ -17,6 +17,8 @@ namespace Casazen.Core.Services;
 /// no blocker is left (<see cref="ReevaluateAsync"/> after the change that completes the requirements, the nightly check,
 /// or the host's activation).</item>
 /// </list>
+/// A property in long-term mode (<see cref="RentalMode.Long"/>, PM-01) is outside all of this: it is never evaluated,
+/// suspended or reactivated, its host is not written to, and it cannot be activated.
 /// </summary>
 public interface IPropertyComplianceStatusService
 {
@@ -33,8 +35,8 @@ public interface IPropertyComplianceStatusService
     /// Re-evaluates a property after a change of its CIN, documents, checklist or base data, or at the nightly check: an
     /// <see cref="PropertyComplianceStatus.Active"/> one with a blocker becomes <see cref="PropertyComplianceStatus.Suspended"/>
     /// and the host gets one email; a suspended one without blockers becomes active again; a pending one is left
-    /// unchanged (never activated here). Idempotent and safe under concurrency: only the call that suspends the property
-    /// notifies the host.
+    /// unchanged (never activated here); a long-term one (PM-01) is left unchanged too. Idempotent and safe under
+    /// concurrency: only the call that suspends the property notifies the host.
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException">The property does not exist (or belongs to another org).</exception>
     Task<PropertyComplianceCheck> ReevaluateAsync(Guid propertyId, CancellationToken cancellationToken = default);
@@ -44,11 +46,14 @@ public interface IPropertyComplianceStatusService
     /// blocker is left, from pending or suspended; otherwise the same as <see cref="ReevaluateAsync"/>.
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException">The property does not exist (or belongs to another org).</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/> (422): the property is in long-term mode (PM-01).
+    /// </exception>
     Task<PropertyComplianceCheck> ActivateAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Re-evaluates every <see cref="PropertyComplianceStatus.Active"/> or <see cref="PropertyComplianceStatus.Suspended"/>
-    /// property (nightly job, one-shot command of the historic recalculation). One run at a time: returns null when another run holds the lock. A property that fails
+    /// Re-evaluates every short-rent (PM-01) <see cref="PropertyComplianceStatus.Active"/> or
+    /// <see cref="PropertyComplianceStatus.Suspended"/> property (nightly job, one-shot command of the historic recalculation). One run at a time: returns null when another run holds the lock. A property that fails
     /// is logged and counted, the run goes on. With <paramref name="dryRun"/> nothing is written and no email is queued:
     /// the report says what a real run would do.
     /// </summary>

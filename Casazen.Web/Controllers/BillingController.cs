@@ -19,12 +19,12 @@ public class BillingController(
     IStripeBillingService stripeBillingService,
     IBillingCheckoutService billingCheckoutService,
     IBillingEntryGate billingEntryGate,
-    IViesService viesService,
     PublicSiteLinks publicSiteLinks,
     IConfiguration configuration) : ControllerBase
 {
     /// <summary>503: the public URL of the web app, base of the Stripe return pages, is not configured (PL-11).</summary>
     private const string ReturnUrlNotConfiguredCode = "billing_return_url_not_configured";
+    private const string NoStripeCustomerCode = "billing_no_customer";
 
     /// <summary>
     /// Plans of the catalogue. <c>purchasable</c> is false for a plan whose Stripe Price id is not configured in this
@@ -131,22 +131,17 @@ public class BillingController(
                 BillingSubscriptionPolicy.AlreadySubscribedMessageKey);
         }
 
-        DateTime? vatValidatedAt = null;
-        if (!string.IsNullOrWhiteSpace(request.VatId) &&
-            !string.Equals(request.BillingCountry.Trim(), "IT", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!await viesService.ValidateVatIdAsync(
-                    request.BillingCountry,
-                    request.VatId.Replace(" ", string.Empty),
-                    ct))
-            {
-                return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingVatIdInvalid");
-            }
+        // PL-13: the VAT id stored here is the one the user declared. The one that counts for the tax is entered in
+        // Stripe Checkout (tax id collection), saved on the Stripe customer and verified by Stripe (VIES); Stripe Tax
+        // computes the VAT from it. The old VIES stub accepted any value of 5+ characters.
+        if (!BillingProfileValidation.IsValidVatId(request.VatId))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingVatIdInvalid");
 
-            vatValidatedAt = DateTime.UtcNow;
-        }
-
-        await orgService.UpdateBillingProfileAsync(org.Id, request.BillingCountry, request.VatId, vatValidatedAt, ct);
+        await orgService.UpdateBillingProfileAsync(
+            org.Id,
+            request.BillingCountry,
+            BillingProfileValidation.NormalizeCode(request.VatId),
+            cancellationToken: ct);
 
         var returnPath = NormalizeReturnPath(request.ReturnPath);
         var successUrl = string.IsNullOrWhiteSpace(request.SuccessUrl)
@@ -184,14 +179,14 @@ public class BillingController(
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         if (orgId is null)
-            return NotFound(new { error = "No organization assigned" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         var org = await orgService.GetByIdAsync(orgId.Value, ct);
         if (org is null)
-            return NotFound(new { error = "No organization assigned" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         if (string.IsNullOrEmpty(org.StripeCustomerId))
-            return BadRequest(new { error = "No Stripe customer" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, NoStripeCustomerCode, "BillingNoStripeCustomer");
 
         return Ok(new PortalSessionResponse
         {
@@ -208,14 +203,20 @@ public class BillingController(
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         if (orgId is null)
-            return NotFound(new { error = "No organization assigned" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         var org = await orgService.GetByIdAsync(orgId.Value, ct);
         return org is null
-            ? NotFound(new { error = "No organization assigned" })
+            ? this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned")
             : Ok(Map(org));
     }
 
+    /// <summary>
+    /// Billing profile of the org (PL-13): country, declared VAT id and the data of the Italian e-invoice (SDI recipient
+    /// code, PEC, codice fiscale). The VAT id is not verified here: Stripe verifies the one entered at checkout (VIES)
+    /// and Stripe Tax applies the VAT; <c>viesValidated</c> is therefore always null. Name and address are collected by
+    /// Stripe Checkout. E-invoice fields: omitted or null = unchanged, empty string = cleared.
+    /// </summary>
     [HttpPut("profile")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     public async Task<ActionResult<BillingProfileDto>> UpdateBillingProfile(
@@ -223,41 +224,45 @@ public class BillingController(
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.BillingCountry) || request.BillingCountry.Trim().Length != 2)
-            return BadRequest(new { error = "Invalid billing country", code = "validation_error" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingCountryInvalid");
+
+        if (!BillingProfileValidation.IsValidVatId(request.VatId))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingVatIdInvalid");
+
+        // Per field: omitted (null) = unchanged, empty = cleared (BillingEInvoiceDetails).
+        var sdiRecipientCode = request.SdiRecipientCode is null ? null : BillingProfileValidation.NormalizeCode(request.SdiRecipientCode) ?? string.Empty;
+        if (!BillingProfileValidation.IsValidSdiRecipientCode(sdiRecipientCode))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingSdiRecipientCodeInvalid");
+
+        var fiscalCode = request.FiscalCode is null ? null : BillingProfileValidation.NormalizeCode(request.FiscalCode) ?? string.Empty;
+        if (!BillingProfileValidation.IsValidFiscalCode(fiscalCode))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingFiscalCodeInvalid");
+
+        var pecEmail = request.PecEmail?.Trim();
+        if (!BillingProfileValidation.IsValidPecEmail(pecEmail))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPecEmailInvalid");
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         if (orgId is null)
-            return NotFound(new { error = "No organization assigned" });
-
-        bool? viesValidated = null;
-        DateTime? vatValidatedAt = null;
-        if (!string.IsNullOrWhiteSpace(request.VatId) &&
-            !string.Equals(request.BillingCountry.Trim(), "IT", StringComparison.OrdinalIgnoreCase))
-        {
-            viesValidated = await viesService.ValidateVatIdAsync(
-                request.BillingCountry,
-                request.VatId.Replace(" ", string.Empty),
-                ct);
-            if (viesValidated != true)
-                return BadRequest(new { error = "Invalid VAT id", code = "validation_error" });
-
-            vatValidatedAt = DateTime.UtcNow;
-        }
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         var org = await orgService.UpdateBillingProfileAsync(
             orgId.Value,
             request.BillingCountry,
-            request.VatId,
-            vatValidatedAt,
+            BillingProfileValidation.NormalizeCode(request.VatId),
+            new BillingEInvoiceDetails(sdiRecipientCode, pecEmail, fiscalCode),
             ct);
         if (org is null)
-            return NotFound(new { error = "No organization assigned" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         return Ok(new BillingProfileDto
         {
             BillingCountry = org.BillingCountry ?? request.BillingCountry,
             VatId = org.VatId,
-            ViesValidated = viesValidated,
+            ViesValidated = null,
+            SdiRecipientCode = org.BillingSdiRecipientCode,
+            PecEmail = org.BillingPecEmail,
+            FiscalCode = org.BillingFiscalCode,
         });
     }
 
@@ -291,5 +296,8 @@ public class BillingController(
         CurrentPeriodEnd = org.CurrentPeriodEnd,
         BillingCountry = org.BillingCountry,
         VatId = org.VatId,
+        SdiRecipientCode = org.BillingSdiRecipientCode,
+        PecEmail = org.BillingPecEmail,
+        FiscalCode = org.BillingFiscalCode,
     };
 }

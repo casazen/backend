@@ -7,6 +7,7 @@ using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Migrations;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -48,6 +49,8 @@ public class NormalizeServiceCategoriesPostgresTests : IAsyncLifetime
         }
 
         await using var after = _database.CreateContext();
+        // The comune is matched by its ISTAT code through the official list (SU-04).
+        await ComuneTestData.ImportSampleAsync(after);
         var found = await CreateSupplierService(after).GetActiveByComune("Roma", ServiceCategories.Cleaning);
         Assert.Contains(found, sp => sp.OrgId == s.PulizieSupplier);
         Assert.DoesNotContain(found, sp => sp.OrgId == s.GardeningSupplier);
@@ -161,7 +164,10 @@ public class NormalizeServiceCategoriesPostgresTests : IAsyncLifetime
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
             Mock.Of<ISafeExternalHttpClient>(),
-            Options.Create(new SupplierRegistrationOptions()),
+            ComuneTestServices.Pilots(db),
+            ComuneTestServices.Directory(db),
+            ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             NullLogger<SupplierService>.Instance);
 
     private static async Task<string[]> CategoriesAsync(AppDbContext db, Guid supplierOrgId)

@@ -15,7 +15,8 @@ namespace Casazen.Web.Controllers;
 [Authorize]
 public class DevicesController(
     AppDbContext db,
-    IOrgContextResolver orgContextResolver) : ControllerBase
+    IOrgContextResolver orgContextResolver,
+    ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType(typeof(DeviceRegistrationDto), StatusCodes.Status201Created)]
@@ -31,18 +32,21 @@ public class DevicesController(
             return Unauthorized();
 
         // PL-02: push notifications are about the host's org; a user without one has not completed the onboarding.
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        // PL-05 (A1-40): a supplier-only account has no host org (User.OrgId is the host org only): its device is
+        // registered under its linked supplier org, as before, so the supplier keeps getting the requests' pushes.
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken)
+            ?? await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (orgId is null)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.OnboardingRequired, "OnboardingRequired");
 
         var platform = request.Platform.Trim().ToLowerInvariant();
         if (platform is not ("ios" or "android"))
-            return BadRequest(new { error = "Platform must be ios or android." });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "DevicePlatformInvalid");
 
         var deviceId = request.DeviceId.Trim();
         var pushToken = request.PushToken.Trim();
         if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(pushToken))
-            return BadRequest(new { error = "DeviceId and PushToken are required." });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "DeviceFieldsRequired");
 
         DeviceRegistration registration;
         try

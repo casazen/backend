@@ -5,12 +5,12 @@ title: iCal calendar import/export (OTA bridge)
 phase: 1
 type: feature
 priority: P0
-status: specced
+status: shipped
 issue:
 depends_on: [tenant-boundary]
 blocks: [golden-journey-e2e]
 exit_contributes_to: Unified calendar — direct + OTA blocks; GJ step 5
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — iCal Calendar Sync (US-018)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 MVP OTA integration uses **RFC 5545 iCal** only (no partner API). Hosts paste external calendar URLs (Airbnb, Booking.com, etc.); CasaZen imports busy periods and exports a feed for OTAs to subscribe. Prevents double-booking between direct site and OTA calendars.
 
-**Phase:** 1 — MVP · **Type:** feature · **Status:** specced
+**Phase:** 1 — MVP · **Type:** feature · **Status:** shipped (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

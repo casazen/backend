@@ -93,4 +93,10 @@ public enum GuestConsentSource
 
     /// <summary>The GDPR retention job.</summary>
     RetentionPolicy = 3,
+
+    /// <summary>
+    /// The guest, on the checkout of the public booking site (DB-03): the optional "send me offers" box, granted together
+    /// with the booking and never preselected.
+    /// </summary>
+    BookingCheckout = 4,
 }

@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Regulatory;
 
 namespace Casazen.Web.DTOs;
 
@@ -14,11 +15,18 @@ public sealed class PropertyResponse
 {
     public Guid Id { get; init; }
     public string OwnerId { get; init; } = string.Empty;
+
+    /// <summary>The member in charge of the property (AM-03): the one who is told, with the org's administrators, when something happens on it; <c>null</c> while nobody is named (the creator is told).</summary>
+    public string? ResponsibleUserId { get; init; }
+
     public Guid OrgId { get; init; }
     public string Name { get; init; } = string.Empty;
     public string? Slug { get; init; }
     public string Description { get; init; } = string.Empty;
     public string Address { get; init; } = string.Empty;
+
+    /// <summary>Interno / scala (PC-06); null when the property has none.</summary>
+    public string? Unit { get; init; }
     public string City { get; init; } = string.Empty;
     public string PostalCode { get; init; } = string.Empty;
     public decimal Latitude { get; init; }
@@ -27,15 +35,43 @@ public sealed class PropertyResponse
     public int Bathrooms { get; init; }
     public int MaxGuests { get; init; }
     public decimal NightlyRate { get; init; }
+
+    /// <summary>Fewest nights the public site accepts (DB-03); null = no minimum.</summary>
+    public int? MinNights { get; init; }
+
+    /// <summary>Percent added to the nightly rate on the Friday and Saturday nights (DB-03); 0 = no surcharge.</summary>
+    public decimal WeekendSurchargePercent { get; init; }
     public decimal CleaningFee { get; init; }
     public decimal DamageDeposit { get; init; }
     public IReadOnlyList<PropertyAmenity> Amenities { get; init; } = [];
     public IReadOnlyList<string> PhotoUrls { get; init; } = [];
     public string HouseRules { get; init; } = string.Empty;
     public string? CinCode { get; init; }
+
+    /// <summary>ISTAT code of the comune chosen from the official list (SU-04); null until chosen.</summary>
+    public string? ComuneIstatCode { get; init; }
+
+    /// <summary>CasaZen's region code (<c>LOM</c>) that follows <see cref="ComuneIstatCode"/>; null until a comune is chosen.</summary>
+    public string? RegionCode { get; init; }
+
+    /// <summary>The CIN is valid and its ISTAT comune differs from <see cref="ComuneIstatCode"/>: a non-blocking warning.</summary>
+    public bool CinIstatMismatch { get; init; }
     public string Timezone { get; init; } = "Europe/Rome";
     public Guid? CancellationPolicyId { get; init; }
+    public int? CancellationFullRefundHours { get; init; }
+    public int? CancellationPartialRefundHours { get; init; }
+    public decimal? CancellationPartialRefundPercent { get; init; }
+    public HostCancellationRefundType CancellationRefundType { get; init; }
     public bool IsActive { get; init; }
+
+    /// <summary>Host-set pause (PC-03, A2-05): hidden from public bookings until reactivated, own slot and history kept.</summary>
+    public bool IsPaused { get; init; }
+
+    /// <summary>UTC instant the property was paused; null when not paused.</summary>
+    public DateTime? PausedAt { get; init; }
+
+    /// <summary>How the property is let (PM-01): <c>Short</c> (short stays) or <c>Long</c> (long-term leases), exclusive.</summary>
+    public RentalMode RentalMode { get; init; }
     public PropertyComplianceStatus ComplianceStatus { get; init; }
     public DateTime? ComplianceCompletedAt { get; init; }
 
@@ -55,11 +91,13 @@ public sealed class PropertyResponse
         {
             Id = property.Id,
             OwnerId = property.OwnerId,
+            ResponsibleUserId = property.ResponsibleUserId,
             OrgId = property.OrgId,
             Name = property.Name,
             Slug = property.Slug,
             Description = property.Description,
             Address = property.Address,
+            Unit = property.Unit,
             City = property.City,
             PostalCode = property.PostalCode,
             Latitude = property.Latitude,
@@ -68,15 +106,27 @@ public sealed class PropertyResponse
             Bathrooms = property.Bathrooms,
             MaxGuests = property.MaxGuests,
             NightlyRate = property.NightlyRate,
+            MinNights = property.MinNights,
+            WeekendSurchargePercent = property.WeekendSurchargePercent,
             CleaningFee = property.CleaningFee,
             DamageDeposit = property.DamageDeposit,
             Amenities = [.. property.Amenities],
             PhotoUrls = [.. property.PhotoUrls],
             HouseRules = property.HouseRules,
             CinCode = property.CinCode,
+            ComuneIstatCode = property.ComuneIstatCode,
+            RegionCode = property.RegionCode,
+            CinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode),
             Timezone = property.Timezone,
             CancellationPolicyId = property.CancellationPolicyId,
+            CancellationFullRefundHours = property.CancellationFullRefundHours,
+            CancellationPartialRefundHours = property.CancellationPartialRefundHours,
+            CancellationPartialRefundPercent = property.CancellationPartialRefundPercent,
+            CancellationRefundType = property.CancellationRefundType,
             IsActive = property.IsActive,
+            IsPaused = property.IsPaused,
+            PausedAt = property.PausedAt,
+            RentalMode = property.RentalMode,
             ComplianceStatus = property.ComplianceStatus,
             ComplianceCompletedAt = property.ComplianceCompletedAt,
             CadastralSheet = property.CadastralSheet,

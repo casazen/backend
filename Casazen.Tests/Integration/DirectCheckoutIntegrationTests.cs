@@ -949,6 +949,20 @@ internal sealed class FakeStripeService : IStripeService
     /// <summary>Stripe status returned for one intent id, whatever the defaults (BK-21: a hold whose guest has paid).</summary>
     public static void SetIntentStatus(string intentId, string status) => IntentStatuses[intentId] = status;
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> UnavailableAccounts = new();
+
+    /// <summary>
+    /// Stripe refuses every PaymentIntent and SetupIntent of this connected account (BK-18: payment not started). Keyed by
+    /// account, so tests of other classes running in parallel on this shared fake are not affected.
+    /// </summary>
+    public static void FailIntentsOfAccount(string connectedAccountId) => UnavailableAccounts[connectedAccountId] = 0;
+
+    private static void ThrowWhenUnavailable(string connectedAccountId)
+    {
+        if (UnavailableAccounts.ContainsKey(connectedAccountId))
+            throw new StripeException(System.Net.HttpStatusCode.ServiceUnavailable, new StripeError { Message = "unavailable" }, "unavailable");
+    }
+
     private static string StatusOf(string intentId, string defaultStatus) =>
         IntentStatuses.TryGetValue(intentId, out var status) ? status : defaultStatus;
 
@@ -973,6 +987,7 @@ internal sealed class FakeStripeService : IStripeService
         string currency,
         Dictionary<string, string> metadata)
     {
+        ThrowWhenUnavailable(connectedAccountId);
         LastPaymentIntentId = $"pi_test_{Guid.NewGuid():N}";
         return Task.FromResult(new PaymentIntent
         {
@@ -986,6 +1001,34 @@ internal sealed class FakeStripeService : IStripeService
 
     public Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId) =>
         Task.FromResult(new PaymentIntent { Id = paymentIntentId });
+
+    /// <summary>Idempotent creations received (LT-06 rent): one PaymentIntent per idempotency key, as Stripe does.</summary>
+    public System.Collections.Concurrent.ConcurrentDictionary<string, PaymentIntent> IdempotentPaymentIntents { get; } = new();
+
+    public Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata,
+        string idempotencyKey,
+        string? description,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowWhenUnavailable(connectedAccountId);
+        var paymentIntent = IdempotentPaymentIntents.GetOrAdd(idempotencyKey, _ => new PaymentIntent
+        {
+            Id = $"pi_test_{Guid.NewGuid():N}",
+            ClientSecret = $"pi_test_secret_{Guid.NewGuid():N}",
+            Amount = amountCents,
+            Currency = currency,
+            Metadata = metadata,
+            Description = description,
+            Status = "requires_payment_method",
+        });
+        LastPaymentIntentId = paymentIntent.Id;
+        return Task.FromResult(paymentIntent);
+    }
+
 
     /// <summary>Refund requests received, in order (BK-02): account, idempotency key and amount are asserted on them.</summary>
     public System.Collections.Concurrent.ConcurrentQueue<StripeRefundCreateRequest> RefundRequests { get; } = new();
@@ -1029,6 +1072,8 @@ internal sealed class FakeStripeService : IStripeService
             Id = paymentIntentId,
             Status = StatusOf(paymentIntentId, PaymentIntentStatus),
             ClientSecret = $"{paymentIntentId}_secret_test",
+            // Amount of an intent created with an idempotency key (LT-06), so a payable one can be reused.
+            Amount = IdempotentPaymentIntents.Values.FirstOrDefault(pi => pi.Id == paymentIntentId)?.Amount ?? 0,
         });
 
     public Task<PaymentIntent> CancelPaymentIntentAsync(
@@ -1075,6 +1120,7 @@ internal sealed class FakeStripeService : IStripeService
         string? customerEmail = null,
         string? customerName = null)
     {
+        ThrowWhenUnavailable(connectedAccountId);
         return Task.FromResult(new SetupIntent
         {
             Id = $"seti_test_{Guid.NewGuid():N}",

@@ -5,12 +5,12 @@ title: Marketing-grade public site shell (host + SEO)
 phase: 1
 type: feature
 priority: P0
-status: specced
+status: shipped
 issue:
 depends_on: [public-booking-readmodel, branded-booking-site]
 blocks: [seo-funnel, custom-domain-booking, golden-journey-e2e]
 exit_contributes_to: Holidu-quality guest UX; GJ step 4 booking surface
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Public Site Design System (US-023)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 Replace console-looking `/book/{slug}` with a **marketing-grade** `PublicSiteShell`: hero, gallery, editorial typography, mobile-first guest UX. Shared by host booking sites and SEO comune pages. Evolves `spec-branded-booking-site` APIs — UI rewrite only on public routes.
 
-**Phase:** 1 — MVP · **Type:** feature · **Status:** specced
+**Phase:** 1 — MVP · **Type:** feature · **Status:** shipped (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

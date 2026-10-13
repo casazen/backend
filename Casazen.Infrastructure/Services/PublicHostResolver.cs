@@ -3,54 +3,76 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Email;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Resolves tenant + branding from the Host header for Vercel edge middleware (#288, extended #298).
-/// Precedence: (1) verified custom domain, (2) subdomain label of <c>BaseDomain</c>
-/// (<see cref="Org.Subdomain"/>, falling back to <see cref="Org.Slug"/>), (3) unknown → null.
-/// Results are cached in-process for <see cref="PublicHostOptions.ResolveCacheSeconds"/>, keyed by
-/// normalized host; <see cref="InvalidateCacheForHost"/> lets domain set/verify bust stale entries.
+/// Resolves tenant + branding from the Host header for Vercel edge middleware (#288, extended #298, BK-16).
+/// Precedence: (1) verified custom domain of an org that pays for it, (2) subdomain label of <c>BaseDomain</c> of an org
+/// that chose the subdomain mode (<see cref="Org.Subdomain"/>), (3) unknown → null. The single decision point for "does this
+/// host serve an org's site": the public site routing, the dynamic CORS origins (<see cref="IPublicHostResolver"/> callers)
+/// and the crawler pages all use it, so they cannot disagree.
 /// </summary>
+/// <remarks>
+/// Both answers are cached in-process for <see cref="PublicHostOptions.ResolveCacheSeconds"/>, keyed by the normalized
+/// host: the orgs found in <paramref name="cache"/>, the hosts that resolved to nothing in the bounded
+/// <see cref="PublicHostMissCache"/> (the CORS check asks about every foreign origin, so a flood of made-up hosts must
+/// neither reach the database nor grow the memory). <see cref="InvalidateCacheForHost"/> drops both kinds when a domain is
+/// set or verified, a slug or the branding changes (<c>PublicHostCacheInvalidation</c>); a plan change reaches the cache
+/// when the entry expires.
+/// </remarks>
 public class PublicHostResolver(
     IOrgService orgService,
     IEntitlementService entitlementService,
     IOptions<PublicHostOptions> options,
-    IMemoryCache cache) : IPublicHostResolver
+    IMemoryCache cache,
+    PublicHostMissCache? missCache = null) : IPublicHostResolver
 {
     private const string CacheKeyPrefix = "PublicHostResolver:";
 
+    // Shared across scopes when registered as a singleton; a private one when a caller (a test) passes none.
+    private readonly PublicHostMissCache _misses = missCache ?? new PublicHostMissCache();
+
     public async Task<ResolveHostResponseDto?> ResolveAsync(string host, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(host))
-            return null;
-
-        var normalizedHost = Normalize(host);
-        if (string.IsNullOrEmpty(normalizedHost))
+        // Anything that is not a plain DNS name is no host of ours: no lookup, nothing cached under an attacker's text.
+        var normalizedHost = PublicSiteHosts.Normalize(host);
+        if (normalizedHost is null)
             return null;
 
         var cacheKey = CacheKeyPrefix + normalizedHost;
         if (cache.TryGetValue<ResolveHostResponseDto?>(cacheKey, out var cached))
             return cached;
 
+        if (_misses.Contains(normalizedHost))
+            return null;
+
         var resolved = await ResolveUncachedAsync(normalizedHost, cancellationToken);
 
         var ttl = TimeSpan.FromSeconds(Math.Max(0, options.Value.ResolveCacheSeconds));
-        if (resolved is not null && ttl > TimeSpan.Zero)
-            cache.Set(cacheKey, resolved, ttl);
+        if (ttl > TimeSpan.Zero)
+        {
+            if (resolved is not null)
+                cache.Set(cacheKey, resolved, ttl);
+            else
+                _misses.Add(normalizedHost, ttl);
+        }
 
         return resolved;
     }
 
-    /// <summary>Best-effort cache bust after a successful domain set/verify for this host.</summary>
+    /// <summary>Drops the cached answer (found or not found) of a host after a domain set/verify, a slug or branding change.</summary>
     public void InvalidateCacheForHost(string host)
     {
-        var normalizedHost = Normalize(host);
-        if (!string.IsNullOrEmpty(normalizedHost))
-            cache.Remove(CacheKeyPrefix + normalizedHost);
+        var normalizedHost = PublicSiteHosts.Normalize(host);
+        if (normalizedHost is null)
+            return;
+
+        cache.Remove(CacheKeyPrefix + normalizedHost);
+        _misses.Remove(normalizedHost);
     }
 
     private async Task<ResolveHostResponseDto?> ResolveUncachedAsync(string normalizedHost, CancellationToken cancellationToken)
@@ -70,10 +92,9 @@ public class PublicHostResolver(
         if (subdomainOrg is null)
             return null;
 
-        // Path-mode orgs can still be reached via their slug as a subdomain label (back-compat);
-        // CustomDomain-mode orgs are only resolved via their verified custom domain (branch above).
-        if (subdomainOrg.PublicHostMode != PublicHostMode.CasazenSubdomain &&
-            subdomainOrg.PublicHostMode != PublicHostMode.CasazenPath)
+        // Only an org that chose the subdomain mode is served on its label (BK-16, A3-08): an org on the path or
+        // custom-domain mode did not opt in, so its slug is not a host (and no CORS origin) of the platform.
+        if (subdomainOrg.PublicHostMode != PublicHostMode.CasazenSubdomain)
             return null;
 
         return BuildResponse(subdomainOrg, PublicHostMode.CasazenSubdomain);
@@ -90,14 +111,6 @@ public class PublicHostResolver(
             PlanTier = effectiveTier.ToString(),
             Branding = ResolveHostBrandingDto.FromOrg(org, effectiveTier),
         };
-    }
-
-    private static string Normalize(string host)
-    {
-        var normalizedHost = host.Trim().ToLowerInvariant();
-        if (normalizedHost.Contains(':'))
-            normalizedHost = normalizedHost.Split(':')[0];
-        return normalizedHost;
     }
 
     private string? TryExtractSubdomainLabel(string host)

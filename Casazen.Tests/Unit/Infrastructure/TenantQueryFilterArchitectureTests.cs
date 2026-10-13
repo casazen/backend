@@ -40,18 +40,40 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SeoContentPage)] = "Platform SEO content (public comune pages) managed by admins.",
         [typeof(SeoContentRevision)] = "Revisions of platform SEO content managed by admins.",
         [typeof(SeoContentReviewEvent)] = "Review audit (approve / withdraw) of platform SEO content, written by admins.",
+        [typeof(SeoEvent)] = "Platform analytics of the public SEO pages (SE-04): written by the anonymous events endpoint, read by admins only as totals per comune; no org and no person (no IP, user or visitor id), deleted after Seo:Events:RetentionDays.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
-        [typeof(PlatformBillingMetrics)] = "Platform-wide billing metrics (OSS threshold), not per org.",
+        [typeof(PlatformAiSettings)] = "Platform-wide AI provider override saved from the admin panel, not per org.",
+        [typeof(DemoEnvironmentSetting)] = "Platform-wide demo showcase switch for the staff console, one row for the installation, not per org.",
+        [typeof(PendingDomainRemoval)] = "Queue of custom domains that must leave the Vercel project (BK-17): keyed by the domain, names no org, written by the owner's domain change and read only by the platform's domain-recheck job; no endpoint lists it.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",
         [typeof(DataProtectionKey)] = "ASP.NET Core Data Protection key ring of the whole application (FD-07), not tenant data.",
         [typeof(AlloggiatiCodeEntry)] = "Platform reference data: official Alloggiati Web code tables (comuni, stati, documents), imported by admins and read by every org and by the anonymous guest portal (CO-12).",
         [typeof(AlloggiatiCodeTableImport)] = "Platform reference data: log of the admin imports of the official Alloggiati code tables, not tenant data (CO-12).",
+        [typeof(Comune)] = "Platform reference data: the official ISTAT list of the comuni (SU-04), the same for every org, loaded only from the official file (seed or admin import) and read by every org, by the public comune search and by the anonymous supplier registration.",
+        [typeof(ComuneImport)] = "Platform reference data: log of the imports of the official ISTAT comuni list (file, SHA-256, source, reference date, counts), written by the import and read by admins, not tenant data (SU-04).",
+        [typeof(OfficialSourceFetch)] = "Platform reference data: audit of every scheduled download of an official public dataset (ISTAT, Alloggiati, tourist-tax pages of the comuni), not tenant data (RS-6, RS-7, CO-12).",
+        [typeof(ComuneOfficialProfile)] = "Platform reference data: official MEF tourist-tax profile of a comune (ISTAT code), the same for every org.",
+        [typeof(ComuneOfficialProfileVersion)] = "Platform reference data: versioned MEF acts of a comune; history is never tenant-scoped.",
 
         // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
-        [typeof(ServiceRequest)] = "Two parties: host OrgId and supplier SupplierOrgId. A host-org filter would hide the request from the supplier who takes, completes or rejects it, and host matching counts supplier load across orgs. Every query scopes explicitly by OrgId or SupplierOrgId (ServiceRequestService, ServiceRequestRepository).",
+        [typeof(ServiceRequest)] = "Two parties: host OrgId and supplier SupplierOrgId, and since SP-10 a third kind of request, from the supplier's public showcase, whose OrgId is the supplier org itself and whose customer is a private person with no account (ServiceRequestRentalContext.Showcase, PropertyId and BookingId null, CK_ServiceRequests_Context). A host-org filter would hide the request from the supplier who takes, completes or rejects it, would give a showcase request to no one, and host matching counts supplier load across orgs. Every query scopes explicitly by OrgId or SupplierOrgId (ServiceRequestService, ServiceRequestRepository); the host reads also filter on the rental context, so they never reach a showcase request even when the supplier org is also a host org.",
+        [typeof(ServiceRequestPayment)] = "The payment of a service request inside CasaZen (SP-15a), with two parties and an anonymous payer: the supplier SupplierOrgId that is paid, the host PayerOrgId that pays (null for a private customer of the showcase) and, for the payer who opens the emailed link, no tenant at all, only a token. A host-org filter would hide the row from the supplier and from the payer's link. Only SupplierPaymentService (payer, supplier, webhook, jobs, refunds) touches it, always with an explicit predicate on the payment id, the PaymentIntent, the request or the payer org, or as a system job over the payments in a state (ServiceRequestPaymentTenancyTests); the platform admin's reads (SupplierPaymentAdminService, AdminOnly) are read-only projections across the suppliers.",
+        [typeof(ServiceRequestPaymentRefund)] = "A refund of a service payment (SP-15b). It belongs to its payment, which has two parties and an anonymous payer and is not tenant-filtered, so the refund is not either: a host-org filter would hide it from the supplier and from the platform admin. Only SupplierPaymentService (the admin's refund, the webhook and the sync job) and SupplierPaymentAdminService (AdminOnly, read-only) touch it, always through the payment lock or an explicit predicate on the refund or its payment (ServiceRequestPaymentRefundTenancyTests).",
         [typeof(SupplierProfile)] = "Keyed by the supplier org: hosts of every org read active profiles to match and create requests, the public showcase reads them anonymously, admins approve them. The owner reaches it as User.SupplierOrgId, which the tenant filter (User.OrgId) does not know.",
         [typeof(SupplierAvailability)] = "Supplier-org data (see SupplierProfile): written and read by the supplier through User.SupplierOrgId, read anonymously by the public showcase; every query filters by the supplier OrgId explicitly.",
+        [typeof(SupplierServiceListing)] = "The supplier's price catalog (SP-02), keyed by the supplier org (OrgId = SupplierProfile.OrgId) like SupplierProfile and SupplierAvailability. A supplier acts as User.SupplierOrgId and a supplier-only account has no User.OrgId, so the host-org filter would give it zero rows. Only SupplierServiceCatalogService (and the supplier repair) touch it, always with an explicit OrgId predicate (SupplierServiceListingTenancyTests); the anonymous reads of SP-09 (public services of an active supplier) go through SupplierServiceCatalogService.ListPublicAsync and FindPublicAsync, which add the Active status of the service and of the supplier to the same statement.",
+        [typeof(SupplierWorkingHours)] = "The supplier's weekly working hours (SP-03), keyed by the supplier org (OrgId = SupplierProfile.OrgId) like SupplierProfile and SupplierAvailability. A supplier acts as User.SupplierOrgId and a supplier-only account has no User.OrgId, so the host-org filter would give it zero rows. Only SupplierAgendaService (and the supplier repair) touch it, always with an explicit OrgId predicate (SupplierAgendaTenancyTests); the public slots of SP-09 are read only through ISupplierAgendaService.PlanAsync, for a supplier the public showcase service found Active, and show no label, kind or reason of closure.",
+        [typeof(SupplierTimeOff)] = "The supplier's time off (SP-03), keyed by the supplier org like SupplierWorkingHours: same reason (a supplier-only account has no User.OrgId, the host-org filter would hide every row), same guard (SupplierAgendaService and the supplier repair only, explicit OrgId predicate, SupplierAgendaTenancyTests). The label is shown only in the supplier's console.",
+        [typeof(SupplierBusyWindow)] = "Blocks, extra openings and calendar engagements of a supplier (SP-03, written by the iCal sync from SP-05), keyed by the supplier org like SupplierWorkingHours: same reason (a supplier-only account has no User.OrgId), same guard (SupplierAgendaService and the supplier repair only, explicit OrgId predicate, SupplierAgendaTenancyTests). The label is never public; a public read exposes only that the hours are not free.",
+        [typeof(SupplierSettings)] = "One row of settings per supplier (SP-03: rules of the agenda, hours configured, and the columns of the next supplier tasks), the key is the supplier org like SupplierProfile: same reason (a supplier-only account has no User.OrgId), same guard (SupplierAgendaService and the supplier repair only, explicit OrgId predicate, SupplierAgendaTenancyTests).",
+        [typeof(ServiceCustomer)] = "A private customer of a supplier (SP-10): born when an anonymous customer checks the e-mail of a booking from the supplier's public showcase, keyed by the supplier org (OrgId = SupplierProfile.OrgId) like SupplierProfile and the agenda. The customer has no account and a supplier-only account has no User.OrgId, so the host-org filter would give no one these rows, and it must never give them to a host. Personal data (name, e-mail, phone) are encrypted at rest and found by an HMAC index. Only the booking service, the readers and the system jobs listed in ShowcaseBookingTenancyTests touch it, always with an explicit OrgId predicate (the retention and repair jobs work across suppliers on purpose).",
+        [typeof(ShowcaseBookingHold)] = "A booking from a supplier's public showcase waiting for the customer's e-mail check (SP-10): keyed by the supplier org like ServiceCustomer (same reasons: the customer is anonymous, a supplier-only account has no User.OrgId, a host must never read it). Holds the slot for 30 minutes and the customer's data, encrypted at rest. Only the booking service, the hold reader of the planner and the expiry and repair jobs listed in ShowcaseBookingTenancyTests touch it, always with an explicit OrgId predicate (the expiry job deletes the expired ones of every supplier on purpose).",
         [typeof(SupplierInviteRecord)] = "Admin-issued supplier invitations keyed by e-mail, before any supplier org exists.",
+        [typeof(SupplierAdminAuditEntry)] = "Platform-wide audit log of the admin actions on suppliers and invites (SU-12): suspension, reactivation, invite resend and revoke. Not tenant data: written and read only by SupplierAdminService behind the AdminOnly policy.",
+
+        // Invitation of new independent hosts: the invitee has no org yet and an admin's invite has none at all.
+        [typeof(HostInviteRecord)] = "Invite of a prospective independent host, written before any org exists for the invitee and by platform admins who have no org: InvitedByOrgId is attribution and quota scope, never a tenant filter (a filter would hide an admin's invites and the public link lookup). Only HostInviteService and HostInviteRetentionService touch it: the host endpoints always filter by the caller's own InvitedByUserId (a host never reaches another's invite), the admin endpoints are AdminOnly, the public lookup and the acceptance find the row by the SHA-256 of the secret token.",
+        [typeof(HostInviteAuditEntry)] = "Append-only audit trail of the host invites (created, sent again, revoked) with the actor and the actor's org, holding no email: platform-wide like SupplierAdminAuditEntry, written in the same transaction as the change by HostInviteService and read only by it to count the daily quota of one host org (ActorOrgId predicate).",
 
         // Rows owned by a user, not by an org.
         [typeof(PushDelivery)] = "Delivery log of the push jobs (MO-04): one row per event key and push token, written and read only by the Hangfire push delivery and receipts jobs, no endpoint; no org, no user, no text, purged after 7 days.",
@@ -141,6 +163,10 @@ public class TenantQueryFilterArchitectureTests
     [InlineData(typeof(GuestCheckInSession))]
     [InlineData(typeof(ConsentRecord))]
     [InlineData(typeof(PlatformInvoice))]
+    [InlineData(typeof(OrgMember))]
+    [InlineData(typeof(OrgInvitation))]
+    [InlineData(typeof(PropertyMemberAccess))]
+    [InlineData(typeof(InAppNotification))]
     public void TenantQueryFilter_AuthenticatedCaller_AddsOrgIdPredicateToSql(Type entityType)
     {
         Assert.True(typeof(ITenantOwned).IsAssignableFrom(entityType));
@@ -159,6 +185,34 @@ public class TenantQueryFilterArchitectureTests
         var sql = db.PropertyDocuments.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).ToQueryString();
 
         Assert.DoesNotMatch("\"OrgId\" = @", sql);
+    }
+
+    /// <summary>
+    /// PC-05: EF Core's per-entity query filters propagate through <c>Include</c> — a filter declared on
+    /// <see cref="Property"/> (the SoftDelete one) also narrows the joined subquery when a related entity
+    /// (<see cref="Booking"/>) is included, turning the join into an <c>INNER JOIN</c> filtered by it. A query that
+    /// must keep reaching a soft-deleted property's history through such a navigation (fiscal reports) needs
+    /// <c>IgnoreQueryFilters([SoftDeleteQueryFilter])</c> on its own root query, not just on <c>Properties</c> reads.
+    /// </summary>
+    [Fact]
+    public void SoftDeleteQueryFilter_PropertyReachedThroughInclude_NarrowsTheJoinedSubquery()
+    {
+        using var db = NewNpgsqlContext(NullTenantContext.Instance);
+
+        var sql = db.Bookings.Include(b => b.Property).ToQueryString();
+
+        Assert.Matches("INNER JOIN", sql);
+        Assert.Matches(@"NOT \([A-Za-z0-9_]+\.""IsDeleted""\)", sql);
+    }
+
+    [Fact]
+    public void SoftDeleteQueryFilter_IgnoreQueryFiltersByKeyOnTheRoot_RemovesItFromTheJoinedSubqueryToo()
+    {
+        using var db = NewNpgsqlContext(NullTenantContext.Instance);
+
+        var sql = db.Bookings.Include(b => b.Property).IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).ToQueryString();
+
+        Assert.DoesNotMatch(@"NOT \([A-Za-z0-9_]+\.""IsDeleted""\)", sql);
     }
 
     private static AppDbContext NewNpgsqlContext(ITenantContext tenant) =>

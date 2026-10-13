@@ -3,6 +3,7 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Casazen.Infrastructure.Data;
@@ -112,6 +113,138 @@ internal static class PostgresAdvisoryLocks
         /// now") and the supplier's manual changes never write the same days at once (SU-15).
         /// </summary>
         SupplierCalendarSync = 1_065,
+
+        /// <summary>
+        /// Import of the official ISTAT comuni list (single key): the upload of an admin and the seed file of a starting
+        /// instance never write the table together, and the diff of an import is computed on rows nobody else changes (SU-04).
+        /// </summary>
+        ComuneImport = 1_087,
+
+        /// <summary>
+        /// Official MEF tourist-tax profile of one comune (key: ISTAT code): two property creates and the monthly
+        /// delta never write versions of the same comune at once.
+        /// </summary>
+        ComuneOfficialProfile = 1_088,
+
+        /// <summary>
+        /// Rent of one lease (key: lease id): the schedule set-up, the tenant's payment session, an offline payment, the
+        /// payment webhooks and the collection job change its installments one at a time, so an installment never gets
+        /// two payable PaymentIntents or an offline payment while it is paid online (LT-06).
+        /// </summary>
+        RentLease = 1_206,
+
+        /// <summary>
+        /// Photo gallery of one property (key: property id): two uploads, deletions or reorders never read and rewrite the
+        /// photo list at the same time, so no photo is lost (PC-04).
+        /// </summary>
+        PropertyPhotos = 1_074,
+
+        /// <summary>
+        /// Service catalog of one supplier (key: supplier org id, <c>orgId.ToString("N")</c>): the changes of a supplier's
+        /// services (create, duplicate, edit, delete, publish, pause, photos) and the merge of duplicate supplier profiles
+        /// (<c>fix-orphaned</c>) run one at a time, so the limit of services, the free slug and the photo list are never
+        /// decided on a stale read (SP-02).
+        /// </summary>
+        SupplierServiceCatalog = 1_302,
+
+        /// <summary>
+        /// One run of the automatic cancellation of the service requests nobody answered (single key, session lock held for the
+        /// whole run): two runs never cancel and notify the same requests at once, even outside Hangfire's own lock (SP-04, D8).
+        /// </summary>
+        ServiceRequestAutoCancelRun = 1_310,
+
+        /// <summary>
+        /// One run of the upkeep of the bookings from the public showcases (single key, session lock held for the whole run): the
+        /// holds past their expiry are deleted and the showcase requests nobody answered are cancelled and told once, even
+        /// outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceRequestExpiryRun = 1_311,
+
+        /// <summary>
+        /// One run of the reminders of the day before to the customers of the public showcases (single key, session lock held for
+        /// the whole run): two runs never send the same reminder at once, even outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceRequestRemindersRun = 1_312,
+
+        /// <summary>
+        /// One run of the retention of the data of the private customers of the suppliers (single key, session lock held for the
+        /// whole run): two nights' runs never anonymize the same rows at once, even outside Hangfire's own lock (SP-10).
+        /// </summary>
+        ServiceCustomerRetentionRun = 1_313,
+
+        /// <summary>
+        /// Payment of one service request (key: the request id, <c>requestId.ToString("N")</c>): the payment session of the payer
+        /// (anonymous with the link, or the signed-in host), the supplier's payment request and reminder, the offline record, and
+        /// (SP-15b) the Stripe webhook and the refunds change the payment one at a time, so a request never gets two payable
+        /// PaymentIntents, a link is never sent while another is being issued, and an offline record never races a payment in
+        /// progress (SP-15a). The values 1_320 to 1_329 are the payments of the service requests.
+        /// </summary>
+        ServiceRequestPayment = 1_320,
+
+        /// <summary>
+        /// The people of one org (key: org id): adding, changing, deactivating or removing a member, and the owner's
+        /// creation, run one at a time, so the owner rule is decided on rows nobody else is changing (AM-01). The seat
+        /// count is decided under <see cref="OrgSeats"/>, which the callers take <b>before</b> this one (AM-02).
+        /// </summary>
+        OrgMembership = 1_401,
+
+        /// <summary>
+        /// One run of the org membership reconcile (single key): two admin runs never create the same owners or fix the
+        /// same memberships at once (AM-01). The run does not take the <see cref="OrgMembership"/> lock of every org it
+        /// touches: a member write that races with it is arbitrated by the unique indexes, and the run then answers 409
+        /// and saves nothing (it is idempotent, so it is simply run again).
+        /// </summary>
+        OrgMembershipMaintenance = 1_402,
+
+        /// <summary>
+        /// The seats of one org (key: org id, AM-02, decisions D13 and D35): the count of active members plus pending
+        /// invitations and what depends on it run one at a time, like <c>CreatePropertyWithinLimitAsync</c> does for the
+        /// properties. Taken to create an invitation, to send it again, to accept it, to reactivate a member and by the
+        /// reminders and expiries of the maintenance job, so the last seat is given to one request only. Always taken
+        /// <b>before</b> <see cref="OrgMembership"/> (and before the org's property slot when a person leaves an empty org),
+        /// and for two orgs in the order of their ids: no cycle between two requests.
+        /// </summary>
+        OrgSeats = 1_403,
+
+        /// <summary>
+        /// One run of the org invitation maintenance (single key, session lock held for the whole run): reminders on the
+        /// third day, expiry and deletion of the closed ones never run twice at once, even outside Hangfire's own lock
+        /// (AM-02).
+        /// </summary>
+        OrgInvitationMaintenance = 1_404,
+
+        /// <summary>
+        /// One run of the retention of the activity log (single key, session lock held for the whole run): two runs never
+        /// delete the same lines at once, even outside Hangfire's own lock (AM-02b).
+        /// </summary>
+        OrgActivityRetention = 1_405,
+
+        /// <summary>
+        /// The host invites of one inviter org, or of one admin (key: org id, or user id for an admin): the daily quota, the
+        /// pending cap and the duplicate check are decided one request at a time, so the last invite of the day is given to one
+        /// request only.
+        /// </summary>
+        HostInviteQuota = 1_410,
+
+        /// <summary>Acceptance of one host invite (key: token hash): an invite is used at most once.</summary>
+        HostInviteAccept = 1_411,
+
+        /// <summary>One run of the retention of the host invites (single key, session lock held for the whole run).</summary>
+        HostInviteRetention = 1_412,
+
+        /// <summary>
+        /// The access requests of one person of one org (key: org id and user id, AM-02b): the count of the requests of the last
+        /// 24 hours, read from the activity log, and the line that records the next one run one at a time, so the daily limit
+        /// holds across requests and API instances.
+        /// </summary>
+        OrgAccessRequest = 1_406,
+
+        /// <summary>
+        /// One run of the hourly application of the scheduled changes of rental mode (single key, session lock held for the
+        /// whole run): two runs never apply or fail the same change at once, even outside Hangfire's own lock (PM-02). Each
+        /// change is then applied under the dates lock of its property, so it also serializes with the bookings.
+        /// </summary>
+        PropertyModeChangeRun = 1_501,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
@@ -119,7 +252,9 @@ internal static class PostgresAdvisoryLocks
     /// <summary>
     /// Opens a READ COMMITTED transaction and takes the given locks, in order. When the context already has a
     /// transaction the locks join it and <c>null</c> is returned (the owner of that transaction commits).
-    /// Also <c>null</c> when the provider is not PostgreSQL.
+    /// Also <c>null</c> when the provider is not PostgreSQL, and when the parallel-save test harness is active
+    /// (<see cref="IParallelSaveRendezvousInterceptor"/>): that harness holds both saves until both arrived, which
+    /// cannot meet if the first party already holds the calendar lock.
     /// </summary>
     /// <remarks>
     /// READ COMMITTED on purpose: every statement after the lock sees the rows committed by the previous
@@ -131,7 +266,7 @@ internal static class PostgresAdvisoryLocks
         CancellationToken cancellationToken,
         params (Scope Scope, string Key)[] locks)
     {
-        if (!IsSupported(context))
+        if (!IsSupported(context) || ParallelSaveHarnessIsActive(context))
             return null;
 
         IDbContextTransaction? transaction = null;
@@ -156,6 +291,16 @@ internal static class PostgresAdvisoryLocks
         }
 
         return transaction;
+    }
+
+    /// <summary>
+    /// True when the context carries the parallel-save test interceptor: advisory locks must stay off so both
+    /// parties can reach <c>SaveChanges</c> without one waiting on the other's transaction lock.
+    /// </summary>
+    private static bool ParallelSaveHarnessIsActive(DbContext context)
+    {
+        var core = context.GetService<IDbContextOptions>().FindExtension<CoreOptionsExtension>();
+        return core?.Interceptors?.OfType<IParallelSaveRendezvousInterceptor>().Any() == true;
     }
 
     /// <summary>

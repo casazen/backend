@@ -3,7 +3,7 @@ using Casazen.Core.Entities;
 namespace Casazen.Core.Regulatory;
 
 /// <summary>
-/// How an Alloggiati Web status reads for the host (CO-11, decision D6). CasaZen does not transmit yet (CO-13), so
+/// How an Alloggiati Web status reads for the host (CO-11, decision D6). CasaZen does not transmit (no web service client), so
 /// from the arrival day on every communication not sent is "to send manually", whether or not the arrival-day job
 /// has already run: a booking never looks done without a receipt or the host's declaration.
 /// </summary>

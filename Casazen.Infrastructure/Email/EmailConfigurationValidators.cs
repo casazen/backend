@@ -52,6 +52,9 @@ public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
             errors.Add($"Email__FromAddress uses the Resend test domain '{ResendTestDomain}', which delivers only to the Resend account owner: use the verified CasaZen domain.");
         }
 
+        if (!string.IsNullOrWhiteSpace(options.ApiUrl))
+            errors.Add("Email__ApiUrl is a test-only override of the Resend API and is not allowed here: remove it.");
+
         return errors;
     }
 }

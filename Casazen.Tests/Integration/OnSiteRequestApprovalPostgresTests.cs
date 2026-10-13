@@ -1,5 +1,7 @@
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
@@ -24,7 +26,7 @@ namespace Casazen.Tests.Integration;
 /// BK-06 (decision D5, A3-06, R-11) on real PostgreSQL through the HTTP pipeline: a "pay at the property" checkout is a
 /// request, never a confirmed booking. The guest confirms the email, the host accepts (Confirmed) or declines (Cancelled,
 /// dates free); without an answer the <c>checkout-hold-expiry</c> job cancels it. Concurrent answers give one outcome; a
-/// pending request is not exported to the OTAs; a host of another org cannot answer; stays above
+/// pending request is exported to the OTAs so the dates are blocked; a host of another org cannot answer; stays above
 /// <c>DirectBooking:OnSiteMaxNights</c> are refused with 422.
 /// </summary>
 public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApprovalPostgresTests.OnSiteFactory>
@@ -65,8 +67,8 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
         Assert.Equal("booking_dates_unavailable", (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
 
-        // ...but not sent to Airbnb/Booking through iCal before the host accepts.
-        Assert.DoesNotContain($"UID:booking-{bookingId}", await IcsAsync(exportToken));
+        // PO 2026-10-08: pending OnSite requests are exported so Airbnb/Booking close the dates immediately.
+        Assert.Contains($"UID:booking-{bookingId}", await IcsAsync(exportToken));
 
         // The guest is emailed the confirmation link; the host is told nothing before the email is confirmed.
         var email = Assert.Single(Emails(bookingId, "onsite-request-received"));
@@ -87,9 +89,11 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.Equal(4, listed.GetProperty("nights").GetInt32());
         Assert.Equal(JsonValueKind.String, listed.GetProperty("respondBy").ValueKind);
         var bookings = await host.GetFromJsonAsync<JsonElement>($"/api/bookings?propertyId={property.Id}");
+        var bookingRows = (bookings.ValueKind == JsonValueKind.Array ? bookings : bookings.GetProperty("items"))
+            .EnumerateArray();
         Assert.Equal(
             "AwaitingHostApproval",
-            Assert.Single(bookings.EnumerateArray(), b => b.GetProperty("id").GetGuid() == bookingId)
+            Assert.Single(bookingRows, b => b.GetProperty("id").GetGuid() == bookingId)
                 .GetProperty("onSiteRequestState").GetString());
 
         var response = await host.PostAsync($"/api/bookings/{bookingId}/approve", null);
@@ -282,6 +286,39 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
     }
 
     [PostgresFact]
+    public async Task ApproveOnSiteRequest_WaitsForRunningICalSyncAndSeesItsBlock()
+    {
+        // A real feed sync writes blocks under the PropertyICalSync advisory lock. Approval must wait for that lock;
+        // otherwise it can pass the block check and confirm while the sync commits an OTA reservation for the same nights.
+        Assert.True(_factory.UsesPostgreSql, "This race regression needs PostgreSQL advisory locks.");
+        var (hostId, property) = await SeedCheckoutReadyPropertyAsync();
+        var bookingId = await CreateConfirmedRequestAsync(property, NextYear(10, 10), NextYear(10, 13));
+        using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
+        _ = await host.GetFromJsonAsync<JsonElement>("/api/bookings/approval-requests");
+
+        await using var lockScope = _factory.Services.CreateAsyncScope();
+        var lockDb = lockScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await using var lockTx = await lockDb.Database.BeginTransactionAsync();
+        await lockDb.Database.ExecuteSqlRawAsync(
+            "SELECT pg_advisory_xact_lock({0}, {1})",
+            1010,
+            AdvisoryHash(property.Id.ToString()));
+
+        var approveTask = host.PostAsync($"/api/bookings/{bookingId}/approve", null);
+        var early = await Task.WhenAny(approveTask, Task.Delay(TimeSpan.FromSeconds(1)));
+        Assert.NotSame(approveTask, early);
+
+        await SeedCalendarBlockAsync(property, NextYear(10, 11), NextYear(10, 14));
+        await lockTx.CommitAsync();
+
+        var response = await approveTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("onsite_request_dates_blocked", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.Equal(BookingStatus.Pending, (await LoadBookingAsync(bookingId)).Status);
+    }
+
+    [PostgresFact]
     public async Task ConfirmEmail_WrongTokenThenRightTokenTwice_404ThenIdempotentSuccessAndOneHostEmail()
     {
         var (_, property) = await SeedCheckoutReadyPropertyAsync();
@@ -449,6 +486,26 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         await db.SaveChangesAsync();
         return export.ExportToken;
     }
+
+    private async Task SeedCalendarBlockAsync(Property property, DateTime start, DateTime end)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.CalendarBlocks.Add(new CalendarBlock
+        {
+            PropertyId = property.Id,
+            OrgId = property.OrgId,
+            StartUtc = start,
+            EndUtc = end,
+            Summary = "Airbnb (Not available)",
+            ExternalUid = $"airbnb-{Guid.NewGuid():N}",
+            LastSyncedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static int AdvisoryHash(string key) =>
+        BinaryPrimitives.ReadInt32LittleEndian(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)));
 
     private async Task UpdateBookingAsync(Guid bookingId, Action<Booking> change)
     {

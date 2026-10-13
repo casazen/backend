@@ -72,7 +72,7 @@ public enum GuestCheckInSessionStatus
     /// <summary>Guest submitted all data. The session stays here until Alloggiati Web returns a real receipt.</summary>
     Completo,
     /// <summary>
-    /// The Alloggiati Web communication of the booking has a real receipt (CO-13). Never set on queueing: CO-11
+    /// The Alloggiati Web communication of the booking has a real receipt (web service client, not implemented). Never set on queueing: CO-11
     /// moved the sessions set that way back to <see cref="Completo"/>.
     /// </summary>
     AlloggiatiInviato,

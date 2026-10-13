@@ -45,10 +45,11 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
         var body = await response.Content.ReadAsStringAsync();
         var booked = BookedDates(body);
         Assert.Equal([Day(from, 2), Day(from, 3), Day(from, 4), Day(from, 8)], booked);
-        // Dates only: no summary of the feed, no source, no guest.
+        // Dates only (and the minimum stay of the property, DB-03: a number, null when there is none): no summary of the feed,
+        // no source, no guest.
         using var json = JsonDocument.Parse(body);
         Assert.Equal(
-            ["propertyId", "startDate", "endDate", "bookedDates"],
+            ["propertyId", "startDate", "endDate", "bookedDates", "minNights"],
             json.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.DoesNotContain("Airbnb", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Manual", body, StringComparison.OrdinalIgnoreCase);
@@ -98,6 +99,22 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
         await WithDbAsync(db => db.Properties.Where(p => p.Id == property.Id).ExecuteUpdateAsync(set => set
             .SetProperty(p => p.IsActive, isActive)
             .SetProperty(p => p.ComplianceStatus, complianceStatus)));
+
+        using var anonymous = _factory.CreateClient();
+        var response = await anonymous.GetAsync(AvailabilityPath(property.Id, NextYear(10, 1), NextYear(10, 10)));
+
+        await AssertPropertyNotFoundAsync(response);
+    }
+
+    [PostgresFact]
+    public async Task GetPropertyAvailability_PausedProperty_Returns404WithStableCode()
+    {
+        // PC-03, A2-05: pausing hides a property from public availability (and the rest of the guest booking flow)
+        // exactly like an inactive or non-compliant one, without touching IsActive or ComplianceStatus.
+        var property = await PublishedPropertyTests.SeedAsync(_factory, "bk05-paused");
+        await WithDbAsync(db => db.Properties.Where(p => p.Id == property.Id).ExecuteUpdateAsync(set => set
+            .SetProperty(p => p.IsPaused, true)
+            .SetProperty(p => p.PausedAt, DateTime.UtcNow)));
 
         using var anonymous = _factory.CreateClient();
         var response = await anonymous.GetAsync(AvailabilityPath(property.Id, NextYear(10, 1), NextYear(10, 10)));

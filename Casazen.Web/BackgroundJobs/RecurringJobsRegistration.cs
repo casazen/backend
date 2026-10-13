@@ -18,6 +18,25 @@ public static class RecurringJobsRegistration
     {
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
 
+        ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
+
+        // SP-10: the upkeep of the bookings from the suppliers' public showcases is registered whatever the flags say. A hold that
+        // was made while SupplierShowcaseBooking was on has to lapse, a request nobody answered has to be cancelled and a booking
+        // that exists keeps its reminder, also after the flag is turned off; with the flag off these runs just find nothing.
+        recurringJobManager.AddOrUpdate<ServiceRequestExpiryJob>(
+            ServiceRequestExpiryJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServiceRequestExpiryJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ServiceRequestReminderJob>(
+            ServiceRequestReminderJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            Cron.Hourly,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        ConfigureServicePayments(recurringJobManager);
+
         recurringJobManager.AddOrUpdate<DynamicPricingJob>(
             DynamicPricingJob.RecurringJobId,
             job => job.ExecuteAsync(),
@@ -47,9 +66,36 @@ public static class RecurringJobsRegistration
             CinDeadlineAlertJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // AM-02: reminder of the third day, expiry and deletion of the closed org invitations. Always registered: the
+        // retention of the personal data of an invitation does not depend on the OrgTeam flag; the service itself sends
+        // no email while the flag is off.
+        recurringJobManager.AddOrUpdate<OrgInvitationMaintenanceJob>(
+            OrgInvitationMaintenanceJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            OrgInvitationMaintenanceJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // Host invites: the email of a closed invite is erased after HostInvites:RetentionDays. Always registered, like the org
+        // invitations: the retention of personal data does not depend on a feature being on.
+        recurringJobManager.AddOrUpdate<HostInviteRetentionJob>(
+            HostInviteRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            HostInviteRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // AM-02b: the activity log keeps 12 months. Always registered, like the invitations: the retention of what the log holds
+        // does not depend on the OrgTeam flag (with the flag off nothing writes to it, and a flag turned off later leaves lines).
+        recurringJobManager.AddOrUpdate<OrgActivityRetentionJob>(
+            OrgActivityRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            OrgActivityRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         ConfigureESignProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.ESignProvider));
 
         ConfigureRliProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.RliProvider));
+
+        ConfigurePropertyModeJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.PropertyModeChange));
 
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
@@ -63,16 +109,37 @@ public static class RecurringJobsRegistration
             "0 4 1 * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // SE-04: the events of the SEO funnel are deleted after Seo:Events:RetentionDays, nightly.
+        recurringJobManager.AddOrUpdate<SeoEventRetentionJob>(
+            SeoEventRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "30 3 * * *",
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<DirectBookingChargeJob>(
             "direct-booking-charge",
             job => job.ExecuteAsync(),
             "0 6 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // LT-06: payment requests of the rent installments coming due, payments in flight read again.
+        recurringJobManager.AddOrUpdate<RentCollectionJob>(
+            RentCollectionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            RentCollectionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<CheckoutHoldExpiryJob>(
             CheckoutHoldExpiryJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             CheckoutHoldExpiryJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // BK-17: custom domains are checked again (activation, removed DNS records, domains dropped by their host).
+        recurringJobManager.AddOrUpdate<DomainRecheckJob>(
+            DomainRecheckJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            DomainRecheckJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         recurringJobManager.AddOrUpdate<IcalSupplierSyncJob>(
@@ -100,11 +167,101 @@ public static class RecurringJobsRegistration
             PushReceiptsJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // UI-12a: the in-app notifications older than 90 days are deleted every night. Always registered: rows written while
+        // Features:InAppNotifications was on are purged after it is turned off; with the flag off the run finds nothing.
+        recurringJobManager.AddOrUpdate<InAppNotificationRetentionJob>(
+            InAppNotificationRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            InAppNotificationRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // CO-06: nightly compliance check of every published property (suspends the ones that lost a requirement).
         recurringJobManager.AddOrUpdate<PropertyComplianceCheckJob>(
             PropertyComplianceCheckJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             PropertyComplianceCheckJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // CO-18 (PO 2026-10-08): placeholder — runs weekly to check/update official fiscal rates when a source is configured.
+        recurringJobManager.AddOrUpdate<FiscalRatesUpdateJob>(
+            FiscalRatesUpdateJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "0 5 * * 1",  // every Monday at 05:00 UTC
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // RS-6, RS-7, CO-12: daily check of the official ISTAT comuni file, the Alloggiati tables and the tourist-tax pages.
+        recurringJobManager.AddOrUpdate<OfficialReferenceDataRefreshJob>(
+            OfficialReferenceDataRefreshJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            OfficialReferenceDataRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // MEF nuova_at profiles of comuni that already have a house: monthly delta, never a full Italy scrape.
+        recurringJobManager.AddOrUpdate<ComuneOfficialProfileRefreshJob>(
+            ComuneOfficialProfileRefreshJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            ComuneOfficialProfileRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// Automatic cancellation of the service requests nobody answered (SP-04, D8): only with
+    /// <see cref="FeatureFlags.SupplierRequestAutoCancel"/> on. With the flag off no request is ever cancelled by time, and the
+    /// schedule of an earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureServiceRequestAutoCancel(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(ServiceRequestAutoCancelJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<ServiceRequestAutoCancelJob>(
+            ServiceRequestAutoCancelJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServiceRequestAutoCancelJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The jobs of the supplier service payments (SP-15b), <b>always</b> registered, whatever the state of
+    /// <see cref="FeatureFlags.SupplierOnlinePayments"/>: payments that exist (money in flight) must be followed to the end. The sync
+    /// reads the payments Stripe is processing and the refunds it has not completed; the reminders flag the late payments and, with
+    /// the flag on, send the pending requests and the reminders. The flag is read by the jobs themselves.
+    /// </summary>
+    private static void ConfigureServicePayments(IRecurringJobManager recurringJobManager)
+    {
+        recurringJobManager.AddOrUpdate<ServicePaymentSyncJob>(
+            ServicePaymentSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServicePaymentSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ServicePaymentRemindersJob>(
+            ServicePaymentRemindersJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServicePaymentRemindersJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// Application of the scheduled changes of rental mode (PM-02): only with <see cref="FeatureFlags.PropertyModeChange"/> on.
+    /// With the flag off nothing can be scheduled and the endpoints answer 404, so there is nothing to apply: the schedule of
+    /// an earlier deploy is removed, and a change already programmed waits until the flag is turned on again.
+    /// </summary>
+    private static void ConfigurePropertyModeJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(PropertyModeChangeJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<PropertyModeChangeJob>(
+            PropertyModeChangeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            PropertyModeChangeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

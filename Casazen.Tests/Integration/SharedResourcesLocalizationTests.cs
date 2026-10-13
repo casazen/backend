@@ -18,6 +18,10 @@ public class SharedResourcesLocalizationTests : IClassFixture<CasazenWebApplicat
     private static readonly Regex[] MessageKeyPatterns =
     [
         new(@"new\s+Domain(?:Rule|Conflict)Exception\(\s*""[^""]*""\s*,\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
+        // AM-02: the 403 and 410 exceptions, and a code that is a constant (OrgInvitationErrors.Expired, "InvitationExpired").
+        new(@"new\s+Domain(?:Rule|Conflict|Forbidden|Gone)Exception\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*,\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
+        new(@"new\s+Domain(?:Forbidden|Gone)Exception\(\s*""[^""]*""\s*,\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
+        new(@"\bGone\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*,\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
         new(@"MessageKey\s*=\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
         new(@"ApiProblem\(\s*[^,()]+,\s*[^,()]+,\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
         new(@"[Ll]ocalizer\[\s*""(?<key>[^""]+)""", RegexOptions.Compiled),

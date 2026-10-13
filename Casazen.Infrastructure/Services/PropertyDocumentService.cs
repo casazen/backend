@@ -26,12 +26,12 @@ public class PropertyDocumentService(
         var orgId = await propertyRepository.GetOrgIdAsync(propertyId);
         if (orgId is null)
         {
-            throw new InvalidOperationException($"Property {propertyId} not found");
+            throw new NotFoundException($"Property {propertyId} not found") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
         }
 
         if (!storageService.ValidateDocument(file))
         {
-            throw new InvalidOperationException("Invalid document file type or size");
+            throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
         }
 
         if (documentType == DocumentType.Ape)

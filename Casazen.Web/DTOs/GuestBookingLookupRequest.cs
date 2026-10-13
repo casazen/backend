@@ -7,7 +7,7 @@ namespace Casazen.Web.DTOs;
 /// email the booking was made with. In the body, never in the URL, so neither code nor email end up in request logs.
 /// A code in a wrong format is answered like a code that does not exist.
 /// </summary>
-public class GuestBookingLookupRequest
+public class GuestBookingLookupRequest : IPerEmailRateLimitedRequest
 {
     [Required(ErrorMessage = "GuestBookingOrgRequired")]
     [MaxLength(100, ErrorMessage = "GuestBookingOrgRequired")]
@@ -21,4 +21,7 @@ public class GuestBookingLookupRequest
     [EmailAddress(ErrorMessage = "GuestBookingEmailInvalid")]
     [MaxLength(255, ErrorMessage = "GuestBookingEmailInvalid")]
     public string Email { get; set; } = string.Empty;
+
+    /// <summary>The guests' limit per email counts the address over the whole site: no scope.</summary>
+    string? IPerEmailRateLimitedRequest.RateLimitScope => null;
 }

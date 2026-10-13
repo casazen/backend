@@ -245,7 +245,7 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         var detail = await host.GetFromJsonAsync<JsonElement>($"/api/bookings/{stayId}");
         Assert.Equal("BlockRemoved", detail.GetProperty("otaReviewReason").GetString());
         var list = await host.GetFromJsonAsync<JsonElement>($"/api/bookings?propertyId={seeded.Property.Id}");
-        Assert.Equal("BlockRemoved", list.EnumerateArray().Single().GetProperty("otaReviewReason").GetString());
+        Assert.Equal("BlockRemoved", BookingItems(list).Single().GetProperty("otaReviewReason").GetString());
 
         var resolved = await host.PostAsJsonAsync($"/api/bookings/{stayId}/ota-review/resolve", new { });
         Assert.Equal(HttpStatusCode.OK, resolved.StatusCode);
@@ -390,6 +390,10 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         await using var scope = _factory.Services.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<PropertyICalSyncService>().SyncFeedAsync(feedId);
     }
+
+    /// <summary><c>GET /api/bookings</c> is a <c>PagedResultDto</c> (<c>items</c>); older callers used a plain array.</summary>
+    private static IEnumerable<JsonElement> BookingItems(JsonElement body) =>
+        (body.ValueKind == JsonValueKind.Array ? body : body.GetProperty("items")).EnumerateArray();
 
     private async Task<List<string>> BookedDatesAsync(Guid propertyId, DateTime from, DateTime to)
     {

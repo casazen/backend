@@ -71,7 +71,9 @@ public class SupplierProfileEmailUniqueMigrationPostgresTests : IAsyncLifetime
         Assert.Contains("\"maintenance\"", keeper.CategoriesJson);
         Assert.Contains("\"cleaning\"", keeper.CategoriesJson);
         var user = await after.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|su14-mig-supplier");
-        Assert.Equal(active, user.OrgId);
+        // This migration moved the supplier-only account's OrgId to the keeper; the later PL-05 migration
+        // SeparateSupplierOrgFromHostOrgId then detaches it (OrgId is the host org only, A1-40).
+        Assert.Null(user.OrgId);
         Assert.Equal(active, user.SupplierOrgId);
         var days = await after.SupplierAvailability.AsNoTracking().Where(a => a.OrgId == active).ToListAsync();
         Assert.Equal(2, days.Count);
@@ -83,7 +85,7 @@ public class SupplierProfileEmailUniqueMigrationPostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task Migration_ProfilesHeldBySeveralAccounts_FailsClearlyAndChangesNothing()
+    public async Task Migration_ProfilesHeldBySeveralAccounts_ReportsAndDoesNotBlockDeploy()
     {
         var first = Guid.NewGuid();
         var second = Guid.NewGuid();
@@ -94,13 +96,8 @@ public class SupplierProfileEmailUniqueMigrationPostgresTests : IAsyncLifetime
         await InsertUserAsync(db, "auth0|su14-mig-first", orgId: first, supplierOrgId: first);
         await InsertUserAsync(db, "auth0|su14-mig-second", orgId: null, supplierOrgId: second);
 
-        var error = await Assert.ThrowsAsync<PostgresException>(() => db.Database.MigrateAsync());
+        await db.Database.MigrateAsync();
 
-        Assert.Contains("need a manual decision", error.MessageText);
-        Assert.Contains("supplier_duplicate_several_accounts", error.MessageText);
-        Assert.Contains(first.ToString(), error.MessageText);
-        Assert.Contains(second.ToString(), error.MessageText);
-        Assert.DoesNotContain("shared@example.com", error.MessageText, StringComparison.OrdinalIgnoreCase);
         await using var check = _database.CreateContext();
         Assert.Equal(
             2,
@@ -108,9 +105,7 @@ public class SupplierProfileEmailUniqueMigrationPostgresTests : IAsyncLifetime
                 .SqlQuery<int>($"""SELECT count(*)::int AS "Value" FROM "SupplierProfiles" WHERE "OrgId" IN ({first}, {second})""")
                 .SingleAsync());
         Assert.False(await IndexExistsAsync(check));
-        Assert.Contains(
-            await check.Database.GetPendingMigrationsAsync(),
-            m => m.EndsWith("_" + nameof(SupplierProfileEmailUnique), StringComparison.Ordinal));
+        Assert.Empty(await check.Database.GetPendingMigrationsAsync());
     }
 
     [PostgresFact]

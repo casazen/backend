@@ -37,6 +37,8 @@ public sealed class GuestDataRetentionService(
     ILogger<GuestDataRetentionService> logger) : IGuestDataRetentionService
 {
     private const int ChunkSize = 100;
+    private static readonly BookingStatus[] OpenBookingStatuses =
+        [BookingStatus.Pending, BookingStatus.Confirmed, BookingStatus.CheckedIn];
 
     /// <summary>Reference date of the stay-based categories: the latest check-out, or the creation date without bookings.</summary>
     public static DateTime StayReferenceDate(DateTime? latestCheckout, DateTime createdAt) => (latestCheckout ?? createdAt).Date;
@@ -65,7 +67,9 @@ public sealed class GuestDataRetentionService(
                 GuestDataCategory.DocumentScans => await ApplyDocumentScansAsync(period, today, cancellationToken),
                 GuestDataCategory.AlloggiatiData => await ApplyAlloggiatiDataAsync(period, today, cancellationToken),
                 GuestDataCategory.Marketing => await ApplyMarketingAsync(period, today, cancellationToken),
-                GuestDataCategory.FiscalData => await ApplyFiscalDataAsync(period, today, cancellationToken),
+                // PO 2026-10-08: guest cards are not anonymized automatically. FiscalData still needs a period in
+                // config for the runbook, but the job never erases names or contacts on its own.
+                GuestDataCategory.FiscalData => SkipAutomaticFiscalAnonymization(period),
                 _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
             };
             results.Add(result);
@@ -75,6 +79,14 @@ public sealed class GuestDataRetentionService(
         }
 
         return new GuestRetentionRunResult(results);
+    }
+
+    private GuestRetentionCategoryResult SkipAutomaticFiscalAnonymization(RetentionPeriodOptions period)
+    {
+        logger.LogInformation(
+            "GDPR retention: category {Category} is configured ({Source}) but guest cards are not anonymized automatically (PO 2026-10-08)",
+            GuestDataCategory.FiscalData, period.Source);
+        return new GuestRetentionCategoryResult(GuestDataCategory.FiscalData, true, 0, 0, 0);
     }
 
     private async Task<GuestRetentionCategoryResult> ApplyDocumentScansAsync(
@@ -112,7 +124,9 @@ public sealed class GuestDataRetentionService(
         // 1. Every guest of each stay whose check-out is past the period.
         var candidateStartBefore = period.CandidateStartBefore(today);
         var stays = await db.StayGuests
-            .Where(s => s.AnonymizedAt == null && s.Booking.CheckOutDate < candidateStartBefore)
+            .Where(s => s.AnonymizedAt == null
+                && !OpenBookingStatuses.Contains(s.Booking.Status)
+                && s.Booking.CheckOutDate < candidateStartBefore)
             .Select(s => new { s.BookingId, s.Booking.CheckOutDate })
             .Distinct()
             .ToListAsync(cancellationToken);
@@ -242,14 +256,16 @@ public sealed class GuestDataRetentionService(
         CancellationToken cancellationToken)
     {
         var candidateStartBefore = period.CandidateStartBefore(today);
+        var bookings = db.Bookings.IgnoreQueryFilters().AsNoTracking();
         var candidates = await query
             .Select(g => new
             {
                 g.Id,
                 g.CreatedAt,
-                LatestCheckout = db.Bookings.Where(b => b.GuestId == g.Id).Max(b => (DateTime?)b.CheckOutDate),
+                LatestCheckout = bookings.Where(b => b.GuestId == g.Id).Max(b => (DateTime?)b.CheckOutDate),
+                HasOpenBooking = bookings.Any(b => b.GuestId == g.Id && OpenBookingStatuses.Contains(b.Status)),
             })
-            .Where(g => (g.LatestCheckout ?? g.CreatedAt) < candidateStartBefore)
+            .Where(g => !g.HasOpenBooking && (g.LatestCheckout ?? g.CreatedAt) < candidateStartBefore)
             .ToListAsync(cancellationToken);
 
         return candidates

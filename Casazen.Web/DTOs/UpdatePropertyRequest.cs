@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Validation;
@@ -14,10 +15,18 @@ namespace Casazen.Web.DTOs;
 /// validated and applied.
 /// </summary>
 /// <remarks>
-/// <para>The nullable fields <see cref="CinCode"/>, <see cref="Slug"/> and <see cref="CancellationPolicyId"/> are
-/// cleared by sending them explicitly as <c>null</c> (or, for the text ones, blank); leaving them out keeps them.</para>
+/// <para>The nullable fields <see cref="CinCode"/>, <see cref="Slug"/>, <see cref="CancellationPolicyId"/> and
+/// <see cref="MinNights"/> (DB-03) are cleared by sending them explicitly as <c>null</c> (or, for the text ones, blank);
+/// leaving them out keeps them.</para>
 /// <para>Server-managed fields (<c>Id</c>, <c>OwnerId</c>, <c>OrgId</c>, <c>CreatedAt</c>, <c>UpdatedAt</c>, the
 /// compliance status) are not part of the request. Validation messages are SharedResources keys.</para>
+/// <para>The photo gallery is not part of the request (PC-04, A2-26): photos are uploaded, deleted, ordered and chosen as
+/// cover only through <c>/api/properties/{id}/images</c>, which check the file and the storage object. A <c>photoUrls</c>
+/// sent in the body is ignored, so it can neither point the public page at an arbitrary URL nor at another property's
+/// photo.</para>
+/// <para><c>IsActive</c> is not part of the request either (PC-03, A2-05): a generic save could hide a property from
+/// its own host's list and detail with no way back from the UI. Pausing is the dedicated, reversible
+/// <c>POST /properties/{id}/pause</c> / <c>.../activate</c>; an <c>isActive</c> sent in the body is ignored.</para>
 /// Kept as a separate class from <see cref="CreatePropertyRequest"/> for API versioning safety.
 /// </remarks>
 public class UpdatePropertyRequest
@@ -45,10 +54,31 @@ public class UpdatePropertyRequest
     [MaxLength(10, ErrorMessage = "PropertyPostalCodeTooLong")]
     public string? PostalCode { get; set; }
 
-    /// <summary>Geographic latitude of the property.</summary>
+    /// <summary>
+    /// ISTAT code (6 digits) of the comune, chosen from the official list (<c>GET /api/comuni</c>, SU-04); <c>null</c> or blank
+    /// clears it (and the region that follows it); leaving it out keeps it. Validated against the list when it changes: 422
+    /// <c>comune_istat_unknown</c> / <c>comuni_dataset_unavailable</c>. A <c>city</c> changed <b>without</b> a comune clears the
+    /// stored comune: the code no longer says where the property is.
+    /// </summary>
+    [RegularExpression(ComuneRules.IstatCodePattern, ErrorMessage = "ComuneIstatCodeInvalid")]
+    public string? ComuneIstatCode
+    {
+        get;
+        set
+        {
+            field = value;
+            ComuneIstatCodeSent = true;
+        }
+    }
+
+    /// <summary>Geographic latitude in degrees, -90 to 90 (A2-33); more than 6 decimals are rounded.</summary>
+    [Range(typeof(decimal), "-90", "90", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyLatitudeRange")]
     public decimal? Latitude { get; set; }
 
-    /// <summary>Geographic longitude of the property.</summary>
+    /// <summary>Geographic longitude in degrees, -180 to 180 (A2-33); more than 6 decimals are rounded.</summary>
+    [Range(typeof(decimal), "-180", "180", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyLongitudeRange")]
     public decimal? Longitude { get; set; }
 
     /// <summary>Number of bedrooms (0–100): <c>0</c> is a studio flat (monolocale, A2-27).</summary>
@@ -74,6 +104,39 @@ public class UpdatePropertyRequest
         ErrorMessage = "PropertyNightlyRateRange")]
     public decimal? NightlyRate { get; set; }
 
+    /// <summary>
+    /// Fewest nights the public booking site accepts (DB-03), 1 to 30. <c>null</c> removes the minimum (no minimum); leaving
+    /// it out keeps it. The guests' quote and checkout refuse a shorter stay (422 <c>direct_booking_min_nights_not_met</c>);
+    /// the host can still enter one by hand.
+    /// </summary>
+    [Range(PropertyStayRules.MinMinNights, PropertyStayRules.MaxMinNights, ErrorMessage = "PropertyMinNightsRange")]
+    public int? MinNights
+    {
+        get;
+        set
+        {
+            field = value;
+            MinNightsSent = true;
+        }
+    }
+
+    /// <summary>
+    /// Percent added to the nightly rate on the Friday and Saturday nights of a stay (DB-03), 0 to 100 with two decimals;
+    /// <c>0</c> turns the surcharge off, leaving it out (or <c>null</c>) keeps the stored value.
+    /// </summary>
+    [Range(typeof(decimal), "0", "100", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyWeekendSurchargeRange")]
+    public decimal? WeekendSurchargePercent { get; set; }
+
+    /// <summary>
+    /// How the property is let (PM-01): <c>Short</c> or <c>Long</c>. Accepted so that a form that sends the whole record
+    /// back keeps working, but it must be the <b>stored</b> mode: the mode of an existing property is not changed by this
+    /// save, a different value is refused with 422 <c>property_rental_mode_change_not_allowed</c> and
+    /// <see cref="ApplyTo"/> never touches it. The change itself is the scheduled mode change of PM-02, which checks the
+    /// stays and the leases of the property under its lock.
+    /// </summary>
+    public RentalMode? RentalMode { get; set; }
+
     /// <summary>One-time cleaning fee in euros (€0–€10,000), charged by the checkout.</summary>
     [Range(typeof(decimal), "0", "10000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyCleaningFeeRange")]
@@ -86,9 +149,6 @@ public class UpdatePropertyRequest
 
     /// <summary>List of amenities available at the property (the whole list replaces the stored one).</summary>
     public List<PropertyAmenity>? Amenities { get; set; }
-
-    /// <summary>Ordered list of photo URLs (the whole list replaces the stored one; the web form does not send it).</summary>
-    public List<string>? PhotoUrls { get; set; }
 
     /// <summary>House rules presented to guests before booking (may be sent empty).</summary>
     [MaxLength(1000, ErrorMessage = "PropertyHouseRulesTooLong")]
@@ -134,8 +194,35 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Whether the property is visible and bookable.</summary>
-    public bool? IsActive { get; set; }
+    /// <summary>Host override of catalog full-refund hours. Null leaves the stored override; omit to keep.</summary>
+    [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
+    public int? CancellationFullRefundHours { get; set; }
+
+    /// <summary>Host override of catalog partial-refund hours.</summary>
+    [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
+    public int? CancellationPartialRefundHours { get; set; }
+
+    /// <summary>Host override of catalog partial-refund percent (0-100).</summary>
+    [Range(typeof(decimal), "0", "100", ErrorMessage = "PropertyCancellationPercentRange")]
+    public decimal? CancellationPartialRefundPercent { get; set; }
+
+    /// <summary>Percent of stay or non-refundable. Long stays (28+ nights) ignore this.</summary>
+    public HostCancellationRefundType? CancellationRefundType { get; set; }
+
+    /// <summary>
+    /// Interno / scala (PC-06, A2-19); <c>null</c> or blank removes it. Together with the address it must be unique within
+    /// the org: 409 <c>duplicate_property_address</c> otherwise.
+    /// </summary>
+    [MaxLength(PropertyAddress.UnitMaxLength, ErrorMessage = "PropertyUnitTooLong")]
+    public string? Unit
+    {
+        get;
+        set
+        {
+            field = value;
+            UnitSent = true;
+        }
+    }
 
     /// <summary>URL slug for direct booking links (unique within org); <c>null</c> or blank removes it.</summary>
     [MaxLength(100, ErrorMessage = "PropertySlugTooLong")]
@@ -153,13 +240,25 @@ public class UpdatePropertyRequest
     [JsonIgnore]
     public bool CinCodeSent { get; private set; }
 
+    /// <summary>True when the body carries <see cref="ComuneIstatCode"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool ComuneIstatCodeSent { get; private set; }
+
     /// <summary>True when the body carries <see cref="CancellationPolicyId"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool CancellationPolicyIdSent { get; private set; }
 
+    /// <summary>True when the body carries <see cref="Unit"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool UnitSent { get; private set; }
+
     /// <summary>True when the body carries <see cref="Slug"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool SlugSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="MinNights"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool MinNightsSent { get; private set; }
 
     /// <summary>
     /// Applies the fields present in the request to a tracked <see cref="Property"/> in place and leaves the others
@@ -182,9 +281,11 @@ public class UpdatePropertyRequest
         if (PostalCode is not null)
             property.PostalCode = PostalCode;
         if (Latitude is { } latitude)
-            property.Latitude = latitude;
+            property.Latitude = PropertyAddress.RoundCoordinate(latitude);
         if (Longitude is { } longitude)
-            property.Longitude = longitude;
+            property.Longitude = PropertyAddress.RoundCoordinate(longitude);
+        if (UnitSent)
+            property.Unit = PropertyAddress.NormalizeUnit(Unit);
         if (Bedrooms is { } bedrooms)
             property.Bedrooms = bedrooms;
         if (Bathrooms is { } bathrooms)
@@ -193,24 +294,32 @@ public class UpdatePropertyRequest
             property.MaxGuests = maxGuests;
         if (NightlyRate is { } nightlyRate)
             property.NightlyRate = nightlyRate;
+        if (MinNightsSent)
+            property.MinNights = MinNights;
+        if (WeekendSurchargePercent is { } weekendSurcharge)
+            property.WeekendSurchargePercent = weekendSurcharge;
         if (CleaningFee is { } cleaningFee)
             property.CleaningFee = cleaningFee;
         if (DamageDeposit is { } damageDeposit)
             property.DamageDeposit = damageDeposit;
         if (Amenities is not null)
             property.Amenities = Amenities;
-        if (PhotoUrls is not null)
-            property.PhotoUrls = PhotoUrls;
         if (HouseRules is not null)
             property.HouseRules = HouseRules;
         if (Timezone is not null)
             property.Timezone = Timezone.Trim();
-        if (IsActive is { } isActive)
-            property.IsActive = isActive;
         if (CinCodeSent)
             property.CinCode = CinCode;
         if (CancellationPolicyIdSent)
             property.CancellationPolicyId = CancellationPolicyId;
+        if (CancellationFullRefundHours is { } fullHours)
+            property.CancellationFullRefundHours = fullHours;
+        if (CancellationPartialRefundHours is { } partialHours)
+            property.CancellationPartialRefundHours = partialHours;
+        if (CancellationPartialRefundPercent is { } partialPercent)
+            property.CancellationPartialRefundPercent = partialPercent;
+        if (CancellationRefundType is { } refundType)
+            property.CancellationRefundType = refundType;
         if (SlugSent)
             property.Slug = string.IsNullOrWhiteSpace(Slug) ? null : Slug.Trim().ToLowerInvariant();
 

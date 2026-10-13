@@ -116,6 +116,12 @@ public class SeasonalSuggestionDto
     /// <summary>The national holiday when <see cref="Rule"/> is <c>Holiday</c>.</summary>
     public ItalianHoliday? Holiday { get; set; }
 
+    /// <summary>Nightly price the host confirmed for this date; null until applied.</summary>
+    public decimal? AppliedPrice { get; set; }
+
+    /// <summary>UTC instant the host confirmed <see cref="AppliedPrice"/>.</summary>
+    public DateTime? AppliedAt { get; set; }
+
     public static SeasonalSuggestionDto From(SeasonalPriceSuggestion row) => new()
     {
         Date = row.StayDate,
@@ -124,12 +130,14 @@ public class SeasonalSuggestionDto
         Multiplier = row.Multiplier,
         Rule = row.Rule,
         Holiday = row.Holiday,
+        AppliedPrice = row.AppliedPrice,
+        AppliedAt = row.AppliedAt,
     };
 }
 
 /// <summary>
-/// The computed seasonal suggestions of a property. They are proposals: quotes and bookings keep using the property's
-/// nightly rate (<see cref="CurrentBasePrice"/>).
+/// The computed seasonal suggestions of a property. Quotes use <see cref="SeasonalSuggestionDto.AppliedPrice"/> when
+/// the host has confirmed it; otherwise the property nightly rate.
 /// </summary>
 public class SeasonalSuggestionsResponse
 {
@@ -160,4 +168,21 @@ public class SeasonalSuggestionRunResponse
 
     /// <summary>UTC instant of the computation, when computed.</summary>
     public DateTime? ComputedAt { get; set; }
+}
+
+/// <summary>Host confirmation of seasonal proposals (PO 2026-10-08). Empty items = apply every current suggestion.</summary>
+public class ApplySeasonalPricesRequest
+{
+    public List<ApplySeasonalPriceItemDto> Items { get; set; } = [];
+}
+
+public class ApplySeasonalPriceItemDto
+{
+    public DateOnly Date { get; set; }
+    public decimal? Price { get; set; }
+}
+
+public class SeasonalApplyResponse
+{
+    public int Applied { get; set; }
 }

@@ -7,6 +7,7 @@ public enum LeaseSignatureMethod
     /// Outside CasaZen: on paper or with the party's own digital signature; the landlord uploads the PDF signed by
     /// every party and declares the stipula date. The default path.
     /// </summary>
+    // LT-02: No FEA/QES integration. Host uploads the externally signed PDF. (PO 2026-10-08)
     Offline,
 
     /// <summary>Through the e-signature provider (<c>Features:ESignProvider</c>), with a personal signing link.</summary>

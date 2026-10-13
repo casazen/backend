@@ -11,9 +11,10 @@ deploy and what the admin still has to do.
   drops the table. The authenticated `POST /api/tourist-tax-rates/calculate` is removed too (unused).
 - **Single engine: `Casazen.Core/TouristTax/TouristTaxCalculator`**, reached through `ITouristTaxQuoteService`. Used by
   the checkout quote, the direct booking, the host (manual) booking, the activation wizard and the public calculator.
-- **Comune lookup:** by ISTAT code when both the rate and the comune carry one (public pages: `ItalianComuneRegistry`),
-  otherwise by normalized name: case, accents, spaces, apostrophes and hyphens do not matter (`" ROMA "` = `roma`,
-  `Forlì` = `forli`). Properties have no ISTAT code yet, so they match by city name.
+- **Comune lookup:** by ISTAT code when both the rate and the comune carry one, otherwise by normalized name: case,
+  accents, spaces, apostrophes and hyphens do not matter (`" ROMA "` = `roma`, `Forlì` = `forli`). The comune of a
+  property carries the ISTAT code the host chose from the official list (`Property.ComuneIstatCode`, SU-04: [comuni-istat.md](comuni-istat.md));
+  a property with none matches by city name. The comune of the public pages comes from the same list.
 
 ### Rules of the calculation
 
@@ -93,6 +94,23 @@ Values are frozen in `TouristTaxRateSeed`; `TouristTaxRateSeedTests` checks them
 The seeded rows have fixed ids (MD5 of ISTAT code + start date) and are inserted once, by the migration. An admin
 change or delete is never overwritten.
 
+There is no national open dataset of tourist-tax rates. Two jobs, with different jobs:
+
+- **`official-reference-data-refresh`** (04:30 UTC daily): ISTAT comuni CSV, Alloggiati tables, and a deterministic
+  re-read of the institutional pages of the **pilot** comuni (`OfficialReferenceData:TouristTaxSources`). It overwrites
+  the matching seed rows in place when the page is readable. It never invents amounts.
+- **`comune-official-profile-refresh`** (05:00 UTC on the 1st of the month) and the Hangfire enqueue after a property
+  is created in a comune: MEF archive `nuova_at` (CSV index + PDF of the act). DeepSeek is used only as an extractor of
+  that already downloaded PDF, never as web search. Amounts are **inserted** as new `TouristTaxRates` rows and previous
+  rows of the same ISTAT code are **closed** (`EffectiveTo`); history is never deleted. `ValidFrom` is the first day of
+  the second month after the MEF publication date.
+
+CasaZen stores this as **reporting data, not legal value**. A PDF that cannot be read is logged (`unreadable` /
+`extract_failed`) with the URL and act id; no estimated amount is written. An extract without `actId` or without the
+HTTPS URL of the downloaded PDF is rejected and `TouristTaxRates` stays untouched.
+
+The daily ISTAT/Alloggiati job and the MEF agent do not call each other.
+
 ## Seed `UnifyTouristTaxOnTouristTaxRates` (BK-03)
 
 Sets `IstatCode` on the 4 rows above and loads the official (U) rows the extended model represents
@@ -108,27 +126,54 @@ Sets `IstatCode` on the 4 rows above and loads the official (U) rows the extende
 | Venezia | Gruppo 2 | 01/01-31/01 | 2,80 | 1,40 | 5 | 10 | 2025-04-01 |
 | Venezia | Gruppo 3 (A/4, A/5) | 01/01-31/01 | 2,10 | 1,00 | 5 | 10 | 2025-04-01 |
 
-Not loaded, on purpose:
+The frozen BK-03 seed left these out. Migration `ApplyOfficialTouristTaxExtracts` (2026-10-09) then inserted the rows
+whose amount is on an institutional page: Roma locazione breve, Venezia Gruppo 3 alta, Bologna (10,5 %, cap 7,00 €),
+Torino (3,80 €). Still without an amount:
 
-- **Roma, "alloggi per uso turistico / locazione breve" 6,00 €**: amount from third parties (T).
-- **Venezia, Gruppo 3 high season 3,00 €**: deduced (D). A Gruppo 3 stay from February is "tariffa non disponibile".
-- **Bologna, 10,5% max 7,00 €**: the percentage and the cap are official, but "per person" (price divided by the guests)
-  comes from third parties only (T) and the start date 01/01/2026 is deduced (D). Once confirmed, the admin adds it:
-  City `Bologna`, ISTAT `037006`, region `EMR`, type "Percentuale del prezzo", 10,5 %, cap 7,00, max nights 5,
-  minimum age 14, from the confirmed date, source B1 of `imposta_soggiorno.md`.
-- **Torino**: amount from third parties (T), nights capped per year (not modelled).
-- **Seveso, Cesano Maderno**: no rate found (an empty rate is never 0). Hosts see the warning.
+- **Seveso, Cesano Maderno**: the municipal pages publish no tariff (an empty rate is never 0). Hosts see the warning.
 
 Roma and Venezia rates are per accommodation category: the public calculator asks the category; property checkouts
 there show "tariffa non disponibile" until properties have a category (open product question, see below).
+
+## Seed `AddLombardyPilotTouristTaxRates` (SEO-LOCALE, 2026-10-13)
+
+Rates of the new Lombardy SEO pilots (`SeoPilotComuni`), read **directly** in the tariff deliberations and regulations
+published on the MEF portal of the Dipartimento delle Finanze. An act takes effect from the first day of the second month
+after its publication there (art. 13 c. 15-quater D.L. 201/2011): `EffectiveFrom` is that date. Only the rows free of
+ambiguity are loaded (product owner decision); code and notes in `TouristTaxLombardyPilotSeed`.
+
+| Comune | Category | Season | €/person/night | Max nights | Exempt under | From | Act |
+|---|---|---|---|---|---|---|---|
+| San Siro | — (CAV, agenzie) | all year | 1,50 | 7 | 14 | 2025-02-01 | G.C. 90/2024 |
+| San Siro | other extra-alberghiere A/7, A/8 | all year | 5,00 | 7 | 14 | 2025-02-01 | G.C. 90/2024 |
+| Gravedona ed Uniti | — (CAV, locazioni brevi) | all year | 1,50 | 10 | 14 | 2026-01-01 | G.C. 104/2025 |
+| Cernobbio | — (extra-alberghiere) | 01/04-31/12 | 3,00 | 7 | 14 | 2025-08-01 | G.C. 181/2024, confirmed by 169/2025 |
+| Cernobbio | ville di pregio A/1, A/8, A/9 | 01/04-31/12 | 5,00 | 7 | 14 | 2025-08-01 | same |
+| Lezzeno | — | 01/04-31/10 | 1,50 | 7 | 11 | 2025-03-01 | G.C. 80/2024 |
+| Maccagno con Pino e Veddasca | — | all year | 1,00 | 10 | 14 | 2026-03-01 | G.C. 271/2025 |
+| Rho | — | all year | 2,00 | 5 | 18 | 2026-02-01 | G.C. 246/2025 |
+
+Not loaded, to confirm with the comune or a lawyer before an admin adds them:
+
+- **Bellagio, Menaggio, Tremezzina** (3,00 €; A/7-A/9 5,00 €; 7 nights; 01/03-30/11): minors "entro l'undicesimo anno d'età"
+  are exempt: under 11 or under 12?
+- **Varenna** (3,00 €, 7 nights, under 7): the season 01/03-31/10 may have been changed by C.C. 22/2024, not on the portal.
+- **Varese** (1,00 €): 7 nights **per calendar year** (the engine caps per stay) and a new regulation from 01/03/2026.
+- **Luino**: 2,50 € for "case vacanze e locazioni in A1-A8" or 1,00 € for the other structures: which one an ordinary CAV pays.
+- **Monza** (2,00 €, 20 nights): minors exempt only when they stay with a guest who pays (not modelled).
+- **Domaso**: no tax until 31/12/2026 (to be instituted from 2027). **Seregno**: no act found.
+
+Engine limits that apply here: outside the season (Cernobbio, Lezzeno) a night has no rate, so the quote is "non
+disponibile", never 0 (an amount of 0 is not a valid rate); the villa rows apply only to a property with that category, and
+properties have none yet, so they get the base rate.
 
 ### Check after the deploy (test, then production)
 
 Read-only queries on the environment schema (`casazen_test` / `casazen_prod`):
 
 ```sql
--- The seeded rates, with source and level (expected: 11 rows - Milano, Como, Firenze, Napoli, 2 Roma, 5 Venezia -
--- all VerificationLevel = 'Official', IstatCode set)
+-- The seeded rates, with source and level (expected: 23 rows - Milano, Como, Firenze, Napoli, Torino, Bologna,
+-- 3 Roma, 6 Venezia, and the 8 rows of AddLombardyPilotTouristTaxRates - all VerificationLevel = 'Official', IstatCode set)
 SELECT "City", "IstatCode", "AccommodationCategory", "SeasonStart", "SeasonEnd", "RatePerPersonPerNight",
        "ReducedRatePerPersonPerNight", "MaxNights", "MinimumAge", "EffectiveFrom", "VerificationLevel"
 FROM "TouristTaxRates" WHERE "SourceUrl" IS NOT NULL ORDER BY "City", "AccommodationCategory", "SeasonStart";

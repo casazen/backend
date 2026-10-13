@@ -514,4 +514,21 @@ public class PricingAdapterControllerTests
 
         Assert.IsType<NotFoundResult>(result.Result);
     }
+
+    [Fact]
+    public async Task ApplySuggestions_AsOwner_ConfirmsPrices()
+    {
+        var propertyId = Guid.NewGuid();
+        SetUser(OwnerId);
+        _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
+        _mockPricingService
+            .Setup(x => x.ApplySuggestionsAsync(propertyId, It.IsAny<IReadOnlyList<SeasonalPriceApplyItem>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+
+        var result = await _controller.ApplySuggestions(
+            propertyId, new ApplySeasonalPricesRequest(), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(3, Assert.IsType<SeasonalApplyResponse>(ok.Value).Applied);
+    }
 }

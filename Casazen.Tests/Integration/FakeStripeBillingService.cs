@@ -78,6 +78,41 @@ public sealed class FakeStripeBillingService(IConfiguration configuration) : ISt
         Task.FromResult(
             $"https://billing.stripe.test/portal/{org.StripeCustomerId ?? "cus_test"}?return={Uri.EscapeDataString(returnUrl)}");
 
+    private readonly ConcurrentDictionary<string, StripeTaxRateSummary> _taxRates = new();
+    private readonly ConcurrentDictionary<string, IReadOnlyList<StripeCustomerTaxId>> _taxIdsByCustomer = new();
+
+    /// <summary>Tax rate Stripe Tax would have created (PL-13 tests).</summary>
+    public FakeStripeBillingService WithTaxRate(StripeTaxRateSummary rate)
+    {
+        _taxRates[rate.Id] = rate;
+        return this;
+    }
+
+    /// <summary>Tax ids of a customer, with their VIES verification status (PL-13 tests).</summary>
+    public FakeStripeBillingService WithCustomerTaxIds(string customerId, params StripeCustomerTaxId[] taxIds)
+    {
+        _taxIdsByCustomer[customerId] = taxIds;
+        return this;
+    }
+
+    public Task<IReadOnlyList<StripeTaxRateSummary>> GetTaxRatesAsync(
+        IReadOnlyCollection<string> taxRateIds,
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<StripeTaxRateSummary> rates = taxRateIds
+            .Distinct(StringComparer.Ordinal)
+            .Select(id => _taxRates.TryGetValue(id, out var rate)
+                ? rate
+                : throw new Stripe.StripeException($"No such tax rate: {id}"))
+            .ToList();
+        return Task.FromResult(rates);
+    }
+
+    public Task<IReadOnlyList<StripeCustomerTaxId>> ListCustomerTaxIdsAsync(
+        string customerId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(_taxIdsByCustomer.TryGetValue(customerId, out var taxIds) ? taxIds : []);
+
     public PlanTier? MapPriceIdToTier(string? priceId) => BillingPrices.TierOf(configuration, priceId);
 
     public static string CustomerIdFor(Guid orgId) => $"cus_test_{orgId:N}";

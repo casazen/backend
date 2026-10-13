@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -150,7 +152,7 @@ public class ConnectOnboardingService(
             cancellationToken);
     }
 
-    public async Task ApplyAccountUpdatedAsync(ConnectAccountSnapshot snapshot, CancellationToken cancellationToken = default)
+    public async Task<ConnectAccountUpdate> ApplyAccountUpdatedAsync(ConnectAccountSnapshot snapshot, CancellationToken cancellationToken = default)
     {
         var org = await dbContext.Orgs.FirstOrDefaultAsync(
             o => o.StripeConnectedAccountId == snapshot.AccountId,
@@ -159,10 +161,18 @@ public class ConnectOnboardingService(
         if (org is null)
         {
             logger.LogWarning("account.updated for unknown connected account {AccountId}", snapshot.AccountId);
-            return;
+            return ConnectAccountUpdate.None;
         }
 
+        // SP-15b: a supplier that could not take payments and now can has payment requests waiting for it.
+        var couldReceivePayments = SupplierVerification.CanReceivePayments(
+            org.StripeConnectedAccountId, org.ConnectChargesEnabled, org.ConnectPayoutsEnabled);
+
         await PersistSnapshotAsync(org, snapshot, cancellationToken);
+
+        var canReceivePayments = SupplierVerification.CanReceivePayments(
+            org.StripeConnectedAccountId, org.ConnectChargesEnabled, org.ConnectPayoutsEnabled);
+        return new ConnectAccountUpdate(org.Id, org.OrgType == OrgType.Supplier && !couldReceivePayments && canReceivePayments);
     }
 
     /// <summary>

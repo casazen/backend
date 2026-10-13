@@ -71,6 +71,48 @@ public class PublicSiteLinksTests
     }
 
     [Fact]
+    public void SupplierConnectOnboardingReturnAndRefresh_PointToSupplierSettingsPageOnConfiguredDomain()
+    {
+        var links = EmailTestHelpers.Links("https://staging.example.org/");
+
+        // SP-14: the supplier's Account Link sends the supplier back to the supplier console, not to the host's payments page.
+        Assert.Equal("https://staging.example.org/app/supplier/settings?stripe_return=1", links.SupplierConnectOnboardingReturn());
+        Assert.Equal("https://staging.example.org/app/supplier/settings?stripe_refresh=1", links.SupplierConnectOnboardingRefresh());
+        Assert.Equal("/app/supplier/settings", PublicSiteLinks.SupplierSettingsPagePath);
+    }
+
+    [Fact]
+    public void SupplierConnectUrls_AreOnThePublicSiteAndLeaveTheHostOnesAsTheyWere()
+    {
+        var links = EmailTestHelpers.Links("https://app.example.org");
+
+        // Stripe may only send the browser back to the public web app.
+        Assert.True(links.IsOnPublicSite(links.SupplierConnectOnboardingReturn()));
+        Assert.True(links.IsOnPublicSite(links.SupplierConnectOnboardingRefresh()));
+        // The host's Connect return pages and the billing allow-list are untouched (BK-09, PL-16).
+        Assert.Equal("https://app.example.org/app/short-rent/settings/payments?stripe_return=1", links.ConnectOnboardingReturn());
+        Assert.Equal("https://app.example.org/app/short-rent/settings/payments?stripe_refresh=1", links.ConnectOnboardingRefresh());
+        Assert.All(
+            new[]
+            {
+                "/app/short-rent/settings/plan",
+                "/app/short-rent/settings/billing",
+                "/app/long-rent/settings/plan",
+                "/app/long-rent/settings/billing",
+            },
+            path => Assert.Contains(path, PublicSiteLinks.BillingReturnPagePaths));
+    }
+
+    [Fact]
+    public void SupplierConnectUrls_PublicSiteBaseUrlMissing_ThrowConfigurationErrorInsteadOfFallback()
+    {
+        var links = EmailTestHelpers.Links(null);
+
+        Assert.Throws<EmailConfigurationException>(links.SupplierConnectOnboardingReturn);
+        Assert.Throws<EmailConfigurationException>(links.SupplierConnectOnboardingRefresh);
+    }
+
+    [Fact]
     public void GuestBookings_OrgSlug_PointsToMyBookingsOfTheBookingSite()
     {
         var links = EmailTestHelpers.Links("https://app.example.org/");

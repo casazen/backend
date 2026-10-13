@@ -28,6 +28,9 @@ public class PropertyDocument : ITenantOwned
     [Required]
     public DocumentType DocumentType { get; set; }
 
+    /// <summary>Invented file for the test environment (demo seed). The bytes are a real PDF and the type is the one the activation asks for.</summary>
+    public bool IsTestData { get; set; }
+
     [Required, MaxLength(255)]
     public string UploadedBy { get; set; } = string.Empty;
 

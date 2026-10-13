@@ -14,6 +14,7 @@ public class AuthorizationAttributeTests
 {
     [Theory]
     [InlineData(typeof(PropertiesController))]
+    [InlineData(typeof(PropertyModeController))]
     [InlineData(typeof(BookingsController))]
     [InlineData(typeof(GuestsController))]
     [InlineData(typeof(PaymentsController))]
@@ -41,6 +42,7 @@ public class AuthorizationAttributeTests
     /// </summary>
     [Theory]
     [InlineData(typeof(PropertiesController), CasazenPolicies.SharedPropertyRead)]
+    [InlineData(typeof(PropertyModeController), CasazenPolicies.SharedPropertyRead)]
     [InlineData(typeof(BookingsController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(BookingCancellationController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(BookingLifecycleController), CasazenPolicies.BookingRead)]
@@ -52,9 +54,13 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(AlloggiatiController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(ComplianceController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(FiscalController), CasazenPolicies.PropertyRead)]
+    // AM-03: the fiscal area is about money, so it needs payment.read too (a collaborator reads properties, not payments).
+    [InlineData(typeof(FiscalController), CasazenPolicies.PaymentRead)]
     [InlineData(typeof(LeasesController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(CanoneConcordatoController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(LongRentServiceRequestsController), CasazenPolicies.LongRentPropertyRead)]
+    [InlineData(typeof(LongRentRentsController), CasazenPolicies.LeaseRead)]
+    [InlineData(typeof(LongRentAgendaController), CasazenPolicies.LeaseRead)]
     public void HostController_ClassPolicyIsAContextReadPermission(Type controllerType, string expectedPolicy)
     {
         var classPolicies = controllerType
@@ -71,9 +77,9 @@ public class AuthorizationAttributeTests
 
     [Theory]
     [InlineData(typeof(GdprController), nameof(GdprController.ExportGuestData), "RequireContext:short-rent:guest.read")]
-    [InlineData(typeof(GdprController), nameof(GdprController.DeleteGuestData), "RequireContext:short-rent:guest.write")]
-    [InlineData(typeof(GdprController), nameof(GdprController.AnonymizeGuestData), "RequireContext:short-rent:guest.write")]
-    [InlineData(typeof(GdprController), nameof(GdprController.UpdateConsent), "RequireContext:short-rent:guest.write")]
+    [InlineData(typeof(GdprController), nameof(GdprController.DeleteGuestData), "RequireContext:short-rent:guest.manage")]
+    [InlineData(typeof(GdprController), nameof(GdprController.AnonymizeGuestData), "RequireContext:short-rent:guest.manage")]
+    [InlineData(typeof(GdprController), nameof(GdprController.UpdateConsent), "RequireContext:short-rent:guest.manage")]
     [InlineData(typeof(PaymentsController), nameof(PaymentsController.Create), "RequireContext:short-rent:payment.write")]
     [InlineData(typeof(PaymentsController), nameof(PaymentsController.Refund), "RequireContext:short-rent:payment.write")]
     [InlineData(typeof(BookingCancellationController), nameof(BookingCancellationController.Cancel), "RequireContext:short-rent:booking.write")]
@@ -88,16 +94,26 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.SaveConfig), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.DisableConfig), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.Recalculate), "RequireContext:short-rent:property.write")]
-    [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.Create), "RequireContext:short-rent:property.write")]
-    [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.MatchSupplier), "RequireContext:short-rent:property.write")]
-    [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.MarkPaid), "RequireContext:short-rent:property.write")]
+    [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.Create), "RequireContext:short-rent:servicerequest.write")]
+    [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.MatchSupplier), "RequireContext:short-rent:servicerequest.write")]
+    [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.MarkPaid), "RequireContext:short-rent:servicerequest.write")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.Take), "RequireSupplier")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.Complete), "RequireSupplier")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.Reject), "RequireSupplier")]
     [InlineData(typeof(SuppliersController), nameof(SuppliersController.GetSuppliers), "RequireContext:short-rent:property.read")]
     [InlineData(typeof(LongRentServiceRequestsController), nameof(LongRentServiceRequestsController.Create), "RequireContext:long-rent:property.write")]
     [InlineData(typeof(LongRentServiceRequestsController), nameof(LongRentServiceRequestsController.MarkPaid), "RequireContext:long-rent:property.write")]
+    [InlineData(typeof(LongRentRentsController), nameof(LongRentRentsController.SendReminder), "RequireContext:long-rent:lease.create")]
+    [InlineData(typeof(LongRentRentsController), nameof(LongRentRentsController.SendReminders), "RequireContext:long-rent:lease.create")]
     [InlineData(typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), "RequireContext:short-rent:ota.write")]
+    [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Preview), "RequireContext:short-rent|long-rent:property.write")]
+    [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Schedule), "RequireContext:short-rent|long-rent:property.write")]
+    [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Cancel), "RequireContext:short-rent|long-rent:property.write")]
+    // AM-03: the finer permissions carved out of the broad ones.
+    [InlineData(typeof(GuestsController), nameof(GuestsController.Delete), "RequireContext:short-rent:guest.manage")]
+    [InlineData(typeof(AlloggiatiController), nameof(AlloggiatiController.ReplaceStayGuests), "RequireContext:short-rent:alloggiati.submit")]
+    [InlineData(typeof(AlloggiatiController), nameof(AlloggiatiController.MarkSentManually), "RequireContext:short-rent:alloggiati.submit")]
+    [InlineData(typeof(AlloggiatiController), nameof(AlloggiatiController.SendManual), "RequireContext:short-rent:alloggiati.submit")]
     public void SensitiveAction_MustRequireExpectedContextPolicy(
         Type controllerType,
         string actionName,

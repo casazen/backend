@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -70,7 +71,7 @@ public class PropertyDocumentServiceTests
     }
 
     [Fact]
-    public async Task UploadDocumentAsync_WithNonExistentProperty_ThrowsInvalidOperationException()
+    public async Task UploadDocumentAsync_WithNonExistentProperty_ThrowsNotFoundException()
     {
         // Arrange
         var propertyId = Guid.NewGuid();
@@ -79,7 +80,7 @@ public class PropertyDocumentServiceTests
         _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync((Guid?)null);
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<NotFoundException>(() =>
             _service.UploadDocumentAsync(propertyId, mockFile.Object, DocumentType.CinCertificate, "user@example.com"));
 
         _mockStorageService.Verify(x => x.UploadDocumentAsync(It.IsAny<IFormFile>(), It.IsAny<Guid>()), Times.Never);

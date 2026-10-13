@@ -45,7 +45,7 @@ public class ICalServerTimeZoneTests
         Assert.Equal(new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc), blocks["weekend#20261010"].EndUtc);
     }
 
-    [Fact]
+    [ProcessTimeZoneFact]
     public void ServerTimeZone_EastOfUtc_ShiftsIcalNetUtcValueOfAllDayDates()
     {
         // Guards the test above: the TZ switch is effective, so the old AsUtc reading would have failed it.
@@ -57,7 +57,11 @@ public class ICalServerTimeZoneTests
         Assert.Equal(new DateTime(2026, 10, 9), calendarEvent.DtStart.AsUtc.Date);
     }
 
-    /// <summary>Sets the process time zone through <c>TZ</c> and restores it on dispose.</summary>
+    /// <summary>
+    /// Sets the process time zone through <c>TZ</c> and restores it on dispose. .NET reads <c>TZ</c> on Linux and macOS only: on
+    /// Windows <c>TimeZoneInfo.Local</c> is the system setting and nothing here changes it, so the theory above then runs under
+    /// the time zone of the machine (the one a developer in Rome has, east of UTC, is the case PC-10 fixed).
+    /// </summary>
     private sealed class ServerTimeZone : IDisposable
     {
         private readonly string? _previous = Environment.GetEnvironmentVariable("TZ");
@@ -73,5 +77,20 @@ public class ICalServerTimeZoneTests
             Environment.SetEnvironmentVariable("TZ", _previous);
             TimeZoneInfo.ClearCachedData();
         }
+    }
+}
+
+/// <summary>
+/// A fact that needs the time zone of the process to be switchable through <c>TZ</c> (<see cref="ICalServerTimeZoneTests"/>).
+/// .NET honours <c>TZ</c> on Linux and macOS only, so on Windows the check cannot hold by construction and the fact is skipped
+/// with the reason instead of failing on every developer machine; CI runs on Linux, where it always runs.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ProcessTimeZoneFactAttribute : FactAttribute
+{
+    public ProcessTimeZoneFactAttribute()
+    {
+        if (OperatingSystem.IsWindows())
+            Skip = "The TZ environment variable changes the process time zone on Linux and macOS only; on Windows TimeZoneInfo.Local is the system setting.";
     }
 }

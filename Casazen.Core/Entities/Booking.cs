@@ -192,6 +192,19 @@ public class Booking : ITenantOwned
     public string? CheckoutTokenHash { get; set; }
 
     /// <summary>
+    /// SHA-256 (hex) of the one-time guest self-cancellation token (BK-02, BK-07): the raw token is only in the
+    /// signed link emailed to the guest. Invalidated after use or when a new link is sent.
+    /// </summary>
+    [MaxLength(64)]
+    public string? GuestCancelTokenHash { get; set; }
+
+    /// <summary>
+    /// UTC expiry of the guest self-cancellation token; null when no token was ever generated.
+    /// Default lifetime: <c>GuestCancellation:TokenExpiryHours</c> (see <see cref="Services.GuestCancellationTokens"/>).
+    /// </summary>
+    public DateTime? GuestCancelTokenExpiresAt { get; set; }
+
+    /// <summary>
     /// Booking code of the guest (BK-11, A3-10): shown in the confirmation email and on the checkout outcome page, and
     /// asked with the guest's email by "Le mie prenotazioni". Random, readable, unique per org, never the booking id
     /// (<see cref="Services.BookingCodes"/>). Stored without separator, shown as <c>XXXXX-XXXXX</c>.

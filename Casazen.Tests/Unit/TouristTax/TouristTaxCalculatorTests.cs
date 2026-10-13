@@ -103,6 +103,59 @@ public class TouristTaxCalculatorTests
     }
 
     [Fact]
+    public void Calculate_PercentageWithAPricePerNight_ReadsThePriceOfEachNight()
+    {
+        // DB-03: a weekend surcharge makes the nights cost differently. Fri 9 and Sat 10 October at 150 €, Sun at 100 €,
+        // 2 adults: 75 € per person = 7,875 → capped at 7,00 on the first two nights; 50 € per person = 5,25 on the third.
+        var stay = new TouristTaxStay(
+            new DateOnly(2026, 10, 9),
+            new DateOnly(2026, 10, 12),
+            Adults: 2,
+            Children: 0,
+            NightlyPrice: 100m,
+            NightlyPrices: [150m, 150m, 100m]);
+
+        var quote = TouristTaxCalculator.Calculate([BolognaLikePercentage()], stay);
+
+        Assert.Equal(TouristTaxQuoteStatus.Calculated, quote.Status);
+        Assert.Equal(2 * (7.00m + 7.00m + 5.25m), quote.Amount);
+        // The one price of the stay, which is what a property without surcharge passes, gives another amount.
+        var flat = TouristTaxCalculator.Calculate([BolognaLikePercentage()], stay with { NightlyPrices = null });
+        Assert.Equal(2 * 3 * 5.25m, flat.Amount);
+    }
+
+    [Fact]
+    public void Calculate_PricePerNightEqualToTheOnePrice_GivesTheSameAmountAsTheOnePrice()
+    {
+        var one = Stay("2026-10-10", nights: 4, adults: 3, nightlyPrice: 95m);
+        var perNight = one with { NightlyPrice = null, NightlyPrices = [95m, 95m, 95m, 95m] };
+
+        var expected = TouristTaxCalculator.Calculate([BolognaLikePercentage()], one);
+        var actual = TouristTaxCalculator.Calculate([BolognaLikePercentage()], perNight);
+
+        Assert.Equal(expected.Amount, actual.Amount);
+        Assert.Equal(expected.TaxableNights, actual.TaxableNights);
+    }
+
+    [Fact]
+    public void Calculate_PricePerNightNotOnePerNight_IsRefused()
+    {
+        var stay = Stay("2026-10-10", nights: 3, adults: 2) with { NightlyPrices = [100m, 100m] };
+
+        Assert.Throws<ArgumentException>(() => TouristTaxCalculator.Calculate([BolognaLikePercentage()], stay));
+    }
+
+    [Fact]
+    public void Calculate_FixedRateIgnoresThePricePerNight()
+    {
+        var quote = TouristTaxCalculator.Calculate(
+            [Seeded("Como")],
+            Stay("2026-10-10", nights: 3, adults: 2) with { NightlyPrices = [50m, 500m, 5m] });
+
+        Assert.Equal(18.00m, quote.Amount);
+    }
+
+    [Fact]
     public void Calculate_StayAcrossSeasonChange_TaxesEachNightWithTheRateOfItsSeason()
     {
         // Venezia Gruppo 1: nights 30/01 and 31/01 low season (3,50), 01/02 high season (5,00): 2 x 12,00.

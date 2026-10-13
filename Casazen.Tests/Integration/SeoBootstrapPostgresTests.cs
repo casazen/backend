@@ -1,4 +1,6 @@
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
+using Casazen.Tests.Unit;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Web.Configuration;
 using Casazen.Web.HostedServices;
@@ -57,6 +59,7 @@ public class SeoBootstrapPostgresTests : IAsyncLifetime
         services.AddSingleton(storage);
         services.AddSingleton<IBackgroundJobClient>(new BackgroundJobClient(storage));
         services.AddSingleton(repository.Object);
+        services.AddSingleton<ISeoComuneCatalog>(new StaticSeoComuneCatalog(ComuneTestData.ComoInfo));
 
         return new SeoBootstrapHostedService(
             services.BuildServiceProvider(),

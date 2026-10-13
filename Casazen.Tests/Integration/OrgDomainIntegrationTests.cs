@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Microsoft.Extensions.DependencyInjection;
@@ -191,6 +192,10 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("org_domain_in_use", problem.GetProperty("code").GetString());
+        Assert.Equal("Dominio o sottodominio già in uso.", problem.GetProperty("detail").GetString());
+        Assert.False(problem.TryGetProperty("error", out _));
     }
 
     [Fact]
@@ -222,6 +227,7 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         await SetPlanTierAsync(org.Id, PlanTier.Pro, withActiveSubscription: false);
         var slug = $"unpaid-pro-{Guid.NewGuid():N}"[..30];
         await SetSlugAsync(org.Id, slug);
+        await SetSubdomainModeAsync(org.Id, slug);
 
         using var client = _factory.CreateClient();
         var response = await client.GetAsync($"/api/public/resolve-host?host={slug}.casazen.it");
@@ -278,6 +284,41 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(orgB.Id, resolvedJson.GetProperty("orgId").GetGuid());
     }
 
+    [Fact]
+    public async Task ResolveHost_SlugAsSubdomainOfAnOrgOnThePathMode_Returns404()
+    {
+        // BK-16 (A3-08): no wildcard on the base domain, only the orgs that chose the subdomain mode are served on a label.
+        var org = await _factory.SeedOrgForOwnerAsync($"auth0|resolve-path-{Guid.NewGuid():N}");
+        var slug = $"path-mode-{Guid.NewGuid():N}"[..28];
+        await SetSlugAsync(org.Id, slug);
+
+        var response = await _factory.CreateClient().GetAsync($"/api/public/resolve-host?host={slug}.casazen.it");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task VerifyDomain_OnStarterWithALeftoverCustomDomain_Returns403NotAVerifiedDomainNobodyCanOpen()
+    {
+        // A3-07 / BK-16: the domain is a Pro feature; after a downgrade a verification would say "verified" for a site that is not served.
+        var ownerId = $"auth0|verify-starter-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        await SetPlanTierAsync(org.Id, PlanTier.Pro);
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var set = await client.PostAsJsonAsync($"/api/orgs/{org.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = "www.downgraded-host.it",
+        });
+        Assert.Equal(HttpStatusCode.OK, set.StatusCode);
+        await SetPlanTierAsync(org.Id, PlanTier.Starter);
+
+        var verify = await client.PostAsJsonAsync($"/api/orgs/{org.Id}/domain/verify", new { });
+
+        Assert.Equal(HttpStatusCode.Forbidden, verify.StatusCode);
+        Assert.Equal("plan_required", (await verify.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString());
+    }
+
     /// <summary>
     /// Pro/Scale take effect only while a subscription pays for them (#274): a paid tier is seeded with an active
     /// Stripe subscription unless <paramref name="withActiveSubscription"/> is false.
@@ -302,6 +343,17 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         org!.Slug = slug;
         org.Subdomain = null;
         org.PublicHostMode = PublicHostMode.CasazenPath;
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>The org chose the subdomain mode with <paramref name="label"/>: the only way a label is served (BK-16).</summary>
+    private async Task SetSubdomainModeAsync(Guid orgId, string label)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var org = await db.Orgs.FindAsync(orgId);
+        org!.PublicHostMode = PublicHostMode.CasazenSubdomain;
+        org.Subdomain = label;
         await db.SaveChangesAsync();
     }
 

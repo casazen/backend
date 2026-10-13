@@ -3,6 +3,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -13,9 +14,13 @@ public class UserService(
     IAuth0ManagementService auth0Management,
     IOrgService orgService,
     IUserContextMembershipService membershipService,
+    IOrgMembershipService orgMembershipService,
     IUserAuthorizationCache authorizationCache,
     ILogger<UserService> logger) : IUserService
 {
+    /// <summary>Concurrent Auth0 profile reads of one admin listing page (A1-26).</summary>
+    private const int MaxConcurrentAuth0ProfileReads = 4;
+
     /// <summary>Roles driven by the onboarding rental-type choice. Other roles (Admin, Supplier…) are never touched.</summary>
     private static readonly UserRole[] OnboardingRoles =
     [
@@ -31,43 +36,6 @@ public class UserService(
     public async Task<User?> GetUserByEmailAsync(string email)
     {
         return await repository.GetByEmailAsync(email);
-    }
-
-    public async Task<User> RegisterUserAsync(string email, string firstName, string lastName, string password)
-    {
-        // Check if user already exists
-        var existingUser = await repository.GetByEmailAsync(email);
-        if (existingUser != null)
-        {
-            logger.LogWarning("User registration failed: Email already exists for userId {UserId}", existingUser.Id);
-            throw new InvalidOperationException($"User with email {email} already exists");
-        }
-
-        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
-            throw new ArgumentException("Invalid email address", nameof(email));
-
-        if (string.IsNullOrWhiteSpace(firstName))
-            throw new ArgumentException("First name is required", nameof(firstName));
-
-        if (string.IsNullOrWhiteSpace(lastName))
-            throw new ArgumentException("Last name is required", nameof(lastName));
-
-        var user = new User
-        {
-            Id = Guid.NewGuid().ToString(),
-            Email = email.ToLowerInvariant(),
-            FirstName = firstName,
-            LastName = lastName,
-            // PL-02: no host role before the onboarding and its consents.
-            Role = UserRole.None,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        await repository.AddAsync(user);
-        logger.LogInformation("User registered: {UserId}", user.Id);
-        return user;
     }
 
     public async Task<User> UpdateUserAsync(User user)
@@ -170,6 +138,50 @@ public class UserService(
             sync.Succeeded ? suspended : []);
     }
 
+    /// <inheritdoc />
+    public async Task<Auth0SyncResult> DeleteRegisteredUserAsync(
+        string id,
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.Equals(id, actorId, StringComparison.Ordinal))
+            throw new DomainRuleException(UserActivationErrors.CannotDeleteSelf, "UserCannotDeleteSelf");
+
+        var user = await repository.GetByIdAsync(id)
+            ?? throw new NotFoundException($"User {id} not found");
+
+        if (user.Role == UserRole.Admin && user.IsActive &&
+            !await repository.HasOtherActiveAdminAsync(id, cancellationToken))
+            throw new DomainRuleException(UserActivationErrors.CannotDeleteLastAdmin, "UserCannotDeleteLastAdmin");
+
+        // Auth0 first. A local delete that Auth0 did not follow would be undone by the next login, which creates
+        // the account again from the token.
+        var sync = await auth0Management.DeleteUserAsync(id, cancellationToken);
+        if (!sync.Succeeded)
+        {
+            logger.LogWarning(
+                "User not deleted, Auth0 delete failed ({ErrorCode}): userId={UserId} by={ActorId}",
+                sync.ErrorCode, id, actorId);
+            return sync;
+        }
+
+        try
+        {
+            await repository.DeleteAsync(id, cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogWarning(ex, "User delete blocked by related rows: userId={UserId} by={ActorId}", id, actorId);
+            throw new DomainConflictException(UserActivationErrors.DeleteBlocked, "UserDeleteBlocked");
+        }
+
+        authorizationCache.Invalidate(id);
+        logger.LogInformation(
+            "User deleted: userId={UserId} by={ActorId} at={AtUtc:o}",
+            id, actorId, DateTime.UtcNow);
+        return sync;
+    }
+
     private static IReadOnlyList<UserRole> ParseRoles(IEnumerable<string>? names) =>
         (names ?? [])
             .Select(n => Enum.TryParse<UserRole>(n, ignoreCase: true, out var role) ? role : (UserRole?)null)
@@ -253,16 +265,33 @@ public class UserService(
     /// <inheritdoc />
     public async Task EnrichUsersFromAuth0Async(IList<User> users)
     {
-        foreach (var user in users)
-        {
-            if (!string.IsNullOrWhiteSpace(user.Email) &&
-                !string.IsNullOrWhiteSpace(user.FirstName) &&
-                !string.IsNullOrWhiteSpace(user.LastName))
-            {
-                continue;
-            }
+        var incomplete = users
+            .Where(u => string.IsNullOrWhiteSpace(u.Email) ||
+                        string.IsNullOrWhiteSpace(u.FirstName) ||
+                        string.IsNullOrWhiteSpace(u.LastName))
+            .ToList();
+        if (incomplete.Count == 0)
+            return;
 
-            var profile = await auth0Management.GetUserProfileAsync(user.Id);
+        // A1-26: the profiles used to be fetched one after the other (up to a whole page of Management API round
+        // trips). They are now fetched in parallel, bounded so a page cannot burst past the Management API rate limit.
+        // Only the HTTP calls run concurrently: the DbContext is not thread-safe, so the writes below stay sequential.
+        using var throttle = new SemaphoreSlim(MaxConcurrentAuth0ProfileReads);
+        var profiles = await Task.WhenAll(incomplete.Select(async user =>
+        {
+            await throttle.WaitAsync();
+            try
+            {
+                return (User: user, Profile: await auth0Management.GetUserProfileAsync(user.Id));
+            }
+            finally
+            {
+                throttle.Release();
+            }
+        }));
+
+        foreach (var (user, profile) in profiles)
+        {
             if (profile is null)
                 continue;
 
@@ -307,6 +336,11 @@ public class UserService(
 
         var oldRole = user.Role;
 
+        // Same guard as UpdateRolesAsync (A1-17): never leave the platform without an active administrator.
+        if (oldRole == UserRole.Admin && newRole != UserRole.Admin &&
+            !await repository.HasOtherActiveAdminAsync(id))
+            throw new DomainRuleException(UserActivationErrors.LastActiveAdmin, "UserLastActiveAdminRoleChange");
+
         // Auth0 first: if it fails nothing changes in the DB and the admin can simply retry.
         // Only the previous primary role is removed; any other role (Supplier, LongTermLandlord…) is kept.
         var sync = await auth0Management.AssignRoleAsync(id, newRole);
@@ -338,6 +372,102 @@ public class UserService(
     }
 
     /// <inheritdoc />
+    public async Task<Auth0UserRolesResult> GetRolesAsync(string id, CancellationToken cancellationToken = default)
+    {
+        _ = await repository.GetByIdAsync(id) ?? throw new KeyNotFoundException($"User {id} not found");
+        return await auth0Management.GetUserRolesAsync(id, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<RoleSetUpdateResult> UpdateRolesAsync(
+        string id, IReadOnlyCollection<UserRole> roles, string adminSub, CancellationToken cancellationToken = default)
+    {
+        var user = await repository.GetByIdAsync(id)
+            ?? throw new KeyNotFoundException($"User {id} not found");
+
+        // Same guard as ChangeRoleAsync: the roles of a deactivated user are suspended (PL-03).
+        if (!user.IsActive)
+            throw new DomainRuleException(UserActivationErrors.UserInactive, "UserInactiveRoleChange");
+
+        var target = roles.Where(AdminManageableRoles.All.Contains).Distinct().ToHashSet();
+
+        // Auth0 is the source of truth for the roles actually held: comparing against it (not against the single
+        // User.Role field) is what lets a dual-role user (host + supplier, PL-16 "Both") keep every role it holds
+        // that the admin did not touch.
+        var currentRoles = await auth0Management.GetUserRolesAsync(id, cancellationToken);
+        if (!currentRoles.Sync.Succeeded)
+        {
+            logger.LogWarning(
+                "Roles update not applied, could not read current Auth0 roles ({ErrorCode}): userId={UserId} changedBy={AdminId}",
+                currentRoles.Sync.ErrorCode, id, adminSub);
+            return new RoleSetUpdateResult(user, [], [], [], currentRoles.Sync);
+        }
+
+        var current = currentRoles.Roles.Where(AdminManageableRoles.All.Contains).ToHashSet();
+        var toGrant = InPriorityOrder(target.Except(current));
+        var toRevoke = InPriorityOrder(current.Except(target));
+
+        // Would this leave the platform with zero active admins? Checked before touching Auth0, same spirit as the
+        // deactivation guard (UserRepository.SetActiveAsync). The DB primary role counts too: it is what the guard
+        // itself reads, and it can still say Admin after an out-of-band Auth0 change.
+        var removesAdmin = !target.Contains(UserRole.Admin) && (current.Contains(UserRole.Admin) || user.Role == UserRole.Admin);
+        if (removesAdmin && !await repository.HasOtherActiveAdminAsync(id, cancellationToken))
+            throw new DomainRuleException(UserActivationErrors.LastActiveAdmin, "UserLastActiveAdminRoleChange");
+
+        // Auth0 first: if it fails nothing changes in the DB and the admin can simply retry.
+        var sync = Auth0SyncResult.Synced;
+        if (toGrant.Count > 0)
+            sync = await auth0Management.AssignRolesAsync(id, toGrant, cancellationToken);
+        if (sync.Succeeded && toRevoke.Count > 0)
+            sync = await auth0Management.RemoveRolesAsync(id, toRevoke, cancellationToken);
+
+        if (!sync.Succeeded)
+        {
+            logger.LogWarning(
+                "Roles update not applied, Auth0 sync failed ({ErrorCode}): userId={UserId} target=[{Target}] changedBy={AdminId}",
+                sync.ErrorCode, id, string.Join(", ", InPriorityOrder(target)), adminSub);
+            return new RoleSetUpdateResult(user, InPriorityOrder(current), [], [], sync);
+        }
+
+        // The DB is reconciled with the whole target set, not just with the Auth0 difference: a previous attempt may
+        // have been interrupted between Auth0 and the DB (e.g. grant done, revoke failed), and its retry finds no
+        // Auth0 difference for the part already applied. Grant is idempotent and revoking a context the user does not
+        // hold is a no-op; it also drops legacy memberships of a role the admin removed (A1-29).
+        var oldRole = user.Role;
+        var newRole = AdminManageableRoles.All.FirstOrDefault(
+            target.Contains,
+            // A role outside the admin-manageable set (Guest, Staff…) is not the admin's to clear.
+            AdminManageableRoles.All.Contains(oldRole) ? UserRole.None : oldRole);
+        if (newRole != oldRole)
+        {
+            user.Role = newRole;
+            user.UpdatedAt = DateTime.UtcNow;
+            await repository.UpdateAsync(user);
+        }
+
+        var notTarget = AdminManageableRoles.All.Where(r => !target.Contains(r)).ToList();
+        if (notTarget.Count > 0)
+            await membershipService.RevokeAsync(id, notTarget, cancellationToken);
+        if (target.Count > 0)
+            await membershipService.GrantAsync(id, target, cancellationToken);
+        authorizationCache.Invalidate(id);
+
+        // Audit line (AD-AC5): who changed what, with the previous primary role and the exact difference.
+        logger.LogInformation(
+            "Roles changed: userId={UserId} oldRole={OldRole} newRole={NewRole} oldRoles=[{OldRoles}] newRoles=[{NewRoles}] granted=[{Granted}] revoked=[{Revoked}] changedBy={AdminId}",
+            id, oldRole, newRole, string.Join(", ", InPriorityOrder(current)), string.Join(", ", InPriorityOrder(target)),
+            string.Join(", ", toGrant), string.Join(", ", toRevoke), adminSub);
+
+        return new RoleSetUpdateResult(user, InPriorityOrder(target), toGrant, toRevoke, sync);
+    }
+
+    private static IReadOnlyList<UserRole> InPriorityOrder(IEnumerable<UserRole> roles)
+    {
+        var set = roles.ToHashSet();
+        return AdminManageableRoles.All.Where(set.Contains).ToList();
+    }
+
+    /// <inheritdoc />
     public async Task<(User User, IReadOnlyList<string> RolesAssigned, Auth0SyncResult RoleSync)> CompleteOnboardingAsync(
         string sub,
         RentalType rentalType,
@@ -346,6 +476,18 @@ public class UserService(
         string lastName)
     {
         var roles = MapRentalTypeToRoles(rentalType);
+
+        // A member of an org (a DB membership of a host context with a role other than the owner's, or an OrgId still
+        // pointing at a host org that already has an owner) cannot onboard: the grant below overwrites the role of an
+        // existing membership and assigns PropertyOwner in Auth0, and EnsureOwnerAsync would add a second owner of the
+        // org the person was removed from (AM-00, S2). Checked before anything is written. The real owner (no membership
+        // yet, or already the owner's) goes on, and so does a platform admin (not a host context).
+        if (await membershipService.IsHostMemberAsync(sub))
+        {
+            logger.LogWarning("Onboarding refused, the user is a member of an org and not its owner: userId={UserId}", sub);
+            throw new DomainConflictException(UserOnboardingErrors.MemberCannotOnboard, "MemberCannotOnboard");
+        }
+
         var user = await GetCurrentUserAsync(sub, email, firstName, lastName);
 
         user.RentalType = rentalType;
@@ -367,7 +509,11 @@ public class UserService(
         if (string.IsNullOrWhiteSpace(displayName))
             displayName = email;
 
-        await orgService.EnsureOrgForUserAsync(sub, email, displayName);
+        var org = await orgService.EnsureOrgForUserAsync(sub, email, displayName);
+
+        // AM-01: the one who sets up an org is its owner: the org member row and the account membership, together.
+        // Idempotent, so a repeated onboarding (or the retry of a failed one) finds them in place.
+        await orgMembershipService.EnsureOwnerAsync(sub, org.Id);
 
         user = await repository.GetByIdAsync(sub) ?? user;
 

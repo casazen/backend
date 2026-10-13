@@ -253,12 +253,12 @@ Per ogni prenotazione:
 
 ### Codici ISTAT
 
-Il dataset ufficiale ISTAT è in arrivo con il task RS-6 e al 2026-09-23 non è nel branch di integrazione. I codici del CSV vengono dagli URL delle pagine ISTAT 8milaCensus (`https://ottomilacensus.istat.it/comune/<provincia>/<codice>/`), consultati come estratti indicizzati [U]: Milano 015146, Roma 058091, Como 013075, Firenze 048017, Napoli 063049, Torino 001272, Venezia 027042, Bologna 037006, Seveso 108040, Cesano Maderno 108019. Quando RS-6 sarà integrato vanno riconciliati con il dataset.
+Il dataset ufficiale ISTAT (RS-6, consegnato dal product owner il 2026-10-01, aggiornato al 21/02/2026) è in `Casazen.Infrastructure/Data/Seeds/comuni-istat.csv` e viene caricato nella tabella `Comuni` (SU-04, `docs/runbooks/comuni-istat.md`). I codici del CSV delle tariffe vengono dagli URL delle pagine ISTAT 8milaCensus (`https://ottomilacensus.istat.it/comune/<provincia>/<codice>/`), consultati come estratti indicizzati [U]: Milano 015146, Roma 058091, Como 013075, Firenze 048017, Napoli 063049, Torino 001272, Venezia 027042, Bologna 037006, Seveso 108040, Cesano Maderno 108019. Riconciliati con l'elenco ufficiale (SU-04): coincidono tutti.
 
-Differenze con `Casazen.Core/Regulatory/ItalianComuneRegistry.cs` (usato anche dal bootstrap SEO, `SeoBootstrapHostedService`):
-- Torino è registrato come `010025`, che è Genova: il codice corretto è `001272` (difetto A5-34/A8-24, task SU-04).
-- Seveso e Cesano Maderno non sono nel registro.
-- Palermo, Bellagio, Menaggio e Varenna sono nel registro ma fuori dal perimetro di RS-7: nessuna tariffa raccolta.
+Differenze con il vecchio `ItalianComuneRegistry` (12 comuni scritti a mano, rimosso da SU-04: l'elenco è ora quello ufficiale):
+- Torino era registrato come `010025`, che è Genova: il codice corretto è `001272` (difetto A5-34/A8-24). Anche Bellagio (`013040` era Campione d'Italia, corretto `013250`), Menaggio (`013133` era Lomazzo, corretto `013145`) e Varenna (`013182` inesistente, corretto `097084`, provincia di Lecco) erano sbagliati.
+- Seveso e Cesano Maderno non erano nel registro.
+- Palermo, Bellagio, Menaggio e Varenna sono pilota SEO ma fuori dal perimetro di RS-7: nessuna tariffa raccolta.
 - Nessun seed di `TouristTaxRates` esiste oggi: né migrazioni né bootstrap SEO popolano la tabella (A5-06, A8-12).
 
 ### Indicazioni per CO-03 e BK-03

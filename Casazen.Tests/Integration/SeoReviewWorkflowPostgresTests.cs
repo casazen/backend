@@ -41,13 +41,13 @@ public class SeoReviewWorkflowPostgresTests : IClassFixture<SeoReviewWorkflowFac
         _factory.Ai.Respond = _ => ValidText("Bellagio e Menaggio");
 
         // The bootstrap job, and a job queued before SE-01 that still asks for the automatic approval.
-        await RunJobAsync(job => job.ExecuteAsync(["013133"]));
-        await RunJobAsync(job => job.ExecuteAsync(["013040"], autoApproveCounsel: true));
+        await RunJobAsync(job => job.ExecuteAsync(["013145"]));
+        await RunJobAsync(job => job.ExecuteAsync(["013250"], autoApproveCounsel: true));
 
         await using var scope = _factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var pages = await db.SeoContentPages.AsNoTracking()
-            .Where(p => p.ComuneCode == "013133" || p.ComuneCode == "013040")
+            .Where(p => p.ComuneCode == "013145" || p.ComuneCode == "013250")
             .ToListAsync();
         Assert.Equal(4, pages.Count);
         Assert.All(pages, page =>
@@ -73,14 +73,14 @@ public class SeoReviewWorkflowPostgresTests : IClassFixture<SeoReviewWorkflowFac
     public async Task Regeneration_OfApprovedPage_KeepsTheApprovedRevisionPublicUntilTheNewOneIsApproved()
     {
         _factory.Ai.Respond = _ => ValidText("Varenna prima versione");
-        await RunJobAsync(job => job.ExecuteAsync(["013182"], [SeoPageType.ComplianceGuide], false));
+        await RunJobAsync(job => job.ExecuteAsync(["097084"], [SeoPageType.ComplianceGuide], false));
         var admin = AdminClient();
-        var (pageId, firstRevision) = await PageAndLatestRevisionAsync(admin, "013182");
+        var (pageId, firstRevision) = await PageAndLatestRevisionAsync(admin, "097084");
         await ApproveAsync(admin, pageId, firstRevision, HttpStatusCode.OK);
 
         // Monthly refresh or "Genera" with force: a new text nobody has read yet.
         _factory.Ai.Respond = _ => ValidText("Varenna seconda versione");
-        await RunJobAsync(job => job.ExecuteAsync(["013182"], [SeoPageType.ComplianceGuide], true));
+        await RunJobAsync(job => job.ExecuteAsync(["097084"], [SeoPageType.ComplianceGuide], true));
 
         var client = _factory.CreateClient();
         using (var publicPage = JsonDocument.Parse(await client.GetStringAsync("/api/public/content/affitti-brevi/lombardia/varenna")))
@@ -162,9 +162,9 @@ public class SeoReviewWorkflowPostgresTests : IClassFixture<SeoReviewWorkflowFac
     public async Task Withdraw_PublishedPage_LeavesPublicSiteHubAndSitemapAndIsAudited()
     {
         _factory.Ai.Respond = _ => ValidText("Torino");
-        await RunJobAsync(job => job.ExecuteAsync(["010025"], [SeoPageType.ComplianceGuide], false));
+        await RunJobAsync(job => job.ExecuteAsync(["001272"], [SeoPageType.ComplianceGuide], false));
         var admin = AdminClient();
-        var (pageId, revisionId) = await PageAndLatestRevisionAsync(admin, "010025");
+        var (pageId, revisionId) = await PageAndLatestRevisionAsync(admin, "001272");
         await ApproveAsync(admin, pageId, revisionId, HttpStatusCode.OK);
         var client = _factory.CreateClient();
         const string path = "/p/affitti-brevi/piemonte/torino";

@@ -1,6 +1,7 @@
 ﻿using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
@@ -20,6 +21,12 @@ public interface IPropertyService
 
     /// <summary>Active properties of <paramref name="scope"/> (built by the web layer from the caller, TN-3).</summary>
     Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope);
+
+    /// <summary>
+    /// Active properties of <paramref name="scope"/> in <paramref name="mode"/> only (PM-01, <c>GET /api/properties?mode=</c>);
+    /// without the filter use <see cref="GetPropertiesAsync(HostScope)"/>, which lists them all.
+    /// </summary>
+    Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope, RentalMode mode);
     Task<Property> CreatePropertyAsync(Property property);
 
     /// <summary>
@@ -27,16 +34,41 @@ public interface IPropertyService
     /// the cancellation policy (422 <c>cancellation_policy_not_found</c>).
     /// </summary>
     Task<Property> UpdatePropertyAsync(Property property);
+
+    /// <summary>
+    /// Pauses a property (PC-03, A2-05): hidden from public search, its public page and new guest bookings until
+    /// reactivated. Still counts against the plan's property limit and stays fully visible and editable to the host;
+    /// its existing bookings are untouched. Idempotent: pausing an already-paused property leaves <c>PausedAt</c> as
+    /// it was.
+    /// </summary>
+    Task<Property> PausePropertyAsync(Property property);
+
+    /// <summary>Reactivates a paused property (PC-03, A2-05). Idempotent when already active.</summary>
+    Task<Property> ActivatePropertyAsync(Property property);
+
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): the row and its bookings, payments and fiscal data are kept, the
+    /// property leaves every normal read and frees its plan slot. A paused property (PC-03) can be deleted too.
+    /// Refused with 409 (<c>DomainConflictException</c>) while a stay or a lease is still to come. False when there is
+    /// nothing to delete.
+    /// </summary>
     Task<bool> DeletePropertyAsync(Guid id);
-    Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
+
+    /// <summary>
+    /// The public search across orgs (BK-20, A8-13): published properties of active orgs matching
+    /// <paramref name="criteria"/>, cheapest first within a city, at most 50. Each result carries its org's slug.
+    /// </summary>
+    Task<IEnumerable<PublicPropertyDto>> SearchAsync(PublicPropertySearchCriteria criteria);
     Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId, CancellationToken cancellationToken = default);
     Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id);
     Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId);
-    Task<Property> AddImageAsync(Guid propertyId, string imageUrl);
-    Task<Property> RemoveImageAsync(Guid propertyId, int imageIndex);
-    Task<Property> ReorderImagesAsync(Guid propertyId, List<string> orderedImageUrls);
     Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId);
-    Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(string ownerId, string? cinStatus, int page, int pageSize);
+
+    /// <summary>
+    /// CIN status of the properties in the caller's <paramref name="scope"/> (TN-3, same reach as the property list):
+    /// the owner's own properties, every property of the org for an org-wide role (MO-12, A6-20).
+    /// </summary>
+    Task<OwnerCinComplianceResult> GetCinComplianceAsync(HostScope scope, string? cinStatus, int page, int pageSize);
     Task UpdatePropertyCinAsync(Guid propertyId, string? cinCode);
 
     /// <summary>

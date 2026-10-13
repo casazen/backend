@@ -154,26 +154,38 @@ public class BookingCancellationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CancelAsync_AfterDeadlineHostChoosesPartialRefund_RefundsChosenAmountOnConnectedAccount()
+    public async Task CancelAsync_AfterDeadlineHostChoosesPartialRefund_ThrowsBelowMinimum()
     {
         var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 400m, freeRefundUntilDaysFromNow: -1);
 
         var quote = await Service().GetQuoteAsync(seed.BookingId);
-        var result = await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 150m, "Richiesta ospite", "auth0|host"));
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 150m, "Richiesta ospite", "auth0|host")));
 
         Assert.Equal(CancellationRefundRule.None, quote.Rule);
-        Assert.Equal(0m, quote.MinimumRefundAmount);
+        Assert.Equal(400m, quote.MinimumRefundAmount);
         Assert.Equal(400m, quote.RefundableAmount);
+        Assert.Equal("booking_cancel_refund_below_minimum", ex.Code);
+        Assert.Empty(_refunds);
+    }
+
+    [Fact]
+    public async Task CancelAsync_AfterDeadlineHostRefundsFullAmount_RefundsOnConnectedAccount()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 400m, freeRefundUntilDaysFromNow: -1);
+
+        var result = await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 400m, "Richiesta ospite", "auth0|host"));
+
         var request = Assert.Single(_refunds);
         Assert.Equal(Account, request.ConnectedAccountId);
-        Assert.Equal(15_000, request.AmountCents);
+        Assert.Equal(40_000, request.AmountCents);
         Assert.StartsWith("payment-refund:", request.IdempotencyKey);
         var refund = Assert.Single(result.Refunds);
         Assert.Equal(PaymentRefundOrigin.BookingCancellation, refund.Origin);
         Assert.Equal(PaymentRefundStatus.Succeeded, refund.Status);
         var payment = await _db.Payments.AsNoTracking().SingleAsync(p => p.Id == seed.PaymentId);
-        Assert.Equal(PaymentStatus.PartiallyRefunded, payment.Status);
-        Assert.Equal(150m, payment.RefundedAmount);
+        Assert.Equal(PaymentStatus.Refunded, payment.Status);
+        Assert.Equal(400m, payment.RefundedAmount);
     }
 
     [Fact]
@@ -186,14 +198,14 @@ public class BookingCancellationServiceTests : IDisposable
             .Callback<string?, EmailContent, string>((to, content, template) => sent.Add((to, content, template)))
             .Returns(true);
 
-        await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 150m, "  Caldaia guasta, nota interna  ", "auth0|host"));
+        await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 400m, "  Caldaia guasta, nota interna  ", "auth0|host"));
 
         var booking = await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
         Assert.Equal("Caldaia guasta, nota interna", booking.CancellationNote);
         var email = Assert.Single(sent, e => e.Template == EmailTemplates.Names.GuestBookingCancelled);
         Assert.Equal("guest@example.com", email.To);
         Assert.Contains("Villa Rosa", email.Content.Subject);
-        Assert.Contains("150,00 €", email.Content.HtmlBody);
+        Assert.Contains("400,00 €", email.Content.HtmlBody);
         Assert.DoesNotContain("Caldaia", email.Content.HtmlBody);
     }
 
@@ -282,15 +294,16 @@ public class BookingCancellationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CancelAsync_HostChoosesNoRefundAfterDeadline_CancelsWithoutStripeRefund()
+    public async Task CancelAsync_HostChoosesNoRefundAfterDeadline_ThrowsBelowMinimum()
     {
         var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 400m, freeRefundUntilDaysFromNow: -3);
 
-        var result = await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 0m, null, null));
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 0m, null, null)));
 
-        Assert.Equal(BookingStatus.Cancelled, result.Booking.Status);
-        Assert.Empty(result.Refunds);
+        Assert.Equal("booking_cancel_refund_below_minimum", ex.Code);
         Assert.Empty(_refunds);
+        Assert.Equal(BookingStatus.Confirmed, (await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId)).Status);
         Assert.Equal(PaymentStatus.Completed, (await _db.Payments.AsNoTracking().SingleAsync(p => p.Id == seed.PaymentId)).Status);
     }
 
@@ -316,7 +329,8 @@ public class BookingCancellationServiceTests : IDisposable
 
         Assert.Equal(CancellationRefundRule.PropertyCancellationPolicy, quote.Rule);
         Assert.Equal("Moderata", quote.CancellationPolicyName);
-        Assert.Equal(150m, quote.MinimumRefundAmount);
+        Assert.Equal(300m, quote.MinimumRefundAmount);
+        Assert.Equal(300m, quote.RefundableAmount);
         Assert.True(quote.RequiresRefundDecision);
     }
 

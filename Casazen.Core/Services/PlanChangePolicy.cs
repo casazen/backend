@@ -18,8 +18,8 @@ public enum ManualPlanChangeOutcome
 /// <summary>
 /// Paid tiers are granted only by a Stripe subscription (#274). A manual plan change
 /// (<c>PUT /api/orgs/me/plan</c>, <c>PATCH /api/admin/orgs/{id}/plan</c>) never overwrites a plan that Stripe
-/// manages and, without a subscription, may only move to a tier not above the effective one
-/// (a downgrade or back to Starter).
+/// manages and, without a subscription, may only move to a tier not above the one the org pays for
+/// (a downgrade or back to Starter). The open access (BL-01) does not enter here: see <c>docs/runbooks/open-access.md</c>.
 /// </summary>
 public static class PlanChangePolicy
 {
@@ -33,14 +33,17 @@ public static class PlanChangePolicy
         org.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.PastDue;
 
     /// <param name="org">The org whose plan would change.</param>
-    /// <param name="effectiveTier">The org's effective tier (<see cref="IEntitlementService.ResolveEffectiveTier"/>).</param>
+    /// <param name="paidTier">
+    /// The tier the org's subscription pays for (<see cref="IEntitlementService.ResolvePaidTier"/>), <b>not</b> the effective
+    /// one raised by the open access (BL-01): otherwise an org without a subscription could store a paid tier for free.
+    /// </param>
     /// <param name="requestedTier">The tier requested by the caller.</param>
-    public static ManualPlanChangeOutcome EvaluateManualChange(Org org, PlanTier effectiveTier, PlanTier requestedTier)
+    public static ManualPlanChangeOutcome EvaluateManualChange(Org org, PlanTier paidTier, PlanTier requestedTier)
     {
         if (HasActiveSubscription(org))
             return ManualPlanChangeOutcome.ManagedByStripe;
 
-        return PlanCatalog.Rank(requestedTier) > PlanCatalog.Rank(effectiveTier)
+        return PlanCatalog.Rank(requestedTier) > PlanCatalog.Rank(paidTier)
             ? ManualPlanChangeOutcome.SubscriptionRequired
             : ManualPlanChangeOutcome.Allowed;
     }

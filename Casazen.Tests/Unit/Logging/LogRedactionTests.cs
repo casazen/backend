@@ -1,5 +1,4 @@
 using System.Net;
-using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.External;
@@ -48,41 +47,6 @@ public class LogRedactionTests
     }
 
     [Fact]
-    public async Task Register_Success_LogsMaskedEmailOnly()
-    {
-        var logger = new CapturingLogger<AuthController>();
-        var userService = new Mock<IUserService>();
-        userService
-            .Setup(s => s.RegisterUserAsync(Email, "Mario", "Rossi", "secret"))
-            .ReturnsAsync(new User { Id = "user-1", Email = Email, FirstName = "Mario", LastName = "Rossi" });
-        var controller = new AuthController(userService.Object, logger);
-
-        var result = await controller.Register(new RegisterRequest(Email, "Mario", "Rossi", "secret"));
-
-        Assert.IsType<OkObjectResult>(result);
-        AssertMaskedOnly(logger.AllOutput);
-        Assert.Contains(logger.Entries, e => e.Message.Contains(Masked, StringComparison.Ordinal));
-        Assert.DoesNotContain("Rossi", logger.AllOutput, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Register_DuplicateEmail_LogsMaskedErrorMessage()
-    {
-        var logger = new CapturingLogger<AuthController>();
-        var userService = new Mock<IUserService>();
-        userService
-            .Setup(s => s.RegisterUserAsync(Email, "Mario", "Rossi", "secret"))
-            .ThrowsAsync(new InvalidOperationException($"User with email {Email} already exists"));
-        var controller = new AuthController(userService.Object, logger);
-
-        var result = await controller.Register(new RegisterRequest(Email, "Mario", "Rossi", "secret"));
-
-        Assert.IsType<BadRequestObjectResult>(result);
-        AssertMaskedOnly(logger.AllOutput);
-        Assert.Contains(logger.Entries, e => e.Message.Contains(Masked, StringComparison.Ordinal));
-    }
-
-    [Fact]
     public async Task InviteSupplier_Created_LogsMaskedEmailOnly()
     {
         var logger = new CapturingLogger<AdminSuppliersController>();
@@ -90,7 +54,7 @@ public class LogRedactionTests
         supplierService
             .Setup(s => s.CreateInviteAsync(Email, "015146", null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SupplierInvite(Guid.NewGuid(), DateTime.UtcNow.AddDays(7)));
-        var controller = new AdminSuppliersController(supplierService.Object, logger);
+        var controller = new AdminSuppliersController(supplierService.Object, Mock.Of<ISupplierAdminService>(), logger);
 
         var result = await controller.InviteSupplier(
             new AdminInviteSupplierRequest { Email = Email, ComuneCode = "015146" },

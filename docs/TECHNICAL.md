@@ -60,7 +60,7 @@ All endpoints require a `Bearer` JWT token in the `Authorization` header (issued
 
 Anonymous / public (non-exhaustive highlights):
 - `GET /api/health`, `GET /api/health/live`, `GET /api/health/ready`, `GET /api/properties/search`
-- `POST /api/auth/register`, `GET /api/orgs/plans`
+- `GET /api/orgs/plans`
 - All `/api/public/*` (including the SEO sitemap `/api/public/sitemap.xml` and the guest check-in portal `/api/public/checkin/*`), `/api/legal/*`
 - `POST /api/suppliers/register`, webhook receivers under `/webhooks/*`
 
@@ -75,23 +75,60 @@ registered, registered but unused, or an action with neither).
 | `Authenticated` | any signed-in user, suppliers included: only user-scoped endpoints, each listed with its reason in the test allow-list |
 | `AdminOnly` | JWT role `Admin` |
 | `Supplier` (`RequireSupplier`) | JWT role `Supplier` (backfilled from the DB supplier link) |
-| `OrgBillingAdmin` (`RequireOrgBillingAdmin`) | org administrator in either rental context (PL-16): owner `PropertyOwner` or `LongTermLandlord` (JWT role or short-rent/long-rent membership), `PropertyManager`, platform `Admin`; never `Staff`/`Guest`. Plan, entitlement, billing, domain, Stripe Connect account |
+| `OrgBillingAdmin` (`RequireOrgBillingAdmin`) | org administrator in either rental context (PL-16): owner `PropertyOwner` or `LongTermLandlord` (JWT role, or DB membership with the owner's role key: `property_owner` of short-rent, `long_term_landlord` of long-rent, `OrgOwnerRoles`), platform `Admin`, or (AM-01) an `account` membership holding `org.billing.manage` (`org_owner`, `org_admin`); never `Staff`/`Guest`, never a `PropertyManager` (D12) nor any other member role. Plan, entitlement, billing, Stripe Connect account, branding, domain, site documents and (AM-03b) the export of the org's fiscal data and team |
 | `SharedPropertyRead` / `SharedPropertyWrite` | `property.*` in short-rent **or** long-rent: only the property core a long-term landlord needs (list, record, create/update, documents/APE) — A7-06 |
 | `PropertyRead` / `PropertyWrite` | short-rent `property.*`: the short-stay side of a property (photos, CIN, iCal, activation, detail with bookings/OTA, pricing, fiscal, service requests) |
 | `BookingRead/Write`, `PaymentRead/Write`, `GuestRead/Write`, `OtaRead/Write` | short-rent context permission |
+| `ServiceRequestWrite`, `GuestManage`, `AlloggiatiSubmit` | AM-03: short-rent permissions carved out of `property.write` (interventions), `guest.write` (erase, anonymize, consents of a guest) and `booking.write` (register the guests of a stay, declare the Alloggiati communication sent); the owner and the property manager hold them, the collaborator only the first (`docs/runbooks/org-team.md` § 21) |
 | `LeaseRead/Create/Sign/Register` | long-rent context permission |
+| `OrgMembersManage` (`RequireContext:account:org.members.manage`) | AM-02: the owner and the administrators of the org (permission of the `account` context); the invitations and the members endpoints, behind the flag `OrgTeam` |
+| `OrgActivityRead` (`RequireContext:account:org.activity.read`) | AM-02b: the owner and the administrators; the list and the CSV of the activity log, behind the flag `OrgTeam` |
 
 Context permissions come from the DB memberships (`UserContextMemberships` → `Roles` → `RolePermissions`) with the JWT
 roles as fallback (`ContextAuthorizationService`). A permission counts only in the context that grants it: the long-rent
 `property.*` never satisfies a short-rent policy (`RequireContext:short-rent|long-rent:…` lists both contexts where an
 endpoint serves both). The class carries the read permission, writing actions add the write one.
 
+**Org membership (AM-01, `docs/runbooks/org-team.md`).** `OrgMember` (table `OrgMembers`, one org per user, role Owner / Admin /
+PropertyManager / Collaborator / Accountant) is the source of truth of who belongs to which org; the `UserContextMemberships` rows
+are the projection of its role into permissions, written in the same transaction by `IOrgMembershipService` only. The roles
+`org_owner`, `org_admin`, `org_accountant` live in the new context `account` ("Amministrazione" of the customer, permissions
+`org.members.manage`, `org.billing.manage/read`, `org.settings.manage`, `org.suppliers.manage`, `org.activity.read`; the staff
+console stays `admin`); `GET /api/me/contexts` lists `account` only with the flag `OrgTeam` on. For a user with an org member row
+and a rental membership the host contexts come from the DB only (a token never adds one: veto of PR #455 limited to org
+members); a deactivated member gets 403 `member_inactive` from the next request.
+
+**Org invitations, members and seats (AM-02, `docs/runbooks/org-team.md`, behind the flag `OrgTeam`).** The owner and the
+administrators (permission `org.members.manage` of the `account` context) invite a person with a role and the areas it works
+in. The invitation (`OrgInvitation`, table `OrgInvitations`) holds a seat for seven days; its link carries a 256-bit secret of
+which only the SHA-256 is stored, a new link replaces the old one, and the token only travels in the body of the two public
+calls. The invited account accepts (verified email equal to the invited one, never a platform admin, the four consents again
+for the new org) and becomes a member; a person whose own org is still empty and unbilled leaves it, anyone else with an org
+is refused (409 `invitation_user_has_organization`). Seats per plan (Starter 2, Pro 10, Scale unlimited) count active members
+plus pending invitations and are decided under one advisory lock per org. Only the owner creates or touches an
+administrator; the owner is never touched. The hourly job `org-invitation-maintenance` reminds on the third day, expires
+and deletes the closed invitations 30 days after they closed.
+
+**Activity log and requests for access (AM-02b, `docs/runbooks/org-team.md` part 4, behind the flag `OrgTeam`).** The owner and
+the administrators (permission `org.activity.read`) read who did what in the org: a short list with ids and codes and no personal
+data (`OrgActivityEntry`, table `OrgActivityEntries`, events fixed in `OrgActivityCatalog`: the people, the properties given to
+a member, the plan, the name and the slug of the org). A service writes the line with `IActivityLog.Record` **inside the unit of
+work of the change it records** (the same `SaveChanges`, the same transaction: a rollback takes both away); nothing is collected
+while the flag is off. The list is paged and filtered (`from`, `to`, `type`, `area`, `actor`) and the CSV has a fixed header and no
+personal data; the lines are deleted after 12 months by the nightly job `org-activity-retention`. A member who cannot do
+something asks the administrators for access (`POST /api/orgs/me/access-requests`): an area or a page of a closed list and a
+note of up to 200 characters, an email in Italian or English to the owner and the administrators, a line in the log, nothing else
+stored; three requests a day for each person.
+
 The policy says what kind of operation a user may do; the row itself is checked with
 `IAuthorizationService.AuthorizeAsync(User, HostResource, operation)` (`PropertyOperations`, `SharedPropertyOperations`,
 `BookingOperations`, `GuestOperations`, `PaymentOperations`, `OtaOperations`, `LeaseOperations`): `HostResourceAuthorizationHandler` grants it only when the row
-is in the caller's org, the caller holds the permission and, for property-bound rows, owns the property or has an
-org-wide role (`HostRoles.OrgWide`: `PropertyManager`, `Admin`). Lists use `User.GetHostScope(orgId)` → `HostScope`,
-filtered in SQL. Services never check roles: they receive the org / scope decided by the web layer. A row that is not in
+is in the caller's org, the caller holds the permission and, for property-bound rows, **reaches the property** (AM-03): every
+property for an owner, administrator, manager or accountant member and a collaborator with every property, only the ones in
+`PropertyMemberAccesses` for a collaborator "Solo alcuni", the ones it created for an account in no org team. The reach is read
+from the database (`IHostScopeResolver`, the authorization snapshot cached 60 s), never from the token roles. Lists use
+`await User.ResolveHostScopeAsync(resolver, orgId)` → `HostScope` and narrow with `query.InScope(scope)` (an `EXISTS` in the same SQL
+statement). Services never check roles: they receive the org / scope decided by the web layer. A row that is not in
 the caller's org answers 404; a visible row the caller may not use answers 403.
 
 There are **48** controller source files under `Casazen.Web/Controllers/`. The supplier jobs with QR check-in (`SupplierJobController`, `PublicCheckInController`) were removed by SU-11 (decision D12): supplier work is a `ServiceRequest` only.
@@ -102,7 +139,6 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/auth/register` | Anonymous | Register a new user |
 | `GET` | `/api/auth/profile` | JWT | Current auth profile |
 | `POST` | `/api/auth/logout` | JWT | Logout / invalidate session side-effects |
 | `GET` | `/api/users` | Admin | Paginated user list |
@@ -115,15 +151,33 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `DELETE` | `/api/users/{id}` | Admin | Delete user |
 | `POST` | `/api/devices` | JWT | Register iOS/Android push device |
 | `DELETE` | `/api/devices/{deviceId}` | JWT | Unregister device |
+| `GET` | `/api/me/notifications?unread=&page=&pageSize=` | JWT, flag `InAppNotifications` | UI-12a: the caller's in-app notifications (the bell), newest first, paged (`pageSize` 1–50, default 20): `{ items: [{ id, type, entityId, createdAt, readAt }], totalCount, page, pageSize }`. No text: the client writes it from `type` |
+| `GET` | `/api/me/notifications/unread-count` | same | `{ count }` |
+| `POST` | `/api/me/notifications/{id}/read` | same | 204, idempotent; 404 for a notification that is not the caller's (another user's, another org's, deleted, unknown), never 403 |
+| `POST` | `/api/me/notifications/read-all` | same | 204 |
 
 #### Multi-tenancy (orgs & workspace)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships` |
+| `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships`; the `account` context (AM-01) only with `Features:OrgTeam` on |
 | `GET` | `/api/orgs/plans` | Anonymous | Plan catalogue and property limits |
-| `GET` | `/api/orgs/me/entitlement` | OrgBillingAdmin (org policy, any rental context, PL-16) | Org plan tier, limits, usage, `canAddProperty`, `canUseCustomDomain` |
+| `GET` | `/api/orgs/me/entitlement` | OrgBillingAdmin (org policy, any rental context, PL-16) | Org plan tier (the effective one), limits, usage, `canAddProperty`, `canUseCustomDomain`; BL-01: `openAccess` (`true` when the tier shown is raised by `Entitlement:OpenAccess`, [`open-access.md`](runbooks/open-access.md)); AM-02: `limits.maxSeats`, `usage.seats`, `canInviteMember` |
 | `PUT` | `/api/orgs/me/plan` | Org billing admin | Downgrade / back to Starter only; upgrade without an active subscription → 403 `subscription_required`, Stripe-managed plan → 409 `managed_by_stripe` (#274) |
+| `POST` | `/api/orgs/me/invitations` | Policy `RequireContext:account:org.members.manage`, flag `OrgTeam` | AM-02: invite a person (email, name, role, areas): 201 `{ invitation, emailQueued }`; 403 `org_owner_required`, 409 `org_seat_limit_reached`, `org_invitation_already_pending`, `org_member_already_member`, 422 `org_owner_not_assignable`, `org_member_area_required` |
+| `GET` | `/api/orgs/me/invitations` | same | Invitations open or expired, never the token |
+| `POST` | `/api/orgs/me/invitations/{id}/resend`, `/revoke`, `/link` | same | Send again with a new link (7 more days) / withdraw (204, idempotent) / a fresh link to hand out (`no-store`) |
+| `GET` | `/api/orgs/me/members` | same | `{ items, seats }`: the people, owner first, and the seats of the plan |
+| `PUT` | `/api/orgs/me/members/{id}` | same | Change the role (never to Owner; Admin only by the owner) |
+| `POST` | `/api/orgs/me/members/{id}/deactivate`, `/reactivate` | same | Switch the access off / on (reactivating takes a seat); 409 `org_last_owner` for the owner |
+| `DELETE` | `/api/orgs/me/members/{id}` | same | The person leaves the org; its account stays |
+| `GET` | `/api/orgs/me/members/{id}/properties` | same | AM-03: the active properties of the org with whether this member reaches each (`granted`) and how many people do (`peopleWithAccess`); `scopeSupported` false for a member who is not a collaborator |
+| `PUT` | `/api/orgs/me/members/{id}/properties` | same | AM-03: `{ propertyScope, propertyIds }` with `propertyScope` `All` or `Selected` ("Solo alcuni" is the collaborator only); 403 `org_owner_required`, 422 `org_member_scope_not_supported`, `org_member_property_unknown` |
+| `GET` | `/api/orgs/me/activity` | Policy `RequireContext:account:org.activity.read`, flag `OrgTeam` | AM-02b: the activity log, newest first, paged (`page`, `pageSize` 50/100) and filtered (`from`, `to`, `type` one or several, `area`, `actor` or `system`): `{ items, totalCount, page, pageSize }`, each item with ids and codes only; 400 for an unknown event or area or `from` after `to` |
+| `GET` | `/api/orgs/me/activity.csv` | same | AM-02b: the whole matching log as a CSV (fixed header `id,when,actor,area,type,subjectType,subjectId,details`, no personal data, never cached) |
+| `POST` | `/api/orgs/me/access-requests` | JWT (any active member), rate limited per person (`OrgAccessRequest`), flag `OrgTeam` | AM-02b: `{ area, note }`, 202 `{ notified }`: an email to the owner and the administrators and a line in the log; 409 `access_request_limit_reached` (three a day), 422 `access_request_area_unknown`, 429 |
+| `POST` | `/api/org-invitations/lookup` | Anonymous, rate limited (`PublicInvitationLookup`), flag `OrgTeam` | What a link is for; every link that does not work answers the same 410 `invitation_invalid` |
+| `POST` | `/api/org-invitations/accept` | JWT (any signed-in account), flag `OrgTeam` | Accept with the four consents: 200 `{ orgId, orgName, role, areas, leftEmptyOrg }`; 403 `invitation_email_mismatch`, `invitation_email_not_verified`, `invitation_platform_admin`; 409 `invitation_user_has_organization`; 410 `invitation_expired`, `invitation_used`, `invitation_revoked`, `invitation_invalid` |
 | `GET` | `/api/orgs/{orgId}/domain` | JWT | Custom domain config for org |
 | `POST` | `/api/orgs/{orgId}/domain` | JWT | Set custom domain |
 | `POST` | `/api/orgs/{orgId}/domain/verify` | JWT | Verify DNS / domain ownership |
@@ -138,26 +192,32 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/properties` | Properties of the caller's org the caller may handle (own ones; whole org for org-wide roles). Short-rent or long-rent |
+| `GET` | `/api/properties` | Properties of the caller org the caller reaches (AM-03: read from the org membership in the database; the whole org for an owner, administrator, manager, accountant or a collaborator with every property; only the ones given to a collaborator "Solo alcuni"; the ones created for an account in no team). Short-rent or long-rent Each row carries `rentalMode` (`Short`/`Long`, PM-01); `?mode=short\|long` narrows the list (400 `validation_error` for another value), without it every property is listed |
 | `GET` | `/api/properties/{id}` | The property record (`PropertyResponse`): no bookings, check-in tokens, OTA integrations or documents (PC-02, A2-32; bookings come from the booking endpoints). Short-rent or long-rent |
 | `GET` | `/api/properties/cancellation-policies` | Cancellation policies a property can reference (global catalog). Short-rent only |
-| `POST` | `/api/properties` | Create a new property. Short-rent or long-rent; `nightlyRate`/`maxGuests` may be `0` (long-term only property, blocks short-stay activation); `bedrooms` may be `0` (studio) |
-| `PUT` | `/api/properties/{id}` | Update a property (owner or org-wide role) with **PATCH semantics** (PC-02, A2-04): a field left out of the body (or `null`) keeps its stored value; `cinCode`, `slug` and `cancellationPolicyId` sent as `null` are cleared. 400 `validation_error` for an invalid field, 422 `cancellation_policy_not_found`. Short-rent or long-rent |
+| `POST` | `/api/properties` | Create a new property. Short-rent or long-rent; `nightlyRate`/`maxGuests` may be `0` (long-term only property, blocks short-stay activation); `bedrooms` may be `0` (studio). Optional `rentalMode` (`Short`/`Long`, PM-01): without it, no guests **and** no rate create a `Long` property, anything else a `Short` one ([`property-rental-mode.md`](runbooks/property-rental-mode.md)) |
+| `PUT` | `/api/properties/{id}` | Update a property (owner or org-wide role) with **PATCH semantics** (PC-02, A2-04): a field left out of the body (or `null`) keeps its stored value; `cinCode`, `slug` and `cancellationPolicyId` sent as `null` are cleared. 400 `validation_error` for an invalid field, 422 `cancellation_policy_not_found`, 422 `property_rental_mode_change_not_allowed` for a `rentalMode` that is not the stored one (the mode is never changed by this save). Short-rent or long-rent |
+| `PUT` | `/api/properties/{id}/responsible` | AM-03: the member in charge of the property, `{ userId }` or `null`: 204; 422 `property_responsible_invalid` (not an active member who reaches the property). Short-rent or long-rent, same check as the update |
+| `GET` | `/api/properties/{id}/mode` | Behind `Features:PropertyModeChange` (PM-02). The mode of the property, the change waiting for its day and the last one that is over. Short-rent or long-rent ([`property-rental-mode.md` §8](runbooks/property-rental-mode.md#8-the-scheduled-change-of-mode-pm-02-decision-d16)) |
+| `GET` | `/api/properties/{id}/mode/preview?to=short\|long&date=` | PM-02. What a change to `to` on `date` (default: the first possible day) meets: stays, imported calendar blocks or leases in the way, the first free day, the `issues` the creation would answer. Ids and dates only |
+| `POST` | `/api/properties/{id}/mode/change` | PM-02. Programs the change (`{ to, effectiveDate }`, tomorrow at the earliest). 201, 404 `property_not_found`, 409 `property_mode_change_exists` / `property_mode_blocked_by_bookings` / `property_mode_blocked_by_lease` / `property_mode_blocked_by_draft_lease`, 422 `property_mode_unchanged` / `property_mode_date_too_early` / `property_mode_date_too_far`. To long-term the calendar closes from the night before the day |
+| `DELETE` | `/api/properties/{id}/mode/change/{changeId}` | PM-02. Withdraws a change that is still waiting: 204, 404 `property_mode_change_not_found`, 409 `property_mode_change_not_scheduled` |
 | `GET`/`POST` | `/api/properties/{id}/documents` | List (with `documentType`) / upload documents such as the APE. Short-rent or long-rent |
 | `DELETE` | `/api/properties/{id}/documents/{docId}` | Delete a document. Short-rent or long-rent |
 | `GET` | `/api/properties/{id}/documents/{docId}/download` | Authenticated download from the private bucket (FD-07). Short-rent or long-rent |
 | `DELETE` | `/api/properties/{id}` | Delete a property (owner only). Short-rent only |
 | `GET` | `/api/properties/search` | Search properties by city, bedrooms, max price (anonymous) |
-| `POST` | `/api/properties/{id}/images` | Upload photos (max 20, JPEG/PNG/WebP, 10 MB each) |
-| `GET` | `/api/properties/{id}/images` | List photo URLs |
-| `DELETE` | `/api/properties/{id}/images/{imageIndex}` | Delete a photo by index |
-| `PUT` | `/api/properties/{id}/images/order` | Reorder photos |
+| `GET` | `/api/properties/{id}/images` | The photo gallery (PC-04): `photoUrls` in display order (absolute public URLs, the first is the cover) plus the upload rules (`maxPhotos`, `maxFilesPerRequest`, `maxFileSizeBytes`, `allowedContentTypes`). Short-rent only |
+| `POST` | `/api/properties/{id}/images` | Upload photos (multipart field `images`; at most 10 files per request, 10 MB each, 20 per property; JPEG/PNG/WebP checked on their content). All or none. 422 `property_photo_none`/`_too_many_files`/`_invalid_type`/`_invalid_size`/`_limit_reached`. Answers with the gallery |
+| `DELETE` | `/api/properties/{id}/images?url=...` | Delete a photo **by URL** (not by position) from the gallery and its object from the storage. 404 `property_photo_not_found`. Answers with the gallery |
+| `PUT` | `/api/properties/{id}/images/order` | Set the order: body = every photo URL of the gallery, each once. 409 `property_photos_changed` when the list is not the current gallery. Answers with the gallery |
+| `PUT` | `/api/properties/{id}/images/cover` | Make a photo the cover (body `{ "url": ... }`): it moves first. Answers with the gallery |
 
 Property record choices (PC-02):
 - **Update = PUT with PATCH semantics**, not a full PUT: a client that does not know or show a field (the long-term
   form, the pause toggle of the list, an older app build) can never reset the cleaning fee, deposit, house rules,
   timezone or cancellation policy. The web forms still send every field they show (`toPropertyPayload`), never the
-  photos (managed by the image endpoints).
+  photos (managed by the image endpoints; a `photoUrls` sent to create or update is ignored, PC-04).
 - **Bathrooms stay a whole number** (`int` in the model and the database, 1-50): the form accepts whole numbers only,
   no migration. **Bedrooms 0-100**, `0` = studio (monolocale); the activation wizard no longer requires a bedroom.
 - **No country nor currency** on the property: amounts are in euros and the form has no such fields.
@@ -166,7 +226,8 @@ Property record choices (PC-02):
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/bookings` | List bookings (filter by `?propertyId=`) |
+| `GET` | `/api/bookings` | List bookings a page at a time (PC-14: `?propertyId&guestId&page&pageSize`, `Bookings:DefaultPageSize` = 10 when `pageSize` is missing, at most 100), answered as `{ items, totalCount, page, pageSize }` |
+| `GET` | `/api/bookings/search` | The same list with days, status and text (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, same order, same answer, same default page size |
 | `GET` | `/api/bookings/{id}` | Get a single booking |
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
 | `PUT` | `/api/bookings/{id}` | Update a booking |
@@ -176,18 +237,40 @@ Property record choices (PC-02):
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
 | `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
 
+**Booking code and the searchable list (SR-03).** Every booking answer carries `bookingCode`, the code the guest knows,
+as `XXXXX-XXXXX` (`BookingCodes.Format`; stored without the dash, unique per org). `GET /api/bookings/search` is the list
+the screens of the Prenotazioni area read (`IBookingSearchService`); `GET /api/bookings` (PC-14) is unchanged and keeps the
+order and the answer the search has (latest check-in first, then the id). It is filtered in SQL by the caller's `HostScope`
+like the plain list (`propertyId` of another org: 404, without `booking.read` on it: 403), and by:
+- `from`, `to` (`yyyy-MM-dd`, both optional, both included): the stays that have a day in the range, from the arrival day to
+  the departure day, compared as stay dates (midnight UTC of the day, never moved to a time zone: `HostCalendarRange`). A
+  `from` after `to` is 400 `booking_list_invalid_range`.
+- `status`: one or more of `Pending`, `Confirmed`, `CheckedIn`, `CheckedOut`, `Cancelled`, repeated or separated by commas,
+  by name and any case (400 `booking_list_invalid_status` for anything else, numbers included); none = every status.
+- `q`: any case, in the name of the guest (first and last, in either order), the email of the guest, the name of the
+  property and, when what was typed can be a piece of a code (`BookingSearchRules.CodeFragment`: no dashes or spaces, `O`
+  read as `0`, `I` and `L` as `1`, at least 3 characters), the booking code. `%` and `_` are ordinary characters. At most
+  100 characters are read.
+- `page` (from 1) and `pageSize` (`Bookings:DefaultPageSize` of the plain list when missing, at most 100; out of range is
+  brought within it). The order is the latest check-in first and the booking id as the tie-break, a total order: the same
+  booking is never on two pages nor on none. One query for the page, and a second for `totalCount` only when the page is full
+  or past the end.
+
 #### Host dashboard (PC-16)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/dashboard/kpis?period=Month&month=yyyy-MM` \| `?period=Last30Days` | short-rent booking.read | KPIs of the period computed on the server (default: current Europe/Rome month); 400 `dashboard_invalid_period` |
+| `GET` | `/api/dashboard/kpis?period=Month&month=yyyy-MM` \| `?period=Last30Days` \| `?period=Next30Days` | short-rent booking.read | KPIs of the period computed on the server (default: current Europe/Rome month); 400 `dashboard_invalid_period`. SR-03, all optional: `&propertyId=` (one property of the caller's reach, else 404), `&compare=true` (adds `previous`) |
+| `GET` | `/api/dashboard/today` | short-rent booking.read | SR-03: the host's day in one read (below): arrivals and departures of today with their online check-in, the check-ins to come, the requests waiting, the things to do in order of priority |
 | `GET` | `/api/dashboard/ical-feeds` | short-rent booking.read + property.read | iCal import feeds of the caller's properties: last sync, status, error code and localized message, feeds with an error first; never the URL |
 
-Both are limited to the caller's `HostScope` (org, and the owned properties unless the role is org-wide), in SQL.
+All are limited to the caller's `HostScope` (org, and the properties the caller reaches unless the role is org-wide: AM-03),
+in SQL.
 Definitions (`IHostDashboardService`, `StayKpiRules`; days are Europe/Rome calendar dates, `RomeCalendar`):
-- **Period**: a calendar month, or the 30 nights ending with tonight (`Last30Days`). A night belongs to the date it
-  starts on.
-- **Occupancy** = occupied property-nights / available property-nights, over the active properties of the scope. A
+- **Period**: a calendar month, the 30 nights ending with tonight (`Last30Days`) or the 30 nights starting tonight
+  (`Next30Days`, SR-03). A night belongs to the date it starts on.
+- **Occupancy** = occupied property-nights / available property-nights, over the active properties of the scope (the ones
+  in long-term mode are not counted: SR-03). A
   night is occupied as in `PropertyOccupancy` (the nights the booking site shows as taken): a booking that occupies
   its dates (`CheckoutHolds.OccupiesDates`: not cancelled, not an expired checkout hold; a valid hold or a pending "pay
   at the property" request counts) or a block imported by an iCal feed. A night closed only by a manual block (owner
@@ -202,6 +285,56 @@ Definitions (`IHostDashboardService`, `StayKpiRules`; days are Europe/Rome calen
   on its Rome date.
 - **Upcoming check-ins**: `Confirmed` bookings from today on (today's arrivals until the host registers them), soonest
   first; never a cancelled booking. **Recent bookings**: the last five created, any status.
+- **Collected** (`collected`, SR-03): the money that came in during the period, by cash, next to the revenue of the stays,
+  which is by accrual (`PaymentCashRules`). A payment counts when it is `Completed` or `PartiallyRefunded` (not a failed,
+  canceled, open or fully refunded one) on the Europe/Rome day of `ProcessedAt` (else of `CreatedAt`, as the fiscal
+  reports do); the amount is the payment minus what was refunded, before any OTA withholding. Payment data: `null` for a
+  caller without `payment.read` (the collaborator), and then in `previous` too. Euros in `amount`, cents in `amountCents`
+  (also on `revenue`).
+- **Direct share** (`directShare`, SR-03): of the confirmed stays of the revenue, how many have source `Direct` (the public
+  checkout of the booking site; a stay the host entered is `Manual`): `{ directStays, stays, rate }`, `rate` `null` without
+  stays.
+- **Previous period** (`previous`, with `compare=true`, SR-03): occupancy, revenue, collected and direct share of the period
+  with **the same number of nights that ends where this one starts** (`HostDashboardPeriod.Previous`), whatever the kind: the
+  30 days before `Last30Days` or `Next30Days`, and for a month the days just before it, not the previous calendar month,
+  which may be a day shorter or longer. The dates are in `previous.period`.
+
+**The host's day (`GET /api/dashboard/today`, SR-03; `IHostTodayService`).** One read, no rule of its own: the lists of
+the day come from `IHostDashboardService.GetTodayStaysAsync` (`StayKpiRules`), the requests from
+`IOnSiteBookingRequestService.GetAwaitingHostApprovalAsync`, the duties from the compliance cockpit described by
+`IComplianceMissingService`.
+`{ today, arrivals, departures, upcoming, approvals, todo }`, each list `{ count, items }` (the count covers all of them;
+`items` carries the first 10, 10, 5, 10 and 20). `arrivals` and `upcoming` rows carry `checkIn { state, dataComplete }`:
+`state` is `NotSent` (no usable link, or its email failed), `Sent`, `InProgress`, `Completed` or `Expired`; `dataComplete`
+says every guest has every field of the Alloggiati record, whoever entered them. No money in the rows. `approvals` are the
+"pay at the property" requests waiting for the host with `respondBy` (UTC): then they are cancelled.
+
+`todo` is in order of priority (`HostTodoPriority`; inside the same priority the nearest `dueAt` first, then the label):
+
+| `priority` | `action` | What | `dueAt` |
+|---|---|---|---|
+| 1 | `RespondToRequest` | a request to accept or decline | `respondBy` |
+| 2 | `ResolveAlloggiatiFailure` | communication in error or rejected | 24 h (6 h for a stay of one night or less) from the arrival |
+| 3 | `SendAlloggiati` | communication to send on the portal | same |
+| 4 | `CompleteGuestCheckIn` | data of the guests incomplete (cockpit: arrivals up to tomorrow) | start of the arrival day |
+| 5 | `ReviewFailedPayment` | confirmed stay whose payment failed and nothing else paid it; only for a caller with `payment.read` | — |
+| 6 | `CheckOut` | departure to close | start of the departure day |
+| 7 | `ConfirmPropertyReady` | property not declared ready after the check-out | — |
+| 8 | `ActivateProperty` | property to activate | — |
+
+Each item is `{ action, priority, dueAt, label, propertyId, propertyName, bookingId, paymentId, missing }`: `action` is the
+destination as a key (the first six repeat `ComplianceCockpitAction` by name; never a path: each client builds the route from
+its own table, as for the cockpit links below) with the ids of its target, `missing` what it still lacks.
+
+**What an item lacks (`missing`, SR-03).** Every item of the cockpit (`GET /api/compliance/summary`) and of `todo` carries
+`missing`, a list of `{ code, field, count }` with stable snake_case codes the client translates (`IComplianceMissingService`;
+never empty). For a property to activate, the blockers of its activation wizard (`activation_cin_missing`,
+`activation_documents_missing`, `safety_*`, ...) with the step as `field` (`base-data`, `cin`, `documents`, `safety`), worked out for
+the first 10 properties of the cockpit (the others: `activation_incomplete`) and `activation_not_confirmed` when only the
+confirmation is left; for the guests of a stay, one `guest_field_missing` per field of the Alloggiati record the guests lack
+(`field` camelCase as `AlloggiatiRecordRules` names it, `count` the guests that lack it) and `guest_composition_invalid` when
+the order of the guests is not accepted; for the others, the single thing left (`checkout_not_closed`, `alloggiati_not_sent`,
+`alloggiati_failed`, `property_ready_not_confirmed`, `approval_not_answered`, `payment_failed`).
 
 The bookings summary of `GET /api/properties/{id}/detail` (A2-36) uses the same rules: `totalBookings` = confirmed
 stays, `upcomingBookings` = upcoming check-ins, `activeBookings` = stays in progress today (checked in, or confirmed
@@ -216,13 +349,13 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/guests/{id}` | JWT | Get a single guest |
 | `POST` | `/api/guests` | JWT | Create a guest record |
 | `PUT` | `/api/guests/{id}` | JWT | Update guest details |
-| `DELETE` | `/api/guests/{id}` | JWT | Delete a guest |
+| `DELETE` | `/api/guests/{id}` | guest.manage (AM-03; was guest.write) | Delete a guest |
 
 #### Leases (long-term)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/leases` | lease.read | List leases (own properties; whole org for org-wide roles) |
+| `GET` | `/api/leases` | lease.read | List leases (the properties the caller reaches, AM-03; whole org for org-wide roles), newest first. LR-01: `?view=All\|Active\|InPreparation\|Expiring\|Ended` (derived from status and end date; 400 `validation_error` otherwise), `?q=` (property or tenant name), `?propertyId=`; each row carries the first tenant by name only (null once anonymized), `nextRentDueDate`, `overdueRentCount`, `overdueRentAmount`, `overdueDays` from the rent ledger, all in one SQL statement. The legacy `status` parameter is still ignored ([`long-rent-aggregates.md`](runbooks/long-rent-aggregates.md)) |
 | `GET` | `/api/leases/{id}` | lease.read | Get lease (property owner or org-wide role of its org) |
 | `POST` | `/api/leases` | lease.create | Create lease (property owner or org-wide role of its org, e.g. PropertyManager) |
 | `GET` | `/api/leases/{id}/contract.pdf` | lease.sign | Final contract to sign offline (approved template only, LT-02/LT-03) |
@@ -238,12 +371,17 @@ property is not found; any other failure is a 500.
 | `PUT` | `/api/leases/{id}/rli/questura/delivery-date` | lease.register | Delivery date of the property (48 hours of the Questura communication count from it; null = start date, LT-07) |
 | `POST` | `/api/leases/{id}/rli/questura/mark-done` | lease.register | Landlord declares the Questura communication for an extra-EU tenant: date + optional receipt PDF (LT-07) |
 | `GET` | `/api/leases/{id}/rli/questura/receipt` | lease.read | Receipt of the Questura communication (private bucket) |
+| `GET` | `/api/long-rent/rents?month=&status=&page=&pageSize=` | lease.read | LR-01. Rent register of the area: the installments due in `month` (`yyyy-MM`, default the current one in Rome) of the leases the caller reaches, `status` `All\|Paid\|Pending\|Overdue`, ordered by due date then id; `counters` = expected, collected, pending and overdue of the whole month. 400 `rent_register_month_invalid` / `rent_register_status_unknown` |
+| `POST` | `/api/long-rent/rents/{id}/reminder` | lease.create | LR-01. Email reminder of an unpaid installment with an optional note (300 characters), with the payment link when the org has Stripe Connect. One per installment every `RentBilling__ReminderIntervalHours` (default 24): 422 `rent_reminder_too_soon`; 422 `rent_no_tenant_email`, `rent_reminder_not_sent`; 409 `rent_installment_not_payable`, `rent_installment_in_flight` |
+| `POST` | `/api/long-rent/rents/reminders` | lease.create | LR-01. The reminder of 1 to 50 installments with one note: 200 with `sent` and `skipped` (each with its error code); 400 `rent_reminder_batch_invalid` |
+| `GET` | `/api/long-rent/deadlines?from=&to=&type=` | lease.read | LR-01. Agenda in date order: RLI registration, Questura, end of the lease, last day of notice (end − 6 months, 4+4 and 3+2 only) and unpaid installments; what is past and still open comes first when the window contains today. Default today + 90 days, at most 366 days; 400 `long_rent_deadlines_range_invalid` / `long_rent_deadlines_type_unknown` |
+| `GET` | `/api/long-rent/overview` | lease.read | LR-01. Numbers of the area (leases by view, rent of the current month), checklist (overdue rent, leases to register, Questura, leases to sign) and the next deadline |
 
 #### Payments & Stripe Connect
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/payments` | JWT | List all payments |
+| `GET` | `/api/payments` | short-rent payment.read | List the payments of the caller's scope, newest first, as list rows (SR-03, below): `?propertyId&bookingId&from&to` |
 | `GET` | `/api/payments/{id}` | JWT | Get a single payment |
 | `POST` | `/api/payments` | JWT | Create a payment record |
 | `POST` | `/api/payments/{id}/process` | JWT | Charge the guest via Stripe |
@@ -252,6 +390,20 @@ property is not found; any other failure is a 500.
 | `POST` | `/api/connect/account` | short-rent property.write | Ensure Stripe Express connected account |
 | `POST` | `/api/connect/onboarding-link` | short-rent property.write | Create Connect onboarding link |
 | `GET` | `/api/connect/status` | short-rent property.write | Connect account status |
+
+**The payment list (`GET /api/payments`, SR-03; `IPaymentListService`).** The answer is an array of rows, no longer the
+`Payment` entity (which came with its whole booking, the Stripe account of the host and the org): `{ id, bookingId,
+bookingCode, propertyId, propertyName, guestName, amount, amountCents, refundedAmount, refundedAmountCents, currency,
+status, method, transactionId, description, stripePaymentIntentId, processedAt, otaWithholdingTax, otaWithholdingTaxCents,
+withholdingTaxApplied, withholdingSource, netAmountAfterWithholding, netAmountAfterWithholdingCents, createdAt, updatedAt }`.
+The fields the web app read before keep their names, types and euros (`amount`, `refundedAmount`, `status` and `method` by
+name, ...): the `*Cents` fields (exact integers) and the names of the guest and of the property are the additions of the new
+screens. Newest first (by creation, the id as the tie-break). `bookingId` and `propertyId` narrow it (404 when the booking or
+the property is not one the caller may read payments of, like a missing one); `from` and `to` (`yyyy-MM-dd`, Europe/Rome days,
+both included, 400 `payment_list_invalid_range` when `from` is after `to`) keep the payments settled in the period: the day of
+`ProcessedAt`, else of `CreatedAt`. The list is limited to the caller's `HostScope` in SQL whatever the criteria say, and the
+payments of a property deleted since are still listed (the fiscal reports' rule). `GET /api/payments/{id}` still answers the
+entity.
 
 #### SaaS billing
 
@@ -293,20 +445,22 @@ property is not found; any other failure is a 500.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/compliance/summary` | short-rent booking.read | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually); items carry an action and its target, never a path (see below) |
+| `GET` | `/api/compliance/summary` | short-rent booking.read | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually); items carry an action and its target, never a path (see below), and `missing`, what they still lack (SR-03, above) |
 | `GET` | `/api/alloggiati/summary` | booking.read | Alloggiati queue / summary |
 | `GET` | `/api/alloggiati/{bookingId}/status` | booking.read | Submission status for a booking |
 | `GET` | `/api/alloggiati/{bookingId}/guest-summary` | booking.read | Per-guest data to copy on the Questura portal, in record order |
-| `POST` | `/api/alloggiati/{bookingId}/mark-sent-manually` | booking.write | Host declares the schedina sent on the portal (`{ sentOn }`) → `InviatoManualmente` |
-| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Always `422 alloggiati_transmission_unavailable` until the web service client (CO-13) |
-| `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors list |
+| `GET` | `/api/alloggiati/{bookingId}/record-file` | booking.read + guest.read | The record file to upload on the portal (CO-13): one 168-character line per guest, UTF-8, CR+LF; built on request, never stored, `private, no-store`; `422 alloggiati_file_not_ready` / `alloggiati_file_stay_days_invalid` / `alloggiati_file_name_not_representable`. Downloading changes no status (`docs/runbooks/alloggiati.md`) |
+| `POST` | `/api/alloggiati/{bookingId}/mark-sent-manually` | alloggiati.submit (AM-03; was booking.write) | Host declares the schedina sent on the portal (`{ sentOn }`) → `InviatoManualmente` |
+| `POST` | `/api/alloggiati/{bookingId}/send` | alloggiati.submit (AM-03; was booking.write) | Always `422 alloggiati_transmission_unavailable`: CasaZen has no web service client |
+| `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors actually used by the configuration (GDPR art. 28, `docs/runbooks/legal-documents.md`) |
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
 | `GET` | `/api/legal/privacy` | Anonymous | Privacy policy |
 | `GET` | `/api/gdpr/guests/{id}/export` | JWT | Export guest personal data |
-| `DELETE` | `/api/gdpr/guests/{id}` | JWT | Erasure request (Art. 17) |
-| `POST` | `/api/gdpr/guests/{id}/anonymize` | JWT | Anonymize guest record |
-| `PUT` | `/api/gdpr/guests/{id}/consent` | JWT | Update GDPR consent |
+| `GET` | `/api/gdpr/org/export` | OrgBillingAdmin (AM-03b; was property.read) | Fiscal data of the org (Partita IVA, codice fiscale, fiscal years and taxpayers of the properties) and the people with access (ids, role, status, scope): the owner and the administrators only; the property sections hold only the properties the caller's scope reaches (`docs/runbooks/org-team.md` § 40) |
+| `DELETE` | `/api/gdpr/guests/{id}` | guest.manage (AM-03; was guest.write) | Erasure request (Art. 17) |
+| `POST` | `/api/gdpr/guests/{id}/anonymize` | guest.manage (AM-03; was guest.write) | Anonymize guest record |
+| `PUT` | `/api/gdpr/guests/{id}/consent` | guest.manage (AM-03; was guest.write) | Update GDPR consent |
 | `GET` | `/api/tourist-tax-rates` | JWT | List tourist tax rates |
 | `GET` | `/api/tourist-tax-rates/{id}` | JWT | Get rate by id |
 | `GET` | `/api/tourist-tax-rates/city/{city}` | JWT | Rates for a city |
@@ -350,25 +504,85 @@ never a link to the dashboard.
 | `POST` | `/api/supplier/profile/photos` | Supplier | Upload profile photos (max 10, 5 MB) |
 | `GET` | `/api/supplier/profile/activation` | Supplier | Activation wizard step statuses |
 | `POST` | `/api/supplier/profile/activation/complete` | Supplier | Complete activation (ToS + blockers) |
-| `GET` | `/api/supplier/inbox` | Supplier | Service-request inbox |
+| `GET` | `/api/supplier/inbox` | Supplier | Service-request inbox; filters `tab`, `service`, `comune`, `when`, `clientId`, `status`, `from`, `to` (SP-04); until the take no property name and no notes (D9) |
 | `GET` | `/api/supplier/availability` | Supplier | Availability for date range |
 | `PUT` | `/api/supplier/availability` | Supplier | Upsert availability by date |
 | `GET` | `/api/supplier/dashboard` | Supplier | Profile completion, activation, availability and calendar sync |
 | `GET` | `/api/supplier/dashboard/kpis?period=` | Supplier | Service-request KPIs of the caller's supplier org (Europe/Rome period, SU-11) |
 | `GET` | `/api/supplier/calendar/status` | Supplier | Calendar sync status |
 | `PUT` | `/api/supplier/calendar/ical` | Supplier | Set iCal feed URL and sync |
-| `POST` | `/api/service-requests/match-supplier` | JWT | Match suppliers for a request |
-| `POST` | `/api/service-requests` | JWT | Create service request |
+| `GET` | `/api/supplier/services` | Supplier | The supplier's catalog of services with prices (SP-02): the services that are not deleted, with the limit (30) |
+| `POST` | `/api/supplier/services` | Supplier | Create a service as a draft (name and category are enough); 201 |
+| `GET` | `/api/supplier/services/{id}` | Supplier | One service of the caller's catalog (another supplier's, or a deleted one: 404) |
+| `PUT` | `/api/supplier/services/{id}` | Supplier | Replace the content; carries the `version` (`xmin`) the client read, a stale one is 409 |
+| `DELETE` | `/api/supplier/services/{id}` | Supplier | Soft delete (204) |
+| `POST` | `/api/supplier/services/{id}/publish` | Supplier | Draft or paused → active; 422 with `fields` while name, category, duration or price (or quote) is missing |
+| `POST` | `/api/supplier/services/{id}/pause` | Supplier | Active → paused |
+| `POST` | `/api/supplier/services/{id}/duplicate` | Supplier | A draft copy with a new slug; 201 |
+| `POST` | `/api/supplier/services/{id}/photos` | Supplier | Upload photos of a service (up to 6 files of 10 MB, JPEG/PNG/WebP, 6 per service, all or none) |
+| `GET` | `/api/supplier/availability/hours` | Supplier | The weekly working hours (SP-03): seven days, Monday first, each with its bands (minutes after midnight, Rome wall clock) |
+| `PUT` | `/api/supplier/availability/hours` | Supplier | Replace the week (up to 3 bands a day, no overlap); 422 `supplier_hours_invalid` with `fields` |
+| `GET` | `/api/supplier/availability/time-off` | Supplier | Time off that has not ended (limit 100) |
+| `POST` | `/api/supplier/availability/time-off` | Supplier | Add a time off `{ fromDate, toDate, reason?, label? }`; 201 |
+| `DELETE` | `/api/supplier/availability/time-off/{id}` | Supplier | Delete a time off (204; another supplier's: 404) |
+| `GET` | `/api/supplier/availability/blocks` | Supplier | Blocks and extra openings set by hand that have not ended (limit 200) |
+| `POST` | `/api/supplier/availability/blocks` | Supplier | Block hours or add an extra opening `{ kind, startUtc, endUtc, label? }`; 201 |
+| `DELETE` | `/api/supplier/availability/blocks/{id}` | Supplier | Delete a manual block (204; one of the calendar feed or another supplier's: 404) |
+| `GET` | `/api/supplier/availability/rules` | Supplier | Buffer, jobs a day, notice, horizon and slot step (the defaults while none was saved) |
+| `PUT` | `/api/supplier/availability/rules` | Supplier | Replace the five rules (all required) |
+| `GET` | `/api/supplier/calendar?from&to` | Supplier | Hours, closed days, time off, blocks and the requests that have a day as whole-day items, for at most 62 days (SP-03) |
+| `GET` | `/api/supplier/payments/account?refresh=` | Supplier + flag `SupplierOnlinePayments` | State of the supplier's Stripe Connect account (SP-14): charges, payouts, requirements, `verified`; from the database, Stripe only with `refresh=true`; no bank data |
+| `POST` | `/api/supplier/payments/account` | Supplier + flag `SupplierOnlinePayments` | Creates the supplier's Express account when missing (one per org, advisory lock + idempotency key) and returns the state |
+| `POST` | `/api/supplier/payments/onboarding-link` | Supplier + flag `SupplierOnlinePayments` | Stripe Account Link (single use) with server-built return pages `/app/supplier/settings?stripe_return=1` / `?stripe_refresh=1`; creates the account when missing |
+| `POST` | `/api/supplier/payments/dashboard-link` | Supplier + flag `SupplierOnlinePayments` | Single-use login link to the supplier's Express Dashboard; 422 `supplier_payments_not_ready` without an account |
+| `POST` | `/api/service-requests/match-supplier` | servicerequest.write (AM-03; was property.write) | Match suppliers for a request |
+| `POST` | `/api/service-requests` | servicerequest.write (AM-03; was property.write) | Create service request |
 | `GET` | `/api/service-requests` | JWT | List service requests |
 | `GET` | `/api/service-requests/{id}` | JWT | Get service request |
-| `POST` | `/api/service-requests/{id}/take` | Supplier | Take / claim request |
-| `POST` | `/api/service-requests/{id}/complete` | Supplier | Complete request |
+| `POST` | `/api/service-requests/{id}/take` | Supplier | Take / claim request; optional body `{ scheduledStartUtc, scheduledEndUtc, quotedAmountCents }` (SP-04) |
+| `POST` | `/api/service-requests/{id}/start` | Supplier | Start the work: `PresoInCarico → InCorso` (SP-04) |
+| `POST` | `/api/service-requests/{id}/complete` | Supplier | Complete request; optional body `{ notes, finalAmountCents, extras[] }`; the notes no longer replace the host's (SP-04) |
+| `POST` | `/api/service-requests/{id}/photos` | Supplier | Photos of the work (multipart `photos`, max 6, private bucket) (SP-04) |
+| `GET` | `/api/service-requests/{id}/photos/{photoId}` | Supplier / JWT | One photo of the work, for the supplier it was sent to and for the host (SP-04) |
 | `POST` | `/api/service-requests/{id}/reject` | Supplier | Reject request |
-| `POST` | `/api/service-requests/{id}/mark-paid` | JWT | Mark request paid |
+| `POST` | `/api/service-requests/{id}/cancel` | Supplier / JWT | Cancel with a reason: the host up to the work in progress, the supplier before it starts (SP-04) |
+| `POST` | `/api/service-requests/{id}/propose-time` | Supplier | Propose another time on a new request (SP-04) |
+| `POST` | `/api/service-requests/{id}/proposal/accept` | JWT | The host accepts the proposed time: the request is taken at that time (SP-04) |
+| `POST` | `/api/service-requests/{id}/proposal/reject` | JWT | The host turns the proposed time down (SP-04) |
+| `POST` | `/api/service-requests/{id}/remind` | JWT | The host reminds the supplier, at most once every 6 hours (SP-04) |
+| `POST` | `/api/service-requests/{id}/mark-paid` | servicerequest.write (AM-03; was property.write) | Mark request paid; 422 `service_request_online_payment` for a request paid inside CasaZen (SP-15a) |
+| `POST` | `/api/service-requests/{id}/final-amount/confirm` | JWT | The host confirms a final amount above the quote by more than the tolerance (D7): the payment of an online request is created and the link sent (SP-15a) |
+| `POST` | `/api/service-requests/{id}/payment-session` | JWT | The PaymentIntent the signed-in host confirms with Stripe.js to pay a request paid inside CasaZen (SP-15a) |
+| `POST` | `/api/long-rent/service-requests/{id}/cancel` \| `remind` \| `proposal/accept` \| `proposal/reject` | JWT (long-rent) | The same host actions for a long-rent request (SP-04) |
+| `GET` | `/api/long-rent/service-requests/{id}/photos/{photoId}` | JWT (long-rent) | A photo of the work of a long-rent request (SP-04) |
+| `POST` | `/api/long-rent/service-requests/{id}/final-amount/confirm` | `payment-session` | JWT (long-rent) | The same two host actions for a long-rent request (SP-15a) |
+| `POST` | `/api/supplier/inbox/accept` | Supplier | Accept up to 20 new requests at once, one result per row (SP-04) |
+| `GET` | `/api/supplier/today` | Supplier | The jobs of the day, the new requests by deadline, the month's earnings (estimate) and the average time to answer (SP-04) |
+| `GET` | `/api/supplier/checklist` | Supplier | The supplier's first steps: profile, services, hours, showcase, first request, payments (null for now) (SP-04) |
+| `POST` | `/api/supplier/requests/{id}/payment-request` | Supplier + flag `SupplierOnlinePayments` | Asks the payer for the payment of a completed request paid inside CasaZen, or reminds it with a new link (at most once a day); answers the split gross / commission / net (SP-15a) |
+| `POST` | `/api/supplier/requests/{id}/payment/offline` | Supplier | Records a payment received outside CasaZen `{ reason? }` (mandatory for an online request): the request is `Pagato`, a payment without commission is kept (SP-15a) |
 
 **Invite email:** `SupplierService.CreateInviteAsync` stores the invite with the SHA-256 of a random token, then queues the email (`EmailTemplates.SupplierInvite`, Hangfire). Signup URL: `{App:PublicSiteBaseUrl}/register?inviteToken={token}` (web app page; the backend no longer serves a `/register` page). Runbook: `docs/runbooks/suppliers.md`.
 
 **Supplier link (SU-02):** an account reaches a supplier org only through its own link (`User.SupplierOrgId`), set by an accepted invite, a signed-in registration or `POST /api/suppliers/claim`; never by matching the email. `GET /api/users/me` returns `supplierOrgId`. Runbook: `docs/runbooks/suppliers.md` §2.
+
+**Supplier service catalog (SP-02):** `SupplierServiceListings` is keyed by the supplier org (not `ITenantOwned`: a supplier-only account has no `User.OrgId`), every statement carries an explicit `OrgId` predicate, the changes of one supplier's catalog run under a PostgreSQL advisory lock and the row carries `xmin` as its concurrency token. Not behind a feature flag. Runbook: `docs/runbooks/suppliers.md` §19.
+
+**Supplier agenda (SP-03):** `SupplierWorkingHours`, `SupplierTimeOff`, `SupplierBusyWindows` and `SupplierSettings` are keyed by the supplier org (not `ITenantOwned`, same reason as the catalog), every statement carries an explicit `OrgId` predicate, and every write runs under the PostgreSQL advisory lock `SupplierCalendarSync` of the supplier (the lock of the iCal sync). `SupplierSlotPlanner` (`Casazen.Core/Suppliers`) is a pure function that turns them, and whatever else takes the supplier's time (`SupplierOccupancy`), into free slots; `RomeCalendar.ToUtc` converts the wall-clock hours of Rome with a rule for the daylight saving change. No public endpoint and no feature flag yet (slots are SP-09). Runbook: `docs/runbooks/suppliers.md` §20.
+
+**Supplier iCal by the hour (SP-05):** the supplier's calendar feed (`ical-supplier-sync`, every 15 minutes) closes days only for all-day events; a timed event becomes a `SupplierBusyWindow` (`Kind = External`, `Source = ICalFeed`, `ExternalUid`, unique with the start per supplier) written in the same transaction and under the same `SupplierCalendarSync` lock as the days, so a 10:00-11:00 event occupies that hour for the slot planner and nothing else. Instants follow RFC 5545 (`Z`, `TZID`, floating and unknown zones = Europe/Rome; the two daylight saving days as `RomeCalendar.ToUtc`); series that repeat more than once a day are not expanded. The sync never touches the supplier's own blocks. Runbook: `docs/runbooks/ical.md` (Events by the hour) and `docs/runbooks/suppliers.md` §12.
+
+**Service requests with a time and a price (SP-04):** `ServiceRequest` carries the service, the time (`ScheduledStartUtc/EndUtc`, checked with the planner of SP-03 under the supplier's `SupplierCalendarSync` lock), the price (estimate, quote, final amount with extras, the 20 % flag of decision D7), the deadline `ResponseDueAt`, the cancellation (`Annullato = 6`, `CancelledBy`), the supplier's closing notes in their own field and the photos of the work (private bucket). Every transition is saved under the `xmin` check. The job `service-request-auto-cancel` (every 10 minutes) is behind the flag `SupplierRequestAutoCancel`, off by default. Emails and pushes of the lifecycle name the comune, never the property, to the supplier. Runbook: `docs/runbooks/suppliers.md` §21.
+
+**Booking from the supplier showcase (SP-10):** a customer without an account books a service and a free slot of a supplier: `ShowcaseBookingHold` (30 minutes, the data typed encrypted in one payload) → e-mail check → `ServiceRequest` with `RentalContext = Showcase`, `Source = Showcase`, `PropertyId` null, a `ServiceCustomer` (per supplier; name, e-mail, phone encrypted, found by an HMAC of the address) and a public code. Every hold and every check takes the supplier's `SupplierCalendarSync` lock and judges the slot with the planner without cache, so one slot is never booked twice; the hold counts in the planner like a request with hours. `CK_ServiceRequests_Context` keeps host and showcase requests apart in the database; every host read filters on the rental context as well as on the org. The jobs `service-request-expiry` (`*/5`) and `service-request-reminders` (hourly) are always registered; the retention of the customers is part of `gdpr-data-retention` (`Gdpr:Retention:SupplierCustomers`, off until configured). Migration `AddShowcaseBooking`. Runbook: `docs/runbooks/suppliers.md` §23.
+
+**Customer's own area of a showcase booking (SP-11):** the customer who booked with no account finds the booking again with the supplier's slug, the code and the e-mail address (all in the body, never in a URL), cancels it, moves it while the supplier has not answered, and accepts or turns down a time the supplier proposed (`api/public/supplier-bookings/*`, same flag as the booking). One 404 for everything that does not identify a booking (the address is compared after the decryption, in constant time, and the same statements run for every attempt); two limits answer one 429 (per IP `PublicGuestBookingLookup`, per address and supplier `SupplierBookingManagePerEmail`, `Retry-After` always the whole window). The actions are the supplier's own (state machine, `xmin`, `SupplierCalendarSync` lock, slot planner) with the party `Customer`: the customer's cancellation is free until `Suppliers:Showcase:FreeCancellationHours` before the work (24) and allowed after it at no cost (D6); a proposal the customer lets lapse cancels the request with the reason `ProposalNotAnswered`. No migration. Runbook: `docs/runbooks/suppliers.md` §24.
+
+**Supplier Stripe Connect account (SP-14):** the supplier's account for receiving payments is the Express account of its supplier org, through the same `ConnectOnboardingService` as the host's (lock `OrgConnectAccount`, key `connect-account:{orgId}`); `SupplierPaymentsAccountService` adds the supplier's rules and the "Verificato" state (`SupplierVerification`, decision D11). Behind `Features:SupplierOnlinePayments` (404 while off, before authentication); the payments themselves are SP-15a (next paragraph). Runbooks: `docs/runbooks/stripe.md` § "Connect onboarding of the suppliers (SP-14)", `docs/runbooks/suppliers.md` §25.
+
+**Supplier service payments (SP-15a):** a service request taken by a supplier whose Stripe account can take charges and payouts is paid inside CasaZen (`ServiceRequest.PaymentMode = Online`, decision D2): `ServiceRequestPayments` (not `ITenantOwned`: supplier, host and an anonymous payer; one live row per request by a unique partial index; every statement with an explicit predicate) holds the amount, the commission snapshot (`SupplierPayments:CommissionPercent`, never in code, or the supplier's `CommissionPercentOverride`) and the PaymentIntent. The payer pays with a personal link (SHA-256 of a 256-bit token, 404 `service_payment_link_invalid` for anything wrong); the PaymentIntent is a **direct charge** on the supplier's connected account with `application_fee_amount` set only in `StripeSupplierPaymentGateway` (`ApplicationFeeArchitectureTests`; guest bookings and rent never carry a fee). Creating, reusing or dropping a PaymentIntent and recording an offline payment run under the advisory lock `ServiceRequestPayment` (key: the request id) with Stripe idempotency keys `service-charge:{paymentId}:{n}`. A request from the supplier's public showcase (SP-10) is never paid inside CasaZen yet: it is taken as `Manual` (no host, a private customer), and the payment the supplier records as received outside CasaZen has a private payer. The flag stops only the creation of payments and what the daily job sends. Runbooks: `docs/runbooks/stripe.md` § "Services of the suppliers (SP-15)", `docs/runbooks/suppliers.md` §26.
+
+**Supplier service payments: webhook, jobs, refunds (SP-15b):** `StripeWebhookHandler` routes `payment_intent.*` events with `metadata.kind = service-charge` to `SupplierPaymentService` **before** the generic `payment_intent.succeeded` case (a source-order test guards it), in the event transaction (claim in `ProcessedStripeEvents`, emails after the commit). `succeeded` makes the payment `Paid` and the request `Pagato` only if account, PaymentIntent, amount received, currency and `application_fee_amount` equal the snapshot (`ServiceChargeVerification`), else `NeedsReview` (`review:<what>`), an error log and an email to the admins; `processing`, `payment_failed` (a new link by email if it was in flight) and `canceled` follow the rent; the state is derived from what the event says and from what the payment already is, so the order of the events does not matter. `charge.dispute.created` is an error log and an email to the admins. Everything runs under the advisory lock `ServiceRequestPayment` (key: the request id). Jobs (always registered, `[DisableConcurrentExecution]`): `service-payment-sync` (`*/15`: payments `Processing`, refunds not completed), `service-payment-reminders` (07:30 UTC: late flag; with the flag on the pending requests and the reminders at +2 and +7 days, three emails at most), `SendPendingPaymentRequestsJob(orgId)` (queued from `account.updated` when a supplier becomes ready). Refunds (`ServiceRequestPaymentRefunds`, not `ITenantOwned`, reached only through the payments service and the admin service): reserved `Pending` before the Stripe call (so two admins can never refund more than was paid), created on the supplier's account with `refund_application_fee=true` (set only in `StripeSupplierPaymentGateway`) and the key `service-charge-refund:{paymentId}:{n}`, completed by the answer, the refund events or the sync job; the commission share of each refund is proportional to the total refunded. Admin tools: list, detail, refund, the commission of a supplier (override and free period, audited) and the monthly commission CSV (VAT rate in configuration only, empty; no DAC7 submission). Runbooks: `docs/runbooks/stripe.md` § "Services of the suppliers (SP-15)", `docs/runbooks/hangfire.md` §14, `docs/runbooks/suppliers.md` §26.7.
 
 **Workspace context:** `GET /api/me/contexts` includes a `supplier` context when the JWT has role `Supplier` (added from the DB supplier link at token validation). Default route: `/supplier/inbox`.
 
@@ -384,11 +598,25 @@ never a link to the dashboard.
 | `GET` | `/api/public/orgs/{slug}` | Anonymous | Public org landing by slug |
 | `GET` | `/api/public/orgs/{slug}/properties` | Anonymous | Public property list for org |
 | `GET` | `/api/public/orgs/{slug}/properties/{propertySlugOrId}` | Anonymous | Public property detail |
-| `GET` | `/api/public/suppliers/{slug}` | Anonymous | Public supplier profile |
-| `GET` | `/api/public/bookings/property/{propertyId}/availability` | Anonymous | Booked dates for public calendar |
+| `GET` | `/api/public/suppliers/{slug}` | Anonymous | Public supplier profile (with the published services and the measured response time when `SupplierShowcaseBooking` is on) |
+| `GET` | `/api/public/suppliers/{slug}/services` | Anonymous | Published services of a supplier (flag `SupplierShowcaseBooking`) |
+| `GET` | `/api/public/suppliers/{slug}/services/{serviceSlug}` | Anonymous | One published service with its supplements (flag `SupplierShowcaseBooking`) |
+| `GET` | `/api/public/suppliers/{slug}/slots` | Anonymous | Free slots of a service, from the supplier's planner (flag `SupplierShowcaseBooking`, rate-limited) |
+| `POST` | `/api/public/suppliers/{slug}/quote` | Anonymous | Price estimate of a service (flag `SupplierShowcaseBooking`, rate-limited) |
+| `POST` | `/api/public/suppliers/{slug}/bookings` | Anonymous | A customer holds a free slot for 30 minutes and receives the e-mail that checks its address; the supplier hears nothing yet (SP-10, flag `SupplierShowcaseBooking`, 5 per 10 minutes per IP, 3 per hour per address and supplier) |
+| `POST` | `/api/public/suppliers/{slug}/bookings/{id}/confirm-email` | Anonymous | The token of the e-mail link, in the body: only now the request (`Richiesto`, context `Showcase`) exists and reaches the supplier; a second click answers the same (SP-10, flag `SupplierShowcaseBooking`) |
+| `POST` | `/api/public/supplier-bookings/lookup` | Anonymous | The customer's booking, found with `{ slug, code, email }`: status, time, price, place, proposal and what it can do; one 404 for everything else (SP-11, flag `SupplierShowcaseBooking`, 10 per 5 minutes per IP, 10 per 15 minutes per address and supplier) |
+| `POST` | `/api/public/supplier-bookings/cancel` | Anonymous | The customer cancels its booking (free until 24 h before the work, allowed after it; optional `reason`); the supplier is told (SP-11) |
+| `POST` | `/api/public/supplier-bookings/reschedule` | Anonymous | The customer moves a new request to another free slot (`startUtc`); 409 `supplier_slot_unavailable` if it is not free (SP-11) |
+| `POST` | `/api/public/supplier-bookings/proposal/accept` | Anonymous | The customer accepts the time the supplier proposed: the request is taken on the supplier's behalf, the slot checked again (SP-11) |
+| `POST` | `/api/public/supplier-bookings/proposal/reject` | Anonymous | The customer turns the proposed time down: the request stays new at its time (SP-11) |
+| `GET` | `/api/public/bookings/property/{propertyId}/availability` | Anonymous | Booked dates for public calendar, and the `minNights` of the property (DB-03) |
 | `GET` | `/api/public/bookings/{bookingId}/status` | Anonymous | Booking status (payment option) |
+| `POST` | `/api/public/bookings/quote` | Anonymous | Price of a stay with its breakdown in cents (`lines`: nights, weekend nights, cleaning, tourist tax, total); 422 `direct_booking_min_nights_not_met` below the minimum stay (DB-03, [direct-booking.md](runbooks/direct-booking.md) § 11) |
 | `POST` | `/api/public/bookings/lookup` | Anonymous | Guest booking lookup by id + email (rate-limited) |
-| `POST` | `/api/public/bookings` | Anonymous | Create direct booking (rate-limited) |
+| `POST` | `/api/public/bookings` | Anonymous | Create direct booking (rate-limited); optional `marketingConsent` (DB-03) |
+| `POST` | `/api/public/service-payments/{id}` | Anonymous (link token in the body) | The payment page of a service a supplier completed: who asks, the lines, the state; 404 `service_payment_link_invalid` for anything wrong; no commission shown (SP-15a, rate-limited) |
+| `POST` | `/api/public/service-payments/{id}/payment-session` | Anonymous (link token in the body) | The PaymentIntent on the supplier's connected account to confirm with Stripe.js (SP-15a, rate-limited) |
 | `GET` | `/api/public/ical/{exportToken}` | Anonymous | Property iCal export feed |
 | `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session |
 | `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in |
@@ -400,6 +628,11 @@ never a link to the dashboard.
 | `GET` | `/api/admin/stats` | Admin | Platform KPI dashboard stats |
 | `GET` | `/api/admin/cin-compliance` | Admin | Paginated CIN compliance report |
 | `GET` | `/api/admin/jobs` | Admin | Hangfire recurring job statuses |
+| `GET` | `/api/admin/supplier-payments` | Admin | The payments of the suppliers' services, newest first, paginated in SQL (`pageSize` ≤ 100): `status`, `supplierOrgId`, `late`, `from`, `to`; gross, commission, net, refunded; the work queue is `status=NeedsReview` (SP-15b) |
+| `GET` | `/api/admin/service-payments/{id}` | Admin | One payment with its refunds; 404 `service_payment_not_found` (SP-15b) |
+| `POST` | `/api/admin/service-payments/{id}/refund` | Admin | Refunds a payment paid online, in full or in part `{ amountCents?, reason? }`: created on the supplier's account with `refund_application_fee=true`; 422 `service_payment_not_refundable` / `service_payment_refund_offline` / `service_payment_nothing_to_refund` / `service_payment_refund_amount_exceeds` (SP-15b) |
+| `GET`, `PUT` | `/api/admin/suppliers/{orgId}/commission` | Admin | The commission applied to a supplier / sets its own (`{ percent?, until?, reason }`, 0 to 50, 0 = free period; audited); 422 `supplier_commission_invalid` / `supplier_commission_until_invalid` (SP-15b) |
+| `GET` | `/api/admin/supplier-payments/export?month=yyyy-MM` | Admin | The monthly commission export, CSV with a byte order mark (`commissioni-yyyy-MM.csv`); 422 `service_payment_export_month_invalid` (SP-15b) |
 | `PATCH` | `/api/admin/orgs/{orgId}/plan` | Admin | Change org plan tier: 409 `managed_by_stripe` with an active subscription, 409 `subscription_required` for an upgrade without one |
 | `GET` | `/api/admin/seo/pages` | Admin | SEO pages list / filter, server-side paging (`page` ≥ 1, `pageSize` 1-100, else 400) |
 | `GET` | `/api/admin/seo/pages/{id}` | Admin | Review screen: published and pending revision (sanitized), review audit |
@@ -409,6 +642,7 @@ never a link to the dashboard.
 | `POST` | `/api/admin/seo/generate` | Admin | Generate SEO content as drafts (never approved automatically) |
 | `GET` | `/api/admin/seo/budget` | Admin | SEO generation budget |
 | `POST` | `/api/admin/suppliers/invite` | Admin | See Supplier marketplace |
+| `POST` | `/api/admin/org-members/reconcile` | Admin | AM-01: gives an Owner `OrgMember` to the host orgs that have none and re-aligns the memberships with the org roles; `dryRun` defaults to `true`; reports ids and codes only, never guesses an ambiguous org (`docs/runbooks/org-team.md` § 6) |
 
 #### Webhooks & health
 
@@ -552,6 +786,63 @@ erDiagram
 | `Status` | `PaymentStatus` | Required | Pending / Processing / Completed / Failed / Refunded / PartiallyRefunded |
 | `StripePaymentIntentId` | `string?` | Max 255 | Stripe reference |
 
+#### `OrgMember` (AM-01)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (RESTRICT), tenant key (`ITenantOwned`) | The org the person belongs to |
+| `UserId` | `string` | FK `Users` (CASCADE), **unique** | One org per user |
+| `Role` | `OrgRole` | Required | Owner 1 / Admin 2 / PropertyManager 3 / Collaborator 4 / Accountant 5 |
+| `Status` | `OrgMemberStatus` | Default Active | Active 1 / Deactivated 2 (403 `member_inactive` from the next request) |
+| `PropertyScope` | `PropertyScope` | Default All | All 1 / Selected 2 ("Solo alcuni": the properties of `PropertyMemberAccesses`; the collaborator only, AM-03) |
+| `CreatedAt`, `CreatedByUserId`, `DeactivatedAt` | `DateTime`, `string?`, `DateTime?` | — | Audit of the membership |
+
+#### `OrgInvitation` (AM-02)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (CASCADE), tenant key (`ITenantOwned`) | The org that invites |
+| `Email` | `string` | Max 255, trimmed, lowercase | The address the invitation is for (personal data, deleted with the row) |
+| `Name` | `string` | Max 200 | The invitee's name as the inviter wrote it (personal data) |
+| `Role` | `OrgRole` | Never Owner | The role the person gets |
+| `Areas` | `List<string>` | `text[]` | `short-rent`, `long-rent` |
+| `PropertyScope` | `PropertyScope` | Default All | As `OrgMember` |
+| `TokenHash` | `string` | 64 hex characters, **unique** (`UIX_OrgInvitations_TokenHash`) | SHA-256 of the secret of the link; the token is never stored |
+| `Status` | `OrgInvitationStatus` | Pending 1 / Accepted 2 / Revoked 3 / Expired 4 | One Pending per `(OrgId, Email)`: partial unique index `UIX_OrgInvitations_OrgId_Email_Pending` (`"Status" = 1`) |
+| `ExpiresAt`, `ReminderSentAt` | `DateTime`, `DateTime?` | — | Seven days from sending; the reminder of the third day |
+| `InvitedByUserId`, `Language` | `string`, `string` | Language `it` / `en` | Who invited; language of the emails |
+| `AcceptedAt`, `AcceptedByUserId`, `ClosedAt` | `DateTime?`, `string?`, `DateTime?` | — | How it ended; the purge counts 30 days from `ClosedAt` |
+| `CreatedAt`, `UpdatedAt` | `DateTime` | — | Audit |
+
+#### `PropertyMemberAccess` (AM-03)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (RESTRICT), tenant key (`ITenantOwned`) | The org of the property |
+| `UserId` | `string` | FK `Users` (CASCADE) | The member the property is given to (a collaborator "Solo alcuni") |
+| `PropertyId` | `Guid` | FK `Properties` (CASCADE) | The property given |
+| | | **unique** `(UserId, PropertyId)` (`UIX_PropertyMemberAccesses_UserId_PropertyId`), indexes on `PropertyId` and `(OrgId, UserId)` | One grant per pair |
+| `CreatedAt`, `CreatedByUserId` | `DateTime`, `string?` | — | When and by whom it was given |
+
+`Property.ResponsibleUserId` (`string?`, max 255, FK `Users` SET NULL, indexed): the member in charge of the property, told about it with the
+administrators (`docs/runbooks/org-team.md` § 24).
+
+#### `InAppNotification` (UI-12a)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (CASCADE), tenant key (`ITenantOwned`) | The org the event belongs to: the host org, or the supplier org for the supplier's inbox |
+| `UserId` | `string` (255) | FK `Users` (CASCADE) | The user who is told |
+| `Type` | `string` (64) | — | A value of `PushTypes`; the client writes the text from it. No guest or property name, no free text |
+| `EntityId` | `Guid?` | not a key | The service request (`service-request-*` types) or the booking the event is about |
+| `DeliveryKey` | `string` (200) | — | The key of the push of the same event |
+| | | **unique** `(DeliveryKey, UserId)` (`UIX_InAppNotifications_DeliveryKey_UserId`), indexes on `(UserId, ReadAt, CreatedAt)`, `CreatedAt`, `OrgId` | Once per event and user |
+| `CreatedAt`, `ReadAt` | `DateTime`, `DateTime?` | — | The instant of the event (UTC, microseconds); `null` while unread. Deleted 90 days after `CreatedAt` (`docs/runbooks/in-app-notifications.md`) |
+
 ---
 
 ## Design Patterns
@@ -587,14 +878,17 @@ erDiagram
 | `OtaSyncJob` | Hourly | Full OTA availability and booking sync |
 | `BookingPullJob` | Every 15 minutes | Pull new bookings from all OTA platforms |
 | `DynamicPricingJob` | Daily at 02:00 UTC | Recomputes the seasonal suggestions due by Rome date (daily/weekly), upsert per date |
-| `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (no transmission until CO-13) |
+| `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (CasaZen does not transmit: no web service client) |
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
 | `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
+| `OrgInvitationMaintenanceJob` | Hourly at :10 UTC | AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days (`docs/runbooks/org-team.md` § 15) |
+| `InAppNotificationJob` | On push queued (`IPushNotificationService`), flag `InAppNotifications` on | UI-12a: writes one in-app notification per user of the push's audience, once per event and user (`docs/runbooks/in-app-notifications.md`) |
+| `InAppNotificationRetentionJob` | Daily at 03:45 UTC | UI-12a: deletes the in-app notifications older than 90 days; registered whatever the flag says |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment
-- **Containerisation**: `Dockerfile` at repo root (Railway). Local API uses PostgreSQL/Supabase per `docs/INFRA.md`.
-- **CI/CD**: GitHub Actions — build + test on push; deploy on release tag (`.github/workflows/ci-cd.yml`)
+- **Containerisation**: `Dockerfile` at repo root. Local API uses PostgreSQL/Supabase per `docs/INFRA.md`. Hosting in revisione: Railway è stato cancellato dal PO (2026-10-02), vedi `docs/runbooks/free-hosting-analysis.md` (task HOSTING).
+- **CI/CD**: GitHub Actions — build + test on push (`.github/workflows/ci-cd.yml`); deploys are not run by Actions and tags `v*` do not deploy (see `docs/INFRA.md`, deploy model in revision)
 - **Environments**: Development (local), staging, production
 
 ### External service integrations
@@ -626,6 +920,7 @@ Integration tests run on **real PostgreSQL**, so FKs, unique indexes, `timestamp
   2. otherwise a Testcontainers `postgres:16-alpine` container, when Docker is reachable;
   3. otherwise, on a local run only, EF InMemory with a warning on stderr, and tests marked `[PostgresFact]` (migrations, backfill, RLI reservation) are skipped with the reason. On CI (`CI`/`GITHUB_ACTIONS` set) a missing PostgreSQL fails the run.
 - `PostgresMigrationTests` applies every migration to an empty database and asserts `HasPendingModelChanges() == false`: add a migration whenever the model changes.
+- A test that migrates to an older point (`IMigrator.Migrate(<the migration before the one under test>)`) and seeds rows there must **not** save entities through the model: the model writes the columns of the latest schema, so every column added later broke it (`42703: column "RentalMode" of relation "Properties" does not exist`, after PC-03, PC-05, SU-04 and PC-06 had broken the same tests). Write the rows by SQL naming only the columns that exist at that point: `Casazen.Tests/Integration/Postgres/Legacy{Org,Property,Guest,Lease,Booking}Rows` (or an `INSERT` of your own, as most of the `*MigrationPostgresTests` do), and read through the model only after the last `MigrateAsync()`. `LegacyRowsSchemaTests` (no database) replays the migrations and checks that each helper fits the schema at every point where a test uses it: add the new use to its `Uses` list.
 - A test that fails because of a known product bug owned by another task is marked `Skip = "<task id>: <reason>"`.
 
 ### Dates, "today" and the clock (FD-06, QA-CLOCK)

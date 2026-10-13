@@ -20,6 +20,10 @@ public static class HangfireServiceCollectionExtensions
         if (string.IsNullOrEmpty(connectionString))
             return null;
 
+        // Own pool and a bounded worker count: the free Supabase session pooler grants ~15 connections (HOSTING).
+        var database = DatabaseConnectionSettings.Resolve(configuration, connectionString, hangfireRegistered: true);
+        services.AddSingleton(database);
+
         var settings = HangfireStorageSettings.Resolve(configuration, connectionString, environment);
         services.AddSingleton(settings);
 
@@ -28,11 +32,15 @@ public static class HangfireServiceCollectionExtensions
             .UseSimpleAssemblyNameTypeSerializer()
             .UseRecommendedSerializerSettings()
             .UsePostgreSqlStorage(
-                options => options.UseNpgsqlConnection(connectionString),
+                options => options.UseNpgsqlConnection(database.ForHangfire()),
                 settings.CreateStorageOptions()));
 
         // Explicit name: the readiness check recognizes this process's server by its id (FD-12).
-        services.AddHangfireServer(options => options.ServerName = HangfireServerIdentity.ServerName);
+        services.AddHangfireServer(options =>
+        {
+            options.ServerName = HangfireServerIdentity.ServerName;
+            options.WorkerCount = database.WorkerCount;
+        });
         return settings;
     }
 }

@@ -21,7 +21,10 @@ namespace Casazen.Tests.Unit.Authorization;
 /// </summary>
 public class SharedPropertyPolicyTests
 {
-    /// <summary>Every action a caller with only the long-rent <c>property.*</c> permissions may pass the policies of.</summary>
+    /// <summary>
+    /// Every action a caller with only the long-rent <c>property.*</c> permissions may pass the policies of: the property core,
+    /// plus the one deliberate exception, the recommendation of CasaZen to a friend (<c>HostInvitationsController</c>).
+    /// </summary>
     private static readonly string[] SharedPropertyActions =
     [
         "PropertiesController.Create",
@@ -36,6 +39,23 @@ public class SharedPropertyPolicyTests
         "PropertiesController.UpdateApeIdentification",
         "PropertiesController.UpdateCadastral",
         "PropertiesController.UploadDocument",
+        // PM-02: the mode is a field of the property core and the change goes both ways, so the landlord of a long-term
+        // property must be able to bring it back to short stays (the preview lists the leases that stand in the way, and for
+        // the other direction the stays of a property he owns). Behind the flag PropertyModeChange.
+        "PropertyModeController.Cancel",
+        "PropertyModeController.GetState",
+        "PropertyModeController.Preview",
+        "PropertyModeController.Schedule",
+        // AM-03: the member in charge of a property is part of the property core (both kinds of landlord have properties).
+        "PropertyResponsibleController.Set",
+        // Recommendation of CasaZen to a friend: open to every member of a host org, whatever the role and the rental context
+        // (a loyalty-style action, not an administrative one). It reuses the permission every host role holds in either context
+        // instead of a new permission to seed on every role; it touches no property and no short-stay data.
+        "HostInvitationsController.Create",
+        "HostInvitationsController.GetQuota",
+        "HostInvitationsController.List",
+        "HostInvitationsController.Resend",
+        "HostInvitationsController.Revoke",
     ];
 
     [Fact]
@@ -117,6 +137,9 @@ public class SharedPropertyPolicyTests
     [InlineData(nameof(PropertiesController.GetDetail))]
     [InlineData(nameof(PropertiesController.GetImages))]
     [InlineData(nameof(PropertiesController.UploadImages))]
+    [InlineData(nameof(PropertiesController.DeleteImage))]
+    [InlineData(nameof(PropertiesController.ReorderImages))]
+    [InlineData(nameof(PropertiesController.SetCoverImage))]
     [InlineData(nameof(PropertiesController.GetIcalStatus))]
     [InlineData(nameof(PropertiesController.GetIcalFeeds))]
     [InlineData(nameof(PropertiesController.AddIcalFeed))]
@@ -126,6 +149,8 @@ public class SharedPropertyPolicyTests
     [InlineData(nameof(PropertiesController.GetComplianceActivation))]
     [InlineData(nameof(PropertiesController.GetCinCompliance))]
     [InlineData(nameof(PropertiesController.Delete))]
+    [InlineData(nameof(PropertiesController.Pause))]
+    [InlineData(nameof(PropertiesController.Activate))]
     public void ShortStayPropertyActions_RequireTheShortRentContext(string action)
     {
         var policies = Actions().Single(a => a.Key == $"{nameof(PropertiesController)}.{action}").Policies;

@@ -60,6 +60,12 @@ public class PropertyComplianceStatusService(
             && property.NightlyRate > 0;
 
         var requiredDocs = ResolveRequiredDocuments(property);
+
+        // SU-04: the comune chosen from the official ISTAT list is what gives the regional rules and the CIN check. A note,
+        // never a blocker: it only appears while the list is imported (otherwise there is nothing to choose from).
+        var comuneMissing = property.ComuneIstatCode is null
+                            && await db.Comuni.AsNoTracking().AnyAsync(c => c.IsActive, cancellationToken);
+        var cinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode);
         var uploadedTypes = (await db.PropertyDocuments
                 .AsNoTracking()
                 .Where(d => d.PropertyId == property.Id)
@@ -84,20 +90,26 @@ public class PropertyComplianceStatusService(
                 "base-data",
                 "Dati base proprietà",
                 baseComplete ? "complete" : "pending",
-                true,
-                baseComplete ? null : "Completa nome, indirizzo, città e tariffe")
+                true)
             {
+                LabelKey = "ActivationStepBaseData",
+                MessageKey = baseComplete ? null : "ActivationBaseDataIncomplete",
                 Blockers = baseComplete ? [] : [new("activation_base_data_incomplete", "ActivationBaseDataIncomplete")],
+                Warnings = comuneMissing ? [new("comune_istat_missing", "ActivationComuneMissing")] : [],
             },
             new ComplianceActivationStep(
                 "cin",
                 "Codice CIN",
                 cinStatus == "valid" ? "complete" : "pending",
-                true,
-                cinStatus == "valid" ? null : cinStatus == "missing"
-                    ? $"Inserisci il CIN (guida: {cinGuidanceUrl})"
-                    : $"Formato CIN non valido (guida: {cinGuidanceUrl})")
+                true)
             {
+                LabelKey = "ActivationStepCin",
+                MessageKey = cinStatus switch
+                {
+                    "valid" => null,
+                    "missing" => "ActivationCinMissing",
+                    _ => "ActivationCinInvalid",
+                },
                 LinkUrl = cinGuidanceUrl,
                 Blockers = cinStatus switch
                 {
@@ -105,14 +117,25 @@ public class PropertyComplianceStatusService(
                     "missing" => [new("activation_cin_missing", "ActivationCinMissing")],
                     _ => [new("activation_cin_invalid", "ActivationCinInvalid")],
                 },
+                // The comune inside a valid CIN is not the property's: never an error (the CIN does not change after a
+                // relocation or a reclassification), only worth a look.
+                Warnings = cinIstatMismatch
+                    ?
+                    [
+                        new("cin_istat_comune_mismatch", "ActivationCinIstatMismatch",
+                            [CinFormat.GetIstatComuneCode(property.CinCode)!, property.ComuneIstatCode!]),
+                    ]
+                    : [],
             },
             new ComplianceActivationStep(
                 "documents",
                 "Documenti richiesti",
                 docsComplete ? "complete" : "pending",
-                true,
-                docsComplete ? null : $"Documenti mancanti: {string.Join(", ", missingDocs)}")
+                true)
             {
+                LabelKey = "ActivationStepDocuments",
+                MessageKey = docsComplete ? null : "ActivationDocumentsMissing",
+                MessageArgs = docsComplete ? null : [string.Join(", ", missingDocs)],
                 Blockers = docsComplete
                     ? []
                     : [new("activation_documents_missing", "ActivationDocumentsMissing", [string.Join(", ", missingDocs)])],
@@ -123,6 +146,7 @@ public class PropertyComplianceStatusService(
                 safetyComplete ? "complete" : "pending",
                 true)
             {
+                LabelKey = "ActivationStepSafety",
                 MessageKey = safetyComplete ? null : "ActivationSafetyIncomplete",
                 MessageArgs = safetyComplete ? null : [safety.Blockers.Count],
                 Blockers = safety.Blockers.Select(b => new ActivationBlocker(b.Code, b.MessageKey, b.MessageArgs)).ToList(),
@@ -149,9 +173,11 @@ public class PropertyComplianceStatusService(
         }
 
         // Background run: no tenant context, every org's properties. Only an active property (suspension) or a suspended
-        // one (reactivation) can change here; a pending property waits for the host's activation.
+        // one (reactivation) can change here; a pending property waits for the host's activation. Only the short-rent
+        // ones (PM-01): a property in long-term mode has no booking site to be suspended from, and its host gets no email.
         var propertyIds = await db.Properties
             .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.ComplianceStatus == PropertyComplianceStatus.Active
                         || p.ComplianceStatus == PropertyComplianceStatus.Suspended)
             .OrderBy(p => p.Id)
@@ -250,6 +276,14 @@ public class PropertyComplianceStatusService(
             property = await LoadCurrentAsync(propertyId, cancellationToken)
                 ?? throw new NotFoundException($"Property {propertyId} not found");
             previous = property.ComplianceStatus;
+
+            // PM-01: a property in long-term mode is outside the compliance of the booking site. A re-evaluation (after an
+            // edit, a document, the checklist, the nightly check) changes nothing and writes to nobody; the activation is
+            // refused (422), since a long-term property is never published. Its status is left as it was.
+            if (activate)
+                PropertyRentalModeRules.EnsureShortRent(property);
+            else if (!PropertyRentalModeRules.IsShort(property))
+                return new PropertyComplianceCheck(propertyId, previous, previous, [], false);
 
             // A pending property is published only by the host's activation (terms accepted), never by a re-evaluation.
             if (!activate && previous == PropertyComplianceStatus.Pending)
@@ -361,20 +395,20 @@ public class PropertyComplianceStatusService(
         steps.SelectMany(s => s.Blockers.Select(b => b.Code)).Distinct(StringComparer.Ordinal).ToList();
 
     /// <summary>
-    /// Documents required by <c>Compliance:RequiredDocuments</c>. The keys are region codes but are still compared with
-    /// the city (A5-19, open in SU-04), so the <c>default</c> list applies in practice.
+    /// Documents required by <c>Compliance:RequiredDocuments</c>, by the region of the property (<c>LOM</c>, <c>LAZ</c>): the
+    /// region that follows the comune chosen from the official ISTAT list (<see cref="Property.RegionCode"/>, SU-04, A5-19).
+    /// A property with no comune chosen, or a region with no entry, gets the <c>default</c> list. The city is never compared.
     /// </summary>
     private IReadOnlyList<string> ResolveRequiredDocuments(Property property)
     {
         var section = configuration.GetSection("Compliance:RequiredDocuments");
-        var regionCode = section.GetChildren()
-            .Select(c => c.Key)
-            .FirstOrDefault(k => k.Equals(property.City, StringComparison.OrdinalIgnoreCase));
+        var keys = section.GetChildren().Select(c => c.Key).ToList();
 
-        regionCode ??= section.GetChildren()
-            .Select(c => c.Key)
-            .FirstOrDefault(k => k.Equals("default", StringComparison.OrdinalIgnoreCase))
-            ?? "default";
+        var regionCode = string.IsNullOrWhiteSpace(property.RegionCode)
+            ? null
+            : keys.FirstOrDefault(k => k.Equals(property.RegionCode.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        regionCode ??= keys.FirstOrDefault(k => k.Equals("default", StringComparison.OrdinalIgnoreCase)) ?? "default";
 
         var docs = section.GetSection(regionCode).Get<string[]>();
         // No safety certificate is required by D.L. 145/2023 art. 13-ter: proofs are optional on the checklist (CO-07).

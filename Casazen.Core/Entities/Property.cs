@@ -16,8 +16,23 @@ public class Property : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// The user who created the property (the JWT <c>sub</c> of the caller). With a team it is no longer who may see it:
+    /// the reach of a member comes from its org role and its <see cref="PropertyMemberAccess"/> rows (AM-03). It stays the
+    /// reach of an account that is in no org team (a legacy owner), and the person notified while nobody is responsible.
+    /// </summary>
     [Required, MaxLength(255)]
     public string OwnerId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The member of the org in charge of the property (AM-03): the one who receives its notifications (new booking,
+    /// supplier updates) together with the org's owner and administrators. <c>null</c> = nobody was named, and the creator
+    /// (<see cref="OwnerId"/>) is notified instead. Always a user of the same org who reaches the property (checked when it is
+    /// set), and back to <c>null</c> when that person loses the property or leaves the org (AM-03b); the notifications read the
+    /// reach again anyway (<c>HostNotificationAudience</c>).
+    /// </summary>
+    [MaxLength(255)]
+    public string? ResponsibleUserId { get; set; }
 
     /// <summary>Tenant key (AC2). Server-set from the caller's org; never client-supplied.</summary>
     public Guid OrgId { get; set; }
@@ -36,36 +51,106 @@ public class Property : ITenantOwned
     [Required, MaxLength(500)]
     public string Address { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Interno / scala of the apartment inside the building (PC-06, A2-19): free text such as <c>int. 5</c> or
+    /// <c>Scala B int. 5</c>, trimmed with inner spaces collapsed (<see cref="PropertyAddress.NormalizeUnit"/>). Null for
+    /// a property that has no unit (a house, the only apartment of the address). Part of the address uniqueness: several
+    /// apartments of the same building are different properties of the org.
+    /// </summary>
+    [MaxLength(PropertyAddress.UnitMaxLength)]
+    public string? Unit { get; set; }
+
     [Required, MaxLength(50)]
     public string City { get; set; } = string.Empty;
 
     [MaxLength(10)]
     public string PostalCode { get; set; } = string.Empty;
 
+    /// <summary>
+    /// ISTAT code (6 digits) of the comune of the property, chosen by the host from the official list (<c>Comuni</c>, SU-04).
+    /// Null until chosen: it is never inferred from the free-text <see cref="City"/>. It is the trusted comune of the
+    /// tourist tax, of the regional rules and of the CIN check (<c>CinFormat.HasIstatComuneMismatch</c>), and it is cleared
+    /// when the city is changed without choosing a comune.
+    /// </summary>
+    [MaxLength(Casazen.Core.Regulatory.ComuneRules.IstatCodeLength)]
+    public string? ComuneIstatCode { get; set; }
+
+    /// <summary>
+    /// CasaZen's code of the region (<c>LOM</c>, <c>LAZ</c>) of <see cref="ComuneIstatCode"/>, set together with it from the
+    /// official list; the key of <c>Compliance:RequiredDocuments</c>. Null while no comune is chosen.
+    /// </summary>
+    [MaxLength(10)]
+    public string? RegionCode { get; set; }
+
+    /// <summary>
+    /// WGS84 latitude in degrees, -90 to 90, stored with <see cref="PropertyAddress.CoordinateScale"/> decimals (about
+    /// 0.1 m, PC-06, A2-33). <c>0</c> together with a longitude of <c>0</c> = not set.
+    /// </summary>
     public decimal Latitude { get; set; }
+
+    /// <summary>WGS84 longitude in degrees, -180 to 180, same precision as <see cref="Latitude"/>.</summary>
     public decimal Longitude { get; set; }
 
-    [Range(0, 100, ErrorMessage = "Bedrooms must be between 0 (studio) and 100")]
+    [Range(0, 100, ErrorMessage = "PropertyBedroomsRange")]
     public int Bedrooms { get; set; }
 
-    [Range(1, 50, ErrorMessage = "Bathrooms must be between 1 and 50")]
+    [Range(1, 50, ErrorMessage = "PropertyBathroomsRange")]
     public int Bathrooms { get; set; }
 
-    /// <summary>Short-stay guests; <c>0</c> = not set (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
-    [Range(0, 100, ErrorMessage = "Max guests must be between 0 and 100")]
+    /// <summary>
+    /// Short-stay guests; <c>0</c> = not set. Before PM-01 this and <see cref="NightlyRate"/> at <c>0</c> were the only,
+    /// implicit marker of a long-term property (A7-06); the marker is now <see cref="RentalMode"/>.
+    /// </summary>
+    [Range(0, 100, ErrorMessage = "PropertyMaxGuestsRange")]
     public int MaxGuests { get; set; }
 
-    /// <summary>Short-stay nightly rate; <c>0</c> = none (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
+    /// <summary>Short-stay nightly rate; <c>0</c> = none (see <see cref="MaxGuests"/>).</summary>
     [Precision(18, 2)]
-    [Range(0, 100000, ErrorMessage = "Nightly rate must be between €0 and €100,000")]
+    [Range(0, 100000, ErrorMessage = "PropertyNightlyRateRange")]
     public decimal NightlyRate { get; set; }
 
+    /// <summary>
+    /// Fewest nights the public booking site accepts for a stay (DB-03): <c>null</c> = no minimum, which is what every
+    /// property had before the column existed. When set it is between <see cref="PropertyStayRules.MinMinNights"/> and
+    /// <see cref="PropertyStayRules.MaxMinNights"/> (30 nights is the longest short-term let). It is a rule of the guests'
+    /// quote and checkout (422 <c>direct_booking_min_nights_not_met</c>), not of the host: a stay the host enters by hand can
+    /// be shorter.
+    /// </summary>
+    [Range(PropertyStayRules.MinMinNights, PropertyStayRules.MaxMinNights, ErrorMessage = "PropertyMinNightsRange")]
+    public int? MinNights { get; set; }
+
+    /// <summary>
+    /// Surcharge, in percent of <see cref="NightlyRate"/>, charged on the weekend nights of a stay (DB-03, D20): the nights
+    /// of Friday and Saturday, by their Europe/Rome calendar date (<see cref="PropertyStayRules.IsWeekendNight"/>).
+    /// <c>0</c> = no surcharge, the default of every property: each night costs <see cref="NightlyRate"/> and the price of a
+    /// stay is what it has always been. The host chooses the value (the +15 % of the demo is an example, never imposed):
+    /// 0 to <see cref="PropertyStayRules.MaxWeekendSurchargePercent"/>, two decimals. It does not apply to a night whose price
+    /// the host confirmed for its date (a seasonal price, PC-15): that night costs that price (<see cref="Casazen.Core.Services.StayPricing"/>).
+    /// </summary>
+    [Precision(5, 2)]
+    [Range(typeof(decimal), "0", "100", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyWeekendSurchargeRange")]
+    public decimal WeekendSurchargePercent { get; set; }
+
+    /// <summary>
+    /// How the property is let (PM-01, D16 and D19): <see cref="Casazen.Core.Entities.Enums.RentalMode.Short"/> (short
+    /// stays, the default: every row that existed before the column keeps working) or
+    /// <see cref="Casazen.Core.Entities.Enums.RentalMode.Long"/> (long-term leases). The
+    /// mode is exclusive. A <c>Long</c> property is never published (<c>PublicListing.IsPublished</c>), cannot be booked
+    /// (422 <c>property_not_bookable_in_long_mode</c>) and is left out of the compliance status, the CIN alerts and
+    /// summaries and the compliance cockpit; the plan limit (<c>MaxProperties</c>) still counts it. Set when the property
+    /// is created (<see cref="Casazen.Core.Services.PropertyRentalModeRules.ResolveForCreation"/>) and by the scheduled
+    /// mode change of PM-02, never by the generic update (<c>PropertyRepository.UpdateAsync</c> does not write it).
+    /// Stored as an integer, append only.
+    /// </summary>
+    public RentalMode RentalMode { get; set; } = RentalMode.Short;
+
     [Precision(18, 2)]
-    [Range(0, 10000, ErrorMessage = "Cleaning fee must be between €0 and €10,000")]
+    [Range(0, 10000, ErrorMessage = "PropertyCleaningFeeRange")]
     public decimal CleaningFee { get; set; }
 
     [Precision(18, 2)]
-    [Range(0, 50000, ErrorMessage = "Damage deposit must be between €0 and €50,000")]
+    [Range(0, 50000, ErrorMessage = "PropertyDamageDepositRange")]
     public decimal DamageDeposit { get; set; }
 
     public List<PropertyAmenity> Amenities { get; set; } = new();
@@ -119,7 +204,38 @@ public class Property : ITenantOwned
     public Guid? CancellationPolicyId { get; set; }
     public virtual CancellationPolicy? CancellationPolicy { get; set; }
 
+    /// <summary>Host override of the catalog full-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
+    public int? CancellationFullRefundHours { get; set; }
+
+    /// <summary>Host override of the catalog partial-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
+    public int? CancellationPartialRefundHours { get; set; }
+
+    /// <summary>Host override of the catalog partial-refund percent. Null = catalog. Ignored for stays of 28+ nights.</summary>
+    [Precision(18, 2)]
+    public decimal? CancellationPartialRefundPercent { get; set; }
+
+    /// <summary>Host refund type (percent of stay vs non-refundable). Ignored for stays of 28+ nights.</summary>
+    public HostCancellationRefundType CancellationRefundType { get; set; } = HostCancellationRefundType.Percent;
+
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Host-set pause (PC-03, A2-05): reversible and temporary — the property stays fully visible and editable to its
+    /// host, keeps its plan slot (the entitlement count ignores it), and its existing bookings are untouched, but it
+    /// is hidden from public search, its public page and new guest bookings (<c>PublicListing.IsPublished</c>) until
+    /// the host reactivates it. Distinct from a soft delete (PC-05, A2-18, <c>IsDeleted</c>/<c>DeletedAt</c>): pausing never
+    /// removes or hides the property from its own host.
+    /// </summary>
+    public bool IsPaused { get; set; }
+
+    /// <summary>UTC instant the host paused the property (<see cref="IsPaused"/>); null when not paused. Cleared on reactivation.</summary>
+    public DateTime? PausedAt { get; set; }
+
+    /// <summary>
+    /// The row was created or completed with invented data for the test environment (demo seed). Real host data stays
+    /// <c>false</c>. The showcase reset deletes only rows marked this way and recorded as showcase.
+    /// </summary>
+    public bool IsTestData { get; set; }
 
     /// <summary>Compliance activation gate for public listing (US-019 / #295).</summary>
     public PropertyComplianceStatus ComplianceStatus { get; set; } = PropertyComplianceStatus.Pending;
@@ -158,6 +274,18 @@ public class Property : ITenantOwned
 
     // The D.L. 145/2023 safety checklist lives in PropertySafetyChecklists (CO-07): the old JSON column was migrated there.
 
+    /// <summary>
+    /// Soft delete (PC-05, A2-18): set instead of removing the row, so fiscal history tied to the property (tourist
+    /// tax reports, CIN, Alloggiati communications, cedolare secca / <see cref="PropertyFiscalYear"/>) stays intact for
+    /// Italian compliance retention. Excluded from every normal read by the <c>SoftDelete</c> global query filter
+    /// (<c>AppDbContext.SoftDeleteQueryFilter</c>); reporting/compliance code reaches a deleted property explicitly with
+    /// <c>IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])</c>. Never physically deleted.
+    /// </summary>
+    public bool IsDeleted { get; set; }
+
+    /// <summary>UTC instant the property was soft-deleted (PC-05); null while it is not.</summary>
+    public DateTime? DeletedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
@@ -166,6 +294,12 @@ public class Property : ITenantOwned
     public virtual ICollection<OtaIntegration> OtaIntegrations { get; set; } = new List<OtaIntegration>();
     public virtual ICollection<PropertyDocument> PropertyDocuments { get; set; } = new List<PropertyDocument>();
     public virtual PricingAdapterConfig? PricingAdapterConfig { get; set; }
+
+    /// <summary>
+    /// The members «Solo alcuni» who reach this property (AM-03). Never loaded with the property: it exists so that the list
+    /// filters can say <c>EXISTS</c> in SQL (<c>HostScopeQueryExtensions.InScope</c>).
+    /// </summary>
+    public virtual ICollection<PropertyMemberAccess> MemberAccesses { get; set; } = new List<PropertyMemberAccess>();
 }
 
 /// <summary>Lengths of the cadastral fields of <see cref="Property"/> (LT-10).</summary>

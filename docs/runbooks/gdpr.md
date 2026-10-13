@@ -16,7 +16,8 @@ Nothing below invents a retention period or a legal text: the periods and the te
 | GDPR tab | `GET /api/gdpr/guests/{id}`: current consents with their version, history (no IP), retention per category, status | `GdprService.GetGuestPrivacySummaryAsync` |
 | Marketing consent (A5-14) | The host can **never** grant it: `PUT /api/gdpr/guests/{id}/consent` with `marketingConsent: true` answers 422 `gdpr_marketing_consent_host_grant_forbidden`. A withdrawal needs the guest's documented request in `note` (date, channel; 422 `gdpr_marketing_withdrawal_note_required` without it) and is recorded with the host's user id | `GdprService.UpdateMarketingConsentAsync` |
 | Check-in portal (A5-15) | The Alloggiati registration is a legal obligation (art. 109 TULPS, art. 6.1.c GDPR): **no consent checkbox**. The portal shows the privacy notice; on submit the notice version is recorded. The marketing consent is optional, offered only when its text has a version, recorded with version, time and IP. An unticked box leaves an earlier consent as it is (it is not a withdrawal) | `GuestCheckInService.RecordPrivacyChoices`, frontend `checkin-page.tsx` |
-| History | Append-only `GuestConsentRecords`: purpose (`PrivacyNotice`, `Marketing`), action (`NoticePresented`, `Granted`, `Withdrawn`, `Expired`), version, source (`GuestPortal`, `HostOnGuestRequest`, `RetentionPolicy`), IP, note, time | `GuestConsentRecord` |
+| Checkout of the booking site (DB-03) | The optional "send me offers" box of `POST /api/public/bookings` (`marketingConsent`, never preselected, never a condition of the booking) follows the same rule as the portal: offered only when the text has a version (`marketingConsentVersion` of `GET /api/public/orgs/{slug}`), recorded with version, time and IP, in the same insert as the booking and the guest ([direct-booking.md](direct-booking.md) § 11.6). `marketingConsent: true` without a version answers 422 `direct_booking_marketing_consent_unavailable` | `BookingService.CreateDirectBookingAsync`, `BookingRepository.AddWithGuestConsentAsync` |
+| History | Append-only `GuestConsentRecords`: purpose (`PrivacyNotice`, `Marketing`), action (`NoticePresented`, `Granted`, `Withdrawn`, `Expired`), version, source (`GuestPortal`, `HostOnGuestRequest`, `RetentionPolicy`, `BookingCheckout`), IP, note, time | `GuestConsentRecord` |
 | Audit | `GuestPrivacyAuditEntries`: export, anonymization, erasure, retention applied (with category), marketing withdrawal; host user id (null for the job), counters of guests of the stays anonymized and files deleted. **No personal data of the guest**, no foreign key (it survives the removal of a guest) | `GuestPrivacyAuditEntry` |
 | Retention | Nightly job `gdpr-data-retention` (03:00 UTC, FD-11) applies each configured category (§ 3) to every org. Idempotent: processed rows carry a marker and are not selected again | `GdprDataRetentionJob`, `GuestDataRetentionService` |
 
@@ -31,11 +32,12 @@ No default in code or in `appsettings.json` (the keys are there, empty).
 | Variable | Meaning | While empty |
 |---|---|---|
 | `Gdpr__PrivacyNoticeVersion` | Version of the privacy notice shown on the check-in portal (frontend keys `checkin.privacyNotice.*`) | The check-in works (legal obligation) but the notice shown is not recorded; warning `Gdpr:PrivacyNoticeVersion is not configured` at each check-in |
-| `Gdpr__MarketingConsentVersion` | Version of the marketing consent text (frontend key `checkin.marketingConsent`) | The portal does not offer the marketing consent; a submit with `marketingConsent: true` answers 400 on `MarketingConsent` |
+| `Gdpr__MarketingConsentVersion` | Version of the marketing consent text (frontend key `checkin.marketingConsent`; the checkout of the booking site shows the same text, DB-03) | The portal and the checkout do not offer the marketing consent; a submit with `marketingConsent: true` answers 400 on `MarketingConsent` (portal) or 422 `direct_booking_marketing_consent_unavailable` (checkout) |
 | `Gdpr__Retention__{Category}__Years` / `__Months` / `__Days` | Retention period of the category (§ 3), summed | The category is not applied |
 | `Gdpr__Retention__{Category}__Source` | Source that justifies the period (law, article, written decision) | The category is not applied, even with a period |
 
-`{Category}` is `DocumentScans`, `AlloggiatiData`, `Marketing` or `FiscalData`. A category is applied only with at
+`{Category}` is `DocumentScans`, `AlloggiatiData`, `Marketing` or `FiscalData`; `LeaseParties` is the parties of the
+long-term leases (§ 7); `SupplierCustomers` is the private customers of the suppliers (§ 8). A category is applied only with at
 least one amount (0 is allowed: `Days = 0` means "the day after the reference date"), no negative amount and a source.
 Otherwise every run of the job logs
 `GDPR retention: category {Category} not applied (...)` and the host's GDPR tab shows "Periodo non configurato".
@@ -113,3 +115,122 @@ storage to delete, see `storage.md` § 5).
 4. Erasure of a test guest with a scan: the object disappears from the private bucket
    (`guest-documents/{orgId}/{guestId}/...`), the export of the same guest shows `ANONYMIZED` and no document.
 5. Database: `select "Action", "Category", "ActorUserId", "FilesDeleted" from "GuestPrivacyAuditEntries" order by "OccurredAt" desc limit 20;`
+
+## 7. Parties of long-term leases (LT-12, #179)
+
+Task LT-12 (audit defect A7-18). The parties of a lease (`Parties`: landlords and tenants) are anonymized **only after
+the lease has ended**: a lease ends the calendar day (Europe/Rome) after its `EndDate`. The old stored
+`LeaseContracts.DataRetentionUntil = StartDate + 10 years` is gone (migration `LeasePartyRetention`): a 4+4 lease with
+renewals can still be in force ten years after its start. Nothing is anonymized before the end date.
+
+| Trigger | When the parties are anonymized | Code |
+|---|---|---|
+| Erasure request (art. 17) | `POST /api/leases/{id}/erasure-request` (`lease.create` on the lease, 404 for another org). Recorded once (`ErasureRequested` flag and timeline event). Lease ended: now (`status: Anonymized`). Lease in force: from the day after `EndDate` (`status: Scheduled`, `anonymizationFrom`), by the nightly job. Idempotent | `LeasesController.RequestErasure`, `LeasePartyPrivacyService.RequestErasureAsync` |
+| Retention | Nightly job `gdpr-data-retention` (same job as the guests): leases whose `EndDate` + `Gdpr:Retention:LeaseParties` ended. **Off until configured** with a period and its source, like the guest categories (§ 2). Without it, every run logs `GDPR retention: lease parties not applied (...)` and only the erasure requests are honoured | `LeasePartyPrivacyService.ApplyRetentionAsync` |
+
+**Parties still involved in a lease in force.** A party whose fiscal code (trimmed, case-insensitive) is also a party,
+not anonymized, of another lease **of the same org** whose end date has not passed keeps its data (typically the landlord
+with other leases, or a tenant who signed a new lease). The lease is retried every night and marked anonymized
+(`PartiesAnonymizedAt`) only when every party is; the erasure endpoint answers `PartiallyAnonymized` with `partiesKept`.
+
+**What is removed**: first and last name, fiscal code (`ANONYMIZED`), citizenship (empty), e-mail
+(`ANON-{partyId}@deleted.local`), and the provider signing link, its expiry and the provider signer id of the party.
+Each party gets `AnonymizedAt`. The RLI reminder skips anonymized leases and parties.
+
+**What stays**: role and extra-EU flag of each party (shape of the lease and Questura history, no identity left), dates,
+amounts and status of the lease, the timeline events (no personal data), the registration code and dates, and **the stored
+documents**: the signed contract (`SignedPdfStoragePath`), the RLI receipt and the Questura receipt in the private bucket
+still contain the parties' data. Deleting them is not done (the RLI receipt is required by a database constraint of a
+`Registered` lease, and the landlord may need the signed contract for its own obligations): decision of the product
+owner, see the open question of LT-12.
+
+Configuration (Railway, per environment), only after the decision of the product owner and the DPO/accountant:
+
+```
+Gdpr__Retention__LeaseParties__Years=<years after the end of the lease>
+Gdpr__Retention__LeaseParties__Source=<article of law or written decision>
+```
+
+Verification after deploy: Railway logs at 03:00 UTC show `GDPR retention: lease parties not applied (...)` (or
+`applied`) and `GDPR lease party retention done`. Database:
+`select "Id", "EndDate", "ErasureRequested", "PartiesAnonymizedAt" from "LeaseContracts" where "ErasureRequested" or "PartiesAnonymizedAt" is not null;`
+
+## 8. Private customers of the suppliers (SP-10)
+
+A customer who books a supplier from its public showcase has **no account** and is not a guest of a stay: it is a `ServiceCustomer` of
+**one supplier** (the supplier is the controller of the work it does for the customer; CasaZen provides the booking and holds the data
+for it). What is kept, where and how long (the flow is in [`suppliers.md`](suppliers.md) § 23):
+
+| Data | Where | Protection |
+|---|---|---|
+| name, e-mail address, phone | `ServiceCustomers` (and, while the e-mail is not checked, in the payload of `ShowcaseBookingHolds`) | encrypted at rest (`Casazen.ServiceCustomer`), found by an HMAC of the address, shown to the supplier as "Nome C." until it takes the request and in full only after (D9) |
+| street address, floor, access notes of the work | `ServiceRequests` | encrypted at rest (`Casazen.ServiceRequest.Location`), shown to the supplier only after the take |
+| comune and postal code | `ServiceRequests` | not encrypted; the supplier sees them before the take |
+| consent: version of the privacy notice, time, client address | `ServiceCustomers` | the booking is refused without it, or with a version that is not the current one (`Suppliers__Showcase__PrivacyNoticeVersion`); the text of the notice is a decision of the product owner and legal (D14) |
+| language | `ServiceCustomers` | `it` or `en`, the language of every e-mail to the customer |
+| reason the customer gave when it cancelled (SP-11) | `ServiceRequests.CancellationReason` | free text, at most 500 characters, shown to the supplier and back to the customer; **not encrypted and not removed by the retention** (which anonymizes the customer, not the text of its requests): a decision for the DPO |
+
+An unchecked booking is **deleted by the upkeep job** when its 30 minutes have passed (the data go with it); a checked one is deleted
+when it would have expired, and the request and the customer remain. The logs carry ids and codes only.
+
+| Trigger | When the customer is anonymized | Code |
+|---|---|---|
+| Retention | Nightly job `gdpr-data-retention`: a customer **none of whose requests is open** (`Richiesto`, `PresoInCarico`, `InCorso`) and whose last request ended more than `Gdpr:Retention:SupplierCustomers` ago (the end of the work; its creation when it had no hours; the customer's own creation when it has no request). **Off until configured** with a period and its source, like the other categories (§ 2): without them every run logs `GDPR retention: supplier customers not applied (...)` and nothing is anonymized. The customers of one supplier are changed under that supplier's calendar lock (the one a booking holds when it creates its request) and read again after taking it, so a customer who confirms a new booking at that moment is left alone | `ServiceCustomerPrivacyService.ApplyRetentionAsync` |
+
+**What is removed**: the name (`ANONYMIZED`), the e-mail (`ANON-{customerId}@deleted.local`), the phone and the client address of the
+consent, and the e-mail index (replaced, so the old address is never found again and a new booking of the same person makes a new
+customer); of every request of the customer that is over, the street address, the floor and the access notes. **What stays**: the
+language, the version and time of the consent (the proof that it was given), the comune and the postal code, the request itself (status,
+times, price, the supplier's accounts) and the customer row with its `AnonymizedAt`. The reminder skips an anonymized customer. The
+period and its source are **not decided here**: the product owner, the DPO and the accountant decide (the supplier may need the
+request for its own accounts).
+
+**Not done in SP-10 and SP-11** (decisions for later): an erasure request of the customer (art. 17), the export of its data (art. 15, 20)
+and the withdrawal of the consent. The customer's own area of SP-11 ([`suppliers.md`](suppliers.md) § 24) lets it find, cancel and move a
+booking, not exercise these rights: they need an operator procedure; until then a request goes to the supplier (the controller) or to
+CasaZen support, who can anonymize the customer with `ServiceCustomerPrivacyService.Anonymize` (code change, no endpoint).
+
+Configuration (Railway, per environment), only after the decision of the product owner and the DPO/accountant:
+
+```
+Gdpr__Retention__SupplierCustomers__Years=<years after the end of the last request>
+Gdpr__Retention__SupplierCustomers__Source=<article of law or written decision>
+```
+
+Verification after deploy: the Railway log at 03:00 UTC shows `GDPR retention: supplier customers not applied (...)` (or `applied`) and
+`GDPR supplier customer retention done`. Database:
+`select "Id", "AnonymizedAt", "CreatedAt" from "ServiceCustomers" where "AnonymizedAt" is not null;` and
+`select count(*) from "ServiceCustomers" where "FullName" not like 'CfDJ8%';` (expected 0: every name is a payload).
+
+## 9. People of an organisation: export and invitations (AM-02)
+
+Full description in [`org-team.md`](org-team.md) §§ 15, 16.
+
+| Concern | Behaviour | Code |
+|---|---|---|
+| Org export (`GET /api/gdpr/org/export`) | The answer gains `members`: for each member of the org its `UserId`, `Role`, `Status`, `PropertyScope`, `CreatedAt` and `DeactivatedAt`. **No name and no email**: the names are on the people page of the account, where whoever manages the people already sees them. Members of another org never appear. **AM-03b: the endpoint is the holder's** (`OrgBillingAdmin`: the owner and the administrators; 403 for a collaborator, a property manager and an accountant). It needed `property.read` before, which a collaborator limited to some properties holds, and applied no scope; now the sections of the properties (`propertyFiscalYears`, `propertyTaxpayers`) also hold only the properties the caller's scope reaches (the holder's is the whole org: same answer as before). `POST /api/gdpr/org/anonymize` is still `property.write` (follow-up AM-03b-FU1, [`org-team.md`](org-team.md) § 40, § 44) | `GdprController.ExportOrgFiscal`, `GdprService.ExportOrgFiscalDataAsync` |
+| Invitation (personal data) | Name and email of the invitee, kept in `OrgInvitations`. Nothing else of the invitee exists before it accepts. The token is stored only as a SHA-256 hash | `OrgInvitation` |
+| Retention of the invitations | A closed invitation (accepted, revoked, expired) is **deleted with the name and the email** `OrgTeam__InvitationRetentionDays` days after it was closed (default 30, minimum 1). A pending one is not deleted; once expired it is closed, then deleted. Idempotent, one transaction per org. The job runs with the `OrgTeam` flag off too | `OrgInvitationMaintenanceService` (job `org-invitation-maintenance`, [hangfire.md](hangfire.md)) |
+| Consents of a member | The person who accepts records the four consents of the onboarding (Terms, Privacy, DPA, subprocessors) for the org it joins, with version and IP (decision D14). An empty org that it leaves keeps its consents | `OnboardingService.ValidateAndRecordConsentsAsync` |
+| Logs | The token is never logged; the email only masked (`m***@example.com`) | `LogRedaction.MaskEmail` |
+| Privacy notice | The text must mention the processing of the name and email of the invitee (until 30 days after the invitation closed) and the visibility of the people of an org to its owner and administrators. Wording and publication belong to the legal owner ([legal-documents.md](legal-documents.md)); **not changed by AM-02**, to do before `Features__OrgTeam` is turned on | — |
+| Erasure of the account of a member | Not part of AM-02. The member row goes with the user (foreign key `ON DELETE CASCADE`); the invitations the user sent keep its id in `InvitedByUserId` until they are purged | — |
+| Activity log (AM-02b, decision D17) | `OrgActivityEntries`: who did what in the org, as **ids and codes only** (actor and subject are opaque ids, the details a role, a plan tier or a count; never a name, an email, an amount, a slug or a free text; the catalog refuses anything else). **No foreign key to the account**: erasing a user leaves an id nobody can resolve, no name, no email. Written inside the transaction of the change; collected only while `Features__OrgTeam` is on | `OrgActivityCatalog`, `ActivityLog` |
+| Retention of the activity log | Deleted after `OrgTeam__ActivityRetentionMonths` months (**12 by default; to be confirmed with the legal advisor**), nightly, idempotent. The job runs with the `OrgTeam` flag off too | `OrgActivityRetentionService` (job `org-activity-retention`, [hangfire.md](hangfire.md)) |
+| Org export and the activity log | The answer of `GET /api/gdpr/org/export` gains `activity` (the same lines as the endpoint of the log) **only for who holds `org.activity.read`** (the owner and the administrators): the export is the holder's since AM-03b (`OrgBillingAdmin`), and the log keeps its own permission on top, so nobody reads through the export what it cannot read in the log | `GdprController.ExportOrgFiscal` |
+| Access request (personal data) | The note a member writes to the administrators (200 characters) is in the email and nowhere else: not stored, not logged, not in the activity log. The log keeps the id of the member and the code of the area | `OrgAccessRequestService` |
+| Privacy notice (activity log) | Must mention the activity log of the org (ids of the people who act, kept 12 months, visible to the owner and the administrators) and the requests for access. Belongs to the legal owner ([legal-documents.md](legal-documents.md)); **not changed by AM-02b**, to do before `Features__OrgTeam` is turned on | — |
+
+## 10. In-app notifications of the users (UI-12a)
+
+Full description in [`in-app-notifications.md`](in-app-notifications.md) (behind `Features__InAppNotifications`, off by default).
+
+| Concern | Behaviour | Code |
+|---|---|---|
+| What is kept | `InAppNotifications`: the user id, the kind of event (a value of `PushTypes`), the id of the booking or service request it is about, the key of the event and two instants. **No name, no text, no address**: the guest, the property and the sentence are never copied from the push; the client writes the sentence from the kind | `InAppNotification` (a test fails if a column is added) |
+| Retention | **90 days** from the event, read or not, nightly (`in-app-notification-retention`, 03:45 UTC), idempotent. The job runs with the flag off too, so rows written while it was on do not outlive it | `InAppNotificationService.PurgeExpiredAsync` |
+| Erasure of the account | The row goes with the user (foreign key `ON DELETE CASCADE`), as the member row does. Nothing in the code deletes an account yet: the key is proved by `InAppNotificationsPostgresTests` | `InAppNotification` |
+| Erasure of the org | The row goes with the org (foreign key `ON DELETE CASCADE`), so the one place an org is deleted (the merge of two duplicate supplier orgs) is not stopped by it | `InAppNotification` |
+| Who reads | Only the user, only its own rows, only in the orgs it belongs to: another user's id is a 404, never a 403. The owner and the administrators of the org do not read the notifications of its people | `InAppNotificationService.OwnNotifications` |
+| Org export | Not part of `GET /api/gdpr/org/export` (the fiscal export of the org): the notifications are the user's | — |
+| Privacy notice | Should mention that CasaZen keeps for 90 days the list of the events that concerned the user (kind of event and reference, no content). Belongs to the legal owner ([legal-documents.md](legal-documents.md)); **not changed by UI-12a**, to do before `Features__InAppNotifications` is turned on in production | — |

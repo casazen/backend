@@ -29,7 +29,7 @@ dotnet run --project Casazen.Web
 
 **API Swagger:** https://localhost:5001/swagger
 
-Local PostgreSQL and Railway deploy use the root `Dockerfile` (no `docker-compose.yml`). See `docs/INFRA.md`.
+Local PostgreSQL and the deploy use the root `Dockerfile` (no `docker-compose.yml`). See `docs/INFRA.md` (hosting in revisione: Railway è stato cancellato dal PO il 2026-10-02, vedi [`docs/runbooks/free-hosting-analysis.md`](docs/runbooks/free-hosting-analysis.md)).
 
 ---
 
@@ -112,6 +112,8 @@ and delivered by a Hangfire job, never inside the request.
 
 Outside Development and Testing a missing or invalid value stops the app at startup. Domain verification (SPF/DKIM),
 Railway variables and send test: [`docs/runbooks/email.md`](docs/runbooks/email.md).
+
+Every variable of the three repositories, with where to set it and what happens without it: [`docs/runbooks/deploy-checklist.md`](docs/runbooks/deploy-checklist.md).
 
 > ⚠️ **Never commit** real credentials. Set them via **Railway environment variables** or `appsettings.Development.json` (gitignored).
 
@@ -255,7 +257,7 @@ curl -X GET "https://localhost:5001/api/ota/bookings?platform=airbnb&propertyId=
 - Timeout: 30 seconds per request
 
 ## 📊 Database
-**SQL Server Schema:**
+**Database schema (PostgreSQL):**
 
 ```
 Users

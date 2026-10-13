@@ -218,4 +218,19 @@ public sealed class PricingAdapterServiceTests : IDisposable
         Assert.Equal(items.OrderBy(i => i.StayDate).Select(i => i.StayDate), items.Select(i => i.StayDate));
         Assert.Equal(new DateOnly(2026, 7, 1), items[0].StayDate);
     }
+
+    [Fact]
+    public async Task ApplySuggestionsAsync_EditedPrice_IsStoredAndReturnedAsAppliedNightly()
+    {
+        var (property, _) = await SeedAsync(_db);
+        await _service.RegenerateSuggestionsAsync(property.Id, onlyIfDue: false);
+        var date = new DateOnly(2026, 7, 14);
+
+        var applied = await _service.ApplySuggestionsAsync(
+            property.Id, [new SeasonalPriceApplyItem(date, 199.50m)]);
+
+        Assert.Equal(1, applied);
+        var prices = await _service.GetAppliedNightlyPricesAsync(property.Id, date, date.AddDays(1));
+        Assert.Equal(199.50m, Assert.Single(prices).Value);
+    }
 }

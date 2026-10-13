@@ -49,6 +49,7 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
         { "GET", "/api/properties" },
         { "GET", "/api/bookings" },
         { "GET", "/api/alloggiati/summary" },
+        { "GET", "/api/alloggiati/{booking}/record-file" },
         { "GET", "/api/compliance/summary" },
         { "GET", "/api/fiscal/regime" },
         { "GET", "/api/leases" },
@@ -89,6 +90,25 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
         Assert.Equal(0m, payment.RefundedAmount);
     }
 
+    [Fact]
+    public async Task AlloggiatiRecordFile_AsCollaboratorWithoutGuestRead_Returns403()
+    {
+        // CO-13: the record file holds the identity documents, so it needs guest.read like the full document numbers.
+        var scenario = await SeedScenarioAsync();
+        var withoutGuestRead = await SeedCollaboratorAsync(scenario.HostOrgId, "booking.read", "property.read");
+        var withGuestRead = await SeedCollaboratorAsync(scenario.HostOrgId, "booking.read", "property.read", "guest.read");
+        using var denied = _factory.CreateAuthenticatedClient(withoutGuestRead, "PropertyManager");
+        using var allowed = _factory.CreateAuthenticatedClient(withGuestRead, "PropertyManager");
+
+        var forbidden = await denied.GetAsync($"/api/alloggiati/{scenario.BookingId}/record-file");
+        var refusedForData = await allowed.GetAsync($"/api/alloggiati/{scenario.BookingId}/record-file");
+
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        // Authorized, but the seeded booking has no complete guest data and no code table: the file is refused, not served.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, refusedForData.StatusCode);
+        await AssertScenarioUnchangedAsync(scenario);
+    }
+
     [Theory]
     [InlineData("GET", "/api/payments/{payment}")]
     [InlineData("GET", "/api/payments?propertyId={property}")]
@@ -105,6 +125,7 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
     [InlineData("GET", "/api/suppliers?propertyId={property}")]
     [InlineData("GET", "/api/guests/{guest}")]
     [InlineData("GET", "/api/gdpr/guests/{guest}/export")]
+    [InlineData("GET", "/api/alloggiati/{booking}/record-file")]
     public async Task HostResource_AsHostOfAnotherOrg_Returns404Or403(string method, string route)
     {
         var scenario = await SeedScenarioAsync();

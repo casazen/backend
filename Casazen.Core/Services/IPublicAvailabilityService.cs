@@ -31,8 +31,18 @@ public interface IPublicAvailabilityService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>Taken nights of a property, as calendar dates (midnight UTC), in order and without duplicates.</summary>
-public sealed record PublicAvailability(Guid PropertyId, DateTime FromDate, DateTime ToDate, IReadOnlyList<DateTime> BookedNights)
+/// <summary>
+/// Taken nights of a property, as calendar dates (midnight UTC), in order and without duplicates. <paramref name="MinNights"/>
+/// is the minimum stay of the property (DB-03), <c>null</c> for none: a free night can be booked as part of a stay of at least
+/// that many nights (the quote and the checkout refuse a shorter one, 422 <c>direct_booking_min_nights_not_met</c>), so a
+/// calendar built from this answer can grey out a selection that is too short without asking the quote.
+/// </summary>
+public sealed record PublicAvailability(
+    Guid PropertyId,
+    DateTime FromDate,
+    DateTime ToDate,
+    IReadOnlyList<DateTime> BookedNights,
+    int? MinNights = null)
 {
     /// <summary>Longest range one request may ask for: one year of the booking calendar.</summary>
     public const int MaxRangeDays = 366;
@@ -52,11 +62,16 @@ public static class PublicAvailabilityErrorCodes
 public static class PublicListing
 {
     /// <summary>
-    /// Published: active and with the compliance activated (<see cref="PropertyComplianceStatus.Active"/>). The public
-    /// search, the property page and the availability use this rule; the checkout checks the same condition. A
-    /// <see cref="PropertyComplianceStatus.Suspended"/> property (a requirement lost after the activation, CO-06) is not
-    /// published, like a pending one.
+    /// Published: in short-rent mode (<see cref="RentalMode.Short"/>, PM-01: a long-term property is never published, it
+    /// has no booking site, no search result, no availability, no SEO page and no sitemap entry), active, not paused, and
+    /// with the compliance activated (<see cref="PropertyComplianceStatus.Active"/>).
+    /// The public search, the property page, the availability, the SEO pages and the sitemaps, and the activation
+    /// checklist use this rule; the checkout checks the same condition. A <see cref="PropertyComplianceStatus.Suspended"/>
+    /// property (a requirement lost after the activation, CO-06) is not published, like a pending one. A paused property
+    /// (PC-03, A2-05) is hidden here too, but stays visible and editable to its own host — pausing is reversible and never
+    /// deletes or archives it. The mode comparison is the one of <see cref="PropertyRentalModeRules.IsShortRent"/>.
     /// </summary>
     public static Expression<Func<Property, bool>> IsPublished { get; } =
-        p => p.IsActive && p.ComplianceStatus == PropertyComplianceStatus.Active;
+        p => p.RentalMode == RentalMode.Short
+            && p.IsActive && !p.IsPaused && p.ComplianceStatus == PropertyComplianceStatus.Active;
 }

@@ -16,7 +16,7 @@ namespace Casazen.Tests.Integration;
 /// <summary>
 /// PC-12 (A2-22) on PostgreSQL: the public iCal export publishes the stays of CasaZen (host bookings, confirmed and
 /// still valid checkout holds) as all-day events with a neutral SUMMARY, never the blocks imported from an OTA (echo),
-/// an expired hold or a pending "pay at the property" request; the host can regenerate the link (the old one answers
+/// an expired hold; pending "pay at the property" requests ARE exported to block OTA channels (BK-06). The host can regenerate the link (the old one answers
 /// 404) and a host of another org cannot. Downloads go through the scripted client of
 /// <see cref="PropertyICalSyncPostgresTests.Factory"/>: no network.
 /// </summary>
@@ -102,7 +102,7 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
     }
 
     [PostgresFact]
-    public async Task PublicExport_PendingOnSiteRequest_IsNotExportedUntilTheHostAccepts()
+    public async Task PublicExport_PendingOnSiteRequest_IsExportedImmediatelyAndAcceptedIsAlsoExported()
     {
         var property = await PublishedPropertyTests.SeedAsync(_factory, "pc12-onsite");
         using var owner = _factory.CreateAuthenticatedClient(property.OwnerId, HostRole);
@@ -126,7 +126,8 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
 
         var ics = await ExportAtAsync(await ExportPathAsync(owner, property.Id), ExportNow);
 
-        Assert.DoesNotContain($"booking-{pending}", ics);
+        // BK-06: pending OnSite requests MUST block OTA channels immediately.
+        Assert.Contains($"UID:booking-{pending}", ics.Split("\r\n"));
         Assert.Contains($"UID:booking-{accepted}", ics.Split("\r\n"));
     }
 

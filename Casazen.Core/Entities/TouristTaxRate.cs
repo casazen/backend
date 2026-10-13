@@ -121,6 +121,13 @@ public class TouristTaxRate
     [MaxLength(500)]
     public string? SourceUrl { get; set; }
 
+    /// <summary>Publishing body of <see cref="SourceUrl"/> (e.g. Comune di Milano). Null when not stated.</summary>
+    [MaxLength(200)]
+    public string? SourceAuthority { get; set; }
+
+    /// <summary>When <see cref="SourceUrl"/> was last retrieved by the official-data job. Null when never fetched.</summary>
+    public DateTime? SourceRetrievedAt { get; set; }
+
     /// <summary>
     /// How the amount was checked against <see cref="SourceUrl"/> (U / D / T). Null when not stated.
     /// </summary>

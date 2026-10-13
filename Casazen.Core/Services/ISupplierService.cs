@@ -65,9 +65,15 @@ public interface ISupplierService
     Task<SupplierProfile?> GetProfileAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>Updates mutable profile fields. Returns the updated profile or null if not found.</summary>
+    /// <remarks>
+    /// <paramref name="comuni"/> is the free text of the supplier (kept as written); <paramref name="comuneIstatCodes"/> the
+    /// comuni chosen from the official ISTAT list (SU-04): when sent it replaces the stored ones, when <c>null</c> they stay.
+    /// </remarks>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>invalid_service_category</c>: one of <paramref name="categories"/> is not a
-    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code. Codes <c>comuni_dataset_unavailable</c> (the official list is
+    /// not imported), <c>comune_istat_unknown</c> (a code that is not an active comune of it), <c>comuni_too_many</c>:
+    /// <paramref name="comuneIstatCodes"/>.
     /// </exception>
     Task<SupplierProfile?> UpdateProfileAsync(
         Guid orgId,
@@ -78,18 +84,55 @@ public interface ISupplierService
         IEnumerable<string>? comuni,
         string? bio,
         IEnumerable<string>? photoUrls,
+        CancellationToken cancellationToken = default,
+        IEnumerable<string>? comuneIstatCodes = null);
+
+    /// <summary>
+    /// The state of the 5-step activation wizard (SU-05, A4-09): each step derived from the stored profile, the step the
+    /// supplier reached (saved by <see cref="SetActivationStepAsync"/>) and the Terms of Service acceptance. Null when the
+    /// org has no profile.
+    /// </summary>
+    Task<SupplierActivationState?> GetActivationAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Saves the wizard step (1-5) the supplier reached so that it resumes there from any device. 422
+    /// <c>validation_error</c> outside 1-5.
+    /// </summary>
+    Task SetActivationStepAsync(Guid orgId, int step, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the profile to <see cref="SupplierStatus.Active"/> when every requirement of the stored profile is met
+    /// (business name, plausible phone, at least one category, one comune and a description) and the Terms of Service
+    /// version the supplier saw is the current one. Throws <see cref="SupplierActivationBlockedException"/> (409) with the
+    /// missing requirements, and 409 <c>supplier_tos_version_stale</c> when <paramref name="tosVersion"/> is not the current
+    /// version. The acceptance (version, time, IP) is recorded as a consent record of the supplier org.
+    /// </summary>
+    Task<SupplierProfile> CompleteActivationAsync(
+        Guid orgId,
+        bool tosAccepted,
+        string? tosVersion,
+        string userId,
+        string? clientIpAddress,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns wizard step statuses for the activation flow (AC5).
+    /// Records the acceptance of the current Terms of Service by an already activated supplier (re-acceptance after a new
+    /// version); it never changes the status of the profile. 409 <c>supplier_tos_version_stale</c> for another version.
     /// </summary>
-    Task<IReadOnlyList<ActivationStep>> GetActivationStepsAsync(Guid orgId, CancellationToken cancellationToken = default);
+    Task<SupplierProfile> AcceptTosAsync(
+        Guid orgId,
+        string? tosVersion,
+        string userId,
+        string? clientIpAddress,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Sets the profile to <see cref="SupplierStatus.Active"/> when all blockers are satisfied and ToS is accepted.
-    /// Throws <see cref="InvalidOperationException"/> (→ 409) if blockers remain.
+    /// The slug of the supplier's public showcase (SU-13): the stored one, or, for an <see cref="SupplierStatus.Active"/>
+    /// profile without one (activated before SU-13), a new one generated from the business name
+    /// (<see cref="Casazen.Core.Suppliers.SupplierShowcaseSlug"/>), unique, never changed afterwards. Null for a profile
+    /// that was never activated (nothing public to link) and for an org without a profile.
     /// </summary>
-    Task<SupplierProfile> CompleteActivationAsync(Guid orgId, bool tosAccepted, CancellationToken cancellationToken = default);
+    Task<string?> EnsureShowcaseSlugAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns availability entries for the supplier within an inclusive date range.
@@ -120,6 +163,15 @@ public interface ISupplierService
     /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// </exception>
     Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Same as <see cref="GetActiveByComune"/> for a <see cref="Casazen.Core.Suppliers.ComuneTarget"/>: matched by ISTAT code
+    /// when the comune has one (the property's chosen comune), by the written name otherwise (SU-04, A4-12).
+    /// </summary>
+    Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
+        Casazen.Core.Suppliers.ComuneTarget target,
+        string? category,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Creates an admin invite record. Returns the generated invite id.</summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
@@ -212,7 +264,25 @@ public interface ISupplierService
 /// </summary>
 public record UnmappedServiceCategory(string Source, Guid Id, string Value);
 
-public record ActivationStep(string Id, string Label, string Status, string? Blocker = null);
+/// <param name="Id">One of <see cref="Casazen.Core.Suppliers.SupplierActivation.Steps"/>.</param>
+/// <param name="Status"><c>completed</c> or <c>pending</c>.</param>
+/// <param name="Blocker">Stable code of the first requirement missing (<see cref="Casazen.Core.Suppliers.SupplierActivation.Blockers"/>); the client translates it.</param>
+/// <param name="Required">False for a step that never blocks the activation (showcase photos).</param>
+public record ActivationStep(string Id, string Status, string? Blocker = null, bool Required = true);
+
+/// <param name="CurrentStep">Step number 1-5 to open: the saved one, else the first incomplete required step.</param>
+public record SupplierActivationState(IReadOnlyList<ActivationStep> Steps, int CurrentStep, SupplierTosState Tos);
+
+/// <param name="CurrentVersion">Terms of Service version in force (<c>Legal:Documents:Tos:Version</c>).</param>
+/// <param name="AcceptedVersion">Version the supplier accepted; null when it never accepted or accepted before versions were recorded.</param>
+/// <param name="ReacceptanceRequired">The supplier accepted something other than the current version (or an unrecorded one).</param>
+/// <param name="BlocksActions">The accepted version is recorded and no longer current: take, complete and reject are refused until the supplier accepts the current one.</param>
+public record SupplierTosState(
+    string CurrentVersion,
+    string? AcceptedVersion,
+    DateTime? AcceptedAt,
+    bool ReacceptanceRequired,
+    bool BlocksActions);
 
 public record SupplierInvite(Guid InviteId, DateTime ExpiresAt);
 
@@ -297,6 +367,20 @@ public record FixOrphanedSupplierOrgsReport(
 /// <param name="DuplicateOrgDeleted">
 /// False when the duplicate org also holds host data (properties, consents, ...): only its supplier profile is removed.
 /// </param>
+/// <param name="ServiceListingsMoved">
+/// Services of the duplicate's price catalog (SP-02) that moved to the keeper, the deleted ones too (a slug the keeper
+/// already uses gets the next free suffix).
+/// </param>
+/// <param name="AgendaRowsMoved">
+/// Rows of the duplicate's agenda (SP-03) that moved to the keeper: its time off, blocks and extra openings, and its
+/// weekly hours and settings when the keeper had none (the keeper's own stay as they are).
+/// </param>
+/// <param name="ShowcaseRowsMoved">
+/// Rows of the duplicate's public showcase (SP-10) that went to the keeper: its showcase requests (whose <c>OrgId</c> is the
+/// supplier org itself, so it moves with the supplier) and its private customers; a customer the keeper already has (the same
+/// e-mail) is merged into the keeper's, with its requests. The duplicate's holds are dropped, not moved: they wait for the
+/// customer's e-mail check for 30 minutes and would only collide with the keeper's.
+/// </param>
 public record SupplierDuplicateMerge(
     Guid KeeperOrgId,
     Guid DuplicateOrgId,
@@ -308,7 +392,10 @@ public record SupplierDuplicateMerge(
     int SupplierLinksMoved,
     int OrgMembersMoved,
     int DevicesMoved,
-    bool DuplicateOrgDeleted);
+    bool DuplicateOrgDeleted,
+    int ServiceListingsMoved = 0,
+    int AgendaRowsMoved = 0,
+    int ShowcaseRowsMoved = 0);
 
 /// <summary>A case left untouched for an admin decision (<see cref="Code"/>: see <c>docs/runbooks/suppliers.md</c>).</summary>
 public record SupplierManualIntervention(string Code, IReadOnlyList<Guid> OrgIds, IReadOnlyList<string> UserIds);

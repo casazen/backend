@@ -41,6 +41,7 @@ public class RliRegistrationService(
     IFileStorage storage,
     IApeComplianceService apeCompliance,
     IOptions<RliOptions> rliOptions,
+    IOrgHolderService orgHolder,
     ILogger<RliRegistrationService> logger,
     TimeProvider? timeProvider = null) : IRliRegistrationService
 {
@@ -72,9 +73,12 @@ public class RliRegistrationService(
 
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
 
-        // The delega is the owner's: only the property owner can authorize a filing in their name.
-        if (lease.Property is null || lease.Property.OwnerId != ownerId)
-            throw new UnauthorizedAccessException("Only the property owner can give the RLI delega.");
+        // The delega is the landlord's: only the holder of the org (its owner or an administrator, S5, AM-03) can authorize a
+        // filing in its name. The creator of the property is the holder only for an account in no org team (before the team,
+        // the creator was the owner); a property manager who created the property is not.
+        if (lease.Property is null
+            || !await orgHolder.IsHolderAsync(ownerId, lease.OrgId, lease.Property.OwnerId, cancellationToken))
+            throw new UnauthorizedAccessException("Only the holder of the org can give the RLI delega.");
 
         EnsureCanRegister(lease, lease.Registration);
 

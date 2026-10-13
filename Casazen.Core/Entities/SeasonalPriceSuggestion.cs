@@ -47,4 +47,14 @@ public class SeasonalPriceSuggestion : ITenantOwned
 
     /// <summary>UTC instant of the computation that wrote the row.</summary>
     public DateTime ComputedAt { get; set; }
+
+    /// <summary>
+    /// Nightly price the host confirmed for this date (PO 2026-10-08). Null until the host applies the proposal
+    /// (optionally after editing it). Quotes and bookings use this when set, otherwise the property nightly rate.
+    /// </summary>
+    [Precision(18, 2)]
+    public decimal? AppliedPrice { get; set; }
+
+    /// <summary>UTC instant the host confirmed <see cref="AppliedPrice"/>.</summary>
+    public DateTime? AppliedAt { get; set; }
 }

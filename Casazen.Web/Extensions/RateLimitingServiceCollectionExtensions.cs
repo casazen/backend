@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
+using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -37,9 +38,18 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.GuestCheckIn, 10, OneMinute, "CheckIn:RateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.GuestCheckInSubmit, 3, OneMinute, "CheckIn:SubmitRateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.PublicTouristTaxCalc, 30, OneMinute, "SeoTouristTax:RateLimitPermitLimit"),
+        new(RateLimitPolicies.PublicSeoEvents, 60, OneMinute),
         new(RateLimitPolicies.PublicResolveHost, 60, OneMinute, "PublicHost:RateLimitPermitLimit"),
         new(RateLimitPolicies.PublicIcal, 60, OneMinute),
         new(RateLimitPolicies.PublicRegistration, 5, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.PublicComuni, 120, OneMinute),
+        new(RateLimitPolicies.PublicSupplierSlots, 60, OneMinute),
+        new(RateLimitPolicies.PublicSupplierQuote, 30, OneMinute),
+        new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
+
+        // The one policy of a signed-in endpoint: partitioned by person, since the request emails other people (AM-02b).
+        new(RateLimitPolicies.OrgAccessRequest, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)
@@ -52,6 +62,14 @@ public static class RateLimitingServiceCollectionExtensions
         // Per email limit of "Le mie prenotazioni" ([GuestBookingEmailRateLimit], BK-11), next to its per-IP policy.
         services.AddSingleton<GuestBookingEmailRateLimiter>();
 
+        // Per email and supplier limit of the booking from a supplier's showcase ([SupplierBookingEmailRateLimit], SP-10), next to
+        // its per-IP policy.
+        services.AddSingleton<SupplierBookingEmailRateLimiter>();
+
+        // Per email and supplier limit of the customer's own area of a booking ([SupplierBookingManageRateLimit], SP-11), next to the
+        // per-IP policy PublicGuestBookingLookup.
+        services.AddSingleton<SupplierBookingManageEmailRateLimiter>();
+
         // Read from the final configuration (IConfiguration from DI), not while Program.cs is still building it.
         services.AddOptions<RateLimiterOptions>()
             .Configure<IConfiguration>((options, configuration) =>
@@ -63,9 +81,10 @@ public static class RateLimitingServiceCollectionExtensions
                     windows[definition.Name] = limiterOptions.Window;
 
                     var partitionByToken = definition.PartitionByToken;
+                    var partitionByUser = definition.PartitionByUser;
                     options.AddPolicy(definition.Name, httpContext =>
                         RateLimitPartition.GetFixedWindowLimiter(
-                            GetPartitionKey(httpContext, partitionByToken),
+                            GetPartitionKey(httpContext, partitionByToken, partitionByUser),
                             _ => limiterOptions));
                 }
 
@@ -102,9 +121,19 @@ public static class RateLimitingServiceCollectionExtensions
         };
     }
 
-    /// <summary>Client IP partition, plus a hash of the <c>{token}</c> route value when the policy asks for it.</summary>
-    public static string GetPartitionKey(HttpContext httpContext, bool partitionByToken)
+    /// <summary>
+    /// Client IP partition, plus a hash of the <c>{token}</c> route value when the policy asks for it. A policy partitioned by
+    /// person (<paramref name="partitionByUser"/>) counts the signed-in account instead, whatever the network it comes from;
+    /// a caller with no account falls back to its IP.
+    /// </summary>
+    public static string GetPartitionKey(HttpContext httpContext, bool partitionByToken, bool partitionByUser = false)
     {
+        if (partitionByUser && httpContext.User.GetUserId() is { Length: > 0 } userId)
+        {
+            // Hash, so the partition table never holds the account id.
+            return "user:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(userId)), 0, 16);
+        }
+
         var ipKey = ClientIp.GetRateLimitKey(httpContext);
         if (!partitionByToken
             || httpContext.Request.RouteValues[TokenRouteValue]?.ToString() is not { Length: > 0 } token)
@@ -132,6 +161,10 @@ public static class RateLimitingServiceCollectionExtensions
 
         httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         httpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+
+        // The endpoints that answer privately (a customer's own area, SP-11) answer so when they are limited too.
+        if (httpContext.GetEndpoint()?.Metadata.GetMetadata<PrivateAnswerAttribute>() is not null)
+            PrivateAnswerAttribute.Apply(httpContext.Response);
 
         var problem = ApiProblemDetails.Create(
             httpContext,
@@ -165,9 +198,11 @@ public static class RateLimitingServiceCollectionExtensions
 /// <param name="DefaultWindow">Fixed window length when not configured.</param>
 /// <param name="LegacyPermitLimitKey">Configuration key of the limit used before FD-10, still honoured.</param>
 /// <param name="PartitionByToken">Also partition by the hash of the <c>{token}</c> route value.</param>
+/// <param name="PartitionByUser">Partition by the signed-in account instead of the client IP (a signed-in endpoint only).</param>
 public sealed record RateLimitPolicyDefinition(
     string Name,
     int DefaultPermitLimit,
     TimeSpan DefaultWindow,
     string? LegacyPermitLimitKey = null,
-    bool PartitionByToken = false);
+    bool PartitionByToken = false,
+    bool PartitionByUser = false);

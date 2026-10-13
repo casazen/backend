@@ -103,7 +103,7 @@ public class SeoGeneratedContentTests
 /// <summary>SE-01 (A8-06): the SEO prompt has instructions and names the only facts and sources the text may use.</summary>
 public class SeoContentPromptTests
 {
-    private static readonly ComuneInfo Como = ItalianComuneRegistry.GetByCode("013075")!;
+    private static readonly ComuneInfo Como = ComuneTestData.ComoInfo;
 
     [Fact]
     public void Build_ComplianceGuide_HasLanguageFormatStructureAndSourceRules()
@@ -120,6 +120,85 @@ public class SeoContentPromptTests
         Assert.Contains("Non dare consulenza legale", prompt);
         Assert.Contains("https://alloggiatiweb.poliziadistato.it", prompt);
         Assert.Contains("CasaZen non ha una tariffa verificata per Como", prompt);
+    }
+
+    [Fact]
+    public void Build_LombardyGuide_AddsTheRegionalSectionFactsAndOfficialSources()
+    {
+        var prompt = SeoContentPrompt.Build(Como, SeoPageType.ComplianceGuide, []);
+
+        Assert.Contains("<h2>Regole della Lombardia: CIR e flussi turistici (Ross1000)</h2>", prompt);
+        Assert.Contains("Il CIR è propedeutico al CIN", prompt);
+        Assert.Contains("entro il giorno 5 del mese successivo", prompt);
+        Assert.Contains("https://www.flussituristici.servizirl.it/", prompt);
+        Assert.Contains("https://www.regione.lombardia.it/cultura-turismo-e-sport/imprese-e-professioni-turistiche/codice-identificativo-di-riferimento-cir", prompt);
+        // Province of Como (ISTAT 013): its own page on Ross1000 and the CIR.
+        Assert.Contains("https://www.provincia.como.it/", prompt);
+        Assert.Contains("tra 400 e 750 parole", prompt);
+        // The regional section comes after the Questura and before the tourist tax.
+        Assert.True(
+            prompt.IndexOf("Alloggiati Web)</h2>", StringComparison.Ordinal)
+            < prompt.IndexOf("Regole della Lombardia", StringComparison.Ordinal));
+        Assert.True(
+            prompt.IndexOf("Regole della Lombardia", StringComparison.Ordinal)
+            < prompt.IndexOf("<h2>Imposta di soggiorno a Como</h2>", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("015146", "Milano", "https://www.cittametropolitana.mi.it/")]
+    [InlineData("097084", "Varenna", "https://www.provincia.lecco.it/")]
+    public void Build_LombardyGuide_CitesThePageOfItsProvince(string code, string name, string provinceUrl)
+    {
+        var comune = new ComuneInfo(code, name, "LOM", "lombardia", name.ToLowerInvariant());
+
+        var prompt = SeoContentPrompt.Build(comune, SeoPageType.ComplianceGuide, []);
+
+        Assert.Contains(provinceUrl, prompt);
+        Assert.DoesNotContain("https://www.provincia.como.it/", prompt);
+    }
+
+    [Fact]
+    public void Build_LombardyGuideOfAProvinceWithoutAVerifiedPage_CitesTheRegionalSourcesOnly()
+    {
+        var varese = new ComuneInfo("012133", "Varese", "LOM", "lombardia", "varese");
+
+        var prompt = SeoContentPrompt.Build(varese, SeoPageType.ComplianceGuide, []);
+
+        Assert.Contains("Regole della Lombardia", prompt);
+        Assert.Contains("https://www.flussituristici.servizirl.it/", prompt);
+        Assert.DoesNotContain("provincia.como.it", prompt);
+        Assert.DoesNotContain("cittametropolitana.mi.it", prompt);
+        Assert.DoesNotContain("provincia.lecco.it", prompt);
+    }
+
+    [Fact]
+    public void Build_LombardyTouristTaxPage_HasNoRegionalSection()
+    {
+        var prompt = SeoContentPrompt.Build(Como, SeoPageType.TouristTaxCalc, []);
+
+        Assert.DoesNotContain("Lombardia", prompt);
+        Assert.DoesNotContain("Ross1000", prompt);
+        Assert.Contains("tra 300 e 600 parole", prompt);
+    }
+
+    [Fact]
+    public void Build_GuideOutsideLombardy_HasNoRegionalSection()
+    {
+        var prompt = SeoContentPrompt.Build(ComuneTestData.PalermoInfo, SeoPageType.ComplianceGuide, []);
+
+        Assert.DoesNotContain("Lombardia", prompt);
+        Assert.DoesNotContain("CIR", prompt);
+        Assert.Contains("tra 300 e 600 parole", prompt);
+    }
+
+    [Fact]
+    public void VersionFor_OnlyTheLombardyGuides_HaveTheNewVersion()
+    {
+        // A page whose prompt did not change keeps its version: it is not regenerated, nor reviewed again, for nothing.
+        Assert.Equal(SeoContentPrompt.LombardyGuideVersion, SeoContentPrompt.VersionFor(Como, SeoPageType.ComplianceGuide));
+        Assert.Equal(SeoContentPrompt.Version, SeoContentPrompt.VersionFor(Como, SeoPageType.TouristTaxCalc));
+        Assert.Equal(SeoContentPrompt.Version, SeoContentPrompt.VersionFor(ComuneTestData.PalermoInfo, SeoPageType.ComplianceGuide));
+        Assert.NotEqual(SeoContentPrompt.Version, SeoContentPrompt.LombardyGuideVersion);
     }
 
     [Fact]
@@ -156,5 +235,25 @@ public class SeoContentPromptTests
         Assert.Contains("https://www.comune.como.it/imposta-di-soggiorno", prompt);
         Assert.DoesNotContain("http://example.test/rate", prompt);
         Assert.DoesNotContain("normattiva", prompt);
+    }
+
+    [Fact]
+    public void EvaluateManual_PlainText_BecomesPublishableHtml()
+    {
+        var paragraph = new string('a', 320);
+        var body = SeoGeneratedContent.EvaluateManual($"{paragraph}\n\n{paragraph}", "Guida di Como");
+
+        Assert.Contains("<h2>Guida di Como</h2>", body);
+        Assert.Contains("<p>", body);
+        Assert.True(SeoGeneratedContent.VisibleText(body).Length >= SeoGeneratedContent.MinimumTextLength);
+    }
+
+    [Fact]
+    public void EvaluateManual_ShortText_IsRefused()
+    {
+        var error = Assert.Throws<Casazen.Core.Exceptions.DomainRuleException>(() =>
+            SeoGeneratedContent.EvaluateManual("<h2>CIN</h2><p>Troppo corto.</p>", "Como"));
+
+        Assert.Equal(SeoReviewErrorCodes.DraftInvalid, error.Code);
     }
 }

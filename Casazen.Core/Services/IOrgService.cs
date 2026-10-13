@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.OrgTeam;
 
 namespace Casazen.Core.Services;
 
@@ -40,23 +41,70 @@ public interface IOrgService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Writes the stored plan tier. No entitlement check: callers apply <see cref="PlanChangePolicy"/> first.
+    /// Writes the stored plan tier. No entitlement check: callers apply <see cref="PlanChangePolicy"/> first. When the tier
+    /// really changes the activity log gets the line <c>PlanChanged</c>, in the same save (AM-02b):
+    /// <paramref name="actorUserId"/> is who asked, <paramref name="source"/> says whether it was the org's billing
+    /// administrator or CasaZen staff.
     /// </summary>
     Task<Org?> UpdatePlanTierAsync(
         Guid orgId,
         PlanTier planTier,
+        string? actorUserId = null,
+        PlanChangeSource source = PlanChangeSource.Org,
         CancellationToken cancellationToken = default);
 
     Task<Org?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Stores the billing country and the declared VAT id (PL-13: the VAT id is verified by Stripe at checkout, not
+    /// here). <paramref name="eInvoice"/> updates the e-invoice data when given; null leaves it unchanged.
+    /// </summary>
     Task<Org?> UpdateBillingProfileAsync(
         Guid orgId,
         string billingCountry,
         string? vatId,
-        DateTime? vatValidatedAt,
+        BillingEInvoiceDetails? eInvoice = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyDictionary<Guid, Org>> GetByIdsAsync(
         IEnumerable<Guid> ids,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the org's editable identity (A1-22, A1-23): <c>Name</c> (mirrored into <c>DisplayName</c> — there is
+    /// no separate branding UI yet, both are shown as the org's name), its public <c>Slug</c> (sanitized, validated,
+    /// checked for uniqueness; the previous one is kept as an <c>OrgSlugAlias</c> so shared links keep working) and
+    /// its <c>ContactEmail</c>, whose publication on the public booking site is opt-in (<c>ContactEmailPublic</c>,
+    /// off by default — GDPR). Returns <c>null</c> when the org does not exist. Throws <c>DomainRuleException</c>
+    /// for an unusable slug and <c>DomainConflictException</c> when another org uses it. When the name or the slug really
+    /// changes the activity log gets a line for each (<c>OrgNameChanged</c>, <c>OrgSlugChanged</c>: no value, only the fact),
+    /// in the same save (AM-02b); <paramref name="actorUserId"/> is who asked.
+    /// </summary>
+    Task<Org?> UpdateSettingsAsync(
+        Guid orgId,
+        string name,
+        string slug,
+        string contactEmail,
+        bool contactEmailPublic,
+        string? actorUserId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether <paramref name="slug"/> can become the org's public slug (A1-23): its normalized form and, when it
+    /// cannot, the reason code (<c>org_slug_invalid</c>, <c>org_slug_reserved</c>, <c>org_slug_taken</c>). Advisory
+    /// only: <see cref="UpdateSettingsAsync"/> checks again under lock. <c>null</c> when the org does not exist.
+    /// </summary>
+    Task<OrgSlugAvailability?> CheckSlugAvailabilityAsync(
+        Guid orgId,
+        string slug,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>Result of <see cref="IOrgService.CheckSlugAvailabilityAsync"/>.</summary>
+public sealed record OrgSlugAvailability(string Slug, bool Available, string? Code);
+
+/// <summary>
+/// Data for the Italian e-invoice of the CasaZen subscription (PL-13). Per field: null leaves the stored value unchanged,
+/// an empty string clears it.
+/// </summary>
+public sealed record BillingEInvoiceDetails(string? SdiRecipientCode, string? PecEmail, string? FiscalCode);
