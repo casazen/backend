@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
@@ -91,7 +92,11 @@ internal sealed class OrgInvitationTestKit
         new(db, Cache.Object, NullLogger<OrgMembershipService>.Instance, Clock);
 
     public OnboardingService Onboarding(AppDbContext db) =>
-        new(db, Legal(), Cache.Object, EmailTestHelpers.Links(PublicSiteBaseUrl));
+        new(db, Legal(), Cache.Object, NotStartedGate(), EmailTestHelpers.Links(PublicSiteBaseUrl));
+
+    private static IHostOnboardingGate NotStartedGate() =>
+        Mock.Of<IHostOnboardingGate>(g =>
+            g.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()) == Task.FromResult(HostOnboardingStatus.NotStarted));
 
     public OrgInvitationService Invitations(
         AppDbContext db,
