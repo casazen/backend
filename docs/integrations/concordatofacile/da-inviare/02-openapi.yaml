@@ -1,13 +1,15 @@
 openapi: 3.0.3
 info:
   title: CasaZen - ConcordatoFacile integration
-  version: 1.0-draft
+  version: 1.1-draft
   description: |
     Contratto tecnico di `01-technical-specification.md` (che prevale in caso di discrepanza).
     Tutti i nomi sono in inglese.
 
-    - Tag `CasaZen`: l'endpoint che riceve gli eventi di ConcordatoFacile (sezioni 3 e 4).
-    - Tag `ConcordatoFacile`: le chiamate che ConcordatoFacile espone (sezioni 1 e 5).
+    - Tag `CasaZen`: l'endpoint che riceve gli eventi di ConcordatoFacile (sezioni 2 e 3).
+    - Tag `ConcordatoFacile`: le due chiamate che ConcordatoFacile espone per ricevere risposte e documenti (sezione 4).
+
+    L'utente compila il modulo di ConcordatoFacile (link della sezione 1): non esiste un endpoint di creazione della pratica.
 
     Importi in centesimi interi; date ISO 8601 UTC; comune = codice ISTAT a 6 cifre.
 tags:
@@ -76,35 +78,6 @@ paths:
         '422': { $ref: '#/components/responses/UnknownReference' }
         '429': { $ref: '#/components/responses/Retryable' }
         '503': { $ref: '#/components/responses/Retryable' }
-
-  /v1/cases:
-    servers:
-      - url: '{cfBaseUrl}'
-        variables:
-          cfBaseUrl:
-            default: https://api.example.invalid
-            description: URL API di ConcordatoFacile (prova e produzione)
-    post:
-      tags: [ConcordatoFacile]
-      operationId: createCase
-      summary: Creates a case with data and calculation already filled in (proposal)
-      security: [{ BearerAuth: [] }]
-      parameters:
-        - { $ref: '#/components/parameters/IdempotencyKey' }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateCaseRequest' }
-      responses:
-        '201':
-          description: Case created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/CaseCreated' }
-        '401': { $ref: '#/components/responses/ApiError' }
-        '409': { $ref: '#/components/responses/ApiError' }
-        '422': { $ref: '#/components/responses/ValidationError' }
 
   /v1/cases/{caseId}/answers:
     servers:
@@ -250,8 +223,8 @@ components:
                 code: validation_failed
                 message: The request is not valid.
                 errors:
-                  - { field: 'parties[0].taxCode', code: invalid_format }
-                  - { field: 'property.cadastre.parcel', code: required }
+                  - { field: 'contract.startDate', code: invalid_format }
+                  - { field: 'property.cadastre.subparcel', code: required }
 
   schemas:
     Error:
@@ -274,10 +247,6 @@ components:
     Level:
       type: string
       enum: [basic, complete]
-
-    Status:
-      type: string
-      enum: [received, in_review, information_requested, certified, draft_ready, awaiting_signature, in_registration, completed, rejected, cancelled]
 
     EventEnvelope:
       type: object
@@ -425,7 +394,7 @@ components:
       type: object
       required: [field, label, type, required]
       properties:
-        field: { type: string, description: 'Percorso con punti, es. property.cadastre.subparcel; per i documenti documents.<kind>' }
+        field: { type: string, description: 'Identificativo stabile scelto da ConcordatoFacile (es. property.cadastre.subparcel); per i documenti documents.<name>' }
         label: { type: string }
         type: { type: string, enum: [text, number, date, choice, file] }
         required: { type: boolean }
@@ -466,7 +435,7 @@ components:
         fileId: { type: string }
         kind:
           type: string
-          enum: [attestation, calculation_sheet, contract_draft, signed_contract, submission_receipt, registration_receipt, payment_receipt, full_package_zip, other, request_form, lease_contract, cadastral_survey, floor_plan, energy_certificate]
+          enum: [attestation, calculation_sheet, contract_draft, signed_contract, submission_receipt, registration_receipt, payment_receipt, full_package_zip, other]
         fileName: { type: string, maxLength: 150 }
         mimeType: { type: string, enum: [application/pdf, application/zip] }
         sizeBytes: { type: integer, minimum: 1, description: 'Massimo 20 MB per un PDF; 40 MB per uno zip compresso' }
@@ -525,89 +494,3 @@ components:
         receiptFileIds:
           type: array
           items: { type: string }
-
-    CreateCaseRequest:
-      type: object
-      required: [reference, level, requester, property, parties, contract]
-      properties:
-        reference: { type: string, format: uuid }
-        level: { $ref: '#/components/schemas/Level' }
-        requester:
-          type: object
-          description: 'Chi richiede la pratica. Con agency sono obbligatori name e vatNumber.'
-          required: [type, name]
-          properties:
-            type: { type: string, enum: [agency, landlord] }
-            name: { type: string, description: 'Ragione sociale (agency) oppure nome e cognome (landlord)' }
-            vatNumber: { type: string, description: 'Partita IVA, obbligatoria per agency' }
-            taxCode: { type: string, description: 'Codice fiscale, facoltativo' }
-            email: { type: string, format: email }
-            phone: { type: string }
-        property:
-          type: object
-          required: [istatCode, address, cadastre]
-          properties:
-            istatCode: { type: string, pattern: '^[0-9]{6}$' }
-            address: { type: string }
-            postalCode: { type: string }
-            cadastre:
-              type: object
-              required: [sheet, parcel]
-              properties:
-                sheet: { type: string }
-                parcel: { type: string }
-                subparcel: { type: string }
-                category: { type: string }
-            areaSqm: { type: number, multipleOf: 0.1 }
-        parties:
-          type: array
-          minItems: 2
-          items:
-            type: object
-            required: [role, firstName, lastName, taxCode]
-            properties:
-              role: { type: string, enum: [landlord, tenant] }
-              firstName: { type: string }
-              lastName: { type: string }
-              taxCode: { type: string }
-              ownershipPercent: { type: number, minimum: 0, maximum: 100 }
-        contract:
-          type: object
-          required: [startDate, termYears, monthlyRentCents]
-          properties:
-            startDate: { type: string, format: date }
-            termYears: { type: integer, minimum: 3 }
-            monthlyRentCents: { type: integer, minimum: 0 }
-            furnished: { type: boolean }
-            airConditioning: { type: boolean }
-            elements:
-              type: object
-              description: 'Codici A-D dell''accordo dichiarati dalle parti'
-              properties:
-                A: { type: array, items: { type: string } }
-                B: { type: array, items: { type: string } }
-                C: { type: array, items: { type: string } }
-                D: { type: array, items: { type: string } }
-        casazenCalculation:
-          type: object
-          description: Calcolo di CasaZen, per il confronto con la verifica di ConcordatoFacile
-          properties:
-            zone: { type: string }
-            subBand: { type: integer, minimum: 1, maximum: 3 }
-            minMonthlyRentCents: { type: integer, minimum: 0 }
-            maxMonthlyRentCents: { type: integer, minimum: 0 }
-        documents:
-          type: array
-          items: { $ref: '#/components/schemas/File' }
-
-    CaseCreated:
-      type: object
-      required: [caseId, reference, status]
-      properties:
-        caseId: { type: string }
-        reference: { type: string, format: uuid }
-        status: { $ref: '#/components/schemas/Status' }
-        formUrl:
-          type: string
-          format: uri
-          description: Link per completare nel modulo i dati ancora mancanti

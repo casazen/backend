@@ -1,99 +1,32 @@
 ---
 title: Specifiche tecniche - integrazione CasaZen / ConcordatoFacile
-version: 1.0-bozza
+version: 1.1-bozza
 date: 2026-10-13
 ---
 
 # Specifiche tecniche: integrazione CasaZen / ConcordatoFacile
 
-**Versione 1.0 (bozza)** · 13 ottobre 2026 · Allegato: `02-openapi.yaml` (contratto leggibile da macchina, stessi nomi di questo documento).
+**Versione 1.1 (bozza)** · 13 ottobre 2026 · Allegato: `02-openapi.yaml` (contratto leggibile da macchina, stessi nomi di questo documento).
 
-Il documento definisce che cosa CasaZen si aspetta da ConcordatoFacile (CF) e che cosa CasaZen invia. Contiene proposte ed esempi. Il testo è in italiano; **tutti i nomi (endpoint, campi, valori) sono in inglese**.
+**Principio.** L'utente compila il **modulo di ConcordatoFacile (CF)**, che resta sul dominio CF con la veste di CasaZen. CasaZen non invia i dati della pratica. Per far restare l'utente nell'app di CasaZen definiamo solo questi comportamenti: il link al modulo (sezione 1), gli eventi che CF invia a CasaZen (sezioni 2 e 3), le risposte e i documenti che CasaZen restituisce a CF (sezione 4) e le regole sui file (sezione 5). Proposte ed esempi sono inclusi. Il testo è in italiano; **tutti i nomi (endpoint, campi, valori) sono in inglese**.
 
 **Convenzioni.** JSON UTF-8. Orari ISO 8601 UTC (`2026-10-13T09:30:00Z`); date `YYYY-MM-DD`. Importi in centesimi interi (campi `...Cents`, valuta `EUR`). Comune = codice ISTAT a 6 cifre (`istatCode`). `reference` = UUID creato da CasaZen: CF lo restituisce in ogni evento. `caseId` = identificativo creato da CF.
 
-**Valori usati.** `level`: `basic`, `complete`. `status`: `received`, `in_review`, `information_requested`, `certified`, `draft_ready`, `awaiting_signature`, `in_registration`, `completed`, `rejected`, `cancelled`. `role` delle parti: `landlord`, `tenant`. `requester.type`: `agency`, `landlord`.
+**Valori usati.** `level`: `basic`, `complete`. `status` (in `case.status_changed`): `in_review`, `certified`, `awaiting_signature`, `in_registration`.
 
 ---
 
-## 1. CasaZen → CF: invio di una pratica (proposta)
+## 1. Link al modulo CF
 
-`POST {CF_BASE_URL}/v1/cases` · `Authorization: Bearer <api key>` (una chiave per la prova, una per la produzione) · `Idempotency-Key: <uuid>` (una chiave ripetuta restituisce la stessa risposta).
+L'utente apre il modulo CF da CasaZen:
 
-```json
-{
-  "reference": "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11",
-  "level": "complete",
-  "requester": {
-    "type": "agency",
-    "name": "Agenzia Esempio S.r.l.",
-    "vatNumber": "01234567890",
-    "email": "pratiche@agenzia-esempio.example",
-    "phone": "+39 02 0000000"
-  },
-  "property": {
-    "istatCode": "108040",
-    "address": "Via Esempio 1",
-    "postalCode": "20822",
-    "cadastre": { "sheet": "12", "parcel": "345", "subparcel": "6", "category": "A/2" },
-    "areaSqm": 65.0
-  },
-  "parties": [
-    { "role": "landlord", "firstName": "Mario", "lastName": "Rossi", "taxCode": "RSSMRA80A01H501U", "ownershipPercent": 100 },
-    { "role": "tenant", "firstName": "Anna", "lastName": "Bianchi", "taxCode": "BNCNNA85C41F205Z" }
-  ],
-  "contract": {
-    "startDate": "2026-11-01",
-    "termYears": 3,
-    "monthlyRentCents": 40000,
-    "furnished": false,
-    "airConditioning": false,
-    "elements": { "A": ["A1", "A2"], "B": ["B2", "B3", "B4", "B5"], "C": ["C4", "C6"], "D": ["D1", "D5"] }
-  },
-  "casazenCalculation": { "zone": "1", "subBand": 2, "minMonthlyRentCents": 10833, "maxMonthlyRentCents": 46042 },
-  "documents": [
-    {
-      "fileId": "p-001", "kind": "request_form", "fileName": "request-form.pdf", "mimeType": "application/pdf",
-      "sizeBytes": 183201, "sha256": "<64 caratteri esadecimali>", "downloadUrl": "https://casazen.example/files/p-001?token=...", "expiresAt": "2026-10-20T09:30:00Z"
-    }
-  ]
-}
+`{CF_FORM_URL}?partner=<code>&ref=<reference>&level=<basic|complete>&istat=<istatCode>&requester_type=<agency|landlord>&return_url=<url-encoded>&theme=<theme id>`
+
+Esempio:
+
 ```
-
-- `documents[]` sono link che CF scarica (stesso oggetto `File` della sezione 6). `kind` dei documenti che inviamo: `request_form` (modulo di richiesta precompilato, sempre), `lease_contract`, `cadastral_survey`, `floor_plan`, `energy_certificate` (solo se servono).
-- `elements` contiene i codici A, B, C, D dichiarati dalle parti. `casazenCalculation` è il nostro calcolo, per il confronto con la verifica di CF.
-- `requester` identifica **chi richiede la pratica**: `agency` (agenzia che opera per conto del proprietario) oppure `landlord` (proprietario privato). Con `agency` sono obbligatori `name` e `vatNumber`; con `landlord`, `name` è il nome e cognome e `taxCode` (facoltativo se coincide con quello della parte `landlord`) il codice fiscale. `email` e `phone` sono i recapiti per le comunicazioni sulla pratica. Le parti del contratto restano in `parties[]`: il `requester` non le sostituisce.
-- Se per la registrazione CF ha bisogno di un mandato o di una delega dell'agenzia, lo chiede come ogni altro documento mancante, con `case.information_requested` (`documents.mandate`, tipo `file`; sezione 4).
-- I campi opzionali possono mancare. CF ignora i campi che non conosce.
-
-**Risposta `201`:**
-
-```json
-{ "caseId": "CF-2026-000123", "reference": "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11", "status": "received", "formUrl": "https://cf.example/form?case=CF-2026-000123" }
+https://form.concordatofacile.example/start?partner=casazen&ref=0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11&level=complete&istat=108040&requester_type=agency&return_url=https%3A%2F%2Fapp.casazen.example%2Fcases%2F0b6f7a3e&theme=casazen
 ```
-
-`formUrl` è opzionale: un link in cui l'utente può completare i dati che CF ancora richiede (vedi sezione 2).
-
-**Risposta `422` (validazione), formato proposto per ogni errore di CF:**
-
-```json
-{
-  "code": "validation_failed",
-  "message": "The request is not valid.",
-  "errors": [
-    { "field": "parties[0].taxCode", "code": "invalid_format" },
-    { "field": "property.cadastre.parcel", "code": "required" }
-  ]
-}
-```
-
-Valori di `code`: `validation_failed`, `unauthorized`, `case_not_found`, `invalid_state`, `file_too_large`, `checksum_mismatch`, `duplicate_request`. Valori di `code` per campo: `required`, `invalid_format`, `out_of_range`, `unknown_value`.
-
-## 2. Alternativa alla sezione 1: link al modulo CF
-
-Se l'endpoint di creazione non è disponibile al lancio, l'utente apre il modulo CF da CasaZen:
-
-`{CF_FORM_URL}?partner=<code>&ref=<reference>&level=<basic|complete>&istat=<istatCode>&return_url=<url-encoded>&theme=<theme id>`
 
 | Parametro | Obbligatorio | Note |
 |---|---|---|
@@ -101,14 +34,15 @@ Se l'endpoint di creazione non è disponibile al lancio, l'utente apre il modulo
 | `ref` | sì | `reference` di CasaZen, restituito in ogni evento |
 | `level` | sì | `basic` o `complete` |
 | `istat` | no | Precompila il comune |
+| `requester_type` | no | `agency` (agenzia che opera per conto del proprietario) o `landlord` (proprietario privato): il modulo si adatta di conseguenza |
 | `return_url` | no | A fine compilazione CF reindirizza a `<return_url>?ref=<reference>&caseId=<id>` (nessun dato personale nell'URL) |
 | `theme` | no | Identificativo della veste di CasaZen (nome, logo, colori) |
 
-Un secondo accesso con lo stesso `ref` riapre la stessa pratica: non ne crea un'altra.
+Un secondo accesso con lo stesso `ref` riapre la stessa pratica: non ne crea un'altra. Quando l'utente invia il modulo, CF emette `case.created` (sezione 3).
 
-## 3. CF → CasaZen: eventi (webhook)
+## 2. CF → CasaZen: eventi (webhook)
 
-`POST {CASAZEN_BASE_URL}/webhooks/concordatofacile` (URL di prova e di produzione comunicati separatamente) · HTTPS, TLS 1.2 o superiore · corpo JSON, massimo **256 KB**. I file non viaggiano nel corpo (sezione 6).
+`POST {CASAZEN_BASE_URL}/webhooks/concordatofacile` (URL di prova e di produzione comunicati separatamente) · HTTPS, TLS 1.2 o superiore · corpo JSON, massimo **256 KB**. I file non viaggiano nel corpo (sezione 5).
 
 | Intestazione | Valore |
 |---|---|
@@ -163,9 +97,9 @@ Un evento ritentato mantiene `eventId`, `occurredAt` e `sequence`; cambiano solo
 }
 ```
 
-## 4. Eventi ed esempi (`data`)
+## 3. Eventi ed esempi (`data`)
 
-**`case.created`** (`level`, `istatCode`)
+**`case.created`**: l'utente ha inviato il modulo.
 
 ```json
 { "level": "complete", "istatCode": "108040" }
@@ -177,7 +111,7 @@ Un evento ritentato mantiene `eventId`, `occurredAt` e `sequence`; cambiano solo
 { "status": "in_review" }
 ```
 
-**`case.information_requested`**: manca un dato o un documento. Formato proposto:
+**`case.information_requested`**: manca un dato o un documento. L'utente risponde dall'app di CasaZen (sezione 4). Formato proposto:
 
 ```json
 {
@@ -193,7 +127,7 @@ Un evento ritentato mantiene `eventId`, `occurredAt` e `sequence`; cambiano solo
 }
 ```
 
-`type`: `text`, `number`, `date`, `choice`, `file`. `field` usa i nomi della sezione 1 (percorso con punti); per i documenti `documents.<kind>`. `label` e `help` sono mostrati all'utente così come sono (in italiano). Una richiesta può contenere più domande: CasaZen risponde a tutte con una sola chiamata (sezione 5).
+`type`: `text`, `number`, `date`, `choice`, `file`. `field` è un identificativo stabile scelto da CF (nell'esempio, un percorso con punti); per i documenti `documents.<name>`. `label` e `help` sono mostrati all'utente così come sono (in italiano). Una richiesta può contenere più domande: CasaZen risponde a tutte con una sola chiamata (sezione 4).
 
 **`case.draft_ready`**: bozza di contratto da approvare e firmare.
 
@@ -261,11 +195,11 @@ Se vengono chieste modifiche, CF emette un nuovo `case.draft_ready` con `version
 { "reason": "Annullata su richiesta dell'utente." }
 ```
 
-## 5. CasaZen → CF: risposte e documenti (proposta)
+## 4. CasaZen → CF: risposte e documenti (proposta)
 
-Base `{CF_BASE_URL}/v1`, `Authorization: Bearer <api key>`, `Idempotency-Key: <uuid>`, errori come alla sezione 1.
+È il solo punto in cui CF espone endpoint: servono per far tornare a CF ciò che l'utente fa nell'app di CasaZen. Base `{CF_BASE_URL}/v1`, `Authorization: Bearer <api key>` (una chiave per la prova, una per la produzione), `Idempotency-Key: <uuid>` (una chiave ripetuta restituisce la stessa risposta).
 
-**Esempio: dato mancante** (risposta al `case.information_requested` della sezione 4). Prima il file, poi le risposte:
+**Esempio: dato mancante** (risposta al `case.information_requested` della sezione 3). Prima il file, poi le risposte:
 
 ```
 POST /v1/cases/CF-2026-000123/documents
@@ -294,7 +228,7 @@ POST /v1/cases/CF-2026-000123/answers
 { "received": true }
 ```
 
-`value` è sempre una stringa (per `date`: `YYYY-MM-DD`; per `number`: decimale con il punto). Una domanda che non è nella richiesta, o una obbligatoria mancante, restituisce `422` con gli errori per campo della sezione 1. Dopo una risposta valida CF emette `case.status_changed` (`in_review`) o l'evento successivo.
+`value` è sempre una stringa (per `date`: `YYYY-MM-DD`; per `number`: decimale con il punto). Dopo una risposta valida CF emette `case.status_changed` (`in_review`) o l'evento successivo.
 
 **Esempio: approvazione della bozza e contratto firmato:**
 
@@ -310,11 +244,26 @@ POST /v1/cases/CF-2026-000123/documents
 
 `decision`: `approved` oppure `changes_requested` (con `notes`). Con `approved`, CF emette `case.status_changed` con `awaiting_signature` finché non riceve il `signed_contract`.
 
-Se le due chiamate non sono disponibili al lancio, l'alternativa provvisoria è un link di ritorno al modulo CF (sezione 2) con lo stesso `ref`: l'utente completa lì il passaggio e CF emette lo stesso evento successivo.
+**Formato degli errori di CF** (proposto):
 
-## 6. File
+```json
+{
+  "code": "validation_failed",
+  "message": "The request is not valid.",
+  "errors": [
+    { "field": "property.cadastre.subparcel", "code": "required" },
+    { "field": "contract.startDate", "code": "invalid_format" }
+  ]
+}
+```
 
-I file sono elencati in `files[]` (eventi) o `documents[]` (sezione 1) e scaricati da chi li riceve. L'oggetto:
+Valori di `code`: `validation_failed`, `unauthorized`, `case_not_found`, `invalid_state`, `file_too_large`, `checksum_mismatch`, `duplicate_request`. Valori di `code` per campo: `required`, `invalid_format`, `out_of_range`, `unknown_value`. Una domanda che non è nella richiesta, o una obbligatoria mancante, restituisce `422` `validation_failed`.
+
+**Se queste chiamate non sono disponibili al lancio**, l'alternativa provvisoria è il link di ritorno al modulo CF (sezione 1) con lo stesso `ref`: l'utente completa lì il passaggio e CF emette lo stesso evento successivo.
+
+## 5. File
+
+I file sono elencati in `files[]` (eventi) e scaricati da CasaZen; i file che CasaZen restituisce a CF viaggiano con `POST .../documents`. L'oggetto:
 
 ```json
 { "fileId": "f-001", "kind": "attestation", "fileName": "attestation.pdf", "mimeType": "application/pdf",
@@ -323,7 +272,7 @@ I file sono elencati in `files[]` (eventi) o `documents[]` (sezione 1) e scarica
 
 | Campo | Regola |
 |---|---|
-| `kind` | Eventi: `attestation`, `calculation_sheet`, `contract_draft`, `signed_contract`, `submission_receipt`, `registration_receipt`, `payment_receipt`, `full_package_zip`, `other`. Creazione pratica: `request_form`, `lease_contract`, `cadastral_survey`, `floor_plan`, `energy_certificate`. Caricamento: `signed_contract`, `requested_document`, `other` |
+| `kind` | Eventi: `attestation`, `calculation_sheet`, `contract_draft`, `signed_contract`, `submission_receipt`, `registration_receipt`, `payment_receipt`, `full_package_zip`, `other`. Caricamento: `signed_contract`, `requested_document`, `other` |
 | `mimeType` | `application/pdf` oppure `application/zip` |
 | `sizeBytes`, `sha256` | Dimensione e SHA-256 (esadecimale minuscolo): il ricevente scarta un file che non coincide |
 | `downloadUrl`, `expiresAt` | HTTPS, senza altre credenziali, **valido per almeno 7 giorni** |

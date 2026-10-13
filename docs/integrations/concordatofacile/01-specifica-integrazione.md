@@ -6,7 +6,7 @@ date: 2026-10-13
 
 # Specifica di integrazione Piattaforma – ConcordatoFacile
 
-> **Riferimento interno.** Questo documento usa nomi tecnici in italiano ed è superato su questo punto: i nomi validi di endpoint, campi e valori (in inglese) sono quelli di `da-inviare/01-technical-specification.md`. Il resto resta come riferimento (fasi, credito, prove, punti da confermare).
+> **Riferimento interno.** Questo documento usa nomi tecnici in italiano ed è superato su questo punto: i nomi validi di endpoint, campi e valori (in inglese) sono quelli di `da-inviare/01-technical-specification.md`. Superata anche la fase 3 (creazione della pratica via API con dati precompilati): si usa il modulo CF con il link e `ref` (versione 1.1 di `da-inviare/`). Il resto resta come riferimento (fasi, credito, prove, punti da confermare).
 
 **Versione 1.0 (bozza per approvazione)** · 13 ottobre 2026
 Documenti collegati: `02-openapi.yaml` (contratto tecnico di endpoint e schemi).
