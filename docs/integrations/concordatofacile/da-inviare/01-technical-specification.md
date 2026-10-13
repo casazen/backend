@@ -12,7 +12,7 @@ Il documento definisce che cosa CasaZen si aspetta da ConcordatoFacile (CF) e ch
 
 **Convenzioni.** JSON UTF-8. Orari ISO 8601 UTC (`2026-10-13T09:30:00Z`); date `YYYY-MM-DD`. Importi in centesimi interi (campi `...Cents`, valuta `EUR`). Comune = codice ISTAT a 6 cifre (`istatCode`). `reference` = UUID creato da CasaZen: CF lo restituisce in ogni evento. `caseId` = identificativo creato da CF.
 
-**Valori usati.** `level`: `basic`, `complete`. `status`: `received`, `in_review`, `information_requested`, `certified`, `draft_ready`, `awaiting_signature`, `in_registration`, `completed`, `rejected`, `cancelled`. `role` delle parti: `landlord`, `tenant`.
+**Valori usati.** `level`: `basic`, `complete`. `status`: `received`, `in_review`, `information_requested`, `certified`, `draft_ready`, `awaiting_signature`, `in_registration`, `completed`, `rejected`, `cancelled`. `role` delle parti: `landlord`, `tenant`. `requester.type`: `agency`, `landlord`.
 
 ---
 
@@ -24,6 +24,13 @@ Il documento definisce che cosa CasaZen si aspetta da ConcordatoFacile (CF) e ch
 {
   "reference": "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11",
   "level": "complete",
+  "requester": {
+    "type": "agency",
+    "name": "Agenzia Esempio S.r.l.",
+    "vatNumber": "01234567890",
+    "email": "pratiche@agenzia-esempio.example",
+    "phone": "+39 02 0000000"
+  },
   "property": {
     "istatCode": "108040",
     "address": "Via Esempio 1",
@@ -55,6 +62,8 @@ Il documento definisce che cosa CasaZen si aspetta da ConcordatoFacile (CF) e ch
 
 - `documents[]` sono link che CF scarica (stesso oggetto `File` della sezione 6). `kind` dei documenti che inviamo: `request_form` (modulo di richiesta precompilato, sempre), `lease_contract`, `cadastral_survey`, `floor_plan`, `energy_certificate` (solo se servono).
 - `elements` contiene i codici A, B, C, D dichiarati dalle parti. `casazenCalculation` è il nostro calcolo, per il confronto con la verifica di CF.
+- `requester` identifica **chi richiede la pratica**: `agency` (agenzia che opera per conto del proprietario) oppure `landlord` (proprietario privato). Con `agency` sono obbligatori `name` e `vatNumber`; con `landlord`, `name` è il nome e cognome e `taxCode` (facoltativo se coincide con quello della parte `landlord`) il codice fiscale. `email` e `phone` sono i recapiti per le comunicazioni sulla pratica. Le parti del contratto restano in `parties[]`: il `requester` non le sostituisce.
+- Se per la registrazione CF ha bisogno di un mandato o di una delega dell'agenzia, lo chiede come ogni altro documento mancante, con `case.information_requested` (`documents.mandate`, tipo `file`; sezione 4).
 - I campi opzionali possono mancare. CF ignora i campi che non conosce.
 
 **Risposta `201`:**

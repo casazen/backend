@@ -528,10 +528,21 @@ components:
 
     CreateCaseRequest:
       type: object
-      required: [reference, level, property, parties, contract]
+      required: [reference, level, requester, property, parties, contract]
       properties:
         reference: { type: string, format: uuid }
         level: { $ref: '#/components/schemas/Level' }
+        requester:
+          type: object
+          description: 'Chi richiede la pratica. Con agency sono obbligatori name e vatNumber.'
+          required: [type, name]
+          properties:
+            type: { type: string, enum: [agency, landlord] }
+            name: { type: string, description: 'Ragione sociale (agency) oppure nome e cognome (landlord)' }
+            vatNumber: { type: string, description: 'Partita IVA, obbligatoria per agency' }
+            taxCode: { type: string, description: 'Codice fiscale, facoltativo' }
+            email: { type: string, format: email }
+            phone: { type: string }
         property:
           type: object
           required: [istatCode, address, cadastre]
