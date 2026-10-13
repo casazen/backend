@@ -1,0 +1,454 @@
+openapi: 3.0.3
+info:
+  title: Integrazione Piattaforma - ConcordatoFacile
+  version: 1.0-bozza
+  description: |
+    Contratto tecnico di `01-risposte-alle-domande.md` (che prevale in caso di discrepanza).
+
+    - Tag `Piattaforma`: l'endpoint che riceve gli eventi di ConcordatoFacile (sezioni 5 e 6).
+    - Tag `ConcordatoFacile`: le due chiamate che ConcordatoFacile espone per ricevere risposte e documenti (sezione 7).
+
+    Convenzioni: JSON UTF-8; importi in centesimi interi; date ISO 8601 UTC; comune = codice ISTAT a 6 cifre.
+tags:
+  - name: Piattaforma
+  - name: ConcordatoFacile
+
+paths:
+  /webhooks/concordatofacile:
+    servers:
+      - url: '{piattaformaBaseUrl}'
+        variables:
+          piattaformaBaseUrl:
+            default: https://test.example.invalid
+            description: URL di prova e di produzione comunicati separatamente
+    post:
+      tags: [Piattaforma]
+      operationId: riceviEvento
+      summary: Riceve un evento di pratica da ConcordatoFacile
+      description: |
+        Risposta entro 3 secondi. Corpo massimo 256 KB.
+        Firma: X-CF-Signature = "sha256=" + hex(HMAC-SHA256(segreto, X-CF-Timestamp + "." + corpoGrezzo)).
+        Orario ammesso: +/- 300 secondi. Idempotenza per X-CF-Event-Id.
+        Ritentare solo su 408, 429, 5xx ed errori di rete (1 min, 5 min, 30 min, 2 h, 6 h, 12 h).
+      parameters:
+        - { name: X-CF-Event-Id, in: header, required: true, schema: { type: string, format: uuid } }
+        - { name: X-CF-Timestamp, in: header, required: true, description: Secondi Unix UTC, schema: { type: integer, format: int64 } }
+        - { name: X-CF-Key-Id, in: header, required: true, description: Identificativo del segreto, schema: { type: string } }
+        - name: X-CF-Signature
+          in: header
+          required: true
+          schema: { type: string, pattern: '^sha256=[0-9a-f]{64}$' }
+        - { name: X-CF-Api-Version, in: header, required: true, schema: { type: string, enum: ['1'] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Evento'
+            examples:
+              creata:
+                summary: Vettore di prova (segreto test_secret_0123456789abcdef0123456789abcdef; timestamp 1760347800)
+                value:
+                  eventId: 7b0c1c5e-3a52-4d0e-9d3e-0a1f2b3c4d5e
+                  eventType: pratica.creata
+                  apiVersion: '1'
+                  occurredAt: '2026-10-13T09:30:00Z'
+                  sequence: 1
+                  praticaId: CF-TEST-000001
+                  reference: 0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11
+                  data:
+                    livello: completa
+                    comuneIstat: '108039'
+      responses:
+        '200':
+          description: Accettato (anche se già ricevuto)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received: { type: boolean, enum: [true] }
+        '400': { $ref: '#/components/responses/NonRitentabile' }
+        '401': { $ref: '#/components/responses/FirmaNonValida' }
+        '413': { $ref: '#/components/responses/NonRitentabile' }
+        '422': { $ref: '#/components/responses/ReferenceSconosciuto' }
+        '429': { $ref: '#/components/responses/Ritentabile' }
+        '503': { $ref: '#/components/responses/Ritentabile' }
+
+  /v1/pratiche/{praticaId}/risposte:
+    servers:
+      - url: '{cfBaseUrl}'
+        variables:
+          cfBaseUrl:
+            default: https://api.example.invalid
+            description: URL API di ConcordatoFacile (prova e produzione)
+    post:
+      tags: [ConcordatoFacile]
+      operationId: inviaRisposte
+      summary: Risposte a una richiesta di informazioni oppure decisione sulla bozza
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/PraticaId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { $ref: '#/components/schemas/RisposteInformazioni' }
+                - { $ref: '#/components/schemas/DecisioneBozza' }
+      responses:
+        '202': { description: Ricevuto }
+        '404': { $ref: '#/components/responses/ErroreApi' }
+        '409': { $ref: '#/components/responses/ErroreApi' }
+        '422': { $ref: '#/components/responses/ErroreApi' }
+
+  /v1/pratiche/{praticaId}/documenti:
+    servers:
+      - url: '{cfBaseUrl}'
+        variables:
+          cfBaseUrl:
+            default: https://api.example.invalid
+    post:
+      tags: [ConcordatoFacile]
+      operationId: caricaDocumento
+      summary: Carica un documento (es. contratto firmato)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/PraticaId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [kind, sha256, file]
+              properties:
+                kind: { type: string, enum: [contratto_firmato, documento_richiesto, altro] }
+                richiestaId: { type: string, description: Se il documento risponde a una richiesta }
+                sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+                file: { type: string, format: binary, description: PDF fino a 20 MB }
+      responses:
+        '201':
+          description: Documento ricevuto
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fileId]
+                properties:
+                  fileId: { type: string }
+        '404': { $ref: '#/components/responses/ErroreApi' }
+        '409': { $ref: '#/components/responses/ErroreApi' }
+        '413': { $ref: '#/components/responses/ErroreApi' }
+        '422': { $ref: '#/components/responses/ErroreApi' }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Chiave API di ConcordatoFacile (una per prova e una per produzione)
+
+  parameters:
+    PraticaId:
+      name: praticaId
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID. Una ripetizione con la stessa chiave restituisce la stessa risposta.
+      schema: { type: string, format: uuid }
+
+  responses:
+    FirmaNonValida:
+      description: Firma o orario non validi. Non ritentare.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Errore' }
+          examples:
+            firma: { value: { code: invalid_signature } }
+            orario: { value: { code: timestamp_out_of_range } }
+    ReferenceSconosciuto:
+      description: reference sconosciuto. Non ritentare.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Errore' }
+          examples:
+            e: { value: { code: unknown_reference } }
+    NonRitentabile:
+      description: Richiesta non valida. Non ritentare.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Errore' }
+    Ritentabile:
+      description: Problema temporaneo. Ritentare con backoff.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Errore' }
+    ErroreApi:
+      description: Errore dell'API
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Errore' }
+
+  schemas:
+    Errore:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+        message: { type: string }
+
+    Livello:
+      type: string
+      enum: [base, completa]
+
+    BustaEvento:
+      type: object
+      required: [eventId, eventType, apiVersion, occurredAt, sequence, praticaId, reference, data]
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string }
+        apiVersion: { type: string, enum: ['1'] }
+        occurredAt: { type: string, format: date-time }
+        sequence: { type: integer, minimum: 1, description: 'Crescente per pratica, parte da 1' }
+        praticaId: { type: string }
+        reference: { type: string, format: uuid, description: 'UUID della pratica lato Piattaforma, restituito sempre' }
+        data: { type: object }
+
+    Evento:
+      oneOf:
+        - { $ref: '#/components/schemas/EventoCreata' }
+        - { $ref: '#/components/schemas/EventoStatoAggiornato' }
+        - { $ref: '#/components/schemas/EventoInformazioniRichieste' }
+        - { $ref: '#/components/schemas/EventoBozzaPronta' }
+        - { $ref: '#/components/schemas/EventoCompletata' }
+        - { $ref: '#/components/schemas/EventoRespinta' }
+        - { $ref: '#/components/schemas/EventoAnnullata' }
+      discriminator:
+        propertyName: eventType
+        mapping:
+          pratica.creata: '#/components/schemas/EventoCreata'
+          pratica.stato_aggiornato: '#/components/schemas/EventoStatoAggiornato'
+          pratica.informazioni_richieste: '#/components/schemas/EventoInformazioniRichieste'
+          pratica.bozza_pronta: '#/components/schemas/EventoBozzaPronta'
+          pratica.completata: '#/components/schemas/EventoCompletata'
+          pratica.respinta: '#/components/schemas/EventoRespinta'
+          pratica.annullata: '#/components/schemas/EventoAnnullata'
+
+    EventoCreata:
+      allOf:
+        - $ref: '#/components/schemas/BustaEvento'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [pratica.creata] }
+            data:
+              type: object
+              required: [livello, comuneIstat]
+              properties:
+                livello: { $ref: '#/components/schemas/Livello' }
+                comuneIstat: { type: string, pattern: '^[0-9]{6}$' }
+
+    EventoStatoAggiornato:
+      allOf:
+        - $ref: '#/components/schemas/BustaEvento'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [pratica.stato_aggiornato] }
+            data:
+              type: object
+              required: [stato]
+              properties:
+                stato: { type: string, enum: [in_verifica, attestata, in_firma, in_registrazione] }
+
+    EventoInformazioniRichieste:
+      allOf:
+        - $ref: '#/components/schemas/BustaEvento'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [pratica.informazioni_richieste] }
+            data:
+              type: object
+              required: [richiestaId, domande]
+              properties:
+                richiestaId: { type: string }
+                scadenzaRisposta: { type: string, format: date-time }
+                domande:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/Domanda' }
+
+    EventoBozzaPronta:
+      allOf:
+        - $ref: '#/components/schemas/BustaEvento'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [pratica.bozza_pronta] }
+            data:
+              type: object
+              required: [bozzaId, versione, files, azioniPossibili]
+              properties:
+                bozzaId: { type: string }
+                versione: { type: integer, minimum: 1 }
+                files:
+                  type: array
+                  items: { $ref: '#/components/schemas/File' }
+                azioniPossibili:
+                  type: array
+                  items: { type: string, enum: [approva, richiedi_modifiche] }
+                note: { type: string, maxLength: 2000 }
+                scadenza: { type: string, format: date-time }
+
+    EventoCompletata:
+      allOf:
+        - $ref: '#/components/schemas/BustaEvento'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [pratica.completata] }
+            data:
+              type: object
+              required: [attestazione, files]
+              properties:
+                attestazione: { $ref: '#/components/schemas/Attestazione' }
+                registrazione: { $ref: '#/components/schemas/Registrazione' }
+                files:
+                  type: array
+                  items: { $ref: '#/components/schemas/File' }
+
+    EventoRespinta:
+      allOf:
+        - $ref: '#/components/schemas/BustaEvento'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [pratica.respinta] }
+            data:
+              type: object
+              required: [motivo, dettaglio]
+              properties:
+                motivo: { type: string, enum: [canone_fuori_limiti, dati_incongruenti, accordo_non_vigente, comune_non_coperto, documenti_non_validi, altro] }
+                dettaglio: { type: string, maxLength: 1000 }
+                limiti:
+                  type: object
+                  properties:
+                    minimoMensileCent: { type: integer, minimum: 0 }
+                    massimoMensileCent: { type: integer, minimum: 0 }
+
+    EventoAnnullata:
+      allOf:
+        - $ref: '#/components/schemas/BustaEvento'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [pratica.annullata] }
+            data:
+              type: object
+              required: [motivo]
+              properties:
+                motivo: { type: string, maxLength: 500 }
+
+    Domanda:
+      type: object
+      required: [campo, etichetta, tipo, obbligatorio]
+      properties:
+        campo: { type: string }
+        etichetta: { type: string }
+        tipo: { type: string, enum: [testo, numero, data, scelta, file] }
+        obbligatorio: { type: boolean }
+        opzioni:
+          type: array
+          items: { type: string }
+        aiuto: { type: string }
+
+    RisposteInformazioni:
+      type: object
+      required: [richiestaId, risposte]
+      properties:
+        richiestaId: { type: string }
+        risposte:
+          type: array
+          items:
+            type: object
+            required: [campo]
+            properties:
+              campo: { type: string }
+              valore: { type: string, description: 'Per i tipi testo, numero, data e scelta' }
+              fileId: { type: string, description: 'Per il tipo file: id restituito dal caricamento' }
+
+    DecisioneBozza:
+      type: object
+      required: [bozzaId, decisione]
+      properties:
+        bozzaId: { type: string }
+        decisione: { type: string, enum: [approvata, modifiche] }
+        note: { type: string, maxLength: 2000 }
+
+    File:
+      type: object
+      required: [fileId, kind, fileName, mimeType, sizeBytes, sha256, downloadUrl, expiresAt]
+      properties:
+        fileId: { type: string }
+        kind: { type: string, enum: [attestazione, scheda_calcolo, bozza_contratto, contratto_firmato, ricevuta_trasmissione, ricevuta_registrazione, ricevuta_pagamento, zip_completo, altro] }
+        fileName: { type: string, maxLength: 150 }
+        mimeType: { type: string, enum: [application/pdf, application/zip] }
+        sizeBytes: { type: integer, minimum: 1, description: 'Massimo 20 MB per un PDF; 40 MB per uno zip compresso' }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        downloadUrl: { type: string, format: uri, description: 'HTTPS, valido almeno 7 giorni' }
+        expiresAt: { type: string, format: date-time }
+
+    Attestazione:
+      type: object
+      required: [attestazioneId, emessaIl, accordo, organizzazioni, canone, documentoFileId]
+      properties:
+        attestazioneId: { type: string }
+        emessaIl: { type: string, format: date }
+        accordo:
+          type: object
+          required: [nome, comuneIstat, inVigoreDal]
+          properties:
+            nome: { type: string }
+            comuneIstat: { type: string, pattern: '^[0-9]{6}$' }
+            inVigoreDal: { type: string, format: date }
+        organizzazioni:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [nome, ruolo, firmatarioNome, firmatoIl]
+            properties:
+              nome: { type: string }
+              ruolo: { type: string, enum: [proprieta, inquilini] }
+              firmatarioNome: { type: string }
+              firmatoIl: { type: string, format: date }
+        canone:
+          type: object
+          required: [zona, sottofascia, superficieMq, minimoMensileCent, massimoMensileCent, concordatoMensileCent]
+          properties:
+            zona: { type: string }
+            sottofascia: { type: integer, minimum: 1, maximum: 3 }
+            superficieMq: { type: number, multipleOf: 0.1 }
+            minimoMensileCent: { type: integer, minimum: 0 }
+            massimoMensileCent: { type: integer, minimum: 0 }
+            concordatoMensileCent: { type: integer, minimum: 0 }
+        documentoFileId: { type: string }
+
+    Registrazione:
+      type: object
+      required: [tipologia, ufficioTerritoriale, dataRegistrazione, protocolloTelematico, codiceIdentificativoContratto, cedolareSecca, importoRegistroCent, importoBolloCent, ricevuteFileId]
+      properties:
+        tipologia: { type: string, enum: [L1, L2] }
+        ufficioTerritoriale: { type: string }
+        dataRegistrazione: { type: string, format: date }
+        protocolloTelematico: { type: string }
+        codiceIdentificativoContratto: { type: string }
+        cedolareSecca: { type: boolean }
+        importoRegistroCent: { type: integer, minimum: 0 }
+        importoBolloCent: { type: integer, minimum: 0 }
+        ricevuteFileId:
+          type: array
+          items: { type: string }

@@ -3,15 +3,17 @@ info:
   title: Integrazione Piattaforma - ConcordatoFacile
   version: 1.0-bozza
   description: |
-    Contratto tecnico di `01-risposte-alle-domande.md` (che prevale in caso di discrepanza).
+    Contratto tecnico dell'integrazione descritta in `01-specifica-integrazione.md` (che prevale in caso di discrepanza).
 
-    - Tag `Piattaforma`: l'endpoint che riceve gli eventi di ConcordatoFacile (sezioni 5 e 6).
-    - Tag `ConcordatoFacile`: le due chiamate che ConcordatoFacile espone per ricevere risposte e documenti (sezione 7).
+    - **Endpoint della Piattaforma** (tag `Piattaforma`): riceve gli eventi emessi da ConcordatoFacile (F1, F2).
+    - **API di ConcordatoFacile** (tag `ConcordatoFacile`): usate dalla Piattaforma per risposte, documenti e creazione pratica (F2, F3).
 
-    Convenzioni: JSON UTF-8; importi in centesimi interi; date ISO 8601 UTC; comune = codice ISTAT a 6 cifre.
+    Convenzioni: JSON UTF-8; importi in centesimi interi con `currency` EUR; date ISO 8601 UTC; codice comune = ISTAT a 6 cifre.
 tags:
   - name: Piattaforma
+    description: Endpoint ricevente (webhook)
   - name: ConcordatoFacile
+    description: API richieste a ConcordatoFacile
 
 paths:
   /webhooks/concordatofacile:
@@ -26,10 +28,10 @@ paths:
       operationId: riceviEvento
       summary: Riceve un evento di pratica da ConcordatoFacile
       description: |
-        Risposta entro 3 secondi. Corpo massimo 256 KB.
-        Firma: X-CF-Signature = "sha256=" + hex(HMAC-SHA256(segreto, X-CF-Timestamp + "." + corpoGrezzo)).
-        Orario ammesso: +/- 300 secondi. Idempotenza per X-CF-Event-Id.
-        Ritentare solo su 408, 429, 5xx ed errori di rete (1 min, 5 min, 30 min, 2 h, 6 h, 12 h).
+        La Piattaforma risponde entro 3 secondi e lavora in coda. Corpo massimo 256 KB.
+        Firma: `X-CF-Signature = "sha256=" + hex(HMAC-SHA256(segreto, X-CF-Timestamp + "." + corpoGrezzo))`.
+        Orario ammesso: +/- 300 secondi. Idempotenza per `X-CF-Event-Id`.
+        Ritentare solo su 408, 429, 5xx ed errori di rete (backoff 1 min, 5 min, 30 min, 2 h, 6 h, 12 h).
       parameters:
         - { name: X-CF-Event-Id, in: header, required: true, schema: { type: string, format: uuid } }
         - { name: X-CF-Timestamp, in: header, required: true, description: Secondi Unix UTC, schema: { type: integer, format: int64 } }
@@ -47,7 +49,7 @@ paths:
               $ref: '#/components/schemas/Evento'
             examples:
               creata:
-                summary: Vettore di prova (segreto test_secret_0123456789abcdef0123456789abcdef; timestamp 1760347800)
+                summary: Vettore di prova (segreto test_secret_0123456789abcdef0123456789abcdef, timestamp 1760347800)
                 value:
                   eventId: 7b0c1c5e-3a52-4d0e-9d3e-0a1f2b3c4d5e
                   eventType: pratica.creata
@@ -64,19 +66,15 @@ paths:
           description: Accettato (anche se già ricevuto)
           content:
             application/json:
-              schema:
-                type: object
-                required: [received]
-                properties:
-                  received: { type: boolean, enum: [true] }
-        '400': { $ref: '#/components/responses/NonRitentabile' }
+              schema: { type: object, required: [received], properties: { received: { type: boolean, enum: [true] } } }
+        '400': { $ref: '#/components/responses/ErroreNonRitentabile' }
         '401': { $ref: '#/components/responses/FirmaNonValida' }
-        '413': { $ref: '#/components/responses/NonRitentabile' }
+        '413': { $ref: '#/components/responses/ErroreNonRitentabile' }
         '422': { $ref: '#/components/responses/ReferenceSconosciuto' }
-        '429': { $ref: '#/components/responses/Ritentabile' }
-        '503': { $ref: '#/components/responses/Ritentabile' }
+        '429': { $ref: '#/components/responses/ErroreRitentabile' }
+        '503': { $ref: '#/components/responses/ErroreRitentabile' }
 
-  /v1/pratiche/{praticaId}/risposte:
+  /v1/pratiche:
     servers:
       - url: '{cfBaseUrl}'
         variables:
@@ -85,8 +83,54 @@ paths:
             description: URL API di ConcordatoFacile (prova e produzione)
     post:
       tags: [ConcordatoFacile]
+      operationId: creaPratica
+      summary: Crea una pratica con dati e calcolo già compilati (F3)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreaPratica' }
+      responses:
+        '201':
+          description: Pratica creata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PraticaCreata' }
+        '400': { $ref: '#/components/responses/ErroreApi' }
+        '401': { $ref: '#/components/responses/ErroreApi' }
+        '409': { $ref: '#/components/responses/ErroreApi' }
+        '422': { $ref: '#/components/responses/ErroreApi' }
+
+  /v1/pratiche/{praticaId}:
+    servers:
+      - url: '{cfBaseUrl}'
+        variables: { cfBaseUrl: { default: 'https://api.example.invalid' } }
+    get:
+      tags: [ConcordatoFacile]
+      operationId: leggiPratica
+      summary: Stato corrente della pratica (F2)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/PraticaId' }
+      responses:
+        '200':
+          description: Stato e ultimo sequence emesso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatoPratica' }
+        '404': { $ref: '#/components/responses/ErroreApi' }
+
+  /v1/pratiche/{praticaId}/risposte:
+    servers:
+      - url: '{cfBaseUrl}'
+        variables: { cfBaseUrl: { default: 'https://api.example.invalid' } }
+    post:
+      tags: [ConcordatoFacile]
       operationId: inviaRisposte
-      summary: Risposte a una richiesta di informazioni oppure decisione sulla bozza
+      summary: Risposte dell'utente a una richiesta di informazioni (F2)
       security: [{ BearerAuth: [] }]
       parameters:
         - { $ref: '#/components/parameters/PraticaId' }
@@ -95,12 +139,9 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              oneOf:
-                - { $ref: '#/components/schemas/RisposteInformazioni' }
-                - { $ref: '#/components/schemas/DecisioneBozza' }
+            schema: { $ref: '#/components/schemas/Risposte' }
       responses:
-        '202': { description: Ricevuto }
+        '202': { description: Risposte ricevute }
         '404': { $ref: '#/components/responses/ErroreApi' }
         '409': { $ref: '#/components/responses/ErroreApi' }
         '422': { $ref: '#/components/responses/ErroreApi' }
@@ -108,13 +149,11 @@ paths:
   /v1/pratiche/{praticaId}/documenti:
     servers:
       - url: '{cfBaseUrl}'
-        variables:
-          cfBaseUrl:
-            default: https://api.example.invalid
+        variables: { cfBaseUrl: { default: 'https://api.example.invalid' } }
     post:
       tags: [ConcordatoFacile]
       operationId: caricaDocumento
-      summary: Carica un documento (es. contratto firmato)
+      summary: Carica un documento (es. contratto firmato) (F2)
       security: [{ BearerAuth: [] }]
       parameters:
         - { $ref: '#/components/parameters/PraticaId' }
@@ -136,22 +175,106 @@ paths:
           description: Documento ricevuto
           content:
             application/json:
-              schema:
-                type: object
-                required: [fileId]
-                properties:
-                  fileId: { type: string }
+              schema: { type: object, required: [fileId], properties: { fileId: { type: string } } }
         '404': { $ref: '#/components/responses/ErroreApi' }
         '409': { $ref: '#/components/responses/ErroreApi' }
         '413': { $ref: '#/components/responses/ErroreApi' }
         '422': { $ref: '#/components/responses/ErroreApi' }
+
+  /v1/pratiche/{praticaId}/bozza/decisione:
+    servers:
+      - url: '{cfBaseUrl}'
+        variables: { cfBaseUrl: { default: 'https://api.example.invalid' } }
+    post:
+      tags: [ConcordatoFacile]
+      operationId: decidiBozza
+      summary: Approvazione della bozza o richiesta di modifiche (F2)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/PraticaId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bozzaId, decisione]
+              properties:
+                bozzaId: { type: string }
+                decisione: { type: string, enum: [approvata, modifiche] }
+                note: { type: string, maxLength: 2000 }
+      responses:
+        '202': { description: Decisione ricevuta }
+        '404': { $ref: '#/components/responses/ErroreApi' }
+        '409': { $ref: '#/components/responses/ErroreApi' }
+
+  /v1/pratiche/{praticaId}/files/{fileId}/link:
+    servers:
+      - url: '{cfBaseUrl}'
+        variables: { cfBaseUrl: { default: 'https://api.example.invalid' } }
+    get:
+      tags: [ConcordatoFacile]
+      operationId: rinnovaLinkFile
+      summary: Nuovo link di scarico per un file con link scaduto (F2)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/PraticaId' }
+        - { name: fileId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Nuovo link
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/File' }
+        '404': { $ref: '#/components/responses/ErroreApi' }
+
+  /v1/pratiche/{praticaId}/annullamento:
+    servers:
+      - url: '{cfBaseUrl}'
+        variables: { cfBaseUrl: { default: 'https://api.example.invalid' } }
+    post:
+      tags: [ConcordatoFacile]
+      operationId: annullaPratica
+      summary: Annullamento richiesto dall'utente (F3)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/PraticaId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { motivo: { type: string, maxLength: 500 } } }
+      responses:
+        '202': { description: Annullamento ricevuto }
+        '404': { $ref: '#/components/responses/ErroreApi' }
+        '409': { $ref: '#/components/responses/ErroreApi' }
+
+  /v1/credito/estratto:
+    servers:
+      - url: '{cfBaseUrl}'
+        variables: { cfBaseUrl: { default: 'https://api.example.invalid' } }
+    get:
+      tags: [ConcordatoFacile]
+      operationId: estrattoCredito
+      summary: Addebiti del periodo e saldo (F3)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: da, in: query, required: true, schema: { type: string, format: date } }
+        - { name: a, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Estratto
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Estratto' }
 
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
-      description: Chiave API di ConcordatoFacile (una per prova e una per produzione)
+      description: Chiave API di ConcordatoFacile, diversa per prova e produzione
 
   parameters:
     PraticaId:
@@ -182,12 +305,12 @@ components:
           schema: { $ref: '#/components/schemas/Errore' }
           examples:
             e: { value: { code: unknown_reference } }
-    NonRitentabile:
+    ErroreNonRitentabile:
       description: Richiesta non valida. Non ritentare.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Errore' }
-    Ritentabile:
+    ErroreRitentabile:
       description: Problema temporaneo. Ritentare con backoff.
       content:
         application/json:
@@ -210,6 +333,10 @@ components:
       type: string
       enum: [base, completa]
 
+    Stato:
+      type: string
+      enum: [ricevuta, in_verifica, informazioni_richieste, attestata, bozza_pronta, in_firma, in_registrazione, completata, respinta, annullata, fallita]
+
     BustaEvento:
       type: object
       required: [eventId, eventType, apiVersion, occurredAt, sequence, praticaId, reference, data]
@@ -220,7 +347,7 @@ components:
         occurredAt: { type: string, format: date-time }
         sequence: { type: integer, minimum: 1, description: 'Crescente per pratica, parte da 1' }
         praticaId: { type: string }
-        reference: { type: string, format: uuid, description: 'UUID della pratica lato Piattaforma, restituito sempre' }
+        reference: { type: string, format: uuid, description: 'Identificativo lato Piattaforma, restituito sempre' }
         data: { type: object }
 
     Evento:
@@ -228,20 +355,24 @@ components:
         - { $ref: '#/components/schemas/EventoCreata' }
         - { $ref: '#/components/schemas/EventoStatoAggiornato' }
         - { $ref: '#/components/schemas/EventoInformazioniRichieste' }
+        - { $ref: '#/components/schemas/EventoAttestata' }
         - { $ref: '#/components/schemas/EventoBozzaPronta' }
         - { $ref: '#/components/schemas/EventoCompletata' }
         - { $ref: '#/components/schemas/EventoRespinta' }
         - { $ref: '#/components/schemas/EventoAnnullata' }
+        - { $ref: '#/components/schemas/EventoFallita' }
       discriminator:
         propertyName: eventType
         mapping:
           pratica.creata: '#/components/schemas/EventoCreata'
           pratica.stato_aggiornato: '#/components/schemas/EventoStatoAggiornato'
           pratica.informazioni_richieste: '#/components/schemas/EventoInformazioniRichieste'
+          pratica.attestata: '#/components/schemas/EventoAttestata'
           pratica.bozza_pronta: '#/components/schemas/EventoBozzaPronta'
           pratica.completata: '#/components/schemas/EventoCompletata'
           pratica.respinta: '#/components/schemas/EventoRespinta'
           pratica.annullata: '#/components/schemas/EventoAnnullata'
+          pratica.fallita: '#/components/schemas/EventoFallita'
 
     EventoCreata:
       allOf:
@@ -266,7 +397,8 @@ components:
               type: object
               required: [stato]
               properties:
-                stato: { type: string, enum: [in_verifica, attestata, in_firma, in_registrazione] }
+                stato: { type: string, enum: [in_verifica, in_firma, in_registrazione] }
+                dettaglio: { type: string, maxLength: 500 }
 
     EventoInformazioniRichieste:
       allOf:
@@ -284,6 +416,21 @@ components:
                   type: array
                   minItems: 1
                   items: { $ref: '#/components/schemas/Domanda' }
+
+    EventoAttestata:
+      allOf:
+        - $ref: '#/components/schemas/BustaEvento'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [pratica.attestata] }
+            data:
+              type: object
+              required: [attestazione, files]
+              properties:
+                attestazione: { $ref: '#/components/schemas/Attestazione' }
+                files:
+                  type: array
+                  items: { $ref: '#/components/schemas/File' }
 
     EventoBozzaPronta:
       allOf:
@@ -314,10 +461,11 @@ components:
             eventType: { type: string, enum: [pratica.completata] }
             data:
               type: object
-              required: [attestazione, files]
+              required: [attestazione, addebito, files]
               properties:
                 attestazione: { $ref: '#/components/schemas/Attestazione' }
                 registrazione: { $ref: '#/components/schemas/Registrazione' }
+                addebito: { $ref: '#/components/schemas/Addebito' }
                 files:
                   type: array
                   items: { $ref: '#/components/schemas/File' }
@@ -330,7 +478,7 @@ components:
             eventType: { type: string, enum: [pratica.respinta] }
             data:
               type: object
-              required: [motivo, dettaglio]
+              required: [motivo, dettaglio, addebito]
               properties:
                 motivo: { type: string, enum: [canone_fuori_limiti, dati_incongruenti, accordo_non_vigente, comune_non_coperto, documenti_non_validi, altro] }
                 dettaglio: { type: string, maxLength: 1000 }
@@ -339,6 +487,7 @@ components:
                   properties:
                     minimoMensileCent: { type: integer, minimum: 0 }
                     massimoMensileCent: { type: integer, minimum: 0 }
+                addebito: { $ref: '#/components/schemas/Addebito' }
 
     EventoAnnullata:
       allOf:
@@ -348,9 +497,24 @@ components:
             eventType: { type: string, enum: [pratica.annullata] }
             data:
               type: object
-              required: [motivo]
+              required: [motivo, addebito]
               properties:
                 motivo: { type: string, maxLength: 500 }
+                addebito: { $ref: '#/components/schemas/Addebito' }
+
+    EventoFallita:
+      allOf:
+        - $ref: '#/components/schemas/BustaEvento'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [pratica.fallita] }
+            data:
+              type: object
+              required: [codice, dettaglio, addebito]
+              properties:
+                codice: { type: string }
+                dettaglio: { type: string, maxLength: 1000 }
+                addebito: { $ref: '#/components/schemas/Addebito' }
 
     Domanda:
       type: object
@@ -365,7 +529,7 @@ components:
           items: { type: string }
         aiuto: { type: string }
 
-    RisposteInformazioni:
+    Risposte:
       type: object
       required: [richiestaId, risposte]
       properties:
@@ -377,16 +541,8 @@ components:
             required: [campo]
             properties:
               campo: { type: string }
-              valore: { type: string, description: 'Per i tipi testo, numero, data e scelta' }
-              fileId: { type: string, description: 'Per il tipo file: id restituito dal caricamento' }
-
-    DecisioneBozza:
-      type: object
-      required: [bozzaId, decisione]
-      properties:
-        bozzaId: { type: string }
-        decisione: { type: string, enum: [approvata, modifiche] }
-        note: { type: string, maxLength: 2000 }
+              valore: { type: string, description: 'Per i tipi testo, numero, data, scelta' }
+              fileId: { type: string, description: 'Per il tipo file, id restituito dal caricamento' }
 
     File:
       type: object
@@ -396,7 +552,7 @@ components:
         kind: { type: string, enum: [attestazione, scheda_calcolo, bozza_contratto, contratto_firmato, ricevuta_trasmissione, ricevuta_registrazione, ricevuta_pagamento, zip_completo, altro] }
         fileName: { type: string, maxLength: 150 }
         mimeType: { type: string, enum: [application/pdf, application/zip] }
-        sizeBytes: { type: integer, minimum: 1, description: 'Massimo 20 MB per un PDF; 40 MB per uno zip compresso' }
+        sizeBytes: { type: integer, minimum: 1, description: 'Massimo 20 MB per PDF, 40 MB per zip compresso' }
         sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
         downloadUrl: { type: string, format: uri, description: 'HTTPS, valido almeno 7 giorni' }
         expiresAt: { type: string, format: date-time }
@@ -414,6 +570,7 @@ components:
             nome: { type: string }
             comuneIstat: { type: string, pattern: '^[0-9]{6}$' }
             inVigoreDal: { type: string, format: date }
+            depositatoIl: { type: string, format: date }
         organizzazioni:
           type: array
           minItems: 1
@@ -452,3 +609,113 @@ components:
         ricevuteFileId:
           type: array
           items: { type: string }
+
+    Addebito:
+      type: object
+      required: [livello, importoCent, currency, descrizione]
+      properties:
+        livello: { $ref: '#/components/schemas/Livello' }
+        importoCent: { type: integer, minimum: 0, description: 0 se non addebitata }
+        ivaCent: { type: integer, minimum: 0 }
+        currency: { type: string, enum: [EUR] }
+        descrizione: { type: string }
+
+    StatoPratica:
+      type: object
+      required: [praticaId, reference, stato, ultimoSequence]
+      properties:
+        praticaId: { type: string }
+        reference: { type: string, format: uuid }
+        stato: { $ref: '#/components/schemas/Stato' }
+        ultimoSequence: { type: integer, minimum: 1 }
+        aggiornatoAl: { type: string, format: date-time }
+
+    CreaPratica:
+      type: object
+      required: [reference, livello, immobile, parti, contratto]
+      properties:
+        reference: { type: string, format: uuid }
+        livello: { $ref: '#/components/schemas/Livello' }
+        immobile:
+          type: object
+          required: [comuneIstat, indirizzo, foglio, particella]
+          properties:
+            comuneIstat: { type: string, pattern: '^[0-9]{6}$' }
+            indirizzo: { type: string }
+            cap: { type: string }
+            foglio: { type: string }
+            particella: { type: string }
+            subalterno: { type: string }
+            categoriaCatastale: { type: string }
+            superficieMq: { type: number, multipleOf: 0.1 }
+        parti:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [ruolo, nome, cognome, codiceFiscale]
+            properties:
+              ruolo: { type: string, enum: [locatore, conduttore] }
+              nome: { type: string }
+              cognome: { type: string }
+              codiceFiscale: { type: string }
+              quotaPossessoPercento: { type: number, minimum: 0, maximum: 100 }
+        contratto:
+          type: object
+          required: [decorrenza, durataAnni, canoneMensileCent]
+          properties:
+            decorrenza: { type: string, format: date }
+            durataAnni: { type: integer, minimum: 3 }
+            canoneMensileCent: { type: integer, minimum: 0 }
+            arredato: { type: boolean }
+            ariaCondizionata: { type: boolean }
+            elementi:
+              type: object
+              description: Elementi A-D dell'accordo dichiarati dalle parti
+              properties:
+                A: { type: array, items: { type: string } }
+                B: { type: array, items: { type: string } }
+                C: { type: array, items: { type: string } }
+                D: { type: array, items: { type: string } }
+        calcoloPiattaforma:
+          type: object
+          description: Calcolo della Piattaforma, per confronto con la verifica di ConcordatoFacile
+          properties:
+            zona: { type: string }
+            sottofascia: { type: integer, minimum: 1, maximum: 3 }
+            minimoMensileCent: { type: integer, minimum: 0 }
+            massimoMensileCent: { type: integer, minimum: 0 }
+
+    PraticaCreata:
+      type: object
+      required: [praticaId, reference, stato]
+      properties:
+        praticaId: { type: string }
+        reference: { type: string, format: uuid }
+        stato: { $ref: '#/components/schemas/Stato' }
+        moduloUrl:
+          type: string
+          format: uri
+          description: Link per completare nel modulo i dati ancora mancanti
+
+    Estratto:
+      type: object
+      required: [da, a, saldoCent, currency, voci]
+      properties:
+        da: { type: string, format: date }
+        a: { type: string, format: date }
+        saldoCent: { type: integer, description: Importo da saldare a fine periodo }
+        currency: { type: string, enum: [EUR] }
+        voci:
+          type: array
+          items:
+            type: object
+            required: [praticaId, reference, livello, data, importoCent, stato]
+            properties:
+              praticaId: { type: string }
+              reference: { type: string, format: uuid }
+              livello: { $ref: '#/components/schemas/Livello' }
+              data: { type: string, format: date }
+              importoCent: { type: integer, minimum: 0 }
+              ivaCent: { type: integer, minimum: 0 }
+              stato: { $ref: '#/components/schemas/Stato' }
