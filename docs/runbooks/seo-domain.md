@@ -713,6 +713,49 @@ Recurring jobs → `domain-recheck` ([`hangfire.md`](hangfire.md)).
 - The default CNAME target / suffix / A address are the well-known generic values; the dashboard of the project is the authority (step 4).
 - The exact permission names of a minimum-scope Vercel token (step 1).
 
+## 11. Public site of CasaZen (SEO-VETRINA)
+
+Before this the root `/` of the public domain was the entry of the console (a redirect to the login): a search for "CasaZen"
+found no page that says what CasaZen is. The public site adds five pages, **static HTML rendered at build time** (the method
+Google recommends over serving crawlers a different page): `/` (home), `/funzionalita`, `/prezzi`, `/per-i-fornitori`,
+`/chi-siamo`. Every claim matches a feature that exists today; prices are not shown (decision of the product owner, v1).
+
+| Concern | Behaviour | Code (frontend) |
+|---|---|---|
+| Render | `npm run build` builds the app and the template `site.html`, then `vite build --ssr` and `scripts/prerender-site.mjs` write one page per path to `dist/_site/*.html` (Italian, title, description, canonical, `hreflang`, Open Graph, JSON-LD `Organization` on the home page) and `dist/sitemap-site.xml`. The browser then starts the same React tree on the page (texts in English for a visitor who chose English in the app) | `src/site/*`, `site.html`, `scripts/prerender-site.mjs` |
+| Serving | The **Routing Middleware** `middleware.ts` (Vercel, runs before the static files, only on the five paths) serves `dist/_site/{page}.html` at the public path, **only on the web app's own host** (host of `VITE_PUBLIC_SITE_URL`, `*.vercel.app`, `localhost`; no domain written, D3). On an org's own host (section 9) the same paths stay the org's booking site. `/` with the Auth0 login answer (`code`/`error` + `state`) stays the single-page app, which completes the login there | `middleware.ts` |
+| Logged-in users | `/` shows the public home page with "Accedi" (`/login`, which opens the console of a signed-in user); the console stays under `/app` | — |
+| Crawling | `robots.txt` declares `Sitemap: {public domain}/sitemap-site.xml` and disallows `/_site/` (the files are reachable there too, but are served at their public paths; the canonical points at those) | `src/config/robots-txt.ts` |
+| Signup attribution | The calls to action link `/signup?utm_source=casazen-site&utm_medium=cta&utm_content={page}-{position}` (section 6): the admin report tells the public site apart from the guides | `src/site/site-links.ts` |
+| Company data | Footer of every page and JSON-LD of the home page, from the Vercel variables `VITE_LEGAL_NAME`, `VITE_LEGAL_VAT_ID`, `VITE_LEGAL_ADDRESS` and `VITE_SUPPORT_EMAIL`. The partita IVA must be on the home page of a VAT-registered business (art. 35 DPR 633/1972): a **Production build without name and partita IVA fails** (Vercel keeps the previous deployment). Same values as the backend `Legal__Controller__*` | `src/site/site-config.ts`, `src/config/vercel-build-env.ts` |
+
+Not available yet, to add when the assets exist: a CasaZen logo (JSON-LD `logo`, `og:image`) and a real favicon (today the
+Vite placeholder).
+
+### Checks after a deploy
+
+```bash
+SITE=https://<public domain>
+UA_BOT='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+
+# the home page is static HTML for people and crawlers alike (title, canonical, JSON-LD, P.IVA)
+curl -sS "$SITE/" | grep -E "<title>|rel=\"canonical\"|application/ld\+json|P\.IVA"
+curl -sS -A "$UA_BOT" "$SITE/prezzi" | grep -E "<title>|rel=\"canonical\""
+
+# the console and the login are untouched
+curl -sS "$SITE/login" | grep -c 'src="/assets/index-'        # 1: the single-page app
+
+# sitemap and robots.txt
+curl -sS "$SITE/sitemap-site.xml" | grep -o "<loc>[^<]*</loc>"   # the five pages on $SITE
+curl -sS "$SITE/robots.txt" | grep -E "sitemap-site|_site"
+
+# an org's own host keeps its booking site at /
+curl -sS "https://<verified custom domain>/" | grep -c '<div id="root"></div>'   # 1: the app, not the public site
+```
+
+In the browser: sign in from "Accedi", sign out (Auth0 returns to `/`, the public home page), and check the login still lands in
+the console. Search Console: submit `https://<public domain>/sitemap-site.xml` next to the other sitemaps (section 4).
+
 ## Out of scope
 
 - `GET /api/public/sitemap.xml` also answers on the API host (the function needs it); it is declared nowhere.
