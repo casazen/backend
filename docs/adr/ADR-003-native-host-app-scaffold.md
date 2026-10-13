@@ -54,6 +54,17 @@ Scheme: `casazen://` — booking detail `casazen://bookings/{id}` (Fase 1).
 
 `mobile/.maestro/smoke.yaml` — launch app → login screen visible.
 
+## Requirements
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-003-R1 | P0 | Native host app lives in dedicated repo `casazen/mobile` (Expo SDK 52+, TypeScript, Expo Router) |
+| ADR-003-R2 | P0 | Auth0 PKCE via `expo-auth-session` + `expo-secure-store`; no client secret in bundle |
+| ADR-003-R3 | P0 | Hand-written TS API client uses `EXPO_PUBLIC_API_URL` against the same API surface as web |
+| ADR-003-R4 | P1 | Deep link scheme `casazen://` with booking detail route |
+| ADR-003-R5 | P0 | EAS profiles: `development`, `preview`, `production` |
+| ADR-003-R6 | P0 | Maestro smoke (`mobile/.maestro/smoke.yaml`) launches to login screen |
+
 ## Consequences
 
 - Fase 1 implements M1–M7 screens per `spec-native-host-app`.

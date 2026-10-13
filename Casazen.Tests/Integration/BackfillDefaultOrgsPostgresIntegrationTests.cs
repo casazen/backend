@@ -1,38 +1,37 @@
 using Casazen.Infrastructure.Data;
+using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using NpgsqlTypes;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
+/// <summary>
+/// Runs the <c>BackfillDefaultOrgs</c> migration SQL on a real, empty PostgreSQL database
+/// (<see cref="PostgresTestServer"/>: <c>TEST_POSTGRES_CONNECTION</c> or Testcontainers).
+/// Skipped with an explicit reason only when no PostgreSQL is available on a local run.
+/// </summary>
 public class BackfillDefaultOrgsPostgresIntegrationTests : IAsyncLifetime
 {
     private const string OwnerA = "auth0|owner-a";
     private const string OwnerB = "auth0|owner-b";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
-        .Build();
+    private PostgresTestDatabase? _database;
 
-    public Task InitializeAsync() => _postgres.StartAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
 
-    public Task DisposeAsync() => _postgres.DisposeAsync().AsTask();
-
-    private AppDbContext NewContext()
+    public async Task DisposeAsync()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(
-                _postgres.GetConnectionString(),
-                npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"))
-            .Options;
-        return new AppDbContext(options);
+        if (_database is not null)
+            await _database.DisposeAsync();
     }
 
-    [Fact]
+    private AppDbContext NewContext() => _database!.CreateContext();
+
+    [PostgresFact]
     public async Task BackfillDefaultOrgs_AssignsOrgPerOwnerAndWalksRelationships()
     {
         await using var db = NewContext();

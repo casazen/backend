@@ -1,0 +1,104 @@
+using Casazen.Core.Entities;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Casazen.Tests.Integration;
+
+/// <summary>
+/// Holds every save that modifies a service request until <c>parties</c> saves have arrived, so that all of them read the same
+/// state before any of them writes: the race of two operations on one request, made deterministic. The operations are then free
+/// to run: whoever the database lets in first wins and the others must lose cleanly.
+/// </summary>
+/// <remarks>
+/// <para><b>One instance for the whole host.</b> The options of <see cref="AppDbContext"/> are built again for every scope, one per
+/// request, and the lambda of <c>ConfigureDbContext</c> runs every time. An interceptor created inside that lambda is a new object
+/// for each request: every request then waits alone for a second party that is in another object, and when the time is up both
+/// fail with a <see cref="TimeoutException"/> that the API answers with 500. This is what the five parallel-transition tests of
+/// SP-04 did the first time they ran in CI (30 s and 500/500 instead of 200/409). <see cref="HoldParallelSaves"/> creates the
+/// instance first and registers that one, so the mistake cannot be made.</para>
+/// <para><b>No calendar lock while it waits.</b> Implementing <see cref="IParallelSaveRendezvousInterceptor"/> makes
+/// <see cref="PostgresAdvisoryLocks"/> skip locks on this host: take (and cancel/reschedule) always hold the supplier calendar
+/// lock across the save, so the first party would wait here forever for a second save that cannot start until that lock is
+/// released. The harness is only for the <c>xmin</c> race; slot exclusivity is covered elsewhere.</para>
+/// <para>It holds the asynchronous saves only (the services of the API never save synchronously).</para>
+/// </remarks>
+internal sealed class SaveRendezvous : SaveChangesInterceptor, IParallelSaveRendezvousInterceptor
+{
+    /// <summary>Long enough for a cold test host to serve both requests; a rendezvous that is never completed fails after it.</summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How long a save waits for the others when the operations are serialized by the calendar lock of the supplier
+    /// (see <c>proceedOnTimeout</c>): the second one cannot arrive before the first one has finished.
+    /// </summary>
+    public static readonly TimeSpan SerializedTimeout = TimeSpan.FromSeconds(3);
+
+    private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly int _parties;
+    private readonly TimeSpan _timeout;
+    private readonly bool _proceedOnTimeout;
+    private int _arrived;
+
+    public SaveRendezvous(int parties, TimeSpan? timeout = null, bool proceedOnTimeout = false)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(parties, 2);
+        _parties = parties;
+        _timeout = timeout ?? DefaultTimeout;
+        _proceedOnTimeout = proceedOnTimeout;
+    }
+
+    /// <summary>The saves of a service request that reached the rendezvous so far.</summary>
+    public int Arrived => Volatile.Read(ref _arrived);
+
+    /// <summary>
+    /// Puts <b>one</b> rendezvous of <paramref name="parties"/> saves on every <see cref="AppDbContext"/> of the host being built
+    /// (call it from <c>ConfigureTestServices</c>, which runs once) and returns it.
+    /// </summary>
+    public static SaveRendezvous HoldParallelSaves(
+        IServiceCollection services,
+        int parties = 2,
+        TimeSpan? timeout = null,
+        bool proceedOnTimeout = false)
+    {
+        var rendezvous = new SaveRendezvous(parties, timeout, proceedOnTimeout);
+        services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(rendezvous));
+        return rendezvous;
+    }
+
+    public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        var changesARequest = eventData.Context?.ChangeTracker.Entries<ServiceRequest>()
+            .Any(entry => entry.State == EntityState.Modified) == true;
+        if (!changesARequest)
+            return result;
+
+        if (Interlocked.Increment(ref _arrived) >= _parties)
+            _allArrived.TrySetResult();
+
+        try
+        {
+            await _allArrived.Task.WaitAsync(_timeout, cancellationToken);
+        }
+        catch (TimeoutException) when (_proceedOnTimeout)
+        {
+            // The other operation is queued behind the calendar lock this one holds: save, so that it can enter. It then
+            // finds the request already changed (stale token or status) and loses with 409, which is what the test asserts.
+        }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException(
+                $"Only {Arrived} of {_parties} saves reached the rendezvous in {_timeout.TotalSeconds:0.##} s. If the requests ran in "
+                + "parallel, they do not share it: register ONE instance for the host (SaveRendezvous.HoldParallelSaves), never one "
+                + "built inside the ConfigureDbContext lambda, which creates a new object for every request. If they share it and "
+                + "still time out, the first party is likely holding a Postgres advisory lock across this wait — "
+                + $"{nameof(IParallelSaveRendezvousInterceptor)} must be on the interceptor so locks are skipped.");
+        }
+
+        return result;
+    }
+}

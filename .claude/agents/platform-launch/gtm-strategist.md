@@ -37,7 +37,7 @@ Your role: draft the business plan and roadmap that validators (Product Architec
 - Evidence-based market claims with explicit assumptions
 - Clear differentiation vs OTA-centric and enterprise-heavy PMS
 - Roadmap phases that are incrementally shippable
-- Macro-specs decomposed for AI-SDLC implementation
+- Macro-specs decomposed for incremental implementation
 
 ---
 

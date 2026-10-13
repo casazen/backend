@@ -1,6 +1,10 @@
 # Spec — Tenant Boundary (`Org` + `OrgId` + Plan Entitlement) (US-004)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 CasaZen has context-scoped RBAC (`AppContext`, `UserContextMembership`, `Role`, `RolePermission`,
 policy convention `RequireContext:{context}:{permission}`) but **no tenant boundary**: data is scoped
@@ -22,6 +26,8 @@ Stage of entry: **Stage 01 Planning** (new macro-spec)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As a property-management company, I want all my properties, bookings, leases, and payments to belong
 to **my organization** so that my data is isolated from other CasaZen customers and my subscription
 plan limits apply to my org as a whole.
@@ -33,7 +39,11 @@ plan-entitlement check, so that data isolation and tier limits are structural, n
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: New `Org` entity `{ Id (Guid), Name, Slug (unique), PlanTier (enum: Starter|Pro|Scale), DisplayName, LogoUrl?, ThemeColor?, ContactEmail, StripeCustomerId?, StripeConnectedAccountId?, IsActive, CreatedAt, UpdatedAt }`, registered as a `DbSet<Org>` with a unique index on `Slug`.
 
@@ -59,6 +69,8 @@ plan-entitlement check, so that data isolation and tier limits are structural, n
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC11**: `src/types/user.types.ts` / `org.types.ts` add `Org` + `planTier` to the current-user model; `src/queries/use-users.ts` `useCurrentUser` surfaces `org`. The owner console header shows the current org name + plan badge with link to plan settings.
 
 - **AC11b (MVP plan management — pre-Stripe)**: Onboarding wizard step 2 lets the operator pick **Starter/Pro/Scale** (`POST /api/users/onboarding` with `planTier`). `GET /api/orgs/plans` returns the catalogue. `PUT /api/orgs/me/plan` lets the org owner change tier. Admin uses `PATCH /api/admin/orgs/{orgId}/plan`. UI: `plan-settings-page.tsx`, admin **Piano** action on users table. **Paid checkout** remains in `spec-saas-billing`.
@@ -67,9 +79,78 @@ plan-entitlement check, so that data isolation and tier limits are structural, n
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `tenant-boundary`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 + L2 + L3 | New `Org` entity `{ Id (Guid), Name, Slug (unique), PlanTier (enum: Starter/Pro/Scale), DisplayName, LogoUrl?, ThemeColor?, ContactEmail,... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC2 | L1 + L2 + L3 | `OrgId` (`Guid`) foreign key added to `Property`, `Booking`, `LeaseContract`, and `Payment`, each with an index on `OrgId` and `OnDelete(... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC3 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | A tenant resolution mechanism: `ITenantContext` resolves the caller's `OrgId` from the authenticated `User` (`User.OrgId`), and an EF **g... | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | Plan entitlement — `IEntitlementService.CanAddProperty(orgId)` (and a generic `GetEntitlement(orgId)`) enforces per-tier limits (e.g. Sta... | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 | `User` gains `OrgId` (FK to `Org`); membership of a user in an org is established at onboarding/backfill. `GET /api/users/me` returns the... | Outcome not met; wrong status; silent no-op |
+| AC10 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC10b | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC11 | L2 + L3 | `src/types/user.types.ts` / `org.types.ts` add `Org` + `planTier` to the current-user model; `src/queries/use-users.ts` `useCurrentUser` ... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC11b | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC12 | L2 + L3 | When property creation is blocked by entitlement (`403`/`409` "plan limit reached"), the UI shows an Italian message (e.g. "Hai raggiunto... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -96,6 +177,8 @@ plan-entitlement check, so that data isolation and tier limits are structural, n
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | `src/types/org.types.ts` | Create — `Org`, `PlanTier` |
@@ -108,6 +191,8 @@ plan-entitlement check, so that data isolation and tier limits are structural, n
 
 ## Compliance
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Tenant data isolation**: `OrgId` FK on every tenant-scoped table + tenant query filter ensure cross-customer isolation; **RF1 invariant** binds all future tenant-scoped tables (incl. the Phase 1.5 rent ledger) to carry `OrgId`.
 - **GDPR controller/processor delineation**: each `Org` is the **data controller** for its guests'/tenants' personal data; **CasaZen is the data processor**. This boundary underpins the DPA in `spec-onboarding-plg` and per-org erasure/retention scoping.
 - **Data-integrity safety**: `OnDelete(Restrict)` on org FKs prevents accidental cascade-deletion of bookings/payments/leases; the 3-step migration preserves all existing rows (AC10).
@@ -117,7 +202,39 @@ plan-entitlement check, so that data isolation and tier limits are structural, n
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: context-RBAC primitives (`AppContext`/`UserContextMembership`/`Role`/`RolePermission`) and EF Core migrations baseline; an applied, green migration history on `casazen_test`.
 - **Blocks**: `spec-direct-checkout` (needs `Org.StripeConnectedAccountId`), `spec-branded-booking-site` (needs `Org` slug + branding), `spec-saas-billing` (needs `Org` + `PlanTier` + `StripeCustomerId`), `spec-onboarding-plg` (provisions an `Org`), and the Phase 1.5 `spec-ltr-recurring-rent` ledger (must inherit `OrgId` via RF1).
 - **Related**: `spec-org-seats-collaboration` (Phase 2) extends `UserContextMembership`/`RequireContext` with seat RBAC on top of this `Org` boundary.
 - **Does not touch**: OTA adapters, pricing adapter, Alloggiati/tax services (their tables gain `OrgId` only transitively via `Property`/`Booking`).
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

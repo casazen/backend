@@ -1,0 +1,16 @@
+<Project>
+
+  <!--
+    NuGet vulnerability gate (FD-02, A9-26). Restore audits every package, direct and transitive, against the
+    NuGet advisory database: a High (NU1903) or Critical (NU1904) advisory fails restore and build, locally,
+    in CI and in the Docker build. Moderate (NU1902) and Low (NU1901) stay warnings.
+    To unblock an advisory that has no patched version yet, see docs/runbooks/ci-backend.md (NuGetAuditSuppress).
+  -->
+  <PropertyGroup>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+    <WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

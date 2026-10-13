@@ -33,6 +33,31 @@ public class HangfireAuthorizationFilterTests
             Config(new() { ["Hangfire:DashboardApiKey"] = "secret-key" })));
     }
 
+    [Theory]
+    [InlineData("secret-ke")]
+    [InlineData("secret-key-longer")]
+    [InlineData("SECRET-KEY")]
+    [InlineData("")]
+    public void Authorize_WithApiKeyDifferingInLengthOrCase_ReturnsFalse(string providedKey)
+    {
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["X-Hangfire-ApiKey"] = providedKey;
+
+        Assert.False(HangfireAuthorizationFilter.AuthorizeRequest(
+            httpContext,
+            Config(new() { ["Hangfire:DashboardApiKey"] = "secret-key" })));
+    }
+
+    [Theory]
+    [InlineData("secret-key", "secret-key", true)]
+    [InlineData("chiave-è-segreta", "chiave-è-segreta", true)]
+    [InlineData("secret-key", "secret-kez", false)]
+    [InlineData("secret", "secret-key", false)]
+    public void ApiKeysMatch_Keys_ComparesWholeValue(string provided, string expected, bool match)
+    {
+        Assert.Equal(match, HangfireAuthorizationFilter.ApiKeysMatch(provided, expected));
+    }
+
     [Fact]
     public void Authorize_WithAdminRole_ReturnsTrue()
     {

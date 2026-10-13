@@ -1,41 +1,21 @@
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
-public class CinDeadlineAlertJob(
-    AppDbContext context,
-    INotificationService notificationService,
-    ILogger<CinDeadlineAlertJob> logger)
+/// <summary>
+/// Daily alert to the hosts of properties without a valid CIN (CO-20, A5-31), each stage at most once per property
+/// (<see cref="ICinDeadlineAlertService"/>). Runs after the nightly compliance check (<see cref="PropertyComplianceCheckJob"/>,
+/// 04:00), so a published property that lost its CIN is already suspended and its host has the CO-06 email only.
+/// Runbooks: <c>docs/runbooks/cin-format.md</c>, <c>docs/runbooks/hangfire.md</c>.
+/// </summary>
+public class CinDeadlineAlertJob(ICinDeadlineAlertService cinDeadlineAlertService)
 {
-    private const int AlertWindowDays = 7;
+    public const string RecurringJobId = "cin-deadline-alert";
 
-    public async Task ExecuteAsync()
-    {
-        var daysUntilDeadline = CinComplianceRules.DaysUntilDeadline();
-        if (daysUntilDeadline > AlertWindowDays)
-            return;
+    /// <summary>08:00 UTC (09:00 or 10:00 in Italy).</summary>
+    public const string Cron = "0 8 * * *";
 
-        var properties = await context.Properties
-            .AsNoTracking()
-            .Where(p => p.IsActive)
-            .Select(p => new { p.Id, p.OwnerId, p.CinCode })
-            .ToListAsync();
-
-        var nonCompliantByOwner = properties
-            .Where(p => !CinComplianceRules.IsCompliant(p.CinCode))
-            .GroupBy(p => p.OwnerId)
-            .ToList();
-
-        foreach (var group in nonCompliantByOwner)
-        {
-            var propertyIds = group.Select(p => p.Id).ToList();
-            logger.LogWarning(
-                "CIN deadline alert for owner {OwnerId}: {Count} non-compliant properties, {Days} days remaining",
-                group.Key, propertyIds.Count, daysUntilDeadline);
-
-            await notificationService.SendCinDeadlineAlertAsync(group.Key, propertyIds, daysUntilDeadline);
-        }
-    }
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
+    public async Task ExecuteAsync() => await cinDeadlineAlertService.RunAsync();
 }

@@ -10,7 +10,8 @@ public record SupplierMatchCandidate(
     string? Bio,
     int MatchScore,
     string MatchReason,
-    string Source);
+    string Source,
+    bool ReasonGeneratedByAi = false);
 
 public record ExternalSupplierSuggestion(
     string Name,
@@ -31,12 +32,19 @@ public record SupplierMatchResult(
 
 public interface ISupplierMatchService
 {
+    /// <summary>
+    /// Ranks the active suppliers for a property of <paramref name="orgId"/>. The caller has already authorized the
+    /// property (TN-3); a property of another org is rejected. The host's notes are not an input: nothing typed by
+    /// the host can reach an AI prompt (A8-15).
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Code <c>invalid_service_category</c>: <paramref name="category"/> is not a
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
+    /// </exception>
     Task<SupplierMatchResult> MatchAsync(
         Guid orgId,
-        string userId,
         Guid propertyId,
         string category,
         ServiceRequestUrgency urgency,
-        string? notes,
         CancellationToken cancellationToken = default);
 }

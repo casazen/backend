@@ -8,4 +8,5 @@ public interface IPropertyDocumentRepository
     Task<PropertyDocument?> GetByIdAsync(Guid id);
     Task<PropertyDocument> AddAsync(PropertyDocument document);
     Task DeleteAsync(Guid id);
+    Task<PropertyDocument> UpdateAsync(PropertyDocument document);
 }

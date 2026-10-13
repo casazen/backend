@@ -1,0 +1,170 @@
+using Casazen.Core.Authorization;
+
+namespace Casazen.Web.Authorization;
+
+/// <summary>
+/// Every authorization policy of the API (TN-3). Controllers reference these constants, never string literals, and
+/// <c>AddCasazenAuthorization</c> registers exactly this set: a policy that is not here does not exist, and the
+/// architecture tests fail for a policy registered but never used or used but never registered.
+/// </summary>
+/// <remarks>
+/// <para><b>How to choose.</b> Host endpoints use a context policy (<c>RequireContext:{context}:{permission}</c>),
+/// resolved from DB memberships with the JWT roles as fallback (<c>ContextAuthorizationService</c>): the class carries
+/// the read permission, each writing action adds the write permission. The policy only says "this user may do this
+/// kind of thing"; the row itself is checked with <c>IAuthorizationService.AuthorizeAsync(User, HostResource, operation)</c>
+/// (<see cref="PropertyOperations"/>), which verifies org, permission and property ownership.</para>
+/// <para><b>Properties.</b> Both rental contexts hold <c>property.*</c>, but a permission counts only in its own
+/// context: the property core a long-term landlord needs (list, record, documents) uses <see cref="SharedPropertyRead"/> /
+/// <see cref="SharedPropertyWrite"/>, everything about short stays uses <see cref="PropertyRead"/> /
+/// <see cref="PropertyWrite"/>, so a landlord with only the long-rent context never reaches bookings, calendars or OTA.</para>
+/// <para><see cref="Authenticated"/> is for user-scoped endpoints only (own profile, own devices, onboarding): every
+/// action whose only policy is <see cref="Authenticated"/> (or a bare <c>[Authorize]</c>) must be listed, with a reason,
+/// in the allow-list of <c>EndpointAuthorizationArchitectureTests</c>.</para>
+/// </remarks>
+public static class CasazenPolicies
+{
+    /// <summary>Any signed-in user, suppliers included. User-scoped endpoints only (see remarks).</summary>
+    public const string Authenticated = "Authenticated";
+
+    /// <summary>Platform administrator (JWT role <c>Admin</c>).</summary>
+    public const string AdminOnly = "AdminOnly";
+
+    /// <summary>Supplier console (JWT role <c>Supplier</c>, backfilled from the DB supplier link).</summary>
+    public const string Supplier = "RequireSupplier";
+
+    /// <summary>
+    /// Administrator of the caller's org, in whichever rental context it works (PL-16): plan, entitlement, billing,
+    /// Connect, branding, domain, site documents and, since AM-03b, the export of the org's fiscal data and team
+    /// (<c>GET api/gdpr/org/export</c>). An org policy, not a context one: the org's owner (<c>PropertyOwner</c>
+    /// or <c>LongTermLandlord</c>, as JWT role or as DB membership of the owner's role key), an administrator of the org team
+    /// or a platform admin; never a <c>Staff</c> collaborator, a <c>PropertyManager</c> (D12) or the holder of any other member
+    /// role (<c>OrgBillingAdminAuthorizationHandler</c>, <see cref="Casazen.Core.Authorization.OrgOwnerRoles"/>).
+    /// </summary>
+    public const string OrgBillingAdmin = "RequireOrgBillingAdmin";
+
+    private const string ShortRent = "RequireContext:short-rent:";
+    private const string LongRent = "RequireContext:long-rent:";
+
+    /// <summary>Either rental context: the permission may be held in short-rent or in long-rent (see <see cref="ParseContextPolicy"/>).</summary>
+    private const string AnyRentalContext = "RequireContext:short-rent|long-rent:";
+
+    /// <summary>Separates the alternative contexts of a context policy (<c>RequireContext:a|b:permission</c>).</summary>
+    private const char ContextSeparator = '|';
+
+    /// <summary>
+    /// Read a property's short-stay side: pricing, iCal calendars, photos, CIN, listing activation, fiscal, service
+    /// requests. Short-rent context only: a long-term landlord (long-rent <c>property.read</c>) does not pass.
+    /// </summary>
+    public const string PropertyRead = ShortRent + "property.read";
+
+    /// <summary>Change a property's short-stay side (see <see cref="PropertyRead"/>). Short-rent context only.</summary>
+    public const string PropertyWrite = ShortRent + "property.write";
+
+    /// <summary>
+    /// Read the property core that both kinds of landlord need (A7-06): the property list and record and its documents
+    /// (APE). Passes with <c>property.read</c> in the short-rent <b>or</b> the long-rent context; the row is checked with
+    /// <see cref="SharedPropertyOperations"/>. The org plan entitlement is an org matter: <see cref="OrgBillingAdmin"/>.
+    /// </summary>
+    public const string SharedPropertyRead = AnyRentalContext + "property.read";
+
+    /// <summary>Create or change the property core (record, documents): <c>property.write</c> in either rental context.</summary>
+    public const string SharedPropertyWrite = AnyRentalContext + "property.write";
+
+    public const string BookingRead = ShortRent + "booking.read";
+    public const string BookingWrite = ShortRent + "booking.write";
+    public const string PaymentRead = ShortRent + "payment.read";
+    public const string PaymentWrite = ShortRent + "payment.write";
+    public const string GuestRead = ShortRent + "guest.read";
+    public const string GuestWrite = ShortRent + "guest.write";
+    public const string OtaRead = ShortRent + "ota.read";
+    public const string OtaWrite = ShortRent + "ota.write";
+
+    // The finer permissions of AM-03, carved out of the broad ones so that the collaborator can do its job without prices, CIN
+    // or bookings (HostPermissions).
+
+    /// <summary>
+    /// Ask a supplier for an intervention on a stay (find the supplier, create the request, mark it paid). It used to be
+    /// <see cref="PropertyWrite"/>. Short-rent context.
+    /// </summary>
+    public const string ServiceRequestWrite = ShortRent + HostPermissions.ServiceRequestWrite;
+
+    /// <summary>
+    /// Erase or anonymize a guest and change its consents: the destructive and legal acts on a guest's data. It used to be
+    /// <see cref="GuestWrite"/>, which still lets a person register and correct a guest. Short-rent context.
+    /// </summary>
+    public const string GuestManage = ShortRent + HostPermissions.GuestManage;
+
+    /// <summary>
+    /// Register the guests of a stay and declare the Alloggiati communication sent. It used to be <see cref="BookingWrite"/>,
+    /// which still creates, moves and cancels bookings. Short-rent context.
+    /// </summary>
+    public const string AlloggiatiSubmit = ShortRent + HostPermissions.AlloggiatiSubmit;
+
+    /// <summary>
+    /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
+    /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
+    /// <see cref="LongRentPropertyOperations"/>.
+    /// </summary>
+    public const string LongRentPropertyRead = LongRent + "property.read";
+
+    /// <summary>Change a property's long-term side (see <see cref="LongRentPropertyRead"/>). Long-rent context only.</summary>
+    public const string LongRentPropertyWrite = LongRent + "property.write";
+
+    public const string LeaseRead = LongRent + "lease.read";
+    public const string LeaseCreate = LongRent + "lease.create";
+    public const string LeaseSign = LongRent + "lease.sign";
+    public const string LeaseRegister = LongRent + "lease.register";
+
+    /// <summary>
+    /// Invite, change, deactivate, reactivate and remove the people of the caller's org (AM-02): the permission
+    /// <c>org.members.manage</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody
+    /// else. Like the host contexts it waits for the onboarding and the consents. What each of them may do to whom
+    /// (only the owner creates and manages administrators) is decided by the services (<c>OrgTeamRules</c>).
+    /// </summary>
+    public const string OrgMembersManage = ContextPolicyPrefix + AccountContext.Key + ":" + AccountContext.Permissions.MembersManage;
+
+    /// <summary>
+    /// Read the activity log of the caller's org (AM-02b): the list and the CSV of who did what. The permission
+    /// <c>org.activity.read</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody else
+    /// (AM-01 seeds it). Like the host contexts it waits for the onboarding and the consents.
+    /// </summary>
+    public const string OrgActivityRead = ContextPolicyPrefix + AccountContext.Key + ":" + AccountContext.Permissions.ActivityRead;
+
+    /// <summary>Prefix of the context policies; the rest is <c>{context}:{permission}</c>.</summary>
+    public const string ContextPolicyPrefix = "RequireContext:";
+
+    /// <summary>The context policies registered at startup.</summary>
+    public static IReadOnlyList<string> ContextPolicies { get; } =
+    [
+        PropertyRead, PropertyWrite,
+        SharedPropertyRead, SharedPropertyWrite,
+        BookingRead, BookingWrite,
+        PaymentRead, PaymentWrite,
+        GuestRead, GuestWrite,
+        OtaRead, OtaWrite,
+        ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
+        LongRentPropertyRead, LongRentPropertyWrite,
+        LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
+        OrgMembersManage, OrgActivityRead,
+    ];
+
+    /// <summary>
+    /// Splits a context policy name into its contexts and permission: <c>RequireContext:short-rent:property.read</c>
+    /// has one context, <c>RequireContext:short-rent|long-rent:property.read</c> passes with either.
+    /// </summary>
+    public static (IReadOnlyList<string> ContextKeys, string PermissionKey) ParseContextPolicy(string policyName)
+    {
+        if (!policyName.StartsWith(ContextPolicyPrefix, StringComparison.Ordinal))
+            throw new ArgumentException($"'{policyName}' is not a context policy.", nameof(policyName));
+
+        var parts = policyName[ContextPolicyPrefix.Length..].Split(':');
+        if (parts.Length != 2 || parts.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException($"'{policyName}' is not a context policy.", nameof(policyName));
+
+        var contextKeys = parts[0].Split(ContextSeparator);
+        if (contextKeys.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException($"'{policyName}' is not a context policy.", nameof(policyName));
+
+        return (contextKeys, parts[1]);
+    }
+}

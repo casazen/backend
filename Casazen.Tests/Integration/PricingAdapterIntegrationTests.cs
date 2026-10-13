@@ -1,19 +1,21 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Casazen.Infrastructure.Data;
+using Casazen.Web.Controllers;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// Integration tests for PricingAdapterController (spec AC1–AC9).
-/// Uses in-memory EF and TestAuthHandler — runs in CI on Linux.
+/// Integration tests for PricingAdapterController: "Suggerimenti stagionali" (D4, PC-15) over the real pipeline
+/// (authentication, tenant filter, validation, database of the factory: PostgreSQL when configured).
 /// </summary>
 public class PricingAdapterIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public PricingAdapterIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
@@ -22,146 +24,175 @@ public class PricingAdapterIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.DoesNotContain("apikey", body, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static object ConfigRequest(bool enabled = true) => new
+    private static object ConfigRequest(bool enabled = true, string frequency = "daily") => new
     {
         isEnabled = enabled,
-        adaptationFrequency = "daily",
+        adaptationFrequency = frequency,
         includeSeasonality = true,
         includePublicHolidays = true,
     };
 
-    [Fact]
-    public async Task AC1_SaveConfig_Enabled_ReturnsConfigWithIsEnabledTrue()
+    private async Task<int> SuggestionRowsAsync(Guid propertyId)
     {
-        var property = await _factory.SeedPropertyAsync();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.SeasonalPriceSuggestions.IgnoreQueryFilters().CountAsync(s => s.PropertyId == propertyId);
+    }
+
+    [Fact]
+    public async Task SaveConfig_Enabled_ReturnsConfigAndComputesTheSuggestions()
+    {
+        var property = await _factory.SeedPropertyAsync(nightlyRate: 180m);
         var client = _factory.CreateAuthenticatedClient();
 
-        var response = await client.PostAsJsonAsync(
-            $"/api/pricing-adapter/config/{property.Id}",
-            ConfigRequest(enabled: true));
+        var response = await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", ConfigRequest());
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         AssertNoApiKeyInBody(body);
-
         using var doc = JsonDocument.Parse(body);
         Assert.True(doc.RootElement.GetProperty("isEnabled").GetBoolean());
         Assert.Equal("daily", doc.RootElement.GetProperty("adaptationFrequency").GetString());
+        Assert.Equal(JsonValueKind.String, doc.RootElement.GetProperty("nextRunOn").ValueKind);
+        Assert.False(doc.RootElement.TryGetProperty("nextScheduledRunAt", out _));
+        Assert.Equal(90, await SuggestionRowsAsync(property.Id));
     }
 
     [Fact]
-    public async Task AC2_GetConfig_ReturnsAllConfigFields()
+    public async Task GetConfig_NeverSaved_ReturnsTheExampleRuleDisabled()
     {
         var property = await _factory.SeedPropertyAsync();
         var client = _factory.CreateAuthenticatedClient();
-
-        await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", ConfigRequest());
 
         var response = await client.GetAsync($"/api/pricing-adapter/config/{property.Id}");
+
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var body = await response.Content.ReadAsStringAsync();
-        AssertNoApiKeyInBody(body);
-
-        using var doc = JsonDocument.Parse(body);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = doc.RootElement;
-        Assert.True(root.TryGetProperty("adaptationFrequency", out _));
-        Assert.True(root.TryGetProperty("includeSeasonality", out _));
-        Assert.True(root.TryGetProperty("includePublicHolidays", out _));
-        Assert.True(root.TryGetProperty("nextScheduledRunAt", out var nextRun));
-        Assert.False(nextRun.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined);
+        Assert.False(root.GetProperty("isEnabled").GetBoolean());
+        Assert.Equal(new[] { 6, 7, 8 }, root.GetProperty("highSeasonMonths").EnumerateArray().Select(m => m.GetInt32()).ToArray());
+        Assert.Equal(1.3m, root.GetProperty("highSeasonMultiplier").GetDecimal());
+        Assert.Equal(1.5m, root.GetProperty("holidayMultiplier").GetDecimal());
+        Assert.False(root.TryGetProperty("aiConfidence", out _));
     }
 
     [Fact]
-    public async Task AC3_DeleteConfig_ThenGet_ReturnsDisabledOrNotFound()
+    public async Task DeleteConfig_ThenGet_ReturnsDisabledAndRemovesTheSuggestions()
     {
         var property = await _factory.SeedPropertyAsync();
         var client = _factory.CreateAuthenticatedClient();
-
         await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", ConfigRequest());
 
         var deleteResponse = await client.DeleteAsync($"/api/pricing-adapter/config/{property.Id}");
+
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
-
         var getResponse = await client.GetAsync($"/api/pricing-adapter/config/{property.Id}");
-        Assert.True(
-            getResponse.StatusCode == HttpStatusCode.NotFound ||
-            (getResponse.StatusCode == HttpStatusCode.OK &&
-             !JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync())
-                 .RootElement.GetProperty("isEnabled").GetBoolean()));
+        Assert.False(JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync()).RootElement.GetProperty("isEnabled").GetBoolean());
+        Assert.Equal(0, await SuggestionRowsAsync(property.Id));
     }
 
     [Fact]
-    public async Task AC4_GetPreview_ReturnsExactlyNinetyItems()
+    public async Task GetSuggestions_PropertyAt180_ReturnsNinetyDaysOnTheRealBaseWithTheRuleApplied()
     {
-        var property = await _factory.SeedPropertyAsync();
+        var property = await _factory.SeedPropertyAsync(nightlyRate: 180m);
         var client = _factory.CreateAuthenticatedClient();
-
         await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", ConfigRequest());
 
-        var response = await client.GetAsync($"/api/pricing-adapter/preview/{property.Id}");
+        var response = await client.GetAsync($"/api/pricing-adapter/suggestions/{property.Id}");
+
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
         var body = await response.Content.ReadAsStringAsync();
         AssertNoApiKeyInBody(body);
-
+        Assert.DoesNotContain("confidence", body, StringComparison.OrdinalIgnoreCase);
         using var doc = JsonDocument.Parse(body);
-        var prices = doc.RootElement.GetProperty("prices");
-        Assert.Equal(90, prices.GetArrayLength());
+        Assert.Equal(180m, doc.RootElement.GetProperty("currentBasePrice").GetDecimal());
+        var items = doc.RootElement.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(90, items.Count);
+        Assert.All(items, i => Assert.Equal(180m, i.GetProperty("basePrice").GetDecimal()));
+        Assert.All(items, i =>
+        {
+            var expected = i.GetProperty("rule").GetString() switch
+            {
+                "HighSeason" => 234m,
+                "LowSeason" => 144m,
+                "Holiday" => 270m,
+                _ => 180m,
+            };
+            Assert.Equal(expected, i.GetProperty("suggestedPrice").GetDecimal());
+        });
     }
 
     [Fact]
-    public async Task AC5_TriggerSync_ReturnsAcceptedWithJobId()
+    public async Task Recalculate_TwiceTheSameDay_KeepsOneRowPerDate()
+    {
+        var property = await _factory.SeedPropertyAsync();
+        var client = _factory.CreateAuthenticatedClient();
+        await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", ConfigRequest());
+
+        var first = await client.PostAsync($"/api/pricing-adapter/recalculate/{property.Id}", null);
+        var second = await client.PostAsync($"/api/pricing-adapter/recalculate/{property.Id}", null);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        using var doc = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        Assert.Equal("Computed", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal(90, doc.RootElement.GetProperty("days").GetInt32());
+        Assert.Equal(90, await SuggestionRowsAsync(property.Id));
+    }
+
+    [Fact]
+    public async Task Recalculate_NotEnabled_Returns422WithCode()
     {
         var property = await _factory.SeedPropertyAsync();
         var client = _factory.CreateAuthenticatedClient();
 
-        await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", ConfigRequest());
+        var response = await client.PostAsync($"/api/pricing-adapter/recalculate/{property.Id}", null);
 
-        var response = await client.PostAsync($"/api/pricing-adapter/sync/{property.Id}", null);
-        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-
-        var body = await response.Content.ReadAsStringAsync();
-        AssertNoApiKeyInBody(body);
-
-        using var doc = JsonDocument.Parse(body);
-        var jobId = doc.RootElement.GetProperty("jobId").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(jobId));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(PricingAdapterController.SuggestionsNotEnabledCode, doc.RootElement.GetProperty("code").GetString());
     }
 
     [Fact]
-    public async Task AC6_GetHistory_ReturnsPaginatedEnvelope()
+    public async Task SaveConfig_InvalidRules_Returns400()
     {
         var property = await _factory.SeedPropertyAsync();
-        await _factory.SeedPricingHistoryAsync(property.Id, count: 5);
         var client = _factory.CreateAuthenticatedClient();
 
-        await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", ConfigRequest());
+        var overlap = await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", new
+        {
+            isEnabled = true,
+            adaptationFrequency = "daily",
+            highSeasonMonths = new[] { 7, 8 },
+            lowSeasonMonths = new[] { 8 },
+        });
+        var month13 = await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", new
+        {
+            isEnabled = true,
+            adaptationFrequency = "daily",
+            highSeasonMonths = new[] { 13 },
+        });
+        var multiplier = await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", new
+        {
+            isEnabled = true,
+            adaptationFrequency = "daily",
+            holidayMultiplier = 50,
+        });
+        var frequency = await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", ConfigRequest(frequency: "hourly"));
 
-        var response = await client.GetAsync($"/api/pricing-adapter/history/{property.Id}?page=1&pageSize=2");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var body = await response.Content.ReadAsStringAsync();
-        AssertNoApiKeyInBody(body);
-
-        using var doc = JsonDocument.Parse(body);
-        var root = doc.RootElement;
-        Assert.True(root.TryGetProperty("items", out var items));
-        Assert.True(root.TryGetProperty("total", out var total));
-        Assert.True(root.TryGetProperty("page", out var page));
-        Assert.Equal(2, items.GetArrayLength());
-        Assert.True(total.GetInt32() >= 5);
-        Assert.Equal(1, page.GetInt32());
+        Assert.Equal(HttpStatusCode.BadRequest, overlap.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, month13.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, multiplier.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, frequency.StatusCode);
     }
 
     [Theory]
     [InlineData("/api/pricing-adapter/config/{0}", "POST")]
     [InlineData("/api/pricing-adapter/config/{0}", "GET")]
     [InlineData("/api/pricing-adapter/config/{0}", "DELETE")]
-    [InlineData("/api/pricing-adapter/preview/{0}", "GET")]
-    [InlineData("/api/pricing-adapter/sync/{0}", "POST")]
-    [InlineData("/api/pricing-adapter/history/{0}", "GET")]
-    public async Task AC7_Endpoints_WithoutJwt_ReturnUnauthorized(string routeTemplate, string method)
+    [InlineData("/api/pricing-adapter/suggestions/{0}", "GET")]
+    [InlineData("/api/pricing-adapter/recalculate/{0}", "POST")]
+    public async Task Endpoints_WithoutJwt_ReturnUnauthorized(string routeTemplate, string method)
     {
         var property = await _factory.SeedPropertyAsync();
         var client = _factory.CreateClient();
@@ -175,52 +206,40 @@ public class PricingAdapterIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Fact]
-    public async Task AC8_CrossOrgUser_OnAllEndpoints_ReturnsNotFound()
+    [Theory]
+    [InlineData("/api/pricing-adapter/history/{0}")]
+    [InlineData("/api/pricing-adapter/preview/{0}")]
+    public async Task RemovedEndpoints_InventedHistoryAndPreview_AreGone(string routeTemplate)
     {
-        // After US-004 (#202) the EF global tenant filter scopes property reads to the caller's
-        // org. A user from another org (here: one with no org at all) cannot see the property,
-        // so every property-scoped endpoint returns 404 — never another org's row, and never 403
-        // (which would leak the property's existence). This is the tenant-isolation contract.
+        var property = await _factory.SeedPropertyAsync();
+        var client = _factory.CreateAuthenticatedClient();
+
+        var response = await client.GetAsync(string.Format(routeTemplate, property.Id));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CrossOrgUser_OnAllEndpoints_ReturnsNotFound()
+    {
+        // The EF tenant filter scopes property reads to the caller's org: a host of another org cannot see the
+        // property, so every property-scoped endpoint returns 404 (never 403, which would leak its existence).
         var property = await _factory.SeedPropertyAsync(ownerId: TestAuthHandler.DefaultUserId);
-        var otherClient = _factory.CreateAuthenticatedClient(userId: "auth0|other-user-456");
+        var otherHost = $"auth0|other-host-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(otherHost);
+        var otherClient = _factory.CreateAuthenticatedClient(userId: otherHost, roles: "PropertyOwner");
         var propertyId = property.Id;
 
         var save = await otherClient.PostAsJsonAsync($"/api/pricing-adapter/config/{propertyId}", ConfigRequest());
         Assert.Equal(HttpStatusCode.NotFound, save.StatusCode);
 
-        // Seed config as owner for remaining endpoints
         var ownerClient = _factory.CreateAuthenticatedClient();
         await ownerClient.PostAsJsonAsync($"/api/pricing-adapter/config/{propertyId}", ConfigRequest());
 
         Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/pricing-adapter/config/{propertyId}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await otherClient.DeleteAsync($"/api/pricing-adapter/config/{propertyId}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/pricing-adapter/preview/{propertyId}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.PostAsync($"/api/pricing-adapter/sync/{propertyId}", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/pricing-adapter/history/{propertyId}")).StatusCode);
-    }
-
-    [Fact]
-    public async Task AC9_AllResponses_DoNotContainApiKeyField()
-    {
-        var property = await _factory.SeedPropertyAsync();
-        await _factory.SeedPricingHistoryAsync(property.Id);
-        var client = _factory.CreateAuthenticatedClient();
-
-        await client.PostAsJsonAsync($"/api/pricing-adapter/config/{property.Id}", ConfigRequest());
-
-        var endpoints = new[]
-        {
-            await client.GetAsync($"/api/pricing-adapter/config/{property.Id}"),
-            await client.GetAsync($"/api/pricing-adapter/preview/{property.Id}"),
-            await client.PostAsync($"/api/pricing-adapter/sync/{property.Id}", null),
-            await client.GetAsync($"/api/pricing-adapter/history/{property.Id}"),
-        };
-
-        foreach (var response in endpoints)
-        {
-            response.EnsureSuccessStatusCode();
-            AssertNoApiKeyInBody(await response.Content.ReadAsStringAsync());
-        }
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/pricing-adapter/suggestions/{propertyId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.PostAsync($"/api/pricing-adapter/recalculate/{propertyId}", null)).StatusCode);
+        Assert.Equal(90, await SuggestionRowsAsync(propertyId));
     }
 }

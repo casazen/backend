@@ -82,7 +82,6 @@ Phased roadmap from **current codebase** to **sellable production platform**:
 - Phase 0: current state assessment
 - Phases 1–N: each with goals, dependencies, exit criteria, infra cost tier
 - Mapping to existing `Sessions/specs/` and new macro-specs to create
-- Alignment with AI-SDLC pipeline (specs → design → development)
 
 ### `Sessions/specs/spec-{slug}.md` (one per major feature/phase)
 
@@ -142,7 +141,7 @@ Append Devil's Advocate Review subsection to final artifacts.
 - **Transparency**: revised proposals explicitly address each objection.
 - **Efficiency**: if all APPROVE in Round 1, write deliverables immediately.
 - **Rejection duty**: 2+ REJECT → stop, write `rejection.md`, do not guess intent.
-- **Structured output**: macro-specs must follow existing `Sessions/specs/` format for SDLC consumption.
+- **Structured output**: macro-specs must follow existing `Sessions/specs/` format.
 - **Market analysis anchor**: all positioning must trace to `Sessions/market-analysis-2026/AI-short/long-term-platform.md`.
 - **Lawful only**: cost-minimization tactics must be legal; flag anything requiring counsel.
 

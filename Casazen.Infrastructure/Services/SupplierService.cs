@@ -2,36 +2,71 @@ using System.Data;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Http;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
-public class SupplierService(
+public partial class SupplierService(
     AppDbContext db,
-    IEmailService emailService,
-    IConfiguration configuration,
-    IHostEnvironment hostEnvironment,
+    IEmailQueue emailQueue,
+    PublicSiteLinks publicSiteLinks,
+    ISafeExternalHttpClient externalHttpClient,
+    ISupplierPilotComuni pilotComuni,
+    IComuneDirectory comuneDirectory,
+    ISupplierComuneMatcher comuneMatcher,
+    ILegalDocumentService legalDocuments,
     ILogger<SupplierService> logger) : ISupplierService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    public async Task<(Org Org, SupplierProfile Profile)> RegisterAsync(
-        string email,
-        string legalName,
-        string phone,
-        string comuneCode,
-        string? inviteToken,
-        string? userId = null,
+    public async Task<SupplierRegistrationResult> RegisterAsync(
+        SupplierRegistration registration,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(registration);
+
+        var email = registration.Email.Trim();
+        var comuneCode = registration.ComuneCode.Trim();
+        var userId = registration.UserId;
+        var accountEmail = registration.AccountEmail?.Trim();
+
+        // A malformed or truncated token is "invalid invite" (422), never a parse error (A4-21).
+        string? tokenHash = null;
+        if (!string.IsNullOrEmpty(registration.InviteToken))
+        {
+            if (!SupplierInviteTokens.TryNormalize(registration.InviteToken, out var token))
+                throw InviteInvalid();
+            tokenHash = SupplierInviteTokens.Hash(token);
+
+            // The invite is accepted by the Auth0 account of the invited email: an anonymous request cannot prove it.
+            if (userId is null)
+                throw new DomainRuleException("supplier_invite_login_required", "SupplierInviteLoginRequired");
+        }
+
+        if (userId is not null && string.IsNullOrEmpty(accountEmail))
+            throw new DomainRuleException("supplier_account_email_missing", "SupplierAccountEmailMissing");
+
+        // One registration per user and one acceptance per invite, across requests and instances (TN-4).
+        var locks = new List<(PostgresAdvisoryLocks.Scope, string)>();
+        if (userId is not null)
+            locks.Add((PostgresAdvisoryLocks.Scope.OrgProvisioningUser, userId));
+        if (tokenHash is not null)
+            locks.Add((PostgresAdvisoryLocks.Scope.SupplierInvite, tokenHash));
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, locks.ToArray());
+
         User? user = null;
         if (userId is not null)
         {
@@ -45,32 +80,59 @@ public class SupplierService(
                         "User {UserId} is already linked to supplier org {OrgId}; returning existing registration",
                         userId,
                         existing.Value.Org.Id);
-                    return existing.Value;
+                    if (transaction is not null)
+                        await transaction.CommitAsync(cancellationToken);
+                    return new SupplierRegistrationResult(existing.Value.Org, existing.Value.Profile);
                 }
             }
         }
 
-        if (inviteToken is not null)
+        SupplierInviteRecord? invite = null;
+        if (tokenHash is not null)
         {
-            var invite = await db.SupplierInviteRecords
-                .FirstOrDefaultAsync(i =>
-                    i.Id == Guid.Parse(inviteToken) &&
-                    !i.IsUsed &&
-                    i.ExpiresAt > DateTime.UtcNow,
-                    cancellationToken);
+            invite = await db.SupplierInviteRecords.FirstOrDefaultAsync(i => i.TokenHash == tokenHash, cancellationToken);
+            EnsureInviteUsable(invite);
 
-            if (invite is null)
-                throw new InvalidOperationException("Invalid or expired invite token.");
+            // The token is bound to the invited email (account and form) and comune (A4-04).
+            if (!EmailsMatch(invite!.Email, accountEmail) || !EmailsMatch(invite.Email, email))
+                throw new DomainRuleException("supplier_invite_email_mismatch", "SupplierInviteEmailMismatch");
+            if (!string.IsNullOrWhiteSpace(invite.ComuneCode)
+                && !await IsSameComuneAsync(invite.ComuneCode, comuneCode, cancellationToken))
+                throw new DomainRuleException("supplier_invite_comune_mismatch", "SupplierInviteComuneMismatch");
 
+            email = invite.Email.Trim();
+            if (!string.IsNullOrWhiteSpace(invite.ComuneCode))
+                comuneCode = invite.ComuneCode.Trim();
             invite.IsUsed = true;
         }
+        else
+        {
+            if (userId is not null && !EmailsMatch(accountEmail, email))
+                throw new DomainRuleException("supplier_account_email_mismatch", "SupplierAccountEmailMismatch");
+
+            if (!await pilotComuni.IsSelfServeEnabledAsync(cancellationToken))
+            {
+                logger.LogWarning(
+                    "Supplier self-serve registration refused: no pilot comune configured or none found in the official list (Suppliers__PilotComuni)");
+                throw new DomainRuleException("supplier_self_serve_unavailable", "SupplierSelfServeUnavailable");
+            }
+
+            var pilot = await pilotComuni.FindAsync(comuneCode, cancellationToken)
+                ?? throw new DomainRuleException("supplier_comune_not_pilot", "SupplierComuneNotPilot");
+            comuneCode = pilot.Code.Trim();
+        }
+
+        // One profile per email (SU-14, A4-22): a second registration would create the duplicate that fix-orphaned had
+        // to merge. The unique index is the guarantee under concurrency (23505 below); this check answers early.
+        if (await IsSupplierEmailTakenAsync(email, cancellationToken))
+            throw SupplierEmailTaken();
 
         var slug = $"supplier-{Guid.NewGuid():N}"[..30];
         var org = new Org
         {
-            Name = legalName,
+            Name = registration.LegalName,
             Slug = slug,
-            DisplayName = legalName,
+            DisplayName = registration.LegalName,
             ContactEmail = email,
             OrgType = OrgType.Supplier,
         };
@@ -80,10 +142,30 @@ public class SupplierService(
         {
             OrgId = org.Id,
             Email = email,
-            LegalName = legalName,
-            Phone = phone,
+            LegalName = registration.LegalName,
+            Phone = registration.Phone,
             ComuniJson = JsonSerializer.Serialize(new[] { comuneCode }, JsonOpts),
         };
+        // A comune that is in the official list is also recorded by its code (SU-04); one that is not (the list is not
+        // imported, an old invite) stays as written.
+        if (await comuneDirectory.FindByIstatCodeAsync(comuneCode, activeOnly: true, cancellationToken) is { } listed)
+            profile.ComuneIstatCodesJson = JsonSerializer.Serialize(new[] { listed.IstatCode }, JsonOpts);
+        // The invite's categories are codes already (validated when the invite was created, SU-03).
+        if (!string.IsNullOrWhiteSpace(invite?.CategoriesJson))
+            profile.CategoriesJson = invite.CategoriesJson;
+
+        // Anonymous self-serve (an invite always needs a signed-in account): nobody can be linked now. The response
+        // carries a claim token that the account created afterwards presents to ClaimAsync (SU-02, A4-02); the profile
+        // is never joined by email alone (A4-23).
+        SupplierClaimTicket? claimTicket = null;
+        if (userId is null)
+        {
+            var claimToken = SupplierClaimTokens.Generate();
+            claimTicket = new SupplierClaimTicket(claimToken, DateTime.UtcNow.Add(SupplierClaimTokens.Validity));
+            profile.ClaimTokenHash = SupplierClaimTokens.Hash(claimToken);
+            profile.ClaimTokenExpiresAt = claimTicket.ExpiresAt;
+        }
+
         db.SupplierProfiles.Add(profile);
 
         // Link the authenticated user to the new org so subsequent supplier endpoint
@@ -91,17 +173,242 @@ public class SupplierService(
         // email lookup or auto-provisioning a duplicate.
         if (user is not null)
         {
+            // PL-05 (A1-40): only SupplierOrgId. User.OrgId is the host org, set by the host onboarding alone.
             user.SupplierOrgId = org.Id;
-            if (user.OrgId is null)
-                user.OrgId = org.Id;
             user.UpdatedAt = DateTime.UtcNow;
             logger.LogInformation("Linked user {UserId} to supplier org {OrgId} during registration", userId, org.Id);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (SupplierProfileEmailIndex.IsViolation(ex))
+        {
+            // A parallel registration took the email between the check and the insert.
+            throw SupplierEmailTaken();
+        }
 
-        logger.LogInformation("Supplier org {OrgId} registered for {Email}", org.Id, email);
-        return (org, profile);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        if (invite is not null)
+        {
+            logger.LogInformation(
+                "Supplier org {OrgId} registered for {MaskedEmail} by accepting invite {InviteId}",
+                org.Id, LogRedaction.MaskEmail(email), invite.Id);
+        }
+        else
+        {
+            logger.LogInformation(
+                "Supplier org {OrgId} self-registered for {MaskedEmail} ({Mode})",
+                org.Id,
+                LogRedaction.MaskEmail(email),
+                claimTicket is null ? "signed in, linked" : "anonymous, claim token issued");
+        }
+
+        return new SupplierRegistrationResult(org, profile, claimTicket);
+    }
+
+    public async Task<SupplierClaimResult> ClaimAsync(SupplierClaim claim, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(claim);
+
+        var userId = claim.UserId;
+        var accountEmail = claim.AccountEmail?.Trim();
+
+        // A malformed or truncated token is "invalid claim" (422), never a parse error.
+        string? tokenHash = null;
+        if (!string.IsNullOrWhiteSpace(claim.ClaimToken))
+        {
+            if (!SupplierClaimTokens.TryNormalize(claim.ClaimToken, out var token))
+                throw ClaimInvalid();
+            tokenHash = SupplierClaimTokens.Hash(token);
+        }
+
+        // One supplier link per user, across requests and instances (TN-4); registrations take the same lock.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.OrgProvisioningUser, userId));
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+        // A repeated claim (double submit, retry after a failed Auth0 role sync) gets the org already linked.
+        if (user is not null)
+        {
+            var existing = await TryGetExistingSupplierRegistrationAsync(user, cancellationToken);
+            if (existing is not null)
+            {
+                var linkedOrgId = existing.Value.Org.Id;
+                if (tokenHash is not null)
+                {
+                    var tokenOrgId = await db.SupplierProfiles.AsNoTracking()
+                        .Where(sp => sp.ClaimTokenHash == tokenHash)
+                        .Select(sp => (Guid?)sp.OrgId)
+                        .FirstOrDefaultAsync(cancellationToken);
+                    if (tokenOrgId is Guid otherOrgId && otherOrgId != linkedOrgId)
+                        throw new DomainConflictException("supplier_account_already_linked", "SupplierAccountAlreadyLinked");
+                }
+
+                if (transaction is not null)
+                    await transaction.CommitAsync(cancellationToken);
+                return new SupplierClaimResult(linkedOrgId, NewlyLinked: false);
+            }
+        }
+
+        if (string.IsNullOrEmpty(accountEmail))
+            throw new DomainRuleException("supplier_account_email_missing", "SupplierAccountEmailMissing");
+        if (user is null)
+            throw new InvalidOperationException($"User {userId} must exist before claiming a supplier profile.");
+
+        SupplierProfile profile;
+        string method;
+        if (tokenHash is not null)
+        {
+            profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.ClaimTokenHash == tokenHash, cancellationToken)
+                ?? throw ClaimInvalid();
+            await LockSupplierClaimAsync(profile.OrgId, cancellationToken);
+
+            // Merged into another profile by fix-orphaned while this claim waited for the lock (SU-14): the token no
+            // longer names a profile, and linking it would point the account to a deleted org.
+            if (!await db.SupplierProfiles.AsNoTracking().AnyAsync(sp => sp.OrgId == profile.OrgId, cancellationToken))
+                throw ClaimInvalid();
+
+            if (await IsSupplierProfileHeldAsync(profile.OrgId, cancellationToken))
+                throw new DomainRuleException("supplier_claim_used", "SupplierClaimUsed");
+            if (profile.ClaimTokenExpiresAt is not DateTime expiresAt || expiresAt <= DateTime.UtcNow)
+                throw new DomainRuleException("supplier_claim_expired", "SupplierClaimExpired");
+            // The token proves the registrant; the account must still be the one of the registered email.
+            if (!EmailsMatch(profile.Email, accountEmail))
+                throw new DomainRuleException("supplier_claim_email_mismatch", "SupplierClaimEmailMismatch");
+            method = "claim token";
+        }
+        else
+        {
+            // Without the token only an email that Auth0 verified may pick the profile (A4-23, A1-13).
+            if (!claim.AccountEmailVerified)
+                throw new DomainRuleException("supplier_claim_email_unverified", "SupplierClaimEmailUnverified");
+
+            var normalizedEmail = accountEmail.ToLowerInvariant();
+            // Users has no tenant filter (allow-listed identity table): the check spans every org on purpose.
+            var candidates = await db.SupplierProfiles.AsNoTracking()
+                .Where(sp => sp.Email.ToLower() == normalizedEmail
+                             && !db.Users.Any(u => u.SupplierOrgId == sp.OrgId || u.OrgId == sp.OrgId))
+                .OrderBy(sp => sp.CreatedAt)
+                .Select(sp => sp.OrgId)
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            if (candidates.Count == 0)
+                throw new DomainRuleException("supplier_claim_not_found", "SupplierClaimNotFound");
+            if (candidates.Count > 1)
+                throw new DomainConflictException("supplier_claim_ambiguous", "SupplierClaimAmbiguous");
+
+            await LockSupplierClaimAsync(candidates[0], cancellationToken);
+            // Null when fix-orphaned merged it into another profile while this claim waited for the lock (SU-14).
+            profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == candidates[0], cancellationToken)
+                ?? throw new DomainRuleException("supplier_claim_not_found", "SupplierClaimNotFound");
+            // Taken by a parallel claim while this one waited for the lock.
+            if (await IsSupplierProfileHeldAsync(profile.OrgId, cancellationToken))
+                throw new DomainRuleException("supplier_claim_used", "SupplierClaimUsed");
+            method = "verified email";
+        }
+
+        // PL-05 (A1-40): only SupplierOrgId. User.OrgId is the host org, set by the host onboarding alone.
+        user.SupplierOrgId = profile.OrgId;
+        user.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "User {UserId} claimed supplier org {OrgId} with a {ClaimMethod}", userId, profile.OrgId, method);
+        return new SupplierClaimResult(profile.OrgId, NewlyLinked: true);
+    }
+
+    private static DomainRuleException ClaimInvalid() =>
+        new("supplier_claim_invalid", "SupplierClaimInvalid");
+
+    /// <summary>Serializes the claims of one profile: at most one account is linked to it (joins the open transaction).</summary>
+    private async Task LockSupplierClaimAsync(Guid supplierOrgId, CancellationToken cancellationToken)
+    {
+        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.SupplierClaim, supplierOrgId.ToString("N")));
+    }
+
+    /// <summary>True when an account is already linked to the supplier org (claimed, registered signed in, invited).</summary>
+    private Task<bool> IsSupplierProfileHeldAsync(Guid supplierOrgId, CancellationToken cancellationToken) =>
+        db.Users.AsNoTracking().AnyAsync(
+            u => u.SupplierOrgId == supplierOrgId || u.OrgId == supplierOrgId, cancellationToken);
+
+    public async Task<SupplierInvitePreview> GetInviteAsync(string? inviteToken, CancellationToken cancellationToken = default)
+    {
+        if (!SupplierInviteTokens.TryNormalize(inviteToken, out var token))
+            throw InviteInvalid();
+
+        var tokenHash = SupplierInviteTokens.Hash(token);
+        var invite = await db.SupplierInviteRecords.AsNoTracking()
+            .FirstOrDefaultAsync(i => i.TokenHash == tokenHash, cancellationToken);
+        EnsureInviteUsable(invite);
+
+        return new SupplierInvitePreview(
+            invite!.Email.Trim(),
+            invite.ComuneCode.Trim(),
+            await ResolveComuneNameAsync(invite.ComuneCode, cancellationToken),
+            DeserializeStrings(invite.CategoriesJson),
+            invite.ExpiresAt);
+    }
+
+    /// <summary>
+    /// True when two values name the same comune: written alike, or both found in the official list as the same comune (an
+    /// invite stores the ISTAT code while an older registration form may still send the cadastral code, SU-04).
+    /// </summary>
+    private async Task<bool> IsSameComuneAsync(string a, string b, CancellationToken cancellationToken)
+    {
+        a = a.Trim();
+        b = b.Trim();
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var resolved = await comuneDirectory.ResolveAsync([a, b], cancellationToken);
+        return resolved.TryGetValue(a, out var first) && resolved.TryGetValue(b, out var second) && first.IstatCode == second.IstatCode;
+    }
+
+    private static DomainRuleException InviteInvalid() =>
+        new("supplier_invite_invalid", "SupplierInviteInvalid");
+
+    private static void EnsureInviteUsable(SupplierInviteRecord? invite)
+    {
+        if (invite is null)
+            throw InviteInvalid();
+        if (invite.IsUsed)
+            throw new DomainRuleException("supplier_invite_used", "SupplierInviteUsed");
+        // An admin revoked it (SU-12): the link no longer works.
+        if (invite.RevokedAt is not null)
+            throw new DomainRuleException("supplier_invite_revoked", "SupplierInviteRevoked");
+        if (invite.ExpiresAt <= DateTime.UtcNow)
+            throw new DomainRuleException("supplier_invite_expired", "SupplierInviteExpired");
+    }
+
+    private static bool EmailsMatch(string? a, string? b) =>
+        !string.IsNullOrWhiteSpace(a)
+        && !string.IsNullOrWhiteSpace(b)
+        && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static DomainConflictException SupplierEmailTaken() =>
+        new("supplier_email_taken", "SupplierEmailTaken");
+
+    /// <summary>
+    /// True when a supplier profile already has <paramref name="email"/> (trimmed, case-insensitive), the key of the
+    /// unique index <see cref="SupplierProfileEmailIndex"/>. A blank email is never taken.
+    /// </summary>
+    private async Task<bool> IsSupplierEmailTakenAsync(string? email, CancellationToken cancellationToken)
+    {
+        var normalized = SupplierProfileEmailIndex.Normalize(email);
+        if (normalized.Length == 0)
+            return false;
+
+        return await db.SupplierProfiles.AsNoTracking()
+            .AnyAsync(sp => sp.Email.Trim().ToLower() == normalized, cancellationToken);
     }
 
     public async Task<SupplierProfile?> GetProfileAsync(Guid orgId, CancellationToken cancellationToken = default) =>
@@ -116,68 +423,219 @@ public class SupplierService(
         IEnumerable<string>? comuni,
         string? bio,
         IEnumerable<string>? photoUrls,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IEnumerable<string>? comuneIstatCodes = null)
     {
+        // Only category codes are stored (SU-03): an Italian label or unknown value is rejected (422), never saved.
+        var categoryCodes = categories is null ? null : ServiceCategories.RequireAll(categories);
+
+        // Only codes of the official list are stored (SU-04): an unknown code, or any code while the list is not imported,
+        // is rejected (422), never saved.
+        var istatCodes = comuneIstatCodes is null ? null : await RequireListedComuniAsync(comuneIstatCodes, cancellationToken);
+
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
         if (profile is null)
             return null;
 
+        // Requirements already missing before this edit (a profile activated before SU-05): the edit may leave them missing,
+        // it just cannot take one more away.
+        var missingBefore = SupplierActivationRules.ProfileBlockers(profile).Select(b => b.Code).ToHashSet();
+
         if (legalName is not null) profile.LegalName = legalName;
         if (vatNumber is not null) profile.VatNumber = vatNumber.Length == 0 ? null : vatNumber;
         if (phone is not null) profile.Phone = phone;
-        if (categories is not null) profile.CategoriesJson = JsonSerializer.Serialize(categories, JsonOpts);
+        if (categoryCodes is not null) profile.CategoriesJson = JsonSerializer.Serialize(categoryCodes, JsonOpts);
         if (comuni is not null) profile.ComuniJson = JsonSerializer.Serialize(comuni, JsonOpts);
+        if (istatCodes is not null) profile.ComuneIstatCodesJson = JsonSerializer.Serialize(istatCodes, JsonOpts);
         if (bio is not null) profile.Bio = bio.Length == 0 ? null : bio;
         if (photoUrls is not null) profile.PhotoUrlsJson = JsonSerializer.Serialize(photoUrls, JsonOpts);
         profile.UpdatedAt = DateTime.UtcNow;
 
+        // An active supplier is shown to hosts because it met the requirements (SU-05): an edit cannot take them away
+        // (empty categories, comuni or description would leave an "Active" profile that no host can find).
+        if (profile.Status == SupplierStatus.Active)
+        {
+            var removed = SupplierActivationRules.ProfileBlockers(profile).Select(b => b.Code).Where(c => !missingBefore.Contains(c)).ToList();
+            if (removed.Count > 0)
+            {
+                db.Entry(profile).State = EntityState.Detached;
+                throw new DomainRuleException(
+                    SupplierActivation.ProfileRequirementsCode, SupplierActivation.ProfileRequirementsMessageKey);
+            }
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         return profile;
     }
 
-    public async Task<IReadOnlyList<ActivationStep>> GetActivationStepsAsync(Guid orgId, CancellationToken cancellationToken = default)
+    public async Task<SupplierActivationState?> GetActivationAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
-        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
+        var profile = await db.SupplierProfiles.AsNoTracking().FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
         if (profile is null)
-            return Array.Empty<ActivationStep>();
+            return null;
 
-        var categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [];
-        var comuni = JsonSerializer.Deserialize<string[]>(profile.ComuniJson, JsonOpts) ?? [];
+        var currentTosVersion = legalDocuments.GetTos().Version;
+        var tos = SupplierActivationRules.TosState(profile, currentTosVersion);
+        var steps = SupplierActivationRules.Steps(profile, tos);
 
-        return
-        [
-            new ActivationStep("identity", "Identità e contatti", "completed"),
-            new ActivationStep("categories", "Categorie di servizio",
-                categories.Length > 0 ? "completed" : "pending",
-                categories.Length == 0 ? "Scegli almeno una categoria" : null),
-            new ActivationStep("comuni", "Comuni di operatività",
-                comuni.Length > 0 ? "completed" : "pending",
-                comuni.Length == 0 ? "Seleziona almeno un comune" : null),
-            new ActivationStep("profile", "Profilo professionale",
-                !string.IsNullOrWhiteSpace(profile.Bio) ? "completed" : "pending",
-                string.IsNullOrWhiteSpace(profile.Bio) ? "Aggiungi una descrizione professionale" : null),
-            new ActivationStep("tos", "Termini di servizio",
-                profile.TosAcceptedAt.HasValue ? "completed" : "pending",
-                !profile.TosAcceptedAt.HasValue ? "Accetta i termini di servizio" : null),
-        ];
+        var firstIncomplete = steps.FindIndex(s => s.Required && s.Status != SupplierActivation.StepStatus.Completed);
+        var current = profile.ActivationStep is >= 1 and <= SupplierActivation.StepCount
+            ? profile.ActivationStep.Value
+            : (firstIncomplete >= 0 ? firstIncomplete + 1 : SupplierActivation.StepCount);
+
+        return new SupplierActivationState(steps, current, tos);
     }
 
-    public async Task<SupplierProfile> CompleteActivationAsync(Guid orgId, bool tosAccepted, CancellationToken cancellationToken = default)
+    public async Task SetActivationStepAsync(Guid orgId, int step, CancellationToken cancellationToken = default)
+    {
+        if (step is < 1 or > SupplierActivation.StepCount)
+            throw new DomainRuleException(SupplierActivation.StepInvalidCode, SupplierActivation.StepInvalidMessageKey, SupplierActivation.StepCount);
+
+        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Supplier profile not found for org {orgId}");
+
+        if (profile.ActivationStep == step)
+            return;
+
+        profile.ActivationStep = step;
+        profile.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<SupplierProfile> CompleteActivationAsync(
+        Guid orgId,
+        bool tosAccepted,
+        string? tosVersion,
+        string userId,
+        string? clientIpAddress,
+        CancellationToken cancellationToken = default)
     {
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken)
             ?? throw new KeyNotFoundException($"Supplier profile not found for org {orgId}");
 
-        // Only ToS gates activation. Categories, comuni, and bio can be completed later.
-        if (!tosAccepted)
-            throw new InvalidOperationException("Devi accettare i termini di servizio");
+        // A suspended supplier does not lift its own suspension through the wizard: only an admin reactivates it (SU-12).
+        if (profile.Status == SupplierStatus.Suspended)
+            throw new DomainRuleException("supplier_suspended", "SupplierSuspended");
 
-        profile.TosAcceptedAt = DateTime.UtcNow;
+        // The requirements are read from the stored profile (SU-05): the client cannot declare them done.
+        var blockers = SupplierActivationRules.ProfileBlockers(profile).Select(b => b.Code).ToList();
+        if (!tosAccepted)
+            blockers.Add(SupplierActivation.Blockers.TosNotAccepted);
+        if (blockers.Count > 0)
+        {
+            logger.LogInformation("Supplier {OrgId} activation refused: {Blockers}", orgId, string.Join(',', blockers));
+            throw new SupplierActivationBlockedException(blockers);
+        }
+
+        var accepted = RequireCurrentTosVersion(tosVersion);
+        RecordTosAcceptance(profile, accepted, userId, clientIpAddress);
         profile.Status = SupplierStatus.Active;
-        profile.UpdatedAt = DateTime.UtcNow;
+        profile.ActivationStep = SupplierActivation.StepCount;
 
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Supplier {OrgId} activated", orgId);
+        logger.LogInformation("Supplier {OrgId} activated (Terms {TosVersion})", orgId, accepted);
+
+        // The public showcase address (SU-13). The profile is active either way: a failure here is retried by the
+        // preview endpoint, which asks for the slug again.
+        try
+        {
+            await EnsureShowcaseSlugAsync(orgId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Could not generate the showcase slug of supplier {OrgId}", orgId);
+        }
+
         return profile;
+    }
+
+    public async Task<string?> EnsureShowcaseSlugAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
+        if (profile is null)
+            return null;
+        if (!string.IsNullOrEmpty(profile.ShowcaseSlug))
+            return profile.ShowcaseSlug;
+        if (profile.Status != SupplierStatus.Active)
+            return null;
+
+        // The name, then the name with a number, then with a random suffix; the unique index decides under concurrency
+        // (23505: another supplier took it between the check and the save), and the next candidate is tried.
+        var baseSlug = SupplierShowcaseSlug.FromName(profile.LegalName);
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var candidate = attempt == 0 ? baseSlug
+                : attempt < 4 ? $"{baseSlug}-{attempt + 1}"
+                : $"{baseSlug}-{Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(3))}";
+
+            if (await db.SupplierProfiles.AsNoTracking().AnyAsync(sp => sp.ShowcaseSlug == candidate, cancellationToken))
+                continue;
+
+            profile.ShowcaseSlug = candidate;
+            profile.UpdatedAt = DateTime.UtcNow;
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                logger.LogInformation("Supplier {OrgId} showcase slug {Slug}", orgId, candidate);
+                return candidate;
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                profile.ShowcaseSlug = null;
+            }
+        }
+
+        throw new InvalidOperationException($"No free showcase slug found for supplier {orgId}.");
+    }
+
+    public async Task<SupplierProfile> AcceptTosAsync(
+        Guid orgId,
+        string? tosVersion,
+        string userId,
+        string? clientIpAddress,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Supplier profile not found for org {orgId}");
+
+        var accepted = RequireCurrentTosVersion(tosVersion);
+        RecordTosAcceptance(profile, accepted, userId, clientIpAddress);
+
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Supplier {OrgId} accepted Terms {TosVersion}", orgId, accepted);
+        return profile;
+    }
+
+    /// <summary>The version the supplier saw must be the one in force (like the host consents): 409 otherwise.</summary>
+    private string RequireCurrentTosVersion(string? tosVersion)
+    {
+        var current = legalDocuments.GetTos().Version;
+        if (!string.Equals(tosVersion, current, StringComparison.Ordinal))
+        {
+            throw new DomainConflictException(
+                SupplierActivation.TosVersionStaleCode, SupplierActivation.TosVersionStaleMessageKey);
+        }
+
+        return current;
+    }
+
+    private void RecordTosAcceptance(SupplierProfile profile, string version, string userId, string? clientIpAddress)
+    {
+        var now = DateTime.UtcNow;
+        profile.TosAcceptedAt = now;
+        profile.TosVersion = version;
+        profile.UpdatedAt = now;
+
+        // Proof of the acceptance, like the host consents (A4-31): who, which version, when, from which IP.
+        db.ConsentRecords.Add(new ConsentRecord
+        {
+            UserId = userId,
+            OrgId = profile.OrgId,
+            Type = ConsentType.Tos,
+            Version = version,
+            IpAddress = clientIpAddress,
+            RecordedAt = now,
+        });
     }
 
     public async Task<IReadOnlyList<(DateOnly Date, bool Available)>> GetAvailabilityAsync(
@@ -203,6 +661,10 @@ public class SupplierService(
         var entriesList = entries.ToList();
         var dates = entriesList.Select(e => e.Date).ToList();
 
+        // Same lock as the iCal sync (SU-15): a sync running meanwhile never writes or frees the same days.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, CalendarSyncService.AvailabilityLock(orgId));
+
         var existing = await db.SupplierAvailability
             .Where(sa => sa.OrgId == orgId && dates.Contains(sa.Date))
             .ToListAsync(cancellationToken);
@@ -218,38 +680,116 @@ public class SupplierService(
                     OrgId = orgId,
                     Date = date,
                     Available = available,
+                    Source = SupplierAvailabilitySource.Manual,
                 });
             }
-            else
+            else if (record.Available != available)
             {
+                // A change by the supplier makes the day manual: the iCal sync no longer frees it.
                 record.Available = available;
+                record.Source = SupplierAvailabilitySource.Manual;
             }
+
+            // Same value: the day keeps its source. The page saves every visible day, and a busy day of the feed saved
+            // unchanged must stay a feed day (freed when its event leaves the calendar).
             count++;
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
         return count;
     }
 
-    public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default) =>
+        GetActiveByComuneAsync(ComuneTarget.FromInput(comuneCode), category, cancellationToken);
+
+    public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
+        ComuneTarget target,
+        string? category,
+        CancellationToken cancellationToken = default)
     {
-        var all = await db.SupplierProfiles
+        // Filter by category code (SU-03). An unknown code is an error (422), not an empty list that hides the mistake;
+        // a supplier matches only when it declared the code (no categories = no match).
+        var categoryCode = string.IsNullOrWhiteSpace(category) ? null : ServiceCategories.Require(category);
+
+        var active = await db.SupplierProfiles
             .Where(sp => sp.Status == SupplierStatus.Active)
             .ToListAsync(cancellationToken);
 
-        return all.Where(sp =>
-        {
-            var comuni = JsonSerializer.Deserialize<string[]>(sp.ComuniJson, JsonOpts) ?? [];
-            if (!comuni.Any(c => ItalianComuneRegistry.Matches(comuneCode, c)))
-                return false;
+        // By ISTAT code when the comune is known (SU-04): the supplier's chosen comuni, and what it wrote before resolved
+        // against the official list; by the written name only when the comune cannot be resolved.
+        var inComune = await comuneMatcher.FilterAsync(active, target, cancellationToken);
 
-            if (category is not null)
-            {
-                var cats = JsonSerializer.Deserialize<string[]>(sp.CategoriesJson, JsonOpts) ?? [];
-                return cats.Contains(category, StringComparer.OrdinalIgnoreCase);
-            }
-            return true;
-        }).ToList();
+        return categoryCode is null
+            ? inComune.ToList()
+            : inComune.Where(sp => DeserializeStrings(sp.CategoriesJson).Contains(categoryCode, StringComparer.Ordinal)).ToList();
+    }
+
+    public async Task<IReadOnlyList<UnmappedServiceCategory>> GetUnmappedCategoriesAsync(CancellationToken cancellationToken = default)
+    {
+        var unmapped = new List<UnmappedServiceCategory>();
+
+        var profiles = await db.SupplierProfiles
+            .AsNoTracking()
+            .OrderBy(sp => sp.OrgId)
+            .Select(sp => new { sp.OrgId, sp.CategoriesJson })
+            .ToListAsync(cancellationToken);
+        foreach (var profile in profiles)
+        {
+            unmapped.AddRange(DeserializeStrings(profile.CategoriesJson)
+                .Where(value => !ServiceCategories.IsKnown(value))
+                .Select(value => new UnmappedServiceCategory("supplier_profile", profile.OrgId, value)));
+        }
+
+        var invites = await db.SupplierInviteRecords
+            .AsNoTracking()
+            .Where(i => i.CategoriesJson != null)
+            .OrderBy(i => i.Id)
+            .Select(i => new { i.Id, i.CategoriesJson })
+            .ToListAsync(cancellationToken);
+        foreach (var invite in invites)
+        {
+            unmapped.AddRange(DeserializeStrings(invite.CategoriesJson)
+                .Where(value => !ServiceCategories.IsKnown(value))
+                .Select(value => new UnmappedServiceCategory("supplier_invite", invite.Id, value)));
+        }
+
+        var known = ServiceCategories.All.ToList();
+        // Platform admin report across every host org (the endpoint is AdminOnly); ServiceRequest has no tenant filter.
+        var requests = await db.ServiceRequests
+            .AsNoTracking()
+            .Where(sr => !known.Contains(sr.Category))
+            .OrderBy(sr => sr.CreatedAt)
+            .Select(sr => new { sr.Id, sr.Category })
+            .ToListAsync(cancellationToken);
+        unmapped.AddRange(requests.Select(sr => new UnmappedServiceCategory("service_request", sr.Id, sr.Category)));
+
+        return unmapped;
+    }
+
+    /// <summary>String items of a JSON array column; anything else (not an array, non-string items) is ignored.</summary>
+    private static IReadOnlyList<string> DeserializeStrings(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+                return [];
+
+            return document.RootElement.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString()!)
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     public async Task<SupplierInvite> CreateInviteAsync(
@@ -259,28 +799,59 @@ public class SupplierService(
         string? message,
         CancellationToken cancellationToken = default)
     {
+        var categoryCodes = categories is null ? null : ServiceCategories.RequireAll(categories);
+
+        email = email.Trim();
+        comuneCode = comuneCode.Trim();
+
+        // With the official list imported the invite names a comune of it, stored by its ISTAT code (SU-04); a cadastral code
+        // or a name that identifies one is turned into it. Without the list the value is kept as written.
+        var comune = await ResolveInviteComuneAsync(comuneCode, cancellationToken);
+        if (comune is not null)
+            comuneCode = comune.IstatCode;
+
+        // Invites created before SU-01 (no token hash) can no longer be accepted, and a revoked one (SU-12) does not work
+        // anymore: neither blocks a new one.
         var existing = await db.SupplierInviteRecords
-            .FirstOrDefaultAsync(i => i.Email == email && !i.IsUsed && i.ExpiresAt > DateTime.UtcNow, cancellationToken);
+            .FirstOrDefaultAsync(
+                i => i.Email == email && i.TokenHash != null && !i.IsUsed && i.RevokedAt == null && i.ExpiresAt > DateTime.UtcNow,
+                cancellationToken);
 
         if (existing is not null)
-            throw new InvalidOperationException($"Pending invite already exists for {email}");
+            throw new DomainConflictException(
+                SupplierAdminErrorCodes.DuplicateInvite, SupplierAdminErrorCodes.DuplicateInviteMessageKey);
 
+        // Accepting the invite creates a profile with this email: with a profile already there it could never succeed
+        // (SU-14). The owner of that profile links it with the claim instead.
+        if (await IsSupplierEmailTakenAsync(email, cancellationToken))
+            throw SupplierEmailTaken();
+
+        // The token only travels in the email; the database keeps its hash (A4-04).
+        var token = SupplierInviteTokens.Generate();
         var invite = new SupplierInviteRecord
         {
             Email = email,
+            TokenHash = SupplierInviteTokens.Hash(token),
             ComuneCode = comuneCode,
-            CategoriesJson = categories is not null
-                ? JsonSerializer.Serialize(categories, JsonOpts)
+            CategoriesJson = categoryCodes is not null
+                ? JsonSerializer.Serialize(categoryCodes, JsonOpts)
                 : null,
             Message = message,
-            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            ExpiresAt = DateTime.UtcNow.Add(SupplierInviteTokens.Validity),
         };
+
+        // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
+        var inviteEmail = BuildInviteEmail(invite, token, comune?.Name ?? await ResolveComuneNameAsync(comuneCode, cancellationToken));
+
         db.SupplierInviteRecords.Add(invite);
         await db.SaveChangesAsync(cancellationToken);
 
-        await SendInviteEmailAsync(invite, cancellationToken);
+        if (!emailQueue.Enqueue(invite.Email, inviteEmail, EmailTemplates.Names.SupplierInvite))
+            logger.LogWarning("Supplier invite {InviteId} created but its email was not queued", invite.Id);
 
-        logger.LogInformation("Admin invite created for {Email}, expires {ExpiresAt}", email, invite.ExpiresAt);
+        logger.LogInformation(
+            "Admin invite {InviteId} created for {MaskedEmail}, expires {ExpiresAt}",
+            invite.Id, LogRedaction.MaskEmail(email), invite.ExpiresAt);
         return new SupplierInvite(invite.Id, invite.ExpiresAt);
     }
 
@@ -302,6 +873,11 @@ public class SupplierService(
                 var orgId = await GetOrProvisionSupplierOrgIdCoreAsync(userId, email, firstName, lastName, cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return orgId;
+            }
+            catch (DbUpdateException ex) when (SupplierProfileEmailIndex.IsViolation(ex))
+            {
+                // Another account provisioned or registered a profile with this email in parallel (SU-14).
+                throw SupplierEmailTaken();
             }
             catch (Exception ex) when (attempt == 1 && IsProvisioningSerializationRace(ex))
             {
@@ -328,8 +904,8 @@ public class SupplierService(
         if (user is null)
             return null;
 
+        // Only the contact of a provisioned profile: never used to find one (A4-23).
         var resolvedEmail = string.IsNullOrWhiteSpace(email) ? user.Email : email;
-        var normalizedEmail = string.IsNullOrWhiteSpace(resolvedEmail) ? string.Empty : resolvedEmail.Trim().ToLowerInvariant();
 
         // Step 1a: User.SupplierOrgId — set explicitly during registration or
         // auto-provisioning, survives even when User.OrgId points to a host org.
@@ -346,8 +922,8 @@ public class SupplierService(
             }
         }
 
-        // Step 1b: User.OrgId — covers the case where the user is ONLY a supplier
-        // (not dual-role) and their OrgId points to a supplier org.
+        // Step 1b: User.OrgId — legacy rows only: before PL-05 (A1-40) a supplier-only account had OrgId = its supplier
+        // org. The migration SeparateSupplierOrgFromHostOrgId moved that link to SupplierOrgId; nothing writes it any more.
         if (user.OrgId is Guid linkedOrgId)
         {
             var linkedOrg = await db.Orgs.AsNoTracking()
@@ -369,24 +945,24 @@ public class SupplierService(
             }
         }
 
-        // Step 2: Email-based lookup
-        if (!string.IsNullOrWhiteSpace(normalizedEmail))
+        // No email lookup (A4-23, A1-13): the email of the token is not proof of owning a profile registered with it,
+        // and an unverified Auth0 account could take over that supplier. An existing profile is joined only through
+        // its invite (RegisterAsync) or an explicit claim (ClaimAsync: claim token, or verified email).
+
+        // Step 2: Auto-provisioning — last resort (a Supplier role given by hand, without any profile).
+        // Never a second profile for an email that already has one (SU-14, A4-22: that is how the duplicates were
+        // born): the account links the existing profile with the claim (token or verified email, SU-02) instead.
+        if (await IsSupplierEmailTakenAsync(resolvedEmail, cancellationToken))
         {
-            var profileByEmail = await db.SupplierProfiles.AsNoTracking()
-                .FirstOrDefaultAsync(sp => sp.Email.ToLower() == normalizedEmail, cancellationToken);
-            if (profileByEmail is not null)
-            {
-                user.SupplierOrgId = profileByEmail.OrgId;
-                user.UpdatedAt = DateTime.UtcNow;
-                await db.SaveChangesAsync(cancellationToken);
-                return profileByEmail.OrgId;
-            }
+            logger.LogWarning(
+                "Supplier org not provisioned for user {UserId}: a supplier profile already has the email {MaskedEmail}",
+                userId, LogRedaction.MaskEmail(resolvedEmail));
+            throw SupplierEmailTaken();
         }
 
-        // Step 3: Auto-provisioning — last resort
         logger.LogWarning(
-            "Auto-provisioning supplier org for user {UserId} (email={Email}, name={FirstName} {LastName})",
-            userId, resolvedEmail, firstName, lastName);
+            "Auto-provisioning supplier org for user {UserId} (email={MaskedEmail})",
+            userId, LogRedaction.MaskEmail(resolvedEmail));
 
         var displayName = $"{firstName} {lastName}".Trim();
         if (string.IsNullOrWhiteSpace(displayName))
@@ -407,39 +983,21 @@ public class SupplierService(
         var profile = new SupplierProfile
         {
             OrgId = org.Id,
-            Email = resolvedEmail,
+            Email = resolvedEmail.Trim(),
             LegalName = displayName,
             Phone = string.Empty,
         };
         db.SupplierProfiles.Add(profile);
 
-        // Consume any pending invite for this email during auto-provisioning
-        if (!string.IsNullOrWhiteSpace(normalizedEmail))
-        {
-            var pendingInvite = await db.SupplierInviteRecords
-                .FirstOrDefaultAsync(i =>
-                    i.Email.ToLower() == normalizedEmail &&
-                    !i.IsUsed &&
-                    i.ExpiresAt > DateTime.UtcNow,
-                    cancellationToken);
-
-            if (pendingInvite is not null)
-            {
-                pendingInvite.IsUsed = true;
-                if (!string.IsNullOrWhiteSpace(pendingInvite.ComuneCode))
-                    profile.ComuniJson = JsonSerializer.Serialize(new[] { pendingInvite.ComuneCode });
-                if (!string.IsNullOrWhiteSpace(pendingInvite.CategoriesJson))
-                    profile.CategoriesJson = pendingInvite.CategoriesJson;
-            }
-        }
+        // A pending invite for the same email is left alone: it is accepted only with its token (SU-01), never
+        // consumed by an account that merely shows the invited email (A4-23).
 
         // Set SupplierOrgId — always, even when User.OrgId is already set (dual-role).
         user.SupplierOrgId = org.Id;
         user.UpdatedAt = DateTime.UtcNow;
 
-        // If the user doesn't have an OrgId at all, set it too (single-role supplier).
-        if (user.OrgId is null)
-            user.OrgId = org.Id;
+        // PL-05 (A1-40): User.OrgId stays untouched. It is the host org, set by the host onboarding alone: a supplier org
+        // there would become the tenant of the properties and bookings of a supplier who later becomes a host.
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Auto-provisioned supplier org {OrgId} for user {UserId}", org.Id, userId);
@@ -491,29 +1049,19 @@ public class SupplierService(
             .FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
 
         if (profile is null)
-            return new SupplierDashboard(0, "Unknown", 0, 0, 0, 0, "None", null, null, null, DateTime.UtcNow);
+            return new SupplierDashboard(0, "Unknown", 0, "None", null, null, null, nameof(SupplierCalendarSyncStatus.None), DateTime.UtcNow);
 
-        var now = DateTime.UtcNow;
-        var today = DateOnly.FromDateTime(now);
+        var today = TimeProvider.System.TodayInRomeAsDateOnly();
 
         // Profile completion: 5 dimensions — identity(=1) + categories + comuni + bio + tos
         var categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [];
-        var comuni = JsonSerializer.Deserialize<string[]>(profile.ComuniJson, JsonOpts) ?? [];
+        var comuni = SupplierComuneMatcher.ReadStrings(profile.ComuniJson)
+            .Concat(SupplierComuneMatcher.ReadStrings(profile.ComuneIstatCodesJson))
+            .ToArray();
         var hasBio = !string.IsNullOrWhiteSpace(profile.Bio);
         var hasTos = profile.TosAcceptedAt.HasValue;
         int completionSteps = 1 + (categories.Length > 0 ? 1 : 0) + (comuni.Length > 0 ? 1 : 0) + (hasBio ? 1 : 0) + (hasTos ? 1 : 0);
         int profileCompletionPercent = (int)Math.Round(completionSteps / 5.0 * 100);
-
-        // Jobs aggregation
-        var jobs = await db.SupplierJobs.AsNoTracking()
-            .Where(j => j.SupplierOrgId == orgId)
-            .ToListAsync(cancellationToken);
-
-        int totalJobs = jobs.Count;
-        int completedJobs = jobs.Count(j => j.Status == SupplierJobStatus.Completed);
-        int upcomingJobs = jobs.Count(j =>
-            j.Status is SupplierJobStatus.Accepted or SupplierJobStatus.Offered &&
-            j.ScheduledStartUtc > now);
 
         // Availability rate over the next 30 days
         var thirtyDaysFromNow = today.AddDays(29);
@@ -531,14 +1079,12 @@ public class SupplierService(
         return new SupplierDashboard(
             profileCompletionPercent,
             profile.Status.ToString(),
-            totalJobs,
-            completedJobs,
-            upcomingJobs,
             availabilityRate,
             profile.CalendarSyncType.ToString(),
             profile.IcalFeedUrl,
             profile.CalendarLastSyncAt,
             profile.CalendarSyncError,
+            profile.CalendarSyncStatus.ToString(),
             profile.UpdatedAt);
     }
 
@@ -549,223 +1095,81 @@ public class SupplierService(
         string? calendarSyncError,
         CancellationToken cancellationToken = default)
     {
+        // The feed is downloaded by the server: only an external https URL is accepted (FD-16, A4-10 / A9-32).
+        if (icalFeedUrl is not null && !externalHttpClient.TryValidateUrl(icalFeedUrl, out _))
+        {
+            throw new DomainRuleException(
+                ICalErrorCodes.InvalidUrl,
+                ICalErrorCodes.MessageKey(ICalErrorCodes.InvalidUrl));
+        }
+
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
         if (profile is null)
             return null;
 
         profile.CalendarSyncType = syncType;
-        profile.IcalFeedUrl = icalFeedUrl;
+        profile.IcalFeedUrl = icalFeedUrl?.Trim();
         profile.CalendarSyncError = calendarSyncError;
+        // An iCal URL is synced by a queued job (SU-15): the caller queues it, the state says so until it has run.
+        profile.CalendarSyncStatus = syncType == CalendarSyncType.ICalFeed && !string.IsNullOrWhiteSpace(profile.IcalFeedUrl)
+            ? SupplierCalendarSyncStatus.Syncing
+            : SupplierCalendarSyncStatus.None;
         profile.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
         return profile;
     }
 
-    public async Task<FixOrphanedSupplierOrgsReport> FixOrphanedSupplierOrgsAsync(CancellationToken cancellationToken = default)
+    private EmailContent BuildInviteEmail(SupplierInviteRecord invite, string token, string? comuneName) =>
+        SupplierInviteEmails.Build(publicSiteLinks, invite, token, comuneName);
+
+    private Task<string?> ResolveComuneNameAsync(string comuneCode, CancellationToken cancellationToken) =>
+        SupplierInviteEmails.ResolveComuneNameAsync(pilotComuni, comuneDirectory, comuneCode, cancellationToken);
+
+    /// <summary>
+    /// The comune an invite is for, when the official list is imported: it must be one of its active comuni (an ISTAT code,
+    /// a cadastral code or a unique name), else 422 <c>comune_istat_unknown</c>. <c>null</c> when the list is not imported.
+    /// </summary>
+    private async Task<Comune?> ResolveInviteComuneAsync(string comuneCode, CancellationToken cancellationToken)
     {
-        var details = new List<string>();
-        int usersLinked = 0, duplicatesMerged = 0, emptyOrgsDeleted = 0, orphansSkipped = 0;
+        if (!await comuneDirectory.IsAvailableAsync(cancellationToken))
+            return null;
 
-        var allProfiles = await db.SupplierProfiles
-            .Include(sp => sp.Org)
-            .OrderBy(sp => sp.CreatedAt)
-            .ToListAsync(cancellationToken);
+        var resolved = await comuneDirectory.ResolveAsync([comuneCode], cancellationToken);
+        if (resolved.TryGetValue(comuneCode, out var comune) && comune.IsActive)
+            return comune;
 
-        // Group by normalized email to detect duplicates.
-        // Empty-email profiles all land in the "" bucket and are deduplicated together.
-        var profilesByEmail = allProfiles
-            .GroupBy(sp => (sp.Email ?? string.Empty).Trim().ToLowerInvariant())
+        throw new DomainRuleException(ComuneErrorCodes.IstatUnknown, ComuneErrorCodes.IstatUnknownMessageKey, comuneCode);
+    }
+
+    /// <summary>
+    /// The ISTAT codes of <paramref name="codes"/>, trimmed and without repetitions, each one an active comune of the official
+    /// list: 422 <c>comuni_dataset_unavailable</c> when the list is not imported, <c>comune_istat_unknown</c> for a code that
+    /// is not in it, <c>comuni_too_many</c> above <see cref="ComuneErrorCodes.MaxSupplierComuni"/>.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> RequireListedComuniAsync(IEnumerable<string> codes, CancellationToken cancellationToken)
+    {
+        var distinct = codes
+            .Select(c => c?.Trim() ?? string.Empty)
+            .Where(c => c.Length > 0)
+            .Distinct(StringComparer.Ordinal)
             .ToList();
+        if (distinct.Count == 0)
+            return distinct;
 
-        foreach (var group in profilesByEmail)
+        if (distinct.Count > ComuneErrorCodes.MaxSupplierComuni)
+            throw new DomainRuleException(ComuneErrorCodes.TooMany, ComuneErrorCodes.TooManyMessageKey, ComuneErrorCodes.MaxSupplierComuni);
+
+        if (!await comuneDirectory.IsAvailableAsync(cancellationToken))
+            throw new DomainRuleException(ComuneErrorCodes.DatasetUnavailable, ComuneErrorCodes.DatasetUnavailableMessageKey);
+
+        var found = await comuneDirectory.GetByIstatCodesAsync(distinct, cancellationToken);
+        foreach (var code in distinct)
         {
-            var email = group.Key;
-            var profiles = group.ToList();
-
-            // Case C: Duplicate profiles — keep the richest one
-            if (profiles.Count > 1)
-            {
-                static int Score(SupplierProfile p)
-                {
-                    int s = 0;
-                    if (!string.IsNullOrWhiteSpace(p.LegalName) && p.LegalName != "Fornitore") s += 3;
-                    if (p.CategoriesJson is not null && p.CategoriesJson != "[]") s += 1;
-                    if (p.ComuniJson is not null && p.ComuniJson != "[]") s += 1;
-                    if (!string.IsNullOrWhiteSpace(p.Bio)) s += 1;
-                    if (p.Status == SupplierStatus.Active) s += 1;
-                    return s;
-                }
-
-                var ordered = profiles.OrderByDescending(Score).ThenBy(p => p.CreatedAt).ToList();
-                var keeper = ordered[0];
-                var victims = ordered.Skip(1).ToList();
-
-                foreach (var victim in victims)
-                {
-                    var victimOrg = victim.Org;
-                    db.SupplierProfiles.Remove(victim);
-                    if (victimOrg is not null)
-                        db.Orgs.Remove(victimOrg);
-                    duplicatesMerged++;
-                    details.Add($"Duplicate merged: kept {keeper.OrgId} (score={Score(keeper)}), deleted {victim.OrgId} (score={Score(victim)}) — email='{email}'");
-                    logger.LogWarning("FixOrphaned: deleted duplicate {VictimOrgId}, kept {KeeperOrgId}", victim.OrgId, keeper.OrgId);
-                }
-
-                profiles = [keeper];
-            }
-
-            // Link the surviving profile to its user
-            foreach (var profile in profiles)
-            {
-                // Find the user: by email first, then by OrgId/SupplierOrgId linkage
-                User? user = null;
-                if (!string.IsNullOrWhiteSpace(email))
-                {
-                    user = await db.Users
-                        .FirstOrDefaultAsync(u => u.Email.ToLower() == email, cancellationToken);
-                }
-
-                // Fallback: find user linked via OrgId or SupplierOrgId
-                if (user is null)
-                {
-                    user = await db.Users
-                        .FirstOrDefaultAsync(u =>
-                            u.SupplierOrgId == profile.OrgId ||
-                            (u.OrgId == profile.OrgId && u.SupplierOrgId == null),
-                            cancellationToken);
-                }
-
-                if (user is null)
-                {
-                    orphansSkipped++;
-                    details.Add($"Orphan: profile {profile.OrgId} (email='{email}') has no matching user");
-                    logger.LogWarning("FixOrphaned: no user for profile {OrgId}", profile.OrgId);
-                    continue;
-                }
-
-                // Set SupplierOrgId on the user (always) and OrgId only if empty
-                if (user.SupplierOrgId != profile.OrgId)
-                {
-                    user.SupplierOrgId = profile.OrgId;
-                    usersLinked++;
-                    details.Add($"Linked: user {user.Id} SupplierOrgId → {profile.OrgId}");
-                }
-
-                // Only set OrgId if the user doesn't already have a host org
-                if (user.OrgId is Guid existingOrgId && existingOrgId != profile.OrgId)
-                {
-                    var existingOrg = await db.Orgs.AsNoTracking()
-                        .FirstOrDefaultAsync(o => o.Id == existingOrgId, cancellationToken);
-                    if (existingOrg?.OrgType == OrgType.Host)
-                    {
-                        details.Add($"Dual-role: user {user.Id} keeps host OrgId={existingOrgId}, SupplierOrgId={profile.OrgId}");
-                        continue;
-                    }
-                }
-
-                if (user.OrgId is null)
-                {
-                    user.OrgId = profile.OrgId;
-                    details.Add($"Set OrgId: user {user.Id} OrgId → {profile.OrgId}");
-                }
-
-                user.UpdatedAt = DateTime.UtcNow;
-            }
+            if (!found.TryGetValue(code, out var comune) || !comune.IsActive)
+                throw new DomainRuleException(ComuneErrorCodes.IstatUnknown, ComuneErrorCodes.IstatUnknownMessageKey, code);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
-
-        var report = new FixOrphanedSupplierOrgsReport(
-            ProfilesScanned: allProfiles.Count,
-            UsersLinked: usersLinked,
-            DuplicatesMerged: duplicatesMerged,
-            EmptyOrgsDeleted: emptyOrgsDeleted,
-            OrphansSkipped: orphansSkipped,
-            Details: details);
-
-        logger.LogInformation(
-            "FixOrphaned completed: scanned={Scanned}, linked={Linked}, merged={Merged}, deletedOrgs={Deleted}, orphans={Orphans}",
-            report.ProfilesScanned, report.UsersLinked, report.DuplicatesMerged, report.EmptyOrgsDeleted, report.OrphansSkipped);
-
-        return report;
-    }
-
-    private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
-    {
-        if (!IsEmailConfigured())
-        {
-            if (ShouldSkipInviteEmail())
-            {
-                logger.LogWarning(
-                    "Email not configured — supplier invite email skipped for {Email} (env={Environment})",
-                    invite.Email,
-                    hostEnvironment.EnvironmentName);
-                return;
-            }
-
-            db.SupplierInviteRecords.Remove(invite);
-            await db.SaveChangesAsync(cancellationToken);
-            throw new InvalidOperationException(
-                "Email non configurata. Impostare Email__ResendApiKey su Railway (https://resend.com, gratis 100 email/giorno).");
-        }
-
-        var signupUrl = configuration["App:SupplierLoginUrl"];
-        if (string.IsNullOrWhiteSpace(signupUrl))
-        {
-            var apiBaseUrl = configuration["App:ApiBaseUrl"];
-            if (!string.IsNullOrWhiteSpace(apiBaseUrl))
-            {
-                signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(apiBaseUrl, invite);
-            }
-            else
-            {
-                var frontendBaseUrl = configuration["App:PublicSiteBaseUrl"];
-                if (string.IsNullOrWhiteSpace(frontendBaseUrl))
-                {
-                    throw new InvalidOperationException(
-                        "App:ApiBaseUrl o App:PublicSiteBaseUrl non configurato: impossibile inviare l'invito.");
-                }
-                signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(frontendBaseUrl, invite);
-            }
-        }
-        var (subject, html) = SupplierInviteEmailBuilder.Build(invite, signupUrl, invite.ExpiresAt);
-
-        var result = await emailService.SendEmailAsync(invite.Email, subject, html);
-        if (result.Success)
-        {
-            logger.LogInformation("Supplier invite email sent to {Email}", invite.Email);
-            return;
-        }
-
-        db.SupplierInviteRecords.Remove(invite);
-        await db.SaveChangesAsync(cancellationToken);
-        var reason = string.IsNullOrWhiteSpace(result.ErrorDetail)
-            ? "Impossibile inviare l'email di invito. Riprovare."
-            : "Impossibile inviare l'email di invito. Controllare la configurazione email del server.";
-        throw new InvalidOperationException(reason);
-    }
-
-    private bool IsEmailConfigured()
-    {
-        // Resend HTTP API (primary — works on all Railway plans)
-        var resendKey = configuration["Email:ResendApiKey"];
-        if (!string.IsNullOrWhiteSpace(resendKey) && resendKey.StartsWith("re_"))
-            return true;
-
-        // SMTP (local dev only — blocked on Railway Hobby)
-        if (!string.IsNullOrWhiteSpace(configuration["Email:SmtpHost"]))
-            return true;
-
-        // SendGrid SMTP relay (legacy fallback)
-        var sgKey = configuration["Email:SendGridApiKey"];
-        return !string.IsNullOrWhiteSpace(sgKey)
-            && !sgKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private bool ShouldSkipInviteEmail()
-    {
-        // Only called when !IsEmailConfigured() — skip in dev/test, throw in production.
-        return hostEnvironment.IsEnvironment("Testing") || hostEnvironment.IsDevelopment();
+        return distinct;
     }
 }

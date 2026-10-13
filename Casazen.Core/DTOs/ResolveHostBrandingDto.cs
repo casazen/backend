@@ -1,3 +1,4 @@
+using Casazen.Core.Branding;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 
@@ -12,22 +13,27 @@ public class ResolveHostBrandingDto
 {
     public string? LogoUrl { get; set; }
     public string? PrimaryColor { get; set; }
-    public string? PublicThemeId { get; set; }
+    /// <summary>The theme the site renders: always one of <c>PublicSiteThemes.All</c> (unset or unsupported → default).</summary>
+    public string PublicThemeId { get; set; } = PublicSiteThemes.Default;
     public string? HeroImageUrl { get; set; }
     public string? Tagline { get; set; }
     public string DisplayName { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
     public bool ShowPoweredBy { get; set; }
 
-    public static ResolveHostBrandingDto FromOrg(Org org) => new()
+    /// <param name="org">The resolved org.</param>
+    /// <param name="effectiveTier">
+    /// The org's effective tier (<c>IEntitlementService.ResolveEffectiveTier</c>), never the stored one (A3-37).
+    /// </param>
+    public static ResolveHostBrandingDto FromOrg(Org org, PlanTier effectiveTier) => new()
     {
         LogoUrl = org.LogoUrl,
         PrimaryColor = org.ThemeColor,
-        PublicThemeId = org.PublicThemeId,
+        PublicThemeId = PublicSiteThemes.Resolve(org.PublicThemeId),
         HeroImageUrl = org.HeroImageUrl,
         Tagline = org.Tagline,
         DisplayName = org.DisplayName,
         Slug = org.Slug,
-        ShowPoweredBy = org.PlanTier == PlanTier.Starter,
+        ShowPoweredBy = effectiveTier == PlanTier.Starter,
     };
 }

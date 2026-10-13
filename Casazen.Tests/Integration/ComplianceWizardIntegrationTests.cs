@@ -4,6 +4,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,12 +59,31 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
         var complete = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/checkout-wizard/complete", new
         {
             confirmDeparture = true,
+            propertyReady = true,
         });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
 
         var body = await complete.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(body.GetProperty("propertyReady").GetBoolean());
         Assert.Equal("CheckedOut", body.GetProperty("bookingStatus").GetString());
+    }
+
+    [Fact]
+    public async Task CheckoutWizard_PropertyReadyNotDeclared_IsNotReported()
+    {
+        var (hostId, org, propertyId) = await SeedPropertyScenarioAsync(PropertyComplianceStatus.Active);
+        var bookingId = await SeedCheckedInBookingAsync(hostId, org.Id, propertyId);
+
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        await client.PostAsync($"/api/bookings/{bookingId}/checkout-wizard/start", null);
+        var complete = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/checkout-wizard/complete", new
+        {
+            confirmDeparture = true,
+        });
+
+        // A5-24: the quick check-out of the app declares nothing, so the property is not ready (never a fixed true).
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+        Assert.False((await complete.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("propertyReady").GetBoolean());
     }
 
     [Fact]
@@ -147,7 +167,7 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
             Bathrooms = 1,
             MaxGuests = 4,
             NightlyRate = 120m,
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             ComplianceStatus = complianceStatus,
         };
@@ -164,6 +184,7 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
 
         var guest = new Guest
         {
+            OrgId = orgId,
             FirstName = "Luigi",
             LastName = "Verdi",
             Email = $"guest-{Guid.NewGuid():N}@test.com",
@@ -175,8 +196,8 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
             PropertyId = propertyId,
             OrgId = orgId,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(-2),
-            CheckOutDate = DateTime.UtcNow.Date,
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(-2),
+            CheckOutDate = TimeProvider.System.TodayInRome(),
             Status = BookingStatus.CheckedIn,
             NumberOfGuests = 2,
             BasePrice = 200,

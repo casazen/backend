@@ -11,23 +11,24 @@
 
 ## 1. Current state — the "AI" reality check
 
-CasaZen markets itself around *"AI-driven dynamic pricing"* (see `BUSINESS.md`), but
-**there is currently no AI/ML anywhere in the codebase**. An audit of the solution found:
+CasaZen used to market *"AI-driven dynamic pricing"*, but pricing has **no AI/ML**. An audit of
+the solution found:
 
-- **No** LLM, ML model, embedding, prediction, or forecasting code.
-- The `PricingAdapterService` (`Casazen.Infrastructure/Services/PricingAdapterService.cs`)
-  that powers "AI-driven dynamic pricing" is a **fixed rule-based multiplier**:
-  - Public holiday → ×1.5
-  - Summer (Jun–Aug) → ×1.3; Winter (Nov–Feb) → ×0.8; shoulder → ×1.0
-- `PricingHistory.AiConfidence` is **stored but never computed by any model** — the value
-  is passed in by callers.
-- The glossary promises pricing based on *"seasonality, demand signals, and public
-  holidays"*, but **demand signals (occupancy, booking pace, competitor prices, events)
-  do not exist** in the code.
+- **No** ML model, embedding, prediction, or forecasting code for pricing (the only LLM calls are
+  the supplier discovery and SEO content, see `docs/runbooks/ai.md`).
+- The pricing feature was a **fixed rule-based multiplier** labelled "AI", with an invented
+  base price (100 EUR) and a fixed "confidence" of 0.85, and no price was ever applied.
+- **Demand signals (occupancy, booking pace, competitor prices, events) do not exist** in the code.
 
-**Risk**: publicly claiming "AI-based" while shipping fixed rules is a reputational and
-potentially a misleading-advertising risk. The claim must be backed by real capability
-before the message is amplified.
+**Resolved (PC-15, decision D4, 2026-09):** the feature is now called **"Suggerimenti stagionali"**
+(seasonal suggestions): the property's real nightly rate times explicit rules the host edits
+(season months, Italian national holidays), with no "AI" wording and no confidence score; the
+suggestions are read-only proposals and the invented history was deleted. See
+`docs/runbooks/seasonal-suggestions.md`. Real dynamic pricing is post-MVP.
+
+**Risk (still valid for marketing)**: publicly claiming "AI-based" pricing while shipping fixed rules
+is a reputational and potentially a misleading-advertising risk. The claim must be backed by real
+capability before it is used again.
 
 ### What *is* genuinely strong today (the real moat)
 
@@ -52,7 +53,7 @@ Italian-compliance moat**, not generic pricing AI.
 
 | # | Capability | Why it differentiates | Notes |
 |---|---|---|---|
-| 1 | **Real predictive pricing** (replace fixed rules) | Makes the existing claim honest | Model on occupancy, booking pace, competitor prices, local events, lead time. `AiConfidence` becomes real. |
+| 1 | **Real predictive pricing** (post-MVP, replaces the seasonal rules) | Would allow a pricing claim beyond "seasonal suggestions" | Model on occupancy, booking pace, competitor prices, local events, lead time; needs a per-date price model used by the checkout. |
 | 2 | **AI Compliance Assistant** (unique) | Nobody in Italy has this | LLM (Claude) reads new regional/municipal rules → flags impact per property; OCR + extraction pre-fills Alloggiati fields from an ID photo; explains tax math in natural language. Aligns with the existing `regulatory_agent` / `analyzer_agent` rules. |
 | 3 | **Guest communication AI** | Most visible, expected in 2026 | Multilingual auto-replies (pre-checkin, in-stay), per-OTA optimized listing copy, message triage/sentiment. |
 | 4 | **Revenue & anomaly insights** | Retention driver | NL summaries ("RevPAR down 12% because…"), anomaly detection (double-booking, off-market price, availability gaps), cancellation prediction. |
@@ -68,8 +69,8 @@ unified multi-channel calendar. These are not in the backend today.
 **"The AI-native PMS for short-term rentals in Italy — compliant by design."**
 Not "yet another pricing AI." Sequence:
 
-1. **Now**: stop calling the rule-based pricing "AI" in public materials until a model
-   ships (claim risk).
+1. **Done (PC-15)**: the rule-based pricing is no longer called "AI" in the product
+   ("Suggerimenti stagionali"); keep it out of public "AI" claims until a model ships.
 2. **AI MVP (1–2 months)**: LLM-powered Compliance Assistant + guest communication —
    high impact, low data requirement, leverages the unique moat.
 3. **Mid-term**: predictive pricing on real data to honor the original claim.
@@ -357,7 +358,8 @@ two-sided network — not just engineering the incumbents could copy in a sprint
 
 ## 6. Cross-references
 
-- Current pricing logic: `Casazen.Infrastructure/Services/PricingAdapterService.cs`
+- Current pricing logic (seasonal suggestions, not AI): `Casazen.Core/Pricing/SeasonalPricing.cs`,
+  `Casazen.Infrastructure/Services/PricingAdapterService.cs`, runbook `docs/runbooks/seasonal-suggestions.md`
 - Stripe Connect (payout foundation): `Casazen.Infrastructure/Payments/`,
   `Casazen.Web/Controllers/ConnectController.cs`
 - Compliance moat: `BUSINESS.md` (CIN, Alloggiati, tourist tax, GDPR)

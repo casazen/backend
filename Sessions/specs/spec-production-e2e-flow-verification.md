@@ -1,6 +1,10 @@
 # Spec — Production E2E Flow Verification (Chrome DevTools)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Verifica manuale/automatizzata dei **flussi operativi** su produzione (`https://casazen-app.vercel.app` + `https://casazen-api.up.railway.app`), non solo smoke delle pagine.
 
@@ -15,6 +19,8 @@ Ogni area funzionale richiede **≥ 3 scenari**: almeno 1 happy path e 2 bad pat
 ---
 
 ## Matrice flussi
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | Area | Happy path | Bad path 1 | Bad path 2 | Stato prod |
 |------|------------|------------|------------|------------|
@@ -35,7 +41,11 @@ Ogni area funzionale richiede **≥ 3 scenari**: almeno 1 happy path e 2 bad pat
 
 ## Evidenze sessione 2026-06-09
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Proprietà — create (bad + blocked happy)
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 1. **Bad — validazione client**: submit form vuoto → messaggi Zod ("Name must be at least 3 characters", ecc.). ✅
 2. **Happy attempt — dati validi**: `POST /api/properties` → **403** `{"error":"No organization context","code":"no_org_context"}`. UI: toast/errore generico "insufficient permissions", dialog resta aperto. ❌
@@ -43,10 +53,14 @@ Ogni area funzionale richiede **≥ 3 scenari**: almeno 1 happy path e 2 bad pat
 
 ### Piano — self-service
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 1. **Happy attempt**: click "Passa a questo piano" (Starter) → `PUT /api/orgs/me/plan` → **404** `No organization assigned to the current user`. Toast: "Impossibile aggiornare il piano". ❌
 2. **Bad — entitlement**: `GET /api/orgs/me/entitlement` → 404 (coerente con assenza org).
 
 ### Prenotazione — create
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 1. **Bad — validazione**: submit vuoto → "Property is required", date/guest errors. ✅
 2. **Bad — no inventory**: dropdown proprietà vuoto (0 properties). ⏸️
@@ -54,11 +68,15 @@ Ogni area funzionale richiede **≥ 3 scenari**: almeno 1 happy path e 2 bad pat
 
 ### Calendario
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 1. FE: `GET /api/bookings/calendar` **senza** `propertyId`, `startDate`, `endDate`.
 2. BE: endpoint richiede `propertyId` (Guid) — con Guid vuoto → `404 Property not found`.
 3. React Query ritenta → UI bloccata su "Loading calendar...". ❌
 
 ### Admin — utenti
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 1. **Happy — cambio ruolo**: dialog → PropertyOwner → `PUT /api/users/auth0|…/role` **200**, toast "Ruolo aggiornato con successo". ✅
 2. **Bad — UI dati**: tabella mostra "Admin" / email "—"; dialog "Seleziona il nuovo ruolo per ." (nome vuoto). ❌
@@ -66,10 +84,14 @@ Ogni area funzionale richiede **≥ 3 scenari**: almeno 1 happy path e 2 bad pat
 
 ### Onboarding / Modifica tipo
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 1. Link profilo "Modifica tipo" → `/onboarding` → redirect immediato a `/app/admin` (utente ha ruoli). ❌
 2. `needsOnboarding()` ritorna `false` per Admin e per `roles.length > 0` — **nessun percorso UI** per creare org retroattivamente.
 
 ### Public booking (issue #215)
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 1. `https://casazen-app.vercel.app/book/test-org` → redirect `/app/choose-context`.
 2. `GET /api/public/orgs/test-org` → 404.
@@ -78,6 +100,8 @@ Ogni area funzionale richiede **≥ 3 scenari**: almeno 1 happy path e 2 bad pat
 ---
 
 ## Gate di uscita
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - [ ] Utente test può completare onboarding o backfill org
 - [ ] Create property → 201 su prod
@@ -92,4 +116,34 @@ Ogni area funzionale richiede **≥ 3 scenari**: almeno 1 happy path e 2 bad pat
 
 ## Bug aperti (GitHub)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 Vedi issues create nella sessione 2026-06-09 con label `e2e-verification`.
+
+## Verifiable Outcomes
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| (none numbered) | L1 | Spec has no numbered ACn bullets - add them before Stage 02 or keep deferred | Missing ACs |
+
+## Test expectations (process contract)
+
+| Layer | Allowed | Forbidden as sole proof |
+|---|---|---|
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

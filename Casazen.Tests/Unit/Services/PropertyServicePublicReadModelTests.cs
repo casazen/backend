@@ -2,11 +2,15 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -18,7 +22,11 @@ namespace Casazen.Tests.Unit.Services;
 public class PropertyServicePublicReadModelTests
 {
     private static PropertyService CreateService(AppDbContext context) =>
-        new(new PropertyRepository(context), new Mock<ILogger<PropertyService>>().Object);
+        new(
+            new PropertyRepository(context),
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
+            new Mock<ILogger<PropertyService>>().Object);
 
     private static AppDbContext CreateContext()
     {
@@ -47,13 +55,13 @@ public class PropertyServicePublicReadModelTests
             MaxGuests = 4,
             NightlyRate = 90m,
             CleaningFee = 30m,
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             ComplianceStatus = PropertyComplianceStatus.Active,
         });
         await context.SaveChangesAsync();
 
-        var result = (await CreateService(context).SearchAsync("Milan", null, null)).ToList();
+        var result = (await CreateService(context).SearchAsync(new PublicPropertySearchCriteria { City = "Milan" })).ToList();
 
         Assert.Single(result);
         var dto = result[0];
@@ -73,7 +81,7 @@ public class PropertyServicePublicReadModelTests
             new Property { OwnerId = "auth0|b", OrgId = org.Id, Name = "Inactive", Address = "B", City = "Rome", IsActive = false, NightlyRate = 50m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 });
         await context.SaveChangesAsync();
 
-        var result = await CreateService(context).SearchAsync(null, null, null);
+        var result = await CreateService(context).SearchAsync(PublicPropertySearchCriteria.None);
 
         Assert.Single(result);
         Assert.Equal("Active", result.First().Name);
@@ -103,7 +111,7 @@ public class PropertyServicePublicReadModelTests
         }
         await context.SaveChangesAsync();
 
-        var result = await CreateService(context).SearchAsync("CapCity", null, null);
+        var result = await CreateService(context).SearchAsync(new PublicPropertySearchCriteria { City = "CapCity" });
 
         Assert.Equal(50, result.Count());
     }
@@ -171,7 +179,8 @@ public class PropertyServicePublicReadModelTests
 
     [Theory]
     [InlineData(null, CinStatus.Missing)]
-    [InlineData("IT-12345-0123456789", CinStatus.Valid)]
+    [InlineData("IT058091C27G5FFZDZ", CinStatus.Valid)]
+    [InlineData("IT123450123456789", CinStatus.Invalid)] // old invented format after the CO-01 migration
     [InlineData("BAD", CinStatus.Invalid)]
     public async Task SearchAsync_DerivesCinStatus_FromCinCode(string? cinCode, CinStatus expected)
     {
@@ -194,7 +203,7 @@ public class PropertyServicePublicReadModelTests
         });
         await context.SaveChangesAsync();
 
-        var dto = (await CreateService(context).SearchAsync("Turin", null, null)).Single();
+        var dto = (await CreateService(context).SearchAsync(new PublicPropertySearchCriteria { City = "Turin" })).Single();
 
         Assert.Equal(expected, dto.CinStatus);
     }
@@ -439,6 +448,237 @@ public class PropertyServicePublicReadModelTests
 
         Assert.NotNull(dto);
         Assert.Equal(property.Id, dto!.Id);
+    }
+
+    // ─── Coordinates, stay rules and host data on the public read models (DB-03) ─────────────────────
+
+    private static Property PublishedProperty(Guid orgId, string name = "Casa Segreta") => new()
+    {
+        OwnerId = "auth0|owner-secret",
+        OrgId = orgId,
+        Name = name,
+        Slug = name.ToLowerInvariant().Replace(' ', '-'),
+        Address = "Via Segretissima 17/B",
+        Unit = "Scala C int. 9",
+        City = "Milano",
+        PostalCode = "20121",
+        Latitude = 45.464211m,
+        Longitude = 9.191383m,
+        IsActive = true,
+        ComplianceStatus = PropertyComplianceStatus.Active,
+        NightlyRate = 120m,
+        Bedrooms = 2,
+        Bathrooms = 1,
+        MaxGuests = 4,
+    };
+
+    [Fact]
+    public async Task SearchAsync_ExactCoordinates_LeaveRoundedToAboutOneKilometre()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        context.Properties.Add(PublishedProperty(org.Id));
+        await context.SaveChangesAsync();
+
+        var dto = (await CreateService(context).SearchAsync(new PublicPropertySearchCriteria { City = "Milano" })).Single();
+
+        Assert.Equal(45.46m, dto.Latitude);
+        Assert.Equal(9.19m, dto.Longitude);
+    }
+
+    [Fact]
+    public async Task SearchByOrgAsync_ExactCoordinates_LeaveRoundedToAboutOneKilometre()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        context.Properties.Add(PublishedProperty(org.Id));
+        await context.SaveChangesAsync();
+
+        var dto = (await CreateService(context).SearchByOrgAsync(org.Id)).Single();
+
+        Assert.Equal(45.46m, dto.Latitude);
+        Assert.Equal(9.19m, dto.Longitude);
+    }
+
+    [Fact]
+    public async Task GetPublicPropertyAsync_ExactCoordinates_LeaveRoundedAndTheStoredOnesAreUntouched()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        var property = PublishedProperty(org.Id);
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var dto = await CreateService(context).GetPublicPropertyAsync(property.Id);
+
+        Assert.NotNull(dto);
+        Assert.Equal(45.46m, dto.Latitude);
+        Assert.Equal(9.19m, dto.Longitude);
+        // The host still reads and edits the exact position.
+        var stored = await context.Properties.AsNoTracking().SingleAsync(p => p.Id == property.Id);
+        Assert.Equal(45.464211m, stored.Latitude);
+        Assert.Equal(9.191383m, stored.Longitude);
+    }
+
+    [Fact]
+    public async Task GetPublicPropertyForOrgAsync_ExactCoordinates_LeaveRounded_AndNoAddressFieldExists()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        var property = PublishedProperty(org.Id);
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var dto = await CreateService(context).GetPublicPropertyForOrgAsync(property.Slug!, org.Id);
+
+        Assert.NotNull(dto);
+        Assert.Equal(45.46m, dto.Latitude);
+        Assert.Equal(9.19m, dto.Longitude);
+        // No member of the public DTOs can carry the street address or the unit.
+        var members = dto.GetType().GetProperties().Select(p => p.Name).ToList();
+        Assert.DoesNotContain(members, n => n.Equals("Address", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(members, n => n.Equals("Unit", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(members, n => n.Equals("OwnerId", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task GetPublicPropertyForOrgAsync_UnsetPosition_StaysZero()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        var property = PublishedProperty(org.Id);
+        property.Latitude = 0m;
+        property.Longitude = 0m;
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var dto = await CreateService(context).GetPublicPropertyForOrgAsync(property.Slug!, org.Id);
+
+        Assert.Equal(0m, dto!.Latitude);
+        Assert.Equal(0m, dto.Longitude);
+    }
+
+    [Fact]
+    public async Task GetPublicPropertyForOrgAsync_StayRulesAndHostData_AreInTheDetail()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        org.StripeConnectedAccountId = "acct_ready";
+        org.ConnectChargesEnabled = true;
+        org.HostName = "Giulia";
+        org.PublicPhone = "+393331234567";
+        var property = PublishedProperty(org.Id);
+        property.MinNights = 3;
+        property.WeekendSurchargePercent = 15m;
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var dto = await CreateService(context).GetPublicPropertyForOrgAsync(property.Slug!, org.Id);
+
+        Assert.NotNull(dto);
+        Assert.Equal(3, dto.MinNights);
+        Assert.Equal(15m, dto.WeekendSurchargePercent);
+        Assert.True(dto.AcceptsBookings);
+        Assert.Equal("Giulia", dto.HostName);
+        Assert.Equal("+393331234567", dto.PublicPhone);
+    }
+
+    [Fact]
+    public async Task GetPublicPropertyAsync_DefaultsOfEveryExistingProperty_ChangeNothingAndPublishNothing()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        var property = PublishedProperty(org.Id);
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var dto = await CreateService(context).GetPublicPropertyAsync(property.Id);
+
+        Assert.NotNull(dto);
+        Assert.Null(dto.MinNights);
+        Assert.Equal(0m, dto.WeekendSurchargePercent);
+        // No connected account yet: nothing can be booked, and no phone nor host name was ever entered.
+        Assert.False(dto.AcceptsBookings);
+        Assert.Null(dto.HostName);
+        Assert.Null(dto.PublicPhone);
+    }
+
+    [Theory]
+    [InlineData(null, false, false)]
+    [InlineData("acct_started", false, false)]
+    [InlineData("acct_ready", true, true)]
+    public async Task GetPublicPropertyAsync_AcceptsBookings_IsTheRuleOfTheOrg(string? accountId, bool chargesEnabled, bool expected)
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        org.StripeConnectedAccountId = accountId;
+        org.ConnectChargesEnabled = chargesEnabled;
+        var property = PublishedProperty(org.Id);
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var dto = await CreateService(context).GetPublicPropertyAsync(property.Id);
+
+        Assert.Equal(expected, dto!.AcceptsBookings);
+        Assert.Equal(org.CanTakeDirectPayments, dto.AcceptsBookings);
+    }
+
+    [Fact]
+    public async Task CreatePropertyAsync_WeekendSurchargeWithMoreThanTwoDecimals_IsStoredWithTwo()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        var property = PublishedProperty(org.Id);
+        property.Slug = null;
+        property.WeekendSurchargePercent = 12.345m;
+        property.MinNights = 2;
+
+        var created = await CreateService(context).CreatePropertyAsync(property);
+
+        Assert.Equal(12.35m, created.WeekendSurchargePercent);
+        Assert.Equal(2, created.MinNights);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(31)]
+    [InlineData(-3)]
+    public async Task UpdatePropertyAsync_MinNightsOutOfRange_Is422WithItsCodeAndNothingIsSaved(int minNights)
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        var property = PublishedProperty(org.Id);
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+        property.MinNights = minNights;
+
+        var ex = await Assert.ThrowsAsync<Casazen.Core.Exceptions.DomainRuleException>(
+            () => CreateService(context).UpdatePropertyAsync(property));
+
+        Assert.Equal(PropertyStayRules.MinNightsInvalidCode, ex.Code);
+        Assert.Equal("PropertyMinNightsInvalid", ex.MessageKey);
+        Assert.Null((await context.Properties.AsNoTracking().SingleAsync(p => p.Id == property.Id)).MinNights);
+    }
+
+    [Theory]
+    [InlineData("100.01")]
+    [InlineData("-0.01")]
+    [InlineData("250")]
+    public async Task UpdatePropertyAsync_SurchargeOutOfRange_Is422WithItsCodeAndNothingIsSaved(string surcharge)
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        var property = PublishedProperty(org.Id);
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+        property.WeekendSurchargePercent = decimal.Parse(surcharge, System.Globalization.CultureInfo.InvariantCulture);
+
+        var ex = await Assert.ThrowsAsync<Casazen.Core.Exceptions.DomainRuleException>(
+            () => CreateService(context).UpdatePropertyAsync(property));
+
+        Assert.Equal(PropertyStayRules.WeekendSurchargeInvalidCode, ex.Code);
+        Assert.Equal("PropertyWeekendSurchargeInvalid", ex.MessageKey);
+        Assert.Equal(0m, (await context.Properties.AsNoTracking().SingleAsync(p => p.Id == property.Id)).WeekendSurchargePercent);
     }
 
     private static async Task<OrgEntity> SeedOrgAsync(AppDbContext context)

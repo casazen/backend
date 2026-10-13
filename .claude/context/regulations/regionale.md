@@ -52,6 +52,11 @@ Questa è una delle prime Regioni ad aver legiferato dopo la sentenza della Cort
 - **Controlli intensificati**: ispezioni e sanzioni per irregolarità
 
 ### Lombardia (Milano)
+> **Verifica RS-9 (2026-09-24).** Le tre voci sotto vengono dalla versione di marzo 2026 e non sono verificate. I dati verificati sono in `cir-lombardia.md` (CIA al SUAP, Ross1000, CIR, rapporto con il CIN) e in `istat-flussi-turistici.md` (flussi mensili su Ross1000 entro il giorno 5, sanzione di €250–2.500 al mese). Correzioni:
+> - il "registro comunale" è in realtà la **CIA al SUAP** seguita dalla registrazione in **Ross1000** a cura della Provincia o della Città metropolitana;
+> - per l'imposta di soggiorno fa fede `imposta_soggiorno.md` § "Tariffe verificate (2026-09)";
+> - per la sicurezza fa fede `sicurezza.md` (i rilevatori di fumo non sono un obbligo nazionale).
+
 - **Registro comunale**: obbligo registrazione locazioni turistiche
 - **Tassa soggiorno**: incremento olimpico 2026 (fino a €12/notte)
 - **Requisiti sicurezza**: estintori, rilevatori fumo obbligatori

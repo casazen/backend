@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -42,7 +43,8 @@ public class NotificationRouter
         var result = await channel.SendAsync(message, ct);
         if (result.Success)
         {
-            _logger.LogInformation("Notification sent via {Channel} to {Recipient}", message.Channel, message.Recipient);
+            _logger.LogInformation(
+                "Notification sent via {Channel} to {MaskedRecipient}", message.Channel, LogRedaction.MaskEmail(message.Recipient));
             return;
         }
 

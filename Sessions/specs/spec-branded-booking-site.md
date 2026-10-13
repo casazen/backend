@@ -1,6 +1,10 @@
 # Spec — Branded Booking Site (Public, Per-Org) (US-003)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 CasaZen's current React 19 SPA is an **authenticated owner console** — every route except `/login`
 and `/search` is wrapped in `<ProtectedRoute>` (Auth0), and the app shell (`AppShell`, sidebar,
@@ -20,6 +24,8 @@ Stage of entry: **Stage 01 Planning** (new macro-spec)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As a prospective guest, I want to visit an operator's branded CasaZen booking site, browse their
 listings, open a property, pick dates, and pay — all without logging in — so that I can book directly
 with that operator.
@@ -31,7 +37,11 @@ generic CasaZen chrome, so that direct booking feels like my own website.
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: `GET /api/public/orgs/{slug}` (`[AllowAnonymous]`) returns `PublicOrgDto { slug, displayName, logoUrl, themeColor, contactEmail }` for an active `Org` (branding read-model from `spec-tenant-boundary`); `404` for unknown/inactive slug. **No** internal Org fields (no Stripe ids, no plan tier, no owner data).
 
@@ -40,6 +50,8 @@ generic CasaZen chrome, so that direct booking feels like my own website.
 - **AC3**: Property and checkout reads on the branded site reuse the existing public endpoints (`GET /api/properties/{id}/public`, `POST /api/public/bookings`) scoped by `orgId`; the controller validates the property belongs to `{slug}`'s `Org` (`404` on mismatch — no cross-org browsing leakage).
 
 ### Frontend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC4**: New **public** route tree mounted **outside** `<ProtectedRoute>` in `src/routes/index.tsx`:
   - `/book/:orgSlug` → branded org landing + listing grid
@@ -88,9 +100,80 @@ generic CasaZen chrome, so that direct booking feels like my own website.
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `branded-booking-site`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | `GET /api/public/orgs/{slug}` (`[AllowAnonymous]`) returns `PublicOrgDto { slug, displayName, logoUrl, themeColor, contactEmail }` for an... | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | `GET /api/public/orgs/{slug}/properties` (`[AllowAnonymous]`) returns the org's published listings as `IEnumerable<PublicPropertyDto>` (r... | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | Property and checkout reads on the branded site reuse the existing public endpoints (`GET /api/properties/{id}/public`, `POST /api/public... | Outcome not met; wrong status; silent no-op |
+| AC4 | L2 + L3 | New **public** route tree mounted **outside** `<ProtectedRoute>` in `src/routes/index.tsx`: | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC5 | L2 + L3 | A dedicated **public layout** (`PublicBookingShell`) — **not** `AppShell` — with **no** sidebar, no `LayerSwitcher`, no Auth0 user menu. ... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC6 | L2 + L3 | The listing grid renders `PublicPropertyDto` cards (photo, name, city, nightly rate, capacity, CIN badge); clicking a card routes to the ... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC7 | L2 + L3 | The public property detail page shows photos, description, amenities, house rules, CIN, a date picker with availability, and a **full pri... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC8 | L2 + L3 | A **GDPR cookie/consent banner** appears on first visit to any `/book/*` route (accept/reject non-essential cookies; choice persisted); a... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC9 | L2 + L3 | If any property content is **AI-generated** (e.g. AI-written descriptions), the page shows an **EU AI Act transparency note** (e.g. "Desc... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC10 | L2 + L3 | The branded site has no dependency on Auth0 being configured; with `VITE_DEMO_MODE=true` it renders against a demo org slug for screensho... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC11 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC12 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC13 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC14 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC15 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -102,6 +185,8 @@ generic CasaZen chrome, so that direct booking feels like my own website.
 | `Casazen.Web/Controllers/PublicBookingsController.cs` | Modify — validate property↔org on the branded path (AC3) |
 
 ### Frontend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -123,6 +208,8 @@ generic CasaZen chrome, so that direct booking feels like my own website.
 
 ## Compliance
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **GDPR cookie/consent + ToS**: consent banner gates non-essential cookies on the public surface; Privacy Policy + ToS linked in the footer (AC8). No tracking before consent.
 - **GDPR data minimization**: branding and listing reads reuse the public whitelists (`PublicOrgDto`, `PublicPropertyDto`) — no operator PII, no Stripe ids, no plan data exposed (AC1–AC2).
 - **EU AI Act (transparency, limited-risk)**: any AI-generated guest-facing content carries a visible disclosure (AC9). If no AI content ships in this surface, the component exists but is inert.
@@ -134,9 +221,41 @@ generic CasaZen chrome, so that direct booking feels like my own website.
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: `spec-public-booking-readmodel` (property read-models), `spec-tenant-boundary` (`Org` + slug + branding fields + `orgId` scoping).
 - **Requires (for checkout)**: `spec-direct-checkout` (the payment flow embedded at `/book/:orgSlug/property/:id/checkout`).
 - **Blocks**: `spec-onboarding-plg` activation ("publish branded site" is an activation milestone).
 - **Blocks**: `spec-google-vacation-rentals` (GVR deep link contract requires AC15; GVR eligibility requires the site to be published).
 - **Related**: existing public `/search` `SearchPage` (separate generic surface; not replaced).
 - **Does not touch**: authenticated owner console routes, `AppShell`, `AppLayerProvider`, `LayerSwitcher`.
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

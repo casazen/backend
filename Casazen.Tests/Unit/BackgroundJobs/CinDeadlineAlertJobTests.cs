@@ -1,50 +1,53 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Casazen.Web.BackgroundJobs;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
+using Hangfire;
+using Hangfire.Common;
 using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
+/// <summary>
+/// CO-20 (A5-31): the daily CIN alert job only runs the alert service (which decides and deduplicates), after the nightly
+/// compliance check of CO-06. The alert itself is tested on PostgreSQL in <c>CinDeadlineAlertsPostgresTests</c>.
+/// </summary>
 public class CinDeadlineAlertJobTests
 {
     [Fact]
-    public async Task ExecuteAsync_SendsAlert_WhenWithinSevenDaysAndNonCompliant()
+    public void Configure_CinDeadlineAlert_IsDailyAfterTheComplianceCheck()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
+        var registered = new Dictionary<string, (Job Job, string Cron)>();
+        var manager = new Mock<IRecurringJobManager>();
+        manager
+            .Setup(m => m.AddOrUpdate(It.IsAny<string>(), It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<RecurringJobOptions>()))
+            .Callback<string, Job, string, RecurringJobOptions>((id, job, cron, _) => registered[id] = (job, cron));
 
-        await using var context = new AppDbContext(options);
-        context.Properties.Add(new Property
-        {
-            Id = Guid.NewGuid(),
-            OwnerId = "owner-1",
-            Name = "Missing CIN",
-            Address = "a",
-            City = "Roma",
-            IsActive = true,
-            CinCode = null,
-        });
-        await context.SaveChangesAsync();
+        RecurringJobsRegistration.Configure(manager.Object, RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: false));
 
-        var notificationMock = new Mock<INotificationService>();
-        var job = new CinDeadlineAlertJob(
-            context,
-            notificationMock.Object,
-            Mock.Of<ILogger<CinDeadlineAlertJob>>());
+        var alert = registered["cin-deadline-alert"];
+        Assert.Equal(typeof(CinDeadlineAlertJob), alert.Job.Type);
+        Assert.Equal("0 8 * * *", alert.Cron);
+        Assert.Equal("0 4 * * *", registered[PropertyComplianceCheckJob.RecurringJobId].Cron);
+    }
 
-        var days = CinComplianceRules.DaysUntilDeadline();
-        if (days > 7)
-            return;
+    [Fact]
+    public async Task ExecuteAsync_RunsTheAlertServiceOnce()
+    {
+        var service = new Mock<ICinDeadlineAlertService>();
+        service
+            .Setup(s => s.RunAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CinDeadlineAlertRunResult(Skipped: false, Stage: null, PropertiesAlerted: 0, EmailsQueued: 0));
 
-        await job.ExecuteAsync();
+        await new CinDeadlineAlertJob(service.Object).ExecuteAsync();
 
-        notificationMock.Verify(
-            n => n.SendCinDeadlineAlertAsync("owner-1", It.IsAny<IReadOnlyList<Guid>>(), days),
-            Times.Once);
+        service.Verify(s => s.RunAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void ExecuteAsync_NeverOverlapsAnotherRun()
+    {
+        var method = typeof(CinDeadlineAlertJob).GetMethod(nameof(CinDeadlineAlertJob.ExecuteAsync))!;
+
+        Assert.NotNull(method.GetCustomAttributes(typeof(DisableConcurrentExecutionAttribute), inherit: false).SingleOrDefault());
     }
 }

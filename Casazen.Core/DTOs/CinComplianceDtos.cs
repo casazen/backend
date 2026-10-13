@@ -1,3 +1,5 @@
+using Casazen.Core.Regulatory;
+
 namespace Casazen.Core.DTOs;
 
 public record OwnerCinComplianceItem(
@@ -7,12 +9,12 @@ public record OwnerCinComplianceItem(
     string CinStatus,
     string City);
 
+/// <param name="Deadline">The configured CIN deadline on the Europe/Rome day of the request (CO-20).</param>
 public record CinComplianceSummary(
     int Valid,
     int Missing,
     int Invalid,
-    int DaysUntilDeadline,
-    DateOnly Deadline,
+    CinDeadlineStatus Deadline,
     bool HasNonCompliant);
 
 public record OwnerCinComplianceResult(

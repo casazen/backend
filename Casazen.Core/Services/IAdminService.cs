@@ -1,6 +1,10 @@
 namespace Casazen.Core.Services;
 
-/// <summary>Platform statistics for the admin dashboard.</summary>
+/// <summary>
+/// Platform statistics for the admin dashboard. The CIN figures (<c>CinValid</c>, <c>CinMissing</c>, <c>CinInvalid</c>,
+/// <c>CinTotal</c>) are about the short-rent properties only (PM-01: the CIN is an obligation of the short stays), so
+/// <c>CinTotal</c> is not greater than <c>TotalProperties</c>.
+/// </summary>
 public record AdminStats(
     int TotalProperties,
     int ActiveProperties,

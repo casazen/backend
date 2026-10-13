@@ -1,5 +1,5 @@
 # Indice Normativo — Affitti Brevi Italia
-> Aggiornato: 2026-03-27 · Aggiornato da `regulatory_agent`
+> Aggiornato: 2026-08-16 · Aggiornato da `regulatory_agent`
 
 | # | Argomento | Stato 2026 | File |
 |---|-----------|------------|------|
@@ -11,5 +11,6 @@
 | 6 | **GDPR** (Reg.UE 2016/679) | Permanente — dati ospiti, consensi, retention | `regulations/gdpr.md` |
 | 7 | **Sicurezza Strutturale** (D.L. 145/2023) | Permanente — fumo/estintori obbligatori | `regulations/sicurezza.md` |
 | 8 | **Normativa Regionale** | In evoluzione — Corte Cost. 2025 legittima regole locali | `regulations/regionale.md` |
+| 9 | **Canone Concordato** (L. 431/1998 art. 2 c.3) — LTR | Opportunità — IMU −25% nazionale; cedolare 10% / IRPEF−30% / registro−30% solo comuni ATA | `regulations/canone_concordato.md` |
 
 **Usa questo indice per scegliere il file da caricare. Non caricare tutti i file insieme.**

@@ -1,6 +1,10 @@
 # Spec — Public Booking Read-Model (US-001)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 The anonymous property search is the **seed** of the direct-booking engine, but today it leaks
 the raw persistence entity. `GET /api/properties/search` is `[AllowAnonymous]` and returns
@@ -19,6 +23,8 @@ Stage of entry: **Stage 01 Planning** (new macro-spec)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As a prospective guest browsing CasaZen without an account, I want to search and view published
 properties (photos, location, capacity, nightly rate, CIN) so that I can decide where to book —
 **without** the platform exposing the operator's identity or any internal/PII data in the API
@@ -31,7 +37,11 @@ so that no future field added to the `Property` entity is silently leaked to ano
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: New read-model `PublicPropertyDto` (list item) exposes **only** a whitelist of safe fields:
   `{ id, name, description, city, postalCode, latitude, longitude, bedrooms, bathrooms, maxGuests, nightlyRate, cleaningFee, amenities, photoUrls, cinCode, cinStatus, timezone }`.
@@ -56,6 +66,8 @@ so that no future field added to the `Property` entity is silently leaked to ano
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC9**: `src/types/property.types.ts` adds `PublicPropertyDto` / `PublicPropertyDetailDto` types that **omit** `ownerId` and internal fields; the existing public `SearchPage` consumes these types (no `ownerId` referenced anywhere in the public surface).
 
 - **AC10**: `src/api/properties.api.ts` `searchProperties()` is typed to `PublicPropertyDto[]`; new `getPublicProperty(id)` → `GET /api/properties/{id}/public`. `src/queries/use-properties.ts` exposes `useSearchProperties` (typed) and `usePublicProperty(id)`.
@@ -66,9 +78,76 @@ so that no future field added to the `Property` entity is silently leaked to ano
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `public-booking-readmodel`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | New read-model `PublicPropertyDto` (list item) exposes **only** a whitelist of safe fields: | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | `GET /api/properties/search` (`[AllowAnonymous]`) returns `IEnumerable<PublicPropertyDto>` — **never** the raw `Property` entity. Same qu... | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | Search returns **only** properties with `IsActive == true`. Inactive/soft-deleted properties are never visible to anonymous callers. | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | New `GET /api/properties/{id}/public` (`[AllowAnonymous]`) returns a `PublicPropertyDetailDto` for a single **active** property — the rea... | Outcome not met; wrong status; silent no-op |
+| AC5 | L2 + L3 | Mapping lives in the service layer, not the controller. `IPropertyService.SearchAsync` (and a new `GetPublicPropertyAsync(Guid id)`) retu... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC6 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | Result-set safety cap — anonymous search returns at most `50` items per call (server-enforced) to limit scraping of the catalogue; orderi... | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | The two public endpoints remain the **only** `[AllowAnonymous]` property reads. The authenticated owner endpoints (`GET /api/properties`,... | Outcome not met; wrong status; silent no-op |
+| AC9 | L2 + L3 | `src/types/property.types.ts` adds `PublicPropertyDto` / `PublicPropertyDetailDto` types that **omit** `ownerId` and internal fields; the... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC10 | L1 + L2 + L3 | `src/api/properties.api.ts` `searchProperties()` is typed to `PublicPropertyDto[]`; new `getPublicProperty(id)` → `GET /api/properties/{i... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC11 | L1 + L2 + L3 | The public `SearchPage` (`/search`) renders a CIN badge (Valid/Missing/Invalid) per result and shows **no** operator identity; results sh... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -80,6 +159,8 @@ so that no future field added to the `Property` entity is silently leaked to ano
 | `Casazen.Infrastructure/Repositories/PropertyRepository.cs` | Modify — search query exposes `IQueryable`/projection honoring `IsActive` + ordering |
 
 ### Frontend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -93,6 +174,8 @@ so that no future field added to the `Property` entity is silently leaked to ano
 
 ## Compliance
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **GDPR data minimization (Art. 5(1)(c))**: the public payload is a deliberate whitelist; `OwnerId` (operator personal identifier) and all internal/PII fields are excluded by construction. AC6 regression test guards this.
 - **CIN (D.L. 145/2023)**: CIN code + status are the only regulatory fields surfaced publicly (transparency for guests); no other compliance internals exposed.
 - **Anti-enumeration**: inactive/draft listings return `404` (not `403`) on the public detail endpoint; search result cap limits catalogue scraping.
@@ -101,7 +184,39 @@ so that no future field added to the `Property` entity is silently leaked to ano
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: existing `[AllowAnonymous]` `GET /api/properties/search` (the seed) and `PropertyDetailResponse.CinStatus` logic to reuse.
 - **Blocks**: `spec-direct-checkout` (checkout reads `PublicPropertyDetailDto`), `spec-branded-booking-site` (public surface consumes both read-models).
 - **Related**: `spec-property-detail` (authenticated `/detail` read-model — distinct, owner-scoped; do not merge the two read-models).
 - **Does not touch**: authenticated owner property endpoints, OTA integrations, pricing adapter.
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

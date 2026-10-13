@@ -1,6 +1,10 @@
 # Spec — Unified Inbox (US-011)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Introduce a **unified inbox** that aggregates guest communication from every OTA channel
 and from direct bookings into a single, threaded, routable workspace. This closes the
@@ -27,6 +31,8 @@ Stage of entry: **Stage 01 Planning** (create the issue before design)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As a property manager handling guests across multiple OTAs **and** direct bookings, I want
 every guest message — Airbnb, Booking.com, Expedia, Vrbo, TripAdvisor, Agoda, direct, and
 email-fallback channels — aggregated into one threaded inbox with status and assignment
@@ -40,7 +46,11 @@ per-channel payloads, deduplicate, and attach each message to the correct conver
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: New entity `Conversation` (carries `OrgId` from creation — RF1) with at least:
   `{ Id, OrgId (FK), PropertyId? (FK), GuestId? (FK), BookingId? (FK), Channel (enum),
@@ -109,6 +119,8 @@ per-channel payloads, deduplicate, and attach each message to the correct conver
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC16**: `inbox-page.tsx` at route `/inbox` — multi-pane layout: conversation list,
   thread view, and a context panel (guest/property/booking summary).
 
@@ -130,9 +142,85 @@ per-channel payloads, deduplicate, and attach each message to the correct conver
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `unified-inbox`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | New entity `Conversation` (carries `OrgId` from creation — RF1) with at least: | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | New entity `Message` (carries `OrgId`) with at least: | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | New entity `Thread` (carries `OrgId`) grouping messages by external provider thread: | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | `Channel` enum covers `Direct, Airbnb, BookingCom, Expedia, Vrbo, TripAdvisor, | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | `IChannelAdapter` is extended with an **inbound-messaging capability contract**: | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | New Hangfire job `InboundMessageIngestionJob` that: | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | `WebhooksController` gains an inbound-message webhook | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | For channels without webhooks/messaging APIs, `InboundMessageIngestionJob` is also | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 + L2 + L3 | `GET /api/inbox/conversations` — paged list, filterable by `status`, `channel`, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC10 | L1 + L2 + L3 | `GET /api/inbox/conversations/{id}` — conversation detail with ordered messages; | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC11 | L1 + L2 + L3 | `POST /api/inbox/conversations/{id}/messages` — send an outbound reply. Routes via | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L1 + L2 + L3 | `PUT /api/inbox/conversations/{id}/status` — transition `Open/Pending/Snoozed/Closed`; | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC13 | L1 | Idempotency — a unique index on `(Channel, ExternalMessageId)` guarantees a | Outcome not met; wrong status; silent no-op |
+| AC14 | L1 + L2 + L3 | Authorization — inbox endpoints require the `short-rent` context permission | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC15 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC16 | L2 + L3 | `inbox-page.tsx` at route `/inbox` — multi-pane layout: conversation list, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC17 | L2 + L3 | Conversation list shows per-row **channel badge** (Airbnb/Booking.com/Direct/Email | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC18 | L2 + L3 | Thread view renders inbound/outbound message bubbles with channel indicator and a | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC19 | L2 + L3 | Status + assignment controls (Apri/In attesa/Posticipa/Chiudi; Assegna a…), with | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC20 | L2 + L3 | `<ProtectedRoute>` wraps `/inbox/*`; the inbox is only visible to users with the | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC21 | L2 + L3 | All end-user strings in Italian (e.g. "Posta in arrivo", "Rispondi", "Assegna", | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend — Files to create/modify
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -170,6 +258,8 @@ per-channel payloads, deduplicate, and attach each message to the correct conver
 
 ### Frontend — Files to create/modify
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | `src/features/inbox/inbox-page.tsx` | Create — multi-pane inbox shell |
@@ -185,6 +275,8 @@ per-channel payloads, deduplicate, and attach each message to the correct conver
 ---
 
 ## Compliance
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **Per-adapter inbound assumption (explicit gate)**: OTA messaging APIs vary; channels with
   no native messaging API use **email-only fallback**. Ingestion is **strictly off-request
@@ -204,6 +296,8 @@ per-channel payloads, deduplicate, and attach each message to the correct conver
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**:
   - OTA adapters — `IChannelAdapter` + `ChannelFactory` (extended with messaging capability).
   - `spec-direct-checkout` — direct guests (`Booking`/`Guest`) are a first-class inbox channel.
@@ -215,3 +309,33 @@ per-channel payloads, deduplicate, and attach each message to the correct conver
 - **Related**:
   - Existing `WebhooksController` + `StripeWebhookJob`/`OtaSyncJob` async pattern (3-second rule).
   - `GdprDataRetentionJob` (retention/erasure sweep).
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

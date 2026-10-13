@@ -1,19 +1,33 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-public class PropertyAuthorizationService(IPropertyRepository propertyRepository) : IPropertyAuthorizationService
+/// <summary>
+/// The reach check still used by the controllers not yet moved to the resource handler (<c>HostResourceAuthorizationHandler</c>,
+/// TN-3). New code authorizes with <c>IAuthorizationService</c> and a <see cref="HostResource"/>; never call this with a
+/// hand-written role list. The decision is the scope resolver's (AM-03), not a list of token roles.
+/// </summary>
+public class PropertyAuthorizationService(
+    IPropertyRepository propertyRepository,
+    IHostScopeResolver scopeResolver) : IPropertyAuthorizationService
 {
-    private static readonly HashSet<string> PrivilegedRoles = ["PropertyManager", "Admin"];
-
-    public bool CanAccess(string userId, string propertyOwnerId, IEnumerable<string> userRoles)
-        => userRoles.Any(r => PrivilegedRoles.Contains(r)) || propertyOwnerId == userId;
+    public Task<bool> CanAccessAsync(string userId, Property property, IEnumerable<string> userRoles)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        return scopeResolver.CanReachPropertyAsync(
+            userId, ToSet(userRoles), property.OrgId, property.Id, property.OwnerId);
+    }
 
     public async Task<bool> CanAccessPropertyAsync(string userId, Guid propertyId, IEnumerable<string> userRoles)
     {
-        if (userRoles.Any(r => PrivilegedRoles.Contains(r))) return true;
-        var property = await propertyRepository.GetByIdAsync(propertyId);
-        return property != null && property.OwnerId == userId;
+        // The property row alone: never its bookings and OTA integrations just to read the owner (A2-17).
+        var property = await propertyRepository.GetRecordAsync(propertyId);
+        return property is not null && await CanAccessAsync(userId, property, userRoles);
     }
+
+    private static IReadOnlySet<string> ToSet(IEnumerable<string> roles) =>
+        roles as IReadOnlySet<string> ?? new HashSet<string>(roles, StringComparer.Ordinal);
 }

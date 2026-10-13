@@ -201,6 +201,14 @@ Se si installa videosorveglianza nella proprietà:
 - **Politica conservazione dati**
 - **Procedure data breach**
 
+## Stato implementazione in CasaZen (CO-15, 2026-09)
+Solo cosa è implementato; dettagli e configurazione in `docs/runbooks/gdpr.md`.
+- **Check-in ospite**: il trattamento Alloggiati è presentato come obbligo di legge (art. 6.1.c), con informativa e **senza checkbox di consenso**. Si registra la versione dell'informativa mostrata (`Gdpr:PrivacyNoticeVersion`). Il consenso marketing è facoltativo, registrato con versione, data e IP, ed è offerto solo con un testo versionato (`Gdpr:MarketingConsentVersion`). I testi sono segnaposto finché il product owner non li fornisce (D14).
+- **Consenso marketing**: l'host non può attivarlo; può solo revocarlo su richiesta documentata dell'ospite (nota obbligatoria). Storico in `GuestConsentRecords`.
+- **Diritti (artt. 15, 17, 20)**: export JSON versionato e completo (anagrafica, nascita, documento, prenotazioni, sessioni di check-in, ospiti del soggiorno, storico consensi); cancellazione e anonimizzazione di tutti i campi personali, degli accompagnatori e del file della scansione. Audit senza dati personali.
+- **Conservazione per categoria** (scansioni, dati Alloggiati, marketing, dati fiscali): job notturno con periodi e fonte da configurazione (`Gdpr:Retention`). **Nessun periodo è attivo per default**: i valori di questo documento (10 anni fiscali, "es. 5 anni" Alloggiati, scansioni "dopo verifica") non sono stati applicati perché senza articolo di legge o solo indicativi; senza configurazione il job non cancella nulla.
+- Non implementato: informativa personalizzabile per proprietario, portale self-service dell'interessato, registro dei trattamenti, gestione data breach.
+
 ## Sanzioni
 Il Garante Privacy può applicare sanzioni fino a:
 - **€20 milioni** o **4% del fatturato globale annuo** (il maggiore) per violazioni gravi

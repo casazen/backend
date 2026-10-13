@@ -12,5 +12,10 @@ public class UserSummaryDto
     public DateTime CreatedAt { get; set; }
     public Guid? OrgId { get; set; }
     public string? OrgName { get; set; }
+
+    /// <summary>
+    /// Effective plan tier of the user's org: Starter unless a subscription pays for it, or the open access raises it
+    /// (<c>Entitlement:OpenAccess</c>, BL-01, <c>docs/runbooks/open-access.md</c>).
+    /// </summary>
     public string? PlanTier { get; set; }
 }

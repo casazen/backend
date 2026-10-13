@@ -1,0 +1,45 @@
+{
+  "guests": [
+    {
+      "type": "HeadOfFamily",
+      "firstName": "Giulia",
+      "lastName": "Bianchi",
+      "gender": "Female",
+      "dateOfBirth": "1992-03-08",
+      "bornInItaly": true,
+      "birthComuneName": "Firenze",
+      "birthComuneCode": null,
+      "birthProvince": "FI",
+      "birthCountryName": "",
+      "birthCountryCode": null,
+      "citizenshipName": "Italia",
+      "citizenshipCode": null,
+      "documentType": "IdentityCard",
+      "documentTypeCode": null,
+      "documentNumber": "CA12345AB",
+      "documentIssuePlaceName": "Firenze",
+      "documentIssuePlaceCode": null
+    },
+    {
+      "type": "FamilyMember",
+      "firstName": "Marco",
+      "lastName": "Bianchi",
+      "gender": "Male",
+      "dateOfBirth": "2018-07-21",
+      "bornInItaly": false,
+      "birthComuneName": "",
+      "birthComuneCode": null,
+      "birthProvince": null,
+      "birthCountryName": "Francia",
+      "birthCountryCode": null,
+      "citizenshipName": "Italia",
+      "citizenshipCode": null,
+      "documentType": null,
+      "documentTypeCode": null,
+      "documentNumber": null,
+      "documentIssuePlaceName": null,
+      "documentIssuePlaceCode": null
+    }
+  ],
+  "marketingConsent": false
+}

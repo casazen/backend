@@ -1,0 +1,342 @@
+using System.Security.Claims;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Infrastructure.Data;
+using Casazen.Web.Infrastructure;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
+
+namespace Casazen.Tests.Unit.Infrastructure;
+
+/// <summary>
+/// A1-20: the request tenant is loaded asynchronously once per request, fails closed before that, and can be
+/// set by the org resolver after provisioning so the rest of the request is scoped to the new org.
+/// </summary>
+public class TenantContextTests
+{
+    private const string Sub = "auth0|tenant-context-user";
+
+    private readonly string _databaseName = $"tenant-context-{Guid.NewGuid()}";
+
+    [Fact]
+    public async Task ResolveAsync_AuthenticatedUserWithOrg_LoadsOrgIdOncePerRequest()
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId);
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+        await SetUserOrgAsync(services, Guid.NewGuid());
+        await tenant.ResolveAsync();
+
+        Assert.True(tenant.FilterEnabled);
+        Assert.Equal(orgId, tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task OrgId_ReadBeforeResolveAsync_IsNullFailClosed()
+    {
+        var services = BuildServices();
+        await SeedUserAsync(services, Guid.NewGuid());
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        Assert.True(tenant.FilterEnabled);
+        Assert.Null(tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_AnonymousRequest_LeavesFilterDisabledWithoutOrg()
+    {
+        var services = BuildServices();
+        await SeedUserAsync(services, Guid.NewGuid());
+        var tenant = NewTenantContext(services, authenticated: false);
+
+        await tenant.ResolveAsync();
+
+        Assert.False(tenant.FilterEnabled);
+        Assert.Null(tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task SetOrgId_AfterResolvingAUserWithoutOrg_ScopesTheRequestToTheNewOrg()
+    {
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId: null);
+        var tenant = NewTenantContext(services, authenticated: true);
+        await tenant.ResolveAsync();
+        Assert.Null(tenant.OrgId);
+
+        var provisioned = Guid.NewGuid();
+        tenant.SetOrgId(provisioned);
+        await tenant.ResolveAsync(); // already resolved: the provisioned org is kept
+
+        Assert.Equal(provisioned, tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task SetOrgId_DifferentFromTheResolvedOrg_Throws()
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId);
+        var tenant = NewTenantContext(services, authenticated: true);
+        await tenant.ResolveAsync();
+
+        tenant.SetOrgId(orgId); // same org: no-op
+        Assert.Throws<InvalidOperationException>(() => tenant.SetOrgId(Guid.NewGuid()));
+        Assert.Equal(orgId, tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_Middleware_ResolvesTheTenantBeforeTheNextComponent()
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId);
+        var tenant = NewTenantContext(services, authenticated: true, out var httpContext);
+        Guid? seenByNext = null;
+        var middleware = new TenantResolutionMiddleware(_ =>
+        {
+            seenByNext = tenant.OrgId;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(httpContext, tenant);
+
+        Assert.Equal(orgId, seenByNext);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ResolveAsync_UserRow_LoadsTheActiveFlagWithTheOrgInOneRead(bool isActive, bool expectedInactive)
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId, isActive);
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.Equal(expectedInactive, tenant.IsCallerInactive);
+        Assert.Equal(orgId, tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_FirstAccessWithoutUserRow_IsNotInactive()
+    {
+        var services = BuildServices();
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.False(tenant.IsCallerInactive);
+        Assert.Null(tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OrgIdPointsToASupplierOrg_LeavesOrgIdNullFailClosed()
+    {
+        // A1-40: OrgId can point at the caller's own Supplier org (linked at supplier registration, before the
+        // host onboarding ever ran). It must never scope the tenant filter — a supplier account reads and
+        // writes no host (ITenantOwned) data through it, exactly like a brand-new user with no org at all.
+        var supplierOrgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserWithOrgAsync(services, supplierOrgId, OrgType.Supplier);
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.True(tenant.FilterEnabled);
+        Assert.Null(tenant.OrgId);
+    }
+
+    // ─── AM-01: the status of the org membership, from the same read ────────────────────────────────────
+
+    [Theory]
+    [InlineData(OrgMemberStatus.Active, false)]
+    [InlineData(OrgMemberStatus.Deactivated, true)]
+    public async Task ResolveAsync_OrgMember_LoadsItsStatusWithTheOrgAndTheActiveFlag(OrgMemberStatus status, bool expectedDeactivated)
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId);
+        await SeedOrgMemberAsync(services, orgId, status);
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.Equal(expectedDeactivated, tenant.IsCallerOrgMemberDeactivated);
+        Assert.False(tenant.IsCallerInactive);
+        // The org of the request is still the user's org: a deactivated member is refused by the middleware, not unscoped.
+        Assert.Equal(orgId, tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_UserInNoOrgTeam_IsNotAMemberDeactivated()
+    {
+        var services = BuildServices();
+        await SeedUserAsync(services, Guid.NewGuid());
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.False(tenant.IsCallerOrgMemberDeactivated);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_MemberRowOfAnotherUser_DoesNotCount()
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId);
+        await SeedOrgMemberAsync(services, orgId, OrgMemberStatus.Deactivated, userId: "auth0|someone-else");
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.False(tenant.IsCallerOrgMemberDeactivated);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ActiveAccountOfADeactivatedMember_IsNotAnInactiveAccount()
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId, isActive: true);
+        await SeedOrgMemberAsync(services, orgId, OrgMemberStatus.Deactivated);
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.False(tenant.IsCallerInactive);
+        Assert.True(tenant.IsCallerOrgMemberDeactivated);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DeactivationAfterTheFirstRequest_IsSeenByTheNextRequestWithoutAnyCache()
+    {
+        // One tenant context per request, and no cache between requests: the next request reads the new status.
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId);
+        await SeedOrgMemberAsync(services, orgId, OrgMemberStatus.Active);
+        var firstRequest = NewTenantContext(services, authenticated: true);
+        await firstRequest.ResolveAsync();
+        Assert.False(firstRequest.IsCallerOrgMemberDeactivated);
+
+        await SetOrgMemberStatusAsync(services, OrgMemberStatus.Deactivated);
+
+        var nextRequest = NewTenantContext(services, authenticated: true);
+        await nextRequest.ResolveAsync();
+        Assert.True(nextRequest.IsCallerOrgMemberDeactivated);
+    }
+
+    private static async Task SeedOrgMemberAsync(
+        ServiceProvider services, Guid orgId, OrgMemberStatus status, string userId = Sub)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.OrgMembers.Add(new OrgMember
+        {
+            UserId = userId,
+            OrgId = orgId,
+            Role = OrgRole.Collaborator,
+            Status = status,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SetOrgMemberStatusAsync(ServiceProvider services, OrgMemberStatus status)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var member = await db.OrgMembers.SingleAsync(m => m.UserId == Sub);
+        member.Status = status;
+        await db.SaveChangesAsync();
+    }
+
+    private ServiceProvider BuildServices()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<AppDbContext>(o => o.UseInMemoryDatabase(_databaseName));
+        return services.BuildServiceProvider();
+    }
+
+    /// <summary>Seeds the user with a matching Host-type org (the normal shape of a real row) when <paramref name="orgId"/> is set.</summary>
+    private static async Task SeedUserAsync(ServiceProvider services, Guid? orgId, bool isActive = true)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (orgId is Guid id)
+            db.Orgs.Add(NewOrg(id, OrgType.Host));
+        db.Users.Add(new User
+        {
+            Id = Sub,
+            Email = "tenant@example.com",
+            FirstName = "T",
+            LastName = "C",
+            OrgId = orgId,
+            IsActive = isActive,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Seeds the user with OrgId (and, for a supplier, SupplierOrgId) pointing at an org of the given type.</summary>
+    private static async Task SeedUserWithOrgAsync(ServiceProvider services, Guid orgId, OrgType orgType)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Orgs.Add(NewOrg(orgId, orgType));
+        db.Users.Add(new User
+        {
+            Id = Sub,
+            Email = "tenant@example.com",
+            FirstName = "T",
+            LastName = "C",
+            OrgId = orgId,
+            SupplierOrgId = orgType == OrgType.Supplier ? orgId : null,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static Casazen.Core.Entities.Org NewOrg(Guid id, OrgType orgType) => new()
+    {
+        Id = id,
+        Name = "Org",
+        Slug = $"org-{id:N}",
+        DisplayName = "Org",
+        ContactEmail = "org@example.com",
+        OrgType = orgType,
+    };
+
+    private static async Task SetUserOrgAsync(ServiceProvider services, Guid orgId)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Users.SingleAsync(u => u.Id == Sub);
+        user.OrgId = orgId;
+        await db.SaveChangesAsync();
+    }
+
+    private static TenantContext NewTenantContext(ServiceProvider services, bool authenticated) =>
+        NewTenantContext(services, authenticated, out _);
+
+    private static TenantContext NewTenantContext(ServiceProvider services, bool authenticated, out HttpContext httpContext)
+    {
+        var identity = authenticated
+            ? new ClaimsIdentity([new Claim("sub", Sub)], "Test")
+            : new ClaimsIdentity();
+        httpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) };
+        var accessor = new HttpContextAccessor { HttpContext = httpContext };
+        return new TenantContext(
+            accessor,
+            services.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<TenantContext>.Instance);
+    }
+}

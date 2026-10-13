@@ -10,14 +10,16 @@ Web reporting, tourist tax, GDPR).
 ## Stack snapshot
 - **Language**: C# 13 / .NET 10 (global.json sdk `10.0.0`)
 - **Framework**: ASP.NET Core Web API with Swagger/OpenAPI
-- **Database**: SQL Server (EF Core 10, code-first migrations)
+- **Database**: PostgreSQL via Supabase (EF Core 10 / Npgsql, code-first migrations)
 - **Auth**: Auth0 — JWT Bearer validated on every `/api` endpoint
-- **Background jobs**: Hangfire (OTA sync hourly, booking pull every 15 min, GDPR retention, pricing)
+- **Background jobs**: Hangfire, one schema per environment (iCal sync, rent collection, booking expiry, email and push delivery, GDPR retention, CIN and compliance checks; OTA sync and booking pull run only with `Features:OtaPartnerApi`, off by default: D10; see `docs/runbooks/hangfire.md`)
 - **Payments**: Stripe (webhook signature verification required)
-- **Email**: MailKit SMTP (transactional; supplier invite uses `SupplierInviteEmailBuilder` HTML; supports any SMTP server or SendGrid relay)
+- **Email**: Resend (`IEmailService`, templates in `Casazen.Infrastructure/Email/Templates`, sending queued on Hangfire; see `docs/runbooks/email.md`)
 - **OTA resilience**: Polly (retry + circuit-breaker + rate-limit per platform)
 - **Tests**: xUnit (unit + integration), AAA pattern
-- **CI/CD**: GitHub Actions (`.github/workflows/ci-cd.yml`, `step-transitions.yml`)
+- **CI/CD**: GitHub Actions (`.github/workflows/ci-cd.yml`)
+- **Hosting**: Supabase (DB) + Vercel (FE); Railway è stato cancellato dal PO il 2026-10-02 e l'hosting gratuito del backend è in revisione (`docs/runbooks/free-hosting-analysis.md`, task HOSTING). `docs/INFRA.md` è storico per la parte Railway.
+- **Stato del risanamento**: `Sessions/risanamento/RIEPILOGO-FINALE.md` (cosa è fatto, cosa resta); runbook in `docs/runbooks/index.md`
 
 ## Repo layout
 ```
@@ -34,7 +36,7 @@ Casazen.sln
 │   ├── Migrations/            # EF Core migration files
 │   ├── Repositories/          # Concrete repository implementations
 │   ├── Services/              # Concrete service implementations
-│   ├── External/              # AlloggiatiWebService, SmtpEmailService, StripeService, StripeWebhookHandler
+│   ├── External/              # AlloggiatiWebService, StripeService, StripeWebhookHandler (email: Email/ResendEmailService)
 │   ├── OTA/                   # Channel adapters: Airbnb, BookingCom, Expedia, VRBO, TripAdvisor, Agoda
 │   │   └── Resilience/        # Polly policy factories per platform
 │   └── Payments/              # Stripe payment processing
@@ -50,7 +52,6 @@ Casazen.sln
 │   └── Integration/           # API, migration, resilience, controller integration tests
 ├── docs/                      # Project documentation (this folder)
 ├── Dockerfile                 # Multi-stage build
-├── docker-compose.yml         # API + SQL Server services
 └── .github/workflows/         # CI/CD pipelines
 ```
 
@@ -92,7 +93,7 @@ Casazen.sln
 | CI/CD pipeline | `.github/workflows/ci-cd.yml` |
 
 ## Non-obvious rules / gotchas
-- **CIN code**: every `Property` must store an Italian CIN (`IT-XXXXX-XXXXXXXXXX`). Validated by `[CinCode]` attribute. Required by D.L. 145/2023.
+- **CIN code**: every `Property` must store an Italian CIN (e.g. `IT058091C27G5FFZDZ`: `IT` + 6-digit ISTAT comune code + 2-char category + up to 8 random characters). Normalized and validated by `CinFormat` (`[CinCode]` attribute on DTOs). Required by D.L. 145/2023.
 - **Tourist tax**: stored in `TouristTaxRate` entity — rates vary per city/region. **Never hardcode** a tax amount.
 - **OTA webhooks**: must respond within 3 seconds. Long-running work goes through Hangfire queue — do not process inline in the webhook controller.
 - **DbContext scope**: `AppDbContext` is scoped per request. Never store it in a static field or singleton; always dispose.
@@ -101,7 +102,7 @@ Casazen.sln
 - **Stripe webhook signatures**: `StripeWebhookHandler` must verify the `Stripe-Signature` header — never skip this check.
 - **Migrations**: run `dotnet ef migrations add Add<Feature> --project Casazen.Infrastructure` for every schema change; test locally before committing.
 - **Property timezone**: stored as IANA string (`Europe/Rome` default) — use `TimezoneHelper` for conversions, never raw `TimeZoneInfo`.
-- **Auth**: all `/api` endpoints require Auth0 JWT Bearer token. `HealthController` is the only public endpoint.
+- **Auth**: all `/api` endpoints require Auth0 JWT Bearer token. The health endpoints (`/api/health`, `/api/health/live`, `/api/health/ready`) are anonymous, like the public booking, legal and webhook routes.
 - **GDPR**: `GdprDataRetentionJob` handles automatic deletion. `IGdprService` / `GdprController` expose data export/delete for GDPR requests.
 - **Before every commit**: `dotnet test` + `dotnet format --verify-no-changes` — no compiler warnings allowed.
 
@@ -111,7 +112,7 @@ Casazen.sln
 |---|---|---|
 | Auth0 | JWT authentication for all API endpoints | `appsettings.json → Auth0` |
 | Stripe | Payment processing + webhook events | `appsettings.json → Stripe`; handler in `Casazen.Infrastructure/External/StripeWebhookHandler.cs` |
-| MailKit SMTP | Transactional email (booking confirmations, notifications, supplier invites) | `appsettings.json → Email:SmtpHost` (or `Email:SendGridApiKey` for SendGrid SMTP relay) |
+| Resend | Transactional email (service requests, supplier invites, guest check-in links, reminders) | `Email` section (`Email__ApiKey`, `Email__FromAddress`, …); see `docs/runbooks/email.md` |
 | Alloggiati Web | Italian police guest reporting (mandatory by law) | `Casazen.Infrastructure/External/AlloggiatiWebService.cs` |
 | Airbnb | OTA booking sync + pricing/availability push | `appsettings.json → OTA.Airbnb` |
 | Booking.com | OTA booking sync + pricing/availability push | `appsettings.json → OTA.BookingCom` |

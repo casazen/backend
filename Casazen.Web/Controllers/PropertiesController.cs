@@ -1,74 +1,143 @@
-﻿using System.Security.Claims;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
+using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Validation;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Authorization;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>
+/// Properties. The property core (list, record, create/update, documents such as the APE) is shared by short-rent hosts
+/// and long-term landlords (<see cref="CasazenPolicies.SharedPropertyRead"/>, A7-06); everything about short stays
+/// (photos, CIN, iCal calendars, listing activation, detail with bookings and OTA) stays short-rent only
+/// (<see cref="CasazenPolicies.PropertyRead"/>). Shared actions authorize the row with <see cref="SharedPropertyOperations"/>.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "PropertyOwner")]
-[Authorize(Policy = "RequireContext:short-rent:property.read")]
+[Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
 public class PropertiesController(
     IPropertyService propertyService,
-    IImageStorageService imageStorageService,
+    IPropertyPhotoService photoService,
     IPropertyAuthorizationService authorizationService,
+    ILeaseContractRepository leaseContractRepository,
     IPropertyDocumentService documentService,
     IAdminAccessAuditService adminAccessAuditService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     IEntitlementService entitlementService,
     PropertyICalSyncService propertyICalSyncService,
     IComplianceWizardService complianceWizardService,
+    IAuthorizationService hostAuthorizationService,
+    IPropertyComuneResolver comuneResolver,
     ILogger<PropertiesController> logger) : ControllerBase
 {
-    [HttpGet("health")]
-    [AllowAnonymous]
-    public IActionResult HealthCheck()
-    {
-        logger.LogInformation("Health check called - backend is working!");
-        return Ok(new { status = "healthy", message = "Backend is running", timestamp = DateTime.UtcNow });
-    }
-
+    /// <summary>
+    /// Properties of the caller's org the caller may handle (TN-3, AM-03): every one for a member whose org role reaches the
+    /// whole org (the owner, the administrators, the property managers, the accountants, a collaborator with every
+    /// property), the ones it was given for a collaborator «Solo alcuni», otherwise (an account in no org team) the ones
+    /// they created or all with an org-wide token role; filtered in SQL.
+    /// Shared by short-rent hosts and long-term landlords (A7-06). Each row is the property record
+    /// (<see cref="PropertyResponse"/>), never the entity. <c>?mode=short|long</c> (PM-01) lists the properties in that
+    /// rental mode only; without it the list is every property, as it has always been. The plan limit counts them all.
+    /// </summary>
+    /// <param name="mode">Optional rental mode filter: <c>short</c> or <c>long</c> (case-insensitive).</param>
+    /// <response code="400"><c>validation_error</c>: <paramref name="mode"/> names no rental mode.</response>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Property>>> GetAll()
+    [ProducesResponseType(typeof(IEnumerable<PropertyResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IEnumerable<PropertyResponse>>> GetAll([FromQuery] string? mode = null)
     {
-        logger.LogInformation("GetAll properties called");
-        logger.LogInformation($"User authenticated: {User.Identity?.IsAuthenticated}");
-        logger.LogInformation($"User identity name: {User.Identity?.Name}");
-
-        // Try multiple claim types to find user ID
+        // Never log the claims or the identity name: they carry email and name (FD-17, A2-32).
         var userId = GetAuthenticatedUserId();
-
-        logger.LogInformation($"User ID from claims: {userId}");
-
-        // DEBUG: Log all claims
-        foreach (var claim in User.Claims)
-        {
-            logger.LogInformation($"Claim: {claim.Type} = {claim.Value}");
-        }
-
         if (string.IsNullOrEmpty(userId))
         {
             logger.LogWarning("No user ID claim found in token");
             return Unauthorized();
         }
 
-        var properties = await propertyService.GetOwnerPropertiesAsync(userId);
-        return Ok(properties);
+        // A blank value is the same as no filter; a value that is not a mode is a 400, never a silent "every property".
+        RentalMode? modeFilter = null;
+        if (!string.IsNullOrWhiteSpace(mode))
+        {
+            if (!EnumNames.TryParseDefined<RentalMode>(mode, out var parsedMode))
+                return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "PropertyListModeInvalid");
+
+            modeFilter = parsedMode;
+        }
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var properties = modeFilter is { } wanted
+            ? await propertyService.GetPropertiesAsync(scope, wanted)
+            : await propertyService.GetPropertiesAsync(scope);
+        return Ok(properties.Select(PropertyResponse.From).ToList());
     }
 
+    /// <summary>
+    /// The record of one property (<see cref="PropertyResponse"/>): no bookings (nor their check-in tokens), OTA
+    /// integrations or documents (A2-32). Another org's property is 404 (tenant filter).
+    /// </summary>
+    /// <response code="200">The property record.</response>
+    /// <response code="403">The caller may not read this property (TN-3).</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
     [HttpGet("{id}")]
-    public async Task<ActionResult<Property>> GetById(Guid id)
+    [ProducesResponseType(typeof(PropertyResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyResponse>> GetById(Guid id)
     {
-        var property = await propertyService.GetPropertyAsync(id);
-        return property == null ? NotFound() : Ok(property);
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyRecordAsync(id);
+        if (property == null)
+            return NotFound();
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Read))
+            return Forbid();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "Property.Read");
+
+        return Ok(PropertyResponse.From(property));
+    }
+
+    /// <summary>
+    /// The cancellation policies a short-stay property can reference (<see cref="UpdatePropertyRequest.CancellationPolicyId"/>),
+    /// by name. The catalog is global, not per org.
+    /// </summary>
+    [HttpGet("cancellation-policies")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(IReadOnlyList<CancellationPolicyOptionDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<CancellationPolicyOptionDto>>> GetCancellationPolicies()
+    {
+        return Ok(await propertyService.GetCancellationPoliciesAsync());
     }
 
     /// <summary>
@@ -82,11 +151,17 @@ public class PropertiesController(
     /// <returns>The newly created property with its assigned <c>Id</c> and <c>OwnerId</c>.</returns>
     /// <response code="201">Property created successfully.</response>
     /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="403"><c>plan_limit_reached</c>: the org already has as many properties as its plan allows.</response>
+    /// <response code="400"><c>validation_error</c>: a field is not valid (errors by field), e.g. a latitude outside -90..90.</response>
+    /// <response code="409"><c>duplicate_property_address</c>: an active property of the org has the same address and unit
+    /// (several apartments of one building differ by <c>unit</c>; another org's property never conflicts, A2-19), or a
+    /// duplicate slug within the organization.</response>
     [HttpPost]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     [ProducesResponseType(typeof(Property), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<Property>> Create([FromBody] CreatePropertyRequest request)
     {
         var userId = GetAuthenticatedUserId();
@@ -98,69 +173,82 @@ public class PropertiesController(
         if (orgId is null)
         {
             logger.LogWarning("Property creation blocked: user {UserId} has no org context", userId);
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                error = "No organization context",
-                code = "no_org_context"
-            });
-        }
-
-        // AC8: enforce the org's plan limit server-side before insert. Client-side gating is
-        // advisory; this is the source of truth (a stale client cannot exceed the limit).
-        if (!await entitlementService.ReservePropertySlotAsync(orgId.Value))
-        {
-            var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value);
-            logger.LogWarning(
-                "Property creation blocked by plan limit for org {OrgId} (tier {PlanTier}, limit {Limit})",
-                orgId, entitlement.PlanTier, entitlement.MaxProperties);
-
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                error = "Plan limit reached",
-                code = "plan_limit_reached",
-                planTier = entitlement.PlanTier,
-                limit = entitlement.MaxProperties
-            });
+            return this.ApiProblem(StatusCodes.Status403Forbidden, "no_org_context", "NoOrganizationContext");
         }
 
         logger.LogInformation("Creating property for user: {UserId}", userId);
         var property = request.ToProperty(userId);
         // AC7: tenant key is server-set from the caller's org, never client-supplied.
         property.OrgId = orgId.Value;
-        var created = await propertyService.CreatePropertyAsync(property);
+
+        // The comune chosen from the official ISTAT list (SU-04): validated against it, the region follows it.
+        if (!string.IsNullOrWhiteSpace(request.ComuneIstatCode))
+        {
+            var comune = await comuneResolver.ResolveAsync(request.ComuneIstatCode, HttpContext.RequestAborted);
+            property.ComuneIstatCode = comune.IstatCode;
+            property.RegionCode = comune.RegionCode;
+        }
+
+        // AC8: the org's plan limit is enforced server-side, and the check and the insert are one atomic
+        // step (A1-21): parallel creates cannot exceed the limit. Client-side gating is advisory.
+        var created = await entitlementService.CreatePropertyWithinLimitAsync(
+            orgId.Value,
+            () => propertyService.CreatePropertyAsync(property),
+            HttpContext.RequestAborted);
+        if (created is null)
+        {
+            var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, HttpContext.RequestAborted);
+            logger.LogWarning(
+                "Property creation blocked by plan limit for org {OrgId} (tier {PlanTier}, limit {Limit})",
+                orgId, entitlement.PlanTier, entitlement.MaxProperties);
+
+            return this.ApiProblem(StatusCodes.Status403Forbidden, PlanLimitReachedCode, "PlanLimitReached");
+        }
+
         logger.LogInformation("Property created: {PropertyId} in org {OrgId}", created.Id, created.OrgId);
+        QueueComuneOfficialProfile(created.ComuneIstatCode);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
     /// <summary>
-    /// Updates an existing property. Only the property owner may perform this operation.
+    /// Updates a property with <b>PATCH semantics</b> (A2-04): only the fields present in the body change, a field left
+    /// out (or null) keeps its stored value; the nullable CIN, slug and cancellation policy are cleared by sending null.
+    /// The web forms send every field they show, so both a partial and a complete body are safe.
     /// </summary>
     /// <remarks>
-    /// <c>OwnerId</c> is never accepted from the request body; ownership is always verified
-    /// against the authenticated caller's JWT <c>sub</c> claim. Sending an <c>OwnerId</c> field
-    /// in the body has no effect and will not change the property owner.
+    /// <c>OwnerId</c> and <c>OrgId</c> are never accepted from the request body. The row is authorized with
+    /// <see cref="SharedPropertyOperations.Write"/> (TN-3); another org's property is 404.
     /// </remarks>
     /// <param name="id">The unique identifier of the property to update.</param>
-    /// <param name="request">Updated property details. See <see cref="UpdatePropertyRequest"/> for available fields.</param>
-    /// <returns>No content on success.</returns>
-    /// <response code="204">Property updated successfully.</response>
-    /// <response code="401">The caller is not authenticated.</response>
-    /// <response code="403">The caller is not the owner of this property.</response>
-    /// <response code="404">No property found with the given <paramref name="id"/>.</response>
+    /// <param name="request">The fields to change. See <see cref="UpdatePropertyRequest"/>.</param>
+    /// <response code="204">Property updated.</response>
+    /// <response code="400"><c>validation_error</c>: a field sent is not valid (errors by field).</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    /// <response code="409">Slug already used in the org, or city change after a canone concordato registration.</response>
+    /// <response code="422"><c>cancellation_policy_not_found</c>: the cancellation policy does not exist;
+    /// <c>property_rental_mode_change_not_allowed</c>: <c>rentalMode</c> is not the stored one (PM-01).</response>
     [HttpPut("{id}")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePropertyRequest request)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var existing = await propertyService.GetPropertyAsync(id);
+        // The row alone: saving it must not write back the bookings or OTA integrations of the property (A2-04).
+        var existing = await propertyService.GetPropertyRecordAsync(id);
         if (existing == null)
             return NotFound();
 
         var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, existing.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), SharedPropertyOperations.Write))
         {
             logger.LogWarning("User {UserId} attempted to update property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
@@ -169,13 +257,150 @@ public class PropertiesController(
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, roles, "Property.Update");
 
+        // PM-01: a rental mode in the body must be the stored one (a form that sends the whole record keeps working). The
+        // mode of an existing property is changed by the scheduled mode change, which checks its stays and leases under the
+        // property lock: a generic save would skip those checks (a leased property made bookable, a booked one hidden).
+        if (request.RentalMode is { } requestedMode && requestedMode != existing.RentalMode)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                PropertyRentalModeErrorCodes.ChangeNotAllowed,
+                "PropertyRentalModeChangeNotAllowed");
+        }
+
+        if (request.City is { } city && IsCityChange(existing.City, city) && await HasSubmittedCanoneConcordatoLeaseAsync(id))
+        {
+            return this.ApiProblem(StatusCodes.Status409Conflict, CityLockedCode, "PropertyCityLockedByLease");
+        }
+
+        // The comune of the official ISTAT list (SU-04): checked only when it changes (a comune merged away later does not
+        // block the other edits of the property); the region follows it.
+        var cityChanged = request.City is { } newCity && IsCityChange(existing.City, newCity);
+        PropertyComune? chosenComune = null;
+        var clearComune = false;
+        if (request.ComuneIstatCodeSent)
+        {
+            if (string.IsNullOrWhiteSpace(request.ComuneIstatCode))
+                clearComune = true;
+            else if (!string.Equals(request.ComuneIstatCode.Trim(), existing.ComuneIstatCode, StringComparison.Ordinal))
+                chosenComune = await comuneResolver.ResolveAsync(request.ComuneIstatCode, HttpContext.RequestAborted);
+        }
+        else if (cityChanged && existing.ComuneIstatCode is not null)
+        {
+            // The city was rewritten without choosing a comune: the stored code no longer says where the property is.
+            clearComune = true;
+        }
+
         request.ApplyTo(existing);
+        if (chosenComune is not null)
+        {
+            existing.ComuneIstatCode = chosenComune.IstatCode;
+            existing.RegionCode = chosenComune.RegionCode;
+        }
+        else if (clearComune)
+        {
+            existing.ComuneIstatCode = null;
+            existing.RegionCode = null;
+        }
+
         await propertyService.UpdatePropertyAsync(existing);
+        if (chosenComune is not null)
+            QueueComuneOfficialProfile(chosenComune.IstatCode);
         return NoContent();
     }
 
+    /// <summary>
+    /// Pauses a property (PC-03, A2-05): a dedicated action, separate from <see cref="Update"/>, so it never fails on
+    /// unrelated fields. Hidden from public search, its public page and new guest bookings until reactivated; still
+    /// counts against the plan's property limit, stays fully visible and editable to the host, and its existing
+    /// bookings are untouched. Idempotent. Short-rent only: publication and guest bookings are short-stay concepts.
+    /// </summary>
+    /// <param name="id">The unique identifier of the property to pause.</param>
+    /// <response code="200">The pause state right after the change.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    [HttpPost("{id:guid}/pause")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyPauseStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPauseStatusResponse>> Pause(Guid id)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var existing = await propertyService.GetPropertyRecordAsync(id);
+        if (existing == null)
+            return NotFound();
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), PropertyOperations.Write))
+        {
+            logger.LogWarning("User {UserId} attempted to pause property {PropertyId} owned by {OwnerId}",
+                userId, id, existing.OwnerId);
+            return Forbid();
+        }
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, GetUserRoles(), "Property.Pause");
+
+        var updated = await propertyService.PausePropertyAsync(existing);
+        logger.LogInformation("Property paused: {PropertyId} by user {UserId}", id, userId);
+        return Ok(new PropertyPauseStatusResponse(updated.IsPaused, updated.PausedAt));
+    }
+
+    /// <summary>Reactivates a paused property (PC-03, A2-05): public search, its page and new guest bookings see it again. Idempotent.</summary>
+    /// <param name="id">The unique identifier of the property to reactivate.</param>
+    /// <response code="200">The pause state right after the change.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    [HttpPost("{id:guid}/activate")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyPauseStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPauseStatusResponse>> Activate(Guid id)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var existing = await propertyService.GetPropertyRecordAsync(id);
+        if (existing == null)
+            return NotFound();
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), PropertyOperations.Write))
+        {
+            logger.LogWarning("User {UserId} attempted to activate property {PropertyId} owned by {OwnerId}",
+                userId, id, existing.OwnerId);
+            return Forbid();
+        }
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, GetUserRoles(), "Property.Activate");
+
+        var updated = await propertyService.ActivatePropertyAsync(existing);
+        logger.LogInformation("Property activated: {PropertyId} by user {UserId}", id, userId);
+        return Ok(new PropertyPauseStatusResponse(updated.IsPaused, updated.PausedAt));
+    }
+
+    private async Task<bool> HasSubmittedCanoneConcordatoLeaseAsync(Guid propertyId)
+    {
+        var leases = await leaseContractRepository.GetByPropertyAsync(propertyId);
+        return leases.Any(lease =>
+            lease.FiscalRegime == FiscalRegime.CanoneConcordato &&
+            lease.Status is LeaseStatus.RegistrationPending or LeaseStatus.SentToProvider or LeaseStatus.Registered);
+    }
+
+    private static bool IsCityChange(string currentCity, string requestedCity) =>
+        !string.Equals(currentCity.Trim(), requestedCity.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// CIN status of the properties the caller sees in <c>GET /api/properties</c> (TN-3 scope, MO-12): the owner's own,
+    /// every property of the org for an org-wide role, so a PropertyManager gets the summary of the properties it handles.
+    /// </summary>
     [HttpGet("cin-compliance")]
-    [Authorize(Policy = "RequireContext:short-rent:property.read")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(CinComplianceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<CinComplianceResponse>> GetCinCompliance(
         [FromQuery] string? cinStatus,
         [FromQuery] int page = 1,
@@ -185,42 +410,44 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        if (!string.IsNullOrWhiteSpace(cinStatus) && cinStatus is not ("valid" or "missing" or "invalid"))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "CinStatusUnknown");
+
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 200) pageSize = 50;
 
-        try
+        var result = await propertyService.GetCinComplianceAsync(scope, cinStatus, page, pageSize);
+        return Ok(new CinComplianceResponse
         {
-            var result = await propertyService.GetOwnerCinComplianceAsync(userId, cinStatus, page, pageSize);
-            return Ok(new CinComplianceResponse
+            Items = result.Items.Select(i => new CinComplianceItemResponse
             {
-                Items = result.Items.Select(i => new CinComplianceItemResponse
-                {
-                    PropertyId = i.PropertyId,
-                    PropertyName = i.PropertyName,
-                    CinCode = i.CinCode,
-                    CinStatus = i.CinStatus,
-                    City = i.City,
-                }).ToList(),
-                TotalCount = result.TotalCount,
-                Summary = new CinComplianceSummaryResponse
-                {
-                    Valid = result.Summary.Valid,
-                    Missing = result.Summary.Missing,
-                    Invalid = result.Summary.Invalid,
-                    DaysUntilDeadline = result.Summary.DaysUntilDeadline,
-                    Deadline = result.Summary.Deadline.ToString("yyyy-MM-dd"),
-                    HasNonCompliant = result.Summary.HasNonCompliant,
-                },
-            });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+                PropertyId = i.PropertyId,
+                PropertyName = i.PropertyName,
+                CinCode = i.CinCode,
+                CinStatus = i.CinStatus,
+                City = i.City,
+            }).ToList(),
+            TotalCount = result.TotalCount,
+            Summary = new CinComplianceSummaryResponse
+            {
+                Valid = result.Summary.Valid,
+                Missing = result.Summary.Missing,
+                Invalid = result.Summary.Invalid,
+                DaysUntilDeadline = result.Summary.Deadline.DaysUntilDeadline,
+                Deadline = result.Summary.Deadline.Deadline?.ToString(CinOptions.DateFormat, CultureInfo.InvariantCulture),
+                DeadlineStatus = result.Summary.Deadline.PhaseApiValue,
+                HasNonCompliant = result.Summary.HasNonCompliant,
+            },
+        });
     }
 
     [HttpPut("{id}/cin")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     public async Task<IActionResult> UpdateCin(Guid id, [FromBody] UpdatePropertyCinRequest request)
     {
         var userId = GetAuthenticatedUserId();
@@ -231,30 +458,66 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, existing.OwnerId, roles))
+        if (!await authorizationService.CanAccessAsync(userId, existing, GetUserRoles()))
             return Forbid();
 
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        try
-        {
-            await propertyService.UpdatePropertyCinAsync(id, request.CinCode);
-            return NoContent();
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { error = ex.Message });
-        }
+        // Invalid format (422 invalid_cin_format) and CIN already used by another property (409 duplicate_cin)
+        // are domain exceptions turned into ProblemDetails by the error middleware.
+        await propertyService.UpdatePropertyCinAsync(id, request.CinCode);
+        return NoContent();
     }
 
+    /// <summary>
+    /// Cadastral identification of the unit (LT-10): sheet (foglio), parcel (particella), subaltern, category and income
+    /// (rendita). Used by the lease contract and, for the sheet, to find the canone concordato zone. Shared by
+    /// short-rent hosts and long-term landlords. Only lengths are validated.
+    /// </summary>
+    /// <response code="204">Saved.</response>
+    /// <response code="403">The caller may not edit this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    [HttpPut("{id:guid}/cadastral")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    public async Task<IActionResult> UpdateCadastral(Guid id, [FromBody] UpdatePropertyCadastralRequest request)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var existing = await propertyService.GetPropertyAsync(id);
+        if (existing == null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), SharedPropertyOperations.Write))
+            return Forbid();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, GetUserRoles(), "Property.UpdateCadastral");
+
+        await propertyService.UpdateCadastralDataAsync(id, new PropertyCadastralData(
+            request.Sheet, request.Parcel, request.Subaltern, request.Category, request.Income));
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): the row is kept (<c>IsDeleted</c>/<c>DeletedAt</c>), never removed, so
+    /// its historical bookings and fiscal data (tourist tax, CIN, cedolare secca) stay intact for the Italian
+    /// compliance retention; it just stops appearing in every normal read (the property lists, the plan's used slots).
+    /// Refused with 409 while a stay or a lease is still to come: a property with a guest or a tenant already booked
+    /// cannot simply disappear. A deleted property answers 404 everywhere afterwards, pause/activate included.
+    /// </summary>
+    /// <response code="204">Property soft-deleted.</response>
+    /// <response code="403">The caller may not delete this property.</response>
+    /// <response code="404">No property with this id in the caller's org (or already deleted).</response>
+    /// <response code="409"><c>property_has_upcoming_bookings</c>: a pending, confirmed or checked-in stay has not
+    /// checked out yet; <c>property_has_active_leases</c>: a lease in force or in progress has not ended yet.</response>
     [HttpDelete("{id}")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var userId = GetAuthenticatedUserId();
@@ -266,31 +529,54 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        if (!authorizationService.CanAccess(userId, existing.OwnerId, GetUserRoles()))
+        var roles = GetUserRoles();
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), PropertyOperations.Write))
         {
             logger.LogWarning("User {UserId} attempted to delete property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
             return Forbid();
         }
 
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, roles, "Property.Delete");
+
+        // 409 property_has_upcoming_bookings / property_has_active_leases: ProblemDetails from the error middleware (FD-05).
         await propertyService.DeletePropertyAsync(id);
-        logger.LogInformation("Property deleted: {PropertyId} by user {UserId}", id, userId);
+        logger.LogInformation("Property soft-deleted: {PropertyId} by user {UserId}", id, userId);
         return NoContent();
     }
 
+    /// <summary>
+    /// The public search across orgs (BK-20, A8-13): published properties of active orgs, cheapest first within a city, at
+    /// most 50. Every filter is optional: <c>city</c> (part of the name), <c>bedrooms</c> and <c>bathrooms</c> (at least),
+    /// <c>guests</c> (sleeps at least), <c>minPrice</c> and <c>maxPrice</c> (nightly rate). Each result carries
+    /// <c>orgSlug</c>, which with <c>slug</c> gives <c>/book/{orgSlug}/property/{slug}</c>. A value out of range is a 400.
+    /// </summary>
     [HttpGet("search")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<IEnumerable<PublicPropertyDto>>> Search(
-        [FromQuery] string? city,
-        [FromQuery] int? bedrooms,
-        [FromQuery] decimal? maxPrice)
+        [FromQuery, StringLength(100, ErrorMessage = "PublicSearchFilterInvalid")] string? city,
+        [FromQuery, Range(0, 50, ErrorMessage = "PublicSearchFilterInvalid")] int? bedrooms,
+        [FromQuery, Range(0, 50, ErrorMessage = "PublicSearchFilterInvalid")] int? bathrooms,
+        [FromQuery, Range(1, 100, ErrorMessage = "PublicSearchFilterInvalid")] int? guests,
+        [FromQuery, Range(typeof(decimal), "0", "1000000", ErrorMessage = "PublicSearchFilterInvalid")] decimal? minPrice,
+        [FromQuery, Range(typeof(decimal), "0", "1000000", ErrorMessage = "PublicSearchFilterInvalid")] decimal? maxPrice)
     {
-        var properties = await propertyService.SearchAsync(city, bedrooms, maxPrice);
+        var properties = await propertyService.SearchAsync(new PublicPropertySearchCriteria
+        {
+            City = city,
+            MinBedrooms = bedrooms,
+            MinBathrooms = bathrooms,
+            Guests = guests,
+            MinPrice = minPrice,
+            MaxPrice = maxPrice,
+        });
         return Ok(properties);
     }
 
     [HttpGet("{id}/public")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<PublicPropertyDetailDto>> GetPublic(Guid id)
     {
         var property = await propertyService.GetPublicPropertyAsync(id);
@@ -300,158 +586,176 @@ public class PropertiesController(
         return Ok(property);
     }
 
-    // Image Management Endpoints
+    // ─── Photo gallery (PC-04, A2-26) ────────────────────────────────────────────
 
-    [HttpPost("{id}/images")]
+    /// <summary>
+    /// The photo gallery of a property: the photos in display order (absolute public URLs; the first is the cover) and
+    /// the upload rules. Short-rent only, like every short-stay side of the property.
+    /// </summary>
+    /// <response code="200">The gallery.</response>
+    /// <response code="403">The caller may not read this property (TN-3).</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    [HttpGet("{id:guid}/images")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPhotosResponse>> GetImages(Guid id)
+    {
+        var (property, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        return Ok(PropertyPhotosResponse.From(property!.PhotoUrls));
+    }
+
+    /// <summary>
+    /// Adds photos to the gallery (multipart field <c>images</c>, at most 10 files per request, 10 MB each, JPEG/PNG/WebP
+    /// checked on their content, 20 photos per property). All or none: one invalid file stores nothing. The new photos
+    /// go after the existing ones; the first photo of a gallery is its cover.
+    /// </summary>
+    /// <response code="200">The gallery after the upload.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    /// <response code="413">The request is larger than 10 files of 10 MB.</response>
+    /// <response code="422"><c>property_photo_none</c>, <c>property_photo_too_many_files</c>, <c>property_photo_invalid_type</c>,
+    /// <c>property_photo_invalid_size</c> or <c>property_photo_limit_reached</c>.</response>
+    [HttpPost("{id:guid}/images")]
     [Consumes("multipart/form-data")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
-    public async Task<ActionResult<Property>> UploadImages(Guid id, [FromForm] List<IFormFile> images)
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [RequestSizeLimit(PropertyPhotoLimits.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = PropertyPhotoLimits.MaxRequestBytes)]
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<PropertyPhotosResponse>> UploadImages(
+        Guid id,
+        [FromForm] List<IFormFile> images,
+        CancellationToken cancellationToken)
+    {
+        var (property, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Write, "PropertyPhoto.Upload");
+        if (denied is not null)
+            return denied;
+
+        var gallery = await photoService.AddAsync(id, images, cancellationToken);
+        logger.LogInformation(
+            "Photos uploaded to property {PropertyId} of org {OrgId}: gallery has {Total} photos",
+            id, property!.OrgId, gallery.Count);
+        return Ok(PropertyPhotosResponse.From(gallery));
+    }
+
+    /// <summary>
+    /// Deletes a photo: removes it from the gallery and its object from the storage. The photo is identified by its URL
+    /// (not by its position, which another tab may have changed): <c>DELETE /images?url=...</c>. A cover that is deleted
+    /// is replaced by the next photo.
+    /// </summary>
+    /// <response code="200">The gallery after the deletion.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property in the caller's org, or <c>property_photo_not_found</c>: the photo is not in its gallery.</response>
+    [HttpDelete("{id:guid}/images")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPhotosResponse>> DeleteImage(
+        Guid id,
+        [FromQuery, Required(ErrorMessage = "PropertyPhotoUrlRequired"), MaxLength(PropertyPhotoRequestLimits.UrlMaxLength, ErrorMessage = "PropertyPhotoUrlTooLong")]
+        string url,
+        CancellationToken cancellationToken)
+    {
+        var (property, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Write, "PropertyPhoto.Delete");
+        if (denied is not null)
+            return denied;
+
+        var gallery = await photoService.DeleteAsync(id, url, cancellationToken);
+        logger.LogInformation(
+            "Photo deleted from property {PropertyId} of org {OrgId}: gallery has {Total} photos",
+            id, property!.OrgId, gallery.Count);
+        return Ok(PropertyPhotosResponse.From(gallery));
+    }
+
+    /// <summary>
+    /// Sets the order of the gallery. The body is the list of every photo URL of the gallery, each once, in the new
+    /// order (the first becomes the cover).
+    /// </summary>
+    /// <response code="200">The gallery in the new order.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    /// <response code="409"><c>property_photos_changed</c>: the list is not the current gallery (another tab or user changed it).</response>
+    [HttpPut("{id:guid}/images/order")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<PropertyPhotosResponse>> ReorderImages(
+        Guid id,
+        [FromBody] List<string> orderedImageUrls,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Write, "PropertyPhoto.Reorder");
+        if (denied is not null)
+            return denied;
+
+        var gallery = await photoService.ReorderAsync(id, orderedImageUrls, cancellationToken);
+        return Ok(PropertyPhotosResponse.From(gallery));
+    }
+
+    /// <summary>
+    /// Makes a photo of the gallery the cover (what public pages, search results and the org site show first): it moves
+    /// first, the others keep their order. Idempotent.
+    /// </summary>
+    /// <response code="200">The gallery with the new cover first.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property in the caller's org, or <c>property_photo_not_found</c>: the photo is not in its gallery.</response>
+    [HttpPut("{id:guid}/images/cover")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPhotosResponse>> SetCoverImage(
+        Guid id,
+        [FromBody] SetPropertyCoverPhotoRequest request,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Write, "PropertyPhoto.SetCover");
+        if (denied is not null)
+            return denied;
+
+        var gallery = await photoService.SetCoverAsync(id, request.Url, cancellationToken);
+        return Ok(PropertyPhotosResponse.From(gallery));
+    }
+
+    /// <summary>
+    /// TN-3 check of the photo endpoints: the property of the caller's org (the tenant filter hides another org's one, so
+    /// 404), the host permission for the row (403), and the audit of an org-wide role acting on a colleague's property.
+    /// </summary>
+    private async Task<(Property? Property, ActionResult? Denied)> AuthorizePropertyAsync(
+        Guid id,
+        HostOperationRequirement operation,
+        string? auditAction = null)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
+            return (null, Unauthorized());
 
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property == null)
-            return NotFound();
+        var property = await propertyService.GetPropertyRecordAsync(id);
+        if (property is null)
+            return (null, NotFound());
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), operation))
         {
-            logger.LogWarning("User {UserId} attempted to upload images to property {PropertyId} owned by {OwnerId}",
-                userId, id, property.OwnerId);
-            return Forbid();
+            logger.LogWarning(
+                "User {UserId} denied {Permission} on the photos of property {PropertyId}",
+                userId, operation.PermissionKey, id);
+            return (null, Forbid());
         }
 
-        // Validate maximum image limit (20 images)
-        const int maxImages = 20;
-        if (property.PhotoUrls.Count + images.Count > maxImages)
-        {
-            return BadRequest(new { error = $"Maximum {maxImages} images allowed per property. Current: {property.PhotoUrls.Count}, Attempting to add: {images.Count}" });
-        }
+        if (auditAction is not null)
+            await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), auditAction);
 
-        // Validate and upload each image
-        var uploadedUrls = new List<string>();
-        foreach (var image in images)
-        {
-            if (!imageStorageService.ValidateImage(image))
-            {
-                logger.LogWarning("Invalid image file rejected: {FileName}", image.FileName);
-                return BadRequest(new { error = $"Invalid image file: {image.FileName}. Allowed formats: JPEG, PNG, WebP. Max size: 10MB" });
-            }
-
-            try
-            {
-                var url = await imageStorageService.UploadImageAsync(image, id);
-                await propertyService.AddImageAsync(id, url);
-                uploadedUrls.Add(url);
-                logger.LogInformation("Image uploaded for property {PropertyId}: {ImageUrl}", id, url);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to upload image for property {PropertyId}", id);
-                return StatusCode(500, new { error = "Failed to upload image" });
-            }
-        }
-
-        // Return updated property
-        var updatedProperty = await propertyService.GetPropertyAsync(id);
-        return Ok(new { property = updatedProperty, uploadedImages = uploadedUrls });
-    }
-
-    [HttpGet("{id}/images")]
-    public async Task<ActionResult<List<string>>> GetImages(Guid id)
-    {
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property == null)
-            return NotFound();
-
-        return Ok(property.PhotoUrls);
-    }
-
-    [HttpDelete("{id}/images/{imageIndex}")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
-    public async Task<ActionResult<Property>> DeleteImage(Guid id, int imageIndex)
-    {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property == null)
-            return NotFound();
-
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to delete image from property {PropertyId} owned by {OwnerId}",
-                userId, id, property.OwnerId);
-            return Forbid();
-        }
-
-        // Validate image index
-        if (imageIndex < 0 || imageIndex >= property.PhotoUrls.Count)
-        {
-            return BadRequest(new { error = $"Invalid image index {imageIndex}. Property has {property.PhotoUrls.Count} images." });
-        }
-
-        try
-        {
-            // Get the image URL before removing it
-            var imageUrl = property.PhotoUrls[imageIndex];
-
-            // Remove from property
-            var updatedProperty = await propertyService.RemoveImageAsync(id, imageIndex);
-
-            // Delete from storage
-            await imageStorageService.DeleteImageAsync(imageUrl);
-
-            logger.LogInformation("Image deleted from property {PropertyId} at index {Index}", id, imageIndex);
-            return Ok(updatedProperty);
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            return BadRequest(new { error = $"Invalid image index {imageIndex}" });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to delete image from property {PropertyId}", id);
-            return StatusCode(500, new { error = "Failed to delete image" });
-        }
-    }
-
-    [HttpPut("{id}/images/order")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
-    public async Task<ActionResult<Property>> ReorderImages(Guid id, [FromBody] List<string> orderedImageUrls)
-    {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property == null)
-            return NotFound();
-
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to reorder images for property {PropertyId} owned by {OwnerId}",
-                userId, id, property.OwnerId);
-            return Forbid();
-        }
-
-        try
-        {
-            var updatedProperty = await propertyService.ReorderImagesAsync(id, orderedImageUrls);
-            logger.LogInformation("Images reordered for property {PropertyId}", id);
-            return Ok(updatedProperty);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to reorder images for property {PropertyId}", id);
-            return StatusCode(500, new { error = "Failed to reorder images" });
-        }
+        return (property, null);
     }
 
     // ─── Detail + Documents ──────────────────────────────────────────────────────
@@ -463,30 +767,32 @@ public class PropertiesController(
     /// <returns>A <see cref="PropertyDetailResponse"/> with aggregate data.</returns>
     /// <response code="200">Property detail returned successfully.</response>
     /// <response code="401">The caller is not authenticated.</response>
-    /// <response code="403">The caller does not own this property.</response>
-    /// <response code="404">No property found with the given <paramref name="id"/>.</response>
+    /// <response code="403">The caller may not read this property (TN-3).</response>
+    /// <response code="404">No property found with the given <paramref name="id"/> in the caller's org. Any other
+    /// failure is a 500, never a 404 (A2-36).</response>
     [HttpGet("{id}/detail")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(PropertyDetailResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PropertyDetailResponse>> GetDetail(Guid id)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        PropertyDetailResponse detail;
-        try
-        {
-            detail = await propertyService.GetPropertyDetailAsync(id);
-        }
-        catch (InvalidOperationException)
-        {
+        // TN-3: the row is checked before its bookings and documents are read; another org's property is 404.
+        var property = await propertyService.GetPropertyRecordAsync(id);
+        if (property == null)
             return NotFound();
-        }
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, detail.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PropertyOperations.Read))
             return Forbid();
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, id, detail.OwnerId, roles, "PropertyDetail.Read");
+        // A property that disappears in between answers 404 (NotFoundException, FD-05).
+        var detail = await propertyService.GetPropertyDetailAsync(id);
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, detail.OwnerId, GetUserRoles(), "PropertyDetail.Read");
 
         return Ok(detail);
     }
@@ -511,11 +817,10 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Read))
             return Forbid();
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "PropertyDocument.List");
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.List");
 
         var documents = await documentService.GetByPropertyIdAsync(id);
         return Ok(documents.Select(ToDocumentDto));
@@ -535,7 +840,7 @@ public class PropertiesController(
     /// <response code="404">No property found with the given <paramref name="id"/>.</response>
     [HttpPost("{id}/documents")]
     [Consumes("multipart/form-data")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     public async Task<ActionResult<PropertyDocumentDto>> UploadDocument(
         Guid id,
         IFormFile file,
@@ -549,23 +854,31 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
             return Forbid();
 
-        if (!Enum.TryParse<DocumentType>(documentType, ignoreCase: true, out var docType))
-            return BadRequest(new { error = $"Invalid document type: {documentType}" });
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"), which would
+        // otherwise reach storage and the DB as an undefined document type (PL-07, A1-35, A7-31).
+        if (!EnumNames.TryParseDefined<DocumentType>(documentType, out var docType))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "DocumentTypeInvalid");
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "PropertyDocument.Upload");
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.Upload");
 
         try
         {
             var document = await documentService.UploadDocumentAsync(id, file, docType, userId);
             return CreatedAtAction(nameof(GetDocuments), new { id }, ToDocumentDto(document));
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Invalid document", StringComparison.OrdinalIgnoreCase))
+        catch (ApeComplianceException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest,
+                ex.Code,
+                ex.Code == ApeComplianceException.InvalidContentCode ? "ApeInvalidContent" : "ApeRequired");
+        }
+        catch (DomainRuleException ex)
+        {
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, [.. ex.MessageArgs]);
         }
     }
 
@@ -580,7 +893,7 @@ public class PropertiesController(
     /// <response code="403">The caller does not own this property.</response>
     /// <response code="404">Property or document not found.</response>
     [HttpDelete("{id}/documents/{docId}")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     public async Task<IActionResult> DeleteDocument(Guid id, Guid docId)
     {
         var userId = GetAuthenticatedUserId();
@@ -591,18 +904,139 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
             return Forbid();
 
         var document = await documentService.GetDocumentAsync(docId);
         if (document == null || document.PropertyId != id)
             return NotFound();
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "PropertyDocument.Delete");
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.Delete");
 
         await documentService.DeleteDocumentAsync(docId);
         return NoContent();
+    }
+
+    /// <summary>
+    /// Code and energy class printed on an APE document (LT-10): the lease contract states them (template data). 422
+    /// <c>document_not_ape</c> for another document type, <c>ape_identification_invalid</c> for an empty code or a class
+    /// that is not 1-3 letters, digits or "+".
+    /// </summary>
+    /// <response code="200">The updated document.</response>
+    /// <response code="403">The caller may not edit this property.</response>
+    /// <response code="404">Property or document not found.</response>
+    [HttpPut("{id:guid}/documents/{docId:guid}/ape")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    public async Task<ActionResult<PropertyDocumentDto>> UpdateApeIdentification(
+        Guid id, Guid docId, [FromBody] UpdateApeIdentificationRequest request)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property == null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
+            return Forbid();
+
+        var document = await documentService.GetDocumentAsync(docId);
+        if (document == null || document.PropertyId != id)
+            return NotFound();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.UpdateApe");
+
+        var updated = await documentService.UpdateApeIdentificationAsync(document, request.Code, request.EnergyClass);
+        return Ok(ToDocumentDto(updated));
+    }
+
+    /// <summary>
+    /// Downloads a property document. Documents live in the private bucket: this authenticated endpoint
+    /// (tenant filter + ownership) is the only way to read them (FD-07, A2-03/A2-31).
+    /// </summary>
+    /// <param name="id">The unique identifier of the property.</param>
+    /// <param name="docId">The unique identifier of the document.</param>
+    /// <response code="200">The file, as an attachment.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="403">The caller does not own this property.</response>
+    /// <response code="404">Property or document not found (also for another org's property), or file missing from the storage.</response>
+    [HttpGet("{id:guid}/documents/{docId:guid}/download")]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadDocument(Guid id, Guid docId)
+    {
+        var access = await AuthorizeDocumentAccessAsync(id, docId, "PropertyDocument.Download");
+        if (access.Denied is not null)
+            return access.Denied;
+
+        var content = await documentService.OpenContentAsync(access.Document!);
+        if (content is null)
+        {
+            logger.LogWarning("Stored file missing for document {DocumentId} of property {PropertyId}", docId, id);
+            return this.ApiProblem(StatusCodes.Status404NotFound, StorageProblemCodes.DocumentFileMissing, "DocumentFileMissing");
+        }
+
+        Response.Headers.CacheControl = "private, no-store";
+        return File(content, StorageKeys.ContentTypeFor(access.Document!.FileName), access.Document.FileName);
+    }
+
+    /// <summary>
+    /// Returns a short-lived signed URL of a property document (private bucket), for clients that
+    /// download directly from the storage. Same authorization as <see cref="DownloadDocument"/>.
+    /// </summary>
+    /// <param name="id">The unique identifier of the property.</param>
+    /// <param name="docId">The unique identifier of the document.</param>
+    /// <response code="200"><c>{ url, expiresAt }</c>.</response>
+    /// <response code="403">The caller does not own this property.</response>
+    /// <response code="404">Property or document not found (also for another org's property).</response>
+    /// <response code="501">The configured storage cannot sign URLs (filesystem provider in Development): use the download endpoint.</response>
+    [HttpGet("{id:guid}/documents/{docId:guid}/signed-url")]
+    [ProducesResponseType(typeof(SignedDocumentUrlResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status501NotImplemented)]
+    public async Task<ActionResult<SignedDocumentUrlResponse>> GetDocumentSignedUrl(Guid id, Guid docId)
+    {
+        var access = await AuthorizeDocumentAccessAsync(id, docId, "PropertyDocument.SignedUrl");
+        if (access.Denied is not null)
+            return access.Denied;
+
+        var signed = await documentService.GetSignedDownloadUrlAsync(access.Document!);
+        if (signed is null)
+        {
+            return this.ApiProblem(StatusCodes.Status501NotImplemented, StorageProblemCodes.SignedUrlUnavailable, "SignedUrlUnavailable");
+        }
+
+        return Ok(new SignedDocumentUrlResponse(signed.Url.ToString(), signed.ExpiresAtUtc));
+    }
+
+    private async Task<(PropertyDocument? Document, ActionResult? Denied)> AuthorizeDocumentAccessAsync(
+        Guid propertyId, Guid documentId, string auditAction)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return (null, Unauthorized());
+
+        // Tenant query filter: another org's property is invisible here → 404, never its file.
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property == null)
+            return (null, NotFound());
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Read))
+        {
+            logger.LogWarning("User {UserId} denied access to document {DocumentId} of property {PropertyId}",
+                userId, documentId, propertyId);
+            return (null, Forbid());
+        }
+
+        var document = await documentService.GetDocumentAsync(documentId);
+        if (document == null || document.PropertyId != propertyId)
+            return (null, NotFound());
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, propertyId, property.OwnerId, GetUserRoles(), auditAction);
+        return (document, null);
     }
 
     private static PropertyDocumentDto ToDocumentDto(PropertyDocument d) =>
@@ -633,138 +1067,300 @@ public class PropertiesController(
         if (userId == ownerId)
             return;
 
-        if (!roles.Any(r => r is "PropertyManager" or "Admin"))
+        if (!roles.Any(Casazen.Core.Authorization.HostRoles.OrgWide.Contains))
             return;
 
         await adminAccessAuditService.LogPrivilegedPropertyAccessAsync(userId, propertyId, ownerId, action);
     }
 
-    [HttpPost("{id:guid}/ical/import-url")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
-    public async Task<ActionResult<PropertyIcalStatusDto>> SetIcalImportUrl(
+    // ─── iCal calendars (PC-11: many import feeds per property, URL encrypted) ─────
+    // TN-3 on every action: PropertyRead / PropertyWrite policies plus the resource check of the property (404 when
+    // it is not visible, e.g. another org; 403 when visible but the operation is not allowed).
+
+    /// <summary>Export link, block count and import feeds of the property.</summary>
+    [HttpGet("{id:guid}/ical/status")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(PropertyIcalStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyIcalStatusDto>> GetIcalStatus(
         Guid id,
-        [FromBody] PropertyIcalImportUrlRequest request,
+        [FromServices] IAuthorizationService hostAuthorization,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
+        var (property, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Read, hostAuthorization);
+        if (denied is not null)
+            return denied;
 
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property is null)
-            return NotFound();
-
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
-            return Forbid();
-
-        try
+        var export = await propertyICalSyncService.GetOrCreateExportAsync(id, property.OrgId, cancellationToken);
+        return Ok(new PropertyIcalStatusDto
         {
-            await propertyICalSyncService.SetImportUrlAndSyncAsync(id, property.OrgId, request.ImportUrl, cancellationToken);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-
-        return Ok(await BuildIcalStatusAsync(id, cancellationToken));
-    }
-
-    [HttpGet("{id:guid}/ical/status")]
-    [Authorize(Policy = "RequireContext:short-rent:property.read")]
-    public async Task<ActionResult<PropertyIcalStatusDto>> GetIcalStatus(Guid id, CancellationToken cancellationToken)
-    {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property is null)
-            return NotFound();
-
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
-            return Forbid();
-
-        return Ok(await BuildIcalStatusAsync(id, cancellationToken));
-    }
-
-    [HttpGet("{id:guid}/ical/export-url")]
-    [Authorize(Policy = "RequireContext:short-rent:property.read")]
-    public async Task<ActionResult<PropertyIcalExportUrlDto>> GetIcalExportUrl(Guid id, CancellationToken cancellationToken)
-    {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property is null)
-            return NotFound();
-
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
-            return Forbid();
-
-        var feed = await propertyICalSyncService.GetOrCreateFeedAsync(id, property.OrgId, cancellationToken);
-        return Ok(new PropertyIcalExportUrlDto
-        {
-            ExportUrl = propertyICalSyncService.BuildExportUrl(feed.ExportToken),
+            ExportUrl = propertyICalSyncService.BuildExportUrl(export.ExportToken),
+            BlockCount = await propertyICalSyncService.GetBlockCountAsync(id, cancellationToken),
+            Feeds = await BuildIcalFeedDtosAsync(id, localizer, cancellationToken),
         });
     }
 
-    private async Task<PropertyIcalStatusDto> BuildIcalStatusAsync(Guid propertyId, CancellationToken cancellationToken)
+    /// <summary>Import feeds of the property, oldest first; each with its own sync state and a masked URL.</summary>
+    [HttpGet("{id:guid}/ical/feeds")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(IReadOnlyList<PropertyIcalFeedDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<PropertyIcalFeedDto>>> GetIcalFeeds(
+        Guid id,
+        [FromServices] IAuthorizationService hostAuthorization,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Read, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        return Ok(await BuildIcalFeedDtosAsync(id, localizer, cancellationToken));
+    }
+
+    /// <summary>
+    /// Adds an import feed (Airbnb, Booking.com, other) and queues its first sync (FD-16, A2-21): the download runs in
+    /// a Hangfire job, never in this request. 202 with status <c>Syncing</c>. 400 <c>ical_invalid_url</c> (not an
+    /// external https URL) or <c>ical_feed_invalid_label</c>; 409 <c>ical_feed_duplicate</c>; 422
+    /// <c>ical_feed_limit_reached</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/ical/feeds")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyIcalFeedDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<PropertyIcalFeedDto>> AddIcalFeed(
+        Guid id,
+        [FromBody] PropertyIcalFeedCreateRequest request,
+        [FromServices] IAuthorizationService hostAuthorization,
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var (property, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Write, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        PropertyICalFeed feed;
+        try
+        {
+            feed = await propertyICalSyncService.AddFeedAsync(
+                id, property.OrgId, request.Channel, request.Label, request.ImportUrl, cancellationToken);
+        }
+        catch (DomainRuleException ex) when (ex.Code is ICalErrorCodes.InvalidUrl or ICalFeedErrorCodes.InvalidLabel)
+        {
+            // Malformed input, not a business rule: 400 like the other validation errors.
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, [.. ex.MessageArgs]);
+        }
+
+        QueueIcalFeedSync(feed.Id, backgroundJobClient);
+        return Accepted(BuildIcalFeedDto(feed, blockCount: 0, localizer));
+    }
+
+    /// <summary>Removes an import feed and the blocks it imported (only those): 204; 404 <c>ical_feed_not_found</c>.</summary>
+    [HttpDelete("{id:guid}/ical/feeds/{feedId:guid}")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveIcalFeed(
+        Guid id,
+        Guid feedId,
+        [FromServices] IAuthorizationService hostAuthorization,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Write, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        await propertyICalSyncService.RemoveFeedAsync(id, feedId, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// "Sync now" of one import feed: 202 with status <c>Syncing</c> and a queued job, or the current state when a sync
+    /// is already queued; 404 <c>ical_feed_not_found</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/ical/feeds/{feedId:guid}/sync")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyIcalFeedDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyIcalFeedDto>> SyncIcalFeed(
+        Guid id,
+        Guid feedId,
+        [FromServices] IAuthorizationService hostAuthorization,
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Write, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        var (feed, queue) = await propertyICalSyncService.RequestSyncAsync(id, feedId, cancellationToken);
+        if (queue)
+            QueueIcalFeedSync(feed.Id, backgroundJobClient);
+
+        var counts = await propertyICalSyncService.GetBlockCountsByFeedAsync(id, cancellationToken);
+        return Accepted(BuildIcalFeedDto(feed, counts.GetValueOrDefault(feed.Id), localizer));
+    }
+
+    [HttpGet("{id:guid}/ical/export-url")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(PropertyIcalExportUrlDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyIcalExportUrlDto>> GetIcalExportUrl(
+        Guid id,
+        [FromServices] IAuthorizationService hostAuthorization,
+        CancellationToken cancellationToken)
+    {
+        var (property, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Read, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        var export = await propertyICalSyncService.GetOrCreateExportAsync(id, property.OrgId, cancellationToken);
+        return Ok(new PropertyIcalExportUrlDto
+        {
+            ExportUrl = propertyICalSyncService.BuildExportUrl(export.ExportToken),
+        });
+    }
+
+    /// <summary>
+    /// Replaces the token of the export link (PC-12, A2-22): 200 with the new <c>exportUrl</c>; the old link answers
+    /// 404 from now on, so the host must paste the new one on every OTA. 404 when the property is not visible (other
+    /// org), 403 without write permission on it.
+    /// </summary>
+    [HttpPost("{id:guid}/ical/export-url/regenerate")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyIcalExportUrlDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyIcalExportUrlDto>> RegenerateIcalExportUrl(
+        Guid id,
+        [FromServices] IAuthorizationService hostAuthorization,
+        CancellationToken cancellationToken)
+    {
+        var (property, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Write, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        var export = await propertyICalSyncService.RegenerateExportTokenAsync(id, property.OrgId, cancellationToken);
+        return Ok(new PropertyIcalExportUrlDto
+        {
+            ExportUrl = propertyICalSyncService.BuildExportUrl(export.ExportToken),
+        });
+    }
+
+    // TN-3 resource-based check of the property for the iCal actions: 404 when the property is not visible (other
+    // org), 403 when visible but the operation is not allowed.
+    private async Task<(Property Property, ActionResult? Denied)> AuthorizeIcalAsync(
+        Guid propertyId,
+        HostOperationRequirement operation,
+        IAuthorizationService hostAuthorization)
     {
         var property = await propertyService.GetPropertyAsync(propertyId);
-        var feed = property is null
-            ? null
-            : await propertyICalSyncService.GetFeedAsync(propertyId, cancellationToken)
-              ?? await propertyICalSyncService.GetOrCreateFeedAsync(propertyId, property.OrgId, cancellationToken);
+        if (property is null)
+            return (null!, NotFound());
 
-        return new PropertyIcalStatusDto
+        if (!await hostAuthorization.IsAuthorizedAsync(User, HostResource.ForProperty(property), operation))
         {
-            ImportUrl = feed?.ImportUrl,
-            ExportUrl = feed is null ? string.Empty : propertyICalSyncService.BuildExportUrl(feed.ExportToken),
-            LastImportAt = feed?.LastImportAt,
-            LastImportStatus = feed?.LastImportStatus?.ToString(),
-            LastError = feed?.LastError,
-            BlockCount = await propertyICalSyncService.GetBlockCountAsync(propertyId, cancellationToken),
+            logger.LogWarning(
+                "User {UserId} denied {Permission} on iCal of property {PropertyId}",
+                User.GetUserId(), operation.PermissionKey, propertyId);
+            return (property, Forbid());
+        }
+
+        return (property, null);
+    }
+
+    private void QueueComuneOfficialProfile(string? istatCode)
+    {
+        if (string.IsNullOrWhiteSpace(istatCode))
+            return;
+
+        var backgroundJobClient = HttpContext.RequestServices.GetService<IBackgroundJobClient>();
+        if (backgroundJobClient is null)
+            return;
+
+        try
+        {
+            backgroundJobClient.Enqueue<ComuneOfficialProfileJob>(
+                job => job.EnsureAsync(istatCode, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not queue the official profile of comune {IstatCode}", istatCode);
+        }
+    }
+
+    private void QueueIcalFeedSync(Guid feedId, IBackgroundJobClient backgroundJobClient)
+    {
+        try
+        {
+            backgroundJobClient.Enqueue<PropertyICalSyncJob>(job => job.SyncFeedAsync(feedId, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            // The feed is saved: the recurring property-ical-sync job (every 15 minutes) syncs it anyway.
+            logger.LogError(ex, "Could not queue the sync of iCal feed {FeedId}", feedId);
+        }
+    }
+
+    private async Task<IReadOnlyList<PropertyIcalFeedDto>> BuildIcalFeedDtosAsync(
+        Guid propertyId,
+        IStringLocalizer localizer,
+        CancellationToken cancellationToken)
+    {
+        var feeds = await propertyICalSyncService.ListFeedsAsync(propertyId, cancellationToken);
+        var counts = await propertyICalSyncService.GetBlockCountsByFeedAsync(propertyId, cancellationToken);
+        return feeds.Select(f => BuildIcalFeedDto(f, counts.GetValueOrDefault(f.Id), localizer)).ToList();
+    }
+
+    private static PropertyIcalFeedDto BuildIcalFeedDto(PropertyICalFeed feed, int blockCount, IStringLocalizer localizer)
+    {
+        var (lastErrorCode, lastErrorMessage) = ICalErrorMessages.Describe(feed.LastError, localizer);
+        return new PropertyIcalFeedDto
+        {
+            Id = feed.Id,
+            Channel = feed.Channel.ToString(),
+            Label = feed.Label,
+            MaskedImportUrl = ICalFeedUrlMask.Mask(feed.ImportUrl),
+            CreatedAt = feed.CreatedAt,
+            LastImportAt = feed.LastImportAt,
+            LastImportStatus = feed.LastImportStatus?.ToString(),
+            LastErrorCode = lastErrorCode,
+            LastError = lastErrorMessage,
+            BlockCount = blockCount,
         };
     }
 
     // ─── Compliance activation wizard (#295) ───────────────────────────────────
 
     [HttpGet("{id:guid}/compliance/activation")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(PropertyActivationWizardDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PropertyActivationWizardDto>> GetComplianceActivation(
         Guid id,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property is null)
-            return NotFound();
-
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-            return Forbid();
+        var denied = await AuthorizeShortStayPropertyAsync(id, PropertyOperations.Read);
+        if (denied is not null)
+            return denied;
 
         try
         {
             var (loaded, steps) = await complianceWizardService.GetActivationWizardAsync(id, cancellationToken);
+            var suspended = loaded.ComplianceStatus == PropertyComplianceStatus.Suspended;
             return Ok(new PropertyActivationWizardDto
             {
                 ComplianceStatus = loaded.ComplianceStatus.ToString(),
-                Steps = steps.Select(s => new ComplianceActivationStepDto
-                {
-                    Id = s.Id,
-                    Label = s.Label,
-                    Status = s.Status,
-                    Blocker = s.Blocker,
-                    Message = s.Message,
-                }),
+                SuspendedAt = suspended ? loaded.ComplianceSuspendedAt : null,
+                SuspensionReasons = suspended ? loaded.ComplianceSuspensionReasons ?? [] : [],
+                Steps = steps.Select(s => ToActivationStepDto(s, localizer)),
             });
         }
         catch (KeyNotFoundException)
@@ -773,47 +1369,117 @@ public class PropertiesController(
         }
     }
 
+    private static ComplianceActivationStepDto ToActivationStepDto(
+        ComplianceActivationStep step,
+        IStringLocalizer<SharedResources> localizer) => new()
+        {
+            Id = step.Id,
+            Label = step.LabelKey is null ? step.Label : localizer[step.LabelKey].Value,
+            Status = step.Status,
+            Blocker = step.Blocker,
+            Message = step.MessageKey is null
+                ? step.Message
+                : localizer[step.MessageKey, step.MessageArgs?.ToArray() ?? []].Value,
+            LinkUrl = step.LinkUrl,
+            Blockers = step.Blockers.Select(b => ToBlockerDto(step.Id, b, localizer)).ToList(),
+            Warnings = step.Warnings
+                .Select(w => new ActivationWarningDto
+                {
+                    Step = step.Id,
+                    Code = w.Code,
+                    Message = localizer[w.MessageKey, w.MessageArgs.ToArray()].Value,
+                })
+                .ToList(),
+            TouristTax = step.TouristTax is not { } tax
+                ? null
+                : new ActivationTouristTaxDto
+                {
+                    City = tax.City,
+                    PublicPageSlug = tax.PublicPageSlug,
+                    CategoryRequired = tax.CategoryRequired,
+                    Rate = tax.Rate is not { } rate
+                        ? null
+                        : new ActivationTouristTaxRateDto
+                        {
+                            CalculationMethod = rate.CalculationMethod,
+                            RatePerPersonPerNight = rate.RatePerPersonPerNight,
+                            PercentOfNightlyPrice = rate.PercentOfNightlyPrice,
+                            CapPerPersonPerNight = rate.CapPerPersonPerNight,
+                            MaxNights = rate.MaxNights,
+                            MinimumAge = rate.MinimumAge,
+                            ReducedRateMaxAge = rate.ReducedRateMaxAge,
+                            ReducedRatePerPersonPerNight = rate.ReducedRatePerPersonPerNight,
+                            SeasonStart = rate.SeasonStart,
+                            SeasonEnd = rate.SeasonEnd,
+                            EffectiveFrom = rate.EffectiveFrom,
+                            EffectiveTo = rate.EffectiveTo,
+                            SourceUrl = rate.SourceUrl,
+                            VerificationLevel = rate.VerificationLevel,
+                        },
+                },
+        };
+
+    private static ActivationBlockerDto ToBlockerDto(
+        string stepId,
+        ActivationBlocker blocker,
+        IStringLocalizer<SharedResources> localizer) => new()
+        {
+            Step = stepId,
+            Code = blocker.Code,
+            Message = localizer[blocker.MessageKey, blocker.MessageArgs.ToArray()].Value,
+        };
+
+    /// <summary>Code of the 409 of <see cref="CompleteComplianceActivation"/> when blocking steps are left.</summary>
+    internal const string ActivationBlockedCode = "property_activation_blocked";
+
+    /// <summary>
+    /// Activates the property when every blocking step is complete. 409 <c>property_activation_blocked</c> otherwise, with
+    /// <c>incompleteBlockers</c> (step ids) and <c>blockers</c> (<c>{ step, code, message }</c>, stable codes such as
+    /// <c>safety_gas_detector_missing</c>); 409 <c>activation_tos_required</c> without the terms accepted. The safety
+    /// checklist is saved with <see cref="SaveSafetyChecklist"/> (CO-07). Same evaluation as the re-evaluation after a
+    /// change (CO-06): with blockers left an active property is suspended and a pending or suspended one keeps its status
+    /// (<c>complianceStatus</c> of the 409). A property in long-term mode (PM-01) is never published: 422
+    /// <c>property_not_bookable_in_long_mode</c>.
+    /// </summary>
     [HttpPost("{id:guid}/compliance/activation/complete")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(CompletePropertyActivationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<CompletePropertyActivationResponse>> CompleteComplianceActivation(
         Guid id,
         [FromBody] CompletePropertyActivationRequest request,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property is null)
-            return NotFound();
-
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-            return Forbid();
+        var denied = await AuthorizeShortStayPropertyAsync(id, PropertyOperations.Write);
+        if (denied is not null)
+            return denied;
 
         try
         {
-            PropertySafetyChecklistInput? safety = request.SafetyChecklist is null
-                ? null
-                : new PropertySafetyChecklistInput(
-                    request.SafetyChecklist.SmokeDetector,
-                    request.SafetyChecklist.FireExtinguisher,
-                    request.SafetyChecklist.GasCompliance,
-                    userId);
+            var (updated, blockingSteps) = await complianceWizardService.CompleteActivationAsync(
+                id, userId, request.TosAccepted, cancellationToken);
 
-            var (updated, blockers) = await complianceWizardService.CompleteActivationAsync(
-                id, userId, safety, request.TosAccepted, cancellationToken);
-
-            if (blockers.Count > 0)
+            if (blockingSteps.Count > 0)
             {
-                return Conflict(new CompletePropertyActivationResponse
+                var problem = ApiProblemDetails.Create(
+                    HttpContext, StatusCodes.Status409Conflict, ActivationBlockedCode, "PropertyActivationBlocked");
+                problem.Extensions["complianceStatus"] = updated.ComplianceStatus.ToString();
+                problem.Extensions["incompleteBlockers"] = blockingSteps.Select(s => s.Id).ToList();
+                problem.Extensions["blockers"] = blockingSteps
+                    .SelectMany(s => s.Blockers.Select(b => ToBlockerDto(s.Id, b, localizer)))
+                    .ToList();
+                return new ObjectResult(problem)
                 {
-                    ComplianceStatus = updated.ComplianceStatus.ToString(),
-                    IncompleteBlockers = blockers,
-                });
+                    StatusCode = StatusCodes.Status409Conflict,
+                    ContentTypes = { ApiProblemDetails.ContentType },
+                };
             }
 
             return Ok(new CompletePropertyActivationResponse
@@ -825,9 +1491,161 @@ public class PropertiesController(
         {
             return NotFound();
         }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { error = ex.Message });
-        }
     }
+
+    // ─── D.L. 145/2023 safety checklist (CO-07) ────────────────────────────────
+
+    /// <summary>
+    /// Safety checklist of the property (D.L. 145/2023 art. 13-ter): facts, answers, items "not applicable" with their
+    /// reason, minimum extinguishers, blockers and warnings with stable codes. An empty checklist before the first save.
+    /// </summary>
+    [HttpGet("{id:guid}/compliance/safety-checklist")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(SafetyChecklistDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SafetyChecklistDto>> GetSafetyChecklist(
+        Guid id,
+        [FromServices] IPropertySafetyChecklistService safetyChecklistService,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var denied = await AuthorizeShortStayPropertyAsync(id, PropertyOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var view = await safetyChecklistService.GetAsync(id, cancellationToken);
+        return Ok(ToSafetyChecklistDto(view, localizer));
+    }
+
+    /// <summary>
+    /// Saves the whole safety checklist (facts and answers). "Not applicable" is not sent: it follows from the facts.
+    /// <c>confirm</c> records the host's final confirmation (SC-08) of these answers; any later save without it clears
+    /// it. 422 with a stable code (<c>safety_*</c>) for invalid values; the evidence must be a document of the property.
+    /// </summary>
+    [HttpPut("{id:guid}/compliance/safety-checklist")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(SafetyChecklistDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<SafetyChecklistDto>> SaveSafetyChecklist(
+        Guid id,
+        [FromBody] SaveSafetyChecklistRequest request,
+        [FromServices] IPropertySafetyChecklistService safetyChecklistService,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var denied = await AuthorizeShortStayPropertyAsync(id, PropertyOperations.Write);
+        if (denied is not null)
+            return denied;
+
+        var facts = request.Facts ?? new SafetyChecklistFactsDto();
+        var input = new SafetyChecklistInput(
+            new SafetyChecklistFactsInput(
+                facts.Entrepreneurial,
+                facts.HasGasSupply,
+                facts.CombustionAppliances,
+                facts.FloorCount,
+                facts.FloorAreasSqm),
+            (request.Items ?? []).Select(i => new SafetyChecklistItemInput(
+                i.Code,
+                i.Answer,
+                i.Quantity,
+                i.Location,
+                i.DetectorType,
+                i.CheckedOn,
+                i.ExpiresOn,
+                i.EvidenceDocumentId,
+                i.Notes)).ToList(),
+            request.Confirm);
+
+        var view = await safetyChecklistService.SaveAsync(id, userId, input, cancellationToken);
+        return Ok(ToSafetyChecklistDto(view, localizer));
+    }
+
+    private static SafetyChecklistDto ToSafetyChecklistDto(SafetyChecklistView view, IStringLocalizer<SharedResources> localizer)
+    {
+        var checklist = view.Checklist;
+        var answers = checklist?.Items.ToDictionary(i => i.Code) ?? new Dictionary<SafetyItemCode, PropertySafetyChecklistItem>();
+
+        return new SafetyChecklistDto
+        {
+            SchemaVersion = checklist?.SchemaVersion ?? SafetyChecklistRules.SchemaVersion,
+            LegalBasis = checklist?.LegalBasis is { Length: > 0 } basis ? basis : SafetyChecklistRules.LegalBasis,
+            DeclarationTextVersion = SafetyChecklistRules.DeclarationTextVersion,
+            Saved = checklist is not null,
+            ImportedFromLegacy = checklist is { SchemaVersion: SafetyChecklistRules.LegacySchemaVersion },
+            Facts = new SafetyChecklistFactsDto
+            {
+                Entrepreneurial = checklist?.Entrepreneurial,
+                HasGasSupply = checklist?.HasGasSupply,
+                CombustionAppliances = checklist?.CombustionAppliances,
+                FloorCount = checklist?.FloorCount,
+                FloorAreasSqm = checklist?.FloorAreasSqm,
+            },
+            Items = view.Evaluation.Items.Select(e =>
+            {
+                answers.TryGetValue(e.Code, out var item);
+                return new SafetyChecklistItemDto
+                {
+                    Code = e.Code,
+                    Requirement = e.Requirement,
+                    Status = e.Status,
+                    NotApplicableReason = e.NotApplicableReason,
+                    Answer = item?.Answer,
+                    Quantity = item?.Quantity,
+                    Location = item?.Location,
+                    DetectorType = item?.DetectorType,
+                    CheckedOn = item?.CheckedOn,
+                    ExpiresOn = item?.ExpiresOn,
+                    EvidenceDocumentId = item?.EvidenceDocumentId,
+                    EvidenceFileName = item?.EvidenceDocumentId is { } doc && view.EvidenceFileNames.TryGetValue(doc, out var name)
+                        ? name
+                        : null,
+                    Notes = item?.Notes,
+                };
+            }).ToList(),
+            MinimumExtinguishers = view.Evaluation.MinimumExtinguishers,
+            IsComplete = view.Evaluation.IsComplete,
+            Blockers = view.Evaluation.Blockers.Select(b => ToIssueDto(b, localizer)).ToList(),
+            Warnings = view.Evaluation.Warnings.Select(w => ToIssueDto(w, localizer)).ToList(),
+            ConfirmedAt = checklist?.ConfirmedAt,
+            ConfirmedTextVersion = checklist?.ConfirmedTextVersion,
+            UpdatedAt = checklist?.UpdatedAt,
+        };
+    }
+
+    private static SafetyChecklistIssueDto ToIssueDto(SafetyChecklistIssue issue, IStringLocalizer<SharedResources> localizer) => new()
+    {
+        Code = issue.Code,
+        Message = localizer[issue.MessageKey, issue.MessageArgs.ToArray()].Value,
+    };
+
+    // TN-3 resource-based check of a short-stay property for the compliance actions touched by CO-07: 404 when the
+    // property is not visible (other org), 403 when visible but the operation is not allowed.
+    private async Task<ActionResult?> AuthorizeShortStayPropertyAsync(Guid propertyId, HostOperationRequirement operation)
+    {
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property is null)
+            return NotFound();
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), operation))
+        {
+            logger.LogWarning(
+                "User {UserId} denied {Permission} on compliance of property {PropertyId}",
+                User.GetUserId(), operation.PermissionKey, propertyId);
+            return Forbid();
+        }
+
+        return null;
+    }
+
+    /// <summary>403 of a create over the org's plan limit; the frontend branches on it (<c>isPlanLimitError</c>).</summary>
+    internal const string PlanLimitReachedCode = "plan_limit_reached";
+    internal const string CityLockedCode = "property_city_locked";
 }

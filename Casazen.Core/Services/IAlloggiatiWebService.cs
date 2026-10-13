@@ -1,15 +1,67 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
+/// <summary>
+/// Alloggiati Web communications (art. 109 TULPS). CasaZen does not transmit to the Questura yet (CO-13 builds the record
+/// file the host uploads on the portal, not a web service client): on the arrival day a report becomes <see cref="AlloggiatiWebStatus.DaInviareManualmente"/> and
+/// the host sends it on the portal, then records it with <see cref="MarkSentManuallyAsync"/>. No method ever sets
+/// <see cref="AlloggiatiWebStatus.Inviato"/> without a real receipt.
+/// </summary>
 public interface IAlloggiatiWebService
 {
-    Task ReportGuestAsync(Guid guestId, Guid bookingId);
-    Task<bool> ValidateGuestDataAsync(Guid guestId);
-    Task<AlloggiatiWebReport?> GetReportStatusAsync(Guid bookingId);
+    /// <summary>
+    /// True when every guest of the stay has every field of the Alloggiati record and the order of the guests (head of
+    /// family or group before its members) is valid (CO-12). Official codes are not required: they block only the export.
+    /// False for an unknown booking.
+    /// </summary>
+    Task<bool> IsStayDataCompleteAsync(Guid bookingId);
+
+    /// <summary>Status of the communication of a booking. Throws <c>NotFoundException</c> for an unknown booking.</summary>
     Task<AlloggiatiStatusInfo> GetStatusAsync(Guid bookingId);
-    Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(Guid? propertyId);
-    Task<AlloggiatiStatusInfo> SendManualAsync(Guid bookingId);
-    double GetHoursUntilDeadline(DateTime checkInDate);
-    bool IsOverdue(DateTime checkInDate, bool dataComplete, AlloggiatiWebStatus? reportStatus);
+
+    /// <summary>
+    /// The communications of the active bookings of <paramref name="scope"/> (the org and, for a restricted scope, the
+    /// properties the caller reaches, AM-03), by arrival, optionally of one property.
+    /// </summary>
+    Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(HostScope scope, Guid? propertyId);
+
+    /// <summary>
+    /// Per-guest data the host copies on the portal, in the order of the record. Throws <c>NotFoundException</c>
+    /// for an unknown booking.
+    /// </summary>
+    Task<AlloggiatiGuestSummaryInfo> GetGuestSummaryAsync(Guid bookingId);
+
+    /// <summary>
+    /// The record file the host uploads on the Alloggiati Web portal (CO-13): one 168-character line per guest of the stay
+    /// in record order, built from the data and the imported official codes. It is not a communication: no status
+    /// changes, nothing is stored or transmitted. Throws <c>NotFoundException</c> for an unknown booking and
+    /// <c>DomainRuleException</c> when the file cannot be built (data incomplete or codes to complete, stay of less than 1
+    /// or more than 30 days, a name that cannot be written with the letters the portal accepts).
+    /// </summary>
+    Task<AlloggiatiRecordFileInfo> BuildRecordFileAsync(Guid bookingId);
+
+    /// <summary>
+    /// Idempotency step of the scheduling: makes sure the booking's guest has its report and says whether a job
+    /// must be scheduled for it. Returns null when a job is already scheduled, the communication is past the
+    /// arrival-day step or the booking is not active, so a second caller never queues the job again.
+    /// </summary>
+    Task<AlloggiatiReportReservation?> ReserveReportAsync(Guid bookingId);
+
+    /// <summary>Records the Hangfire job scheduled for a reservation.</summary>
+    Task SetScheduledJobAsync(Guid reportId, string jobId, DateTime scheduledForUtc);
+
+    /// <summary>Arrival-day step, run by the scheduled job: see <see cref="AlloggiatiProcessOutcome"/>.</summary>
+    Task<AlloggiatiProcessOutcome> ProcessScheduledReportAsync(Guid bookingId, Guid guestId);
+
+    /// <summary>
+    /// Records that the host sent the communication on the portal on <paramref name="sentOn"/> (a date between the
+    /// check-in date and today in Europe/Rome). Throws <c>DomainRuleException</c> for an invalid date,
+    /// <c>DomainConflictException</c> when already sent, <c>NotFoundException</c> for an unknown booking.
+    /// </summary>
+    Task<AlloggiatiStatusInfo> MarkSentManuallyAsync(Guid bookingId, DateTime sentOn);
+
+    /// <summary>True when the deadline has passed and the communication is not sent (nor declared sent).</summary>
+    bool IsOverdue(Booking booking, AlloggiatiWebStatus? reportStatus);
 }

@@ -1,428 +1,173 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Pricing;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Repositories;
+using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Services;
 using Casazen.Web.BackgroundJobs;
-using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
-public class DynamicPricingJobTests
+/// <summary>
+/// PC-15 (A2-34): the nightly job recomputes the seasonal suggestions when due by Rome calendar dates. Each simulated
+/// night uses a fresh context, like a Hangfire run.
+/// </summary>
+public sealed class DynamicPricingJobTests : IDisposable
 {
-    private readonly Mock<IPricingAdapterConfigRepository> _configRepositoryMock;
-    private readonly Mock<IPricingHistoryRepository> _historyRepositoryMock;
-    private readonly Mock<IPricingAdapterService> _pricingServiceMock;
-    private readonly Mock<IOtaManager> _otaManagerMock;
-    private readonly Mock<ILogger<DynamicPricingJob>> _loggerMock;
-    private readonly DynamicPricingJob _job;
+    private readonly string _databaseName = $"pc15-job-{Guid.NewGuid():N}";
+    private readonly AppDbContext _seedDb;
 
     public DynamicPricingJobTests()
     {
-        _configRepositoryMock = new Mock<IPricingAdapterConfigRepository>();
-        _historyRepositoryMock = new Mock<IPricingHistoryRepository>();
-        _pricingServiceMock = new Mock<IPricingAdapterService>();
-        _otaManagerMock = new Mock<IOtaManager>();
-        _loggerMock = new Mock<ILogger<DynamicPricingJob>>();
+        _seedDb = NewDb();
+    }
 
-        _job = new DynamicPricingJob(
-            _configRepositoryMock.Object,
-            _historyRepositoryMock.Object,
-            _pricingServiceMock.Object,
-            _otaManagerMock.Object,
-            _loggerMock.Object);
+    public void Dispose() => _seedDb.Dispose();
+
+    private AppDbContext NewDb() =>
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
+
+    /// <summary>Runs the job once at <paramref name="instant"/> and returns the config afterwards.</summary>
+    private async Task<PricingAdapterConfig> RunJobAtAsync(DateTimeOffset instant, Guid configId)
+    {
+        await using var db = NewDb();
+        var service = new PricingAdapterService(
+            db, new PricingAdapterConfigRepository(db), NullLogger<PricingAdapterService>.Instance, new FixedTimeProvider(instant));
+        var job = new DynamicPricingJob(new PricingAdapterConfigRepository(db), service, NullLogger<DynamicPricingJob>.Instance);
+
+        await job.ExecuteAsync();
+
+        return await db.PricingAdapterConfigs.AsNoTracking().SingleAsync(c => c.Id == configId);
+    }
+
+    /// <summary>02:00Z every night, a few minutes early or late (Hangfire queue, worker restarts).</summary>
+    private static DateTimeOffset NightlyRun(DateOnly day, int jitterSeconds) =>
+        new DateTimeOffset(day.ToDateTime(new TimeOnly(2, 0)), TimeSpan.Zero).AddSeconds(jitterSeconds);
+
+    private static readonly int[] Jitter = [5, -2, 170, -240, 30, -1, 600, -600, 0, 90, -30, 45, -120, 300, -5, 12, -300, 1, -59, 240, -170];
+
+    [Fact]
+    public async Task ExecuteAsync_FirstRunAfterActivation_IsNotSkipped()
+    {
+        var (property, config) = await PricingAdapterServiceTests.SeedAsync(_seedDb, frequency: SeasonalSuggestionSchedule.Weekly);
+
+        var after = await RunJobAtAsync(NightlyRun(new DateOnly(2026, 9, 24), 0), config.Id);
+
+        Assert.NotNull(after.LastAdaptedAt);
+        Assert.Equal(90, await _seedDb.SeasonalPriceSuggestions.CountAsync(s => s.PropertyId == property.Id));
     }
 
     [Fact]
-    public async Task ExecuteAsync_NoEnabledConfigs_CompletesSuccessfully()
+    public async Task ExecuteAsync_WeeklyWithJitter_RunsOnceAWeek()
     {
-        // Arrange
-        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
-            .ReturnsAsync(new List<PricingAdapterConfig>());
+        var (_, config) = await PricingAdapterServiceTests.SeedAsync(_seedDb, frequency: SeasonalSuggestionSchedule.Weekly);
+        var computedOn = new List<DateOnly>();
+        DateTime? previous = null;
 
-        // Act
-        await _job.ExecuteAsync();
+        var first = new DateOnly(2026, 9, 1);
+        for (var night = 0; night < 21; night++)
+        {
+            var day = first.AddDays(night);
+            var after = await RunJobAtAsync(NightlyRun(day, Jitter[night]), config.Id);
+            if (after.LastAdaptedAt != previous)
+                computedOn.Add(day);
+            previous = after.LastAdaptedAt;
+        }
 
-        // Assert
-        _configRepositoryMock.Verify(r => r.GetEnabledConfigsAsync(), Times.Once);
-        _historyRepositoryMock.Verify(r => r.AddAsync(It.IsAny<PricingHistory>()), Times.Never);
+        Assert.Equal(new[] { new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 8), new DateOnly(2026, 9, 15) }, computedOn);
     }
 
     [Fact]
-    public async Task ExecuteAsync_SingleEnabledConfig_ProcessesSuccessfully()
+    public async Task ExecuteAsync_DailyWithJitter_RunsEveryDayWithoutSkipping()
     {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var config = new PricingAdapterConfig
+        var (_, config) = await PricingAdapterServiceTests.SeedAsync(_seedDb, frequency: SeasonalSuggestionSchedule.Daily);
+        var computed = 0;
+        DateTime? previous = null;
+
+        var first = new DateOnly(2026, 9, 1);
+        for (var night = 0; night < 14; night++)
         {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId,
-            IsEnabled = true,
-            IncludeSeasonality = true,
-            IncludePublicHolidays = false,
-            AdaptationFrequency = "daily"
-        };
+            var after = await RunJobAtAsync(NightlyRun(first.AddDays(night), Jitter[night]), config.Id);
+            if (after.LastAdaptedAt != previous)
+                computed++;
+            previous = after.LastAdaptedAt;
+        }
 
-        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
-            .ReturnsAsync(new[] { config });
-
-        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
-            It.IsAny<DateTime>(),
-            It.IsAny<bool>(),
-            It.IsAny<bool>()))
-            .ReturnsAsync(1.2m);
-
-        _historyRepositoryMock.Setup(r => r.AddAsync(It.IsAny<PricingHistory>()))
-            .ReturnsAsync((PricingHistory h) => h);
-
-        _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId))
-            .ReturnsAsync(true);
-
-        // Act
-        await _job.ExecuteAsync();
-
-        // Assert
-        _configRepositoryMock.Verify(r => r.GetEnabledConfigsAsync(), Times.Once);
-        _pricingServiceMock.Verify(
-            s => s.CalculatePricingMultiplierAsync(It.IsAny<DateTime>(), true, false),
-            Times.AtLeastOnce);
-        _historyRepositoryMock.Verify(
-            r => r.AddAsync(It.IsAny<PricingHistory>()),
-            Times.AtLeastOnce);
-        _configRepositoryMock.Verify(r => r.UpdateAsync(config), Times.Once);
-        _otaManagerMock.Verify(m => m.SyncAllAsync(propertyId), Times.Once);
+        Assert.Equal(14, computed);
     }
 
     [Fact]
-    public async Task ExecuteAsync_MultipleConfigs_AllProcessed()
+    public async Task ExecuteAsync_DailyRetriedTheSameNight_ComputesOnce()
     {
-        // Arrange
-        var propertyId1 = Guid.NewGuid();
-        var propertyId2 = Guid.NewGuid();
-        var config1 = new PricingAdapterConfig
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId1,
-            IsEnabled = true,
-            IncludeSeasonality = true,
-            IncludePublicHolidays = true,
-            AdaptationFrequency = "daily"
-        };
-        var config2 = new PricingAdapterConfig
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId2,
-            IsEnabled = true,
-            IncludeSeasonality = false,
-            IncludePublicHolidays = false,
-            AdaptationFrequency = "daily"
-        };
+        var (_, config) = await PricingAdapterServiceTests.SeedAsync(_seedDb);
+        var night = new DateOnly(2026, 9, 10);
 
-        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
-            .ReturnsAsync(new[] { config1, config2 });
+        var first = await RunJobAtAsync(NightlyRun(night, 0), config.Id);
+        var retry = await RunJobAtAsync(NightlyRun(night, 1_800), config.Id);
 
-        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
-            It.IsAny<DateTime>(),
-            It.IsAny<bool>(),
-            It.IsAny<bool>()))
-            .ReturnsAsync(1.1m);
-
-        _historyRepositoryMock.Setup(r => r.AddAsync(It.IsAny<PricingHistory>()))
-            .ReturnsAsync((PricingHistory h) => h);
-
-        _otaManagerMock.Setup(m => m.SyncAllAsync(It.IsAny<Guid>()))
-            .ReturnsAsync(true);
-
-        // Act
-        await _job.ExecuteAsync();
-
-        // Assert
-        _configRepositoryMock.Verify(r => r.GetEnabledConfigsAsync(), Times.Once);
-        _configRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<PricingAdapterConfig>()), Times.Exactly(2));
-        _otaManagerMock.Verify(m => m.SyncAllAsync(It.IsAny<Guid>()), Times.Exactly(2));
+        Assert.Equal(first.LastAdaptedAt, retry.LastAdaptedAt);
     }
 
     [Fact]
-    public async Task ExecuteAsync_SinglePropertyFails_ContinuesWithNextProperty()
+    public async Task ExecuteAsync_RunEveryNight_KeepsOneRowPerDate()
     {
-        // Arrange
-        var propertyId1 = Guid.NewGuid();
-        var propertyId2 = Guid.NewGuid();
-        var config1 = new PricingAdapterConfig
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId1,
-            IsEnabled = true,
-            IncludeSeasonality = true,
-            IncludePublicHolidays = false,
-            AdaptationFrequency = "daily"
-        };
-        var config2 = new PricingAdapterConfig
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId2,
-            IsEnabled = true,
-            IncludeSeasonality = false,
-            IncludePublicHolidays = false,
-            AdaptationFrequency = "daily"
-        };
+        var (property, config) = await PricingAdapterServiceTests.SeedAsync(_seedDb);
 
-        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
-            .ReturnsAsync(new[] { config1, config2 });
+        for (var night = 0; night < 5; night++)
+            await RunJobAtAsync(NightlyRun(new DateOnly(2026, 9, 1).AddDays(night), Jitter[night]), config.Id);
 
-        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
-            It.IsAny<DateTime>(),
-            It.IsAny<bool>(),
-            It.IsAny<bool>()))
-            .ReturnsAsync(1.1m);
-
-        _historyRepositoryMock.Setup(r => r.AddAsync(It.IsAny<PricingHistory>()))
-            .ReturnsAsync((PricingHistory h) => h);
-
-        _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId1))
-            .ThrowsAsync(new Exception("OTA sync failed"));
-
-        _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId2))
-            .ReturnsAsync(true);
-
-        // Act
-        await _job.ExecuteAsync();
-
-        // Assert - Property 2 should still be processed despite Property 1 failure
-        _configRepositoryMock.Verify(r => r.UpdateAsync(config2), Times.Once);
-        _otaManagerMock.Verify(m => m.SyncAllAsync(propertyId2), Times.Once);
+        var rows = await _seedDb.SeasonalPriceSuggestions.AsNoTracking().Where(s => s.PropertyId == property.Id).ToListAsync();
+        Assert.Equal(SeasonalPriceCalculator.WindowDays, rows.Count);
+        Assert.Equal(rows.Count, rows.Select(r => r.StayDate).Distinct().Count());
+        Assert.Equal(new DateOnly(2026, 9, 5), rows.Min(r => r.StayDate));
+        Assert.Empty(await _seedDb.PricingHistories.ToListAsync());
     }
 
     [Fact]
-    public async Task ExecuteAsync_UpdatesLastAdaptedAtAndNextScheduledRunAt()
+    public async Task ExecuteAsync_OnePropertyFails_OthersAreStillProcessed()
     {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var config = new PricingAdapterConfig
+        var failing = Guid.NewGuid();
+        var healthy = Guid.NewGuid();
+        var configs = new Mock<IPricingAdapterConfigRepository>();
+        configs.Setup(r => r.GetEnabledConfigsAsync()).ReturnsAsync(new List<PricingAdapterConfig>
         {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId,
-            IsEnabled = true,
-            IncludeSeasonality = true,
-            IncludePublicHolidays = false,
-            AdaptationFrequency = "daily",
-            LastAdaptedAt = null,
-            NextScheduledRunAt = null
-        };
-
-        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
-            .ReturnsAsync(new[] { config });
-
-        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
-            It.IsAny<DateTime>(),
-            It.IsAny<bool>(),
-            It.IsAny<bool>()))
-            .ReturnsAsync(1.0m);
-
-        _historyRepositoryMock.Setup(r => r.AddAsync(It.IsAny<PricingHistory>()))
-            .ReturnsAsync((PricingHistory h) => h);
-
-        _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId))
-            .ReturnsAsync(true);
-
-        var capturedConfig = (PricingAdapterConfig?)null;
-        _configRepositoryMock.Setup(r => r.UpdateAsync(It.IsAny<PricingAdapterConfig>()))
-            .Callback<PricingAdapterConfig>(c => capturedConfig = c)
-            .Returns(Task.CompletedTask);
-
-        // Act
-        var beforeRun = DateTime.UtcNow;
-        await _job.ExecuteAsync();
-        var afterRun = DateTime.UtcNow;
-
-        // Assert
-        Assert.NotNull(capturedConfig);
-        Assert.NotNull(capturedConfig.LastAdaptedAt);
-        Assert.True(capturedConfig.LastAdaptedAt >= beforeRun && capturedConfig.LastAdaptedAt <= afterRun);
-        Assert.NotNull(capturedConfig.NextScheduledRunAt);
-        Assert.True(
-            capturedConfig.NextScheduledRunAt >= beforeRun.AddDays(1) &&
-            capturedConfig.NextScheduledRunAt <= afterRun.AddDays(1));
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_RecordsMultiplePricingHistoriesPerProperty()
-    {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var config = new PricingAdapterConfig
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId,
-            IsEnabled = true,
-            IncludeSeasonality = false,
-            IncludePublicHolidays = false,
-            AdaptationFrequency = "daily"
-        };
-
-        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
-            .ReturnsAsync(new[] { config });
-
-        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
-            It.IsAny<DateTime>(),
-            It.IsAny<bool>(),
-            It.IsAny<bool>()))
-            .ReturnsAsync(1.2m);
-
-        var historyRecords = new List<PricingHistory>();
-        _historyRepositoryMock.Setup(r => r.AddAsync(It.IsAny<PricingHistory>()))
-            .Callback<PricingHistory>(h => historyRecords.Add(h))
-            .ReturnsAsync((PricingHistory h) => h);
-
-        _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId))
-            .ReturnsAsync(true);
-
-        // Act
-        await _job.ExecuteAsync();
-
-        // Assert - Should have ~90 history records
-        Assert.NotEmpty(historyRecords);
-        Assert.True(historyRecords.Count >= 88 && historyRecords.Count <= 92);
-        Assert.All(historyRecords, h =>
-        {
-            Assert.Equal(propertyId, h.PropertyId);
-            Assert.Equal("Pending", h.SyncStatus);
-            Assert.Equal(0.85m, h.AiConfidence);
+            new() { PropertyId = failing, IsEnabled = true, AdaptationFrequency = "daily" },
+            new() { PropertyId = healthy, IsEnabled = true, AdaptationFrequency = "daily" },
         });
+        var service = new Mock<IPricingAdapterService>();
+        service.Setup(s => s.RegenerateSuggestionsAsync(failing, true, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("boom"));
+        service.Setup(s => s.RegenerateSuggestionsAsync(healthy, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeasonalSuggestionRunResult(SeasonalSuggestionRunStatus.Computed, 90, DateTime.UtcNow));
+        var job = new DynamicPricingJob(configs.Object, service.Object, NullLogger<DynamicPricingJob>.Instance);
+
+        await job.ExecuteAsync();
+
+        service.Verify(s => s.RegenerateSuggestionsAsync(healthy, true, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task ExecuteAsync_CalculatesPricingMultiplierWithConfigSettings()
+    public async Task ExecuteAsync_Always_AsksOnlyForDueComputations()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
-        var config = new PricingAdapterConfig
+        var configs = new Mock<IPricingAdapterConfigRepository>();
+        configs.Setup(r => r.GetEnabledConfigsAsync()).ReturnsAsync(new List<PricingAdapterConfig>
         {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId,
-            IsEnabled = true,
-            IncludeSeasonality = true,
-            IncludePublicHolidays = true,
-            AdaptationFrequency = "daily"
-        };
-
-        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
-            .ReturnsAsync(new[] { config });
-
-        var multiplierCalls = new List<(DateTime date, bool seasonality, bool holidays)>();
-        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
-            It.IsAny<DateTime>(),
-            It.IsAny<bool>(),
-            It.IsAny<bool>()))
-            .Callback<DateTime, bool, bool>((d, s, h) => multiplierCalls.Add((d, s, h)))
-            .ReturnsAsync(1.1m);
-
-        _historyRepositoryMock.Setup(r => r.AddAsync(It.IsAny<PricingHistory>()))
-            .ReturnsAsync((PricingHistory h) => h);
-
-        _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId))
-            .ReturnsAsync(true);
-
-        // Act
-        await _job.ExecuteAsync();
-
-        // Assert
-        Assert.NotEmpty(multiplierCalls);
-        Assert.All(multiplierCalls, call =>
-        {
-            Assert.True(call.seasonality);
-            Assert.True(call.holidays);
+            new() { PropertyId = propertyId, IsEnabled = true, AdaptationFrequency = "weekly" },
         });
-    }
+        var service = new Mock<IPricingAdapterService>();
+        service.Setup(s => s.RegenerateSuggestionsAsync(propertyId, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeasonalSuggestionRunResult(SeasonalSuggestionRunStatus.NotDue, 0, null));
 
-    [Fact]
-    public async Task ExecuteAsync_OnePropertyThrows_ContinuesProcessingOthers()
-    {
-        var propertyId1 = Guid.NewGuid();
-        var propertyId2 = Guid.NewGuid();
-        var config1 = new PricingAdapterConfig
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId1,
-            IsEnabled = true,
-            IncludeSeasonality = true,
-            IncludePublicHolidays = false,
-            AdaptationFrequency = "daily",
-        };
-        var config2 = new PricingAdapterConfig
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId2,
-            IsEnabled = true,
-            IncludeSeasonality = false,
-            IncludePublicHolidays = false,
-            AdaptationFrequency = "daily",
-        };
+        await new DynamicPricingJob(configs.Object, service.Object, NullLogger<DynamicPricingJob>.Instance).ExecuteAsync();
 
-        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
-            .ReturnsAsync(new[] { config1, config2 });
-
-        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
-                It.IsAny<DateTime>(),
-                true,
-                false))
-            .ThrowsAsync(new InvalidOperationException("Pricing computation failed"));
-
-        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
-                It.IsAny<DateTime>(),
-                false,
-                false))
-            .ReturnsAsync(1.1m);
-
-        _historyRepositoryMock.Setup(r => r.AddAsync(It.IsAny<PricingHistory>()))
-            .ReturnsAsync((PricingHistory h) => h);
-
-        _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId2))
-            .ReturnsAsync(true);
-
-        await _job.ExecuteAsync();
-
-        _configRepositoryMock.Verify(r => r.UpdateAsync(config2), Times.Once);
-        _otaManagerMock.Verify(m => m.SyncAllAsync(propertyId2), Times.Once);
-        _configRepositoryMock.Verify(r => r.UpdateAsync(config1), Times.Never);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_PricingHistorySyncStatusIsPending()
-    {
-        // Arrange
-        var propertyId = Guid.NewGuid();
-        var config = new PricingAdapterConfig
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = propertyId,
-            IsEnabled = true,
-            IncludeSeasonality = false,
-            IncludePublicHolidays = false,
-            AdaptationFrequency = "daily"
-        };
-
-        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
-            .ReturnsAsync(new[] { config });
-
-        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
-            It.IsAny<DateTime>(),
-            It.IsAny<bool>(),
-            It.IsAny<bool>()))
-            .ReturnsAsync(1.5m);
-
-        var historyRecords = new List<PricingHistory>();
-        _historyRepositoryMock.Setup(r => r.AddAsync(It.IsAny<PricingHistory>()))
-            .Callback<PricingHistory>(h => historyRecords.Add(h))
-            .ReturnsAsync((PricingHistory h) => h);
-
-        _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId))
-            .ReturnsAsync(true);
-
-        // Act
-        await _job.ExecuteAsync();
-
-        // Assert
-        Assert.All(historyRecords, h => Assert.Equal("Pending", h.SyncStatus));
+        service.Verify(s => s.RegenerateSuggestionsAsync(propertyId, true, It.IsAny<CancellationToken>()), Times.Once);
+        service.Verify(s => s.RegenerateSuggestionsAsync(propertyId, false, It.IsAny<CancellationToken>()), Times.Never);
     }
 }

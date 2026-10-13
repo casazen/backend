@@ -10,6 +10,57 @@ public interface IUserRepository
     Task<IEnumerable<User>> GetAllAsync();
     Task<(IEnumerable<User> Users, int TotalCount)> GetPagedAsync(string? search, string? role, bool? isActive, int page, int pageSize);
     Task<User> AddAsync(User user);
+
+    /// <summary>
+    /// Inserts <paramref name="user"/> unless a row with the same <c>Id</c> already exists, and returns the stored
+    /// row. Two first-access requests of the same Auth0 user may both try the insert (A1-14): the one that loses
+    /// gets the row of the winner instead of a primary-key violation.
+    /// </summary>
+    Task<(User User, bool Created)> AddIfAbsentAsync(User user);
     Task UpdateAsync(User user);
-    Task DeleteAsync(string id);
+
+    /// <summary>
+    /// Removes the account. Memberships and property grants cascade; a property that named this user as responsible
+    /// is left without one. Push tokens of the account are removed too (they have no foreign key).
+    /// </summary>
+    Task DeleteAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets <c>IsActive</c> of user <paramref name="id"/> (PL-03). A deactivation runs under a transaction-scoped
+    /// advisory lock and changes nothing when <paramref name="actorId"/> was deactivated meanwhile
+    /// (<see cref="UserActivationOutcome.ActorInactive"/>) or when the user is the last active platform admin
+    /// (<see cref="UserActivationOutcome.LastActiveAdmin"/>): two admins deactivating each other at the same time
+    /// cannot both succeed. Returns the tracked user (null only for <see cref="UserActivationOutcome.NotFound"/>).
+    /// </summary>
+    Task<(UserActivationOutcome Outcome, User? User)> SetActiveAsync(
+        string id,
+        bool isActive,
+        string actorId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when at least one active user other than <paramref name="excludingUserId"/> holds
+    /// <see cref="UserRole.Admin"/> (A1-17). Guards the removal of the Admin role via
+    /// <see cref="Casazen.Core.Services.IUserService.UpdateRolesAsync"/> the same way <see cref="SetActiveAsync"/>
+    /// guards a deactivation, so the platform can never end up with zero active administrators.
+    /// </summary>
+    Task<bool> HasOtherActiveAdminAsync(string excludingUserId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Result of <see cref="IUserRepository.SetActiveAsync"/>.</summary>
+public enum UserActivationOutcome
+{
+    /// <summary>The active flag changed.</summary>
+    Updated,
+
+    /// <summary>The user already had the requested state: nothing written.</summary>
+    Unchanged,
+
+    NotFound,
+
+    /// <summary>Deactivation refused: the admin who asked for it is no longer active.</summary>
+    ActorInactive,
+
+    /// <summary>Deactivation refused: no other active user would keep the <see cref="UserRole.Admin"/> role.</summary>
+    LastActiveAdmin,
 }

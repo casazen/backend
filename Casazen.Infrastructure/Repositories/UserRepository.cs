@@ -1,7 +1,9 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
+using Casazen.Core.Validation;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Repositories;
 
@@ -33,10 +35,46 @@ public class UserRepository(AppDbContext context) : IUserRepository
         return user;
     }
 
+    public async Task<(User User, bool Created)> AddIfAbsentAsync(User user)
+    {
+        context.Users.Add(user);
+        try
+        {
+            await context.SaveChangesAsync();
+            return (user, true);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // A parallel first request of the same user inserted the row first (A1-14): keep that row.
+            context.Entry(user).State = EntityState.Detached;
+            var stored = await context.Users.FirstOrDefaultAsync(u => u.Id == user.Id);
+            if (stored is null)
+                throw;
+            return (stored, false);
+        }
+    }
+
+    public async Task DeleteAsync(string id, CancellationToken cancellationToken = default)
+    {
+        await context.DeviceRegistrations
+            .Where(d => d.UserId == id)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        var user = await context.Users.FindAsync([id], cancellationToken);
+        if (user is null)
+            return;
+
+        context.Users.Remove(user);
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task UpdateAsync(User user)
     {
         user.UpdatedAt = DateTime.UtcNow;
-        context.Users.Update(user);
+        // A tracked user saves only the columns that changed. Update() would rewrite every column, and a copy
+        // loaded before a parallel request linked the org would put OrgId back to null (A1-14).
+        if (context.Entry(user).State == EntityState.Detached)
+            context.Users.Update(user);
         await context.SaveChangesAsync();
     }
 
@@ -48,6 +86,8 @@ public class UserRepository(AppDbContext context) : IUserRepository
     public async Task<(IEnumerable<User> Users, int TotalCount)> GetPagedAsync(
         string? search, string? role, bool? isActive, int page, int pageSize)
     {
+        // A page below 1 would turn into a negative OFFSET, which Postgres rejects with a 500 (A1-26).
+        page = Math.Max(page, 1);
         var query = context.Users.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -59,7 +99,9 @@ public class UserRepository(AppDbContext context) : IUserRepository
                 EF.Functions.ILike(u.LastName, pattern));
         }
 
-        if (!string.IsNullOrWhiteSpace(role) && Enum.TryParse<UserRole>(role, ignoreCase: true, out var parsedRole))
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"): filtering by it
+        // would silently match nothing instead of leaving the filter unapplied like any other unknown value (PL-07).
+        if (EnumNames.TryParseDefined<UserRole>(role, out var parsedRole))
         {
             query = query.Where(u => u.Role == parsedRole);
         }
@@ -72,7 +114,10 @@ public class UserRepository(AppDbContext context) : IUserRepository
         var totalCount = await query.CountAsync();
 
         var users = await query
-            .OrderBy(u => u.Email)
+            // Newest first (A1-26): an admin looking for a just-created or just-changed account expects it near
+            // the top, not sorted alphabetically by e-mail.
+            .OrderByDescending(u => u.CreatedAt)
+            .ThenBy(u => u.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -80,15 +125,60 @@ public class UserRepository(AppDbContext context) : IUserRepository
         return (users, totalCount);
     }
 
-    public async Task DeleteAsync(string id)
+    /// <inheritdoc />
+    public Task<bool> HasOtherActiveAdminAsync(string excludingUserId, CancellationToken cancellationToken = default) =>
+        context.Users.AnyAsync(
+            u => u.Id != excludingUserId && u.IsActive && u.Role == UserRole.Admin, cancellationToken);
+
+    public async Task<(UserActivationOutcome Outcome, User? User)> SetActiveAsync(
+        string id,
+        bool isActive,
+        string actorId,
+        CancellationToken cancellationToken = default)
     {
-        var user = await GetByIdAsync(id);
-        if (user != null)
+        // Deactivations are serialized (one key): the count of the other active admins below always sees the
+        // deactivation committed by the previous holder (READ COMMITTED), so two admins deactivating each other at the
+        // same time cannot leave the platform without an active admin.
+        await using var transaction = isActive
+            ? null
+            : await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                context,
+                cancellationToken,
+                (PostgresAdvisoryLocks.Scope.UserDeactivation, "users"));
+
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+        if (user is null)
+            return (UserActivationOutcome.NotFound, null);
+
+        if (user.IsActive == isActive)
+            return (UserActivationOutcome.Unchanged, user);
+
+        if (!isActive)
         {
-            // Soft delete — preserve audit trail
-            user.IsActive = false;
-            user.UpdatedAt = DateTime.UtcNow;
-            await context.SaveChangesAsync();
+            // Read under the lock: an admin deactivated by a parallel request no longer acts as one.
+            var actorActive = await context.Users
+                .AsNoTracking()
+                .Where(u => u.Id == actorId)
+                .Select(u => (bool?)u.IsActive)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (actorActive == false)
+                return (UserActivationOutcome.ActorInactive, user);
+
+            if (user.Role == UserRole.Admin &&
+                !await context.Users.AnyAsync(
+                    u => u.Id != id && u.IsActive && u.Role == UserRole.Admin,
+                    cancellationToken))
+            {
+                return (UserActivationOutcome.LastActiveAdmin, user);
+            }
         }
+
+        user.IsActive = isActive;
+        user.UpdatedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        return (UserActivationOutcome.Updated, user);
     }
 }

@@ -8,7 +8,8 @@ namespace Casazen.Tests.Integration;
 
 /// <summary>
 /// Test authentication handler activated when the Authorization header is present.
-/// User id and roles are supplied via X-Test-User and X-Test-Roles headers.
+/// User id and roles are supplied via X-Test-User and X-Test-Roles headers; X-Test-Email and X-Test-Email-Verified add
+/// the email claims.
 /// </summary>
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -26,6 +27,7 @@ public class TestAuthHandler(
         var userId = Request.Headers["X-Test-User"].FirstOrDefault() ?? DefaultUserId;
         var rolesHeader = Request.Headers["X-Test-Roles"].FirstOrDefault();
         var email = Request.Headers["X-Test-Email"].FirstOrDefault();
+        var emailVerified = Request.Headers["X-Test-Email-Verified"].FirstOrDefault();
 
         var claims = new List<Claim> { new("sub", userId) };
         if (!string.IsNullOrWhiteSpace(email))
@@ -33,6 +35,10 @@ public class TestAuthHandler(
             claims.Add(new Claim("email", email));
             claims.Add(new Claim(ClaimTypes.Email, email));
         }
+
+        // Auth0 Action claim (runbook auth0.md §6), a JSON boolean in real access tokens.
+        if (!string.IsNullOrWhiteSpace(emailVerified))
+            claims.Add(new Claim("https://casazen.app/email_verified", emailVerified, ClaimValueTypes.Boolean));
 
         if (!string.IsNullOrWhiteSpace(rolesHeader))
         {

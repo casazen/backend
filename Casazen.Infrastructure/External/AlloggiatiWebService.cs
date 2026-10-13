@@ -1,135 +1,98 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
-using Casazen.Core.Repositories;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Casazen.Infrastructure.External;
 
+/// <summary>
+/// Alloggiati Web communications, honest state (CO-11, decision D6). CasaZen has no client of the Alloggiati web
+/// service (CO-13 only builds the record file the host uploads on the portal): nothing is transmitted, so a communication is never marked
+/// <see cref="AlloggiatiWebStatus.Inviato"/> here. On the arrival day (Europe/Rome) it becomes
+/// <see cref="AlloggiatiWebStatus.DaInviareManualmente"/>: the host sends it on the Questura portal using the
+/// per-guest summary, then declares it with <see cref="MarkSentManuallyAsync"/>.
+/// </summary>
+/// <remarks>
+/// The report is per booking: one communication with a line per guest of the stay (<see cref="StayGuest"/>, CO-12). It is
+/// keyed by the booker's guest record (the "slot"): a report whose booker was replaced by a snapshot of the same guest
+/// is moved to the new guest record, never duplicated.
+/// </remarks>
 public class AlloggiatiWebService(
-    IGuestRepository guestRepository,
-    IAlloggiatiWebReportRepository reportRepository,
-    IBookingRepository bookingRepository,
     AppDbContext context,
-    IConfiguration configuration,
-    ILogger<AlloggiatiWebService> logger) : IAlloggiatiWebService
+    ILogger<AlloggiatiWebService> logger,
+    TimeProvider? timeProvider = null,
+    IStayGuestService? stayGuestService = null,
+    IAlloggiatiCodeTableService? codeTableService = null) : IAlloggiatiWebService
 {
-    private static readonly HashSet<BookingStatus> ActiveBookingStatuses =
+    /// <summary>Error code of a sent date before the check-in date.</summary>
+    public const string ManualDateBeforeArrivalCode = "alloggiati_manual_date_before_arrival";
+
+    /// <summary>Error code of a sent date after today (Europe/Rome).</summary>
+    public const string ManualDateInFutureCode = "alloggiati_manual_date_in_future";
+
+    /// <summary>Error code of a communication already sent or declared sent.</summary>
+    public const string AlreadySentCode = "alloggiati_already_sent";
+
+    /// <summary>Error code of a record file requested while the data is incomplete or an official code is to complete (422).</summary>
+    public const string RecordFileNotReadyCode = "alloggiati_file_not_ready";
+
+    /// <summary>Error code of a record file for a stay of less than 1 or more than 30 days (422).</summary>
+    public const string RecordFileStayDaysCode = "alloggiati_file_stay_days_invalid";
+
+    /// <summary>Error code of a record file with a name that cannot be written with the letters the portal accepts (422).</summary>
+    public const string RecordFileNameCode = "alloggiati_file_name_not_representable";
+
+    /// <summary>
+    /// A report still waiting for its job this long after the scheduled time is considered lost (e.g. Hangfire
+    /// storage reset) and can be scheduled again.
+    /// </summary>
+    public static readonly TimeSpan LostJobGrace = TimeSpan.FromHours(1);
+
+    private static readonly BookingStatus[] ActiveBookingStatuses =
     [
         BookingStatus.Confirmed,
         BookingStatus.CheckedIn,
         BookingStatus.CheckedOut,
     ];
 
-    public async Task ReportGuestAsync(Guid guestId, Guid bookingId)
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    private readonly IAlloggiatiCodeTableService _codeTables =
+        codeTableService ?? new AlloggiatiCodeTableService(context, NullLogger<AlloggiatiCodeTableService>.Instance);
+
+    private readonly IStayGuestService _stayGuests = stayGuestService
+        ?? new StayGuestService(context, codeTableService ?? new AlloggiatiCodeTableService(context, NullLogger<AlloggiatiCodeTableService>.Instance), timeProvider);
+
+    public async Task<bool> IsStayDataCompleteAsync(Guid bookingId)
     {
-        var guest = await guestRepository.GetByIdAsync(guestId);
-        if (guest == null)
-        {
-            logger.LogError("Guest {GuestId} not found for Alloggiati Web report", guestId);
-            return;
-        }
-
-        var existingReport = await reportRepository.GetByBookingIdAsync(bookingId);
-        var report = existingReport ?? new AlloggiatiWebReport
-        {
-            GuestId = guestId,
-            BookingId = bookingId,
-        };
-
-        if (!await ValidateGuestDataAsync(guestId))
-        {
-            report.Status = AlloggiatiWebStatus.Failed;
-            report.ErrorMessage = "Validation failed: required Alloggiati Web fields missing (DateOfBirth, Nationality, DocumentType, DocumentNumber, Gender)";
-            if (existingReport == null)
-                await reportRepository.AddAsync(report);
-            else
-                await reportRepository.UpdateAsync(report);
-            logger.LogWarning("Alloggiati Web report validation failed for guest {GuestId}", guestId);
-            return;
-        }
-
-        try
-        {
-            var enabled = configuration.GetValue("Alloggiati:Enabled", false);
-            logger.LogInformation(
-                "Submitting Alloggiati Web report for booking {BookingId}, guest {GuestId}, enabled={Enabled}",
-                bookingId, guestId, enabled);
-
-            if (enabled)
-            {
-                // TODO: HTTP call to Alloggiati Web API once Questura credentials are configured per property.
-                report.Status = AlloggiatiWebStatus.Submitted;
-            }
-            else
-            {
-                report.Status = AlloggiatiWebStatus.Submitted;
-                report.ErrorMessage = "simulated";
-            }
-
-            report.ReportedAt = DateTime.UtcNow;
-
-            if (existingReport == null)
-                await reportRepository.AddAsync(report);
-            else
-                await reportRepository.UpdateAsync(report);
-
-            logger.LogInformation("Alloggiati Web report submitted for booking {BookingId}", bookingId);
-        }
-        catch (Exception ex)
-        {
-            report.Status = AlloggiatiWebStatus.Failed;
-            report.ErrorMessage = ex.Message;
-            report.RetryCount++;
-
-            if (existingReport == null)
-                await reportRepository.AddAsync(report);
-            else
-                await reportRepository.UpdateAsync(report);
-
-            logger.LogError(ex, "Alloggiati Web submission failed for booking {BookingId}", bookingId);
-            throw;
-        }
-    }
-
-    public async Task<bool> ValidateGuestDataAsync(Guid guestId)
-    {
-        var guest = await guestRepository.GetByIdAsync(guestId);
-        if (guest == null) return false;
-
-        return guest.DateOfBirth.HasValue
-            && !string.IsNullOrEmpty(guest.PlaceOfBirth)
-            && !string.IsNullOrEmpty(guest.Nationality)
-            && guest.DocumentType.HasValue
-            && !string.IsNullOrEmpty(guest.DocumentNumber)
-            && !string.IsNullOrEmpty(guest.DocumentIssuingCountry)
-            && guest.Gender.HasValue;
-    }
-
-    public async Task<AlloggiatiWebReport?> GetReportStatusAsync(Guid bookingId)
-    {
-        return await reportRepository.GetByBookingIdAsync(bookingId);
+        var booking = await context.Bookings.AsNoTracking().Include(b => b.Guest).FirstOrDefaultAsync(b => b.Id == bookingId);
+        return booking is not null && await IsDataCompleteAsync(booking);
     }
 
     public async Task<AlloggiatiStatusInfo> GetStatusAsync(Guid bookingId)
     {
-        var booking = await bookingRepository.GetByIdAsync(bookingId)
-            ?? throw new KeyNotFoundException($"Booking {bookingId} not found");
-
-        var report = await reportRepository.GetByBookingIdAsync(bookingId);
-        var dataComplete = await ValidateGuestDataAsync(booking.GuestId);
-        return BuildStatusInfo(booking, report, dataComplete);
+        var booking = await LoadBookingAsync(bookingId, tracking: false);
+        var report = SlotReport(await ReportsOfAsync(bookingId, tracking: false), booking.GuestId);
+        return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));
     }
 
-    public async Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(Guid? propertyId)
+    public async Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(HostScope scope, Guid? propertyId)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         var query = context.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
             .Include(b => b.Property)
-            .Where(b => ActiveBookingStatuses.Contains(b.Status));
+            .Where(b => b.OrgId == scope.OrgId && ActiveBookingStatuses.Contains(b.Status))
+            .InScope(scope);
 
         if (propertyId.HasValue)
             query = query.Where(b => b.PropertyId == propertyId.Value);
@@ -139,88 +102,372 @@ public class AlloggiatiWebService(
             .ToListAsync();
 
         var bookingIds = bookings.Select(b => b.Id).ToList();
-        var reports = await context.AlloggiatiWebReports
-            .AsNoTracking()
-            .Where(r => bookingIds.Contains(r.BookingId))
-            .ToDictionaryAsync(r => r.BookingId);
+        var reports = (await context.AlloggiatiWebReports
+                .AsNoTracking()
+                .Where(r => bookingIds.Contains(r.BookingId))
+                .ToListAsync())
+            .ToLookup(r => r.BookingId);
 
-        var summaries = new List<AlloggiatiSummaryInfo>();
-        foreach (var booking in bookings)
+        var guests = await _stayGuests.GetForBookingsAsync(bookings);
+        var now = UtcNow();
+        var today = _clock.TodayInRome();
+        return bookings
+            .Select(booking =>
+            {
+                var report = SlotReport(reports[booking.Id].ToList(), booking.GuestId);
+                var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, today);
+                var deadline = AlloggiatiTerms.DeadlineUtc(booking);
+                return new AlloggiatiSummaryInfo(
+                    booking.Id,
+                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim(),
+                    booking.Property.Name,
+                    booking.CheckInDate,
+                    status,
+                    AlloggiatiRecordRules.IsDataComplete(guests[booking.Id]),
+                    IsOverdue(deadline, status, now),
+                    HoursUntil(deadline, now),
+                    deadline,
+                    AlloggiatiTerms.IsShortStay(booking.CheckInDate, booking.CheckOutDate));
+            })
+            .ToList();
+    }
+
+    public async Task<AlloggiatiGuestSummaryInfo> GetGuestSummaryAsync(Guid bookingId)
+    {
+        var booking = await LoadBookingAsync(bookingId, tracking: false);
+        var report = SlotReport(await ReportsOfAsync(bookingId, tracking: false), booking.GuestId);
+        var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome());
+        var stayDays = AlloggiatiTerms.StayDays(booking.CheckInDate, booking.CheckOutDate);
+
+        // One line per guest of the stay, in record order: a head of family or group before its members (CO-12).
+        var guests = await _stayGuests.GetForBookingAsync(booking);
+        var codeBook = await _codeTables.LoadCodeBookAsync(guests);
+        var compositionIssues = AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList())
+            .GroupBy(e => e.Index)
+            .ToDictionary(g => g.Key, g => AlloggiatiRecordRules.CompositionIssueCode(g.First().Kind));
+
+        var rows = guests
+            .Select((guest, index) => BuildRow(guest, booking, stayDays, codeBook.ResolveGuest(guest), compositionIssues.GetValueOrDefault(index)))
+            .ToList();
+        var dataComplete = AlloggiatiRecordRules.IsDataComplete(guests);
+        var missingTables = Enum.GetValues<AlloggiatiCodeTable>().Where(t => !codeBook.IsLoaded(t)).ToList();
+
+        return new AlloggiatiGuestSummaryInfo(
+            booking.Id,
+            status,
+            booking.CheckInDate,
+            stayDays,
+            stayDays > AlloggiatiTerms.MaxStayDaysPerSchedina,
+            Math.Max(1, booking.NumberOfGuests),
+            rows,
+            dataComplete,
+            dataComplete && rows.All(r => r.CodesToComplete.Count == 0),
+            missingTables);
+    }
+
+    public async Task<AlloggiatiRecordFileInfo> BuildRecordFileAsync(Guid bookingId)
+    {
+        var summary = await GetGuestSummaryAsync(bookingId);
+        var result = AlloggiatiRecordFile.Build(summary.Guests);
+        if (!result.Success)
         {
-            reports.TryGetValue(booking.Id, out var report);
-            var dataComplete = IsGuestDataComplete(booking.Guest);
-            var status = report?.Status ?? AlloggiatiWebStatus.Pending;
-            summaries.Add(new AlloggiatiSummaryInfo(
-                booking.Id,
-                $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim(),
-                booking.Property.Name,
-                booking.CheckInDate,
-                status,
-                dataComplete,
-                IsOverdue(booking.CheckInDate, dataComplete, status),
-                GetHoursUntilDeadline(booking.CheckInDate)));
+            // Positions and field names only: the log never carries the personal data of the guests.
+            logger.LogInformation(
+                "Alloggiati record file of booking {BookingId} not built: {Issues}",
+                bookingId, string.Join(", ", result.Issues.Select(i => $"{i.Kind}@{i.Position}:{i.Field}")));
+            throw RecordFileException(summary, result.Issues);
         }
 
-        return summaries;
+        return new AlloggiatiRecordFileInfo(
+            bookingId,
+            summary.ArrivalDate,
+            result.LineCount,
+            result.ToBytes(),
+            $"alloggiati-{summary.ArrivalDate:yyyy-MM-dd}-{bookingId.ToString("N")[..8]}.txt");
     }
 
-    public async Task<AlloggiatiStatusInfo> SendManualAsync(Guid bookingId)
+    /// <summary>The most useful reason first: data and codes, then the length of the stay, then a name.</summary>
+    private static DomainRuleException RecordFileException(
+        AlloggiatiGuestSummaryInfo summary,
+        IReadOnlyList<AlloggiatiRecordFileIssue> issues)
     {
-        var booking = await bookingRepository.GetByIdAsync(bookingId)
-            ?? throw new KeyNotFoundException($"Booking {bookingId} not found");
+        if (issues.Any(i => i.Kind is AlloggiatiRecordFileIssueKind.NoGuests
+                or AlloggiatiRecordFileIssueKind.TooManyGuests
+                or AlloggiatiRecordFileIssueKind.DataIncomplete
+                or AlloggiatiRecordFileIssueKind.CodeToComplete))
+            return new DomainRuleException(RecordFileNotReadyCode, "AlloggiatiRecordFileNotReady");
 
-        await ReportGuestAsync(booking.GuestId, bookingId);
+        if (issues.Any(i => i.Kind == AlloggiatiRecordFileIssueKind.StayDaysOutOfRange))
+            return new DomainRuleException(RecordFileStayDaysCode, "AlloggiatiRecordFileStayDays", summary.StayDays, AlloggiatiTerms.MaxStayDaysPerSchedina);
 
-        var report = await reportRepository.GetByBookingIdAsync(bookingId);
-        if (report != null)
+        var name = issues.First(i => i.Kind == AlloggiatiRecordFileIssueKind.NameNotRepresentable);
+        return new DomainRuleException(RecordFileNameCode, "AlloggiatiRecordFileName", name.Position + 1);
+    }
+
+    private static AlloggiatiGuestRow BuildRow(
+        StayGuest guest,
+        Booking booking,
+        int stayDays,
+        StayGuestCodes codes,
+        string? compositionIssue)
+    {
+        var requiresDocument = AlloggiatiRecordRules.RequiresDocument(guest.Type);
+        return new AlloggiatiGuestRow(
+            guest.Id == Guid.Empty ? null : guest.Id,
+            guest.Position,
+            guest.Type,
+            AlloggiatiRecordRules.IsMinor(guest.DateOfBirth, booking.CheckInDate),
+            booking.CheckInDate,
+            stayDays,
+            guest.LastName,
+            guest.FirstName,
+            guest.Gender,
+            guest.DateOfBirth,
+            guest.BornInItaly,
+            guest.BornInItaly == true ? guest.BirthComuneName : guest.BornInItaly is null ? guest.BirthComuneName : string.Empty,
+            guest.BornInItaly == true ? guest.BirthProvince : null,
+            guest.BornInItaly == false ? guest.BirthCountryName : string.Empty,
+            guest.CitizenshipName,
+            requiresDocument,
+            requiresDocument ? guest.DocumentType : null,
+            requiresDocument ? guest.DocumentNumber : string.Empty,
+            requiresDocument ? guest.DocumentIssuePlaceName : string.Empty,
+            new AlloggiatiRowCodes(
+                codes.Type.Code,
+                codes.BirthComune.Code,
+                codes.BirthCountry.Code,
+                codes.Citizenship.Code,
+                codes.DocumentType.Code,
+                codes.DocumentType.Description,
+                codes.DocumentIssuePlace.Code),
+            AlloggiatiRecordRules.MissingFields(guest),
+            codes.CodesToComplete,
+            compositionIssue,
+            guest.DataSource,
+            guest.Id == Guid.Empty ? null : guest.UpdatedAt);
+    }
+
+    public async Task<AlloggiatiReportReservation?> ReserveReportAsync(Guid bookingId)
+    {
+        var booking = await context.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId);
+        if (booking is null || !ActiveBookingStatuses.Contains(booking.Status))
         {
-            report.ManuallyCompleted = true;
-            await reportRepository.UpdateAsync(report);
+            logger.LogInformation("Alloggiati report not scheduled: booking {BookingId} missing or not active", bookingId);
+            return null;
         }
 
-        var dataComplete = await ValidateGuestDataAsync(booking.GuestId);
-        report = await reportRepository.GetByBookingIdAsync(bookingId);
-        return BuildStatusInfo(booking, report, dataComplete);
+        var now = UtcNow();
+        var arrivalDayStart = AlloggiatiTerms.ArrivalDayStartUtc(booking.CheckInDate);
+        var runAt = arrivalDayStart > now ? arrivalDayStart : now;
+        var reports = await ReportsOfAsync(bookingId, tracking: true);
+        var report = reports.FirstOrDefault(r => r.GuestId == booking.GuestId);
+
+        if (report is null)
+        {
+            var previous = reports.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
+            if (previous is not null)
+                return await MoveSlotToGuestAsync(previous, booking, runAt, now);
+
+            report = new AlloggiatiWebReport
+            {
+                BookingId = bookingId,
+                GuestId = booking.GuestId,
+                OrgId = booking.OrgId, // the report belongs to its booking's org (TN-2)
+                Status = AlloggiatiWebStatus.DaInviare,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            context.AlloggiatiWebReports.Add(report);
+            try
+            {
+                await context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                // Unique (BookingId, GuestId): a concurrent caller reserved the same report and schedules its job.
+                context.Entry(report).State = EntityState.Detached;
+                logger.LogInformation(ex, "Alloggiati report of booking {BookingId} reserved concurrently", bookingId);
+                return null;
+            }
+
+            return new AlloggiatiReportReservation(report.Id, bookingId, booking.GuestId, runAt, null);
+        }
+
+        if (report.Status != AlloggiatiWebStatus.DaInviare || !NeedsScheduling(report, arrivalDayStart, runAt, now))
+            return null;
+
+        return new AlloggiatiReportReservation(report.Id, bookingId, booking.GuestId, runAt, report.ScheduledJobId);
     }
 
-    public double GetHoursUntilDeadline(DateTime checkInDate)
+    public async Task SetScheduledJobAsync(Guid reportId, string jobId, DateTime scheduledForUtc)
     {
-        var deadline = checkInDate.AddHours(24);
-        var remaining = (deadline - DateTime.UtcNow).TotalHours;
-        return Math.Max(0, remaining);
+        var report = await context.AlloggiatiWebReports.FirstOrDefaultAsync(r => r.Id == reportId)
+            ?? throw new NotFoundException($"Alloggiati report {reportId} not found");
+
+        report.ScheduledJobId = jobId;
+        report.ScheduledFor = scheduledForUtc;
+        report.UpdatedAt = UtcNow();
+        await context.SaveChangesAsync();
     }
 
-    public bool IsOverdue(DateTime checkInDate, bool dataComplete, AlloggiatiWebStatus? reportStatus)
+    public async Task<AlloggiatiProcessOutcome> ProcessScheduledReportAsync(Guid bookingId, Guid guestId)
     {
-        if (DateTime.UtcNow <= checkInDate.AddHours(24))
-            return false;
+        var booking = await context.Bookings.AsNoTracking().FirstOrDefaultAsync(b => b.Id == bookingId);
+        if (booking is null)
+            return AlloggiatiProcessOutcome.BookingNotFound;
 
-        if (!dataComplete)
-            return true;
+        if (booking.GuestId != guestId)
+            return AlloggiatiProcessOutcome.Superseded;
 
-        return reportStatus is AlloggiatiWebStatus.Failed or AlloggiatiWebStatus.Pending;
+        var report = await context.AlloggiatiWebReports
+            .FirstOrDefaultAsync(r => r.BookingId == bookingId && r.GuestId == guestId);
+        if (report is null)
+            return AlloggiatiProcessOutcome.NotReserved;
+
+        if (report.Status is not (AlloggiatiWebStatus.DaInviare or AlloggiatiWebStatus.Errore))
+            return AlloggiatiProcessOutcome.AlreadyHandled;
+
+        if (!ActiveBookingStatuses.Contains(booking.Status))
+            return AlloggiatiProcessOutcome.BookingInactive;
+
+        if (!AlloggiatiTerms.IsArrivalDayReached(booking.CheckInDate, _clock.TodayInRome()))
+            return AlloggiatiProcessOutcome.NotYetDue;
+
+        // CasaZen does not transmit (no web service client, see docs/runbooks/alloggiati.md): the host uploads the record
+        // file (CO-13) or types the schedine on the portal. Honest state, nothing is reported as sent.
+        report.Status = AlloggiatiWebStatus.DaInviareManualmente;
+        report.ErrorMessage = null;
+        report.UpdatedAt = UtcNow();
+        await context.SaveChangesAsync();
+
+        logger.LogInformation(
+            "Alloggiati report {ReportId} of booking {BookingId} is ready: the host must send it on the portal",
+            report.Id, bookingId);
+        return AlloggiatiProcessOutcome.MarkedForManualSubmission;
     }
+
+    public async Task<AlloggiatiStatusInfo> MarkSentManuallyAsync(Guid bookingId, DateTime sentOn)
+    {
+        var booking = await LoadBookingAsync(bookingId, tracking: true);
+        var sentDate = sentOn.Date;
+        if (sentDate < booking.CheckInDate.Date)
+            throw new DomainRuleException(ManualDateBeforeArrivalCode, "AlloggiatiManualDateBeforeArrival");
+        if (sentDate > _clock.TodayInRome())
+            throw new DomainRuleException(ManualDateInFutureCode, "AlloggiatiManualDateInFuture");
+
+        var now = UtcNow();
+        var reports = await ReportsOfAsync(bookingId, tracking: true);
+        var report = SlotReport(reports, booking.GuestId);
+        if (report is not null && AlloggiatiStatusRules.IsSent(report.Status))
+            throw new DomainConflictException(AlreadySentCode, "AlloggiatiAlreadySent");
+
+        if (report is null)
+        {
+            report = new AlloggiatiWebReport
+            {
+                BookingId = bookingId,
+                GuestId = booking.GuestId,
+                OrgId = booking.OrgId,
+                CreatedAt = now,
+            };
+            context.AlloggiatiWebReports.Add(report);
+        }
+
+        report.GuestId = booking.GuestId;
+        report.Status = AlloggiatiWebStatus.InviatoManualmente;
+        report.ManuallyCompleted = true;
+        report.ReportedAt = sentDate;
+        report.ErrorMessage = null;
+        report.UpdatedAt = now;
+        await context.SaveChangesAsync();
+
+        logger.LogInformation("Alloggiati report of booking {BookingId} declared sent manually by the host", bookingId);
+        return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));
+    }
+
+    public bool IsOverdue(Booking booking, AlloggiatiWebStatus? reportStatus) =>
+        IsOverdue(AlloggiatiTerms.DeadlineUtc(booking), reportStatus ?? AlloggiatiWebStatus.DaInviare, UtcNow());
+
+    private async Task<AlloggiatiReportReservation?> MoveSlotToGuestAsync(
+        AlloggiatiWebReport previous,
+        Booking booking,
+        DateTime runAt,
+        DateTime now)
+    {
+        // Sent (or declared sent) with the data of the earlier guest record: the booking's communication is done.
+        if (AlloggiatiStatusRules.IsSent(previous.Status))
+            return null;
+
+        previous.GuestId = booking.GuestId;
+        previous.UpdatedAt = now;
+        await context.SaveChangesAsync();
+
+        logger.LogInformation(
+            "Alloggiati report {ReportId} of booking {BookingId} moved to the booking's current guest record",
+            previous.Id, booking.Id);
+
+        // A job still to run carries the old guest and would stop as superseded: schedule one for the new guest.
+        return previous.Status == AlloggiatiWebStatus.DaInviare
+            ? new AlloggiatiReportReservation(previous.Id, booking.Id, booking.GuestId, runAt, previous.ScheduledJobId)
+            : null;
+    }
+
+    private static bool NeedsScheduling(AlloggiatiWebReport report, DateTime arrivalDayStart, DateTime runAt, DateTime now) =>
+        string.IsNullOrEmpty(report.ScheduledJobId)
+        || report.ScheduledFor is not { } scheduledFor
+        || scheduledFor > runAt // the check-in date moved earlier
+        || scheduledFor < arrivalDayStart // the check-in date moved later: the job would run too early
+        || scheduledFor < now - LostJobGrace; // the job never ran
+
+    private async Task<bool> IsDataCompleteAsync(Booking booking) =>
+        AlloggiatiRecordRules.IsDataComplete(await _stayGuests.GetForBookingAsync(booking));
+
+    private async Task<Booking> LoadBookingAsync(Guid bookingId, bool tracking)
+    {
+        var query = context.Bookings.Include(b => b.Guest).AsQueryable();
+        if (!tracking)
+            query = query.AsNoTracking();
+
+        return await query.FirstOrDefaultAsync(b => b.Id == bookingId)
+            ?? throw new NotFoundException($"Booking {bookingId} not found");
+    }
+
+    private async Task<List<AlloggiatiWebReport>> ReportsOfAsync(Guid bookingId, bool tracking)
+    {
+        var query = context.AlloggiatiWebReports.Where(r => r.BookingId == bookingId);
+        if (!tracking)
+            query = query.AsNoTracking();
+        return await query.ToListAsync();
+    }
+
+    /// <summary>The report of the booking's guest, or else the latest report of the booking (same guest slot).</summary>
+    private static AlloggiatiWebReport? SlotReport(IReadOnlyCollection<AlloggiatiWebReport> reports, Guid guestId) =>
+        reports.FirstOrDefault(r => r.GuestId == guestId)
+        ?? reports.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
 
     private AlloggiatiStatusInfo BuildStatusInfo(Booking booking, AlloggiatiWebReport? report, bool dataComplete)
     {
-        var status = report?.Status ?? AlloggiatiWebStatus.Pending;
+        var now = UtcNow();
+        var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome());
+        var deadline = AlloggiatiTerms.DeadlineUtc(booking);
         return new AlloggiatiStatusInfo(
             booking.Id,
             status,
-            report?.ConfirmationNumber,
-            report?.ErrorMessage,
-            report?.ReportedAt,
-            GetHoursUntilDeadline(booking.CheckInDate),
-            IsOverdue(booking.CheckInDate, dataComplete, status),
+            status == AlloggiatiWebStatus.Inviato ? report?.ConfirmationNumber : null,
+            AlloggiatiStatusRules.IsFailure(status) ? report?.ErrorMessage : null,
+            AlloggiatiStatusRules.IsSent(status) ? report?.ReportedAt : null,
+            deadline,
+            AlloggiatiTerms.IsShortStay(booking.CheckInDate, booking.CheckOutDate),
+            HoursUntil(deadline, now),
+            IsOverdue(deadline, status, now),
             dataComplete);
     }
 
-    private static bool IsGuestDataComplete(Guest guest) =>
-        guest.DateOfBirth.HasValue
-        && !string.IsNullOrEmpty(guest.PlaceOfBirth)
-        && !string.IsNullOrEmpty(guest.Nationality)
-        && guest.DocumentType.HasValue
-        && !string.IsNullOrEmpty(guest.DocumentNumber)
-        && !string.IsNullOrEmpty(guest.DocumentIssuingCountry)
-        && guest.Gender.HasValue;
+    private static bool IsOverdue(DateTime deadline, AlloggiatiWebStatus status, DateTime now) =>
+        now > deadline && !AlloggiatiStatusRules.IsSent(status);
+
+    private static double HoursUntil(DateTime deadline, DateTime now) =>
+        Math.Max(0, (deadline - now).TotalHours);
+
+    private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;
 }

@@ -20,16 +20,10 @@ public class PricingAdapterConfigRepository(AppDbContext context) : IPricingAdap
 
     public async Task<IEnumerable<PricingAdapterConfig>> GetEnabledConfigsAsync()
     {
+        // Due or not is decided per property by Rome calendar dates (SeasonalSuggestionSchedule), never by an instant.
         return await context.PricingAdapterConfigs
+            .AsNoTracking()
             .Where(c => c.IsEnabled)
-            .ToListAsync();
-    }
-
-    public async Task<IEnumerable<PricingAdapterConfig>> GetConfigsDueForAdaptationAsync()
-    {
-        return await context.PricingAdapterConfigs
-            .Where(c => c.IsEnabled &&
-                       (c.NextScheduledRunAt == null || c.NextScheduledRunAt <= DateTime.UtcNow))
             .ToListAsync();
     }
 

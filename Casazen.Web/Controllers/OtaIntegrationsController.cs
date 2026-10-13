@@ -1,14 +1,18 @@
 using System.Security.Claims;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>OTA partner credentials per property: in freeze behind <see cref="FeatureFlags.OtaPartnerApi"/> (D10).</summary>
 [ApiController]
 [Route("api/properties/{propertyId}/ota-integrations")]
-[Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:ota.read")]
+[FeatureGate(FeatureFlags.OtaPartnerApi)]
 public class OtaIntegrationsController(
     IOtaIntegrationService otaIntegrationService,
     IPropertyService propertyService,
@@ -24,7 +28,7 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         logger.LogInformation("Getting OTA integrations for property {PropertyId}", propertyId);
@@ -54,7 +58,7 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         logger.LogInformation("Getting OTA integration {Id} for property {PropertyId}", id, propertyId);
@@ -79,6 +83,7 @@ public class OtaIntegrationsController(
     }
 
     [HttpPost]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<ActionResult<OtaIntegrationDto>> Create(
         Guid propertyId,
         [FromBody] CreateOtaIntegrationRequest request)
@@ -89,11 +94,11 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         if (request.PropertyId != propertyId)
-            return BadRequest("Property ID in URL must match request body");
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "OtaPropertyIdMismatch");
 
         logger.LogInformation("Creating OTA integration for property {PropertyId}, platform {Platform}",
             propertyId, request.Platform);
@@ -120,6 +125,7 @@ public class OtaIntegrationsController(
     }
 
     [HttpPut("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<IActionResult> Update(
         Guid propertyId,
         Guid id,
@@ -131,7 +137,7 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         logger.LogInformation("Updating OTA integration {Id} for property {PropertyId}", id, propertyId);
@@ -150,6 +156,7 @@ public class OtaIntegrationsController(
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<IActionResult> Delete(Guid propertyId, Guid id)
     {
         var userId = GetUserId();
@@ -158,7 +165,7 @@ public class OtaIntegrationsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await authorizationService.CanAccessAsync(userId, property, GetUserRoles()))
             return Forbid();
 
         logger.LogInformation("Deleting OTA integration {Id} for property {PropertyId}", id, propertyId);

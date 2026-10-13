@@ -1,10 +1,13 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -56,8 +59,8 @@ public class GuestCheckInServiceTests
             PropertyId = propertyId,
             GuestId = guestId,
             OrgId = orgId,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(3),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(6),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(6),
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,
         });
@@ -75,11 +78,33 @@ public class GuestCheckInServiceTests
         var rawToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
 
         Assert.NotNull(rawToken);
-        Assert.Equal(64, rawToken.Length); // 32 bytes → 64 hex chars
+        Assert.Equal(64, rawToken.Length); // 32 bytes ΓåÆ 64 hex chars
 
         var session = await seed.Db.GuestCheckInSessions.FirstAsync();
         Assert.NotEqual(rawToken, session.TokenHash); // hash differs from raw
         Assert.Equal(GuestCheckInSessionStatus.Inviato, session.Status);
+    }
+
+    [Fact]
+    public async Task CreateSession_WhenUnopenedSessionExists_PreservesPreviousTokenAndCreatesReplacement()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var firstToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var replacementToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        Assert.NotEqual(firstToken, replacementToken);
+        var sessions = await seed.Db.GuestCheckInSessions
+            .OrderBy(s => s.CreatedAt)
+            .ToListAsync();
+        Assert.Equal(2, sessions.Count);
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, sessions[0].Status);
+        Assert.Equal(GuestCheckInSessionStatus.Inviato, sessions[1].Status);
+
+        var previousSession = await svc.GetSessionByTokenAsync(firstToken);
+        Assert.NotNull(previousSession);
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, previousSession.Status);
     }
 
     [Fact]
@@ -146,18 +171,7 @@ public class GuestCheckInServiceTests
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         _ = await svc.GetSessionByTokenAsync(token); // advance to InCompilazione
 
-        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
-        {
-            FirstName = "Luigi",
-            LastName = "Verdi",
-            DateOfBirth = new DateTime(1990, 5, 15),
-            Nationality = "Italiana",
-            DocumentType = "Passport",
-            DocumentNumber = "YA1234567",
-            DocumentIssuingCountry = "Italia",
-            PlaceOfBirth = "Roma",
-            GdprConsent = true,
-        });
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
 
         Assert.True(result.Success);
         Assert.False(result.Duplicate);
@@ -169,7 +183,136 @@ public class GuestCheckInServiceTests
 
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
         Assert.Equal("YA1234567", guest!.DocumentNumber);
-        Assert.Equal(DateTime.UtcNow.Year + 7, guest.DataRetentionUntil.Year);
+        Assert.Equal(Gender.Male, guest.Gender);
+
+        // CO-12: the stay's guest line, linked to the booker.
+        var stayGuest = await seed.Db.StayGuests.SingleAsync();
+        Assert.Equal(StayGuestType.SingleGuest, stayGuest.Type);
+        Assert.Equal(0, stayGuest.Position);
+        Assert.Equal(seed.GuestId, stayGuest.GuestId);
+        Assert.Equal(seed.OrgId, stayGuest.OrgId);
+        Assert.Equal("Roma", stayGuest.BirthComuneName);
+        Assert.Equal("RM", stayGuest.BirthProvince);
+    }
+
+    [Fact]
+    public async Task Submit_FamilyOfThree_SavesOneRowPerGuestInOrderAndDocumentOnlyForTheHead()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest(type: "HeadOfFamily");
+        request.Guests =
+        [
+            request.Guests[0],
+            Member("Anna", documentNumber: "IGNORED123"),
+            Member("Luca", dateOfBirth: new DateTime(2019, 6, 1)),
+        ];
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.True(result.Success, string.Join(", ", result.ValidationErrors.Select(e => $"{e.Index}.{e.Field}")));
+        var rows = await seed.Db.StayGuests.OrderBy(s => s.Position).ToListAsync();
+        Assert.Equal(
+            new[] { StayGuestType.HeadOfFamily, StayGuestType.FamilyMember, StayGuestType.FamilyMember },
+            rows.Select(r => r.Type));
+        Assert.Equal(new[] { "Luigi", "Anna", "Luca" }, rows.Select(r => r.FirstName));
+        Assert.Equal("YA1234567", rows[0].DocumentNumber);
+        Assert.All(rows.Skip(1), r =>
+        {
+            Assert.Equal(string.Empty, r.DocumentNumber);
+            Assert.Null(r.DocumentType);
+            Assert.Null(r.GuestId);
+        });
+    }
+
+    [Fact]
+    public async Task Submit_HeadOfFamilyWithoutDocument_ReturnsDocumentErrorsOnTheHeadOnly()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest(type: "HeadOfFamily", documentType: "", documentNumber: "");
+        request.Guests = [request.Guests[0], Member("Anna")];
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        Assert.Equal(
+            new[] { "0.DocumentType", "0.DocumentNumber" },
+            result.ValidationErrors.Select(e => $"{e.Index}.{e.Field}"));
+        Assert.Empty(seed.Db.StayGuests);
+    }
+
+    [Fact]
+    public async Task Submit_MemberWithoutHead_ReturnsCompositionError()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.Guests = [request.Guests[0], Member("Anna")];
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        var error = Assert.Single(result.ValidationErrors);
+        Assert.Equal((1, "Type", CheckInValidationKeys.MemberWithoutHead), (error.Index, error.Field, error.MessageKey));
+        Assert.Equal("Guests[1].Type", error.ModelStateKey("Guests"));
+    }
+
+    [Fact]
+    public async Task Submit_InvalidDocumentType_ReturnsValidationFailureWithoutCompletingSession()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        _ = await svc.GetSessionByTokenAsync(token);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest(documentType: "AlienPermit"));
+
+        Assert.False(result.Success);
+        Assert.False(result.Duplicate);
+        AssertSingleError(result, 0, nameof(StayGuestInput.DocumentType), CheckInValidationKeys.DocumentTypeInvalid);
+
+        var session = await seed.Db.GuestCheckInSessions.FirstAsync();
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, session.Status);
+
+        var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
+        Assert.Equal(string.Empty, guest!.DocumentNumber);
+        Assert.Null(guest.DocumentType);
+        Assert.Null(guest.ConsentDate);
+    }
+
+    [Fact]
+    public async Task Submit_SharedGuest_CreatesSnapshotBeforeWritingCheckInData()
+    {
+        await using var seed = await SeedAsync();
+        var sharedBookingId = await AddBookingSharingGuestAsync(seed.Db, seed.GuestId);
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        _ = await svc.GetSessionByTokenAsync(token);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.True(result.Success);
+        Assert.True(result.GuestId.HasValue);
+        var snapshotGuestId = result.GuestId.Value;
+        Assert.NotEqual(seed.GuestId, snapshotGuestId);
+
+        var originalGuest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.Equal(string.Empty, originalGuest.DocumentNumber);
+        Assert.Null(originalGuest.ConsentDate);
+
+        var snapshot = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == snapshotGuestId);
+        Assert.Equal("YA1234567", snapshot.DocumentNumber);
+        Assert.Equal(Gender.Male, snapshot.Gender);
+
+        var submittedBooking = await seed.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
+        Assert.Equal(snapshotGuestId, submittedBooking.GuestId);
+
+        var sharedBooking = await seed.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == sharedBookingId);
+        Assert.Equal(seed.GuestId, sharedBooking.GuestId);
     }
 
     [Fact]
@@ -183,24 +326,14 @@ public class GuestCheckInServiceTests
         booking!.Status = BookingStatus.Cancelled;
         await seed.Db.SaveChangesAsync();
 
-        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
-        {
-            FirstName = "Luigi",
-            LastName = "Verdi",
-            DateOfBirth = new DateTime(1990, 5, 15),
-            Nationality = "Italiana",
-            DocumentType = "Passport",
-            DocumentNumber = "YA1234567",
-            DocumentIssuingCountry = "Italia",
-            PlaceOfBirth = "Roma",
-            GdprConsent = true,
-        });
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
 
         Assert.False(result.Success);
         Assert.False(result.Duplicate);
 
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
         Assert.Equal(string.Empty, guest!.DocumentNumber);
+        Assert.Null(guest.Gender);
         Assert.Null(guest.ConsentDate);
     }
 
@@ -212,15 +345,7 @@ public class GuestCheckInServiceTests
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         _ = await svc.GetSessionByTokenAsync(token);
 
-        var req = new GuestCheckInSubmitRequest
-        {
-            GdprConsent = true,
-            DocumentType = "Passport",
-            DocumentNumber = "AA999",
-            DocumentIssuingCountry = "Italia",
-            Nationality = "Italiana",
-            PlaceOfBirth = "Milano",
-        };
+        var req = BuildValidSubmitRequest();
         _ = await svc.SubmitAsync(token, req);
 
         var secondResult = await svc.SubmitAsync(token, req);
@@ -230,17 +355,231 @@ public class GuestCheckInServiceTests
     }
 
     [Fact]
-    public async Task Submit_GdprConsentFalse_ReturnsFailure()
+    public async Task GetSessionByToken_CompletedSession_ReturnsNullButSubmitReturnsDuplicate()
     {
         await using var seed = await SeedAsync();
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         _ = await svc.GetSessionByTokenAsync(token);
+        _ = await svc.SubmitAsync(token, BuildValidSubmitRequest());
 
-        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest { GdprConsent = false });
+        var contextSession = await svc.GetSessionByTokenAsync(token);
+        var duplicateSubmit = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.Null(contextSession);
+        Assert.False(duplicateSubmit.Success);
+        Assert.True(duplicateSubmit.Duplicate);
+    }
+
+    [Fact]
+    public async Task Submit_NoConsentTicked_CompletesTheCheckInBecauseAlloggiatiIsALegalObligation()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.True(result.Success);
+        var guest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.False(guest.MarketingConsent);
+        Assert.Null(guest.DataProcessingConsentDate);
+        Assert.Empty(await seed.Db.GuestConsentRecords.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Submit_MarketingConsentWithoutConfiguredVersion_ReturnsMarketingUnavailableAndSavesNothing()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.MarketingConsent = true;
+
+        var result = await svc.SubmitAsync(token, request);
 
         Assert.False(result.Success);
-        Assert.False(result.Duplicate);
+        AssertSingleError(result, null, nameof(GuestCheckInSubmitRequest.MarketingConsent), CheckInValidationKeys.MarketingConsentUnavailable);
+        var guest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.False(guest.MarketingConsent);
+        Assert.Equal(string.Empty, guest.DocumentNumber);
+    }
+
+    [Fact]
+    public async Task Submit_VersionsConfiguredAndMarketingTicked_RecordsNoticeAndConsentWithVersionTimeAndIp()
+    {
+        await using var seed = await SeedAsync();
+        var now = new DateTimeOffset(2026, 10, 1, 9, 30, 0, TimeSpan.Zero);
+        var svc = NewServiceWithVersions(seed.Db, now);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.MarketingConsent = true;
+        request.ConsentIpAddress = "203.0.113.7";
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.True(result.Success);
+        var records = await seed.Db.GuestConsentRecords.AsNoTracking().OrderBy(r => r.Purpose).ToListAsync();
+        Assert.Collection(
+            records,
+            notice => Assert.Equal(
+                (GuestConsentPurpose.PrivacyNotice, GuestConsentAction.NoticePresented, "notice-v3", GuestConsentSource.GuestPortal, "203.0.113.7", now.UtcDateTime, seed.GuestId),
+                (notice.Purpose, notice.Action, notice.Version, notice.Source, notice.IpAddress, notice.RecordedAt, notice.GuestId)),
+            marketing => Assert.Equal(
+                (GuestConsentPurpose.Marketing, GuestConsentAction.Granted, "marketing-v2", "203.0.113.7", now.UtcDateTime),
+                (marketing.Purpose, marketing.Action, marketing.Version, marketing.IpAddress, marketing.RecordedAt)));
+        var guest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.True(guest.MarketingConsent);
+        Assert.Equal(now.UtcDateTime, guest.MarketingConsentDate);
+    }
+
+    [Fact]
+    public async Task Submit_MarketingUnticked_KeepsAConsentGivenBefore()
+    {
+        await using var seed = await SeedAsync();
+        var grantedAt = new DateTime(2026, 5, 1, 8, 0, 0, DateTimeKind.Utc);
+        var booker = await seed.Db.Guests.SingleAsync(g => g.Id == seed.GuestId);
+        booker.MarketingConsent = true;
+        booker.MarketingConsentDate = grantedAt;
+        await seed.Db.SaveChangesAsync();
+        var svc = NewServiceWithVersions(seed.Db, new DateTimeOffset(2026, 10, 1, 9, 30, 0, TimeSpan.Zero));
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.True(result.Success);
+        var guest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.True(guest.MarketingConsent);
+        Assert.Equal(grantedAt, guest.MarketingConsentDate);
+        Assert.DoesNotContain(await seed.Db.GuestConsentRecords.ToListAsync(), r => r.Purpose == GuestConsentPurpose.Marketing);
+    }
+
+    [Fact]
+    public async Task GetPublicView_VersionsConfigured_ExposesThemToThePortal()
+    {
+        await using var seed = await SeedAsync();
+        var svc = NewServiceWithVersions(seed.Db, DateTimeOffset.UtcNow);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.Equal(("notice-v3", "marketing-v2"), (view!.PrivacyNoticeVersion, view.MarketingConsentVersion));
+    }
+
+    private static GuestCheckInService NewServiceWithVersions(AppDbContext db, DateTimeOffset now) =>
+        new(
+            db,
+            NullLogger<GuestCheckInService>.Instance,
+            timeProvider: new FixedTimeProvider(now),
+            gdprOptions: Options.Create(new GdprOptions { PrivacyNoticeVersion = " notice-v3 ", MarketingConsentVersion = "marketing-v2" }));
+
+    [Fact]
+    public async Task Submit_MissingGender_ReturnsFieldRequiredForGender()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest(gender: null);
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        AssertSingleError(result, 0, nameof(StayGuestInput.Gender), CheckInValidationKeys.FieldRequired);
+    }
+
+    [Fact]
+    public async Task Submit_GenderOther_ReturnsGenderInvalidWithoutCompletingSession()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest(gender: Gender.Other);
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        AssertSingleError(result, 0, nameof(StayGuestInput.Gender), CheckInValidationKeys.GenderInvalid);
+        var session = await seed.Db.GuestCheckInSessions.FirstAsync();
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, session.Status);
+        var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
+        Assert.Null(guest!.Gender);
+    }
+
+    [Fact]
+    public async Task GetPublicView_OpenSession_ReturnsContextWithMaskedDocumentNumber()
+    {
+        await using var seed = await SeedAsync();
+        var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
+        guest!.DocumentNumber = "YA1234567";
+        guest.Gender = Gender.Female;
+        await seed.Db.SaveChangesAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.False(view.IsCompleted);
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, view.Status);
+        Assert.Equal("Test Property", view.PropertyName);
+        Assert.Equal(1, view.DeclaredGuests);
+        Assert.NotNull(view.Guests);
+        var prefill = Assert.Single(view.Guests);
+        Assert.Equal(StayGuestType.SingleGuest, prefill.Type);
+        Assert.Equal("Mario", prefill.FirstName);
+        Assert.Equal(Gender.Female, prefill.Gender);
+        Assert.Equal("*****567", prefill.DocumentNumberMasked);
+        Assert.NotNull(view.AvailableCodeTables);
+        Assert.Empty(view.AvailableCodeTables);
+    }
+
+    [Fact]
+    public async Task GetPublicView_CompletedSession_ReturnsOnlyCompletedStatus()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var submit = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+        Assert.True(submit.Success);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.True(view.IsCompleted);
+        Assert.Equal(GuestCheckInSessionStatus.Completo, view.Status);
+        Assert.Null(view.SessionId);
+        Assert.Null(view.PropertyName);
+        Assert.Null(view.CheckInDate);
+        Assert.Null(view.CheckOutDate);
+        Assert.Null(view.Guests);
+    }
+
+    [Fact]
+    public async Task GetPublicView_ExpiredToken_ReturnsNull()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var session = await seed.Db.GuestCheckInSessions.FirstAsync();
+        session.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+        await seed.Db.SaveChangesAsync();
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.Null(view);
+    }
+
+    [Theory]
+    [InlineData("YA1234567", "*****567")]
+    [InlineData("  CA12345AB ", "*****5AB")]
+    [InlineData("AB1234", "*****234")]
+    [InlineData("AB123", "*****")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    public void MaskDocumentNumber_Value_HidesAllButLastCharacters(string? documentNumber, string? expected)
+    {
+        Assert.Equal(expected, GuestCheckInService.MaskDocumentNumber(documentNumber));
     }
 
     [Fact]
@@ -258,4 +597,134 @@ public class GuestCheckInServiceTests
         var expired = sessions.Single(s => s.Status == GuestCheckInSessionStatus.Scaduto);
         Assert.NotNull(expired);
     }
+
+    [Fact]
+    public async Task ExpireToken_ValidToken_MarksSessionExpired()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        await svc.ExpireTokenAsync(token);
+
+        var session = await seed.Db.GuestCheckInSessions.SingleAsync();
+        Assert.Equal(GuestCheckInSessionStatus.Scaduto, session.Status);
+    }
+
+    [Fact]
+    public async Task ExpireOtherActiveSessions_KeepsReplacementTokenActive()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        _ = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var replacementToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        await svc.ExpireOtherActiveSessionsAsync(seed.BookingId, replacementToken);
+
+        var replacement = await svc.GetSessionByTokenAsync(replacementToken);
+        Assert.NotNull(replacement);
+
+        var sessions = await seed.Db.GuestCheckInSessions.ToListAsync();
+        Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Scaduto);
+        Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.InCompilazione);
+    }
+
+    [Fact]
+    public async Task ExpireOtherActiveSessions_DoesNotExpireCompletedSession()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var completedToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        _ = await svc.GetSessionByTokenAsync(completedToken);
+        var submit = await svc.SubmitAsync(completedToken, BuildValidSubmitRequest());
+        Assert.True(submit.Success);
+
+        var replacementToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        await svc.ExpireOtherActiveSessionsAsync(seed.BookingId, replacementToken);
+
+        var sessions = await seed.Db.GuestCheckInSessions.ToListAsync();
+        Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Completo);
+        Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Inviato);
+    }
+
+    private static async Task<Guid> AddBookingSharingGuestAsync(AppDbContext db, Guid guestId)
+    {
+        var orgId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        db.Properties.Add(new Property
+        {
+            Id = propertyId,
+            OrgId = orgId,
+            OwnerId = "owner-shared",
+            Name = "Shared Guest Property",
+            Address = "Via Milano 1",
+            City = "Milano",
+            PostalCode = "20100",
+            NightlyRate = 120m,
+            IsActive = true,
+        });
+
+        db.Bookings.Add(new Booking
+        {
+            Id = bookingId,
+            PropertyId = propertyId,
+            GuestId = guestId,
+            OrgId = orgId,
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(10),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(12),
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+        });
+
+        await db.SaveChangesAsync();
+        return bookingId;
+    }
+
+    private static void AssertSingleError(GuestCheckInSubmitResult result, int? index, string field, string key)
+    {
+        var error = Assert.Single(result.ValidationErrors);
+        Assert.Equal((index, field, key), (error.Index, error.Field, error.MessageKey));
+    }
+
+    private static GuestCheckInSubmitRequest BuildValidSubmitRequest(
+        string type = "SingleGuest",
+        string documentType = "Passport",
+        string documentNumber = "YA1234567",
+        Gender? gender = Gender.Male) => new()
+        {
+            Guests =
+        [
+            new StayGuestInput
+            {
+                Type = type,
+                FirstName = "Luigi",
+                LastName = "Verdi",
+                DateOfBirth = new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc),
+                Gender = gender,
+                BornInItaly = true,
+                BirthComuneName = "Roma",
+                BirthProvince = "rm",
+                CitizenshipName = "Italia",
+                DocumentType = documentType,
+                DocumentNumber = documentNumber,
+                DocumentIssuePlaceName = "Roma",
+            },
+        ],
+        };
+
+    private static StayGuestInput Member(string firstName, string? documentNumber = null, DateTime? dateOfBirth = null) => new()
+    {
+        Type = "FamilyMember",
+        FirstName = firstName,
+        LastName = "Verdi",
+        DateOfBirth = dateOfBirth ?? new DateTime(1992, 1, 20, 0, 0, 0, DateTimeKind.Utc),
+        Gender = Gender.Female,
+        BornInItaly = false,
+        BirthCountryName = "Francia",
+        CitizenshipName = "Italia",
+        DocumentType = documentNumber is null ? null : "Passport",
+        DocumentNumber = documentNumber,
+    };
 }

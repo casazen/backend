@@ -1,7 +1,7 @@
 # FRONTEND-PROJECT.md — AI Context for CasaZen Frontend
 
 ## What this project does
-CasaZen Frontend is the React SPA for the CasaZen vacation rental platform. It gives Italian property managers a UI to manage properties, bookings, payments, OTA channel sync, AI-driven pricing, and GDPR-compliant guest data. It communicates exclusively with the CasaZen backend REST API.
+CasaZen Frontend is the React SPA for the CasaZen vacation rental platform. It gives Italian property managers a UI to manage properties, bookings, payments, OTA channel sync, seasonal price suggestions, and GDPR-compliant guest data. It communicates exclusively with the CasaZen backend REST API.
 
 ## Stack snapshot
 - **Language**: TypeScript 5.9 (strict mode)
@@ -82,7 +82,7 @@ Feature PRs target `develop`. Production promotion: release PR `develop` → `ma
 | Environment variables | `src/config/env.config.ts` (reads `VITE_*`) |
 | Demo mode config | `src/config/demo.config.ts` |
 | Booking calendar | `src/features/bookings/calendar-page.tsx` + `components/booking-calendar.tsx` |
-| Pricing AI dashboard | `src/features/pricing/pricing-dashboard-page.tsx` |
+| Seasonal suggestions ("Suggerimenti stagionali") | `src/features/pricing/pricing-dashboard-page.tsx` |
 | OTA sync management | `src/features/ota/ota-page.tsx` |
 | Shared UI components | `src/components/ui/` (Radix-based) |
 | Unit tests | `src/**/__tests__/` |

@@ -1,9 +1,11 @@
 using Casazen.Core.Services;
+using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
 public class SeoContentRefreshJob(ISeoContentService seoContentService, ILogger<SeoContentRefreshJob> logger)
 {
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
         logger.LogInformation("Starting monthly SEO content refresh");

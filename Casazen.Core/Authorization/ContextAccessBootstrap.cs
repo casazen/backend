@@ -24,6 +24,8 @@ public static class ContextAccessBootstrap
                 "ota.write",
                 "guest.read",
                 "guest.write",
+                // AM-03: carved out of property.write, guest.write and booking.write; the owner holds them all.
+                .. HostPermissions.ShortRentFine,
             ]),
         new(
             JwtRole: "LongTermLandlord",
@@ -33,6 +35,8 @@ public static class ContextAccessBootstrap
             DefaultRoute: "/app/long-rent/leases",
             Permissions:
             [
+                "property.read",
+                "property.write",
                 "lease.read",
                 "lease.create",
                 "lease.sign",
@@ -53,6 +57,7 @@ public static class ContextAccessBootstrap
                 "admin.jobs.read",
                 "admin.seo.read",
                 "admin.tax.manage",
+                "admin.ltr.manage",
             ]),
         new(
             JwtRole: "Supplier",

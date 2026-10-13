@@ -1,6 +1,10 @@
 # Spec — Role-Based Onboarding (Nuova Issue da Creare)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Quando un nuovo utente accede per la prima volta (dopo Auth0 login), deve scegliere
 che tipo di operatore è: proprietario di affitti brevi (short-term), locatore di lungo
@@ -18,6 +22,8 @@ Stage di ingresso: **Stage 01 Planning** (creare l'issue prima di procedere)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 Come nuovo utente che ha appena creato il mio account Auth0, voglio:
 
 1. Essere guidato a scegliere se gestisco affitti brevi, locazioni di lungo periodo, o entrambi
@@ -31,7 +37,11 @@ così che il JWT successivo porti già i claim corretti e la UI si adatti senza 
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Onboarding Flow
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: Nuovo utente autenticato con 0 ruoli nel JWT → redirect automatico a `/onboarding` prima del dashboard
   - Guard: `isAuthenticated && user.roles.length === 0` → `/onboarding`
@@ -55,6 +65,8 @@ così che il JWT successivo porti già i claim corretti e la UI si adatti senza 
 
 ### Backend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC7**: `POST /api/users/onboarding` (autenticato, qualsiasi ruolo incluso nessuno):
   - Body: `{ rentalType: "ShortTerm" | "LongTerm" | "Both" }`
   - Assegna ruoli in Auth0 Management API
@@ -69,6 +81,8 @@ così che il JWT successivo porti già i claim corretti e la UI si adatti senza 
 - **AC10**: Body request validato: `rentalType` deve essere uno dei 3 valori enum; 400 se valore sconosciuto
 
 ### Frontend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC11**: `OnboardingPage` a `/onboarding` — **non** wrapped in AppShell, standalone full-page
   - Layout: centrato, branding CasaZen, titolo "Come vuoi usare CasaZen?"
@@ -94,14 +108,88 @@ così che il JWT successivo porti già i claim corretti e la UI si adatti senza 
 
 ### Profile Page (AC6 dettaglio)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC17**: `/profile` include sezione "Tipo di operatore" con il tipo attuale (es. "Affitti brevi")
   e un link "Modifica tipo" → `/onboarding` (che in questo caso funge da settings, non da first-run)
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `role-onboarding`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | Nuovo utente autenticato con 0 ruoli nel JWT → redirect automatico a `/onboarding` prima del dashboard | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | `/onboarding` mostra 3 opzioni come card visuali con icone e descrizione: | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | Click su opzione → `POST /api/users/onboarding` con `{ rentalType: "ShortTerm" / "LongTerm" / "Both" }` → redirect: | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | Dopo risposta success da API → chiamare `getAccessTokenSilently({ ignoreCache: true })` per ottenere JWT con nuovi ruoli → ricaricare `us... | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | Utente già con ruoli → `/onboarding` redirect a home appropriata (no loop) | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | Da `/profile` → sezione "Tipo di operatore" → pulsante "Modifica" → stessa pagina `/onboarding` riutilizzabile come modal o navigazione | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | `POST /api/users/onboarding` (autenticato, qualsiasi ruolo incluso nessuno): | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | `PUT /api/users/onboarding` — stessa semantica di POST (idempotente — aggiorna ruoli se utente ha già completato onboarding) | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 | Admin (ruolo `Admin` nel JWT) → bypass onboarding, non soggetto al guard | Outcome not met; wrong status; silent no-op |
+| AC10 | L1 | Body request validato: `rentalType` deve essere uno dei 3 valori enum; 400 se valore sconosciuto | Outcome not met; wrong status; silent no-op |
+| AC11 | L2 + L3 | `OnboardingPage` a `/onboarding` — **non** wrapped in AppShell, standalone full-page | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L2 + L3 | `OnboardingGuard` — wrapper aggiunto al router tra `<ProtectedRoute>` e `<AppLayerProvider>`: | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC13 | L2 + L3 | Route `/onboarding` posizionata **fuori** dalla protezione di `OnboardingGuard` nel router (evitare redirect loop) | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC14 | L2 + L3 | Sequenza post-scelta: | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC15 | L2 + L3 | Se chiamata API fallisce → toast errore "Errore durante la configurazione del profilo. Riprova." + retry button | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC16 | L2 + L3 | Demo mode — `VITE_DEMO_PROFILE=onboarding` mostra la pagina onboarding bypassando Auth0; | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC17 | L1 | `/profile` include sezione "Tipo di operatore" con il tipo attuale (es. "Affitti brevi") | Outcome not met; wrong status; silent no-op |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Azione |
 |---|---|
@@ -122,6 +210,8 @@ var roleMapping = rentalType switch {
 Auth0 role assignment è idempotente — assegnare un ruolo già presente non restituisce errore.
 
 ### Frontend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Azione |
 |---|---|
@@ -148,6 +238,8 @@ Auth0 role assignment è idempotente — assegnare un ruolo già presente non re
 
 ### LayerSwitcher Interaction (nessuna modifica richiesta)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 Dopo onboarding con "Entrambi":
 - `AppLayerProvider` riceve i nuovi ruoli dal `useUserStore` aggiornato
 - `isDualRole(user)` diventa `true` → `LayerSwitcher` appare automaticamente in sidebar
@@ -156,6 +248,8 @@ Dopo onboarding con "Entrambi":
 ---
 
 ## New GitHub Issue Required
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Questa spec richiede la creazione di una nuova issue in Stage 01 prima di procedere con design e sviluppo.
 
@@ -171,9 +265,41 @@ Questa spec richiede la creazione di una nuova issue in Stage 01 prima di proced
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Dipende da**: `spec-admin-backend.md` — condivide `Auth0ManagementService.cs` e il client Auth0 Management API
   - **Implementare spec-admin-backend prima** per non duplicare il client
 - **Richiede**: Auth0 Management API M2M token in Railway env vars (già richiesto da spec-admin-backend)
 - **Estende**: Issue #182 (DONE) — layer separation senza modificarla
 - **Non tocca**: `LayerSwitcher`, `AppLayerProvider`, `ShortStayLayerGuard` (invariati)
 - **Non richiede** migration DB se `User.RentalType` è aggiunto (solo nullable enum — migration leggera)
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)
