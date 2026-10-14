@@ -5,7 +5,7 @@ code** (no default in `appsettings.json`, `vercel.json` or the sources). The cod
 chooses the domain, sets the variables of section 2 and follows sections 3 and 4.
 
 **Exception to D3 (legacy production host):** `vercel.json` may contain one permanent redirect from the retired
-host `casazen-app.vercel.app` to the public canonical (`https://casazen.space/:path*`). That is the only CasaZen
+host `casazen-app.vercel.app` to the public canonical (`https://www.casazen.space/:path*`). That is the only CasaZen
 domain allowed in that file; every other public URL still comes from `VITE_PUBLIC_SITE_URL` /
 `App__PublicSiteBaseUrl`. After the redirect is live in production, remove `https://casazen-app.vercel.app` from
 Railway `Cors__AllowedOrigins`.
@@ -73,18 +73,19 @@ The domain is a product decision (not taken in code). Once chosen:
 2. Decide what the other names do (e.g. the apex redirecting to `www`, or the old `*.vercel.app` production URL):
    Vercel → Domains → **Redirect to** the chosen domain, so only one host serves the pages.
 
-### Chosen domain: `casazen.space` (D3 exception)
+### Chosen domain: `www.casazen.space` (D3 exception)
 
-- Canonical host: `https://casazen.space` (apex); `www.casazen.space` redirects to it from Vercel → Domains (**Redirect to**,
-  permanent).
+- Canonical host: `https://www.casazen.space`; the apex `casazen.space` redirects to it from Vercel → Domains (**Redirect to**,
+  permanent). This is the host the app is served on in production, so it is the one that Auth0 (Allowed Callback, Logout and Web
+  Origins URLs), `Cors__AllowedOrigins`, `VITE_PUBLIC_SITE_URL` and `App__PublicSiteBaseUrl` must carry.
 - The old production alias `casazen-app.vercel.app` cannot be redirected from the Domains dropdown (it is not a project domain).
   Frontend `vercel.json` redirects it with a permanent (308) redirect that keeps the path and the query string, the
   configuration Vercel documents for the production `vercel.app` host
   (<https://vercel.com/docs/routing/redirects#redirect-the-production-vercel.app-hostname>). It is the **only** place where a
   CasaZen domain is written in the frontend configuration: a redirect in `vercel.json` is static and cannot read an environment
   variable. Covered by `src/test/vercel-routing.test.ts` (exact host only: the preview and deployment URLs are not redirected).
-- **Release order**: the redirect reaches production only after `casazen.space` serves the production deployment (Vercel
-  domain verified, `VITE_PUBLIC_SITE_URL` and Railway `App__PublicSiteBaseUrl` set to `https://casazen.space`, Auth0 URLs
+- **Release order**: the redirect reaches production only after `www.casazen.space` serves the production deployment (Vercel
+  domain verified, `VITE_PUBLIC_SITE_URL` and Railway `App__PublicSiteBaseUrl` set to `https://www.casazen.space`, Auth0 URLs
   added, section 2). Until the redirect is live, keep `https://casazen-app.vercel.app` in Railway `Cors__AllowedOrigins`; remove
   it afterwards.
 - If the public domain changes again, change this redirect in the same release as the variables.
