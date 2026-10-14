@@ -30,6 +30,7 @@ public class LegacyRowsSchemaTests
     private const string RentInstallmentRows = nameof(LegacyRentRows) + ".Installment";
     private const string Am01 = "AddOrgMembership";
     private const string Sp10 = "AddShowcaseBooking";
+    private const string Gsk = "AddGlobalSearchKeys";
     private const string Sp05 = "AddSupplierBusyWindowFeedKey";
     private const string Sp15b = "AddSupplierPaymentRefunds";
     private const string Db03 = "AddDirectBookingPublicData";
@@ -53,6 +54,8 @@ public class LegacyRowsSchemaTests
         [nameof(LegacyLeaseRows)] = LegacyLeaseRows.Statement(new LeaseContract()),
         [nameof(LegacyBookingRows)] = LegacyBookingRows.Statement(new Booking()),
         [nameof(LegacyGuestRows)] = LegacyGuestRows.Statement(new Guest()),
+        [nameof(LegacyPartyRows)] = LegacyPartyRows.Statement(new Party()),
+        [nameof(LegacyServiceRequestRows)] = LegacyServiceRequestRows.Statement(new ServiceRequest()),
         [RentScheduleRows] = LegacyRentRows.ScheduleStatement(new Casazen.Core.Entities.RentSchedule()),
         [RentInstallmentRows] = LegacyRentRows.InstallmentStatement(new RentLedgerEntry()),
     };
@@ -81,6 +84,7 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyPropertyRows), Pm01 },
         { nameof(LegacyPropertyRows), Sp10 },
         { nameof(LegacyPropertyRows), Sp15b },
+        { nameof(LegacyServiceRequestRows), Sp15b },
         { nameof(LegacyPropertyRows), Db03 },
         { nameof(LegacyPropertyRows), Latest },
         { nameof(LegacyLeaseRows), Lt14 },
@@ -88,6 +92,13 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyBookingRows), Co14 },
         { nameof(LegacyBookingRows), Pm01 },
         { nameof(LegacyGuestRows), Pm01 },
+        { nameof(LegacyOrgRows), Gsk },
+        { nameof(LegacyPropertyRows), Gsk },
+        { nameof(LegacyGuestRows), Gsk },
+        { nameof(LegacyBookingRows), Gsk },
+        { nameof(LegacyLeaseRows), Gsk },
+        { nameof(LegacyPartyRows), Gsk },
+        { nameof(LegacyServiceRequestRows), Gsk },
         { nameof(LegacyOrgRows), Lr01 },
         { nameof(LegacyPropertyRows), Lr01 },
         { nameof(LegacyLeaseRows), Lr01 },
@@ -102,6 +113,7 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyLeaseRows), "LeasePartyRetention" },
         { nameof(LegacyBookingRows), "AddBookingCode" },
         { nameof(LegacyGuestRows), "GuestPrivacyConsentsAndRetention" },
+        { nameof(LegacyPartyRows), "LeaseMultipleParties" },
         { RentInstallmentRows, "AddRentCollection" },
     };
 

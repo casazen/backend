@@ -1107,8 +1107,21 @@ public partial class SupplierService(
         if (profile is null)
             return null;
 
+        var newUrl = icalFeedUrl?.Trim();
+        var feedChanged = profile.CalendarSyncType != syncType
+            || !string.Equals(profile.IcalFeedUrl, newUrl, StringComparison.Ordinal);
+        if (feedChanged)
+        {
+            // Unlinked or another calendar: the answers about the old feed's free-looking events (with their titles, personal
+            // data) go with it, in the same save as the URL, so a sync still running for the old URL finds nothing to keep.
+            var staleEvents = await db.SupplierFreeCalendarEvents
+                .Where(e => e.OrgId == orgId)
+                .ToListAsync(cancellationToken);
+            db.SupplierFreeCalendarEvents.RemoveRange(staleEvents);
+        }
+
         profile.CalendarSyncType = syncType;
-        profile.IcalFeedUrl = icalFeedUrl?.Trim();
+        profile.IcalFeedUrl = newUrl;
         profile.CalendarSyncError = calendarSyncError;
         // An iCal URL is synced by a queued job (SU-15): the caller queues it, the state says so until it has run.
         profile.CalendarSyncStatus = syncType == CalendarSyncType.ICalFeed && !string.IsNullOrWhiteSpace(profile.IcalFeedUrl)

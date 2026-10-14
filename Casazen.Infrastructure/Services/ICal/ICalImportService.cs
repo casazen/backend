@@ -77,8 +77,15 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
         return ICalFeedParser.Parse(
             icsContent,
             today.AddMonths(-window.EffectiveMonthsBack),
-            today.AddMonths(window.EffectiveMonthsAhead));
+            today.AddMonths(window.EffectiveMonthsAhead),
+            transparentFrom: today);
     }
+
+    /// <summary>The "now" of the import, for the nearest occurrence of a free-looking event.</summary>
+    internal DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
+
+    /// <summary>See <see cref="ICalImportOptions.BlockUndecidedFreeEvents"/>.</summary>
+    internal bool BlockUndecidedFreeEvents => options.Value.BlockUndecidedFreeEvents;
 
     /// <summary>
     /// Property blocks: the occurrences that cover at least one night, each with a key that fits

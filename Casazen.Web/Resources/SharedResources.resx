@@ -453,6 +453,9 @@
   <data name="QuesturaDeliveryDateAfterEnd" xml:space="preserve">
     <value>La data di consegna dell'immobile non può essere successiva alla fine del contratto.</value>
   </data>
+  <data name="QuesturaDeliveryDateLocked" xml:space="preserve">
+    <value>La data di consegna non può più essere modificata dopo che la comunicazione alla Questura è stata dichiarata.</value>
+  </data>
   <data name="LeasePartyCitizenshipInvalid" xml:space="preserve">
     <value>La cittadinanza deve essere il codice ISO del paese di 2 lettere (per esempio IT, DE, US).</value>
   </data>
@@ -704,6 +707,15 @@
   </data>
   <data name="ICalSupplierNoFeed" xml:space="preserve">
     <value>Non hai ancora collegato un calendario iCal: incolla prima l'URL del tuo calendario.</value>
+  </data>
+  <data name="FreeEventDecisionInvalid" xml:space="preserve">
+    <value>Non è stato possibile registrare la risposta: scegli «Disponibile» oppure «Occupato».</value>
+  </data>
+  <data name="FreeEventAlreadyDecided" xml:space="preserve">
+    <value>Hai già risposto per questo evento del calendario.</value>
+  </data>
+  <data name="FreeEventNotFound" xml:space="preserve">
+    <value>Evento del calendario non trovato.</value>
   </data>
   <data name="ICalExportBusySummary" xml:space="preserve">
     <value>Occupato</value>
@@ -2694,6 +2706,18 @@
   </data>
   <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
     <value>Indica un mese passato o in corso nel formato aaaa-mm (ad esempio 2026-10).</value>
+  </data>
+  <data name="SearchQueryTooShort" xml:space="preserve">
+    <value>Scrivi almeno {0} caratteri per cercare.</value>
+  </data>
+  <data name="SearchQueryTooLong" xml:space="preserve">
+    <value>La ricerca può avere al massimo {0} caratteri.</value>
+  </data>
+  <data name="ContextNotAccessible" xml:space="preserve">
+    <value>Non hai accesso a quest'area.</value>
+  </data>
+  <data name="ContextKeyRequired" xml:space="preserve">
+    <value>Indica l'area.</value>
   </data>
   <data name="SeoDraftInvalid" xml:space="preserve">
     <value>Il testo non è pubblicabile: servono almeno {0} caratteri visibili, un titolo di sezione (h2) e un paragrafo (p). Il markdown non è accettato.</value>

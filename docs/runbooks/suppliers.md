@@ -628,6 +628,11 @@ engagement of its calendar from the console (404): it edits the event in its cal
 an unknown `TZID` are Europe/Rome), the two days a year the clock changes, recurrences and their limit, the import window and the
 10 000-window limit, the migration `AddSupplierBusyWindowFeedKey` and the checks after a deploy: [ical.md](ical.md#events-by-the-hour-sp-05).
 
+Free-looking events (`TRANSP:TRANSPARENT`, every all-day event of Google Calendar) keep their days or hours occupied until the
+supplier answers *Available* or *Busy* in the app (`GET api/supplier/calendar/free-events`, `POST …/{id}/decision`,
+`pendingFreeEventsCount` in the sync status and the dashboard); the answer is remembered per event (one per series). Rules, table,
+cap and first-sync impact: [ical.md](ical.md#free-looking-events-of-a-suppliers-calendar-transptransparent).
+
 ## 13. The Supplier org never becomes the host org — PL-05 (A1-40)
 
 Before PL-05 the supplier registration, claim and auto-provisioning also wrote the new supplier org into `User.OrgId`

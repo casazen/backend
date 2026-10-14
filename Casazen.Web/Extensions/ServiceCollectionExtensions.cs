@@ -301,6 +301,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICalendarBlockService, CalendarBlockService>();
         // Scheduled change of rental mode of a property: preview, creation, the hourly application (PM-02).
         services.AddScoped<IPropertyModeService, PropertyModeService>();
+        // Global search of the palette: the groups the caller may read (policies) and the SQL (UI-13a, docs/runbooks/global-search.md).
+        services.AddScoped<ISearchAccessResolver, SearchAccessResolver>();
+        services.AddScoped<Casazen.Core.Search.IGlobalSearchService, Casazen.Infrastructure.Search.GlobalSearchService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
@@ -549,6 +552,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierServiceRequestReader, SupplierServiceRequestReader>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         services.AddScoped<CalendarSyncService>();
+        // The supplier's answers about the "Available" events of its calendar (they occupy until answered).
+        services.AddScoped<SupplierFreeEventService>();
         // iCal import (PC-10, runbook ical.md): recurrence window, optional section ICalImport.
         services.AddOptions<ICalImportOptions>().BindConfiguration(ICalImportOptions.SectionName);
         services.AddScoped<ICalImportService>();

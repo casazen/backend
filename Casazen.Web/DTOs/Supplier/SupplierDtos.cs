@@ -351,6 +351,51 @@ public class CalendarSyncStatusDto
 
     /// <summary>Localized message of <see cref="CalendarSyncErrorCode"/>, never an exception message.</summary>
     public string? CalendarSyncError { get; set; }
+
+    /// <summary>
+    /// Events of the calendar that the calendar marks "Available" and the supplier has not answered about: they keep their
+    /// days or hours occupied until it answers (<c>GET calendar/free-events</c>).
+    /// </summary>
+    public int PendingFreeEventsCount { get; set; }
+}
+
+/// <summary>One event of the supplier's calendar marked "Available" that waits for the supplier's answer.</summary>
+public class SupplierFreeEventDto
+{
+    public Guid Id { get; set; }
+
+    /// <summary>Title of the event (at most 80 characters), only for the supplier. Null when the event has none.</summary>
+    public string? Summary { get; set; }
+
+    public bool IsAllDay { get; set; }
+
+    public bool Recurring { get; set; }
+
+    /// <summary>Occurrences from today on (1 for a single event). The answer is one for all of them.</summary>
+    public int Occurrences { get; set; }
+
+    /// <summary>The nearest occurrence that has not ended (UTC); an all-day event spans whole Europe/Rome days.</summary>
+    public DateTime NextStartUtc { get; set; }
+
+    public DateTime NextEndUtc { get; set; }
+
+    public DateTime FirstSeenAt { get; set; }
+}
+
+/// <summary>Response of <c>GET api/supplier/calendar/free-events</c>: the unanswered events, the next to happen first.</summary>
+public class SupplierFreeEventsResponse
+{
+    public IReadOnlyList<SupplierFreeEventDto> Items { get; set; } = [];
+
+    public int PendingCount { get; set; }
+}
+
+/// <summary>Body of <c>POST api/supplier/calendar/free-events/{id}/decision</c>.</summary>
+public class SupplierFreeEventDecisionRequest
+{
+    /// <summary><c>Available</c> (free: nothing is occupied) or <c>Busy</c> (occupied, like a busy event).</summary>
+    [Required, MaxLength(20)]
+    public string Decision { get; set; } = string.Empty;
 }
 
 /// <summary>

@@ -415,7 +415,7 @@ The API contract of FD-16 is unchanged: `lastErrorCode` / `calendarSyncErrorCode
 
 ## How events are read
 
-- `STATUS:CANCELLED` and `TRANSP:TRANSPARENT` (free time) events block nothing. A cancelled instance of a recurring
+- `STATUS:CANCELLED` events block nothing. `TRANSP:TRANSPARENT` ("Available") events block nothing in a **property** feed; in a **supplier** feed they stay occupied until the supplier answers (see "Free-looking events of a supplier's calendar"). A cancelled instance of a recurring
   event (override with `RECURRENCE-ID` and `STATUS:CANCELLED`) frees that instance only.
 - **All-day** values (`VALUE=DATE`) are calendar dates, taken as written: `DTSTART;VALUE=DATE:20261010` +
   `DTEND;VALUE=DATE:20261012` blocks the nights of 10 and 11 October (DTEND is the check-out day). Without DTEND the
@@ -541,7 +541,8 @@ The sync reads each event of the feed and writes it according to its kind:
 | **All-day** (`DTSTART;VALUE=DATE`) | closed days in `SupplierAvailability`, exactly as before (previous section) |
 | **Timed, with a length** (`DTSTART` and `DTEND` with a time, or `DURATION`) | a **window of hours** in `SupplierBusyWindows`: `Kind = External`, `Source = ICalFeed`, `ExternalUid` the UID, `StartUtc`/`EndUtc`, `Label` the SUMMARY cut to 80 characters. A 10:00-11:00 event occupies that hour (and the supplier's buffer around it) and **nothing else**: the day stays open and the slot planner offers the other hours |
 | **Timed, with no length** (no `DTEND`, or equal to `DTSTART`) | has no hour to occupy: it keeps closing its **day**, as before SP-05 (the cautious reading: dropping it would offer a slot the supplier had closed) |
-| `STATUS:CANCELLED`, `TRANSP:TRANSPARENT` | nothing, as for the days |
+| `STATUS:CANCELLED` | nothing, as for the days |
+| `TRANSP:TRANSPARENT` | occupies its hours (or its day) **until the supplier answers**, see below |
 
 **Time zones.** `…Z` is read as written. A `TZID` that .NET finds in the server's time zone database (IANA names such as
 `Europe/Rome`; Windows names such as `W. Europe Standard Time` only where .NET can map them, which needs ICU) is the wall clock
@@ -628,6 +629,50 @@ SELECT "StartUtc", "EndUtc", "ExternalUid", "Label" FROM "SupplierBusyWindows"
 WHERE "OrgId" = '<supplier org id>' AND "Source" = 1 ORDER BY "StartUtc";
 ```
 
+### Free-looking events of a supplier's calendar (`TRANSP:TRANSPARENT`)
+
+Google writes every **all-day** event as "Available" (`TRANSP:TRANSPARENT`). The sync used to drop these events on purpose, so the
+day stayed bookable and the supplier did not notice. Now an event of this kind **occupies** what an ordinary busy event would
+(a timed one its window of hours, an all-day one its days) **until the supplier answers**; there is no email, only the app.
+
+- **Answer, remembered per event**: *Available* = it occupies nothing and is not asked again; *Busy* = it stays occupied like a
+  busy event. The answer is one per **series** (key: the UID) and one per **single event** (key: the UID and its start, so a single
+  event that moves, in date or time, is asked again). An event without UID is keyed by a hash of its content, as the other imports.
+  The key is stored as SHA-256.
+- **Table `SupplierFreeCalendarEvents`** (migration `AddSupplierFreeCalendarEvents`): `OrgId`, `DecisionKey` (unique with `OrgId`),
+  `UidHash`, `Summary` (title cut to 80 characters: **personal data**, shown only to the supplier), `IsAllDay`, `Recurring`,
+  `NextStartUtc`/`NextEndUtc`, `Occurrences`, `FirstSeenAt`/`LastSeenAt`, `Decision` (0 Pending, 1 Available, 2 Busy), `DecidedAt`.
+  Not tenant-filtered (supplier org key, like `SupplierBusyWindows`); guard `SupplierFreeEventTenancyTests`.
+- **Sync**: the parser returns the transparent occurrences apart (only those ending today or later, Europe/Rome; recurring ones
+  expanded in the import window; cancelled ones excluded; an unreadable transparent event is ignored, as it always was).
+  Under the supplier lock the sync upserts the rows keeping their answer, removes the rows whose event left the feed (nothing is
+  removed while the feed has events it cannot read), and adds the occurrences of the *Pending* and *Busy* events to the busy ones
+  **before** they become days and windows. So an event frees its days when it is answered *Available* (at the next sync) or when it
+  leaves the feed.
+- **Cap**: at most **200** occurrences of unanswered events (the nearest) are taken into account per sync; the rest stays ignored,
+  as before, with a warning in the log (`occurrences of free-looking events beyond the nearest 200 are ignored`). Events already
+  answered are never lost by falling out of the cap, and a *Busy* answer always applies. Rules repeating more than once a day are not
+  expanded for these events (as for busy ones).
+- **API** (policy `RequireSupplier`, the caller's supplier org only):
+
+| Action | Answer |
+|---|---|
+| `GET /api/supplier/calendar/free-events` | `{ items: [{ id, summary, isAllDay, recurring, occurrences, nextStartUtc, nextEndUtc, firstSeenAt }], pendingCount }`, only the *Pending*, the next to happen first |
+| `POST /api/supplier/calendar/free-events/{id}/decision` `{ "decision": "Available" \| "Busy" }` | **204**; *Available* queues the sync of "Sincronizza ora" so the days and hours are freed within seconds; **404** event not the caller's (or unknown); **422** `free_event_decision_invalid`; **409** `free_event_already_decided` |
+| `calendarSyncStatus.pendingFreeEventsCount` of `GET /api/supplier/calendar/status`, `PUT calendar/ical`, `POST calendar/sync` and `GET /api/supplier/dashboard` | number of *Pending* events |
+
+- **GDPR**: the rows are deleted when the supplier unlinks the calendar or saves a different URL (`UpdateCalendarSyncAsync`, same
+  save as the URL), when the event leaves the feed, and with the supplier profile (cascade).
+- **First sync after the deploy**: every supplier with a Google feed gets its all-day events (from today on) as *Pending* and so
+  **occupied** until it answers: at most 200 occurrences per supplier, each closing the days it spans. To soften the effect
+  without a deploy set `ICalImport__BlockUndecidedFreeEvents=false` on Railway: unanswered events stop occupying (they are
+  still listed and asked about) and *Busy* answers still apply. Support:
+
+```sql
+SELECT "Summary", "IsAllDay", "Recurring", "Occurrences", "NextStartUtc", "Decision"
+FROM "SupplierFreeCalendarEvents" WHERE "OrgId" = '<supplier org id>' ORDER BY "NextStartUtc";
+```
+
 ### Migration `AddSupplierCalendarSyncSource` (existing data, prudent choice)
 
 - `SupplierAvailability.Source` is added with default `Manual` for **every existing row**. Before SU-15 nothing recorded
@@ -683,10 +728,12 @@ message can quote the document). Skipped events are logged as counts with the ty
 | `App__ApiBaseUrl` | **Required for the export link**: the public https URL of this API (the Railway URL of this environment, different on test and production). The link given to hosts is `{App__ApiBaseUrl}/api/public/ical/{token}`. Without it the link would be built on `https://localhost:5001` and no channel would ever receive the calendar: `GET /api/health/ready` reports `api-url: degraded` (DEPLOY-CFG; the committed value used to be the production host, so the test environment published production links) | none |
 | `ICalImport__RecurrenceMonthsAhead` | Months after today (Europe/Rome) in which recurring events are expanded (1-60). Since SP-05 it also bounds the **windows of hours** of a supplier's feed (an event further away is stored when it comes into range): keep it at 12 or more, the longest horizon a supplier can set is 365 days | `18` |
 | `ICalImport__RecurrenceMonthsBack` | Months before today still expanded, for the calendar views (0-12); the same lower bound for the windows of hours of a supplier | `1` |
+| `ICalImport__BlockUndecidedFreeEvents` | Supplier calendars: a free-looking (`TRANSP:TRANSPARENT`) event the supplier has not answered about keeps its days or hours occupied. `false` restores the old behavior for unanswered events (a *Busy* answer still applies) | `true` |
 | `ICalImport__MaxFeedsPerProperty` | Import feeds a property may link (1-50); each is downloaded every 15 minutes | `10` |
 
 ## Checks after a deploy
 
+0. Free-looking events (supplier): the migration `AddSupplierFreeCalendarEvents` is applied. In a linked test calendar create an all-day event (Google: "Available"), "Sincronizza ora": the day is closed, `GET /api/supplier/calendar/free-events` lists it and `pendingFreeEventsCount` is 1. Answer *Available*: 204, and within seconds the day is open and the event is not listed again, also after the next syncs; answer *Busy* on another: it stays closed. Move a single event to another day: it is asked again. Unlink the calendar: `SupplierFreeCalendarEvents` has no rows of that supplier.
 1. First start after the PC-11 deploy: the log shows the notice of `AddICalMultiFeed` and, if URLs were saved before,
    `Encrypted N iCal import URLs stored in clear before PC-11`. `SELECT "ImportUrl" FROM "PropertyICalFeeds"` shows
    only `CfDJ8…` payloads; `GET /api/properties/{id}/ical/feeds` shows `maskedImportUrl` only, and the export link of

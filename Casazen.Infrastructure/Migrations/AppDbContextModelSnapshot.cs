@@ -370,6 +370,11 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BookingCode")
+                        .HasDatabaseName("IX_Bookings_BookingCode_Prefix");
+
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("BookingCode"), new[] { "varchar_pattern_ops" });
+
                     b.HasIndex("CheckInDate");
 
                     b.HasIndex("GuestId");
@@ -1193,6 +1198,11 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<string>("SearchKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("text")
+                        .HasComputedColumnSql("btrim(regexp_replace(lower(replace(replace(replace(replace(replace(replace(translate(\"LastName\" || ' ' || \"FirstName\" || ' ' || \"Email\", U&'\\00C0\\00C1\\00C2\\00C3\\00C4\\00C5\\00E0\\00E1\\00E2\\00E3\\00E4\\00E5\\0100\\0101\\0102\\0103\\0104\\0105\\01CD\\01CE\\01FA\\01FB\\212B\\00C7\\00E7\\0106\\0107\\0108\\0109\\010A\\010B\\010C\\010D\\00D0\\00F0\\010E\\010F\\0110\\0111\\00C8\\00C9\\00CA\\00CB\\00E8\\00E9\\00EA\\00EB\\0112\\0113\\0114\\0115\\0116\\0117\\0118\\0119\\011A\\011B\\011C\\011D\\011E\\011F\\0120\\0121\\0122\\0123\\0124\\0125\\0126\\0127\\00CC\\00CD\\00CE\\00CF\\00EC\\00ED\\00EE\\00EF\\0128\\0129\\012A\\012B\\012C\\012D\\012E\\012F\\0130\\0131\\01CF\\01D0\\0134\\0135\\0136\\0137\\0138\\212A\\0139\\013A\\013B\\013C\\013D\\013E\\013F\\0140\\0141\\0142\\00D1\\00F1\\0143\\0144\\0145\\0146\\0147\\0148\\0149\\014A\\014B\\00D2\\00D3\\00D4\\00D5\\00D6\\00D8\\00F2\\00F3\\00F4\\00F5\\00F6\\00F8\\014C\\014D\\014E\\014F\\0150\\0151\\01D1\\01D2\\01FE\\01FF\\0154\\0155\\0156\\0157\\0158\\0159\\015A\\015B\\015C\\015D\\015E\\015F\\0160\\0161\\017F\\0218\\0219\\0162\\0163\\0164\\0165\\0166\\0167\\021A\\021B\\00D9\\00DA\\00DB\\00DC\\00F9\\00FA\\00FB\\00FC\\0168\\0169\\016A\\016B\\016C\\016D\\016E\\016F\\0170\\0171\\0172\\0173\\01D3\\01D4\\0174\\0175\\00DD\\00FD\\00FF\\0176\\0177\\0178\\0179\\017A\\017B\\017C\\017D\\017E', 'aaaaaaaaaaaaaaaaaaaaaaaccccccccccddddddeeeeeeeeeeeeeeeeeegggggggghhhhiiiiiiiiiiiiiiiiiiiijjkkkkllllllllllnnnnnnnnnnnoooooooooooooooooooooorrrrrrsssssssssssttttttttuuuuuuuuuuuuuuuuuuuuuuwwyyyyyyzzzzzz'), U&'\\00DF', 'ss'), U&'\\1E9E', 'ss'), U&'\\00C6', 'ae'), U&'\\00E6', 'ae'), U&'\\0152', 'oe'), U&'\\0153', 'oe')), '[^a-z0-9]+', ' ', 'g'))", true);
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1201,6 +1211,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("Email");
 
                     b.HasIndex("OrgId");
+
+                    b.HasIndex("SearchKey")
+                        .HasDatabaseName("IX_Guests_SearchKey_Fts")
+                        .HasAnnotation("Npgsql:TsVectorConfig", "simple");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchKey"), "gin");
 
                     b.ToTable("Guests");
                 });
@@ -2489,7 +2505,18 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("integer");
 
+                    b.Property<string>("SearchKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("text")
+                        .HasComputedColumnSql("btrim(regexp_replace(lower(replace(replace(replace(replace(replace(replace(translate(\"LastName\" || ' ' || \"FirstName\", U&'\\00C0\\00C1\\00C2\\00C3\\00C4\\00C5\\00E0\\00E1\\00E2\\00E3\\00E4\\00E5\\0100\\0101\\0102\\0103\\0104\\0105\\01CD\\01CE\\01FA\\01FB\\212B\\00C7\\00E7\\0106\\0107\\0108\\0109\\010A\\010B\\010C\\010D\\00D0\\00F0\\010E\\010F\\0110\\0111\\00C8\\00C9\\00CA\\00CB\\00E8\\00E9\\00EA\\00EB\\0112\\0113\\0114\\0115\\0116\\0117\\0118\\0119\\011A\\011B\\011C\\011D\\011E\\011F\\0120\\0121\\0122\\0123\\0124\\0125\\0126\\0127\\00CC\\00CD\\00CE\\00CF\\00EC\\00ED\\00EE\\00EF\\0128\\0129\\012A\\012B\\012C\\012D\\012E\\012F\\0130\\0131\\01CF\\01D0\\0134\\0135\\0136\\0137\\0138\\212A\\0139\\013A\\013B\\013C\\013D\\013E\\013F\\0140\\0141\\0142\\00D1\\00F1\\0143\\0144\\0145\\0146\\0147\\0148\\0149\\014A\\014B\\00D2\\00D3\\00D4\\00D5\\00D6\\00D8\\00F2\\00F3\\00F4\\00F5\\00F6\\00F8\\014C\\014D\\014E\\014F\\0150\\0151\\01D1\\01D2\\01FE\\01FF\\0154\\0155\\0156\\0157\\0158\\0159\\015A\\015B\\015C\\015D\\015E\\015F\\0160\\0161\\017F\\0218\\0219\\0162\\0163\\0164\\0165\\0166\\0167\\021A\\021B\\00D9\\00DA\\00DB\\00DC\\00F9\\00FA\\00FB\\00FC\\0168\\0169\\016A\\016B\\016C\\016D\\016E\\016F\\0170\\0171\\0172\\0173\\01D3\\01D4\\0174\\0175\\00DD\\00FD\\00FF\\0176\\0177\\0178\\0179\\017A\\017B\\017C\\017D\\017E', 'aaaaaaaaaaaaaaaaaaaaaaaccccccccccddddddeeeeeeeeeeeeeeeeeegggggggghhhhiiiiiiiiiiiiiiiiiiiijjkkkkllllllllllnnnnnnnnnnnoooooooooooooooooooooorrrrrrsssssssssssttttttttuuuuuuuuuuuuuuuuuuuuuuwwyyyyyyzzzzzz'), U&'\\00DF', 'ss'), U&'\\1E9E', 'ss'), U&'\\00C6', 'ae'), U&'\\00E6', 'ae'), U&'\\0152', 'oe'), U&'\\0153', 'oe')), '[^a-z0-9]+', ' ', 'g'))", true);
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SearchKey")
+                        .HasDatabaseName("IX_Parties_SearchKey_Fts")
+                        .HasAnnotation("Npgsql:TsVectorConfig", "simple");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchKey"), "gin");
 
                     b.HasIndex("LeaseContractId", "Role", "Position")
                         .IsUnique();
@@ -3152,6 +3179,11 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("SearchKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("text")
+                        .HasComputedColumnSql("btrim(regexp_replace(lower(replace(replace(replace(replace(replace(replace(translate(\"Name\" || ' ' || \"City\" || ' ' || coalesce(\"CinCode\", ''), U&'\\00C0\\00C1\\00C2\\00C3\\00C4\\00C5\\00E0\\00E1\\00E2\\00E3\\00E4\\00E5\\0100\\0101\\0102\\0103\\0104\\0105\\01CD\\01CE\\01FA\\01FB\\212B\\00C7\\00E7\\0106\\0107\\0108\\0109\\010A\\010B\\010C\\010D\\00D0\\00F0\\010E\\010F\\0110\\0111\\00C8\\00C9\\00CA\\00CB\\00E8\\00E9\\00EA\\00EB\\0112\\0113\\0114\\0115\\0116\\0117\\0118\\0119\\011A\\011B\\011C\\011D\\011E\\011F\\0120\\0121\\0122\\0123\\0124\\0125\\0126\\0127\\00CC\\00CD\\00CE\\00CF\\00EC\\00ED\\00EE\\00EF\\0128\\0129\\012A\\012B\\012C\\012D\\012E\\012F\\0130\\0131\\01CF\\01D0\\0134\\0135\\0136\\0137\\0138\\212A\\0139\\013A\\013B\\013C\\013D\\013E\\013F\\0140\\0141\\0142\\00D1\\00F1\\0143\\0144\\0145\\0146\\0147\\0148\\0149\\014A\\014B\\00D2\\00D3\\00D4\\00D5\\00D6\\00D8\\00F2\\00F3\\00F4\\00F5\\00F6\\00F8\\014C\\014D\\014E\\014F\\0150\\0151\\01D1\\01D2\\01FE\\01FF\\0154\\0155\\0156\\0157\\0158\\0159\\015A\\015B\\015C\\015D\\015E\\015F\\0160\\0161\\017F\\0218\\0219\\0162\\0163\\0164\\0165\\0166\\0167\\021A\\021B\\00D9\\00DA\\00DB\\00DC\\00F9\\00FA\\00FB\\00FC\\0168\\0169\\016A\\016B\\016C\\016D\\016E\\016F\\0170\\0171\\0172\\0173\\01D3\\01D4\\0174\\0175\\00DD\\00FD\\00FF\\0176\\0177\\0178\\0179\\017A\\017B\\017C\\017D\\017E', 'aaaaaaaaaaaaaaaaaaaaaaaccccccccccddddddeeeeeeeeeeeeeeeeeegggggggghhhhiiiiiiiiiiiiiiiiiiiijjkkkkllllllllllnnnnnnnnnnnoooooooooooooooooooooorrrrrrsssssssssssttttttttuuuuuuuuuuuuuuuuuuuuuuwwyyyyyyzzzzzz'), U&'\\00DF', 'ss'), U&'\\1E9E', 'ss'), U&'\\00C6', 'ae'), U&'\\00E6', 'ae'), U&'\\0152', 'oe'), U&'\\0153', 'oe')), '[^a-z0-9]+', ' ', 'g'))", true);
+
                     b.Property<string>("Slug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -3188,6 +3220,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("ResponsibleUserId")
                         .HasDatabaseName("IX_Properties_ResponsibleUserId");
+
+                    b.HasIndex("SearchKey")
+                        .HasDatabaseName("IX_Properties_SearchKey_Fts")
+                        .HasAnnotation("Npgsql:TsVectorConfig", "simple");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchKey"), "gin");
 
                     b.HasIndex("OrgId", "AddressKey")
                         .IsUnique()
@@ -4871,6 +4909,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("ScheduledStartUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("SearchKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("text")
+                        .HasComputedColumnSql("btrim(regexp_replace(lower(replace(replace(replace(replace(replace(replace(translate(coalesce(\"ServiceNameSnapshot\", '') || ' ' || \"Category\" || ' ' || coalesce(\"PublicCode\", '') || ' ' || coalesce(\"LocationCity\", ''), U&'\\00C0\\00C1\\00C2\\00C3\\00C4\\00C5\\00E0\\00E1\\00E2\\00E3\\00E4\\00E5\\0100\\0101\\0102\\0103\\0104\\0105\\01CD\\01CE\\01FA\\01FB\\212B\\00C7\\00E7\\0106\\0107\\0108\\0109\\010A\\010B\\010C\\010D\\00D0\\00F0\\010E\\010F\\0110\\0111\\00C8\\00C9\\00CA\\00CB\\00E8\\00E9\\00EA\\00EB\\0112\\0113\\0114\\0115\\0116\\0117\\0118\\0119\\011A\\011B\\011C\\011D\\011E\\011F\\0120\\0121\\0122\\0123\\0124\\0125\\0126\\0127\\00CC\\00CD\\00CE\\00CF\\00EC\\00ED\\00EE\\00EF\\0128\\0129\\012A\\012B\\012C\\012D\\012E\\012F\\0130\\0131\\01CF\\01D0\\0134\\0135\\0136\\0137\\0138\\212A\\0139\\013A\\013B\\013C\\013D\\013E\\013F\\0140\\0141\\0142\\00D1\\00F1\\0143\\0144\\0145\\0146\\0147\\0148\\0149\\014A\\014B\\00D2\\00D3\\00D4\\00D5\\00D6\\00D8\\00F2\\00F3\\00F4\\00F5\\00F6\\00F8\\014C\\014D\\014E\\014F\\0150\\0151\\01D1\\01D2\\01FE\\01FF\\0154\\0155\\0156\\0157\\0158\\0159\\015A\\015B\\015C\\015D\\015E\\015F\\0160\\0161\\017F\\0218\\0219\\0162\\0163\\0164\\0165\\0166\\0167\\021A\\021B\\00D9\\00DA\\00DB\\00DC\\00F9\\00FA\\00FB\\00FC\\0168\\0169\\016A\\016B\\016C\\016D\\016E\\016F\\0170\\0171\\0172\\0173\\01D3\\01D4\\0174\\0175\\00DD\\00FD\\00FF\\0176\\0177\\0178\\0179\\017A\\017B\\017C\\017D\\017E', 'aaaaaaaaaaaaaaaaaaaaaaaccccccccccddddddeeeeeeeeeeeeeeeeeegggggggghhhhiiiiiiiiiiiiiiiiiiiijjkkkkllllllllllnnnnnnnnnnnoooooooooooooooooooooorrrrrrsssssssssssttttttttuuuuuuuuuuuuuuuuuuuuuuwwyyyyyyzzzzzz'), U&'\\00DF', 'ss'), U&'\\1E9E', 'ss'), U&'\\00C6', 'ae'), U&'\\00E6', 'ae'), U&'\\0152', 'oe'), U&'\\0153', 'oe')), '[^a-z0-9]+', ' ', 'g'))", true);
+
                     b.Property<Guid?>("ServiceListingId")
                         .HasColumnType("uuid");
 
@@ -4923,6 +4966,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("IX_ServiceRequests_CustomerId");
 
                     b.HasIndex("PropertyId");
+
+                    b.HasIndex("SearchKey")
+                        .HasDatabaseName("IX_ServiceRequests_SearchKey_Fts")
+                        .HasAnnotation("Npgsql:TsVectorConfig", "simple");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchKey"), "gin");
 
                     b.HasIndex("ServiceListingId");
 
@@ -5639,6 +5688,68 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierFreeCalendarEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Decision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DecisionKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsAllDay")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Occurrences")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Recurring")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("UidHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "DecisionKey")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierFreeCalendarEvents_OrgId_DecisionKey");
+
+                    b.HasIndex("OrgId", "Decision", "NextStartUtc")
+                        .HasDatabaseName("IX_SupplierFreeCalendarEvents_OrgId_Decision_NextStartUtc");
+
+                    b.ToTable("SupplierFreeCalendarEvents");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.SupplierInviteRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5773,6 +5884,11 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("SearchKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("text")
+                        .HasComputedColumnSql("btrim(regexp_replace(lower(replace(replace(replace(replace(replace(replace(translate(\"LegalName\", U&'\\00C0\\00C1\\00C2\\00C3\\00C4\\00C5\\00E0\\00E1\\00E2\\00E3\\00E4\\00E5\\0100\\0101\\0102\\0103\\0104\\0105\\01CD\\01CE\\01FA\\01FB\\212B\\00C7\\00E7\\0106\\0107\\0108\\0109\\010A\\010B\\010C\\010D\\00D0\\00F0\\010E\\010F\\0110\\0111\\00C8\\00C9\\00CA\\00CB\\00E8\\00E9\\00EA\\00EB\\0112\\0113\\0114\\0115\\0116\\0117\\0118\\0119\\011A\\011B\\011C\\011D\\011E\\011F\\0120\\0121\\0122\\0123\\0124\\0125\\0126\\0127\\00CC\\00CD\\00CE\\00CF\\00EC\\00ED\\00EE\\00EF\\0128\\0129\\012A\\012B\\012C\\012D\\012E\\012F\\0130\\0131\\01CF\\01D0\\0134\\0135\\0136\\0137\\0138\\212A\\0139\\013A\\013B\\013C\\013D\\013E\\013F\\0140\\0141\\0142\\00D1\\00F1\\0143\\0144\\0145\\0146\\0147\\0148\\0149\\014A\\014B\\00D2\\00D3\\00D4\\00D5\\00D6\\00D8\\00F2\\00F3\\00F4\\00F5\\00F6\\00F8\\014C\\014D\\014E\\014F\\0150\\0151\\01D1\\01D2\\01FE\\01FF\\0154\\0155\\0156\\0157\\0158\\0159\\015A\\015B\\015C\\015D\\015E\\015F\\0160\\0161\\017F\\0218\\0219\\0162\\0163\\0164\\0165\\0166\\0167\\021A\\021B\\00D9\\00DA\\00DB\\00DC\\00F9\\00FA\\00FB\\00FC\\0168\\0169\\016A\\016B\\016C\\016D\\016E\\016F\\0170\\0171\\0172\\0173\\01D3\\01D4\\0174\\0175\\00DD\\00FD\\00FF\\0176\\0177\\0178\\0179\\017A\\017B\\017C\\017D\\017E', 'aaaaaaaaaaaaaaaaaaaaaaaccccccccccddddddeeeeeeeeeeeeeeeeeegggggggghhhhiiiiiiiiiiiiiiiiiiiijjkkkkllllllllllnnnnnnnnnnnoooooooooooooooooooooorrrrrrsssssssssssttttttttuuuuuuuuuuuuuuuuuuuuuuwwyyyyyyzzzzzz'), U&'\\00DF', 'ss'), U&'\\1E9E', 'ss'), U&'\\00C6', 'ae'), U&'\\00E6', 'ae'), U&'\\0152', 'oe'), U&'\\0153', 'oe')), '[^a-z0-9]+', ' ', 'g'))", true);
+
                     b.Property<string>("ShowcaseSlug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -5806,6 +5922,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("ClaimTokenHash")
                         .IsUnique()
                         .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
+
+                    b.HasIndex("SearchKey")
+                        .HasDatabaseName("IX_SupplierProfiles_SearchKey_Fts")
+                        .HasAnnotation("Npgsql:TsVectorConfig", "simple");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchKey"), "gin");
 
                     b.HasIndex("ShowcaseSlug")
                         .IsUnique()
@@ -7586,6 +7708,17 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SupplierBusyWindow", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierFreeCalendarEvent", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithMany()

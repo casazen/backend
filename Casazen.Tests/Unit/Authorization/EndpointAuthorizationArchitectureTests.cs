@@ -35,6 +35,8 @@ public class EndpointAuthorizationArchitectureTests
         ["MeNotificationsController.UnreadCount"] = "UI-12a: the number on the bell, the caller's own unread notifications (same reason as List).",
         ["MeNotificationsController.MarkRead"] = "UI-12a: the caller marks one of its own notifications as read; the id of another user's is a 404 (same reason as List).",
         ["MeNotificationsController.MarkAllRead"] = "UI-12a: the caller marks all of its own notifications as read (same reason as List).",
+        ["MeController.PutLastContext"] = "UI-13a: remembers the area the caller entered last; it must be one of the contexts the caller can enter (422 otherwise) and it writes one column of the caller's own user row.",
+        ["SearchController.Search"] = "UI-13a: the palette searches every area of the caller, so no single context policy fits; each group is returned only when the caller holds the permission of that group in its context (the policies of the endpoints that list the same objects, SearchAccessResolver), in the caller's org and, for a collaborator limited to some properties, only in those (HostScope, in SQL). Behind the GlobalSearch flag and rate limited per user.",
         ["OnboardingController.GetStatus"] = "Onboarding state of the caller, needed before any context exists.",
         ["UsersController.GetMe"] = "Profile of the caller.",
         ["UsersController.UpdateMe"] = "Updates the caller's own profile.",

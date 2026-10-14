@@ -14,7 +14,7 @@ namespace Casazen.Tests.Integration;
 
 /// <summary>
 /// SU-04: the search of the official ISTAT comuni list (public, rate limited) and the admin import, on PostgreSQL. The test
-/// database holds the 40 official rows of <see cref="ComuneTestData"/> (see the factory); the import tests use a factory
+/// database holds the 42 official rows of <see cref="ComuneTestData"/> (see the factory); the import tests use a factory
 /// without them.
 /// </summary>
 public class ComuniIstatApiIntegrationTests : IClassFixture<CasazenWebApplicationFactory>, IClassFixture<ComuniIstatApiIntegrationTests.EmptyListFactory>
@@ -212,15 +212,15 @@ public class ComuniIstatApiIntegrationTests : IClassFixture<CasazenWebApplicatio
         var first = await ImportAsync(admin, SampleCsv());
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal((40, 40, 0, 0, 0), (Int(firstBody, "rows"), Int(firstBody, "inserted"), Int(firstBody, "updated"), Int(firstBody, "unchanged"), Int(firstBody, "deactivated")));
+        Assert.Equal((42, 42, 0, 0, 0), (Int(firstBody, "rows"), Int(firstBody, "inserted"), Int(firstBody, "updated"), Int(firstBody, "unchanged"), Int(firstBody, "deactivated")));
 
         // The same file again changes nothing.
         var second = await (await ImportAsync(admin, SampleCsv())).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal((40, 0, 0, 40, 0), (Int(second, "rows"), Int(second, "inserted"), Int(second, "updated"), Int(second, "unchanged"), Int(second, "deactivated")));
+        Assert.Equal((42, 0, 0, 42, 0), (Int(second, "rows"), Int(second, "inserted"), Int(second, "updated"), Int(second, "unchanged"), Int(second, "deactivated")));
 
         var status = await admin.GetFromJsonAsync<JsonElement>("/api/admin/comuni");
         Assert.True(status.GetProperty("available").GetBoolean());
-        Assert.Equal((40, 40), (Int(status, "totalRows"), Int(status, "activeRows")));
+        Assert.Equal((42, 42), (Int(status, "totalRows"), Int(status, "activeRows")));
         var last = status.GetProperty("lastImport");
         Assert.Equal(("AdminUpload", "2026-02-21", 64), (last.GetProperty("origin").GetString(), last.GetProperty("referenceDate").GetString(), last.GetProperty("sha256").GetString()!.Length));
         Assert.Equal("ISTAT test sample", last.GetProperty("sourceVersion").GetString());

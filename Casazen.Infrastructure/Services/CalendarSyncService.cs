@@ -94,6 +94,10 @@ public class CalendarSyncService
     /// had left open becomes a feed day (the supplier's own calendar says busy); a day the supplier closed stays a
     /// manual closure. Only the events of whole days close days: an event by the hour (10:00-11:00) is a window that
     /// occupies those hours and nothing else (SP-05).</item>
+    /// <item>Free-looking events (<c>TRANSP:TRANSPARENT</c>, e.g. every all-day event of Google Calendar) stay occupied until the
+    /// supplier answers (<see cref="ICalFreeEvents"/>, <see cref="SupplierFreeCalendarEvent"/>, <see cref="SupplierFreeEventService"/>):
+    /// their occurrences join the busy ones before they become days and windows, so they are freed when the supplier says
+    /// "Available" (at the next sync) or when the event leaves the feed. The answer is kept per event (per series).</item>
     /// <item>If the feed has events that cannot be read, no feed day and no window is freed at that run: an unreadable event
     /// is not proof that the commitment is gone.</item>
     /// <item>Only a download failure, a document that is not a readable iCalendar or any other failure (e.g. of the
@@ -156,11 +160,9 @@ public class CalendarSyncService
         }
 
         ICalFeedParseResult parsed;
-        SupplierICalBusy busy;
         try
         {
             parsed = _importService.Parse(icsContent);
-            busy = _importService.ToSupplierBusy(parsed.Occurrences);
         }
         catch (ICalFormatException ex)
         {
@@ -179,6 +181,11 @@ public class CalendarSyncService
                 orgId, parsed.UnreadableEvents, parsed.UnsupportedRecurrences, parsed.FirstUnreadableError);
         }
 
+        var outcome = await ApplyAsync(orgId, feedUrl, parsed, keepFeedRows: parsed.UnreadableEvents > 0, ct);
+        if (outcome is not { } written)
+            return;
+
+        var busy = written.Busy;
         if (busy.OverLimit > 0)
         {
             _logger.LogWarning(
@@ -186,19 +193,34 @@ public class CalendarSyncService
                 orgId, busy.OverLimit, ICalImportService.MaxWindowsPerSupplier);
         }
 
-        var outcome = await ApplyAsync(orgId, feedUrl, busy, keepFeedRows: parsed.UnreadableEvents > 0, ct);
-        if (outcome is not { } written)
-            return;
+        if (written.FreeEventsOverCap > 0)
+        {
+            _logger.LogWarning(
+                "iCal feed of supplier {OrgId}: {OverCap} occurrences of free-looking events beyond the nearest {Cap} are ignored",
+                orgId, written.FreeEventsOverCap, ICalFreeEvents.MaxPendingOccurrences);
+        }
 
         _logger.LogInformation(
             "iCal sync completed for supplier {OrgId}: {BusyDays} busy days, {Marked} marked busy, {Freed} freed; "
-            + "{Windows} engagements by the hour, {WindowsAdded} added, {WindowsUpdated} updated, {WindowsRemoved} removed",
+            + "{Windows} engagements by the hour, {WindowsAdded} added, {WindowsUpdated} updated, {WindowsRemoved} removed; "
+            + "{FreeEvents} free-looking events ({FreePending} waiting for an answer), {FreeRemoved} removed",
             orgId, busy.BusyDays.Count, written.Marked, written.Freed,
-            busy.Windows.Count, written.WindowsAdded, written.WindowsUpdated, written.WindowsRemoved);
+            busy.Windows.Count, written.WindowsAdded, written.WindowsUpdated, written.WindowsRemoved,
+            written.FreeEvents, written.FreeEventsPending, written.FreeEventsRemoved);
     }
 
     /// <summary>What a sync changed: days marked busy and freed, windows of hours added, updated and removed.</summary>
-    private readonly record struct SyncOutcome(int Marked, int Freed, int WindowsAdded, int WindowsUpdated, int WindowsRemoved);
+    private readonly record struct SyncOutcome(
+        int Marked,
+        int Freed,
+        int WindowsAdded,
+        int WindowsUpdated,
+        int WindowsRemoved,
+        SupplierICalBusy Busy,
+        int FreeEvents,
+        int FreeEventsPending,
+        int FreeEventsRemoved,
+        int FreeEventsOverCap);
 
     /// <summary>
     /// Writes what the feed occupies, in one transaction under the supplier's advisory lock (<see cref="AvailabilityLock"/>):
@@ -209,7 +231,7 @@ public class CalendarSyncService
     private async Task<SyncOutcome?> ApplyAsync(
         Guid orgId,
         string feedUrl,
-        SupplierICalBusy busy,
+        ICalFeedParseResult parsed,
         bool keepFeedRows,
         CancellationToken ct)
     {
@@ -222,6 +244,18 @@ public class CalendarSyncService
             _logger.LogInformation("iCal feed of supplier {OrgId} changed during the sync: result discarded", orgId);
             return null;
         }
+
+        // The free-looking events the supplier has not answered about (and those it answered "Busy") stay occupied. The answers are
+        // read under the lock, so one given while the feed was downloading is taken into account.
+        var freeRows = await _db.SupplierFreeCalendarEvents.Where(e => e.OrgId == orgId).ToListAsync(ct);
+        var decisions = new Dictionary<string, SupplierFreeEventDecision>(StringComparer.Ordinal);
+        foreach (var freeRow in freeRows)
+            decisions.TryAdd(freeRow.DecisionKey, freeRow.Decision);
+
+        var plan = ICalFreeEvents.Plan(
+            parsed.TransparentOccurrences, decisions, _importService.UtcNow, _importService.BlockUndecidedFreeEvents);
+        var busy = _importService.ToSupplierBusy(parsed.Occurrences.Concat(plan.Blocking));
+        var (freeEventsPending, freeEventsRemoved) = ReplaceFreeEvents(orgId, freeRows, plan, keepFeedRows);
 
         var busyDays = busy.BusyDays;
         var busyDayList = busyDays.ToArray();
@@ -277,7 +311,79 @@ public class CalendarSyncService
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        return new SyncOutcome(marked, freed, windowsAdded, windowsUpdated, windowsRemoved);
+        return new SyncOutcome(
+            marked, freed, windowsAdded, windowsUpdated, windowsRemoved,
+            busy, plan.Candidates.Count, freeEventsPending, freeEventsRemoved, plan.OverCap);
+    }
+
+    /// <summary>
+    /// Makes the rows of <c>SupplierFreeCalendarEvents</c> match the free-looking events of the feed, by decision key: a row that is
+    /// there keeps its answer (only what the feed says about the event is refreshed), a new event is added as
+    /// <see cref="SupplierFreeEventDecision.Pending"/>, a row whose event left the feed is removed (so is an unanswered one that fell
+    /// out of the cap: nothing is lost, it is asked again if it comes back). With <paramref name="keepFeedRows"/> nothing is removed,
+    /// like the days and windows of the feed. Runs in the transaction of <see cref="ApplyAsync"/>, under the lock.
+    /// </summary>
+    private (int Pending, int Removed) ReplaceFreeEvents(
+        Guid orgId,
+        List<SupplierFreeCalendarEvent> existing,
+        FreeEventPlan plan,
+        bool keepFeedRows)
+    {
+        var now = DateTime.UtcNow;
+        var byKey = new Dictionary<string, SupplierFreeCalendarEvent>(StringComparer.Ordinal);
+        var leftovers = new List<SupplierFreeCalendarEvent>();
+        foreach (var row in existing)
+        {
+            if (!byKey.TryAdd(row.DecisionKey, row))
+                leftovers.Add(row); // twice the same key: one is enough
+        }
+
+        var kept = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var candidate in plan.Candidates)
+        {
+            kept.Add(candidate.DecisionKey);
+            if (!byKey.TryGetValue(candidate.DecisionKey, out var row))
+            {
+                _db.SupplierFreeCalendarEvents.Add(new SupplierFreeCalendarEvent
+                {
+                    OrgId = orgId,
+                    DecisionKey = candidate.DecisionKey,
+                    UidHash = candidate.UidHash,
+                    Summary = candidate.Summary,
+                    IsAllDay = candidate.IsAllDay,
+                    Recurring = candidate.Recurring,
+                    NextStartUtc = candidate.NextStartUtc,
+                    NextEndUtc = candidate.NextEndUtc,
+                    Occurrences = candidate.Occurrences,
+                    FirstSeenAt = now,
+                    LastSeenAt = now,
+                    Decision = SupplierFreeEventDecision.Pending,
+                });
+                continue;
+            }
+
+            row.Summary = candidate.Summary;
+            row.IsAllDay = candidate.IsAllDay;
+            row.Recurring = candidate.Recurring;
+            row.NextStartUtc = candidate.NextStartUtc;
+            row.NextEndUtc = candidate.NextEndUtc;
+            row.Occurrences = candidate.Occurrences;
+            row.LastSeenAt = now;
+        }
+
+        var removed = 0;
+        if (!keepFeedRows)
+        {
+            leftovers.AddRange(byKey.Values.Where(r =>
+                !plan.SeenKeys.Contains(r.DecisionKey)
+                || (r.Decision == SupplierFreeEventDecision.Pending && !kept.Contains(r.DecisionKey))));
+            _db.SupplierFreeCalendarEvents.RemoveRange(leftovers);
+            removed = leftovers.Count;
+        }
+
+        var pending = plan.Candidates.Count(c =>
+            !byKey.TryGetValue(c.DecisionKey, out var row) || row.Decision == SupplierFreeEventDecision.Pending);
+        return (pending, removed);
     }
 
     /// <summary>
