@@ -4,6 +4,12 @@ Task SE-02, audit defect A8-02 (P0), decision D3: the public domain is configura
 code** (no default in `appsettings.json`, `vercel.json` or the sources). The code is in place; the product owner
 chooses the domain, sets the variables of section 2 and follows sections 3 and 4.
 
+**Exception to D3 (legacy production host):** `vercel.json` may contain one permanent redirect from the retired
+host `casazen-app.vercel.app` to the public canonical (`https://www.casazen.space/:path*`). That is the only CasaZen
+domain allowed in that file; every other public URL still comes from `VITE_PUBLIC_SITE_URL` /
+`App__PublicSiteBaseUrl`. After the redirect is live in production, remove `https://casazen-app.vercel.app` from
+Railway `Cors__AllowedOrigins`.
+
 Task SE-01, audit defects A8-04, A8-05, A8-06, A8-21 and R-09: a page is public only with a text a person read and
 approved in the admin dashboard; section 7 describes the review flow, the audit and what the migration withdrew.
 
@@ -66,6 +72,23 @@ The domain is a product decision (not taken in code). Once chosen:
    records Vercel shows, wait for the certificate.
 2. Decide what the other names do (e.g. the apex redirecting to `www`, or the old `*.vercel.app` production URL):
    Vercel → Domains → **Redirect to** the chosen domain, so only one host serves the pages.
+
+### Chosen domain: `www.casazen.space` (D3 exception)
+
+- Canonical host: `https://www.casazen.space`; the apex `casazen.space` redirects to it from Vercel → Domains (**Redirect to**,
+  permanent). This is the host the app is served on in production, so it is the one that Auth0 (Allowed Callback, Logout and Web
+  Origins URLs), `Cors__AllowedOrigins`, `VITE_PUBLIC_SITE_URL` and `App__PublicSiteBaseUrl` must carry.
+- The old production alias `casazen-app.vercel.app` cannot be redirected from the Domains dropdown (it is not a project domain).
+  Frontend `vercel.json` redirects it with a permanent (308) redirect that keeps the path and the query string, the
+  configuration Vercel documents for the production `vercel.app` host
+  (<https://vercel.com/docs/routing/redirects#redirect-the-production-vercel.app-hostname>). It is the **only** place where a
+  CasaZen domain is written in the frontend configuration: a redirect in `vercel.json` is static and cannot read an environment
+  variable. Covered by `src/test/vercel-routing.test.ts` (exact host only: the preview and deployment URLs are not redirected).
+- **Release order**: the redirect reaches production only after `www.casazen.space` serves the production deployment (Vercel
+  domain verified, `VITE_PUBLIC_SITE_URL` and Railway `App__PublicSiteBaseUrl` set to `https://www.casazen.space`, Auth0 URLs
+  added, section 2). Until the redirect is live, keep `https://casazen-app.vercel.app` in Railway `Cors__AllowedOrigins`; remove
+  it afterwards.
+- If the public domain changes again, change this redirect in the same release as the variables.
 
 ## 2. Variables
 
@@ -254,13 +277,22 @@ Defects A8-04 (the legal review was an automatic stamp), A8-05 (a regeneration r
 
    The admin list shows these as "Contenuto non generato: …". A page left in one of them is generated again by the next
    "Genera tutti" (also without "force") once a provider is configured.
-3. **Prompt** (`SeoContentPrompt`, version stored with each revision, currently `seo-it-2026-09-v1`): Italian, only the
+3. **Prompt** (`SeoContentPrompt`, version stored with each revision): Italian, only the
    HTML tags of the allowlist, the sections to write (CIN, Alloggiati Web, imposta di soggiorno, Fonti ufficiali for the
    guide; imposta, calcolo, esenzioni, fonti for the tourist tax page), 300-600 words, no legal or tax advice, and **only
    the facts and sources listed in the prompt**: the CIN and Alloggiati facts verified in
    `.claude/context/regulations/cin.md` and `alloggiati.md` with their official URLs, and the tourist tax rates of the
    comune in force today with their `SourceUrl` (https only). Without a rate the prompt says there is no verified rate and
-   no amount may be written. A new prompt version makes "Genera tutti" regenerate every page.
+   no amount may be written.
+   - **Lombardy guides** add the section "Regole della Lombardia: CIR e flussi turistici (Ross1000)" (400-750 words): only
+     the facts marked official in `.claude/context/regulations/cir-lombardia.md` and `istat-flussi-turistici.md` (CIR and
+     its path SUAP → Provincia → Ross1000, CIN instead of CIR in the ads, monthly flows by the 5th and their sanction), the
+     regional sources and, for the provinces of Como, Milano and Lecco, the province's own page. The open points of that
+     research (CIR format, article of the CIR sanction) are not written.
+   - **Versions, per page** (`SeoContentPrompt.VersionFor`): `seo-it-2026-10-lom-v1` for the Lombardy guides,
+     `seo-it-2026-09-v1` for every other page. "Genera tutti" regenerates only the pages whose version changed (and those
+     whose data changed): after this change the Lombardy guides come back as drafts to review, the other pages are left
+     alone. Their published text stays online until the new draft is approved.
 4. **Review** (admin → SEO → "Rivedi"): the text waiting for approval next to the text published now, both sanitized as
    the public page shows them, and the review history. "Approva e pubblica" needs the confirmation checkbox ("revisione
    legale"; for the first 100 pages, `CounselRequired`, the backend refuses without it: 422 `seo_counsel_required`) and
@@ -687,6 +719,74 @@ Recurring jobs → `domain-recheck` ([`hangfire.md`](hangfire.md)).
   the first activation**; `VercelDomainsClient` is the only place to change, covered by `VercelDomainsClientTests`.
 - The default CNAME target / suffix / A address are the well-known generic values; the dashboard of the project is the authority (step 4).
 - The exact permission names of a minimum-scope Vercel token (step 1).
+
+## 11. Public site of CasaZen (SEO-VETRINA)
+
+Acceptance criteria: `Sessions/specs/spec-public-marketing-site.md` (US-029).
+
+Before this the root `/` of the public domain was the entry of the console (a redirect to the login): a search for "CasaZen"
+found no page that says what CasaZen is. The public site adds four pages, **static HTML rendered at build time** (the method
+Google recommends over serving crawlers a different page): `/` (home), `/funzionalita`, `/per-i-fornitori`, `/chi-siamo`. Every
+claim matches a feature that exists today.
+
+**Private invitation (SEO-INVITE, product owner 2026-10-13).** CasaZen takes no sign-ups yet: prices and the onboarding of new
+customers are not defined. So the site has **no sign-up button, no prices and no plans page**: the call to action is "Richiedi un
+invito", an e-mail to `VITE_SUPPORT_EMAIL` (without it the site only says that the access is by invitation, no link). "Accedi"
+(`/login`) stays: a demo customer reaches the login with a dedicated link, and `/login` is never touched by the site. The same goes
+for the SEO guides: the flag `Features__SeoSignupCta` (off) removes "Pubblica la tua casa" from the guides, the API and the crawler
+page ([`feature-flags.md`](feature-flags.md)). **None of this closes the registration**: `/signup` and `/register` still exist, so
+the registration is closed where it is decided:
+
+1. **Auth0** → Authentication → Database → the connection of the app → Settings → **Disable Sign Ups**, so only users created by an
+   admin or accepted from an invitation can log in. Check the Universal Login page: it must not show "Sign up".
+2. **Suppliers**: `Suppliers__AnyComune=false` with no `Suppliers__PilotComuni__*` makes self-serve registration unavailable
+   (`supplier_self_serve_unavailable`); suppliers join by admin invite only ([`suppliers.md`](suppliers.md) §3).
+3. Billing is already closed by the code until `Billing__VatNumber` is set (`billing-tax.md`).
+
+| Concern | Behaviour | Code (frontend) |
+|---|---|---|
+| Render | `npm run build` builds the app and the template `site.html`, then `vite build --ssr` and `scripts/prerender-site.mjs` write one page per path to `dist/_site/*.html` (Italian, title, description, canonical, `hreflang`, Open Graph, JSON-LD `Organization` on the home page) and `dist/sitemap-site.xml`. The browser then starts the same React tree on the page (texts in English for a visitor who chose English in the app) | `src/site/*`, `site.html`, `scripts/prerender-site.mjs` |
+| Serving | The **Routing Middleware** `middleware.ts` (Vercel, runs before the static files, only on the four paths) serves `dist/_site/{page}.html` at the public path, **only on the web app's own host** (host of `VITE_PUBLIC_SITE_URL`, `*.vercel.app`, `localhost`; no domain written, D3). On an org's own host (section 9) the same paths stay the org's booking site. `/` with the Auth0 login answer (`code`/`error` + `state`) stays the single-page app, which completes the login there | `middleware.ts` |
+| Production gate | On Vercel **production** the site is served in one of two cases. **(1)** `VITE_LEGAL_NAME` and a valid `VITE_LEGAL_VAT_ID` (partita IVA, 11 digits) are set: the home page of a VAT-registered business must show the partita IVA (art. 35 DPR 633/1972). **(2)** The owner chose to publish it **without** a partita IVA (the company does not exist yet): `VITE_PUBLIC_SITE_WITHOUT_VAT_ID=true` plus `VITE_LEGAL_NAME` (the holder, a person or a company) and `VITE_SUPPORT_EMAIL` (the holder's contact); without both the **build fails** naming them. **Take the advice of an accountant or a lawyer before setting (2)** (identification of the service provider, privacy notice): it is never on by default. In (2) the footer and the "Chi siamo" page show the holder's name, e-mail and, if set, address; the JSON-LD does not declare a legal entity. Without either, `/` stays the console entry, the site files are **not even built** (`/_site/…` does not exist), and no sitemap or `robots.txt` line declares it. Preview, test and local builds always serve it (they are never indexed), so it can be reviewed. A partita IVA that is set but not valid fails the build | `src/site/site-gate.ts`, `middleware.ts` (same rule), `src/config/vercel-build-env.ts` |
+| Logged-in users | `/` shows the public home page with "Accedi" (`/login`, which opens the console of a signed-in user); the console stays under `/app` | — |
+| Crawling | `robots.txt` declares `Sitemap: {public domain}/sitemap-site.xml` (only when the site is served) and disallows `/_site/` | `src/config/robots-txt.ts` |
+| Company data | Footer of every page and JSON-LD of the home page, from the Vercel variables `VITE_LEGAL_NAME`, `VITE_LEGAL_VAT_ID`, `VITE_LEGAL_ADDRESS` and `VITE_SUPPORT_EMAIL`. Same values as the backend `Legal__Controller__*` | `src/site/site-config.ts` |
+
+Not available yet, to add when the assets exist: a CasaZen logo (JSON-LD `logo`, `og:image`) and a real favicon (today the
+Vite placeholder).
+
+### Checks after a deploy
+
+```bash
+SITE=https://<public domain>
+UA_BOT='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+
+# with the company data (or the choice to publish without a partita IVA) set: the home page is static HTML for people and crawlers alike (title, canonical, JSON-LD, P.IVA)
+curl -sS "$SITE/" | grep -E "<title>|rel=\"canonical\"|application/ld\+json|P\.IVA"
+curl -sS -A "$UA_BOT" "$SITE/funzionalita" | grep -E "<title>|rel=\"canonical\""
+curl -sS "$SITE/" | grep -c 'href="/signup'                       # 0: no sign-up link (private invitation)
+
+# without them (production): / is still the single-page app, and no site file exists
+curl -sS "$SITE/" | grep -c 'src="/assets/index-'                  # 1
+curl -s -o /dev/null -w "%{http_code}\n" "$SITE/_site/index.html"   # 404 or the single-page app, never the site
+
+# the console and the login are untouched
+curl -sS "$SITE/login" | grep -c 'src="/assets/index-'            # 1: the single-page app
+
+# sitemap and robots.txt
+curl -sS "$SITE/sitemap-site.xml" | grep -o "<loc>[^<]*</loc>"    # the four pages on $SITE (only with the company data)
+curl -sS "$SITE/robots.txt" | grep -E "sitemap-site|_site"
+
+# the SEO guides carry no call to action while the flag SeoSignupCta is off
+curl -sS "$API/api/public/content/affitti-brevi/lombardia/como" | grep -o '"cta":[^,}]*'    # "cta":null
+curl -sS -A "$UA_BOT" "$SITE/p/affitti-brevi/lombardia/como" | grep -c "/signup"             # 0
+
+# an org's own host keeps its booking site at /
+curl -sS "https://<verified custom domain>/" | grep -c '<div id="root"></div>'   # 1: the app, not the public site
+```
+
+In the browser: open `/login` with the dedicated link (demo customer), sign in, sign out (Auth0 returns to `/`), and check the login
+still lands in the console. Search Console: submit `https://<public domain>/sitemap-site.xml` next to the other sitemaps (section 4).
 
 ## Out of scope
 

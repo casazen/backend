@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 
 namespace Casazen.Core.Services;
 
@@ -16,6 +17,13 @@ public interface ILeaseWorkflowService
 
     /// <summary>Lease list of <paramref name="scope"/> (built by the web layer from the caller, TN-3).</summary>
     Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null);
+
+    /// <summary>
+    /// The lease list of <paramref name="scope"/> narrowed by a view and a search text (<see cref="LeaseListQuery"/>), each
+    /// row with the first tenant and the state of the rent (LR-01, B3). The views, the overdue installments and the
+    /// registration deadline are resolved on today's date in Europe/Rome.
+    /// </summary>
+    Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, LeaseListQuery query);
 
     /// <summary>
     /// The lease with property, parties, registration and events, or <c>null</c> when it does not exist in the

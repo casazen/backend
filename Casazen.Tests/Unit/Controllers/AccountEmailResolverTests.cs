@@ -128,4 +128,25 @@ public class AccountEmailResolverTests
         Assert.Null(AccountEmailResolver.GetEmailVerified(Principal(("email_verified", value))));
         Assert.Null(AccountEmailResolver.GetEmailVerified(Principal()));
     }
+
+    [Fact]
+    public void ReadProfile_ActionClaims_AreTheEmailAndTheName()
+    {
+        var profile = AccountEmailResolver.ReadProfile(Principal(
+            ("https://casazen.app/email", " Luca@Example.com "),
+            ("https://casazen.app/name", "Luca La Malfa")));
+
+        Assert.Equal(("Luca@Example.com", "Luca", "La Malfa"), profile);
+    }
+
+    [Fact]
+    public void ReadProfile_StandardClaims_StillWork()
+    {
+        var profile = AccountEmailResolver.ReadProfile(Principal(
+            ("email", "anna@example.com"),
+            ("given_name", "Anna"),
+            ("family_name", "Leone")));
+
+        Assert.Equal(("anna@example.com", "Anna", "Leone"), profile);
+    }
 }

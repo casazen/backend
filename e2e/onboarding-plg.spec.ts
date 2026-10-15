@@ -46,7 +46,7 @@ test.describe('Onboarding PLG (#271)', () => {
 
   test('AC8: consents wizard step requires four checkboxes before Continua', async ({ page }) => {
     await page.goto(demoUrl('/onboarding', 'onboarding'));
-    await expect(page.getByRole('heading', { name: /Come vuoi usare CasaZen|How do you want to use CasaZen/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /Da dove vuoi iniziare|Where do you want to start/i })).toBeVisible({
       timeout: 15_000,
     });
     await page.getByRole('button', { name: /Scegli|Choose/i }).first().click();
@@ -56,7 +56,7 @@ test.describe('Onboarding PLG (#271)', () => {
 
   test('AC9: onboarding wizard shows role step before consents', async ({ page }) => {
     await page.goto(demoUrl('/onboarding', 'onboarding'));
-    await expect(page.getByRole('heading', { name: /Come vuoi usare CasaZen|How do you want to use CasaZen/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /Da dove vuoi iniziare|Where do you want to start/i })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page).toHaveURL(/\/onboarding/);
@@ -77,6 +77,6 @@ test.describe('Onboarding PLG (#271)', () => {
   test('AC12: OnboardingGuard demo mode still renders without Auth0', async ({ page }) => {
     await page.goto(demoUrl('/onboarding', 'onboarding'));
     await expect(page).toHaveURL(/\/onboarding/);
-    await expect(page.getByRole('heading', { name: /Come vuoi usare CasaZen|How do you want to use CasaZen/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Da dove vuoi iniziare|Where do you want to start/i })).toBeVisible();
   });
 });

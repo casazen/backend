@@ -92,6 +92,95 @@ public class OrgBrandingServiceTests : IDisposable
         Assert.Null(await _service.UpdateAsync(Guid.NewGuid(), new OrgBrandingUpdate(null, null, null)));
     }
 
+    // ─── Public profile (DB-03) ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateAsync_PublicProfileSent_StoresTheNormalizedValues()
+    {
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate(
+            "#123456",
+            "mare",
+            "Slogan",
+            Subtitle: FieldUpdate<string>.Set("  Trulli, case sul mare\n e dimore barocche. "),
+            HostName: FieldUpdate<string>.Set(" Giulia   Rinaldi "),
+            PublicPhone: FieldUpdate<string>.Set("+39 333 123 4567")));
+
+        var stored = await _db.Orgs.AsNoTracking().FirstAsync(o => o.Id == _org.Id);
+        Assert.Equal("Trulli, case sul mare e dimore barocche.", stored.Subtitle);
+        Assert.Equal("Giulia Rinaldi", stored.HostName);
+        Assert.Equal("+393331234567", stored.PublicPhone);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_PublicProfileLeftOut_KeepsTheStoredValues()
+    {
+        // The appearance form of today sends the color, the theme and the tagline only: it must not erase the profile.
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate(
+            null,
+            null,
+            null,
+            Subtitle: FieldUpdate<string>.Set("Sottotitolo"),
+            HostName: FieldUpdate<string>.Set("Giulia"),
+            PublicPhone: FieldUpdate<string>.Set("0832123456")));
+
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#abcdef", "urban", "Nuovo slogan"));
+
+        var stored = await _db.Orgs.AsNoTracking().FirstAsync(o => o.Id == _org.Id);
+        Assert.Equal("Nuovo slogan", stored.Tagline);
+        Assert.Equal("Sottotitolo", stored.Subtitle);
+        Assert.Equal("Giulia", stored.HostName);
+        Assert.Equal("0832123456", stored.PublicPhone);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_PublicProfileSentNullOrBlank_ClearsOnlyThoseFields()
+    {
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate(
+            null,
+            null,
+            null,
+            Subtitle: FieldUpdate<string>.Set("Sottotitolo"),
+            HostName: FieldUpdate<string>.Set("Giulia"),
+            PublicPhone: FieldUpdate<string>.Set("0832123456")));
+
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate(
+            null,
+            null,
+            null,
+            Subtitle: FieldUpdate<string>.Set(null),
+            PublicPhone: FieldUpdate<string>.Set("  ")));
+
+        var stored = await _db.Orgs.AsNoTracking().FirstAsync(o => o.Id == _org.Id);
+        Assert.Null(stored.Subtitle);
+        Assert.Null(stored.PublicPhone);
+        Assert.Equal("Giulia", stored.HostName);
+    }
+
+    [Theory]
+    [InlineData("subtitle", OrgBrandingRules.SubtitleTooLongCode)]
+    [InlineData("hostName", OrgBrandingRules.HostNameTooLongCode)]
+    [InlineData("phone", OrgBrandingRules.PhoneInvalidCode)]
+    public async Task UpdateAsync_InvalidPublicProfileField_ThrowsAndChangesNothing(string field, string expectedCode)
+    {
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#123456", "urban", "Slogan"));
+
+        var update = field switch
+        {
+            "subtitle" => new OrgBrandingUpdate("#ffffff", "mare", "Altro", Subtitle: FieldUpdate<string>.Set(new string('a', 301))),
+            "hostName" => new OrgBrandingUpdate("#ffffff", "mare", "Altro", HostName: FieldUpdate<string>.Set(new string('a', 101))),
+            _ => new OrgBrandingUpdate("#ffffff", "mare", "Altro", PublicPhone: FieldUpdate<string>.Set("not a phone")),
+        };
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.UpdateAsync(_org.Id, update));
+
+        Assert.Equal(expectedCode, ex.Code);
+        var stored = await _db.Orgs.AsNoTracking().FirstAsync(o => o.Id == _org.Id);
+        Assert.Equal("#123456", stored.ThemeColor);
+        Assert.Equal("Slogan", stored.Tagline);
+        Assert.Null(stored.Subtitle);
+        Assert.Null(stored.HostName);
+        Assert.Null(stored.PublicPhone);
+    }
+
     [Fact]
     public async Task SetImageAsync_ValidLogo_StoresInPublicBucketAndSetsAbsoluteUrl()
     {

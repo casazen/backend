@@ -152,7 +152,7 @@ public class ServiceRequestNotifierTests
         // A new request, a reminder, a cancellation by the host and by CasaZen, a proposal accepted and turned down.
         var created = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
         await s.Service.RemindAsync(created.Id, s.HostOrgId);
-        var proposed = await s.RequestAsync();
+        var proposed = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09);
         await s.Service.ProposeTimeAsync(
             proposed.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, new ProposeServiceRequestTimeCommand(ServiceRequestScenario.FridayAt14));
         await s.Service.RejectProposalAsync(proposed.Id, s.HostOrgId);

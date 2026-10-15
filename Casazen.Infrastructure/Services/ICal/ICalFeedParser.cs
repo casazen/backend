@@ -14,7 +14,11 @@ namespace Casazen.Infrastructure.Services.ICal;
 /// <list type="bullet">
 /// <item>A document is valid when it starts with <c>BEGIN:VCALENDAR</c> and Ical.Net reads it. The number of events
 /// does not matter: an empty calendar is valid and blocks nothing.</item>
-/// <item><c>STATUS:CANCELLED</c> and <c>TRANSP:TRANSPARENT</c> events block nothing.</item>
+/// <item><c>STATUS:CANCELLED</c> events block nothing. <c>TRANSP:TRANSPARENT</c> events ("Available", for instance every
+/// all-day event of Google Calendar) are not in <see cref="ICalFeedParseResult.Occurrences"/>: they are returned apart, from
+/// <c>transparentFrom</c> on, in <see cref="ICalFeedParseResult.TransparentOccurrences"/>, and the caller decides what they
+/// occupy (the supplier sync keeps them occupied until the supplier answers). An unreadable transparent event is ignored, as
+/// it always was.</item>
 /// <item>All-day values (<c>VALUE=DATE</c>) are calendar dates, read as written. Timed values are instants (UTC,
 /// <c>TZID</c>, or floating = Europe/Rome wall clock, also for an unknown <c>TZID</c>), converted to Europe/Rome before
 /// taking their date. Every occurrence also carries the UTC instants it covers (<see cref="ICalOccurrence.StartUtc"/>,
@@ -38,7 +42,11 @@ public static class ICalFeedParser
     private const string CalendarHeader = "BEGIN:VCALENDAR";
 
     /// <exception cref="ICalFormatException">The document is empty, is not an iCalendar or cannot be read.</exception>
-    public static ICalFeedParseResult Parse(string? icsContent, DateOnly recurrenceFrom, DateOnly recurrenceUntil)
+    public static ICalFeedParseResult Parse(
+        string? icsContent,
+        DateOnly recurrenceFrom,
+        DateOnly recurrenceUntil,
+        DateOnly? transparentFrom = null)
     {
         var text = WithoutControlCharacters((icsContent ?? string.Empty).TrimStart('\uFEFF', ' ', '\t', '\r', '\n'));
         if (text.Length == 0)
@@ -60,13 +68,14 @@ public static class ICalFeedParser
         if (calendars.Count == 0)
             throw new ICalFormatException(ICalFormatFailure.NotICalendar);
 
-        return new Reader(CollectWrittenUids(text), recurrenceFrom, recurrenceUntil)
+        return new Reader(CollectWrittenUids(text), recurrenceFrom, recurrenceUntil, transparentFrom ?? recurrenceFrom)
             .Read(calendars.SelectMany(c => c.Events).ToList());
     }
 
-    private sealed class Reader(HashSet<string> writtenUids, DateOnly recurrenceFrom, DateOnly recurrenceUntil)
+    private sealed class Reader(HashSet<string> writtenUids, DateOnly recurrenceFrom, DateOnly recurrenceUntil, DateOnly transparentFrom)
     {
         private readonly List<ICalOccurrence> _occurrences = [];
+        private readonly List<ICalOccurrence> _transparentOccurrences = [];
         private readonly HashSet<string> _unreadableUids = new(StringComparer.Ordinal);
         private int _cancelled;
         private int _transparent;
@@ -90,13 +99,16 @@ public static class ICalFeedParser
                 }
                 catch (Exception ex)
                 {
-                    Unreadable(ex.GetType().Name, UidOf(calendarEvent));
+                    // A transparent event blocked nothing before and still blocks nothing when it cannot be read.
+                    if (!IsTransparent(calendarEvent))
+                        Unreadable(ex.GetType().Name, UidOf(calendarEvent));
                 }
             }
 
             return new ICalFeedParseResult
             {
                 Occurrences = _occurrences,
+                TransparentOccurrences = _transparentOccurrences,
                 CancelledEvents = _cancelled,
                 TransparentEvents = _transparent,
                 UnreadableEvents = _unreadable,
@@ -114,16 +126,16 @@ public static class ICalFeedParser
                 return;
             }
 
-            if (IsTransparent(calendarEvent))
-            {
+            var transparent = IsTransparent(calendarEvent);
+            if (transparent)
                 _transparent++;
-                return;
-            }
 
             var uid = UidOf(calendarEvent);
             if (calendarEvent.DtStart is not { } start)
             {
-                Unreadable("MissingDtStart", uid);
+                if (!transparent)
+                    Unreadable("MissingDtStart", uid);
+
                 return;
             }
 
@@ -131,17 +143,22 @@ public static class ICalFeedParser
             var isSeries = calendarEvent.RecurrenceId is null
                 && (calendarEvent.RecurrenceRules.Count > 0 || calendarEvent.RecurrenceDates.Count > 0);
 
+            // An instance replaced by an override belongs to its series: one answer for all of them.
+            var recurring = isSeries || calendarEvent.RecurrenceId is not null;
+
             if (!isSeries)
             {
                 var end = calendarEvent.DtEnd
                     ?? (calendarEvent.Duration > TimeSpan.Zero ? start.Add(calendarEvent.Duration) : null);
-                Add(uid, summary, start, end, inWindowOnly: false);
+                Add(uid, summary, start, end, inWindowOnly: false, transparent, recurring);
                 return;
             }
 
             if (calendarEvent.RecurrenceRules.Any(IsMoreThanDaily))
             {
-                _unsupportedRecurrences++;
+                if (!transparent)
+                    _unsupportedRecurrences++;
+
                 return;
             }
 
@@ -159,23 +176,30 @@ public static class ICalFeedParser
                 if ((occurrenceEnd is null || !occurrenceEnd.GreaterThan(occurrenceStart)) && occurrence.Period.Duration > TimeSpan.Zero)
                     occurrenceEnd = occurrenceStart.Add(occurrence.Period.Duration);
 
-                Add(uid, summary, occurrenceStart, occurrenceEnd, inWindowOnly: true);
+                Add(uid, summary, occurrenceStart, occurrenceEnd, inWindowOnly: true, transparent, recurring);
             }
         }
 
-        private void Add(string? uid, string? summary, IDateTime start, IDateTime? end, bool inWindowOnly)
+        private void Add(
+            string? uid, string? summary, IDateTime start, IDateTime? end, bool inWindowOnly, bool transparent, bool recurring)
         {
             if (ToSpan(start, end) is not { } span)
             {
-                Unreadable("EndBeforeStart", uid);
+                if (!transparent)
+                    Unreadable("EndBeforeStart", uid);
+
                 return;
             }
 
             if (inWindowOnly && (span.LastDay < recurrenceFrom || span.StartDate >= recurrenceUntil))
                 return;
 
-            _occurrences.Add(new ICalOccurrence(
-                uid, summary, span.StartDate, span.EndDate, span.LastDay, span.StartUtc, span.EndUtc, span.IsAllDay));
+            var occurrence = new ICalOccurrence(
+                uid, summary, span.StartDate, span.EndDate, span.LastDay, span.StartUtc, span.EndUtc, span.IsAllDay, recurring);
+            if (!transparent)
+                _occurrences.Add(occurrence);
+            else if (span.LastDay >= transparentFrom)
+                _transparentOccurrences.Add(occurrence); // what ended before today is not worth asking about
         }
 
         private void Unreadable(string reason, string? uid)

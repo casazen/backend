@@ -3,6 +3,7 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Casazen.Infrastructure.Data;
@@ -120,6 +121,12 @@ internal static class PostgresAdvisoryLocks
         ComuneImport = 1_087,
 
         /// <summary>
+        /// Official MEF tourist-tax profile of one comune (key: ISTAT code): two property creates and the monthly
+        /// delta never write versions of the same comune at once.
+        /// </summary>
+        ComuneOfficialProfile = 1_088,
+
+        /// <summary>
         /// Rent of one lease (key: lease id): the schedule set-up, the tenant's payment session, an offline payment, the
         /// payment webhooks and the collection job change its installments one at a time, so an installment never gets
         /// two payable PaymentIntents or an offline payment while it is paid online (LT-06).
@@ -213,6 +220,19 @@ internal static class PostgresAdvisoryLocks
         OrgActivityRetention = 1_405,
 
         /// <summary>
+        /// The host invites of one inviter org, or of one admin (key: org id, or user id for an admin): the daily quota, the
+        /// pending cap and the duplicate check are decided one request at a time, so the last invite of the day is given to one
+        /// request only.
+        /// </summary>
+        HostInviteQuota = 1_410,
+
+        /// <summary>Acceptance of one host invite (key: token hash): an invite is used at most once.</summary>
+        HostInviteAccept = 1_411,
+
+        /// <summary>One run of the retention of the host invites (single key, session lock held for the whole run).</summary>
+        HostInviteRetention = 1_412,
+
+        /// <summary>
         /// The access requests of one person of one org (key: org id and user id, AM-02b): the count of the requests of the last
         /// 24 hours, read from the activity log, and the line that records the next one run one at a time, so the daily limit
         /// holds across requests and API instances.
@@ -232,7 +252,9 @@ internal static class PostgresAdvisoryLocks
     /// <summary>
     /// Opens a READ COMMITTED transaction and takes the given locks, in order. When the context already has a
     /// transaction the locks join it and <c>null</c> is returned (the owner of that transaction commits).
-    /// Also <c>null</c> when the provider is not PostgreSQL.
+    /// Also <c>null</c> when the provider is not PostgreSQL, and when the parallel-save test harness is active
+    /// (<see cref="IParallelSaveRendezvousInterceptor"/>): that harness holds both saves until both arrived, which
+    /// cannot meet if the first party already holds the calendar lock.
     /// </summary>
     /// <remarks>
     /// READ COMMITTED on purpose: every statement after the lock sees the rows committed by the previous
@@ -244,7 +266,7 @@ internal static class PostgresAdvisoryLocks
         CancellationToken cancellationToken,
         params (Scope Scope, string Key)[] locks)
     {
-        if (!IsSupported(context))
+        if (!IsSupported(context) || ParallelSaveHarnessIsActive(context))
             return null;
 
         IDbContextTransaction? transaction = null;
@@ -269,6 +291,16 @@ internal static class PostgresAdvisoryLocks
         }
 
         return transaction;
+    }
+
+    /// <summary>
+    /// True when the context carries the parallel-save test interceptor: advisory locks must stay off so both
+    /// parties can reach <c>SaveChanges</c> without one waiting on the other's transaction lock.
+    /// </summary>
+    private static bool ParallelSaveHarnessIsActive(DbContext context)
+    {
+        var core = context.GetService<IDbContextOptions>().FindExtension<CoreOptionsExtension>();
+        return core?.Interceptors?.OfType<IParallelSaveRendezvousInterceptor>().Any() == true;
     }
 
     /// <summary>

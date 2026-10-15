@@ -79,3 +79,6 @@ Sessions/quality/
 ## Editor backups
 *.bak
 *.orig
+
+## Local official-document scratch (never commit downloaded PDFs)
+tmp-tourist-tax/

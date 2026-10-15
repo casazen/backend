@@ -31,6 +31,12 @@ public class SeoComuneCatalogTests
         Assert.Equal("013250", pilots["bellagio"].Code);
         Assert.Equal("013145", pilots["menaggio"].Code);
         Assert.Equal(("097084", "LOM", "lombardia"), (pilots["varenna"].Code, pilots["varenna"].RegionCode, pilots["varenna"].RegionSlug));
+        Assert.Equal("012133", pilots["varese"].Code);
+        Assert.Equal("108033", pilots["monza"].Code);
+        Assert.Equal("013252", pilots["tremezzina"].Code);
+        Assert.Equal("013065", pilots["cernobbio"].Code);
+        Assert.Equal("013011", pilots["argegno"].Code);
+        Assert.Equal("097023", pilots["colico"].Code);
         Assert.Equal(("058091", "LAZ", "lazio"), (pilots["roma"].Code, pilots["roma"].RegionCode, pilots["roma"].RegionSlug));
         Assert.Equal("emilia-romagna", pilots["bologna"].RegionSlug);
     }
@@ -94,13 +100,19 @@ public class SeoComuneCatalogTests
     [Fact]
     public void SeoPilotComuni_AreNamesAndProvincesNotCodes()
     {
-        Assert.Equal(12, SeoPilotComuni.All.Count);
+        Assert.Equal(26, SeoPilotComuni.All.Count);
         Assert.All(SeoPilotComuni.All, pilot =>
         {
             Assert.False(string.IsNullOrWhiteSpace(pilot.Name));
             Assert.True(ComuneRules.IsProvinceCode(pilot.ProvinceCode));
         });
         Assert.Contains(("Varenna", "LC"), SeoPilotComuni.All);
+        Assert.Contains(("Varese", "VA"), SeoPilotComuni.All);
+        Assert.Contains(("Monza", "MB"), SeoPilotComuni.All);
+        Assert.Contains(("Tremezzina", "CO"), SeoPilotComuni.All);
+        Assert.Contains(("Cernobbio", "CO"), SeoPilotComuni.All);
+        Assert.Contains(("Argegno", "CO"), SeoPilotComuni.All);
+        Assert.Contains(("Colico", "LC"), SeoPilotComuni.All);
     }
 
     private static SeoComuneCatalog Catalog(AppDbContext db) => new(new ComuneDirectory(db));

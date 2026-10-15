@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -37,7 +38,8 @@ public sealed class PublicSeoService(
     IPublicHostResolver hostResolver,
     PublicSiteLinks links,
     PublicOrgSiteUrls urls,
-    IStringLocalizer<SharedResources> localizer) : IPublicSeoService
+    IStringLocalizer<SharedResources> localizer,
+    IFeatureFlags featureFlags) : IPublicSeoService
 {
     /// <summary>Brand of the platform pages (<c>og:site_name</c>, publisher of the guides).</summary>
     public const string PlatformName = "CasaZen";
@@ -421,8 +423,13 @@ public sealed class PublicSeoService(
             .Append("</p>\n<h1>").Append(SeoHtml.Encode(page.Title)).Append("</h1>\n</header>\n");
         // Sanitized when it was approved and again on read (FD-15); once more here, as this is the last step before HTML.
         body.Append(SeoHtmlSanitizer.Sanitize(page.BodyHtml)).Append('\n');
-        body.Append("<p><a href=\"").Append(SeoHtml.Encode(page.Cta.SignupUrl)).Append("\">")
-            .Append(SeoHtml.Encode(T("SeoGuideCta"))).Append("</a></p>\n");
+        // SEO-INVITE: no link to the signup while CasaZen is on private invitation (flag SeoSignupCta off).
+        if (page.Cta is not null && featureFlags.IsEnabled(FeatureFlags.SeoSignupCta))
+        {
+            body.Append("<p><a href=\"").Append(SeoHtml.Encode(page.Cta.SignupUrl)).Append("\">")
+                .Append(SeoHtml.Encode(T("SeoGuideCta"))).Append("</a></p>\n");
+        }
+
         var culture = CultureInfo.CurrentUICulture;
         var lastUpdated = page.LastRefreshedAt.HasValue
             ? T("SeoDisclaimerLastUpdated", page.LastRefreshedAt.Value.ToString("d MMMM yyyy", culture))

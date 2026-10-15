@@ -63,6 +63,18 @@
   <data name="UserReactivatedAuth0NotSynced" xml:space="preserve">
     <value>User reactivated in CasaZen, but Auth0 was not updated: the user cannot sign in until you repeat the reactivation when Auth0 is reachable.</value>
   </data>
+  <data name="UserCannotDeleteSelf" xml:space="preserve">
+    <value>You cannot remove your own account: ask another administrator.</value>
+  </data>
+  <data name="UserCannotDeleteLastAdmin" xml:space="preserve">
+    <value>You cannot remove the last active administrator: appoint another administrator first.</value>
+  </data>
+  <data name="UserDeleteBlocked" xml:space="preserve">
+    <value>This user cannot be removed: related data still points at the account. Deactivate it instead.</value>
+  </data>
+  <data name="UserDeleteAuth0Failed" xml:space="preserve">
+    <value>Auth0 did not remove the account: the user is still in CasaZen. Try again when Auth0 is reachable.</value>
+  </data>
   <data name="NotFound" xml:space="preserve">
     <value>Not Found</value>
   </data>
@@ -441,6 +453,9 @@
   <data name="QuesturaDeliveryDateAfterEnd" xml:space="preserve">
     <value>The delivery date of the property cannot be later than the end of the lease.</value>
   </data>
+  <data name="QuesturaDeliveryDateLocked" xml:space="preserve">
+    <value>The delivery date can no longer be changed after the Questura communication has been declared.</value>
+  </data>
   <data name="LeasePartyCitizenshipInvalid" xml:space="preserve">
     <value>Citizenship must be the 2-letter ISO country code (for example IT, DE, US).</value>
   </data>
@@ -570,6 +585,21 @@
   <data name="OrgBrandingTaglineTooLongInput" xml:space="preserve">
     <value>The tagline is too long.</value>
   </data>
+  <data name="OrgBrandingSubtitleTooLong" xml:space="preserve">
+    <value>The subtitle cannot exceed {0} characters.</value>
+  </data>
+  <data name="OrgBrandingSubtitleTooLongInput" xml:space="preserve">
+    <value>The subtitle is too long.</value>
+  </data>
+  <data name="OrgBrandingHostNameTooLong" xml:space="preserve">
+    <value>The host name cannot exceed {0} characters.</value>
+  </data>
+  <data name="OrgBrandingHostNameTooLongInput" xml:space="preserve">
+    <value>The host name is too long.</value>
+  </data>
+  <data name="OrgBrandingPhoneInvalid" xml:space="preserve">
+    <value>The phone number is not valid: use digits only, with an optional leading + (6 to 15 digits).</value>
+  </data>
   <data name="OrgBrandingImageEmpty" xml:space="preserve">
     <value>Select an image to upload.</value>
   </data>
@@ -677,6 +707,15 @@
   </data>
   <data name="ICalSupplierNoFeed" xml:space="preserve">
     <value>You have not linked an iCal calendar yet: paste the URL of your calendar first.</value>
+  </data>
+  <data name="FreeEventDecisionInvalid" xml:space="preserve">
+    <value>The answer could not be saved: choose "Available" or "Busy".</value>
+  </data>
+  <data name="FreeEventAlreadyDecided" xml:space="preserve">
+    <value>You have already answered for this calendar event.</value>
+  </data>
+  <data name="FreeEventNotFound" xml:space="preserve">
+    <value>Calendar event not found.</value>
   </data>
   <data name="ICalExportBusySummary" xml:space="preserve">
     <value>Booked</value>
@@ -957,6 +996,12 @@
   </data>
   <data name="DirectBookingInvalidPaymentOption" xml:space="preserve">
     <value>Invalid payment method.</value>
+  </data>
+  <data name="DirectBookingMinNightsNotMet" xml:space="preserve">
+    <value>The minimum stay for this property is {0} nights.</value>
+  </data>
+  <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
+    <value>Consent to receive offers is not available right now: try again without selecting it.</value>
   </data>
   <data name="SupplierClaimInvalid" xml:space="preserve">
     <value>The link is not valid: register your business again or sign in with the account already linked.</value>
@@ -1245,6 +1290,18 @@
   </data>
   <data name="PropertyCleaningFeeRange" xml:space="preserve">
     <value>The cleaning fee must be between {1} and {2} euros.</value>
+  </data>
+  <data name="PropertyMinNightsRange" xml:space="preserve">
+    <value>The minimum stay must be between {1} and {2} nights (leave it empty for no minimum).</value>
+  </data>
+  <data name="PropertyMinNightsInvalid" xml:space="preserve">
+    <value>The minimum stay is not valid: use 1 to 30 nights, or no minimum.</value>
+  </data>
+  <data name="PropertyWeekendSurchargeRange" xml:space="preserve">
+    <value>The weekend surcharge must be between {1} and {2} percent.</value>
+  </data>
+  <data name="PropertyWeekendSurchargeInvalid" xml:space="preserve">
+    <value>The weekend surcharge is not valid: use a percentage from 0 to 100.</value>
   </data>
   <data name="PropertyDamageDepositRange" xml:space="preserve">
     <value>The damage deposit must be between {1} and {2} euros.</value>
@@ -1544,7 +1601,16 @@
     <value>The amount cannot be negative.</value>
   </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
-    <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
+    <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days or period=Next30Days.</value>
+  </data>
+  <data name="BookingListInvalidStatus" xml:space="preserve">
+    <value>Invalid status: use the names Pending, Confirmed, CheckedIn, CheckedOut or Cancelled, repeated or separated by commas.</value>
+  </data>
+  <data name="BookingListInvalidRange" xml:space="preserve">
+    <value>Invalid range: the start date (from) cannot be after the end date (to).</value>
+  </data>
+  <data name="PaymentListInvalidRange" xml:space="preserve">
+    <value>Invalid range: the start date (from) cannot be after the end date (to).</value>
   </data>
   <data name="SeoCounselRequired" xml:space="preserve">
     <value>This page is among the first {0} and can be published only after the legal review: confirm that the text has been reviewed.</value>
@@ -2056,6 +2122,33 @@
   <data name="RentBillingDayRange" xml:space="preserve">
     <value>The due day must be between 1 and 28.</value>
   </data>
+  <data name="RentReminderTooSoon" xml:space="preserve">
+    <value>You already reminded the tenants of this rent: you can send one reminder every {0} hours at most.</value>
+  </data>
+  <data name="RentReminderNotSent" xml:space="preserve">
+    <value>The reminder was not sent: the email service is not available. Try again later.</value>
+  </data>
+  <data name="RentReminderNoteTooLong" xml:space="preserve">
+    <value>The note can have at most 300 characters.</value>
+  </data>
+  <data name="RentReminderBatchInvalid" xml:space="preserve">
+    <value>Select from 1 to 50 rents to remind.</value>
+  </data>
+  <data name="RentRegisterMonthInvalid" xml:space="preserve">
+    <value>Enter the month as yyyy-MM, for example 2026-10.</value>
+  </data>
+  <data name="RentRegisterStatusUnknown" xml:space="preserve">
+    <value>The rent status is not valid: use All, Paid, Pending or Overdue.</value>
+  </data>
+  <data name="LeaseListViewUnknown" xml:space="preserve">
+    <value>The lease view is not valid: use All, Active, InPreparation, Expiring or Ended.</value>
+  </data>
+  <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
+    <value>Enter a valid period: dates as yyyy-MM-dd, the end not before the start and at most 366 days.</value>
+  </data>
+  <data name="LongRentDeadlinesTypeUnknown" xml:space="preserve">
+    <value>The deadline type is not valid: use RliRegistration, Questura, LeaseEnd, Notice or Rent.</value>
+  </data>
   <data name="SupplierActivationBlocked" xml:space="preserve">
     <value>The profile cannot be activated: some required items are missing.</value>
   </data>
@@ -2402,10 +2495,13 @@
     <value>To choose a time the supplier's service is needed: its duration gives the end of the work.</value>
   </data>
   <data name="ServiceRequestTimeInvalid" xml:space="preserve">
-    <value>The time is not valid: give the end of the work, after the start and in whole minutes, or choose a service that has a duration.</value>
+    <value>The time is not valid: give the start of the work and the end (after the start, in whole minutes), or choose a service that has a duration. A request without a time is not allowed.</value>
   </data>
   <data name="ServiceRequestTimeAlreadySet" xml:space="preserve">
     <value>The request already has a time: to change it, propose another time to the host.</value>
+  </data>
+  <data name="SupplierCommitmentConflict" xml:space="preserve">
+    <value>You cannot take this job: it overlaps another you already accepted. You may have more than one on the same day only when the times do not touch.</value>
   </data>
   <data name="ServiceRequestAmountInvalid" xml:space="preserve">
     <value>Invalid amount: it must be above zero and at most {0} euro; there can be at most {1} extras, each with a description of at most {2} characters.</value>
@@ -2610,5 +2706,101 @@
   </data>
   <data name="ServicePaymentExportMonthInvalid" xml:space="preserve">
     <value>Give a past or current month in the form yyyy-mm (for example 2026-10).</value>
+  </data>
+  <data name="SearchQueryTooShort" xml:space="preserve">
+    <value>Type at least {0} characters to search.</value>
+  </data>
+  <data name="SearchQueryTooLong" xml:space="preserve">
+    <value>A search can have at most {0} characters.</value>
+  </data>
+  <data name="ContextNotAccessible" xml:space="preserve">
+    <value>You do not have access to this area.</value>
+  </data>
+  <data name="ContextKeyRequired" xml:space="preserve">
+    <value>Give the area.</value>
+  </data>
+  <data name="SeoDraftInvalid" xml:space="preserve">
+    <value>The text cannot be published: it needs at least {0} characters of visible text, a section heading (h2) and a paragraph (p). Markdown is not accepted.</value>
+  </data>
+  <data name="AiProviderInvalid" xml:space="preserve">
+    <value>Invalid AI provider: choose Stub, DeepSeek, OpenAI, Anthropic, or an OpenAI-compatible endpoint.</value>
+  </data>
+  <data name="AiBaseUrlInvalid" xml:space="preserve">
+    <value>The provider address must be an https URL, with no username or password.</value>
+  </data>
+  <data name="DemoEnvironmentUnavailable" xml:space="preserve">
+    <value>The demo environment is not available on this installation.</value>
+  </data>
+  <data name="DemoEnvironmentDisabled" xml:space="preserve">
+    <value>Turn demo mode on first.</value>
+  </data>
+  <data name="DemoResetConfirmation" xml:space="preserve">
+    <value>Type RESET to rebuild the showcase.</value>
+  </data>
+  <data name="DemoCinExhausted" xml:space="preserve">
+    <value>There are no test CIN codes left for this comune.</value>
+  </data>
+  <data name="DemoResetBlocked" xml:space="preserve">
+    <value>The demo showcase cannot be reset: a demo listing is linked to a contract or to other data that has to be kept.</value>
+  </data>
+  <data name="DemoOrgNotFound" xml:space="preserve">
+    <value>Organization not found.</value>
+  </data>
+  <data name="HostInviteNotFound" xml:space="preserve">
+    <value>Invitation not found.</value>
+  </data>
+  <data name="HostInviteNotPending" xml:space="preserve">
+    <value>Only a pending invitation can be revoked: this one has already been used, has expired or was revoked.</value>
+  </data>
+  <data name="HostInviteNotResendable" xml:space="preserve">
+    <value>An invitation that was already used or revoked cannot be sent again.</value>
+  </data>
+  <data name="HostInviteDuplicate" xml:space="preserve">
+    <value>You already have a pending invitation for this email address. Revoke it or wait for it to expire before inviting it again.</value>
+  </data>
+  <data name="HostInviteEmailTaken" xml:space="preserve">
+    <value>This email address is already registered on CasaZen.</value>
+  </data>
+  <data name="HostInviteEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address.</value>
+  </data>
+  <data name="HostInviteEmailRequired" xml:space="preserve">
+    <value>The email address is required.</value>
+  </data>
+  <data name="HostInviteMessageTooLong" xml:space="preserve">
+    <value>The message can be at most 500 characters long.</value>
+  </data>
+  <data name="HostInviteLocaleInvalid" xml:space="preserve">
+    <value>The language is not valid: use “it” or “en”.</value>
+  </data>
+  <data name="HostInviteTokenRequired" xml:space="preserve">
+    <value>The invitation code is required.</value>
+  </data>
+  <data name="HostInviteSelf" xml:space="preserve">
+    <value>You cannot invite your own email address.</value>
+  </data>
+  <data name="HostInviteQuotaExceeded" xml:space="preserve">
+    <value>You have reached the maximum number of invitations for today. Try again later.</value>
+  </data>
+  <data name="HostInvitePendingLimit" xml:space="preserve">
+    <value>You have too many pending invitations. Revoke the ones you no longer need or wait for them to expire.</value>
+  </data>
+  <data name="HostInviteInvalid" xml:space="preserve">
+    <value>This invitation is not valid. Open the link from the email again or ask for a new invitation.</value>
+  </data>
+  <data name="HostInviteExpired" xml:space="preserve">
+    <value>This invitation has expired. Ask whoever invited you to send you a new one.</value>
+  </data>
+  <data name="HostInviteRevoked" xml:space="preserve">
+    <value>This invitation was revoked. Ask whoever invited you to send you a new one.</value>
+  </data>
+  <data name="HostInviteUsed" xml:space="preserve">
+    <value>This invitation has already been used by another account.</value>
+  </data>
+  <data name="HostInviteEmailNotVerified" xml:space="preserve">
+    <value>Verify your email address before accepting the invitation.</value>
+  </data>
+  <data name="HostInviteEmailMismatch" xml:space="preserve">
+    <value>This invitation was written for another email address: sign in with the account it was sent to.</value>
   </data>
 </root>

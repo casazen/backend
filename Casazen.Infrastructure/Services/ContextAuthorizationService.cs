@@ -92,6 +92,8 @@ public class ContextAuthorizationService(
             var existingKeys = fromDb.Select(c => c.ContextKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var jwtContext in jwtContexts)
             {
+                // jwtContexts is already stripped of host keys when the veto applies. When it does not (no org
+                // member, or a member with no rental row yet), the token still completes short-rent / long-rent.
                 if (!existingKeys.Contains(jwtContext.ContextKey))
                 {
                     fromDb.Add(jwtContext);

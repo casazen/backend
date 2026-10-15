@@ -508,6 +508,8 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
 
         protected virtual Dictionary<string, string?> Settings() => new()
         {
+            // These tests cover the restricted (pilot) behaviour; the open one is in SupplierSelfServeAnyComuneIntegrationTests.
+            ["Suppliers:AnyComune"] = "false",
             ["Suppliers:PilotComuni:0:Code"] = PilotCode,
             ["Suppliers:PilotComuni:0:Name"] = PilotName,
         };

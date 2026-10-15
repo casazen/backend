@@ -108,8 +108,8 @@ public class ServiceRequestAutoCancelServiceTests
     public async Task CancelUnansweredAsync_ARunRepeated_FindsNothingLeftAndSendsNothingTwice()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        await s.RequestAsync();
-        await s.RequestAsync();
+        await s.RequestAsync(withService: false);
+        await s.RequestAsync(withService: false);
         s.Clock.Advance(HostWindow + TimeSpan.FromMinutes(5));
         var service = AutoCancel(s);
         var first = await service.CancelUnansweredAsync();
@@ -130,15 +130,18 @@ public class ServiceRequestAutoCancelServiceTests
     public async Task CancelUnansweredAsync_OnlyTheRequestsNobodyAnswered()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var overdue = await s.RequestAsync();
-        var taken = await s.RequestAsync();
+        // Non-overlapping intervals: after one is taken, create still checks overlap against accepted jobs.
+        var overdue = await s.RequestAsync(ServiceRequestScenario.FridayAt10, withService: false, durationMinutes: 60);
+        var taken = await s.RequestAsync(ServiceRequestScenario.FridayAt10.AddDays(14), withService: false, durationMinutes: 60);
         await s.Service.TakeAsync(taken.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
-        var rejected = await s.RequestAsync();
+        var rejected = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09, withService: false, durationMinutes: 60);
         await s.Service.RejectAsync(rejected.Id, s.SupplierOrgId, "Non posso");
-        var withProposal = await s.RequestAsync();
+        // Catalog service: propose-time needs a listing duration; FridayAt14 is free (taken is two weeks later).
+        var withProposal = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09.AddHours(3));
         await s.Service.ProposeTimeAsync(
-            withProposal.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, new ProposeServiceRequestTimeCommand(ServiceRequestScenario.FridayAt14));
-        var cancelledByHost = await s.RequestAsync();
+            withProposal.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId,
+            new ProposeServiceRequestTimeCommand(ServiceRequestScenario.FridayAt14));
+        var cancelledByHost = await s.RequestAsync(ServiceRequestScenario.FridayAt10.AddDays(7), withService: false, durationMinutes: 60);
         await s.Service.CancelAsHostAsync(cancelledByHost.Id, s.HostOrgId, "Non serve");
         var completed = await s.SeedAsync(ServiceRequestStatus.Completato, r => r.ResponseDueAt = ServiceRequestScenario.Instant.UtcDateTime);
         var longAgo = await s.SeedAsync(ServiceRequestStatus.Richiesto, r => r.ResponseDueAt = null);
@@ -236,8 +239,8 @@ public class ServiceRequestAutoCancelServiceTests
     {
         var interceptor = new FailingSaveInterceptor();
         using var s = await ServiceRequestScenario.CreateAsync(saveInterceptor: interceptor);
-        var first = await s.RequestAsync();
-        var second = await s.RequestAsync();
+        var first = await s.RequestAsync(withService: false);
+        var second = await s.RequestAsync(withService: false);
         s.Clock.Advance(HostWindow);
         interceptor.Failure = new InvalidOperationException("the database is down");
 

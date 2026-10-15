@@ -75,6 +75,14 @@ public static class RecurringJobsRegistration
             OrgInvitationMaintenanceJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // Host invites: the email of a closed invite is erased after HostInvites:RetentionDays. Always registered, like the org
+        // invitations: the retention of personal data does not depend on a feature being on.
+        recurringJobManager.AddOrUpdate<HostInviteRetentionJob>(
+            HostInviteRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            HostInviteRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // AM-02b: the activity log keeps 12 months. Always registered, like the invitations: the retention of what the log holds
         // does not depend on the OrgTeam flag (with the flag off nothing writes to it, and a flag turned off later leaves lines).
         recurringJobManager.AddOrUpdate<OrgActivityRetentionJob>(
@@ -179,6 +187,20 @@ public static class RecurringJobsRegistration
             FiscalRatesUpdateJob.RecurringJobId,
             job => job.ExecuteAsync(),
             "0 5 * * 1",  // every Monday at 05:00 UTC
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // RS-6, RS-7, CO-12: daily check of the official ISTAT comuni file, the Alloggiati tables and the tourist-tax pages.
+        recurringJobManager.AddOrUpdate<OfficialReferenceDataRefreshJob>(
+            OfficialReferenceDataRefreshJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            OfficialReferenceDataRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // MEF nuova_at profiles of comuni that already have a house: monthly delta, never a full Italy scrape.
+        recurringJobManager.AddOrUpdate<ComuneOfficialProfileRefreshJob>(
+            ComuneOfficialProfileRefreshJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            ComuneOfficialProfileRefreshJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

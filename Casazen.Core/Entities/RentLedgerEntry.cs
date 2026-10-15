@@ -52,6 +52,16 @@ public class RentLedgerEntry : ITenantOwned
     /// <summary>When the payment link was last emailed to the tenant(s).</summary>
     public DateTime? PaymentRequestedAt { get; set; }
 
+    /// <summary>
+    /// When the landlord last reminded the tenants of this installment (LR-01, B1); null if never. The next reminder is possible
+    /// <c>RentBilling:ReminderIntervalHours</c> after it (<see cref="Services.RentCharges.GetReminderIntervalHours"/>). Set under the
+    /// lock of the lease, only when the email was queued.
+    /// </summary>
+    public DateTime? LastReminderAt { get; set; }
+
+    /// <summary>How many reminders the landlord sent for this installment (LR-01); each one is at least the interval after the previous.</summary>
+    public int ReminderCount { get; set; }
+
     /// <summary>Stripe error code of the last failed online payment (e.g. <c>card_declined</c>); no personal data.</summary>
     [MaxLength(100)]
     public string? FailureCode { get; set; }

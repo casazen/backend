@@ -198,15 +198,18 @@ internal sealed class ServiceRequestScenario : IDisposable
         _pushes.Clear();
     }
 
-    /// <summary>A request of the host for the supplier, created through the service (the way the API does).</summary>
+    /// <summary>A request of the host for the supplier, created through the service (the way the API does). Always timed.</summary>
     public Task<ServiceRequest> RequestAsync(
         DateTime? start = null,
         bool withService = true,
         ServiceRequestRentalContext rentalContext = ServiceRequestRentalContext.ShortRent,
         string? notes = HostNotes,
         Guid? serviceListingId = null,
-        string category = ServiceCategories.Cleaning) =>
-        Service.CreateAsync(new CreateServiceRequestCommand(
+        string category = ServiceCategories.Cleaning,
+        int? durationMinutes = null)
+    {
+        var listingId = serviceListingId ?? (withService ? ListingId : null);
+        return Service.CreateAsync(new CreateServiceRequestCommand(
             HostOrgId,
             HostUserId,
             PropertyId,
@@ -217,13 +220,19 @@ internal sealed class ServiceRequestScenario : IDisposable
             notes,
             false,
             rentalContext,
-            serviceListingId ?? (withService ? ListingId : null),
-            start));
+            listingId,
+            // Default timed slot for catalog requests; null start uses Create's auto-assign (duration, no planner).
+            // Catalog + start without duration still goes through the published-slot planner.
+            start ?? (listingId is null ? null : FridayAt10),
+            durationMinutes ?? (listingId is null ? ServiceMinutes : null)));
+    }
 
     /// <summary>A request the supplier took (without a time of its own unless the request has one).</summary>
     public async Task<ServiceRequest> TakenAsync(DateTime? start = null, TakeServiceRequestCommand? command = null)
     {
-        var request = await RequestAsync(start);
+        // Explicit duration: payment and lifecycle helpers are not testing the published-slot planner, and many of them
+        // create several jobs on the same default Friday 10:00 (or after the clock has moved past that slot).
+        var request = await RequestAsync(start, durationMinutes: ServiceMinutes);
         return await Service.TakeAsync(request.Id, SupplierOrgId, SupplierUserId, command);
     }
 
@@ -265,6 +274,19 @@ internal sealed class ServiceRequestScenario : IDisposable
         Db.ChangeTracker.Clear();
         return request;
     }
+
+    /// <summary>
+    /// Legacy row without a schedule (create no longer allows this). Used only to exercise take/propose that still set a time
+    /// on a pre-migration request until the backfill runs.
+    /// </summary>
+    public Task<ServiceRequest> SeedUntimedAsync(bool withService = true) =>
+        SeedAsync(ServiceRequestStatus.Richiesto, r =>
+        {
+            if (!withService) return;
+            r.ServiceListingId = ListingId;
+            r.ServiceNameSnapshot = ServiceName;
+            r.EstimatedAmountCents = ServicePriceCents;
+        });
 
     /// <summary>Writes a change straight to a request (a state the flows reach slowly), whatever the context tracks.</summary>
     public async Task ChangeRequestAsync(Guid id, Action<ServiceRequest> change)

@@ -45,10 +45,11 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
         var body = await response.Content.ReadAsStringAsync();
         var booked = BookedDates(body);
         Assert.Equal([Day(from, 2), Day(from, 3), Day(from, 4), Day(from, 8)], booked);
-        // Dates only: no summary of the feed, no source, no guest.
+        // Dates only (and the minimum stay of the property, DB-03: a number, null when there is none): no summary of the feed,
+        // no source, no guest.
         using var json = JsonDocument.Parse(body);
         Assert.Equal(
-            ["propertyId", "startDate", "endDate", "bookedDates"],
+            ["propertyId", "startDate", "endDate", "bookedDates", "minNights"],
             json.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.DoesNotContain("Airbnb", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Manual", body, StringComparison.OrdinalIgnoreCase);

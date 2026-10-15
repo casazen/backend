@@ -312,9 +312,9 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
     public async Task Accept_ManyRequests_AnswersEachRowAndTakesTheOnesThatCanBeTaken()
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
-        var first = await factory.CreateRequestAsync(world);
-        var second = await factory.CreateRequestAsync(world);
-        var alreadyTaken = await factory.CreateRequestAsync(world);
+        var first = await factory.CreateRequestAsync(world, ServiceRequestWorlds.Slot(hour: 10));
+        var second = await factory.CreateRequestAsync(world, ServiceRequestWorlds.Slot(hour: 14));
+        var alreadyTaken = await factory.CreateRequestAsync(world, ServiceRequestWorlds.Slot(day: DayOfWeek.Saturday, hour: 9));
         using var supplier = factory.Supplier(world);
         await supplier.PostAsync($"/api/service-requests/{alreadyTaken}/take", content: null);
         var unknown = Guid.NewGuid();

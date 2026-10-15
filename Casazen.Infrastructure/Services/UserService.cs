@@ -3,6 +3,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -135,6 +136,50 @@ public class UserService(
             outcome == UserActivationOutcome.Updated,
             sync,
             sync.Succeeded ? suspended : []);
+    }
+
+    /// <inheritdoc />
+    public async Task<Auth0SyncResult> DeleteRegisteredUserAsync(
+        string id,
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.Equals(id, actorId, StringComparison.Ordinal))
+            throw new DomainRuleException(UserActivationErrors.CannotDeleteSelf, "UserCannotDeleteSelf");
+
+        var user = await repository.GetByIdAsync(id)
+            ?? throw new NotFoundException($"User {id} not found");
+
+        if (user.Role == UserRole.Admin && user.IsActive &&
+            !await repository.HasOtherActiveAdminAsync(id, cancellationToken))
+            throw new DomainRuleException(UserActivationErrors.CannotDeleteLastAdmin, "UserCannotDeleteLastAdmin");
+
+        // Auth0 first. A local delete that Auth0 did not follow would be undone by the next login, which creates
+        // the account again from the token.
+        var sync = await auth0Management.DeleteUserAsync(id, cancellationToken);
+        if (!sync.Succeeded)
+        {
+            logger.LogWarning(
+                "User not deleted, Auth0 delete failed ({ErrorCode}): userId={UserId} by={ActorId}",
+                sync.ErrorCode, id, actorId);
+            return sync;
+        }
+
+        try
+        {
+            await repository.DeleteAsync(id, cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogWarning(ex, "User delete blocked by related rows: userId={UserId} by={ActorId}", id, actorId);
+            throw new DomainConflictException(UserActivationErrors.DeleteBlocked, "UserDeleteBlocked");
+        }
+
+        authorizationCache.Invalidate(id);
+        logger.LogInformation(
+            "User deleted: userId={UserId} by={ActorId} at={AtUtc:o}",
+            id, actorId, DateTime.UtcNow);
+        return sync;
     }
 
     private static IReadOnlyList<UserRole> ParseRoles(IEnumerable<string>? names) =>
@@ -499,6 +544,25 @@ public class UserService(
         }
 
         return (user, assigned, roleSync);
+    }
+
+    /// <inheritdoc />
+    public async Task<User> SetLastUsedContextAsync(string userId, string contextKey, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(contextKey);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await repository.GetByIdAsync(userId) ?? throw new NotFoundException($"User {userId} not found");
+
+        // The client tells it at every change of area, often to the same value as before: nothing to write then.
+        if (string.Equals(user.LastUsedContextKey, contextKey, StringComparison.Ordinal))
+            return user;
+
+        // The tracked user saves the columns that changed (this one and UpdatedAt), nothing a parallel request wrote meanwhile.
+        user.LastUsedContextKey = contextKey;
+        await repository.UpdateAsync(user);
+        return user;
     }
 
     private static IReadOnlyList<UserRole> MapRentalTypeToRoles(RentalType rentalType) =>

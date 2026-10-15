@@ -19,6 +19,12 @@ public class PropertyDetailResponse
     public int Bathrooms { get; set; }
     public int MaxGuests { get; set; }
     public decimal NightlyRate { get; set; }
+
+    /// <summary>Fewest nights the public site accepts (DB-03); null = no minimum.</summary>
+    public int? MinNights { get; set; }
+
+    /// <summary>Percent added to the nightly rate on the Friday and Saturday nights (DB-03); 0 = none.</summary>
+    public decimal WeekendSurchargePercent { get; set; }
     public decimal CleaningFee { get; set; }
     public decimal DamageDeposit { get; set; }
     public string? CinCode { get; set; }

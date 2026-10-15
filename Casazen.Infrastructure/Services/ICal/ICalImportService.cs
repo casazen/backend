@@ -34,7 +34,7 @@ public sealed record ParsedSupplierWindow(string ExternalUid, DateTime StartUtc,
 /// What a supplier's feed says about the supplier's time (SP-05): the <b>days</b> to close (all-day events, as before) and
 /// the <b>windows of hours</b> to occupy (timed events), and how many occurrences were left out and why, for the logs.
 /// </summary>
-/// <param name="BusyDays">Days closed by the feed: every day an all-day event touches (and a timed event with no length).</param>
+/// <param name="BusyDays">Days closed by the feed: every day an all-day event touches, a timed event with no length, and a timed event that covers whole midnights in Rome.</param>
 /// <param name="Windows">The hours the feed occupies, by start then key.</param>
 /// <param name="MergedDuplicates">Occurrences with the same key and start folded into one (the longest is kept).</param>
 /// <param name="OutsideWindow">Timed occurrences wholly before the import window or after it: not stored (yet).</param>
@@ -77,8 +77,15 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
         return ICalFeedParser.Parse(
             icsContent,
             today.AddMonths(-window.EffectiveMonthsBack),
-            today.AddMonths(window.EffectiveMonthsAhead));
+            today.AddMonths(window.EffectiveMonthsAhead),
+            transparentFrom: today);
     }
+
+    /// <summary>The "now" of the import, for the nearest occurrence of a free-looking event.</summary>
+    internal DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
+
+    /// <summary>See <see cref="ICalImportOptions.BlockUndecidedFreeEvents"/>.</summary>
+    internal bool BlockUndecidedFreeEvents => options.Value.BlockUndecidedFreeEvents;
 
     /// <summary>
     /// Property blocks: the occurrences that cover at least one night, each with a key that fits
@@ -203,11 +210,17 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
         var outsideWindow = 0;
         foreach (var occurrence in occurrences)
         {
+            // VALUE=DATE closes the days and has no hours. A timed event with no length closes its day, as before.
+            // Some calendars write an all-day event as 00:00–00:00 in Europe/Rome: those days close too, and the
+            // event stays a window so its title is still on the supplier's agenda.
             if (occurrence.IsAllDay || !occurrence.HasDuration)
             {
                 dayBased.Add(occurrence);
                 continue;
             }
+
+            if (CoversWholeRomeDays(occurrence))
+                dayBased.Add(occurrence);
 
             timed++;
             if (occurrence.EndUtc <= windowStartUtc || occurrence.StartUtc >= windowEndUtc)
@@ -242,6 +255,22 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
             MergedDuplicates: timed - outsideWindow - folded.Count,
             OutsideWindow: outsideWindow,
             OverLimit: overLimit);
+    }
+
+    /// <summary>
+    /// True when a timed event runs from midnight to a later midnight on the Europe/Rome clock (one or more whole days).
+    /// An hour that merely starts at midnight is not one of these.
+    /// </summary>
+    private static bool CoversWholeRomeDays(ICalOccurrence occurrence)
+    {
+        if (occurrence.IsAllDay || !occurrence.HasDuration)
+            return false;
+
+        var start = RomeCalendar.DateInRome(occurrence.StartUtc);
+        var end = RomeCalendar.DateInRome(occurrence.EndUtc);
+        return end > start
+            && occurrence.StartUtc == RomeCalendar.StartOfDayUtc(start)
+            && occurrence.EndUtc == RomeCalendar.StartOfDayUtc(end);
     }
 
     private static ParsedCalendarBlock ToBlock(string key, ICalOccurrence occurrence) =>

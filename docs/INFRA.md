@@ -89,8 +89,8 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `ci-cd.yml` | PR, push `develop` / `main` | NuGet vulnerability gate (High/Critical fail, transitive included), build, tests on PostgreSQL, format — `docs/runbooks/ci-backend.md` |
-| `ci-cd.yml` → `verify-test` | Push `develop` | Poll `GET /api/health/ready` until the test API runs **this commit** and answers 200, then smoke (fails if `RAILWAY_TEST_URL` is missing) |
-| `ci-cd.yml` → `verify-prod` | Push `main` | Same on production (`RAILWAY_PROD_URL`), then smoke |
+| `verify-railway-deploy.yml` → `verify-test` | After a green `CI/CD Pipeline` push to `develop` | Poll `GET /api/health/ready` until the test API runs **this commit** and answers 200, then smoke (fails if `RAILWAY_TEST_URL` is missing) |
+| `verify-railway-deploy.yml` → `verify-prod` | After a green `CI/CD Pipeline` push to `main` | Same on production (`RAILWAY_PROD_URL`), then smoke |
 | `e2e-golden-journey.yml` | PR, push `develop` / `main`, nightly | Golden Journey from the UI on an ephemeral stack (throw-away PostgreSQL, mock IdP and mail, Stripe test mode with secrets) — `docs/runbooks/golden-journey-l3.md` |
 | `deploy-preview.yml` | PR | Comment with BE/FE URLs (no deploy) |
 | `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping: fails when a configured ping fails, skips with a warning when not configured |
@@ -137,7 +137,7 @@ Do these once per project. Tick in order.
 - [ ] (Recommended) Enable **PR deployments** if you want a backend URL per PR; otherwise use shared test URL after merge
 - [ ] Per environment, set **all** variables (see Railway section) — especially `ConnectionStrings__DefaultConnection` with correct `SearchPath` and `Hangfire__Schema` (different per environment, see [`runbooks/hangfire.md`](runbooks/hangfire.md))
 - [ ] `ASPNETCORE_ENVIRONMENT`: `Staging` on **test**, `Production` on **production**; Stripe test keys and test prices on test, live keys and live prices on production ([`runbooks/stripe.md`](runbooks/stripe.md#environments-stripe-mode-plan-prices-and-return-pages-pl-11))
-- [ ] Auth0: a separate tenant per environment ([`runbooks/auth0.md`](runbooks/auth0.md) §1)
+- [ ] Auth0: a separate tenant per environment, or one shared tenant with separate applications, APIs and connections ([`runbooks/auth0.md`](runbooks/auth0.md) §1, §1.2)
 - [ ] Enable **Public networking**; copy each environment’s HTTPS URL
 - [ ] First deploy green in Railway dashboard
 
@@ -363,7 +363,7 @@ Railway → Project → **Environments** → Create:
 
 **PR previews (optional):** Railway → Service → Settings → enable PR deployments if you want a distinct backend URL per PR. Otherwise validate backend on shared test URL after merge to `develop`.
 
-**Wait for CI: keep it off** on both environments. `verify-test` / `verify-prod` are part of `ci-cd.yml` and wait for the deployment of the pushed commit: with "Wait for CI" on, Railway would wait for them and they would wait for Railway, so the job times out and the deploy is skipped. Pull requests stay gated by the `build` job (branch protection).
+**Wait for CI** may stay on: it waits for `CI/CD Pipeline` (`Build & Test` only). `verify-test` / `verify-prod` live in `verify-railway-deploy.yml` and start after that suite is green, so they no longer deadlock the native deploy. Watch paths are dashboard-only (no `railway.toml` in this repo). Pull requests stay gated by `Build & Test`.
 
 **Healthcheck path (recommended):** Railway → service → Settings → Deploy → Healthcheck Path = `/api/health/ready`: a new deployment receives traffic only when its database and Hangfire are ready. Details: [`runbooks/health-checks.md`](runbooks/health-checks.md).
 
@@ -378,8 +378,9 @@ ASPNETCORE_URLS=http://+:8080
 PORT=8080
 ConnectionStrings__DefaultConnection=Host=db.YOUR_REF.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=YOUR_PASSWORD;SearchPath=casazen_test;SSL Mode=Require;Trust Server Certificate=true
 # Auth0 — Domain/Audience REQUIRED (the app does not start without them); M2M client for the role sync (docs/runbooks/auth0.md)
-# One tenant per environment (A1-32): test tenant on test, production tenant on production (docs/runbooks/auth0.md §1)
+# One tenant per environment (A1-32), or one shared tenant with separate applications, APIs and connections (docs/runbooks/auth0.md §1, §1.2)
 Auth0__Domain=[login domain of the Auth0 tenant of THIS environment]
+# Audience of THIS environment: https://casazen-api-prod on production, https://casazen-api on test (shared tenant)
 Auth0__Audience=https://casazen-api
 Auth0__ManagementClientId=[M2M client id]
 Auth0__ManagementClientSecret=[M2M client secret]
@@ -573,13 +574,13 @@ In Vercel dashboard → Settings → Environment Variables:
 | `VITE_API_BASE_URL` | `https://casazen-api-test.up.railway.app/api` | `https://casazen-api.up.railway.app/api` |
 | `VITE_AUTH0_DOMAIN` | domain of the **test** Auth0 tenant | domain of the **production** Auth0 tenant (never the test one, A1-32) |
 | `VITE_AUTH0_CLIENT_ID` | SPA client id of the test tenant | SPA client id of the production tenant |
-| `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | **`https://casazen-api`** (must match Railway `Auth0__Audience` on **both** environments) |
+| `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | **`https://casazen-api-prod`** (each must match `Auth0__Audience` of the Railway environment it calls; required, the build fails without it) |
 | `VITE_PUBLIC_SITE_URL` | not needed | **required**: `https://<public domain>`, same value as Railway production `App__PublicSiteBaseUrl`; the build fails without it |
 | `VITE_PLAUSIBLE_DOMAIN` | optional | optional: the domain registered on Plausible; the app then also calls `window.plausible()` for the SEO funnel events (the script is added by the product owner). Unset: nothing goes to a third party. [`runbooks/seo-funnel.md`](runbooks/seo-funnel.md) |
 
 `robots.txt` is generated by the build from `VERCEL_ENV`: only the Production environment allows indexing and declares `Sitemap: {VITE_PUBLIC_SITE_URL}/sitemap.xml`; Preview (PRs and the `develop` test deployment) is always `Disallow: /`. `/sitemap.xml` is served by the Vercel Function `api/sitemap.ts`, which proxies `{VITE_API_BASE_URL}/public/sitemap.xml` at runtime. Keep "Automatically expose System Environment Variables" on. Details and checks: [`runbooks/seo-domain.md`](runbooks/seo-domain.md).
 
-Auth0 (A1-32): Preview and Production use **two different tenants**. A shared tenant lets a role given to a test user work in production and mixes test users with real ones; steps to separate them, with the Railway, Vercel, EAS and GitHub variables to change: [`runbooks/auth0.md`](runbooks/auth0.md) §1.1.
+Auth0 (A1-32): Preview and Production should use **two different tenants**. When only one tenant is available (Free plan), they share it and are separated by application, API (audience) and database connection: [`runbooks/auth0.md`](runbooks/auth0.md) §1.2, with the residual risks listed there. Steps to separate the tenants, with the Railway, Vercel, EAS and GitHub variables to change: §1.1.
 
 > **Critical:** Preview and Production must point to **different** `VITE_API_BASE_URL` hosts (test vs prod Railway). If Production accidentally uses the test API URL, staging will look fine while production users hit the wrong backend/schema. After every `main` deploy, CI runs `prod-deploy-smoke` to catch this.
 
@@ -621,7 +622,7 @@ PR opened → develop (BE or FE)
 Merge feature PR → develop
     │
     ├─ Railway (native): deploy test environment
-    ├─ ci-cd.yml verify-test: $RAILWAY_TEST_URL/api/health/ready → 200 with commit = pushed SHA
+    ├─ verify-railway-deploy.yml verify-test: $RAILWAY_TEST_URL/api/health/ready → 200 with commit = pushed SHA
     ├─ Vercel (native): staging FE from develop branch
     └─ Human: bundle check + acceptance on test
     │
@@ -629,7 +630,7 @@ Merge feature PR → develop
 Stage 05 — Release (release PR: develop → main)
     ├─ release-manager squash-merges develop → main
     ├─ Railway (native): deploy production environment
-    ├─ ci-cd.yml verify-prod: $RAILWAY_PROD_URL/api/health/ready → 200 with commit = pushed SHA
+    ├─ verify-railway-deploy.yml verify-prod: $RAILWAY_PROD_URL/api/health/ready → 200 with commit = pushed SHA
     ├─ Vercel (native): production FE from main
     └─ git tag vX.Y.Z on main (changelog only — no deploy trigger)
 ```

@@ -16,9 +16,15 @@ namespace Casazen.Core.Services;
 /// request's category. Gives the name, the price and the duration of the work.
 /// </param>
 /// <param name="ScheduledStartUtc">
-/// The start of the work the host picked among the supplier's free slots (SP-04): needs <paramref name="ServiceListingId"/>
-/// (the duration comes from the service) and is checked with the slot planner under the supplier's calendar lock. Without it
-/// the request is "da concordare", as before SP-04.
+/// Start of the work (UTC). With a catalog service and no <paramref name="DurationMinutes"/>, the end is the service's
+/// duration and the start must be a free slot. With <paramref name="DurationMinutes"/>, the end is the start plus that
+/// duration. When omitted, the service assigns Europe/Rome 10:00 on the stay check-out day (or today) so no day-only
+/// request is stored.
+/// </param>
+/// <param name="DurationMinutes">
+/// How long the work lasts, in minutes (5 to 1,440). With <paramref name="ScheduledStartUtc"/> it sets the end when no
+/// catalog service is chosen. The supplier sees it and can take another job the same day only when the intervals do not
+/// overlap. A full working day is occupied only when this interval covers those hours, never by omitting the time.
 /// </param>
 public record CreateServiceRequestCommand(
     Guid OrgId,
@@ -32,13 +38,14 @@ public record CreateServiceRequestCommand(
     bool ChargeToGuest,
     ServiceRequestRentalContext RentalContext = ServiceRequestRentalContext.ShortRent,
     Guid? ServiceListingId = null,
-    DateTime? ScheduledStartUtc = null);
+    DateTime? ScheduledStartUtc = null,
+    int? DurationMinutes = null);
 
 /// <summary>
 /// What the supplier adds when it takes a request (SP-04): a time for a request that has none, and the price it commits to.
 /// Everything is optional: a take without a body accepts the request as it is.
 /// </summary>
-/// <param name="ScheduledStartUtc">The start of the work, for a request that is still "da concordare" (a request that has a time keeps it: the supplier proposes another one with <c>propose-time</c>).</param>
+/// <param name="ScheduledStartUtc">The start of the work when setting it at take (a request that already has a time keeps it: the supplier proposes another one with <c>propose-time</c>).</param>
 /// <param name="ScheduledEndUtc">The end of the work; when left out, the start plus the duration of the request's service.</param>
 /// <param name="QuotedAmountCents">The price the supplier commits to, in cents of euro.</param>
 public record TakeServiceRequestCommand(
@@ -135,6 +142,13 @@ public static class ServiceRequestErrorCodes
     /// </summary>
     public const string SlotUnavailable = "supplier_slot_unavailable";
 
+    /// <summary>
+    /// 409: the supplier already accepted a job that overlaps this one. Two jobs on the same day are allowed when both have a
+    /// time and the intervals do not overlap. A job without a time occupies its whole day, so it conflicts with anything else
+    /// that day.
+    /// </summary>
+    public const string CommitmentConflict = "supplier_commitment_conflict";
+
     /// <summary>404 (SP-04): the service of the catalog is not one of the supplier's, or was deleted (the catalog's own code).</summary>
     public const string ServiceNotFound = "supplier_service_not_found";
 
@@ -196,6 +210,7 @@ public static class ServiceRequestErrorCodes
     public const string CannotAddPhotosMessageKey = "ServiceRequestCannotAddPhotos";
     public const string StateChangedMessageKey = "ServiceRequestStateChanged";
     public const string SlotUnavailableMessageKey = "SupplierSlotUnavailable";
+    public const string CommitmentConflictMessageKey = "SupplierCommitmentConflict";
     public const string ServiceNotFoundMessageKey = "SupplierServiceNotFound";
     public const string ServiceUnavailableMessageKey = "ServiceRequestServiceUnavailable";
     public const string ServiceCategoryMismatchMessageKey = "ServiceRequestServiceCategoryMismatch";
@@ -234,6 +249,7 @@ public static class ServiceRequestErrorCodes
         CannotAddPhotosMessageKey,
         StateChangedMessageKey,
         SlotUnavailableMessageKey,
+        CommitmentConflictMessageKey,
         ServiceNotFoundMessageKey,
         ServiceUnavailableMessageKey,
         ServiceCategoryMismatchMessageKey,

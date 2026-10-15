@@ -6,6 +6,7 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
+using Casazen.Infrastructure.Search;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -78,15 +79,21 @@ public class AppDbContext(
     // Official ISTAT list of the comuni and the log of its imports (SU-04)
     public DbSet<Comune> Comuni { get; set; } = null!;
     public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
+    public DbSet<OfficialSourceFetch> OfficialSourceFetches { get; set; } = null!;
+    public DbSet<ComuneOfficialProfile> ComuneOfficialProfiles { get; set; } = null!;
+    public DbSet<ComuneOfficialProfileVersion> ComuneOfficialProfileVersions { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
     public DbSet<SeasonalPriceSuggestion> SeasonalPriceSuggestions { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
+    public DbSet<TestDataMarker> TestDataMarkers { get; set; } = null!;
+    public DbSet<DemoEnvironmentSetting> DemoEnvironmentSettings { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
     public DbSet<SeoContentReviewEvent> SeoContentReviewEvents { get; set; } = null!;
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
+    public DbSet<PlatformAiSettings> PlatformAiSettings { get; set; } = null!;
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
 
@@ -109,9 +116,12 @@ public class AppDbContext(
     public DbSet<SupplierWorkingHours> SupplierWorkingHours { get; set; } = null!;
     public DbSet<SupplierTimeOff> SupplierTimeOff { get; set; } = null!;
     public DbSet<SupplierBusyWindow> SupplierBusyWindows { get; set; } = null!;
+    public DbSet<SupplierFreeCalendarEvent> SupplierFreeCalendarEvents { get; set; } = null!;
     public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
+    public DbSet<HostInviteRecord> HostInviteRecords { get; set; } = null!;
+    public DbSet<HostInviteAuditEntry> HostInviteAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
     /// <summary>
@@ -365,6 +375,37 @@ public class AppDbContext(
             entity.HasIndex(i => i.ImportedAt);
             entity.HasIndex(i => i.ReferenceDate);
         });
+        modelBuilder.Entity<OfficialSourceFetch>(entity =>
+        {
+            entity.HasIndex(f => new { f.Dataset, f.RetrievedAt });
+            entity.HasIndex(f => f.IstatCode);
+        });
+        modelBuilder.Entity<ComuneOfficialProfile>(entity =>
+        {
+            entity.Property(p => p.IstatCode).HasMaxLength(6).IsRequired();
+            entity.HasMany(p => p.Versions)
+                .WithOne()
+                .HasForeignKey(v => v.IstatCode)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ComuneOfficialProfileVersion>(entity =>
+        {
+            entity.Property(v => v.IstatCode).HasMaxLength(6).IsRequired();
+            if (Database.IsNpgsql())
+                entity.Property(v => v.ExtractJson).HasColumnType("jsonb");
+            entity.HasIndex(v => new { v.IstatCode, v.VersionNumber }).IsUnique();
+            if (Database.IsNpgsql())
+            {
+                entity.HasIndex(v => v.IstatCode)
+                    .IsUnique()
+                    .HasFilter("\"IsCurrent\"")
+                    .HasDatabaseName("IX_ComuneOfficialProfileVersions_IstatCode_Current");
+            }
+            else
+            {
+                entity.HasIndex(v => v.IstatCode);
+            }
+        });
 
         // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
         modelBuilder.Entity<PropertyQuesturaCredentials>(entity =>
@@ -393,6 +434,19 @@ public class AppDbContext(
         modelBuilder.Entity<Property>()
             .Property(p => p.Longitude)
             .HasPrecision(9, PropertyAddress.CoordinateScale);
+
+        // DB-03: the stay rules the public quote and checkout read (minimum stay, weekend surcharge). The host forms and the
+        // property service validate them; the constraints keep any other writer honest. Both columns are nullable or 0 for
+        // every row that existed before them, so the migration changes no behavior (docs/runbooks/direct-booking.md § 11).
+        modelBuilder.Entity<Property>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_Properties_MinNights",
+                $"\"MinNights\" IS NULL OR \"MinNights\" BETWEEN {PropertyStayRules.MinMinNights} AND {PropertyStayRules.MaxMinNights}");
+            t.HasCheckConstraint(
+                "CK_Properties_WeekendSurchargePercent",
+                $"\"WeekendSurchargePercent\" BETWEEN 0 AND {(int)PropertyStayRules.MaxWeekendSurchargePercent}");
+        });
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
@@ -581,6 +635,22 @@ public class AppDbContext(
             .HasConversion<string>()
             .HasMaxLength(100);
 
+        // Demo environment: one platform row, and one marker per invented row so a reset never touches host data.
+        modelBuilder.Entity<DemoEnvironmentSetting>(entity =>
+        {
+            entity.Property(s => s.TemplateVersion).HasMaxLength(40);
+            entity.Property(s => s.LastResetBy).HasMaxLength(255);
+        });
+        modelBuilder.Entity<TestDataMarker>(entity =>
+        {
+            entity.Property(m => m.EntityType).HasMaxLength(TestDataMarker.EntityTypeMaxLength);
+            entity.Property(m => m.Origin).HasMaxLength(TestDataMarker.OriginMaxLength);
+            entity.Property(m => m.TemplateKey).HasMaxLength(TestDataMarker.TemplateKeyMaxLength);
+            entity.HasIndex(m => new { m.EntityType, m.EntityId }).IsUnique();
+            entity.HasIndex(m => new { m.OrgId, m.Origin });
+            entity.HasOne<Org>().WithMany().HasForeignKey(m => m.OrgId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         // LeaseContract → Property (restrict to preserve history)
         modelBuilder.Entity<LeaseContract>()
             .HasOne(l => l.Property)
@@ -727,6 +797,10 @@ public class AppDbContext(
 
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => e.OrgId);
+
+        // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasIndex(e => new { e.OrgId, e.DueDate });
 
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).
@@ -1208,6 +1282,23 @@ public class AppDbContext(
             entity.ToTable(t => t.HasCheckConstraint("CK_SupplierBusyWindows_Interval", "\"StartUtc\" < \"EndUtc\""));
         });
 
+        modelBuilder.Entity<SupplierFreeCalendarEvent>(entity =>
+        {
+            entity.HasOne(e => e.SupplierProfile)
+                .WithMany()
+                .HasForeignKey(e => e.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The sync finds the row of an event again by its key at every run: one row per event and supplier.
+            entity.HasIndex(e => new { e.OrgId, e.DecisionKey })
+                .IsUnique()
+                .HasDatabaseName("UIX_SupplierFreeCalendarEvents_OrgId_DecisionKey");
+
+            // The console lists the unanswered ones of a supplier by their next date.
+            entity.HasIndex(e => new { e.OrgId, e.Decision, e.NextStartUtc })
+                .HasDatabaseName("IX_SupplierFreeCalendarEvents_OrgId_Decision_NextStartUtc");
+        });
+
         modelBuilder.Entity<SupplierSettings>(entity =>
         {
             // One row per supplier: the key is the supplier org, which is also the foreign key.
@@ -1258,6 +1349,32 @@ public class AppDbContext(
         // key: the trail outlives a supplier org deleted by the fix-orphaned repair.
         modelBuilder.Entity<SupplierAdminAuditEntry>()
             .HasIndex(e => new { e.SupplierOrgId, e.OccurredAt });
+
+        // ─── Host invites (invitation of new independent hosts) ──────────────────
+        modelBuilder.Entity<HostInviteRecord>(entity =>
+        {
+            // The link finds its invite by the hash of the token; sending it again swaps the hash, so it is unique.
+            entity.HasIndex(i => i.TokenHash)
+                .IsUnique()
+                .HasDatabaseName("UIX_HostInviteRecords_TokenHash");
+
+            // The duplicate check and the lists of an inviter, newest first.
+            entity.HasIndex(i => new { i.InvitedByUserId, i.Email })
+                .HasDatabaseName("IX_HostInviteRecords_InvitedByUserId_Email");
+
+            // The pending cap of a host org and the admin list by creation date.
+            entity.HasIndex(i => new { i.InvitedByOrgId, i.CreatedAt })
+                .HasDatabaseName("IX_HostInviteRecords_InvitedByOrgId_CreatedAt");
+        });
+
+        // Audit trail and source of the daily quota: read by host org and time window. No foreign key: it outlives a purged invite.
+        modelBuilder.Entity<HostInviteAuditEntry>(entity =>
+        {
+            entity.HasIndex(e => new { e.ActorOrgId, e.OccurredAt })
+                .HasDatabaseName("IX_HostInviteAuditEntries_ActorOrgId_OccurredAt");
+            entity.HasIndex(e => e.InviteId)
+                .HasDatabaseName("IX_HostInviteAuditEntries_InviteId");
+        });
 
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()
@@ -1786,6 +1903,9 @@ public class AppDbContext(
         // admin cross-org reads) still excludes deleted properties, and IgnoreQueryFilters([SoftDeleteQueryFilter])
         // (fiscal/compliance reporting) still respects tenant isolation.
         modelBuilder.Entity<Property>().HasQueryFilter(SoftDeleteQueryFilter, p => !p.IsDeleted);
+
+        // UI-13a: the stored search keys and their indexes (global search, docs/runbooks/global-search.md).
+        SearchKeyModel.Configure(modelBuilder);
 
         ApplyTenantQueryFilters(modelBuilder);
     }

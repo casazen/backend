@@ -22,6 +22,7 @@ The general developer guide (SPA app, API, local setup) stays in [`docs/AUTH0_SE
 | Per-request DB reads | User flags, supplier link and memberships read once per request and cached 60 s per user (`Authorization:UserCacheSeconds`, `0` disables), invalidated on every role/membership/link change of this instance | `UserAuthorizationSnapshotStore` |
 | Deactivated users (PL-03) | Every authenticated request of a user with `Users.IsActive = false` gets **403 `account_inactive`**, before any policy, whatever the roles in the token. The flag is read with the tenant (one query per request, no cache) | `InactiveAccountMiddleware`, `TenantContext` |
 | Deactivation / reactivation | `DELETE /api/users/{id}`: DB first, then Auth0 `blocked=true` and removal of the user's CasaZen roles (remembered in `Users.SuspendedAuth0Roles`). `POST /api/users/{id}/reactivate`: roles given back, then `blocked=false`. Outcome in `auth0Synced` / `auth0SyncError` / `message`; section 10 | `UserService.DeactivateUserAsync` / `ReactivateUserAsync` |
+| Permanent removal | `DELETE /api/users/{id}/account`: Auth0 user deleted first (`delete:users`), then the CasaZen row. The organization and its properties stay. 502 when Auth0 refuses, so a retry is safe (a missing Auth0 user counts as deleted). 422 `cannot_delete_self` / `cannot_delete_last_admin` | `UserService.DeleteRegisteredUserAsync` |
 
 Error codes returned to clients: `auth0_management_not_configured`, `auth0_management_token_failed`,
 `auth0_role_not_found`, `auth0_rate_limited`, `auth0_management_error`. Deactivation (PL-03): `account_inactive` (403),
@@ -64,6 +65,13 @@ Users, roles and the Action are **not** shared between tenants: create the roles
 Test users (E2E, demo, Maestro) live only in the test tenant. The code holds no tenant: the backend reads
 `Auth0__*`, the web app `VITE_AUTH0_*`, the mobile app `EXPO_PUBLIC_AUTH0_*`, the helper scripts of `scripts/`
 `E2E_AUTH0_DOMAIN` / `E2E_AUTH0_CLIENT_ID` (or `Auth0__Domain` for `start-backend-local.ps1`).
+
+### 1.0 When a second tenant is not available: one tenant, two environments (§ 1.2)
+
+The Free plan allows **one** tenant. When the product owner cannot create a second one, test and production share it and
+are separated by **resources**, not by tenant: § 1.2. This is a deliberate deviation from the rule above (audit A1-32),
+with the residual risks listed there. Everything written about "the test tenant" below then means "the test resources of
+the shared tenant".
 
 ### 1.1 Separating the tenants (one-time, product owner)
 
@@ -111,6 +119,57 @@ Check: log in on the test web app → the Auth0 page shows the test tenant domai
 domain. A token of the test tenant sent to the production API answers **401** (issuer and signing keys differ), and the
 reverse.
 
+### 1.2 One shared tenant: what separates test from production
+
+Identifiers (the resources that existed first belong to **test** and are not renamed: an API identifier cannot be changed;
+production gets new ones):
+
+| Resource | Test (existing) | Production (new) |
+|---|---|---|
+| Database connection | `Username-Password-Authentication` | `casazen-prod-users` |
+| API identifier (`Auth0__Audience`, `VITE_AUTH0_AUDIENCE`, `EXPO_PUBLIC_AUTH0_AUDIENCE`) | `https://casazen-api` | `https://casazen-api-prod` |
+| SPA application | existing SPA application | `casazen-web-prod` |
+| Native application (mobile) | existing Native application | `casazen-mobile-prod` |
+| M2M application (Management API) | existing M2M application | `casazen-backend-prod` |
+
+Rules, all of them needed:
+
+1. **Connections per application.** Each application has enabled **only** the database connection of its environment
+   (Applications → application → Connections). Disable `Username-Password-Authentication` on the test applications and
+   every social connection nobody asked for. This is what keeps test users out of production and lets the same email
+   exist in both (their `sub` differ).
+2. **One API per environment**, with the same permissions and RBAC settings (*Enable RBAC*, *Add Permissions in the
+   Access Token*, *Allow Offline Access*). The scopes the web app requests (`read:properties`, …) must exist on both.
+   Authorize each application only on the API of its own environment (APIs → Application Access): the backend rejects a
+   token whose `aud` is not its own `Auth0__Audience`, and that is the **only** check that tells the two backends apart,
+   because the issuer (`Auth0__Domain`, custom domain included) is the same.
+3. **Allowed URLs per application.** Test applications: localhost, the `develop` deployment and the preview pattern.
+   Production applications: the production domain only. No URL in both.
+4. **Railway / Vercel / EAS / GitHub:** `Auth0__Domain` / `VITE_AUTH0_DOMAIN` / `EXPO_PUBLIC_AUTH0_DOMAIN` are the same
+   in both environments; audience and client ids differ. The frontend build fails on Vercel without
+   `VITE_AUTH0_AUDIENCE` for this reason.
+5. **Management API (M2M).** Use one M2M application per environment, but know the limit: Auth0 cannot scope an M2M
+   application to a connection, so the test one can **block, change or delete production users** if it is ever given a
+   production user id. Grant the test M2M application only the scopes the test flows need and never reuse a secret
+   between the two Railway environments. The backend only calls the Management API with ids it read from its own
+   database (separate schema per environment), which is the second barrier.
+6. **Verification email.** The Redirect To of *Verification Email (Link)* is **per tenant**, and Auth0 supports only
+   `application.name`, `application.clientID` and `application.callback_domain` in it. Set it to
+   `{{ application.callback_domain }}/email-verified`: `callback_domain` is the origin of the **first** Allowed Callback
+   URL of the application that sent the email, so the **first** callback URL of each web application must be the origin of
+   its own environment, and `<origin>/email-verified` must be in its list too (§ 11.2). Keep the Auth0 default body.
+   Tenants created on or after 2026-05-05 without an enterprise plan cannot edit Redirect To: check the field is
+   editable. A Native application would redirect to its `casazen://` origin: verification is meant for the web signup.
+   Email provider, templates, password policy, MFA, Identifier First and the custom domain are tenant-wide and shared.
+7. **The Action `CasaZen claims` (§ 6) is shared**: it runs for every application of the tenant. Any change is live in
+   production at once: review it like production code, and limit test-only logic with `event.client.client_id`.
+8. **Quota and limits are shared**: test users count in the monthly active users of the plan, and the tenant carries the
+   Production tag (rate limits of production apply to test traffic too).
+
+Check: a token obtained by the test SPA application has `aud` `https://casazen-api` and is answered **401** by the
+production API; a production token is answered **401** by the test API. A test user cannot log in on the production
+application ("Wrong email or password"), and the reverse.
+
 ## 2. API (resource server)
 
 Applications → APIs → **Create API** (per tenant):
@@ -136,6 +195,7 @@ Applications → Applications → **Create Application** → *Machine to Machine
    |---|---|
    | `read:users` | profile backfill (email/name) in admin listings; account email and `email_verified` for supplier invites and claims when the access token lacks the Action claims (SU-02); roles of a user before its deactivation (PL-03) |
    | `update:users` | **blocking and unblocking** a deactivated / reactivated user (`PATCH /users/{id}` with `blocked`, PL-03) |
+   | `delete:users` | **permanent removal** of a registered account from the admin console (`DELETE /api/users/{id}/account` → `DELETE /api/v2/users/{id}`). Without it the CasaZen row stays and the call answers 502 |
    | `read:roles` | resolving role ids (cached); roles of a user before its deactivation |
    | `create:role_members` | adding a role to a user (`POST /users/{id}/roles`); giving the roles back at the reactivation |
    | `delete:role_members` | removing a named role from a user (`DELETE /users/{id}/roles`); removing the roles at the deactivation |
@@ -504,6 +564,81 @@ Check after the deploy (test tenant, test users only):
 4. If step 1 shows the warning, read `auth0SyncError`: `auth0_management_not_configured` / `auth0_management_token_failed`
    (section 5), `auth0_management_error` with HTTP 403 in the logs = missing scope (section 4: `update:users`,
    `read:role_members`, `delete:role_members`).
+
+## 11. Signup: existing email and email verification
+
+Two things the product owner sets in **each** tenant (test and production). The app cannot change them:
+Auth0 hides them on purpose, or decides them before the redirect reaches CasaZen.
+
+### 11.1 An email that already has an account
+
+Auth0 does not say "this email is already registered". On the signup screen it shows a generic error
+("Something went wrong" / "Si è verificato un errore"). That is the user-enumeration protection of the
+database connection: turning the old "user already exists" text back on is not available.
+
+What to set instead, so a person who already signed up is not stuck:
+
+1. Auth0 Dashboard → **Authentication** → **Authentication Profile** → **Identifier First** → Save.
+   The person types the email first. If the account exists, Auth0 opens the password (or the social
+   login) of that account. If it does not, Auth0 opens signup. They never hit the generic signup error
+   for an email they already used.
+2. Branding → **Universal Login** → **Advanced Options** → **Custom Text**, screen `signup`. Set the
+   generic failure text (Italian tenant copy) so a leftover error still points at the login, without
+   confirming that the email exists:
+
+   ```text
+   Non è stato possibile creare l'account. Se ne hai già uno, accedi.
+   ```
+
+   The prompt key Auth0 uses for that generic failure is `auth0-users-validation` on the `signup` screen.
+   If the dashboard shows a different key for the same sentence, change that key, not a new one.
+3. Keep a visible "Accedi" link on the signup screen (Universal Login already has
+   `loginActionLinkText`). Do not add an Action that answers "this email exists": that brings the
+   enumeration leak back.
+
+Check: with a private window, open `/signup`, enter an email that already has an account. Identifier
+First must ask for the password of that account, not a generic signup error.
+
+### 11.2 "Your email address could not be verified"
+
+That sentence is Auth0's own result page, in English, on the tenant domain. CasaZen never renders it.
+The email is sent; the click fails **before** the app opens. Two causes cover what we see:
+
+1. **Redirect To is not an Allowed Callback URL.** Branding → Email Templates → **Verification Email
+   (Link)** → Redirect To. Auth0 refuses the ticket when that URL is missing from the SPA application's
+   Allowed Callback URLs, and shows exactly "Error / Your email address could not be verified."
+2. **The link was already used.** Outlook Safe Links, Defender and similar tools open the link with a
+   GET and consume the one-time ticket. The person's click then fails with the same sentence. The
+   current Auth0 template avoids that: it opens a page with a button, and only the button verifies.
+   A custom template that puts `{{ url }}` straight on the button brings the scanner problem back.
+   Reset the template to the default, then set only Redirect To (below). Do not rewrite the link.
+
+The web app's login redirect is the **origin** (`https://<app>`), not `/callback`
+(`frontend/src/config/auth.config.ts`). Do not send the verification result there: Auth0 adds
+`code=success`, and a URL that is also the login redirect can be read as a broken login.
+
+Set, on the SPA application of this tenant:
+
+| Field | Value |
+|---|---|
+| Allowed Callback URLs | the origin of this environment **and** `https://<app>/email-verified` (localhost too, for local login) |
+| Verification email → Redirect To | `https://<app>/email-verified` exactly, no query string |
+| Verification email body | Auth0 default (the confirm button). Status: enabled |
+
+`/email-verified` is a CasaZen page. On success it says the address is confirmed and offers **Accedi**.
+On `success=false` it explains the used or expired link in Italian and still offers **Accedi** (the
+address may already be verified by the scanner). It is not behind the host onboarding.
+
+Check, in a private window, with a new email:
+
+1. Sign up, open the message, press the confirm control (not only the preview).
+2. The browser lands on `https://<app>/email-verified?success=true&code=success&…`, in Italian, not on
+   the English Auth0 error.
+3. **Accedi** with the same email reaches the app. In Auth0 → Users the user has Email verified.
+4. Repeat with an email client that rewrites links (Outlook). The confirm button must still work.
+
+If step 2 still shows the English error, Redirect To and Allowed Callback URLs do not match character
+for character (scheme, host, path, trailing slash).
 
 ## Multi-instance note
 

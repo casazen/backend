@@ -18,21 +18,32 @@ public class DeepSeekAiProvider(
     IOptions<AiOptions> options,
     ILogger<DeepSeekAiProvider> logger) : IAiProvider
 {
+    public Task<AiGenerationResult> GenerateAsync(
+        string prompt,
+        AiModelTier tier,
+        string cacheKey,
+        CancellationToken cancellationToken = default) =>
+        GenerateAsync(prompt, tier, cacheKey, options.Value, cancellationToken);
+
+    /// <summary>Same call, with the settings in effect (server configuration or the admin override).</summary>
     public async Task<AiGenerationResult> GenerateAsync(
         string prompt,
         AiModelTier tier,
         string cacheKey,
+        AiOptions config,
         CancellationToken cancellationToken = default)
     {
-        var config = options.Value;
         if (string.IsNullOrWhiteSpace(config.ApiKey))
         {
             logger.LogDebug("Ai:ApiKey not configured; returning empty AI response.");
             return new AiGenerationResult(string.Empty, 0, 0, tier, FromCache: false, ProviderConfigured: false);
         }
 
-        // FD-21 (PO 2026-10-08): scrub PII from every prompt before sending to DeepSeek.
+        // FD-21 (PO 2026-10-08): scrub PII from every prompt before it leaves CasaZen.
         prompt = PiiScrubber.Scrub(prompt);
+
+        if (config.UsesAnthropicMessages())
+            return await GenerateAnthropicAsync(prompt, tier, config, cancellationToken);
 
         var baseUrl = config.OpenAiBaseUrl.TrimEnd('/');
         var payload = new
@@ -54,6 +65,35 @@ public class DeepSeekAiProvider(
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         var content = ExtractCompletionContent(json);
         var (promptTokens, completionTokens) = ExtractUsage(json);
+        return new AiGenerationResult(content, promptTokens, completionTokens, tier, false);
+    }
+
+    private async Task<AiGenerationResult> GenerateAnthropicAsync(
+        string prompt,
+        AiModelTier tier,
+        AiOptions config,
+        CancellationToken cancellationToken)
+    {
+        var baseUrl = config.AnthropicBaseUrl.TrimEnd('/');
+        var payload = new
+        {
+            model = config.Model,
+            max_tokens = config.MaxCompletionTokens,
+            messages = new[] { new { role = "user", content = prompt } },
+        };
+
+        var client = httpClientFactory.CreateClient("DeepSeek");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/v1/messages");
+        request.Headers.Add("x-api-key", config.ApiKey);
+        request.Headers.Add("anthropic-version", "2023-06-01");
+        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        using var response = await client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        var content = DeepSeekWebSearchClient.ExtractTextContent(json) ?? string.Empty;
+        var (promptTokens, completionTokens) = DeepSeekWebSearchClient.ExtractUsage(json);
         return new AiGenerationResult(content, promptTokens, completionTokens, tier, false);
     }
 

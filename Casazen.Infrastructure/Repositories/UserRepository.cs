@@ -54,6 +54,20 @@ public class UserRepository(AppDbContext context) : IUserRepository
         }
     }
 
+    public async Task DeleteAsync(string id, CancellationToken cancellationToken = default)
+    {
+        await context.DeviceRegistrations
+            .Where(d => d.UserId == id)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        var user = await context.Users.FindAsync([id], cancellationToken);
+        if (user is null)
+            return;
+
+        context.Users.Remove(user);
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task UpdateAsync(User user)
     {
         user.UpdatedAt = DateTime.UtcNow;

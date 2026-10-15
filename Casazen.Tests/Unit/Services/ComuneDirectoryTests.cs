@@ -33,8 +33,8 @@ public class ComuneDirectoryTests
         var status = await new ComuneDirectory(db).GetStatusAsync();
 
         Assert.True(status.Available);
-        Assert.Equal((29, 29), (status.TotalRows, status.ActiveRows));
-        Assert.Equal((ComuneTestData.ReferenceDate, ComuneTestData.SampleSourceVersion, 29), (status.LastImport!.ReferenceDate, status.LastImport.SourceVersion, status.LastImport.RowCount));
+        Assert.Equal((42, 42), (status.TotalRows, status.ActiveRows));
+        Assert.Equal((ComuneTestData.ReferenceDate, ComuneTestData.SampleSourceVersion, 42), (status.LastImport!.ReferenceDate, status.LastImport.SourceVersion, status.LastImport.RowCount));
     }
 
     [Theory]

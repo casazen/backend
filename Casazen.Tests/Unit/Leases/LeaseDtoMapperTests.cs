@@ -150,6 +150,43 @@ public class LeaseDtoMapperTests
         Assert.DoesNotContain(names, n => n.Contains("Part", StringComparison.Ordinal) && n != nameof(LeaseSummaryDto.PartyCount));
     }
 
+    [Fact]
+    public void LeaseSummaryDto_CarriesTheFirstTenantByNameOnly_NeverTheFiscalCodeTheEmailNorTheCitizenship()
+    {
+        // LR-01, decision D29: the name yes. Nothing else of the person reaches the list.
+        var row = new LeaseSummaryDto(
+            Guid.NewGuid(), Guid.NewGuid(), new LeasePropertyDto(Guid.NewGuid(), "Bilocale", "Bari"), LeaseStatus.Registered,
+            FiscalRegime.CedolareSecca, LeaseContractType.Libero, LeaseTaxRegime.CedolareSecca, Today, Today.AddYears(4), 900m, null, null,
+            2, false, Today, Today, "Giulia", "Verdi", false, new DateOnly(2026, 10, 5), 2, 1800m, 65);
+
+        var json = JsonSerializer.Serialize(row, ApiJson);
+
+        Assert.Contains("\"tenantFirstName\":\"Giulia\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"tenantLastName\":\"Verdi\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"nextRentDueDate\":\"2026-10-05\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"overdueRentCount\":2", json, StringComparison.Ordinal);
+        Assert.Contains("\"overdueDays\":65", json, StringComparison.Ordinal);
+        AssertNoForbiddenFields(json);
+        Assert.DoesNotContain("mail", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("citizenship", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("fiscal", json.Replace("fiscalRegime", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void LeaseSummaryDto_ATenantWhoseDataWereAnonymized_HasNoNameToShow()
+    {
+        // The repository leaves both names null and says so: the client must not show the placeholder of the anonymization.
+        var row = new LeaseSummaryDto(
+            Guid.NewGuid(), Guid.NewGuid(), null, LeaseStatus.Registered, FiscalRegime.CedolareSecca, LeaseContractType.Libero, null,
+            Today, Today.AddYears(4), 900m, null, null, 2, false, Today, Today, null, null, true);
+
+        Assert.Null(row.TenantFirstName);
+        Assert.Null(row.TenantLastName);
+        Assert.True(row.TenantAnonymized);
+        Assert.Equal(0, row.OverdueRentCount);
+        Assert.Null(row.NextRentDueDate);
+    }
+
     [Theory]
     [InlineData("RSSMRA80A01H501U", "************501U")]
     [InlineData(" 12345678901 ", "*******8901")]

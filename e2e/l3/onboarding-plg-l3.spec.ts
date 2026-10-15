@@ -41,7 +41,7 @@ test.describe('Onboarding PLG L3 (#271)', () => {
   test('AC9: onboarding role step visible when Auth0 session present', async ({ page }) => {
     test.skip(!process.env.E2E_AUTH0_EMAIL, 'Requires E2E_AUTH0_EMAIL for authenticated L3 onboarding');
     await page.goto('/onboarding');
-    await expect(page.getByRole('heading', { name: /Come vuoi usare CasaZen|How do you want to use CasaZen/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /Da dove vuoi iniziare|Where do you want to start/i })).toBeVisible({
       timeout: 60_000,
     });
   });

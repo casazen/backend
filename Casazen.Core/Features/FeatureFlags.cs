@@ -122,6 +122,25 @@ public static class FeatureFlags
     /// </summary>
     public const string InAppNotifications = "InAppNotifications";
 
+    /// <summary>
+    /// UI-13a (redesign wave, task UI-13): the global search of the palette (Ctrl/Cmd+K), server side. Off: <c>GET api/search</c>
+    /// answers 404 before authentication, rate limiting and anything is read, like a route that does not exist. On, it searches the
+    /// objects of the caller (properties, bookings, guests, leases, service requests, suppliers) for the permissions and the
+    /// properties the caller has, in SQL. <c>PUT api/me/last-context</c> (the last area used, same task) is <b>not</b> behind it. The
+    /// stored search keys and their indexes (migration <c>AddGlobalSearchKeys</c>) exist whatever the flag says: they cost a few
+    /// bytes per row and nothing is read from them while it is off. Runbook: <c>docs/runbooks/global-search.md</c>.
+    /// </summary>
+    public const string GlobalSearch = "GlobalSearch";
+
+    /// <summary>
+    /// SEO-INVITE (product owner, 2026-10-13): CasaZen is on private invitation, prices and the onboarding of new customers are
+    /// not defined yet. Off (the default): the public SEO pages carry no call to action to sign up ("Pubblica la tua casa"):
+    /// <c>cta</c> is <c>null</c> in <c>GET api/public/content/…</c> and the crawler page has no link to <c>/signup</c>. The
+    /// registration itself is closed outside the code: Auth0 "Disable Sign Ups" on every connection, and
+    /// <c>Suppliers__AnyComune=false</c> with no pilot comuni (docs/runbooks/feature-flags.md).
+    /// </summary>
+    public const string SeoSignupCta = "SeoSignupCta";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -136,5 +155,7 @@ public static class FeatureFlags
         OrgTeam,
         PropertyModeChange,
         InAppNotifications,
+        GlobalSearch,
+        SeoSignupCta,
     ];
 }

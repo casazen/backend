@@ -88,6 +88,8 @@ public class SupplierPilotComuniTests
         new(
             Options.Create(new SupplierRegistrationOptions
             {
+                // These tests cover the restricted (pilot) behaviour; the open one is covered by SupplierSelfServeAnyComune tests.
+                AnyComune = false,
                 PilotComuni = configured.Select(c => new SupplierPilotComune { Code = c.Code, Name = c.Name }).ToList(),
             }),
             new ComuneDirectory(db));

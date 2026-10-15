@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Unicode;
+using Casazen.Core.Entities;
 
 namespace Casazen.Web.Seo;
 
@@ -126,8 +127,13 @@ public static class SeoJsonLd
             ("amenityFeature", amenities.Count > 0 ? amenities : null));
 
         var hasAddress = !string.IsNullOrWhiteSpace(data.City) || !string.IsNullOrWhiteSpace(data.PostalCode);
+        // DB-03: the position of a house is private. Whatever the caller hands over, the page carries it rounded to about
+        // 1 km (PropertyAddress.ToPublicCoordinate): enough for a search engine to place the property in its zone, never
+        // its door. The exact value is not in this record's output under any circumstance.
+        var latitude = PropertyAddress.ToPublicCoordinate(data.Latitude);
+        var longitude = PropertyAddress.ToPublicCoordinate(data.Longitude);
         // 0,0 is the default of an unset position, not a place: never published as coordinates.
-        var hasPosition = data.Latitude != 0m || data.Longitude != 0m;
+        var hasPosition = latitude != 0m || longitude != 0m;
 
         JsonNode? images = null;
         if (data.ImageUrls.Count > 0)
@@ -159,8 +165,8 @@ public static class SeoJsonLd
                 : null),
             ("geo", hasPosition
                 ? Node("GeoCoordinates",
-                    ("latitude", JsonValue.Create(data.Latitude)),
-                    ("longitude", JsonValue.Create(data.Longitude)))
+                    ("latitude", JsonValue.Create(latitude)),
+                    ("longitude", JsonValue.Create(longitude)))
                 : null),
             ("containsPlace", place),
             ("petsAllowed", data.PetsAllowed ? JsonValue.Create(true) : null),

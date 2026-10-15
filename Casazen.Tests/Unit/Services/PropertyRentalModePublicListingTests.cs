@@ -138,6 +138,7 @@ public class PropertyRentalModePublicListingTests : IDisposable
             _db,
             Mock.Of<ILegalDocumentService>(),
             Mock.Of<IUserAuthorizationCache>(),
+            Mock.Of<IHostOnboardingGate>(),
             EmailTestHelpers.Links());
 
         var facts = await service.LoadPropertyFactsAsync(_org.Id, CancellationToken.None);
@@ -157,6 +158,7 @@ public class PropertyRentalModePublicListingTests : IDisposable
             _db,
             Mock.Of<ILegalDocumentService>(),
             Mock.Of<IUserAuthorizationCache>(),
+            Mock.Of<IHostOnboardingGate>(),
             EmailTestHelpers.Links());
 
         var facts = await service.LoadPropertyFactsAsync(_org.Id, CancellationToken.None);

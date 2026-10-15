@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -15,9 +16,19 @@ namespace Casazen.Core.DTOs.Leases;
 public sealed record LeasePropertyDto(Guid Id, string Name, string City);
 
 /// <summary>
-/// Row of the lease list: no personal data of the parties, only how many they are. <c>RegistrationDeadline</c> is null
-/// while it is to be determined (LT-04, <see cref="RliRegistrationDeadline.Resolve(LeaseStatus, DateTime?, DateTime, DateTime)"/>).
+/// Row of the lease list. Of the parties it carries how many they are and, since LR-01 (decision D29: the name yes), the
+/// first and last name of the first tenant, never the fiscal code, the email nor the citizenship; both names are null once
+/// the data of that tenant were anonymized (<c>TenantAnonymized</c>, LT-12) or while the lease has no tenant.
+/// <c>RegistrationDeadline</c> is null while it is to be determined (LT-04,
+/// <see cref="RliRegistrationDeadline.Resolve(LeaseStatus, DateTime?, DateTime, DateTime)"/>).
 /// </summary>
+/// <remarks>
+/// The rent fields come from the ledger of the lease (<c>RentLedgerEntry</c>), read in the same query as the list:
+/// <c>NextRentDueDate</c> is the due date of the first installment still to be collected (the overdue one when there is
+/// one), <c>OverdueRentCount</c> and <c>OverdueRentAmount</c> are the installments past due and what they add up to,
+/// <c>OverdueDays</c> the days since the oldest of them was due (<see cref="RentInstallmentRules"/>). All empty (null, 0)
+/// for a lease with no rent schedule.
+/// </remarks>
 public sealed record LeaseSummaryDto(
     Guid Id,
     Guid PropertyId,
@@ -34,7 +45,14 @@ public sealed record LeaseSummaryDto(
     int PartyCount,
     bool HasExtraEUTenant,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    string? TenantFirstName = null,
+    string? TenantLastName = null,
+    bool TenantAnonymized = false,
+    DateOnly? NextRentDueDate = null,
+    int OverdueRentCount = 0,
+    decimal OverdueRentAmount = 0m,
+    int? OverdueDays = null);
 
 /// <summary>
 /// A party of the lease as the host sees it: the name (needed to recognise the signer), the role and whether the

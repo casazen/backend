@@ -335,6 +335,12 @@ public static class FiscalReportDocuments
             "Notti e ospiti sono quelli della prenotazione: il tetto di notti e le esenzioni del regolamento comunale "
             + "possono ridurre i pernottamenti tassabili."));
         blocks.Add(new PdfParagraph(report.Disclaimer));
+        if (report.RemittanceNotes is { Count: > 0 })
+        {
+            blocks.Add(new PdfHeading("Scadenza e modalità di versamento (testo dell'atto)"));
+            foreach (var note in report.RemittanceNotes)
+                blocks.Add(new PdfParagraph($"{note.Comune}: {note.Text}"));
+        }
 
         return new PdfDocumentContent("Tassa di soggiorno per comune e periodo", blocks);
     }

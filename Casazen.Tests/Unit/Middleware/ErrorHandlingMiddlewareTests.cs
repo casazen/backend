@@ -117,6 +117,16 @@ public class ErrorHandlingMiddlewareTests
     }
 
     [Fact]
+    public async Task InvokeAsync_DomainTooManyRequestsException_Returns429WithItsOwnCodeAndLocalizedMessage()
+    {
+        var response = await InvokeAsync(new DomainTooManyRequestsException("host_invite_quota_exceeded", "HostInviteQuotaExceeded"));
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, response.Status);
+        Assert.Equal("host_invite_quota_exceeded", response.Code);
+        Assert.StartsWith("Hai raggiunto il numero massimo di inviti", response.Detail);
+    }
+
+    [Fact]
     public async Task InvokeAsync_DomainForbiddenAndGone_EnglishUiCulture_ReturnEnglishDetail()
     {
         var forbidden = await InvokeAsync(new DomainForbiddenException("org_owner_required", "OrgOwnerRequired"), culture: "en");

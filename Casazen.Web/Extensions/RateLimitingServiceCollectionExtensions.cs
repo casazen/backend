@@ -13,7 +13,8 @@ namespace Casazen.Web.Extensions;
 /// Rate limiting of the anonymous endpoints (A3-12, A3-41, A5-10, A8-22, A9-10). Every policy is a fixed window
 /// partitioned by client IP (<see cref="ClientIp.GetRateLimitKey"/>, resolved by the forwarded headers middleware), so
 /// one client exhausting its quota never blocks the others; the guest check-in policies are partitioned by IP and
-/// token hash. A rejected request gets 429 ProblemDetails with <c>code</c> <c>rate_limited</c> and <c>Retry-After</c>.
+/// token hash, and the policies of signed-in endpoints (the access request of AM-02b, the global search of UI-13a) by person.
+/// A rejected request gets 429 ProblemDetails with <c>code</c> <c>rate_limited</c> and <c>Retry-After</c>.
 /// </summary>
 /// <remarks>
 /// Limits per client IP and window (runbook <c>docs/runbooks/proxy-ip.md</c>): <c>RateLimiting:{Policy}:PermitLimit</c>
@@ -48,8 +49,11 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
 
-        // The one policy of a signed-in endpoint: partitioned by person, since the request emails other people (AM-02b).
+        // A policy of a signed-in endpoint: partitioned by person, since the request emails other people (AM-02b).
         new(RateLimitPolicies.OrgAccessRequest, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
+
+        // The global search of the palette (UI-13a): per signed-in person as well, since the palette asks at every pause in typing.
+        new(RateLimitPolicies.GlobalSearch, 60, OneMinute, PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

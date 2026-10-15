@@ -393,6 +393,10 @@ If you get 401 errors:
 
 ## 9. Troubleshooting
 
+Signup with an email that already exists, and the English page "Your email address could not be verified",
+are tenant settings. The steps are in [`docs/runbooks/auth0.md`](runbooks/auth0.md) section 11. The app
+page for a successful verification is `/email-verified`.
+
 ### "Unauthorized" with valid token
 
 **Cause**: Audience or issuer mismatch.

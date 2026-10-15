@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -30,28 +31,39 @@ public sealed class HostDashboardService(
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    public async Task<HostDashboardKpis> GetKpisAsync(
+    public Task<HostDashboardKpis> GetKpisAsync(
         HostScope scope,
         HostDashboardPeriodKind kind,
         DateOnly? month,
+        CancellationToken cancellationToken = default) =>
+        GetKpisAsync(scope, new HostDashboardQuery(kind, month), cancellationToken);
+
+    public async Task<HostDashboardKpis> GetKpisAsync(
+        HostScope scope,
+        HostDashboardQuery query,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(query);
 
         var now = _clock.GetUtcNow();
         var today = RomeCalendar.TodayAt(now);
-        var period = kind == HostDashboardPeriodKind.Last30Days
-            ? HostDashboardPeriod.ForLast30Days(today)
-            : HostDashboardPeriod.ForMonth(month ?? DateOnly.FromDateTime(today));
+        var period = PeriodOf(query, today);
 
-        var propertyIds = await ActivePropertiesInScope(scope)
+        // One 404 for a property that is missing, another org's or not reached by the caller: nothing tells them apart.
+        if (query.PropertyId is { } filtered && !await IsPropertyInScopeAsync(scope, filtered, cancellationToken))
+            throw new NotFoundException($"Property {filtered} not found") { MessageKey = "PropertyNotFound" };
+
+        var propertyIds = await ActivePropertiesInScope(scope, query.PropertyId)
             .Select(p => p.Id)
             .ToListAsync(cancellationToken);
 
-        var occupancy = await GetOccupancyAsync(propertyIds, period, now.UtcDateTime, cancellationToken);
-        var (revenue, revenueStays) = await GetRevenueAsync(scope, period, cancellationToken);
+        var current = await GetFiguresAsync(scope, query, propertyIds, period, now.UtcDateTime, cancellationToken);
+        var previous = query.Compare
+            ? await GetFiguresAsync(scope, query, propertyIds, period.Previous(), now.UtcDateTime, cancellationToken)
+            : null;
 
-        var stays = BookingsInScope(scope);
+        var stays = BookingsInScope(scope, query.PropertyId);
         var arrivals = await ListAsync(
             stays.Where(StayKpiRules.ArrivesOn(today)).OrderBy(b => b.Property.Name).ThenBy(b => b.Id),
             TodayListSize, cancellationToken);
@@ -72,13 +84,38 @@ public sealed class HostDashboardService(
             period,
             today,
             propertyIds.Count,
-            occupancy,
-            revenue,
-            revenueStays,
+            current.Occupancy,
+            current.Revenue,
+            current.RevenueStayCount,
             arrivals,
             departures,
             upcoming,
-            recent.Select(ToRomeDates).ToList());
+            recent.Select(ToRomeDates).ToList())
+        {
+            Collected = current.Collected,
+            DirectShare = current.DirectShare,
+            Previous = previous,
+        };
+    }
+
+    public async Task<HostDashboardTodayStays> GetTodayStaysAsync(HostScope scope, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var today = RomeCalendar.TodayAt(_clock.GetUtcNow());
+        var stays = BookingsInScope(scope, null);
+        var arrivals = await ListAsync(
+            stays.Where(StayKpiRules.ArrivesOn(today)).OrderBy(b => b.Property.Name).ThenBy(b => b.Id),
+            TodayListSize, cancellationToken);
+        var departures = await ListAsync(
+            stays.Where(StayKpiRules.DepartsOn(today)).OrderBy(b => b.Property.Name).ThenBy(b => b.Id),
+            TodayListSize, cancellationToken);
+        // After today: the arrivals of today are already in the first list.
+        var upcoming = await ListAsync(
+            stays.Where(StayKpiRules.UpcomingCheckIn(today.AddDays(1))).OrderBy(b => b.CheckInDate).ThenBy(b => b.Id),
+            ListSize, cancellationToken);
+
+        return new HostDashboardTodayStays(today, arrivals, departures, upcoming);
     }
 
     public async Task<IReadOnlyList<HostDashboardIcalFeed>> GetIcalFeedsAsync(
@@ -157,15 +194,35 @@ public sealed class HostDashboardService(
         return new HostDashboardOccupancy(occupied, propertyIds.Count * period.Nights - closed, closed);
     }
 
-    private async Task<(decimal Revenue, int Stays)> GetRevenueAsync(
+    // The figures of one period (SR-03): the current one, and the one before it when the caller compares.
+    private async Task<HostDashboardFigures> GetFiguresAsync(
         HostScope scope,
+        HostDashboardQuery query,
+        IReadOnlyCollection<Guid> propertyIds,
+        HostDashboardPeriod period,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var occupancy = await GetOccupancyAsync(propertyIds, period, nowUtc, cancellationToken);
+        var (revenue, revenueStays, directStays) = await GetRevenueAsync(scope, query.PropertyId, period, cancellationToken);
+        var collected = query.IncludeCollected
+            ? await GetCollectedAsync(scope, query.PropertyId, period, cancellationToken)
+            : null;
+
+        return new HostDashboardFigures(
+            period, occupancy, revenue, revenueStays, collected, new HostDashboardDirectShare(directStays, revenueStays));
+    }
+
+    private async Task<(decimal Revenue, int Stays, int DirectStays)> GetRevenueAsync(
+        HostScope scope,
+        Guid? propertyId,
         HostDashboardPeriod period,
         CancellationToken cancellationToken)
     {
-        var stays = await BookingsInScope(scope)
+        var stays = await BookingsInScope(scope, propertyId)
             .Where(StayKpiRules.IsConfirmedStay())
             .Where(PropertyOccupancy.BookingTakesNightIn(period.From, period.To))
-            .Select(b => new { b.BasePrice, b.CheckInDate, b.CheckOutDate })
+            .Select(b => new { b.BasePrice, b.CheckInDate, b.CheckOutDate, b.Source })
             .ToListAsync(cancellationToken);
 
         var counted = stays
@@ -173,16 +230,64 @@ public sealed class HostDashboardService(
             .ToList();
         var revenue = counted.Sum(s =>
             StayKpiRules.RevenueInPeriod(s.BasePrice, s.CheckInDate, s.CheckOutDate, period.From, period.To));
-        return (Math.Round(revenue, 2, MidpointRounding.AwayFromZero), counted.Count);
+        return (
+            Math.Round(revenue, 2, MidpointRounding.AwayFromZero),
+            counted.Count,
+            counted.Count(s => s.Source == BookingSource.Direct));
     }
 
-    // Active properties of the scope, as GET /api/properties lists them.
-    private IQueryable<Property> ActivePropertiesInScope(HostScope scope) =>
-        db.Properties.AsNoTracking().Where(p => p.OrgId == scope.OrgId && p.IsActive).InScope(scope);
+    // Money collected in the period, by cash (SR-03, PaymentCashRules): the payments of the scope that came in on those days.
+    private async Task<HostDashboardCollected> GetCollectedAsync(
+        HostScope scope,
+        Guid? propertyId,
+        HostDashboardPeriod period,
+        CancellationToken cancellationToken)
+    {
+        var payments = db.Payments.AsNoTracking().Where(p => p.OrgId == scope.OrgId).InScope(scope);
+        if (propertyId is { } id)
+            payments = payments.Where(p => p.Booking.PropertyId == id);
 
-    // Bookings of the scope (TN-3, AM-03): the org and, unless org-wide, the properties the caller reaches.
-    private IQueryable<Booking> BookingsInScope(HostScope scope) =>
-        db.Bookings.AsNoTracking().Where(b => b.OrgId == scope.OrgId).InScope(scope);
+        var settled = await payments
+            .Where(PaymentCashRules.CollectedBetween(period.From, period.To))
+            .Select(p => new { p.Amount, p.RefundedAmount })
+            .ToListAsync(cancellationToken);
+
+        var amount = settled.Sum(p => PaymentCashRules.Collected(p.Amount, p.RefundedAmount));
+        return new HostDashboardCollected(Math.Round(amount, 2, MidpointRounding.AwayFromZero), settled.Count);
+    }
+
+    private Task<bool> IsPropertyInScopeAsync(HostScope scope, Guid propertyId, CancellationToken cancellationToken) =>
+        db.Properties
+            .AsNoTracking()
+            .Where(p => p.OrgId == scope.OrgId && p.Id == propertyId)
+            .InScope(scope)
+            .AnyAsync(cancellationToken);
+
+    private static HostDashboardPeriod PeriodOf(HostDashboardQuery query, DateTime todayInRome) => query.Kind switch
+    {
+        HostDashboardPeriodKind.Last30Days => HostDashboardPeriod.ForLast30Days(todayInRome),
+        HostDashboardPeriodKind.Next30Days => HostDashboardPeriod.ForNext30Days(todayInRome),
+        _ => HostDashboardPeriod.ForMonth(query.Month ?? DateOnly.FromDateTime(todayInRome)),
+    };
+
+    // Active short-rent properties of the scope, as GET /api/properties lists them, minus the ones in long-term mode (SR-03:
+    // they were still counted in the number of properties and in the denominator of the occupancy, PM-01 follow-up).
+    private IQueryable<Property> ActivePropertiesInScope(HostScope scope, Guid? propertyId)
+    {
+        var properties = db.Properties
+            .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
+            .Where(p => p.OrgId == scope.OrgId && p.IsActive)
+            .InScope(scope);
+        return propertyId is { } id ? properties.Where(p => p.Id == id) : properties;
+    }
+
+    // Bookings of the scope (TN-3, AM-03): the org and, unless org-wide, the properties the caller reaches; of one property when asked.
+    private IQueryable<Booking> BookingsInScope(HostScope scope, Guid? propertyId)
+    {
+        var bookings = db.Bookings.AsNoTracking().Where(b => b.OrgId == scope.OrgId).InScope(scope);
+        return propertyId is { } id ? bookings.Where(b => b.PropertyId == id) : bookings;
+    }
 
     private static async Task<HostDashboardStayList> ListAsync(
         IQueryable<Booking> query,
@@ -206,7 +311,13 @@ public sealed class HostDashboardService(
         b.CheckOutDate,
         b.Status,
         b.TotalPrice,
-        b.CreatedAt);
+        b.CreatedAt)
+    {
+        BookingCode = b.BookingCode,
+        Source = b.Source,
+        NumberOfGuests = b.NumberOfGuests,
+        ArrivedAt = b.ArrivedAt,
+    };
 
     // Stay dates as their Europe/Rome calendar date (midnight UTC), whatever time a legacy value carries.
     private static HostDashboardStay ToRomeDates(HostDashboardStay stay) => stay with

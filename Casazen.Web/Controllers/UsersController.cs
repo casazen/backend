@@ -92,16 +92,7 @@ public class UsersController(
         if (sub == null)
             return Unauthorized();
 
-        // Extract name/email claims from JWT; fall back gracefully
-        var email = User.FindFirst("email")?.Value
-                        ?? User.FindFirst(ClaimTypes.Email)?.Value
-                        ?? string.Empty;
-        var firstName = User.FindFirst("given_name")?.Value
-                        ?? User.FindFirst("name")?.Value?.Split(' ').FirstOrDefault()
-                        ?? string.Empty;
-        var lastName = User.FindFirst("family_name")?.Value
-                        ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
-                        ?? string.Empty;
+        var (email, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
 
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
         return Ok(await ToOwnDetailAsync(user));
@@ -325,6 +316,32 @@ public class UsersController(
             localizer[result.Auth0Sync.Succeeded ? "UserReactivated" : "UserReactivatedAuth0NotSynced"]));
     }
 
+    /// <summary>
+    /// Permanently removes a registered account. Admin only. Auth0 is deleted first (<c>delete:users</c>); when that
+    /// fails the CasaZen row stays and the call answers 502 so the admin can retry. 422 <c>cannot_delete_self</c> for
+    /// the caller's own account, <c>cannot_delete_last_admin</c> for the last active admin. The organization and its
+    /// properties stay.
+    /// </summary>
+    [HttpDelete("{id}/account")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<IActionResult> DeleteAccount(string id)
+    {
+        var adminSub = GetSub();
+        if (adminSub == null)
+            return Unauthorized();
+
+        var sync = await userService.DeleteRegisteredUserAsync(id, adminSub, HttpContext.RequestAborted);
+        if (!sync.Succeeded)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                sync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
+                "UserDeleteAuth0Failed");
+        }
+
+        return NoContent();
+    }
+
     private async Task<ActionResult<OnboardingResponseDto>> CompleteOnboardingAsync(
         OnboardingRequestDto dto,
         bool requireConsents)
@@ -343,15 +360,7 @@ public class UsersController(
         if (sub == null)
             return Unauthorized();
 
-        var email = User.FindFirst("email")?.Value
-                    ?? User.FindFirst(ClaimTypes.Email)?.Value
-                    ?? string.Empty;
-        var firstName = User.FindFirst("given_name")?.Value
-                        ?? User.FindFirst("name")?.Value?.Split(' ').FirstOrDefault()
-                        ?? string.Empty;
-        var lastName = User.FindFirst("family_name")?.Value
-                       ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
-                       ?? string.Empty;
+        var (email, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
 
         var existingUser = await userService.GetUserAsync(sub);
         var hadOrg = existingUser?.OrgId.HasValue == true;
@@ -464,10 +473,14 @@ public class UsersController(
     /// <summary>The caller's own profile, with where it stands with the host onboarding gate (PL-02).</summary>
     private async Task<UserDetailDto> ToOwnDetailAsync(User user)
     {
-        var detail = ToDetail(user, await ResolveOrgAsync(user));
+        var org = await ResolveOrgAsync(user);
+        var detail = ToDetail(user, org);
         var onboarding = await hostOnboardingGate.GetStatusAsync(user.Id, HttpContext.RequestAborted);
         detail.OnboardingRequired = !onboarding.IsComplete;
         detail.ConsentsAccepted = onboarding.ConsentsAccepted;
+        // A supplier org owns no properties: the "first property" step is for host orgs only.
+        if (user.OrgId is Guid orgId && org?.OrgType != OrgType.Supplier)
+            detail.HasProperties = await onboardingService.OrgHasPropertiesAsync(orgId, HttpContext.RequestAborted);
         return detail;
     }
 

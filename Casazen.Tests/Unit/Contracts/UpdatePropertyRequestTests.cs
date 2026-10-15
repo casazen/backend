@@ -310,4 +310,99 @@ public class UpdatePropertyRequestTests
 
         Assert.True(Validator.TryValidateObject(request, new ValidationContext(request), results, validateAllProperties: true));
     }
+
+    // ─── Minimum stay and weekend surcharge (DB-03) ─────────────────────────────────────────────────
+
+    [Fact]
+    public void ApplyTo_MinNightsAndSurchargeLeftOut_KeepsTheStoredValues()
+    {
+        var property = StoredProperty();
+        property.MinNights = 3;
+        property.WeekendSurchargePercent = 15m;
+
+        Read("""{ "name": "Casa al mare rinnovata" }""").ApplyTo(property);
+
+        Assert.Equal(3, property.MinNights);
+        Assert.Equal(15m, property.WeekendSurchargePercent);
+    }
+
+    [Fact]
+    public void ApplyTo_MinNightsAndSurchargeSent_AppliesThem()
+    {
+        var property = StoredProperty();
+
+        Read("""{ "minNights": 2, "weekendSurchargePercent": 12.5 }""").ApplyTo(property);
+
+        Assert.Equal(2, property.MinNights);
+        Assert.Equal(12.5m, property.WeekendSurchargePercent);
+    }
+
+    [Fact]
+    public void ApplyTo_MinNightsSentAsNull_RemovesTheMinimum()
+    {
+        var property = StoredProperty();
+        property.MinNights = 4;
+
+        var request = Read("""{ "minNights": null }""");
+        request.ApplyTo(property);
+
+        Assert.True(request.MinNightsSent);
+        Assert.Null(property.MinNights);
+    }
+
+    [Fact]
+    public void ApplyTo_SurchargeSentAsZero_TurnsItOffAndNullKeepsIt()
+    {
+        var property = StoredProperty();
+        property.WeekendSurchargePercent = 15m;
+
+        Read("""{ "weekendSurchargePercent": null }""").ApplyTo(property);
+        Assert.Equal(15m, property.WeekendSurchargePercent);
+
+        Read("""{ "weekendSurchargePercent": 0 }""").ApplyTo(property);
+        Assert.Equal(0m, property.WeekendSurchargePercent);
+    }
+
+    [Theory]
+    [InlineData("""{ "minNights": 0 }""", nameof(UpdatePropertyRequest.MinNights))]
+    [InlineData("""{ "minNights": 31 }""", nameof(UpdatePropertyRequest.MinNights))]
+    [InlineData("""{ "minNights": -2 }""", nameof(UpdatePropertyRequest.MinNights))]
+    [InlineData("""{ "weekendSurchargePercent": -1 }""", nameof(UpdatePropertyRequest.WeekendSurchargePercent))]
+    [InlineData("""{ "weekendSurchargePercent": 100.5 }""", nameof(UpdatePropertyRequest.WeekendSurchargePercent))]
+    [InlineData("""{ "minNights": null }""", null)]
+    [InlineData("""{ "minNights": 1 }""", null)]
+    [InlineData("""{ "minNights": 30 }""", null)]
+    [InlineData("""{ "weekendSurchargePercent": 100 }""", null)]
+    [InlineData("""{ "weekendSurchargePercent": 0 }""", null)]
+    public void Validate_StayRules_AreBoundedAndNullIsAllowed(string json, string? invalidMember)
+    {
+        var request = Read(json);
+        var results = new List<ValidationResult>();
+
+        Validator.TryValidateObject(request, new ValidationContext(request), results, validateAllProperties: true);
+
+        if (invalidMember is null)
+            Assert.Empty(results);
+        else
+            Assert.Contains(invalidMember, Assert.Single(results).MemberNames);
+    }
+
+    [Fact]
+    public void ToProperty_CreateWithStayRules_CarriesThemAndTheDefaultsChangeNothing()
+    {
+        var withRules = new CreatePropertyRequest
+        {
+            Name = "Casa",
+            Address = "Via Roma 1",
+            City = "Rimini",
+            MinNights = 3,
+            WeekendSurchargePercent = 15m,
+        }.ToProperty("auth0|owner");
+        var withDefaults = new CreatePropertyRequest { Name = "Casa", Address = "Via Roma 1", City = "Rimini" }.ToProperty("auth0|owner");
+
+        Assert.Equal(3, withRules.MinNights);
+        Assert.Equal(15m, withRules.WeekendSurchargePercent);
+        Assert.Null(withDefaults.MinNights);
+        Assert.Equal(0m, withDefaults.WeekendSurchargePercent);
+    }
 }

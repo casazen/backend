@@ -464,6 +464,7 @@ public class SupplierProfileController(
     [ProducesResponseType(typeof(SupplierDashboardDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<SupplierDashboardDto>> GetDashboard(
+        [FromServices] SupplierFreeEventService freeEventService,
         [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
@@ -472,6 +473,7 @@ public class SupplierProfileController(
 
         var stats = await supplierService.GetDashboardStatsAsync(orgId.Value, cancellationToken);
         if (stats is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+        var pendingFreeEvents = await freeEventService.CountPendingAsync(orgId.Value, cancellationToken);
         var (syncErrorCode, syncErrorMessage) = ICalErrorMessages.Describe(stats.CalendarSyncError, localizer);
 
         return Ok(new SupplierDashboardDto
@@ -487,6 +489,7 @@ public class SupplierProfileController(
                 LastSyncStatus = stats.CalendarSyncStatus,
                 CalendarSyncErrorCode = syncErrorCode,
                 CalendarSyncError = syncErrorMessage,
+                PendingFreeEventsCount = pendingFreeEvents,
             },
             LastUpdated = stats.LastUpdated,
         });
@@ -595,6 +598,7 @@ public class SupplierProfileController(
     [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CalendarSyncStatusDto>> GetCalendarStatus(
+        [FromServices] SupplierFreeEventService freeEventService,
         [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
@@ -604,7 +608,7 @@ public class SupplierProfileController(
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
         if (profile is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
-        return Ok(MapCalendarStatus(profile, localizer));
+        return Ok(MapCalendarStatus(profile, localizer, await freeEventService.CountPendingAsync(orgId.Value, cancellationToken)));
     }
 
     /// <summary>
@@ -618,6 +622,7 @@ public class SupplierProfileController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CalendarSyncStatusDto>> SetIcalFeed(
         [FromBody] SetIcalFeedRequest request,
+        [FromServices] SupplierFreeEventService freeEventService,
         [FromServices] IBackgroundJobClient backgroundJobClient,
         [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
@@ -644,7 +649,7 @@ public class SupplierProfileController(
         if (profile is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         QueueSupplierSync(orgId.Value, backgroundJobClient);
-        return Accepted(MapCalendarStatus(profile, localizer));
+        return Accepted(MapCalendarStatus(profile, localizer, await freeEventService.CountPendingAsync(orgId.Value, cancellationToken)));
     }
 
     /// <summary>
@@ -656,6 +661,7 @@ public class SupplierProfileController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<CalendarSyncStatusDto>> SyncCalendarNow(
+        [FromServices] SupplierFreeEventService freeEventService,
         [FromServices] IBackgroundJobClient backgroundJobClient,
         [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
@@ -669,7 +675,83 @@ public class SupplierProfileController(
         if (queue)
             QueueSupplierSync(orgId.Value, backgroundJobClient);
 
-        return Accepted(MapCalendarStatus(profile, localizer));
+        return Accepted(MapCalendarStatus(profile, localizer, await freeEventService.CountPendingAsync(orgId.Value, cancellationToken)));
+    }
+
+    /// <summary>
+    /// The events of the supplier's calendar that the calendar marks "Available" and the supplier has not answered about, the
+    /// next to happen first. Until answered they keep their days or hours occupied (Google writes every all-day event as
+    /// "Available"). Only the caller's own events: no id of another supplier is ever reachable.
+    /// </summary>
+    [HttpGet("calendar/free-events")]
+    [ProducesResponseType(typeof(SupplierFreeEventsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierFreeEventsResponse>> GetFreeCalendarEvents(
+        [FromServices] SupplierFreeEventService freeEventService,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var items = await freeEventService.ListPendingAsync(orgId.Value, cancellationToken);
+        return Ok(new SupplierFreeEventsResponse
+        {
+            Items = items.Select(e => new SupplierFreeEventDto
+            {
+                Id = e.Id,
+                Summary = e.Summary,
+                IsAllDay = e.IsAllDay,
+                Recurring = e.Recurring,
+                Occurrences = e.Occurrences,
+                NextStartUtc = DateTime.SpecifyKind(e.NextStartUtc, DateTimeKind.Utc),
+                NextEndUtc = DateTime.SpecifyKind(e.NextEndUtc, DateTimeKind.Utc),
+                FirstSeenAt = DateTime.SpecifyKind(e.FirstSeenAt, DateTimeKind.Utc),
+            }).ToList(),
+            PendingCount = items.Count,
+        });
+    }
+
+    /// <summary>
+    /// Answers about one event of the calendar: <c>Available</c> (the supplier is free: it stops occupying its days or hours, at
+    /// the sync queued right away, and is not asked again) or <c>Busy</c> (it stays occupied). One answer for a whole
+    /// recurring series. 204; 404 when the event is not the caller's; 422 <c>free_event_decision_invalid</c> for any other
+    /// value; 409 <c>free_event_already_decided</c> when it was already answered.
+    /// </summary>
+    [HttpPost("calendar/free-events/{id:guid}/decision")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> DecideFreeCalendarEvent(
+        Guid id,
+        [FromBody] SupplierFreeEventDecisionRequest request,
+        [FromServices] SupplierFreeEventService freeEventService,
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var frees = await freeEventService.DecideAsync(orgId.Value, id, request.Decision, cancellationToken);
+        if (frees is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "FreeEventNotFound");
+
+        if (frees.Value)
+        {
+            // Frees the days and hours the event occupied: the sync of "Sync now" (a sync already queued reads the answer too).
+            try
+            {
+                var (profile, queue) = await calendarSyncService.RequestSyncAsync(orgId.Value, cancellationToken);
+                if (profile is not null && queue)
+                    QueueSupplierSync(orgId.Value, backgroundJobClient);
+            }
+            catch (DomainRuleException ex) when (ex.Code == ICalFeedErrorCodes.SupplierNoFeed)
+            {
+                // The feed was unlinked meanwhile: nothing to free.
+            }
+        }
+
+        return NoContent();
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -689,7 +771,8 @@ public class SupplierProfileController(
 
     private static CalendarSyncStatusDto MapCalendarStatus(
         Casazen.Core.Entities.SupplierProfile profile,
-        IStringLocalizer<SharedResources> localizer)
+        IStringLocalizer<SharedResources> localizer,
+        int pendingFreeEvents)
     {
         var (syncErrorCode, syncErrorMessage) = ICalErrorMessages.Describe(profile.CalendarSyncError, localizer);
         return new CalendarSyncStatusDto
@@ -700,6 +783,7 @@ public class SupplierProfileController(
             LastSyncStatus = profile.CalendarSyncStatus.ToString(),
             CalendarSyncErrorCode = syncErrorCode,
             CalendarSyncError = syncErrorMessage,
+            PendingFreeEventsCount = pendingFreeEvents,
         };
     }
 

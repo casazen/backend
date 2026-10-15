@@ -9,13 +9,15 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Compliance summary cockpit (US-019 / #295 AC10), of the properties the caller reaches (AM-03).
+/// Compliance summary cockpit (US-019 / #295 AC10), of the properties the caller reaches (AM-03). Every item says what it
+/// still lacks, with stable codes and fields (SR-03).
 /// </summary>
 [ApiController]
 [Route("api/compliance")]
 [Authorize(Policy = "RequireContext:short-rent:booking.read")]
 public class ComplianceController(
     IComplianceWizardService complianceWizardService,
+    IComplianceMissingService complianceMissingService,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
@@ -30,7 +32,8 @@ public class ComplianceController(
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return Unauthorized();
 
-        var summary = await complianceWizardService.GetSummaryAsync(scope, cancellationToken);
+        var summary = await complianceMissingService.DescribeAsync(
+            await complianceWizardService.GetSummaryAsync(scope, cancellationToken), cancellationToken);
         return Ok(MapSummary(summary));
     }
 
@@ -54,6 +57,7 @@ public class ComplianceController(
             Action = i.Action,
             PropertyId = i.PropertyId,
             BookingId = i.BookingId,
+            Missing = i.Missing.Select(ComplianceMissingDto.From).ToList(),
         }),
     };
 }

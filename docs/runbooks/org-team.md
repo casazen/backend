@@ -1023,7 +1023,7 @@ the accounts of before the team that are the owner by their token but created on
 of the draft PR #461); the narrowing is the second level, so a later change of the policy cannot reopen the leak. The org's own Partita
 IVA and codice fiscale, and the people, stay in the answer for whoever passes the policy: they belong to the org, not to a property.
 
-Not changed: `POST /api/gdpr/org/anonymize` is still `property.write` (follow-up AM-03b-FU1 below).
+Changed afterwards (AM-03b-FU1, closed): `POST /api/gdpr/org/anonymize` is now `OrgBillingAdmin` like the export - holder and administrators only.
 
 Tests: `GdprControllerOrgExportTests`, `OrgExportScopeTests`, `OrgScopeHardeningSqlShapeTests` (the SQL on Npgsql, no server),
 `OrgBillingAdminPolicyCoverageTests` and `OrgBillingAdminMembershipAccessTests` (they find the action by reflection: under the policy, a
@@ -1120,7 +1120,7 @@ and the existing `ServicePaymentsIntegrationTests` for the rest of the payment.
 - **A deactivation keeps the name** (the audience skips a deactivated member); only a removal and a narrowing of the access release it.
 - **The activity log**: no new event (the catalog is a closed list): the release is the detail `released` of the line of the access, written
   only when some property lost its person in charge.
-- **AM-03b-FU1 - `POST /api/gdpr/org/anonymize`** is still `property.write`: a property manager can erase the fiscal identifiers of the whole org
+- **AM-03b-FU1 - `POST /api/gdpr/org/anonymize`** (closed): it was `property.write`, so a property manager could erase the fiscal identifiers of the whole org; it is now `OrgBillingAdmin`, like the export, with a unit test on the attribute. No screen of the frontend calls it today (AM-04 shows it to holder and administrators only).
   (irreversible). It is not a scope leak (a manager reaches every property) but the same kind of act as the export. Moving it under `OrgBillingAdmin` is
   one line in `GdprController`; the draft PR #461 ("restrict org fiscal GDPR actions", 2026-10-05) predates AM-03, uses `HasOrgWideHostAccess` (removed) and can be closed.
 - **AM-03b-FU2 - the cache of the authorization between instances** (section 42): a version counter or a channel to invalidate the copies on every instance.

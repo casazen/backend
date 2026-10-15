@@ -117,6 +117,32 @@ public class SeoJsonLdTests
     }
 
     [Fact]
+    public void VacationRental_ExactPosition_IsPublishedRoundedToAboutOneKilometre()
+    {
+        // DB-03: the host types 6 decimals (about 10 cm); the page for the crawlers carries two (about 1 km).
+        var json = SeoJsonLd.Serialize(SeoJsonLd.VacationRental(Rental(latitude: 45.464211m, longitude: 9.191383m)));
+
+        var geo = JsonNode.Parse(json)!["geo"]!;
+        Assert.Equal(45.46m, geo["latitude"]!.GetValue<decimal>());
+        Assert.Equal(9.19m, geo["longitude"]!.GetValue<decimal>());
+        Assert.DoesNotContain("45.464211", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("9.191383", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("45.4642", json, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(41.9028, 12.4964, 41.90, 12.50)] // Roma: half away from zero
+    [InlineData(-33.865143, 151.209900, -33.87, 151.21)] // the rule is symmetric around zero
+    [InlineData(45.005, 9.995, 45.01, 10.00)]
+    public void VacationRental_PositionRounding_IsHalfAwayFromZero(double latitude, double longitude, double expectedLatitude, double expectedLongitude)
+    {
+        var node = SeoJsonLd.VacationRental(Rental(latitude: (decimal)latitude, longitude: (decimal)longitude));
+
+        Assert.Equal((decimal)expectedLatitude, node["geo"]!["latitude"]!.GetValue<decimal>());
+        Assert.Equal((decimal)expectedLongitude, node["geo"]!["longitude"]!.GetValue<decimal>());
+    }
+
+    [Fact]
     public void VacationRental_NoPriceNoGuestsNoImagesNoCountry_LeavesThoseKeysOut()
     {
         var node = SeoJsonLd.VacationRental(Rental(maxGuests: 0, bathrooms: 0, nightlyRate: 0m, images: [], country: null));

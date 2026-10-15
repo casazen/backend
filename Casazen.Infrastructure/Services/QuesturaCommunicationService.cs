@@ -42,14 +42,21 @@ public class QuesturaCommunicationService(
 
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
         DateTime? stored = deliveryDate is { } date ? QuesturaCommunicationDeadline.ToStoredDate(date) : null;
+        if (lease.PropertyDeliveryDate == stored)
+            return;
+
+        if (lease.QuesturaCommunicationDate is not null)
+        {
+            throw new DomainConflictException(
+                QuesturaCommunicationErrorCodes.DeliveryDateLocked,
+                "QuesturaDeliveryDateLocked");
+        }
+
         if (stored is { } delivery && RomeCalendar.DateInRome(delivery) > RomeCalendar.DateInRome(lease.EndDate))
         {
             throw new DomainRuleException(
                 QuesturaCommunicationErrorCodes.DeliveryDateAfterEnd, "QuesturaDeliveryDateAfterEnd");
         }
-
-        if (lease.PropertyDeliveryDate == stored)
-            return;
 
         var now = UtcNow();
         lease.PropertyDeliveryDate = stored;

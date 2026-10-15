@@ -112,3 +112,22 @@ Dynamic loading: `import.meta.glob` is only used by `src/i18n/i18n.test.ts` (rea
 Limit: tests are entries, so a file used **only by its own test** is not reported (a dead component with a test looks alive). To find those, run `npx knip --production` and read the "Unused files" list by hand: `src/test/*`, `src/features/leases/__tests__/lease-test-utils.tsx`, `src/config/robots-txt.ts` and `src/config/vercel-build-env.ts` are expected false positives (test setup and `vite.config.ts` helpers, which production mode does not trace).
 
 Locally: `npm run knip`. Remedy for a finding: delete the code (and its test); if it is really needed, wire it to a route or a caller; ignore only with a reason added to the table above.
+
+## 6. Running the unit tests locally (QA-INFRA-01)
+
+`npm test` is `vitest run`, the command of CI. It needs no server and no secret (the backend is mocked), so **the whole of vitest runs on any machine**, with no PostgreSQL (that is only a backend matter: [ci-backend.md](ci-backend.md), section 6). On a loaded or shared machine:
+
+```bash
+npx vitest run --maxWorkers=2 --testTimeout=60000                               # whole suite
+npm --prefix <dir> run test -- src/config/__tests__/env-example.test.ts          # some files
+```
+
+- If a worker "fails to start" (`Timeout waiting for worker to respond`) the CPU is saturated: rerun only the files that did not run.
+- Windows with Git Bash: use `npm --prefix <dir> run test -- <file>` (`npm exec -- vitest` starts from the wrong root). Git Bash also rewrites an environment value that starts with `/` (`VITE_API_BASE_URL=/api` reaches Vite as `C:/Program Files/Git/api`): set `MSYS_NO_PATHCONV=1`.
+
+A test must not depend on the speed of the machine. The defaults (5 s per test, 1 s per `findBy*`) suit an idle runner and not a saturated PC, so:
+
+- A test that reads the whole source tree (`src/config/__tests__/env-example.test.ts`, `src/test/no-hardcoded-domain.test.ts`) makes **one** pass, shared by all its tests, and has an explicit timeout. It used to repeat the pass for every variable of `.env.example` and timed out.
+- A test of lazy routes or of a long form raises the wait of its own file with `configure({ asyncUtilTimeout })` and gives its tests a timeout above it (`long-rent-billing-routes`, `checkin-page`, the checkout pages). Explicit conditions only, never a fixed wait: a wait ends as soon as its condition holds, so the ceiling costs nothing on a fast machine. Do not raise the timeouts of `vite.config.ts` for everybody.
+
+**CI-only** (needs the stack or the secrets): `GJ L3 (UI, ephemeral stack)` (backend, PostgreSQL and mock IdP started by `e2e/stack/up.sh`), `E2E staging smoke + GJ` (the Railway test API), `e2e/auth.setup.ts` and `prod-deploy-smoke` (a real Auth0 login with the `E2E_AUTH0_*` secrets). The L2 demo suite needs no stack and runs locally: `npm run test:e2e` starts its own demo server on port 5173 (`PW_REUSE_SERVER=1` reuses one that is already running).
