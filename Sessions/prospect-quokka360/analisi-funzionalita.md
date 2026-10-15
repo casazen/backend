@@ -48,7 +48,7 @@ Tre regole **non sono realizzabili alla lettera** per vincoli esterni (legge, St
 | 5 | Fiscalità IT + CH | Build dove c'è un'API ufficiale; intermediario partner per AdE e F24; back-office delegato per comuni e Ticino; ricevuta sempre in CasaZen (D6) | Polizia di Stato, Regioni, feratel, intermediario Entratel, Openapi pagoPA |
 | 6 | Routine AI e check-in | Motore di attività + AI; check-in biometrico via API di terzi con alternativa video (D5) | Didit / Sumsub (PoC); serrature via Seam/Nuki/igloohome |
 
-**Stima con processo AI (1 abbonamento Claude Code Max 20x + PO):** circa **20 settimane attive** (intervallo 14–35), cioè ~5 mesi (3,5–8), test sull'interfaccia e piccoli refactor umani inclusi. **Il percorso critico sono i tempi esterni** (parere fiscale, Stripe, fornitori, enti), non lo sviluppo. Metodo e dettaglio in §7.
+**Stima con processo AI (1 abbonamento Claude Code Max 20x + PO), solo sviluppo in CasaZen:** **~10–16 settimane attive (~2,5–4 mesi)**, test sull'interfaccia e piccoli refactor umani inclusi. **Il percorso critico sono i tempi esterni** (parere fiscale, Stripe, fornitori, enti), non lo sviluppo. Metodo e dettaglio in §7.
 
 ---
 
@@ -595,36 +595,51 @@ Su richiesta del PO la stima non è in settimane-persona: è **calibrata sulla v
 - La revisione delle PR e i test del PO del periodo sono già dentro la velocità misurata.
 - **Si aggiunge il +25%** per test manuali dell'interfaccia sugli ambienti di prova esterni e piccoli refactor. È un'ipotesi, non una misura.
 
-### 7.2 Stima per pacchetto di lavoro
+### 7.2 Stima per pacchetto di lavoro (rifatta per componenti il 2026-10-15)
 
-La dimensione è stimata per analogia con moduli esistenti misurati: Stripe/pagamenti 42,6k righe, Locazioni 39,3k, check-in/Alloggiati 14,7k, fiscale 13,6k, team dell'organizzazione 8,6k, GDPR/ospiti 6,6k.
+**Cosa si stima:** solo lo **sviluppo in CasaZen**, cioè il codice che scriviamo per usare le API dei partner più le nostre schermate e i nostri dati. Il lavoro dei partner (connessione alle OTA, certificazioni, contratti) costa zero in sviluppo e sta in §7.3.
 
-| Pacchetto | Dimensione (k righe) | Analogo | Settimane attive AI | +25% test e refactor umani |
-|---|---|---|---|---|
-| WP1 Fondamenta: `Agency`, ruoli, paese/valuta/fuso, tedesco, piani | 25–35 | Team ×3 + rifacimento di EUR ed Europe/Rome | 1,0–2,7 | 1,3–3,4 |
-| WP2 OTA: channel manager (contenuti, disponibilità/tariffe, prenotazioni, messaggi) + inbox + AI | 40–60 | ≈ modulo Stripe | 1,6–4,6 | 2,0–5,8 |
-| WP3 CRM, campagne, WhatsApp, AI | 20–30 | GDPR/ospiti ×3–4 | 0,8–2,3 | 1,0–2,9 |
-| WP4 Proprietari + incasso e ripartizione Stripe + documenti SDI per conto + payout (+D3) | 55–80 | Stripe + Locazioni | 2,2–6,2 | 2,8–7,7 |
-| WP5 Fornitori propri, staff, interruttore marketplace | 8–12 | Aggiunte al modulo fornitori | 0,3–0,9 | 0,4–1,2 |
-| WP6 Compliance IT+CH: Alloggiati, ISTAT, feratel, file AdE, partner, console back-office, pagoPA, XML Ticino | 40–60 | (Fiscale + check-in) ×1,5–2 | 1,6–4,6 | 2,0–5,8 |
-| WP7 Check-in biometrico (SDK + NFC + QR all'ingresso + videochiamata) + serrature | 35–50 | Check-in ×2 + spec serrature | 1,4–3,8 | 1,8–4,8 |
-| WP8 Routine AI | 15–25 | Parte del modulo richieste di servizio | 0,6–1,9 | 0,8–2,4 |
-| **Totale** | **238–352** | | **~11–28** | **~14–35 (valore centrale ~20)** |
+**Correzione.** La prima versione confrontava ogni pacchetto con moduli interi (es. tutto Stripe, 42,6k righe con checkout, rimborsi e pagamenti fornitori) e sovrastimava. Ora ogni componente è confrontato con parti misurate del codice:
 
-**Calendario.** Con un solo abbonamento i pacchetti procedono **in sequenza**: le sessioni parallele condividono gli stessi limiti. Sequenza consigliata:
-1. WP1;
-2. WP6 + WP7 (legalità in Italia);
-3. WP5;
-4. WP4;
-5. WP2;
-6. WP8;
-7. WP3.
+| Parte esistente | Righe (codice + test + frontend) |
+|---|---|
+| Collegamento account Stripe (onboarding) | 1,9k |
+| Sincronizzazione iCal | 8,3k |
+| Blocco iCal → soggiorno OTA | 1,9k |
+| Layer AI | 1,3k |
+| Dashboard KPI | 6,7k |
+| Check-in/Alloggiati | 14,7k |
+| Team dell'organizzazione | 8,6k |
 
-Valore centrale **~20 settimane attive ≈ 5 mesi**; intervallo 3,5–8 mesi.
+**Velocità:** 15k righe per settimana attiva, quella misurata sul modulo Locazioni, **+25%** per i test umani sull'interfaccia e i piccoli refactor. Con la velocità ottimistica (25k) i tempi scendono di circa il 40%.
 
-**Costo dello strumento:** mesi × prezzo Max 20x.
-- La pagina ufficiale indica il piano Max "From $100 per month" senza il prezzo del 20x (<https://claude.com/pricing>): fa fede l'addebito reale.
-- Lo storico mostra che un solo abbonamento ha sostenuto questa velocità. Se si superano i limiti si può attivare l'uso extra a pagamento.
+**WP2 OTA nel dettaglio** (perché non è "solo configurazione"):
+
+| Componente in CasaZen | k righe | Riuso |
+|---|---|---|
+| Client API del partner + webhook + resilienza | 4–6 | Retry e circuit breaker in `OTA/Resilience` già presenti |
+| Collegamento dei canali e mappatura unità/tariffe | 2–3 | Schema dell'onboarding Connect (1,9k) |
+| Invio di disponibilità, prezzi e restrizioni | 2–4 | Calendario e prezzi esistenti |
+| Prenotazioni OTA → prenotazione CasaZen (check-in, Alloggiati, rendiconti) | 2–4 | Blocco iCal → soggiorno OTA (1,9k) |
+| Contenuti annuncio: modello multilingua, foto, servizi, editor, invio | 4–6 | — |
+| Messaggi: conversazioni, inbox web e mobile, invio | 4–6 | — |
+| Risposte AI in bozza (base di conoscenza, filtri sui contatti, approvazione) | 2–3 | Layer AI (1,3k) |
+| Recensioni: lettura e risposta | 1–2 | — |
+| **Totale WP2** | **21–34** | **1,75–2,8 settimane attive** |
+
+**Tutti i pacchetti:**
+
+| Pacchetto | Componenti principali | k righe | Settimane attive (+25% umano) |
+|---|---|---|---|
+| WP1 Fondamenta | `Agency` + piani; ruoli `PropertyOwner`/`Staff`; paese/valuta/fuso (23 `"EUR"`, 167 `Europe/Rome`); tedesco generato dall'AI | 10–16 + traduzioni | 1,2–2,0 |
+| WP2 OTA | vedi sopra | 21–34 | 1,75–2,8 |
+| WP3 CRM | consensi per canale, segmenti, campagne via Resend + Hangfire, WhatsApp, testi AI | 14–21 | 1,2–1,75 |
+| WP4 Proprietari + denaro | portale proprietario (riusa i KPI), rendiconti + PDF, incasso e ripartizione Stripe, onboarding proprietari, documenti fiscali per conto + SDI, registro ritenute/CU, D3 (Treasury o EBICS) | 23–36 | 1,9–3,0 |
+| WP5 Fornitori propri | legame + invito, modalità `External`, interruttore marketplace, `Staff` + assegnazioni | 5–8 | 0,4–0,7 |
+| WP6 Compliance | Alloggiati SOAP, Ross1000 + Sicilia, feratel, file AdE (imposta di soggiorno, CU/770, locazioni brevi, DAC7, F24), integrazione col partner, console back-office, pagoPA, XML Ticino | 18–29 | 1,5–2,4 |
+| WP7 Check-in + serrature | SDK Didit/Sumsub (Expo), QR all'ingresso, videochiamata + console operatore, cancellazioni, mappatura Alloggiati, serrature (spec esistente) | 16,5–26,5 | 1,4–2,2 |
+| WP8 Routine AI | regole prenotazione → attività, checklist, foto + controllo AI, schermate mobile per lo staff | 8,5–13 | 0,7–1,1 |
+| **Totale** | | **116–184** | **~10–16 settimane attive (~2,5–4 mesi)**; con la velocità ottimistica ~6–10 |
 
 ### 7.3 Cosa l'AI non accorcia (percorso critico)
 
