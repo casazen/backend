@@ -48,7 +48,7 @@ Tre regole **non sono realizzabili alla lettera** per vincoli esterni (legge, St
 | 5 | Fiscalità IT + CH | Build dove c'è un'API ufficiale; intermediario partner per AdE e F24; back-office delegato per comuni e Ticino; ricevuta sempre in CasaZen (D6) | Polizia di Stato, Regioni, feratel, intermediario Entratel, Openapi pagoPA |
 | 6 | Routine AI e check-in | Motore di attività + AI; check-in biometrico via API di terzi con alternativa video (D5) | Didit / Sumsub (PoC); serrature via Seam/Nuki/igloohome |
 
-**Ordine di grandezza (indicativo, da validare con il team):** circa **110–150 settimane-persona**, cioè 12–18 mesi con 2 sviluppatori. Non include QA, pareri legali e i tempi dei fornitori (conferme scritte, accesso a Treasury, credenziali degli enti).
+**Stima con processo AI (1 abbonamento Claude Code Max 20x + PO):** circa **20 settimane attive** (intervallo 14–35), cioè ~5 mesi (3,5–8), test sull'interfaccia e piccoli refactor umani inclusi. **Il percorso critico sono i tempi esterni** (parere fiscale, Stripe, fornitori, enti), non lo sviluppo. Metodo e dettaglio in §7.
 
 ---
 
@@ -571,6 +571,80 @@ Fonti:
 | D6 | Adempimenti senza API | **Deciso:** tutto da CasaZen con la ricevuta in CasaZen; intermediario partner (AdE, F24) + back-office delegato (comuni, Ticino); costi extra accettati (§3.5) |
 | D7 | Fornitori propri dell'agenzia | **Deciso:** registrati in CasaZen, 0% e fatturazione fuori da CasaZen quando li usa la loro agenzia; per i lavori di terzi valgono le regole del marketplace; interruttore "visibile nel marketplace" |
 | D8 | Provider LLM | **Deciso dal PO:** DeepSeek, per il costo. **Raccomandazione aperta:** per i dati degli ospiti usare DeepSeek ospitato in UE, perché il Garante ha limitato con urgenza il trattamento dei dati degli utenti italiani da parte di DeepSeek (comunicato del 30/01/2025: <https://www.garanteprivacy.it/home/docweb/-/docweb-display/print/10097450>). DeepSeek-V3.1 è disponibile su AWS Bedrock anche nella regione Europa (Stoccolma) (<https://aws.amazon.com/about-aws/whats-new/2025/09/deepseek-v3-1-model-fully-managed-amazon-bedrock/>); prezzo e compatibilità con il nostro client sono da verificare |
+
+---
+
+## 7. Stima con processo AI (Claude Code Max 20x)
+
+Su richiesta del PO la stima non è in settimane-persona: è **calibrata sulla velocità reale di questo progetto**, sviluppato da una persona (il PO) con un abbonamento Claude Code Max 20x (+ Cursor Agent, circa il 3% dei commit nel periodo).
+
+**Limiti del piano Max 20x.** Anthropic non pubblica limiti numerici: indica un limite per sessione di 5 ore e un limite settimanale, condivisi tra Claude e Claude Code (<https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan>). Per questo la capacità si ricava dallo storico, non da tabelle.
+
+### 7.1 Calibrazione (misurata con git, 17/08–15/10/2026)
+
+| Misura | Valore |
+|---|---|
+| Settimane attive | ~4,5 (W34 parziale, W39–W42) |
+| Righe nette prodotte | backend +118k codice, +193k test; frontend +109k (+8k e2e); mobile +14k |
+| Task del piano di risanamento eseguiti | 178 |
+| **Modulo analogo: Locazioni** (contratti, canone, registrazione RLI verso AdE) | ~39k righe (10,8k codice + 18,7k test + 9,9k frontend) in ~2,5 settimane (24/09–09/10) → **~15k righe/settimana attiva** |
+| Modulo analogo: pagamenti fornitori via Stripe Connect | Costruito in W41–W42 |
+
+**Velocità usata per i nuovi moduli:** 13k righe/settimana (prudente) – 25k (ottimistica).
+- La velocità media del periodo (~98k righe/settimana) **non si usa**: comprende rifacimenti interni, molto più veloci delle integrazioni con sistemi esterni.
+- La revisione delle PR e i test del PO del periodo sono già dentro la velocità misurata.
+- **Si aggiunge il +25%** per test manuali dell'interfaccia sugli ambienti di prova esterni e piccoli refactor. È un'ipotesi, non una misura.
+
+### 7.2 Stima per pacchetto di lavoro
+
+La dimensione è stimata per analogia con moduli esistenti misurati: Stripe/pagamenti 42,6k righe, Locazioni 39,3k, check-in/Alloggiati 14,7k, fiscale 13,6k, team dell'organizzazione 8,6k, GDPR/ospiti 6,6k.
+
+| Pacchetto | Dimensione (k righe) | Analogo | Settimane attive AI | +25% test e refactor umani |
+|---|---|---|---|---|
+| WP1 Fondamenta: `Agency`, ruoli, paese/valuta/fuso, tedesco, piani | 25–35 | Team ×3 + rifacimento di EUR ed Europe/Rome | 1,0–2,7 | 1,3–3,4 |
+| WP2 OTA: channel manager (contenuti, disponibilità/tariffe, prenotazioni, messaggi) + inbox + AI | 40–60 | ≈ modulo Stripe | 1,6–4,6 | 2,0–5,8 |
+| WP3 CRM, campagne, WhatsApp, AI | 20–30 | GDPR/ospiti ×3–4 | 0,8–2,3 | 1,0–2,9 |
+| WP4 Proprietari + incasso e ripartizione Stripe + documenti SDI per conto + payout (+D3) | 55–80 | Stripe + Locazioni | 2,2–6,2 | 2,8–7,7 |
+| WP5 Fornitori propri, staff, interruttore marketplace | 8–12 | Aggiunte al modulo fornitori | 0,3–0,9 | 0,4–1,2 |
+| WP6 Compliance IT+CH: Alloggiati, ISTAT, feratel, file AdE, partner, console back-office, pagoPA, XML Ticino | 40–60 | (Fiscale + check-in) ×1,5–2 | 1,6–4,6 | 2,0–5,8 |
+| WP7 Check-in biometrico (SDK + NFC + QR all'ingresso + videochiamata) + serrature | 35–50 | Check-in ×2 + spec serrature | 1,4–3,8 | 1,8–4,8 |
+| WP8 Routine AI | 15–25 | Parte del modulo richieste di servizio | 0,6–1,9 | 0,8–2,4 |
+| **Totale** | **238–352** | | **~11–28** | **~14–35 (valore centrale ~20)** |
+
+**Calendario.** Con un solo abbonamento i pacchetti procedono **in sequenza**: le sessioni parallele condividono gli stessi limiti. Sequenza consigliata:
+1. WP1;
+2. WP6 + WP7 (legalità in Italia);
+3. WP5;
+4. WP4;
+5. WP2;
+6. WP8;
+7. WP3.
+
+Valore centrale **~20 settimane attive ≈ 5 mesi**; intervallo 3,5–8 mesi.
+
+**Costo dello strumento:** mesi × prezzo Max 20x.
+- La pagina ufficiale indica il piano Max "From $100 per month" senza il prezzo del 20x (<https://claude.com/pricing>): fa fede l'addebito reale.
+- Lo storico mostra che un solo abbonamento ha sostenuto questa velocità. Se si superano i limiti si può attivare l'uso extra a pagamento.
+
+### 7.3 Cosa l'AI non accorcia (percorso critico)
+
+Da avviare **subito e in parallelo**, perché determinano il go-live più dello sviluppo:
+
+| Dipendenza esterna | Blocca | Tempo |
+|---|---|---|
+| Parere fiscale / interpello AdE su D2 (ritenuta, tassa di soggiorno, DAC7) | Go-live WP4 | Interpello: risposta in 90 giorni [NV] |
+| Stripe: approvazione del modello di incasso e ripartizione; Treasury se D3 = A | WP4 in produzione | Non pubblicato |
+| NextPax / Octorate: risposte scritte + sandbox | Avvio WP2 | Non pubblicato |
+| Didit / Sumsub: preventivi + PoC; DPIA | WP7 in produzione | Settimane |
+| Intermediario partner (contratto, integrazione); organizzazione del back-office (Ticino 7 su 7) | WP6 in produzione | Non pubblicato |
+| Enti: documentazione API Sicilia, web service Liguria e Calabria, contratto feratel; richieste di API ai portali | Parti di WP6 | Non pubblicato |
+| Parere Viminale (verifica senza operatore) | Automazione completa WP7 | Non pubblicato |
+| Revisione madrelingua delle traduzioni in tedesco | WP1 per CH tedesca | Da pianificare |
+
+**Limiti della stima:**
+- Le righe di codice sono una misura grossolana. L'analogia ha un'incertezza di circa ±40%.
+- La velocità misurata viene da poche settimane intense e potrebbe non reggere per 5 mesi consecutivi.
+- Le integrazioni con fornitori mai usati (NextPax, Didit/Sumsub, Treasury) sono le più esposte a ritardi.
 
 ---
 
