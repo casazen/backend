@@ -15,8 +15,16 @@ namespace Casazen.Infrastructure.Documents;
 /// font). A4 portrait, 2 cm side margins, "Pagina N di M" centred in the footer, paragraphs wrapped and split across
 /// pages, table header rows repeated on each page. Text is written as Unicode with the embedded DejaVu Sans subset
 /// (<see cref="EmbeddedFontResolver"/>), so the PDF carries a ToUnicode map and its text can be searched and copied.
-/// Stateless and thread-safe: register it as a singleton.
 /// </summary>
+/// <remarks>
+/// The renderer holds no state of its own and may be called from any number of threads (register it as a singleton),
+/// but only because <see cref="Render"/> is serialized for the whole process: PDFsharp and MigraDoc share state between
+/// documents (the global font resolver, the caches of font faces and glyphs) and are not safe when two documents are
+/// built at the same time. Rendered in parallel, PDFs came out with words missing (BE-PDF-01: with 16 threads, 13 to 60
+/// of 192 documents; with one thread, or behind a lock, none). Every call therefore takes the same static lock,
+/// whichever instance it is made on, and two documents requested together are rendered one after the other. All PDFs of
+/// the application are rendered here (LT-09): PDFsharp or MigraDoc used elsewhere would not be covered by this lock.
+/// </remarks>
 public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
 {
     /// <summary>A4 in millimetres (ISO 216): 595 × 842 points.</summary>
@@ -30,6 +38,12 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
     private const double BodyFontSize = 10;
     private const double TableFontSize = 9;
     private const double CellPaddingPt = 4;
+
+    /// <summary>
+    /// One document at a time in the whole process (BE-PDF-01): static, because the state PDFsharp and MigraDoc share
+    /// belongs to the process and not to an instance of the renderer.
+    /// </summary>
+    private static readonly Lock RenderGate = new();
 
     private static readonly Color TableBorder = new(160, 160, 160);
     private static readonly Color TableHeaderShading = new(235, 235, 235);
@@ -50,6 +64,14 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
     public byte[] Render(PdfDocumentContent content)
     {
         ArgumentNullException.ThrowIfNull(content);
+
+        lock (RenderGate)
+            return RenderCore(content);
+    }
+
+    /// <summary>Everything that touches PDFsharp or MigraDoc, from the font resolver to the saved bytes: call it with <see cref="RenderGate"/> held.</summary>
+    private static byte[] RenderCore(PdfDocumentContent content)
+    {
         EmbeddedFontResolver.EnsureRegistered();
 
         Document document;

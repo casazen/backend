@@ -11,7 +11,7 @@ namespace Casazen.Tests.Unit.Documents;
 /// </summary>
 public class MigraDocPdfDocumentRendererTests
 {
-    private readonly IPdfDocumentRenderer _sut = new SerializedPdfRenderer();
+    private readonly MigraDocPdfDocumentRenderer _sut = new();
 
     [Fact]
     public void Render_AnyDocument_EveryPageIsA4()

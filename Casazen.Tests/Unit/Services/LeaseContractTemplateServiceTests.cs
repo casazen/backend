@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
 using Casazen.Core.Options;
+using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services.LeaseContracts;
 using Casazen.Tests.Unit.Documents;
@@ -368,7 +369,7 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
     }
 
     private static LeaseContractTemplateService CreateSut(LeaseTemplateOptions options) =>
-        new(LeaseTemplateTestFiles.Catalog(options), new SerializedPdfRenderer(), NullLogger<LeaseContractTemplateService>.Instance);
+        new(LeaseTemplateTestFiles.Catalog(options), new MigraDocPdfDocumentRenderer(), NullLogger<LeaseContractTemplateService>.Instance);
 
     private static string PdfText(byte[] pdf)
     {
