@@ -634,7 +634,7 @@ marketing da € 150 a € 800 al mese. **Il founder non percepisce compenso fin
 | Primo mese stabilmente in utile | M8 | M6 | M5 |
 | Fabbisogno massimo di cassa | € 7.475 (M7) | € 6.705 (M5) | € 6.240 (M4) |
 | Risultato cumulato in 36 mesi (founder non retribuito) | € 126.809 | € 361.283 | € 731.367 |
-| Agenzie / unità / host B2C / fornitori a M36 | 11 / 673 / 156 / 104 | 19 / 1.128 / 356 / 174 | 40 / 2.800+ / 700+ / 300 |
+| Agenzie / unità / host B2C / fornitori a M36 | 11 / 673 / 156 / 104 | 19 / 1.128 / 356 / 174 | 37 / 2.130 / 605 / 270 |
 
 Tre cose da leggere in questi numeri:
 
