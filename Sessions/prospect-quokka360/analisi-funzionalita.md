@@ -22,7 +22,7 @@
 3. portale proprietari con fatturazione;
 4. fornitori e staff propri;
 5. fiscalità Italia e Svizzera;
-6. routine AI e check-in biometrico.
+6. routine configurabili dall'host (QUANDO → SE → ALLORA, anche create con l'AI) e check-in biometrico.
 
 OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per piano.
 
@@ -37,7 +37,7 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | Check-in | Riconoscimento del documento e del volto **via API di terzi** (PoC Didit e Sumsub). Per legge serve un'alternativa in videochiamata. Immagini cancellate alla ricevuta Alloggiati |
 | Serrature | **Seam**, come fa il mercato. Costo ribaltato all'agenzia; codice rilasciato **solo dopo l'identificazione** |
 | Prezzo (proposta) | Base **€7–9/unità/mese** a scaglioni (portale proprietari incluso) + AI e Marketing €4 + verifiche €0,75; **tutto compreso €13–15**; programma **Founding Partner** a costo + €1/unità, con margine bloccato |
-| Sviluppo | **~9,5–15 settimane attive (~2,5–3,5 mesi)** con 1 abbonamento Claude Code Max 20x + PO. Il percorso critico sono i tempi esterni |
+| Sviluppo | **~10–16 settimane attive (~2,5–4 mesi)** con 1 abbonamento Claude Code Max 20x + PO. Il percorso critico sono i tempi esterni |
 
 **Rischi principali:**
 1. tempi esterni: fornitori OTA, verifica identità, intermediario, enti;
@@ -238,12 +238,34 @@ Scartati: Veriff (massimo 10 cancellazioni al giorno) e Stripe Identity (titolar
 - Il mercato usa Seam e fa pagare all'host €3–8 per serratura al mese.
 - **Kross (KDoor da €29/mese) ✓, Chekin e Vikey rilasciano il codice solo dopo l'identificazione**: in Italia è di fatto obbligatorio, quindi lo facciamo anche noi.
 
-**Routine AI:**
-- regole prenotazione → attività;
-- checklist;
-- foto con controllo AI;
-- traduzioni per lo staff;
-- app mobile per staff e fornitori.
+**Routine (definizione del PO, 2026-10-15): costruttore di automazioni configurabile dall'host.** L'host crea le proprie routine nel formato **QUANDO** (evento) → **SE** (condizioni) → **ALLORA** (una o più azioni, anche con attese e passaggi successivi).
+
+| Elemento | Catalogo proposto |
+|---|---|
+| **Eventi (QUANDO)** | Prenotazione nuova/confermata/modificata/cancellata; X giorni/ore prima o dopo check-in e check-out; check-in o check-out avvenuto; messaggio dell'ospite ricevuto; recensione ricevuta; pagamento riuscito/fallito; check-in online completato; **identificazione completata**; ricevuta Alloggiati arrivata; attività completata; batteria della serratura scarica; ricorrenza settimanale |
+| **Condizioni (SE)** | Proprietà o tag, canale, durata del soggiorno, numero di ospiti, anticipo della prenotazione, stato del pagamento, stato del check-in/identificazione, lingua dell'ospite, giorni liberi prima o dopo |
+| **Azioni (ALLORA)** | Messaggio all'ospite (OTA, email, WhatsApp, SMS); notifica a proprietario, staff o team; crea un'attività (pulizia, manutenzione, check-in) e assegnala a staff, fornitore proprio o marketplace; **invia il codice della serratura** (solo se l'identificazione è completata); richiesta di recensione; aggiungi un tag; attesa; webhook verso sistemi esterni |
+| **AI** | Opzione AI e Marketing: **creazione della routine da una frase** ("al check-out manda la pulizia e dopo 2 giorni chiedi la recensione"), con anteprima da approvare; azioni AI (messaggio personalizzato, sintesi, traduzione, controllo foto) |
+| **Libreria pronta** | Routine predefinite da attivare con un clic: pulizia al check-out, istruzioni 2 giorni prima, recensione dopo la partenza, promemoria documenti mancanti |
+
+**Guardrail** (la routine non può aggirare le regole):
+- il codice della serratura parte solo dopo l'identificazione;
+- niente contatti né link prima della prenotazione su Airbnb;
+- campagne solo con consenso;
+- registro di ogni esecuzione;
+- modalità di prova prima dell'attivazione.
+
+**Cosa fa il mercato** (help center ufficiali):
+- **Hostaway, Guesty, Hospitable, Hostfully, OwnerRez, Uplisting e Breezeway** offrono evento + condizioni + **una** azione: messaggio o attività.
+- **Solo Enso Connect** ✓ ha passaggi multipli con rami sì/no, webhook e creazione da linguaggio naturale: *"Tell it what you want in plain English and it drafts the when, if, then for you"* (<https://ensoconnect.com/features/custom-automations>).
+- **Nessuno** collega le routine a eventi di compliance (identificazione, Alloggiati): è un elemento distintivo di CasaZen.
+
+Fonti:
+- <https://support.hostaway.com/hc/en-us/articles/50066767703195-Inbox-Set-Up-Message-Automations>
+- <https://help.guesty.com/hc/en-gb/articles/9369482431389-Applying-message-conditions-to-automated-messages>
+- <https://help.hospitable.com/en/articles/4598563-task-rules-how-to-create-a-task-rule>
+- <https://help.hostfully.com/en/articles/1674808-create-custom-templates-and-triggers>
+- <https://www.ownerrez.com/support/articles/triggers-setup-configuration>
 
 ---
 
@@ -375,8 +397,8 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 
 | Pacchetto | Cosa offre | Prezzo |
 |---|---|---|
-| **Base** | **Gestionale**: proprietà, calendario, prenotazioni, ospiti, KPI.<br>**Channel manager** (Airbnb, Booking.com, Vrbo, Expedia): sincronizzazione di disponibilità, prezzi e prenotazioni; creazione e modifica degli annunci da CasaZen; recensioni.<br>**Inbox unificata** con **risposte AI suggerite**, inviate dall'operatore.<br>**Sito di prenotazione diretta** con pagamento Stripe sull'account dell'agenzia.<br>**Check-in online**: dati degli ospiti e documento, senza biometria.<br>**Adempimenti via API**: Alloggiati Web, ISTAT (regioni con API), feratel; calcolo della tassa di soggiorno; **file pronti** per dichiarazioni, CU e portali senza API.<br>**Portale proprietari**: dati e documenti, rendiconto mensile automatico, fatture elettroniche SDI per conto dell'agenzia, file di bonifico SEPA/CH, registro delle ritenute.<br>**Routine e fornitori**: marketplace, fornitori propri a 0%, staff, app | **€9** (10–49 unità) · **€8** (50–149) · **€7** (150–399) · preventivo (400+) |
-| **+ AI e Marketing** | Risposte AI **inviate in automatico** (sopra una soglia di confidenza), AI nelle routine, **CRM**: profili ospite, consensi, segmenti, campagne email e WhatsApp con testi AI | **+€4** |
+| **Base** | **Gestionale**: proprietà, calendario, prenotazioni, ospiti, KPI.<br>**Channel manager** (Airbnb, Booking.com, Vrbo, Expedia): sincronizzazione di disponibilità, prezzi e prenotazioni; creazione e modifica degli annunci da CasaZen; recensioni.<br>**Inbox unificata** con **risposte AI suggerite**, inviate dall'operatore.<br>**Sito di prenotazione diretta** con pagamento Stripe sull'account dell'agenzia.<br>**Check-in online**: dati degli ospiti e documento, senza biometria.<br>**Adempimenti via API**: Alloggiati Web, ISTAT (regioni con API), feratel; calcolo della tassa di soggiorno; **file pronti** per dichiarazioni, CU e portali senza API.<br>**Portale proprietari**: dati e documenti, rendiconto mensile automatico, fatture elettroniche SDI per conto dell'agenzia, file di bonifico SEPA/CH, registro delle ritenute.<br>**Routine**: costruttore QUANDO → SE → ALLORA con libreria di routine pronte.<br>**Fornitori**: marketplace, fornitori propri a 0%, staff, app | **€9** (10–49 unità) · **€8** (50–149) · **€7** (150–399) · preventivo (400+) |
+| **+ AI e Marketing** | Risposte AI **inviate in automatico** (sopra una soglia di confidenza), **routine create da una frase** e azioni AI nelle routine, **CRM**: profili ospite, consensi, segmenti, campagne email e WhatsApp con testi AI | **+€4** |
 | **Check-in biometrico** | Riconoscimento del documento e del volto all'ingresso, con alternativa in videochiamata | **€0,75 a verifica** (B2B: obbligatorio) |
 | **Serrature smart** | Integrazione della serratura già installata (via Seam): codice unico per ogni soggiorno, inviato solo dopo l'identificazione, revocato alla partenza o alla cancellazione, stato della batteria. **Non include l'acquisto della serratura** | **€6 per serratura al mese** (costo CasaZen $5) |
 | **Adempimenti gestiti** | Servizio svolto da una persona (oggi il PO): caricamento dei file sui portali **senza API** (polizia del Ticino ogni giorno entro 24 ore, portali comunali della tassa di soggiorno), con la ricevuta salvata in CasaZen. Senza questa opzione l'agenzia carica da sola i file che CasaZen prepara | **€4/unità al mese**, solo per le unità nelle giurisdizioni senza API |
@@ -442,8 +464,8 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 | WP5 Fornitori propri e staff | 0,4–0,7 |
 | WP6 Compliance: Alloggiati, ISTAT, feratel, file AdE, partner, console back-office, pagoPA, XML Ticino | 1,5–2,4 |
 | WP7 Check-in biometrico + QR all'ingresso + videochiamata + serrature | 1,4–2,2 |
-| WP8 Routine AI | 0,7–1,1 |
-| **Totale** | **~9,5–15 settimane attive (~2,5–3,5 mesi)** |
+| WP8 Routine: motore eventi/condizioni/azioni con attese (Hangfire), costruttore web, azioni (messaggi, attività, notifiche, serrature, webhook), creazione da linguaggio naturale, libreria, registro | 1,4–2,25 |
+| **Totale** | **~10–16 settimane attive (~2,5–4 mesi)** |
 
 **Ordine** (un solo abbonamento, quindi in sequenza): WP1 → WP6 + WP7 → WP5 → WP4 → WP2 → WP8 → WP3.
 
