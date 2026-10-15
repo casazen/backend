@@ -36,7 +36,7 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | Adempimenti | API dove esistono (Alloggiati, ISTAT Lombardia/Marche/Sicilia, feratel); **intermediario abilitato** per Agenzia delle Entrate e F24; **back-office delegato** per comuni e Ticino. L'utente fa tutto da CasaZen e riceve la ricevuta in CasaZen |
 | Check-in | Riconoscimento del documento e del volto **via API di terzi** (PoC Didit e Sumsub). Per legge serve un'alternativa in videochiamata. Immagini cancellate alla ricevuta Alloggiati |
 | Serrature | **Seam**, come fa il mercato. Costo ribaltato all'agenzia; codice rilasciato **solo dopo l'identificazione** |
-| Prezzo (proposta) | Base **€7–9/unità/mese** a scaglioni + opzioni; **tutto compreso €13–15**; programma **Founding Partner** a costo + €1/unità, con margine bloccato |
+| Prezzo (proposta) | Base **€7–9/unità/mese** a scaglioni (portale proprietari incluso) + AI e Marketing €4 + verifiche €0,75; **tutto compreso €13–15**; programma **Founding Partner** a costo + €1/unità, con margine bloccato |
 | Sviluppo | **~9,5–15 settimane attive (~2,5–3,5 mesi)** con 1 abbonamento Claude Code Max 20x + PO. Il percorso critico sono i tempi esterni |
 
 **Rischi principali:**
@@ -371,23 +371,24 @@ Non sono né costi né ricavi per CasaZen:
 
 Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con pagamento mensile). Minimo €90/mese.
 
-**Cosa contiene ogni pacchetto:**
+**Cosa contiene ogni pacchetto** (aggiornato il 2026-10-15: il portale proprietari è nella base, il Marketing costa di più):
 
 | Pacchetto | Cosa offre | Prezzo |
 |---|---|---|
-| **Base** | **Gestionale**: proprietà, calendario, prenotazioni, ospiti, KPI.<br>**Channel manager** (Airbnb, Booking.com, Vrbo, Expedia): sincronizzazione di disponibilità, prezzi e prenotazioni; creazione e modifica degli annunci da CasaZen; recensioni.<br>**Inbox unificata** con **risposte AI suggerite**, inviate dall'operatore.<br>**Sito di prenotazione diretta** con pagamento Stripe sull'account dell'agenzia.<br>**Check-in online**: dati degli ospiti e documento, senza biometria.<br>**Adempimenti via API**: Alloggiati Web, ISTAT (regioni con API), feratel; calcolo della tassa di soggiorno; file pronti per dichiarazioni e CU.<br>**Routine**: pulizie e manutenzioni generate dalle prenotazioni, checklist, app per staff e fornitori.<br>**Fornitori**: marketplace CasaZen, fornitori propri a 0%, staff | **€9** (10–49 unità) · **€8** (50–149) · **€7** (150–399) · preventivo (400+) |
-| **+ Proprietari** | Portale proprietario con dati e documenti, rendiconto mensile automatico, fatture elettroniche SDI per conto dell'agenzia, file di bonifico SEPA/CH per pagare i proprietari, registro delle ritenute e dati CU | **+€2** |
-| **+ AI e Marketing** | Risposte AI **inviate in automatico** (sopra una soglia di confidenza), AI nelle routine (controllo foto, traduzioni per lo staff), **CRM**: profili ospite, consensi, segmenti, campagne email e WhatsApp con testi AI | **+€2** |
-| **Check-in biometrico** | Riconoscimento del documento e del volto all'ingresso, con alternativa in videochiamata; codice della serratura solo dopo l'identificazione | **€0,75 a verifica** (B2B: obbligatorio) |
-| **Serrature smart** | Codici per soggiorno via Seam, molte marche | **€6 per serratura** |
-| **Adempimenti gestiti** | Back-office CasaZen o partner per i portali senza API (Ticino, comuni); pratiche dell'intermediario fiscale al costo | **€4/unità**, solo nelle giurisdizioni senza API |
-| **Tutto compreso** | Base + Proprietari + AI e Marketing + **8 verifiche/unità al mese** | **€15 / €14 / €13** per scaglione (−20% circa rispetto ai pacchetti separati) |
+| **Base** | **Gestionale**: proprietà, calendario, prenotazioni, ospiti, KPI.<br>**Channel manager** (Airbnb, Booking.com, Vrbo, Expedia): sincronizzazione di disponibilità, prezzi e prenotazioni; creazione e modifica degli annunci da CasaZen; recensioni.<br>**Inbox unificata** con **risposte AI suggerite**, inviate dall'operatore.<br>**Sito di prenotazione diretta** con pagamento Stripe sull'account dell'agenzia.<br>**Check-in online**: dati degli ospiti e documento, senza biometria.<br>**Adempimenti via API**: Alloggiati Web, ISTAT (regioni con API), feratel; calcolo della tassa di soggiorno; **file pronti** per dichiarazioni, CU e portali senza API.<br>**Portale proprietari**: dati e documenti, rendiconto mensile automatico, fatture elettroniche SDI per conto dell'agenzia, file di bonifico SEPA/CH, registro delle ritenute.<br>**Routine e fornitori**: marketplace, fornitori propri a 0%, staff, app | **€9** (10–49 unità) · **€8** (50–149) · **€7** (150–399) · preventivo (400+) |
+| **+ AI e Marketing** | Risposte AI **inviate in automatico** (sopra una soglia di confidenza), AI nelle routine, **CRM**: profili ospite, consensi, segmenti, campagne email e WhatsApp con testi AI | **+€4** |
+| **Check-in biometrico** | Riconoscimento del documento e del volto all'ingresso, con alternativa in videochiamata | **€0,75 a verifica** (B2B: obbligatorio) |
+| **Serrature smart** | Integrazione della serratura già installata (via Seam): codice unico per ogni soggiorno, inviato solo dopo l'identificazione, revocato alla partenza o alla cancellazione, stato della batteria. **Non include l'acquisto della serratura** | **€6 per serratura al mese** (costo CasaZen $5) |
+| **Adempimenti gestiti** | Servizio svolto da una persona (oggi il PO): caricamento dei file sui portali **senza API** (polizia del Ticino ogni giorno entro 24 ore, portali comunali della tassa di soggiorno), con la ricevuta salvata in CasaZen. Senza questa opzione l'agenzia carica da sola i file che CasaZen prepara | **€4/unità al mese**, solo per le unità nelle giurisdizioni senza API |
+| **Tutto compreso** | Base + AI e Marketing + **8 verifiche/unità al mese** | **€15 / €14 / €13** per scaglione (~20% in meno rispetto ai pacchetti separati) |
+
+**Perché il portale proprietari è nella base:** per un'agenzia è indispensabile, e sul mercato è spesso incluso (Avantio; il portale di OwnerRez è gratuito). Il costo marginale per CasaZen è di pochi centesimi per unità (fatture SDI). Il ricavo perso (€2) è recuperato alzando il pacchetto AI e Marketing da €2 a €4.
 
 **Margini** (costo di piattaforma a 250 unità: ~€4,1 la base, ~€8,2 il tutto compreso):
 
 | Voce | Margine |
 |---|---|
-| Base | €4,9 / €3,9 / €2,9 per scaglione |
+| Base (portale proprietari incluso) | €4,8 / €3,8 / €2,8 per scaglione |
 | Tutto compreso | €6,8 (45%) / €5,8 (41%) / €4,8 (37%) |
 | Verifica d'identità | ~€0,27 a verifica |
 
