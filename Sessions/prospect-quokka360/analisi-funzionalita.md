@@ -268,26 +268,68 @@ Scartati: Veriff (massimo 10 cancellazioni al giorno) e Stripe Identity (titolar
 
 ---
 
-## 5. Costi mensili delle integrazioni a carico di CasaZen
+## 5. Chi paga cosa: costi di CasaZen, prezzi ai clienti, costi pagati dai clienti a terzi
 
-Prezzi di listino ufficiali, IVA esclusa. **Esempio:** 250 unità sulla piattaforma, 4 prenotazioni per unità al mese, 2 adulti per prenotazione (2.000 verifiche al mese).
+Prezzi ufficiali, IVA esclusa, al 2026-10-15. Per prudenza USD = EUR 1:1.
 
-| Integrazione | Prezzo | Esempio 250 unità/mese |
+### 5.1 Cosa paga CasaZen
+
+**Costi fissi** (si pagano anche con zero clienti, con tutte le integrazioni attive):
+
+| Voce | €/mese | Nota |
 |---|---|---|
-| NextPax | €3,15–3,50/unità, minimo €350 | €980–1.050 |
-| Verifica identità | Didit $0,33–0,48; Sumsub $1,35 | Didit $660–960; Sumsub $2.700. **Recuperata con il prezzo a verifica** |
-| Fatturazione elettronica (Invoicetronic) | €0,10–0,02 a transazione + €5/mese | €15–75 |
-| Email marketing (Resend Scale) | $90/mese | $90 |
-| LLM (DeepSeek V4.1 Flash) | $0,15/M token in ingresso, $0,60/M in uscita | $10–30 |
-| Videochiamata (Daily) | 10.000 minuti gratis al mese | $0 |
-| Stripe | Addebitato all'agenzia | **€0** |
-| Serrature (Seam) | $5/dispositivo | **€0** (ribaltato) |
-| Alloggiati, ISTAT, pagoPA (pagatore), WhatsApp (agenzia) | — | €0 |
-| Intermediario, feratel | A contratto | Ribaltati |
+| NextPax, minimo mensile | 350 | Include le prime 50 unità; si paga dalla firma del contratto |
+| Hosting di produzione (Railway Pro + consumo, Supabase Pro) | ~85 | Oggi CasaZen è su piani gratuiti/minimi |
+| Resend Scale (email, un dominio per agenzia) | 90 | Con pochi clienti basta Pro a $20 |
+| Invoicetronic, chiave di produzione | 5 | Le transazioni sono pacchetti prepagati |
+| Abbonamento Claude Code Max 20x (sviluppo) | ~200 [NV] | La pagina ufficiale mostra solo "from $100"; fa fede l'addebito reale |
+| Sumsub, minimo (solo se scelto al posto di Didit) | (149) | Didit non ha minimi |
+| **Totale fisso** | **~€730** (~€880 con Sumsub) | |
 
-**Totale (senza verifiche):** ~€1.000 + ~$120 al mese, cioè **~€4,5 per unità**.
-**Costi fissi di piattaforma:** ~€400/mese (hosting di produzione, Resend, Invoicetronic, abbonamento Claude Code).
-**Esclusi:** personale del back-office, pareri legali, il tuo tempo.
+**Costi variabili** (crescono con le unità e gli ospiti):
+
+| Voce | Costo | Nota |
+|---|---|---|
+| NextPax oltre le 50 unità | €3,15/unità (annuale) | |
+| Verifica identità Didit | $0,33 (+$0,15 con NFC) a verifica | Sumsub $1,35 |
+| Serrature Seam | $5 per serratura | Rivenduto a €6 |
+| Fatture SDI, AI DeepSeek, video Daily | ~€0,4/unità | Daily gratis fino a 10.000 minuti |
+| **Back-office "adempimenti gestiti"** (operatore) | Stima mia: ~€300–600/mese per 250 unità | Ipotesi: Ticino 15 min/giorno + 5 min/unità/mese sui portali comunali, €25/h. **Da validare** |
+
+### 5.2 Cosa pagano i clienti direttamente a terzi
+
+Non sono né costi né ricavi per CasaZen:
+- **Stripe:** commissioni sugli incassi, addebitate direttamente all'agenzia (`fees_collector = stripe`);
+- **WhatsApp (Meta):** fatturato all'agenzia;
+- **pagoPA:** €2 a pagamento, a carico di chi paga;
+- **intermediario fiscale:** pratiche (~€30 la dichiarazione annuale), fatturate al costo;
+- **Taxually** (dichiarazioni IVA, opzionale);
+- **serrature:** l'hardware (igloohome da $129) e gli eventuali abbonamenti della marca (es. Nuki Smart Hosting).
+
+### 5.3 Scenari mensili
+
+| | **A. Tutte le integrazioni attive, 0 clienti** | **B. Quokka, 250 unità, prezzo partner** | **C. 250 unità a listino** (tutto compreso €13) |
+|---|---|---|---|
+| **Paga CasaZen** | | | |
+| Costi fissi | €730 | €730 | €730 |
+| NextPax oltre il minimo (200 unità) | — | €630 | €630 |
+| Verifiche d'identità (2.000/mese) | — | €660–960 | €660–960 |
+| SDI, AI, video | — | ~€100 | ~€100 |
+| **Totale costi CasaZen** | **€730** | **€2.120–2.420** | **€2.120–2.420** |
+| **Pagano i clienti a CasaZen** | | | |
+| Canone | — | €1.730 (partner) | €3.250 (8 verifiche/unità incluse) |
+| Verifiche | — | €660–960 (al costo) | incluse |
+| **Totale ricavi CasaZen** | **€0** | **€2.390–2.690** | **€3.250** |
+| **Risultato mensile CasaZen** | **−€730** | **+€270** | **+€830–1.130** |
+| **Extra opzionali** (ricavo − costo) | — | Serrature: 250 × (€6 − $5) ≈ +€250 · Adempimenti gestiti: €4 × unità senza API − costo dell'operatore | Come B |
+
+**Come leggere la tabella:**
+- **Scenario A** (piattaforma pronta, nessun cliente): CasaZen perde ~€730 al mese, di cui €350 sono il minimo NextPax. Conviene firmare con NextPax solo quando il primo cliente è vicino.
+- **Scenario B** (Quokka partner): il partner copre tutti i costi, compresi i fissi, e lascia ~€270 al mese di margine. È un pareggio voluto, non un guadagno.
+- **Scenario C** (stessa dimensione a listino): ~€830–1.130 al mese. La differenza con B è il prezzo che si rinuncia a chiedere ai partner.
+- **Non sono inclusi:** il tuo tempo (assistenza e vendita), i pareri legali una tantum e il costo di sviluppo (§7).
+
+**Rispetto ai calcoli precedenti:** i costi fissi passano da ~€400 a ~€730/mese, perché il minimo NextPax (€350) ora è contato tra i fissi e non per unità. Il canone partner di Quokka (§6.3) resta ~€1.730 + verifiche: copre comunque tutti i costi.
 
 ---
 
