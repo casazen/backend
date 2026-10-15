@@ -259,7 +259,7 @@ Con `on_behalf_of` = agenzia l'esercente è l'agenzia, il che riduce il rischio.
 
 **Regole:**
 - La modalità di pagamento si decide all'accettazione della richiesta, come oggi (`ServiceRequestPaymentMode`): `External` **solo se** chi richiede è l'agenzia legata al fornitore.
-- **Ipotesi da confermare:** se lo stesso fornitore lavora anche per altri host o agenzie tramite il marketplace, per quei lavori valgono le regole del marketplace (Stripe + commissione).
+- Se lo stesso fornitore lavora anche per altri host o agenzie tramite il marketplace, per quei lavori valgono le regole del marketplace (Stripe + commissione).
 - Il rendiconto del proprietario resta automatico (R4): il costo arriva dalla richiesta, non da un caricamento manuale.
 
 **Lavoro:**
@@ -449,7 +449,7 @@ Fonti:
 | D4 | Fornitore OTA | NextPax o Octorate, scelto dopo risposte scritte e PoC |
 | D5 | Riconoscimento facciale | Percorso predefinito con consenso + alternativa video (R6 "obbligatorio" non è lecito) ⚖ |
 | D6 | Giurisdizioni senza API | Intermediario Entratel partner per l'AdE; per comuni e Ticino scegliere tra deroga temporanea a R4 o mancata attivazione |
-| ~~D7~~ | Pagamento dei fornitori propri dell'agenzia | **Deciso (2026-10-15):** registrati e gestiti in CasaZen, 0% di commissione quando li usa l'agenzia a cui sono legati, fatturazione fuori da CasaZen (§3.4). Da confermare: lavori per terzi tramite il marketplace |
+| ~~D7~~ | Pagamento dei fornitori propri dell'agenzia | **Deciso (2026-10-15):** registrati e gestiti in CasaZen, 0% di commissione quando li usa l'agenzia a cui sono legati, fatturazione fuori da CasaZen; per i lavori per terzi tramite il marketplace valgono le regole del marketplace (§3.4) |
 | D8 | Provider LLM per i dati degli ospiti | DPA UE, nessun addestramento sui dati; **non DeepSeek** (oggi è il provider configurabile) |
 
 ---
