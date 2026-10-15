@@ -22,7 +22,7 @@
 | R7 | Delegare il più possibile a terzi gli aspetti fiscali e legali (Stripe o altri fornitori). |
 | R8 | **Prodotto unico B2C + B2B.** OTA con chat AI, CRM, fiscalità e routine sono disponibili a entrambi, con limiti per piano. Portale proprietari e staff/fornitori propri sono solo B2B. |
 | R9 | Riconoscimento facciale **obbligatorio nel B2B, opzionale nel B2C**. |
-| R10 | Nel B2B i **fornitori CasaZen sono sempre il default**. Staff e fornitori propri sono un'opzione da attivare in configurazione. |
+| R10 | Nel B2B i **fornitori CasaZen sono sempre il default**. Staff e fornitori propri sono un'opzione da attivare in configurazione. I fornitori propri sono registrati in CasaZen; quando li usa la loro agenzia: 0% di commissione e fatturazione fuori da CasaZen (D7). |
 
 ---
 
@@ -44,7 +44,7 @@ Tre regole **non sono realizzabili alla lettera** per vincoli esterni (legge, St
 | 1 | OTA: contenuti, ARI, chat AI | Channel manager via API. **Unico fornitore che dichiara contenuti + messaggi per tutte e 4 le OTA: NextPax** (da confermare per iscritto). **Alternativa: Octorate** (Airbnb + Booking.com + Vrbo; manca la gestione dei contenuti su Expedia). Channex e Rentals United sono **scartati** (R5) | NextPax / Octorate |
 | 2 | CRM e campagne AI | CRM nel nostro DB, invio via Resend (team separato) o SES, WhatsApp via Meta Cloud API | Resend / SES / Meta |
 | 3 | Portale proprietari e fatturazione | Ruolo `PropertyOwner`, rendiconti automatici, split Stripe a 4 parti, fatture con invio SDI via API | Stripe Connect + Invoicing; A-Cube / Invoicetronic |
-| 4 | Fornitori e staff propri | Default: marketplace CasaZen con pagamento Stripe e commissione. Opzione in configurazione: staff e fornitori propri a 0% | — |
+| 4 | Fornitori e staff propri | Default: marketplace CasaZen con pagamento Stripe e commissione. Opzione in configurazione: fornitori propri registrati in CasaZen e legati all'agenzia (0%, fatturazione fuori da CasaZen) + staff | — |
 | 5 | Fiscalità IT + CH | Build dove c'è un'API ufficiale; partner dove no; intermediario per Entratel | Polizia di Stato, Regioni, feratel/Chekin, Taxually, intermediario Entratel |
 | 6 | Routine AI e check-in | Motore di attività + AI; check-in biometrico conforme con alternativa video | IDnow / Namirial / Veriff; serrature via Seam/Nuki/igloohome |
 
@@ -79,7 +79,7 @@ Tre regole **non sono realizzabili alla lettera** per vincoli esterni (legge, St
 | Riconoscimento facciale | Attivabile dall'host | Percorso predefinito, con consenso e alternativa video (§3.6) |
 | Portale proprietari | — | ✓ |
 | Fornitori marketplace CasaZen | ✓ | ✓ **default** |
-| Staff e fornitori propri a 0% | — | Opzione in configurazione |
+| Staff e fornitori propri (registrati in CasaZen, 0%, fatturazione fuori da CasaZen) | — | Opzione in configurazione |
 | Flusso Stripe | **Direct charge** sull'account dell'host (come oggi, `docs/runbooks/stripe.md:244`) | **Separate charges and transfers** con `on_behalf_of` = agenzia (§3.3) |
 
 ---
@@ -247,18 +247,28 @@ Con `on_behalf_of` = agenzia l'esercente è l'agenzia, il che riduce il rischio.
 
 ### 3.4 Fornitori e staff propri (solo B2B, R10)
 
-| Elemento | Default B2B | Opzione in configurazione |
-|---|---|---|
-| Fornitore | Marketplace CasaZen | Rubrica dei fornitori dell'agenzia (`OrgSupplier`) + ruolo `Staff` |
-| Pagamento | **Online via Stripe**, con commissione CasaZen. Oggi è dietro il flag `SupplierOnlinePayments` (spento); il default attuale "Pagato" manuale viola R4 | Staff: stipendio fuori da CasaZen. Fornitori propri: **D7, da decidere**, via Stripe a 0% oppure fuori da CasaZen |
-| Commissione | 10% "provvisoria" (`SupplierPaymentsOptions`) | 0% |
+**D7, deciso dal PO (2026-10-15):** i fornitori propri sono **registrati e gestiti interamente in CasaZen** e legati a un'agenzia. Quando li usa l'agenzia a cui sono legati non si applica **nessuna commissione** e la **fatturazione avviene fuori da CasaZen**.
+
+| Elemento | Default B2B: fornitore del marketplace | Opzione in configurazione: fornitore proprio legato all'agenzia | Staff dell'agenzia |
+|---|---|---|---|
+| Registrazione | Organizzazione `Supplier` (invito admin o autoregistrazione) | Organizzazione `Supplier` **invitata dall'agenzia** e legata a essa (nuovo legame agenzia ↔ fornitore). Nessun vincolo per comune pilota, anche in Svizzera | Utente dell'organizzazione con ruolo `Staff` |
+| Gestione in CasaZen | Completa (richieste, agenda, foto, chiusura) | **Completa, come per il marketplace** | Attività assegnate, checklist, foto |
+| Pagamento e fatturazione | **Online via Stripe**, con commissione CasaZen. Oggi è dietro il flag `SupplierOnlinePayments` (spento); il default attuale "Pagato" manuale viola R4 | **Fuori da CasaZen**: nuova modalità `ServiceRequestPaymentMode.External` (da aggiungere in coda all'enum), senza Stripe e senza flag "Pagato" | Fuori da CasaZen (stipendio) |
+| Commissione | 10% "provvisoria" (`SupplierPaymentsOptions`) | **0%**, fissata dal legame con l'agenzia, non per singolo fornitore | — |
+| Costo nel rendiconto del proprietario | Dall'importo pagato su Stripe | Dall'importo **dichiarato sulla richiesta** (preventivo o consuntivo approvato dall'agenzia) | Tariffa interna configurabile, se l'agenzia la riaddebita |
+
+**Regole:**
+- La modalità di pagamento si decide all'accettazione della richiesta, come oggi (`ServiceRequestPaymentMode`): `External` **solo se** chi richiede è l'agenzia legata al fornitore.
+- **Ipotesi da confermare:** se lo stesso fornitore lavora anche per altri host o agenzie tramite il marketplace, per quei lavori valgono le regole del marketplace (Stripe + commissione).
+- Il rendiconto del proprietario resta automatico (R4): il costo arriva dalla richiesta, non da un caricamento manuale.
 
 **Lavoro:**
-- rubrica dei fornitori dell'organizzazione (oggi `OrgTrustedSupplier` non esiste: `GlobalSearchService.cs:29,344`);
-- invito diretto dei fornitori;
+- legame agenzia ↔ fornitore con flusso di invito (oggi esiste solo l'invito da admin; `OrgTrustedSupplier` non esiste: `GlobalSearchService.cs:29,344`);
+- modalità `External` + regola di commissione 0% legata al legame;
 - ruolo `Staff` e assegnazione dei `ServiceRequest`;
 - interruttore nell'onboarding o nelle impostazioni dell'agenzia;
-- regola di commissione per tipo di fornitore.
+- importo approvato → spesa nel rendiconto del proprietario;
+- app mobile per fornitori e staff (US-028, oggi pianificata).
 
 **Taglia:** M.
 
@@ -439,7 +449,7 @@ Fonti:
 | D4 | Fornitore OTA | NextPax o Octorate, scelto dopo risposte scritte e PoC |
 | D5 | Riconoscimento facciale | Percorso predefinito con consenso + alternativa video (R6 "obbligatorio" non è lecito) ⚖ |
 | D6 | Giurisdizioni senza API | Intermediario Entratel partner per l'AdE; per comuni e Ticino scegliere tra deroga temporanea a R4 o mancata attivazione |
-| D7 | Pagamento dei fornitori propri dell'agenzia | Via Stripe a 0% (coerente con R2) oppure fuori da CasaZen |
+| ~~D7~~ | Pagamento dei fornitori propri dell'agenzia | **Deciso (2026-10-15):** registrati e gestiti in CasaZen, 0% di commissione quando li usa l'agenzia a cui sono legati, fatturazione fuori da CasaZen (§3.4). Da confermare: lavori per terzi tramite il marketplace |
 | D8 | Provider LLM per i dati degli ospiti | DPA UE, nessun addestramento sui dati; **non DeepSeek** (oggi è il provider configurabile) |
 
 ---
