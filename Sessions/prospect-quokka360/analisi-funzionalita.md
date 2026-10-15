@@ -605,6 +605,64 @@ Questa sezione riporta solo i costi base delle API e dei servizi white label che
 
 ---
 
+## 4bis. Proposte di prezzo dell'abbonamento B2B (solo canone per unità, D1)
+
+**Vincolo del PO:** offrire molti servizi a un prezzo giusto, senza esagerare.
+
+**Prezzi di mercato a confronto** (listini ufficiali, per unità al mese, IVA esclusa):
+
+| Offerta | Prezzo | Contenuto |
+|---|---|---|
+| Kross Booking Premium (strumento attuale di Quokka) ✓ | €6; oltre 20 unità su preventivo | PMS + channel manager + motore di prenotazione; check-in, Alloggiati, ISTAT, tassa di soggiorno. Niente portale proprietari, inbox o fattura elettronica |
+| Pacchetto italiano: Kross + Chekin Premium / Vikey Master | ~€12 / ~€16 | Come sopra + verifica dell'identità |
+| Uplisting Manager ✓ | £13 (minimo £208/mese) + £1,25 a verifica d'identità | Channel manager, inbox, AI illimitata, portale e rendiconti proprietari, serrature |
+| Avantio | $20 (50–99 unità), $18 (100–199), $16 (200–399) | Suite completa con area proprietari |
+| Hostfully | $15–25 + quota piattaforma | Suite completa |
+| Hostaway, Guesty Pro | Su preventivo | — |
+
+Fonti:
+- <https://www.krossbooking.com/prezzo>
+- <https://www.uplisting.io/pricing>
+- <https://www.avantio.com/pricing-usa-v2/>
+- <https://www.hostfully.com/pricing/property-management-software/>
+- <https://chekin.com/en/pricing/>
+- <https://vikey.it/prezzi/>
+
+**Costi di CasaZen per unità** (da §4; 250 unità in totale sulla piattaforma; Didit con NFC; NextPax annuale):
+
+| Voce | Valore |
+|---|---|
+| NextPax | €3,92/unità (il minimo di €350 copre le prime 50 unità della piattaforma) |
+| Verifica identità | ~€3,80/unità (8 verifiche × $0,48; cambio prudenziale 1:1) |
+| Fatturazione elettronica, AI, email variabili | ~€0,20/unità |
+| **Costo variabile totale** | **~€7,90/unità** (a 100 unità: ~€9,10, perché il minimo NextPax pesa di più) |
+| Costi fissi di piattaforma | ~€400/mese: Railway Pro + consumo, Supabase Pro, Resend Scale, Invoicetronic, abbonamento Claude Code (prezzo del 20x non pubblicato sulla pagina ufficiale) |
+
+**Fuori dal canone, a carico del cliente:** commissioni Stripe, serrature (Seam), pratiche dell'intermediario. Il **back-office per le giurisdizioni senza API** va venduto come opzione a parte (vedi sotto).
+
+| Proposta | Canone/unità/mese | Margine per unità | Utile/mese a 100 unità | Utile/mese a 250 unità | Posizionamento |
+|---|---|---|---|---|---|
+| **1. Minimo** | **€12** | €4,1 (34%) | **−€110** (in perdita) | ~€625 (~€7,5k/anno) | Prezzo del pacchetto italiano base (Kross + Chekin), ma con molti più servizi |
+| **2. Medio** (consigliato) | **€16** | €8,1 (51%) | ~€290 | ~€1.625 (~€19,5k/anno) | Prezzo del pacchetto Kross + Vikey; sotto le suite internazionali |
+| **3. Alto** | **€20** | €12,1 (60%) | ~€690 | ~€2.625 (~€31,5k/anno) | Uplisting Manager / Avantio entry, con compliance IT+CH in più |
+
+**Clausole comuni:**
+- minimo 10 unità per agenzia; prezzo annuale (+10% con pagamento mensile);
+- verifiche d'identità comprese fino a 8 per unità al mese, calcolate sull'intera agenzia; oltre, €0,50 a verifica;
+- prezzo identico in CHF per la Svizzera, da validare.
+
+**Opzione "Adempimenti gestiti"** (back-office: Ticino, portali comunali senza API):
+- prezzo indicativo €3–5 per unità al mese, solo per le unità in quelle giurisdizioni;
+- costo stimato: circa 15 minuti al giorno per il caricamento di file cumulativi in Ticino e circa 5 minuti per unità al mese sui portali comunali. È un'ipotesi da validare: dipende da chi esegue e dal costo orario;
+- le pratiche dell'intermediario Entratel sono ribaltate al costo.
+
+**Rischi del prezzo:**
+- **Il fornitore di verifica identità decide il margine.** Con Sumsub ($1,35) il costo variabile sale a ~€14,6/unità: la proposta 1 va in perdita e la 2 quasi. Con Sumsub servono €20 oppure le verifiche fatturate a parte.
+- **Il listino B2C deciso l'8/10 non regge le nuove funzionalità.** Pro €79 per 50 strutture coprirebbe appena il channel manager a costo (50 × €3,15–3,50 ≈ €160–175). Per il B2C il channel manager va venduto come opzione per unità.
+- **Non sono inclusi:** il tempo del PO (assistenza, vendita), i pareri legali e il costo dello sviluppo (§7).
+
+---
+
 ## 5. Roadmap a fasi (da validare con PO e team)
 
 | Fase | Contenuto | Note |
