@@ -1,7 +1,7 @@
 """Modello economico CasaZen, 36 mesi (nov 2026 - ott 2029).
 
 Fonte unica dei numeri di `Sessions/business-plan-2026-10/business-plan.md`.
-Prezzi e costi unitari: PR #526 (`Sessions/prospect-quokka360/analisi-funzionalita.md`, §5-§6).
+Prezzi e costi unitari: PR #526, analisi del tipo host Agenzia (§5-§6).
 Tutto ciò che non viene da lì è marcato IPOTESI e va sostituito con dati reali o preventivi.
 
 Uso:  python3 -I modello_economico.py            -> tabelle markdown su stdout
@@ -79,14 +79,14 @@ class FixedCosts:
 @dataclass(frozen=True)
 class Scenario:
     name: str
-    quokka_pilot: int | None           # mese di avvio del pilota Quokka, None = mai
-    quokka_units: int = 250
-    quokka_pilot_units: int = 5        # PO 2026-10-15: pilota di 5 appartamenti
-    quokka_pilot_months: int = 2       # IPOTESI
-    quokka_ramp_months: int = 4        # IPOTESI: "migrano tutto nel giro di qualche mese" (PO 2026-10-15)
+    first_fp_start: int | None          # mese di avvio del pilota del primo Founding Partner, None = mai
+    first_fp_units: int = 250
+    first_fp_pilot_units: int = 5      # IPOTESI: onboarding con pilota su poche unità
+    first_fp_pilot_months: int = 2     # IPOTESI
+    first_fp_ramp_months: int = 4      # IPOTESI: migrazione progressiva in qualche mese
     nextpax_min_from_full: bool = False  # True = minimo NextPax negoziato dalla migrazione completa
     fp_start: int | None = None        # primo mese in cui entrano altri Founding Partner
-    fp_slots: int = 9                  # posti FP oltre Quokka (PR #526: prime 10 agenzie)
+    fp_slots: int = 9                  # posti FP oltre il primo (PR #526: prime 10 agenzie)
     fp_per_month: float = 0.0
     list_start: int | None = None      # primo mese con agenzie a listino
     list_per_month: float = 0.0
@@ -101,36 +101,36 @@ class Scenario:
 
 
 SCENARIOS = [
-    Scenario(name="A. Solo Quokka", quokka_pilot=7),
-    Scenario(name="B. Ritardo", quokka_pilot=13, fp_start=19, fp_per_month=0.25,
+    Scenario(name="A. Solo il primo Founding Partner", first_fp_start=7),
+    Scenario(name="B. Ritardo", first_fp_start=13, fp_start=19, fp_per_month=0.25,
              list_start=None, b2c_start=19, b2c_per_month=2),
-    Scenario(name="C. Obiettivo", quokka_pilot=7, fp_start=14, fp_per_month=0.6,
+    Scenario(name="C. Obiettivo", first_fp_start=7, fp_start=14, fp_per_month=0.6,
              list_start=29, list_per_month=1.0, b2c_start=10, b2c_per_month=6,
              support_hire_units=1000),
 ]
 
 
-def quokka_full_month(s: Scenario) -> int | None:
-    """Primo mese con tutte le unità Quokka migrate."""
-    if s.quokka_pilot is None:
+def first_fp_full_month(s: Scenario) -> int | None:
+    """Primo mese con tutte le unità del primo Founding Partner migrate."""
+    if s.first_fp_start is None:
         return None
-    return s.quokka_pilot + s.quokka_pilot_months + s.quokka_ramp_months - 1
+    return s.first_fp_start + s.first_fp_pilot_months + s.first_fp_ramp_months - 1
 
 
-def quokka_units_at(s: Scenario, m: int) -> float:
-    if s.quokka_pilot is None or m < s.quokka_pilot:
+def first_fp_units_at(s: Scenario, m: int) -> float:
+    if s.first_fp_start is None or m < s.first_fp_start:
         return 0.0
-    if m < s.quokka_pilot + s.quokka_pilot_months:
-        return float(s.quokka_pilot_units)
-    k = m - (s.quokka_pilot + s.quokka_pilot_months) + 1
-    step = (s.quokka_units - s.quokka_pilot_units) / s.quokka_ramp_months
-    return min(float(s.quokka_units), s.quokka_pilot_units + step * k)
+    if m < s.first_fp_start + s.first_fp_pilot_months:
+        return float(s.first_fp_pilot_units)
+    k = m - (s.first_fp_start + s.first_fp_pilot_months) + 1
+    step = (s.first_fp_units - s.first_fp_pilot_units) / s.first_fp_ramp_months
+    return min(float(s.first_fp_units), s.first_fp_pilot_units + step * k)
 
 
 @dataclass
 class Month:
     m: int
-    quokka_units: float = 0.0
+    first_fp_units: float = 0.0
     fp_agencies: float = 0.0
     list_agencies: float = 0.0
     b2c_accounts: float = 0.0
@@ -147,7 +147,7 @@ class Month:
 
     @property
     def b2b_units(self) -> float:
-        return self.quokka_units + self.fp_units + self.list_units
+        return self.first_fp_units + self.fp_units + self.list_units
 
     fp_units: float = 0.0
     list_units: float = 0.0
@@ -172,12 +172,12 @@ class Month:
 def run(s: Scenario, ue: UnitEconomics = UnitEconomics(), fc: FixedCosts = FixedCosts()) -> list[Month]:
     out: list[Month] = []
     fp, lst, b2c = 0.0, 0.0, 0.0
-    full_month = quokka_full_month(s)
+    full_month = first_fp_full_month(s)
     for m in range(1, MONTHS + 1):
         row = Month(m=m)
-        live = s.quokka_pilot is not None and m >= s.quokka_pilot
+        live = s.first_fp_start is not None and m >= s.first_fp_start
         full = full_month is not None and m >= full_month
-        row.quokka_units = quokka_units_at(s, m)
+        row.first_fp_units = first_fp_units_at(s, m)
         if s.fp_start and m >= s.fp_start and live:
             fp = min(s.fp_slots, fp + s.fp_per_month)
         if s.list_start and m >= s.list_start and live:
@@ -188,7 +188,7 @@ def run(s: Scenario, ue: UnitEconomics = UnitEconomics(), fc: FixedCosts = Fixed
         row.fp_units = fp * s.units_per_agency
         row.list_units = lst * s.units_per_agency
 
-        fp_total_units = row.quokka_units + row.fp_units
+        fp_total_units = row.first_fp_units + row.fp_units
         row.revenue_b2b_fee = (fp_total_units * ue.fp_fee_per_unit
                                + row.list_units * ue.list_price(s.units_per_agency))
         verifications_fp = fp_total_units * ue.verifications_per_unit
@@ -215,8 +215,8 @@ def run(s: Scenario, ue: UnitEconomics = UnitEconomics(), fc: FixedCosts = Fixed
         if s.support_hire_units and row.b2b_units >= s.support_hire_units:
             row.cost_people += s.support_cost
 
-        # Cassa: pilota e migrazione fatturati al mese; a regime Quokka paga 12 mesi anticipati (PR #526 §6.3)
-        annual = s.quokka_units * ue.fp_fee_per_unit
+        # Cassa: pilota e migrazione fatturati al mese; a regime il primo Founding Partner paga 12 mesi anticipati (PR #526 §6.3)
+        annual = s.first_fp_units * ue.fp_fee_per_unit
         if full:
             prepaid = annual * 12 if (m - full_month) % 12 == 0 else 0.0
             row.cash_in_timing = prepaid - annual
@@ -231,7 +231,7 @@ def yearly(rows: list[Month]) -> list[dict[str, float]]:
         last = chunk[-1]
         years.append({
             "units_end": last.b2b_units,
-            "agencies_end": (1 if last.quokka_units else 0) + last.fp_agencies + last.list_agencies,
+            "agencies_end": (1 if last.first_fp_units else 0) + last.fp_agencies + last.list_agencies,
             "b2c_end": last.b2c_accounts,
             "revenue": sum(r.revenue for r in chunk),
             "gross_margin": sum(r.gross_margin for r in chunk),
@@ -324,7 +324,7 @@ def print_tables() -> None:
     print()
 
     fp_gap = SCENARIOS[2].fp_slots * SCENARIOS[2].units_per_agency * (contrib[1] - contrib[0])
-    print(f"Contribuzione rinunciata dai 9 Founding Partner oltre Quokka: €{fp_gap:,.0f}/mese\n".replace(",", "."))
+    print(f"Contribuzione rinunciata dai 9 Founding Partner oltre il primo: €{fp_gap:,.0f}/mese\n".replace(",", "."))
 
     for s in SCENARIOS:
         print_scenario(s, ue, fc)
@@ -336,7 +336,7 @@ def print_tables() -> None:
     variants = [
         ("Base (fondatore non pagato)", base, ue),
         ("Minimo NextPax solo da migrazione completa", replace(base, nextpax_min_from_full=True), ue),
-        ("Migrazione in 8 mesi invece di 4", replace(base, quokka_ramp_months=8), ue),
+        ("Migrazione in 8 mesi invece di 4", replace(base, first_fp_ramp_months=8), ue),
         ("Fondatore €3.000/mese dall'avvio del pilota", replace(base, founder_pay=3000), ue),
         ("Fondatore €6.000/mese dall'avvio del pilota", replace(base, founder_pay=6000), ue),
         ("Verifiche con Sumsub ($1,35)", base, replace(ue, verification_cost=1.35)),

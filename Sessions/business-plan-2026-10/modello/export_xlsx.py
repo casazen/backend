@@ -45,14 +45,14 @@ FC_LABELS = {
     "marketing": "Marketing e vendite dal go-live (€/mese) - IPOTESI",
 }
 SC_LABELS = {
-    "quokka_pilot": "Mese di avvio del pilota Quokka (99999 = mai)",
-    "quokka_units": "Unità Quokka a regime",
-    "quokka_pilot_units": "Unità del pilota",
-    "quokka_pilot_months": "Durata del pilota (mesi)",
-    "quokka_ramp_months": "Durata della migrazione dopo il pilota (mesi)",
+    "first_fp_start": "Primo Founding Partner: mese di avvio del pilota (99999 = mai)",
+    "first_fp_units": "Primo Founding Partner: unità a regime",
+    "first_fp_pilot_units": "Unità del pilota",
+    "first_fp_pilot_months": "Durata del pilota (mesi)",
+    "first_fp_ramp_months": "Durata della migrazione dopo il pilota (mesi)",
     "nextpax_min_from_full": "Minimo NextPax solo da migrazione completa (1 = sì)",
     "fp_start": "Primo mese altri Founding Partner",
-    "fp_slots": "Posti Founding Partner oltre Quokka",
+    "fp_slots": "Posti Founding Partner oltre il primo",
     "fp_per_month": "Nuovi Founding Partner al mese",
     "list_start": "Primo mese agenzie a listino",
     "list_per_month": "Nuove agenzie a listino al mese",
@@ -131,9 +131,9 @@ def export(path: str, scenarios: list[Scenario], ue: UnitEconomics, fc: FixedCos
     ms["A1"].font = HEAD
     rows = [
         ("m", "Indice mese"),
-        ("live", "Pilota Quokka avviato (1/0)"),
-        ("full", "Quokka a regime (1/0)"),
-        ("q_units", "Unità Quokka"),
+        ("live", "Pilota del primo FP avviato (1/0)"),
+        ("full", "Primo FP a regime (1/0)"),
+        ("q_units", "Unità del primo Founding Partner"),
         ("fp", "Altri Founding Partner (agenzie)"),
         ("lst", "Agenzie a listino"),
         ("b2c", "Host B2C paganti"),
@@ -173,8 +173,8 @@ def export(path: str, scenarios: list[Scenario], ue: UnitEconomics, fc: FixedCos
         P = {k: f"{prev}{v}" for k, v in row_of.items()}
         f = {}
         f["m"] = m
-        start, pm, rm = n["quokka_pilot"], n["quokka_pilot_months"], n["quokka_ramp_months"]
-        qu, pu = n["quokka_units"], n["quokka_pilot_units"]
+        start, pm, rm = n["first_fp_start"], n["first_fp_pilot_months"], n["first_fp_ramp_months"]
+        qu, pu = n["first_fp_units"], n["first_fp_pilot_units"]
         full_m = f"({start}+{pm}+{rm}-1)"
         f["live"] = f"=IF({R['m']}>={start},1,0)"
         f["full"] = f"=IF({R['m']}>={full_m},1,0)"

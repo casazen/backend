@@ -1,8 +1,8 @@
 # CasaZen: business plan 2026-10
 
-**Versione:** v2, 2026-10-15. Aggiornata con le risposte del PO dello stesso giorno: società, impegno del fondatore, pilota Quokka.
+**Versione:** v3, 2026-10-15. Aggiornata con le risposte del PO dello stesso giorno (società, impegno del fondatore, perimetro della prima versione Agenzia). Il piano riguarda CasaZen come prodotto: le trattative con i singoli partner restano fuori.
 **Sostituisce:** `Sessions/casazen-platform-launch/business-plan.md` (giugno 2026) e la sua revisione `business-plan-after-devils-review.md`. Molte loro premesse non valgono più (§1.3).
-**Base:** PR #526, `Sessions/prospect-quokka360/analisi-funzionalita.md` (tipo host Agenzia B2B per il prospect Quokka 360). Qui ne riprendo prezzi, costi unitari e stime di sviluppo e li verifico contro il mercato e il codice.
+**Base:** PR #526, analisi del tipo host Agenzia (B2B). Qui ne riprendo prodotto, prezzi, costi unitari e stime di sviluppo e li verifico contro il mercato e il codice.
 **Stato:** bozza per la decisione del PO. Le decisioni aperte sono in §13 con prefisso `BP-` (gli ID D1… sono già usati da altri documenti).
 
 **Metodo:**
@@ -34,7 +34,7 @@ Ma CasaZen **non è ancora vendibile**:
 - adempimenti principali ancora manuali (Alloggiati senza client SOAP, ISTAT assente);
 - channel manager solo iCal.
 
-**Tesi.** Il segmento con cui partire sono le **agenzie** che gestiscono appartamenti per conto dei proprietari, in Italia e nella Svizzera italiana. Il primo cliente è **Quokka 360** (250 unità, oggi su Kross a ~€2.000/mese): **pilota su 5 appartamenti, poi migrazione di tutte le unità in qualche mese** se funziona (PO, 2026-10-15).
+**Tesi.** CasaZen è un prodotto unico B2C + B2B (PR #526, R8). Il segmento con cui partire sono le **agenzie** che gestiscono appartamenti per conto dei proprietari, in Italia e nella Svizzera italiana, attraverso il **programma Founding Partner**. Il primo Founding Partner è un'agenzia da circa 250 unità; la trattativa resta fuori da questo piano.
 - **Perché le agenzie:** sono il segmento che paga per unità, che ha bisogno di tutto il pacchetto (channel manager, adempimenti, identificazione, proprietari) e che oggi lo compone con 2–3 fornitori.
 - **Il B2C (host privati) resta su invito** finché channel manager e Alloggiati non sono automatici. Oggi, a €29, CasaZen è meno competitivo di Kross Premium (€6/unità con channel manager e Alloggiati automatico ✓).
 
@@ -45,16 +45,16 @@ Ma CasaZen **non è ancora vendibile**:
 | Margine lordo per unità, listino tutto compreso | **43–51%** (non l'80% di un SaaS puro: channel manager, servizi e verifiche costano €7,39 per unità al mese) |
 | Margine lordo per unità, Founding Partner | **31%** |
 | Costi fissi in produzione | ~**€1.295/mese** (incluso il minimo NextPax) |
-| Quokka da solo, a regime | **non copre i costi fissi**: −€3.500 circa l'anno |
+| Un Founding Partner da 250 unità, da solo | **non copre i costi fissi**: −€3.500 circa l'anno. Il programma regge solo con più agenzie |
 | Pareggio (fondatore non pagato, come deciso) | ~**170 unità a listino** |
 | Unità per lasciare il lavoro dipendente con €6.000/mese | ~**960 unità a listino** (~24 agenzie da 40 unità) |
 | Scenario obiettivo, a ott 2029 | ~920 unità B2B, ricavi ricorrenti ~€14.500/mese (~€175k l'anno) |
-| Cassa minima, fondatore non pagato | **−€12.700** (set 2027, prima che Quokka sia tutto migrato) |
+| Cassa minima, fondatore non pagato | **−€12.700** (set 2027, durante l'onboarding della prima agenzia) |
 
 **Cosa decidere ora** (§13):
 1. listino unico **per unità** al posto di 29/79/199 piatti;
 2. condizioni Founding Partner con un termine;
-3. **contratto quadro con Quokka prima di firmare con NextPax**: pilota, criteri di successo e condizioni a regime già fissati;
+3. **primo contratto Founding Partner firmato prima di impegnarsi con NextPax**, con fase pilota, criteri di successo e condizioni a regime già fissati (§6.5);
 4. **SRL italiana come startup innovativa** (§10.1). Prima di costituirla, rileggere il contratto di lavoro su attività accessorie e proprietà del software (§10.2);
 5. **livello di servizio della piattaforma**: gli ospiti e i proprietari sono dell'agenzia, ma i guasti della piattaforma sono di CasaZen. Servono avvisi automatici all'agenzia e uno SLA compatibile con il tuo lavoro dipendente (§8);
 6. **Didit** come fornitore di verifica: con Sumsub il pacchetto tutto compreso va in perdita.
@@ -71,7 +71,7 @@ Ma CasaZen **non è ancora vendibile**:
 | Team | 1 persona (PO e fondatore) + agenti AI: dal 2026-06-01, 462 commit di Claude e ~114 di Cursor | git log ✓ |
 | Tempo del fondatore | Residente in Italia, frontaliere, **lavoro dipendente full-time in Svizzera**, che resta. Su CasaZen: requisiti, test, ricerca dei clienti. Lo sviluppo procede con flussi agentici. Nessun compenso | PO, 2026-10-15 |
 | Clienti, ricavi | **Zero.** Vendita su invito privato, registrazioni Auth0 chiuse (2026-10-13) | git `e02783cb`; `spec-public-marketing-site.md:26,52` ✓ |
-| Prospect | Quokka 360: 250 unità IT+CH, annunci intestati a Quokka, ~€2.000/mese a Kross (dato del PO) | PR #526 §6.1, §8 |
+| Founding Partner | Primo partner in trattativa: un'agenzia da circa 250 unità tra Italia e Svizzera. Le condizioni sono gestite fuori da questo piano | PO |
 | Partner in discussione | ConcordatoFacile (canone concordato), bozza di integrazione v1.3 | `docs/integrations/concordatofacile/01-specifica-integrazione.md` |
 | Produzione | v2.0.0 rilasciata su `main` il 14/10, ma **l'hosting del backend non è deciso** (Railway disdetto il 2/10, regola "zero costi") | git `b92817f1`; `docs/INFRA.md:5` ✓ |
 | Testi legali | ToS, Privacy e DPA scritti da un agente, **non attivi**, da far rivedere a un avvocato | `docs/legal/*.md:1-11` ✓ |
@@ -92,9 +92,9 @@ Ma CasaZen **non è ancora vendibile**:
 | Proprietari | **Assente** | Portale, rendiconti, fatture SDI, file SEPA |
 | Fornitori | Console web, richieste di servizio, pagamenti online dietro flag ✓ | Fornitori propri a 0% |
 | Automazioni | Solo job Hangfire fissi | Routine QUANDO → SE → ALLORA |
-| Locazioni lunghe | Contratti (3 modelli), registro canoni, calcolatore canone concordato (solo Seveso e Cesano Maderno); RLI e firma elettronica **manuali** | — (non richiesto da Quokka) |
+| Locazioni lunghe | Contratti (3 modelli), registro canoni, calcolatore canone concordato (solo Seveso e Cesano Maderno); RLI e firma elettronica **manuali** | — (fuori dal perimetro della PR #526) |
 | Mobile | App host Expo, non pubblicata negli store ✓ | — |
-| Esercizio | Health check ✓; **nessun monitoraggio errori o APM** ✓ | Indispensabile prima di un cliente da 250 unità |
+| Esercizio | Health check ✓; **nessun monitoraggio errori o APM** ✓ | Indispensabile prima della prima agenzia |
 
 **Lettura critica.**
 - Il codice è molto, ma le funzioni che decidono l'acquisto di un'agenzia mancano tutte: channel manager API, Alloggiati automatico, proprietari, inbox.
@@ -110,8 +110,8 @@ Ma CasaZen **non è ancora vendibile**:
 | Prezzi | Starter gratis, Pro €4–8/unità | 8/10 29/79/199 piatti → 9/10 €0 in prevendita → 13/10 "non definiti". PR #526: €7–9/unità B2B |
 | Margine lordo | ≥80% | **43–51%** a listino, per il costo del channel manager e delle verifiche |
 | SOM al 3° anno | €1,3–2,3M di ricavi ricorrenti annui | ~€0,17M (scenario obiettivo §9). Il valore di giugno non aveva base dati |
-| Geografia | Italia, poi Spagna e Francia | Italia + Svizzera italiana e Grigioni, perché lì opera il primo cliente |
-| Infrastruttura | $0 → €5 | Railway disdetto; per un cliente da 250 unità servono piani a pagamento (~€85 + Vercel Pro) |
+| Geografia | Italia, poi Spagna e Francia | Italia + Svizzera italiana e Grigioni, perché il prodotto Agenzia copre gli adempimenti IT e CH (PR #526) |
+| Infrastruttura | $0 → €5 | Railway disdetto; per servire agenzie servono piani a pagamento (~€85 + Vercel Pro) |
 | Marketplace | 10–20% dei ricavi | Congelato, con commissione incoerente in configurazione (10% contro 3,5%, `appsettings.json:34,90`) ✓. **Fuori da questo piano** |
 | Unità STR in Italia | ~600.000 [EST], 25% gestite da professionisti | **734.834 strutture registrate**, di cui **21,6% in forma imprenditoriale** ✓ (§2.1) |
 
@@ -138,7 +138,7 @@ Ma CasaZen **non è ancora vendibile**:
 | Annunci gestiti attivi | 491.117 (2025) | Rescasa-Confcommercio, citato da CleanBnB **[secondaria]** |
 
 **Cosa ne ricavo:**
-- **Il mercato professionale è frammentato.** Il primo operatore quotato (CleanBnB, 3.154 unità) vale circa il 2% delle strutture imprenditoriali B4 e lo 0,4% di tutte le registrate. Un'agenzia da 250 unità come Quokka è già di taglia media.
+- **Il mercato professionale è frammentato.** Il primo operatore quotato (CleanBnB, 3.154 unità) vale circa il 2% delle strutture imprenditoriali B4 e lo 0,4% di tutte le registrate. Un'agenzia da 250 unità è già di taglia media.
 - **Non esiste un dato ufficiale** sul numero di agenzie per classe di unità (ATECO 68.32 non trovato). Il numero di clienti potenziali in "conti" resta **[IPOTESI]**; il dimensionamento si fa in unità (§2.3).
 
 ### 2.2 Svizzera (Ticino e Grigioni)
@@ -151,7 +151,7 @@ Ma CasaZen **non è ancora vendibile**:
 | Notti su piattaforme 2025 | Ticino 895.059 (+12%); Grigioni 1.036.214 (+14%) | Eurostat `tour_ce_oan3` ✓ |
 | Tassa di soggiorno Ticino | CHF 2,00/notte per appartamenti e case di vacanza dal 1/1/2025 | Ticino Turismo ✓ |
 
-**Lettura:** la Svizzera è un mercato **piccolo in unità**. Il Ticino vale meno del 2% delle unità imprenditoriali italiane. Si entra per seguire il primo cliente, non per volume. Le funzioni CH vanno quindi limitate a ciò che serve a Quokka (cantoni e comuni reali, PR #526 §8 domanda 1).
+**Lettura:** la Svizzera è un mercato **piccolo in unità**. Il Ticino vale meno del 2% delle unità imprenditoriali italiane. Si entra perché le agenzie di confine lavorano su entrambi i paesi, non per volume. Le funzioni CH vanno quindi limitate ai cantoni e ai comuni delle agenzie clienti.
 
 ### 2.3 Dimensionamento
 
@@ -187,7 +187,7 @@ Il valore è calcolato al prezzo del pacchetto tutto compreso (§6). Non è una 
 
 | Prodotto | Prezzo | Alloggiati / ISTAT | Note |
 |---|---|---|---|
-| **Kross Booking** ✓ | Basic €4/unità (gestionale); **Premium €6/unità** (gestionale + channel manager + booking engine); minimo 3 unità; preventivo oltre 20 camere | Alloggiati automatico; export ISTAT | Fornitore attuale di Quokka. KDoor da €29/mese |
+| **Kross Booking** ✓ | Basic €4/unità (gestionale); **Premium €6/unità** (gestionale + channel manager + booking engine); minimo 3 unità; preventivo oltre 20 camere | Alloggiati automatico; export ISTAT | KDoor da €29/mese |
 | **Vikey** ✓ (Zucchetti, maggioranza da giu 2025 [secondaria]) | Starter €4,90, Master €9,90/unità. Moduli per unità: Alloggiati €2,90, ISTAT €1,50, tassa di soggiorno €1,90, documento+selfie €3,90, channel manager €3,90 | Sì, a moduli | Master con tutti i moduli: **€23,90/unità** |
 | **Chekin** ✓ | €3,95 / €5,95 / €7,95 per proprietà | Adempimenti e tassa di soggiorno in tutti i piani | Verifica d'identità in Premium/Enterprise |
 | **Octorate** ✓ | Basic da €8/camera (channel manager + booking engine); Pro e Ultimate su richiesta | Alloggiati automatico giornaliero; ISTAT secondo la regione | Moduli portale proprietari, self check-in, AI. **È anche uno dei due fornitori API candidati** (PR #526) |
@@ -231,13 +231,13 @@ Il valore è calcolato al prezzo del pacchetto tutto compreso (§6). Non è una 
 **Dove può vincere** (da validare con i clienti, non fatti):
 1. **Un solo fornitore per tutto il ciclo dell'agenzia,** con proprietari (rendiconti, fatture SDI, SEPA) e identificazione conforme a CdS 9101/2025 a un prezzo inferiore alla somma dei fornitori (§3.3).
 2. **Routine legate agli eventi di compliance** (es. codice della serratura solo dopo l'identificazione): nessun concorrente lo fa secondo l'analisi dei help center (PR #526 §3.6).
-3. **Italia + Svizzera italiana in un solo prodotto:** XML polizia del Ticino, feratel, CHF. È una nicchia piccola (§2.2), ma è quella di Quokka. [NV] se esistono concorrenti con la stessa copertura.
+3. **Italia + Svizzera italiana in un solo prodotto:** XML polizia del Ticino, feratel, CHF. È una nicchia piccola (§2.2). [NV] se esistono concorrenti con la stessa copertura.
 4. **Agenzie che fanno anche affitti lunghi:** contratti, canone concordato, RLI. Il vantaggio è [EST], ridimensionato già a giugno; oggi RLI e firma sono manuali.
 
 **Forze di Porter (sintesi):**
 - **Potere dei fornitori: alto.** Channel manager, OTA chiuse alle nuove connessioni (Booking.com ✓), verifica d'identità.
 - **Rivalità: alta,** e i concorrenti sono finanziati.
-- **Potere dei clienti: medio.** Cambiare gestionale è costoso, ma Quokka da solo varrebbe il 100% dei ricavi per mesi.
+- **Potere dei clienti: medio.** Cambiare gestionale è costoso, ma la prima agenzia varrebbe quasi tutti i ricavi per mesi.
 - **Barriere all'ingresso:** basse sul software, alte sulla conformità IT/CH, che però i concorrenti hanno già superato.
 
 ---
@@ -246,7 +246,7 @@ Il valore è calcolato al prezzo del pacchetto tutto compreso (§6). Non è una 
 
 | Priorità | Segmento | Perché | Cosa compra |
 |---|---|---|---|
-| **1** | **Agenzie con 20–400 unità in IT e CH** (Quokka come primo cliente) | Pagano per unità, hanno più fornitori da sostituire, il dolore dei proprietari e degli adempimenti è alto | Tutto compreso per unità (§6.2) |
+| **1** | **Agenzie con 20–400 unità in IT e CH**, attraverso il programma Founding Partner | Pagano per unità, hanno più fornitori da sostituire, il dolore dei proprietari e degli adempimenti è alto | Tutto compreso per unità (§6.2) |
 | 2 | Host imprenditoriali con 3–20 unità (spinti dalla L. 199/2025) | In crescita (B4 +20,6% nel 2024 ✓; ATECO 55.20 +42% ✓) | Base per unità, senza portale proprietari |
 | 3 | Host privati con 1–2 unità (categoria C) | Grandi numeri ma prezzo basso e già serviti da Kross, Smoobu e Lodgify | Canone minimo. **Solo dopo** che channel manager e Alloggiati sono automatici |
 | Fuori piano | Alberghi, Spagna e Francia, marketplace fornitori | Nessuna base nel codice o nei dati | — |
@@ -261,12 +261,12 @@ Il valore è calcolato al prezzo del pacchetto tutto compreso (§6). Non è una 
 
 ### 5.1 Prerequisiti per vendere a chiunque (Fase 0)
 
-Sono indipendenti da Quokka e oggi mancano tutti:
+Sono indipendenti dal singolo cliente e oggi mancano tutti:
 
 | # | Prerequisito | Perché blocca | Fonte |
 |---|---|---|---|
 | P1 | Società costituita, partita IVA, fatturazione elettronica (provider SDI) | Senza, non si può incassare né fatturare | `appsettings.json:63`; `DOMANDE-APERTE.md:265` |
-| P2 | Hosting di produzione a pagamento con backup (Supabase Pro), Vercel Pro (uso commerciale) | Un'agenzia da 250 unità non può dipendere da piani gratuiti senza backup | `docs/runbooks/free-hosting-analysis.md:252,257` |
+| P2 | Hosting di produzione a pagamento con backup (Supabase Pro), Vercel Pro (uso commerciale) | Un'agenzia con centinaia di unità non può dipendere da piani gratuiti senza backup | `docs/runbooks/free-hosting-analysis.md:252,257` |
 | P3 | Monitoraggio errori e disponibilità, procedura per gli incidenti | Oggi non c'è nessun APM ✓ | `observability/docker-compose.yml:3` |
 | P4 | ToS, Privacy, DPA e SLA rivisti da un avvocato e attivati ⚖ | Oggi sono bozze | `docs/legal/` |
 | P5 | Listino deciso (BP-D1) e pagina prezzi | Oggi i prezzi sono a 0 e "non definiti" | `appsettings.json:74-84` |
@@ -274,7 +274,7 @@ Sono indipendenti da Quokka e oggi mancano tutti:
 
 ### 5.2 Sviluppo per le agenzie (PR #526 §7)
 
-| Pacchetto | Settimane attive | Necessario al go-live di Quokka? |
+| Pacchetto | Settimane attive | Nella prima versione Agenzia? |
 |---|---|---|
 | WP1 Fondamenta: `Agency`, ruoli, paese/valuta/fuso, tedesco | 1,2–2,0 | Sì |
 | WP6 Compliance via API + file preparati | 1,3–2,1 | Sì (Alloggiati, Ticino) |
@@ -282,7 +282,7 @@ Sono indipendenti da Quokka e oggi mancano tutti:
 | WP5 Fornitori propri e staff | 0,4–0,7 | Sì |
 | WP4 Proprietari: portale, rendiconti, SDI, SEPA, Stripe v2 | 1,3–2,0 | Sì: senza, l'agenzia non paga i proprietari |
 | WP2 Channel manager: client, mappatura, contenuti, inbox, AI | 1,75–2,8 | **Sì: senza non si può lasciare Kross** |
-| WP3 CRM e campagne | 1,2–1,75 | **No**, ma va consegnato **subito dopo** (PO, 2026-10-15) |
+| WP3 CRM e campagne | 1,2–1,75 | **No**, ma **subito dopo** (PO, 2026-10-15) |
 | WP8 Routine | 1,4–2,25 | **No** (PO, 2026-10-15) |
 | **Totale** | **~10–16 settimane attive** | |
 
@@ -290,24 +290,24 @@ Sono indipendenti da Quokka e oggi mancano tutti:
 - La stima misura righe di codice (±40%). L'audit di settembre mostra che "scritto" non vuol dire "funzionante" (MVP reale al 35–40% quando era dichiarato completo, `PIANO-RISANAMENTO-2026-09.md:13-18`).
 - Per il piano uso quindi **5–6 mesi di calendario** fino al go-live, non 2,5–4.
 - **Il percorso critico non è lo sviluppo:** è la certificazione del channel manager, il PoC della verifica d'identità, la DPIA e un collaudo Alloggiati su una struttura reale (PR #526 §5.4, §7).
-- **Perimetro del pilota (deciso):** WP1, WP6, WP7, WP5, WP4, WP2, cioè **~7,4–12 settimane attive**. Poi WP3 (CRM) per primo, WP8 (routine) dopo. Si tolgono 2,6–4 settimane dal percorso critico.
-- **Il pilota da 5 appartamenti non riduce il perimetro:** il channel manager, Alloggiati, i proprietari e l'identificazione devono funzionare già su 5 unità. Riduce il rischio, non lo sviluppo.
+- **Perimetro della prima versione Agenzia (deciso):** WP1, WP6, WP7, WP5, WP4, WP2, cioè **~7,4–12 settimane attive**. Poi WP3 (CRM) per primo, WP8 (routine) dopo. Si tolgono 2,6–4 settimane dal percorso critico.
+- **Un pilota su poche unità non riduce il perimetro:** channel manager, Alloggiati, proprietari e identificazione devono funzionare già dal primo appartamento. Riduce il rischio, non lo sviluppo.
 
 ### 5.3 Calendario e cancelli
 
 ```
-nov–dic 2026  Fase 0: società, P1–P6, contratto quadro Quokka (G0), risposte scritte NextPax/Octorate, PoC Didit, DPIA
+nov–dic 2026  Fase 0: società, P1–P6, primo contratto Founding Partner (G0), risposte scritte NextPax/Octorate, PoC Didit, DPIA
 gen–apr 2027  WP1 → WP6 + WP7 → WP5 → WP4 → WP2 ; collaudo Alloggiati su struttura reale (G1)
-mag–giu 2027  Pilota Quokka su 5 appartamenti [IPOTESI: 2 mesi]; in parallelo WP3 (CRM)
-lug–ott 2027  Migrazione delle 250 unità [IPOTESI: 4 mesi, "qualche mese" secondo il PO] (G1b); poi WP8
-dic 2027      Altri Founding Partner, 60 giorni dopo la migrazione completa (G2)
+mag–giu 2027  Pilota della prima agenzia su poche unità [IPOTESI: 2 mesi]; in parallelo WP3 (CRM)
+lug–ott 2027  Migrazione progressiva della prima agenzia [IPOTESI: 4 mesi] (G1b); poi WP8
+dic 2027      Altri Founding Partner, 60 giorni dopo la prima migrazione completa (G2)
 2028–2029     Vendita a listino; B2C a pagamento (G3); supporto (G4)
 ```
 
 **Rischio di calendario.**
-- Una migrazione di 4 mesi tra luglio e ottobre cade nell'**alta stagione estiva** per le unità in Ticino e sui laghi.
-- Le unità di Quokka sono sia in località sciistiche (Davos, Laax, Andermatt) sia estive. Una soluzione possibile è migrare a ondate, ciascuna nella propria bassa stagione: le unità di montagna in estate, quelle dei laghi in autunno. **[IPOTESI da concordare con Quokka]**
-- Se il pilota slitta di sei mesi si va allo **scenario B** in §9.
+- Le agenzie migrano in bassa stagione. Una migrazione tra luglio e ottobre cade in **alta stagione estiva** per le unità al lago e al mare.
+- Per agenzie con unità sia in montagna sia al lago, la soluzione è migrare a ondate, ciascuna nella propria bassa stagione. **[IPOTESI da concordare con ogni agenzia]**
+- Se il primo pilota slitta di sei mesi si va allo **scenario B** in §9.
 
 ---
 
@@ -334,7 +334,7 @@ Minimo €90/mese.
 **Osservazioni critiche:**
 1. **Base + verifiche costa quanto il tutto compreso.** €9 + 8 × €0,75 = €15, cioè il prezzo del tutto compreso, che però include anche AI e Marketing. Nel B2B, dove la verifica è predefinita, nessuno comprerà la Base da sola. È coerente con l'obiettivo di vendere il tutto compreso, ma allora **il listino reale B2B è il tutto compreso** e la Base serve solo al segmento 2. Il modello usa il tutto compreso.
 2. **Il margine dipende dalle verifiche.** Con Didit ($0,48 con NFC) il tutto compreso rende €5,61–7,61 per unità. **Con Sumsub ($1,35) va in perdita da 50 unità in su** (−€0,35 / −€1,35) e quasi a zero sotto (€0,65). → **BP-D6**: Didit, oppure si riduce il numero di verifiche incluse.
-3. **Il numero di 8 verifiche per unità al mese** (4 prenotazioni × 2 adulti) è un'ipotesi di PR #526: va misurato sui dati reali di Quokka.
+3. **Il numero di 8 verifiche per unità al mese** (4 prenotazioni × 2 adulti) è un'ipotesi di PR #526: va misurato sui dati reali delle prime agenzie.
 
 ### 6.3 B2C: perché il listino piatto 29/79/199 non regge
 
@@ -357,40 +357,39 @@ Minimo €90/mese.
 **Quanto costa il programma.**
 - Per un'agenzia da 40 unità il prezzo Founding Partner è €6,92 + verifiche al costo (€3,84) = **€10,76 per unità**, cioè il listino −28%.
 - Lo sconto in sé è ragionevole. Il problema è la **durata "per tutto il rapporto"** con margine bloccato: CasaZen non beneficia mai dei ribassi di costo su quelle unità.
-- I 9 posti oltre Quokka, a 40 unità ciascuno, rinunciano a **~€1.526/mese di contribuzione** rispetto al listino, per sempre.
+- I 9 posti oltre il primo, a 40 unità ciascuno, rinunciano a **~€1.526/mese di contribuzione** rispetto al listino, per sempre.
 - Il programma non ha precedenti consolidati sul mercato (PR #526 §6.1: "quasi assenti"). Non c'è quindi una prassi da seguire: è una scelta del PO.
 
 **Proposta (BP-D2):**
 - prezzo Founding Partner vincolato per **36 mesi**, poi listino con uno sconto fisso;
 - numero di posti limitato;
-- la quota di copertura dei costi fissi (€1,60 per unità, calcolata su Quokka) va ricalcolata per le agenzie piccole.
+- la quota di copertura dei costi fissi nel canone (€1,60 per unità in PR #526, calcolata su un'agenzia da 250 unità) va ricalcolata per le agenzie piccole.
 
-### 6.5 Offerta a Quokka
+### 6.5 Founding Partner grandi: economia e contratto
 
-| Voce | €/mese | Fonte |
-|---|---|---|
-| Canone partner fisso (€6,92 × 250) | 1.730 | PR #526 §6.3 |
-| Verifiche al costo (2.000 × $0,33–0,48) | 660–960 | idem |
-| **Totale Quokka** | **2.390–2.690** | |
-| Oggi a Kross | ~2.000 | dato del PO |
+**Un'agenzia da 250 unità al prezzo Founding Partner** (PR #526 §6.3):
+
+| Voce | €/mese |
+|---|---|
+| Canone fisso (€6,92 × 250) | 1.730 |
+| Verifiche al costo (2.000 × $0,33–0,48) | 660–960 |
+| **Totale pagato dall'agenzia** | **2.390–2.690** |
+| Contribuzione per CasaZen (€3,37 × 250) | ~840 |
 
 **Osservazioni critiche:**
-- **Quokka pagherebbe il 20–35% in più** rispetto a oggi. L'argomento di vendita sono le funzioni in più (biometria, CH, proprietari, AI, CRM) e l'eventuale dismissione della sua piattaforma di marketing e CRM, il cui costo è sconosciuto (PR #526 §8 domanda 2). **Va verificato prima di costruire.**
-- I €400 di "costi fissi coperti dal partner" erano calcolati sui costi della sola piattaforma. Con società, assicurazione, Vercel Pro e minimo NextPax, i fissi reali sono ~€995/mese senza marketing. **Quokka da solo porta CasaZen a −€3.500 circa l'anno** (scenario A, §9). Si accetta come investimento commerciale, oppure si alza la quota fissa (**BP-D3**).
-- **Il pilota costa a CasaZen più di quanto rende.** Con 5 unità il canone è ~€35/mese, mentre i costi di produzione partono interi (~€1.295/mese, minimo NextPax compreso).
-  - Nello scenario obiettivo la cassa scende fino a −€12.700 (set 2027), poi risale quando Quokka paga l'anno anticipato a migrazione completa.
-  - Se NextPax accetta il minimo solo dalla migrazione completa, si risparmiano ~€1.250 (§9.5).
-- **Il contratto con Quokka è il cancello G0,** da firmare prima di impegnarsi con NextPax e di costruire WP2. Con un pilota, la prassi è un **contratto quadro con fase pilota**, che contiene:
-  - perimetro e durata del pilota (5 appartamenti, ~2 mesi) e il suo prezzo;
-  - **criteri di successo misurabili**, scritti prima di partire (vedi G1b in §12);
-  - le condizioni a regime già concordate, che si attivano da sole se i criteri sono rispettati:
+- **Un Founding Partner grande non copre da solo i costi fissi.** La quota di "costi fissi coperti dal partner" (€400) era calcolata sui costi della sola piattaforma. Con società, assicurazione, Vercel Pro, marketing e minimo NextPax i fissi reali sono ~€1.295/mese. Con un solo Founding Partner CasaZen perde ~€3.500 l'anno (scenario A, §9). Si accetta come investimento commerciale, oppure si alza la quota fissa nel canone (**BP-D3**).
+- **L'onboarding di un'agenzia grande ha un costo di cassa.** Si parte con un pilota su poche unità e si migra in qualche mese. Durante il pilota il canone è di poche decine di euro, mentre i costi di produzione partono interi. Nello scenario obiettivo la cassa scende fino a −€12.700 (set 2027). Se NextPax accetta il minimo solo dalla migrazione completa, si risparmiano ~€1.250 (§9.5).
+- **Il primo contratto Founding Partner è il cancello G0,** da firmare prima di impegnarsi con NextPax e di costruire WP2. Con un pilota, la prassi è un **contratto quadro con fase pilota**, che contiene:
+  - perimetro, durata e prezzo del pilota;
+  - **criteri di successo misurabili**, scritti prima di partire (G1b in §12);
+  - le condizioni a regime, che si attivano da sole se i criteri sono rispettati:
     - migrazione di tutte le unità entro una data;
     - durata minima di 24 mesi;
     - pagamento annuale anticipato;
     - penale di recesso;
-  - il diritto di uscita per Quokka **solo** se i criteri non sono rispettati.
+  - il diritto di uscita dell'agenzia **solo** se i criteri non sono rispettati.
 
-  Senza contratto quadro, CasaZen costruisce 7–12 settimane di funzioni e si impegna su €350/mese con NextPax per un cliente non vincolato.
+  Senza un contratto così, CasaZen costruisce 7–12 settimane di funzioni e si impegna su €350/mese con NextPax per un cliente non vincolato.
 
 ### 6.6 Altri ricavi
 
@@ -405,8 +404,8 @@ Minimo €90/mese.
 
 | Fase | Obiettivo | Canale | Chi |
 |---|---|---|---|
-| Fase 0–1 (nov 2026–ott 2027) | Quokka firmato, pilota, migrazione completa | Vendita diretta del fondatore | PO |
-| Fase 2 (dic 2027–feb 2029) | 9 Founding Partner, ~40 unità ciascuno | Referenza e caso di studio Quokka; agenzie nelle stesse località (Ticino, Grigioni, laghi lombardi); contenuti sugli adempimenti (CIN, CdS 9101/2025, L. 199/2025) | PO |
+| Fase 0–1 (nov 2026–ott 2027) | Primo Founding Partner firmato, pilota, migrazione completa | Vendita diretta del fondatore | PO |
+| Fase 2 (dic 2027–feb 2029) | 9 Founding Partner, ~40 unità ciascuno | Referenza e caso di studio del primo Founding Partner; agenzie nelle stesse località (Ticino, Grigioni, laghi lombardi); contenuti sugli adempimenti (CIN, CdS 9101/2025, L. 199/2025) | PO |
 | Fase 3 (da mar 2029) | ~1 agenzia al mese a listino | Pagina prezzi, prova guidata, referral dai Founding Partner, commercialisti | PO + supporto |
 | B2C | Riapertura dopo il cancello G3 | Pagine SEO per comune (già esistenti, pilota Lombardia), registrazione libera | Automatico |
 
@@ -474,7 +473,7 @@ B2C (canone €29, 2 unità con channel manager): contribuzione €21,90, pari a
 
 **Ipotesi comuni:**
 - prezzi e costi come §9.1–9.2;
-- **Quokka:** pilota su 5 appartamenti per 2 mesi, poi migrazione lineare delle 250 unità in 4 mesi **[IPOTESI su "qualche mese"]**;
+- **primo Founding Partner da 250 unità:** pilota su 5 unità per 2 mesi, poi migrazione lineare in 4 mesi **[IPOTESI]**;
   - pilota e migrazione fatturati al mese;
   - a regime, pagamento annuale anticipato;
   - minimo NextPax pagato dall'avvio del pilota (prudenza);
@@ -486,14 +485,14 @@ B2C (canone €29, 2 unità con channel manager): contribuzione €21,90, pari a
 
 | Scenario | Ipotesi specifiche |
 |---|---|
-| **A. Solo Quokka** | Pilota mag 2027, migrazione completa a ott 2027, nessun altro cliente |
+| **A. Solo il primo Founding Partner** | Pilota mag 2027, migrazione completa a ott 2027, nessun altro cliente |
 | **B. Ritardo** | Pilota nov 2027, migrazione completa ad apr 2028. Da mag 2028, un Founding Partner ogni 4 mesi e 2 host B2C al mese |
 | **C. Obiettivo** | Pilota mag 2027, migrazione completa a ott 2027. Da dic 2027, 0,6 Founding Partner al mese (9 entro feb 2029). Da mar 2029, 1 agenzia al mese a listino. Da ago 2027, 6 host B2C al mese |
 
-| | A. Solo Quokka | B. Ritardo | C. Obiettivo |
+| | A. Solo il primo FP | B. Ritardo | C. Obiettivo |
 |---|---|---|---|
 | Unità B2B a ott 2027 / ott 2028 / ott 2029 | 250 / 250 / 250 | 0 / 310 / 430 | 250 / 514 / 919 |
-| Agenzie a ott 2029 (Quokka compresa) | 1 | 5,5 | 17,7 |
+| Agenzie a ott 2029 (primo FP compreso) | 1 | 5,5 | 17,7 |
 | Host B2C a ott 2029 | 0 | 28 | 112 |
 | Ricavi anno 1 / 2 / 3 | €6,9k / €32,3k / €32,3k | €0 / €26,5k / €55,7k | €7,9k / €66,5k / €131,6k |
 | Margine lordo anno 3 | €7,8k | €18,3k | €57,7k |
@@ -505,10 +504,10 @@ B2C (canone €29, 2 unità con channel manager): contribuzione €21,90, pari a
 Le agenzie hanno valori frazionari perché il modello le fa entrare in modo continuo.
 
 **Lettura:**
-- **Con il fondatore non pagato il fabbisogno di cassa è piccolo** (€13–20k). Lo sviluppo costa un abbonamento, e il pagamento annuale anticipato di Quokka a migrazione completa (~€20.800) rimborsa i mesi del pilota.
+- **Con il fondatore non pagato il fabbisogno di cassa è piccolo** (€13–20k). Lo sviluppo costa un abbonamento, e il pagamento annuale anticipato del primo Founding Partner a migrazione completa (~€20.800) rimborsa i mesi del pilota.
 - **Il vero investimento è il tempo del fondatore,** che il modello non valorizza.
-- **Il punto più basso è la fine della migrazione** (set 2027): si pagano tutti i costi di produzione mentre Quokka paga ancora solo le unità migrate.
-- **Lo scenario A non sta in piedi:** Quokka da solo è un'operazione in perdita. Ha senso solo se dopo arrivano altre agenzie.
+- **Il punto più basso è la fine della migrazione** (set 2027): si pagano tutti i costi di produzione mentre la prima agenzia paga ancora solo le unità migrate.
+- **Lo scenario A non sta in piedi:** un solo Founding Partner è un'operazione in perdita. Il programma ha senso solo se arrivano altre agenzie.
 
 ### 9.4 Pareggio e soglia per lasciare il lavoro dipendente
 
@@ -540,7 +539,7 @@ Unità a listino (€15, contribuzione €7,61) necessarie per coprire:
 | Nessun B2C | +€21,2k | −€13,1k | mar 2028 |
 
 **I fattori che contano, in ordine:**
-1. **il numero di agenzie** dopo Quokka, Founding Partner e a listino: con il fondatore non pagato è il fattore principale;
+1. **il numero di agenzie** dopo la prima, Founding Partner e a listino: con il fondatore non pagato è il fattore principale;
 2. il fornitore di verifica;
 3. il B2C: vale circa metà dell'EBITDA del terzo anno nello scenario C, ma è il dato meno validato;
 4. i tempi del pilota e della migrazione: incidono poco sui numeri, molto sul rischio operativo.
@@ -551,7 +550,7 @@ Il compenso del fondatore resterebbe il primo fattore se cambiasse la decisione 
 
 | Ipotesi sul fondatore | Fabbisogno (cassa minima) | Fonte coerente |
 |---|---|---|
-| **Non pagato (deciso)** | **~€13–20k** | Mezzi propri + anticipo annuale di Quokka |
+| **Non pagato (deciso)** | **~€13–20k** | Mezzi propri + anticipo annuale dei Founding Partner |
 | €3.000/mese dall'avvio del pilota | ~€51k | Mezzi propri o prestito; finanziamenti pubblici solo come integrazione |
 | €6.000/mese dall'avvio del pilota | ~€131k e oltre, senza pareggio a 36 mesi | Capitale esterno. **Non coerente** con il ritmo commerciale dello scenario C |
 
@@ -561,8 +560,8 @@ Il compenso del fondatore resterebbe il primo fattore se cambiasse la decisione 
 
 ### 9.7 Ipotesi da validare (in ordine di impatto)
 
-1. **Disponibilità di Quokka a pagare €2.390–2.690** contro i ~€2.000 attuali, e il costo della sua piattaforma di marketing e CRM.
-2. **Numero reale di verifiche per unità al mese** (dati di Quokka: prenotazioni e ospiti al mese).
+1. **Disponibilità delle agenzie a pagare il tutto compreso** rispetto alla somma dei fornitori che usano oggi (§3.3): da verificare con le prime 10 agenzie contattate.
+2. **Numero reale di verifiche per unità al mese** (prenotazioni e ospiti al mese delle prime agenzie).
 3. **Unità medie per agenzia e numero di agenzie raggiungibili:** nessun dato ufficiale; serve una lista di prospect reali.
 4. **Costi reali di NextPax** (minimo dal go-live? sovrapprezzo per i messaggi?) e di Octorate (Allegato A di PR #526).
 5. **Costi societari, assicurativi e legali:** preventivi.
@@ -625,7 +624,7 @@ Le norme svizzere sono verificate su Fedlex. Il contratto individuale può esser
 | Biometria | GDPR art. 9: consenso e alternativa equivalente obbligatoria; DPIA; cancellazione delle immagini alla ricevuta Alloggiati (nota del Garante 29/04/2026); CdS 9101/2025 | DPIA prima del pilota (cancello G1) |
 | Svizzera | Ticino: divieto di fotocopiare il documento (RL 942.120 art. 6, PR #526 §3.5); legge federale sulla protezione dei dati (nLPD) per i dati CH [NV] | Verifica legale del flusso CH |
 | Responsabilità | Le responsabilità di legge restano all'agenzia; CasaZen promette "compliance automatizzata" | Limitazioni di responsabilità e SLA nei contratti |
-| Contratti | ToS, DPA, SLA, contratto quadro Quokka, contratto Founding Partner, contratti fornitori (NextPax, Didit) con DPA e sub-responsabili | Revisione legale (P4) |
+| Contratti | ToS, DPA, SLA, contratto Founding Partner con fase pilota, contratti fornitori (NextPax, Didit) con DPA e sub-responsabili | Revisione legale (P4) |
 
 ---
 
@@ -633,13 +632,13 @@ Le norme svizzere sono verificate su Fedlex. Il contratto individuale può esser
 
 | # | Rischio | Prob./Impatto | Mitigazione |
 |---|---|---|---|
-| R1 | **Quokka non firma**, oppure il pilota non si trasforma in migrazione | Media / Alto | Cancello G0: contratto quadro con criteri di successo e condizioni a regime già fissati; niente NextPax senza contratto; WP1, WP6 e WP7 riusabili per altri clienti |
-| R2 | **Concentrazione:** Quokka = 100% dei ricavi per 6–12 mesi | Alta / Alto | Durata minima 24 mesi + penale; Founding Partner 60 giorni dopo la migrazione completa |
+| R1 | **Il primo Founding Partner non firma**, oppure il pilota non si trasforma in migrazione | Media / Alto | Cancello G0: contratto con fase pilota, criteri di successo e condizioni a regime già fissati; niente NextPax senza contratto; WP1, WP6 e WP7 riusabili per altri clienti |
+| R2 | **Concentrazione:** la prima agenzia = quasi tutti i ricavi per 6–12 mesi | Alta / Alto | Durata minima 24 mesi + penale; Founding Partner 60 giorni dopo la migrazione completa |
 | R3 | Il pilota slitta, oppure la migrazione cade in alta stagione | Media / Medio | Perimetro ridotto (WP8 e WP3 dopo, deciso); partire subito sulle dipendenze esterne; migrazione a ondate per stagione. Scenario B |
 | R4 | **Fornitore channel manager:** acquisito, cambia prezzi o vende direttamente alle agenzie | Media / Alto | Due fornitori in PoC (NextPax, Octorate); clausola di non sollecitazione (Allegato A domanda 9); astrazione `IChannelAdapter` |
 | R5 | Margine schiacciato dal costo delle verifiche | Media / Alto | Didit; numero di verifiche incluse legato all'uso misurato |
 | R6 | **Persona chiave unica, con un lavoro dipendente full-time:** requisiti, test, vendita e risoluzione dei guasti della piattaforma nel tempo libero | Alta / Alto | L'operatività verso ospiti e proprietari è dell'agenzia. Per i guasti: avvisi automatici all'agenzia, monitoraggio con allarmi, SLA con tempi realistici (BP-D11), runbook, accessi di emergenza |
-| R7 | Incidente in produzione su un cliente da 250 unità (overbooking, dati) | Media / Alto | P2 + P3; assicurazione cyber; procedura per gli incidenti; test end to end prima del go-live |
+| R7 | Incidente in produzione su un'agenzia grande (overbooking, dati) | Media / Alto | P2 + P3; assicurazione cyber; procedura per gli incidenti; test end to end prima del go-live |
 | R8 | Concorrenti finanziati (Guesty, Hostaway) che puntano all'Italia | Alta / Medio | Nicchia agenzie IT+CH; prezzo tutto compreso sotto la somma dei fornitori; relazione diretta |
 | R9 | Norme: biometria contestata, CdS 9101/2025, TU IVA 2027, Reg. 2024/1028 | Media / Medio | Alternativa in videochiamata; pareri; riverifica delle norme prima dello sviluppo |
 | R10 | Stima di sviluppo ottimistica (±40%; storico di funzioni "scritte ma non funzionanti") | Alta / Medio | 5–6 mesi nel piano; collaudo su dati reali; cancello G1 |
@@ -665,10 +664,10 @@ Le norme svizzere sono verificate su Fedlex. Il contratto individuale può esser
 
 | Cancello | Condizione per passare | Cosa sblocca |
 |---|---|---|
-| **G0** | Contratto quadro Quokka firmato (pilota, criteri di successo, condizioni a regime: 24 mesi, annuale anticipato, penale, data di migrazione); società costituita; risposte scritte di NextPax/Octorate | Firma NextPax, sviluppo WP2 |
-| **G1** | Collaudo su struttura reale (Alloggiati, Ticino); DPIA; P2–P4 chiusi; SLA della piattaforma concordato e avvisi automatici all'agenzia attivi (BP-D11) | Pilota Quokka su 5 appartamenti |
-| **G1b** | Criteri di successo del pilota rispettati, ad esempio: nessun overbooking; 100% delle schedine Alloggiati entro 24 ore; sincronizzazione dei canali entro i tempi concordati; rendiconto proprietari corretto; nessun incidente grave **[IPOTESI: da concordare con Quokka]** | Migrazione delle 250 unità |
-| **G2** | 60 giorni di Quokka a regime senza incidenti gravi; contribuzione per unità misurata ≥ quella del piano | Founding Partner 2–10 |
+| **G0** | Primo contratto Founding Partner firmato (pilota, criteri di successo, condizioni a regime: 24 mesi, annuale anticipato, penale, data di migrazione); società costituita; risposte scritte di NextPax/Octorate | Firma NextPax, sviluppo WP2 |
+| **G1** | Collaudo su struttura reale (Alloggiati, Ticino); DPIA; P2–P4 chiusi; SLA della piattaforma concordato e avvisi automatici all'agenzia attivi (BP-D11) | Pilota della prima agenzia |
+| **G1b** | Criteri di successo del pilota rispettati, ad esempio: nessun overbooking; 100% delle schedine Alloggiati entro 24 ore; sincronizzazione dei canali entro i tempi concordati; rendiconto proprietari corretto; nessun incidente grave **[IPOTESI: da concordare con l'agenzia]** | Migrazione di tutte le unità dell'agenzia |
+| **G2** | 60 giorni della prima agenzia a regime senza incidenti gravi; contribuzione per unità misurata ≥ quella del piano | Founding Partner 2–10 |
 | **G3** | Channel manager API e Alloggiati automatico in produzione; listino per unità pubblicato | B2C a pagamento |
 | **G4** | ~1.000 unità B2B, oppure ticket oltre la capacità del fondatore | Assunzione del supporto |
 | **G5** | Contribuzione ≥ costi fissi + compenso del fondatore per 3 mesi consecutivi | Il fondatore lascia il lavoro dipendente |
@@ -681,16 +680,15 @@ Le norme svizzere sono verificate su Fedlex. Il contratto individuale può esser
 |---|---|---|---|
 | **BP-D1** | Listino | Un solo listino per unità per B2C e B2B (Base €9/8/7; tutto compreso €15/14/13; canone minimo per gli host piccoli), al posto di 29/79/199 piatti | Sostituisce le decisioni dell'8/10, del 9/10 e del 13/10; chiude P5 |
 | **BP-D2** | Founding Partner | Prezzo vincolato 36 mesi (non "per tutto il rapporto"), posti limitati, quota fissa ricalcolata per le agenzie piccole | ~€1.500/mese di contribuzione in più a regime |
-| **BP-D3** | Quokka | Accettare circa −€300/mese finché Quokka è l'unico cliente, oppure alzare la quota fissa del canone partner; prezzo del pilota | Scenario A |
+| **BP-D3** | Quota fissa nel canone Founding Partner | Accettare circa −€300/mese finché c'è un solo Founding Partner, oppure alzare la quota di copertura dei costi fissi; regola per il prezzo del pilota | Scenario A; §6.5 |
 | **BP-D4** | Società | **SRL italiana** (semplificata se da solo, ordinaria se entra un socio) **iscritta come startup innovativa** tramite registrazione del software. Esclusa la GmbH svizzera, che richiede un rappresentante domiciliato in Svizzera. Forfettario quasi certamente escluso per il reddito da lavoro dipendente. Conferma del commercialista sulle 3 domande di §10.1 | Sblocca P1 e tutti gli incassi |
 | ~~BP-D5~~ | Fondatore | **Deciso (2026-10-15):** resta dipendente full-time, nessun compenso; su CasaZen requisiti, test e vendita. Lascia il lavoro solo al cancello G5 | Pareggio a ~170 unità; fabbisogno ~€13–20k |
 | **BP-D6** | Verifica d'identità | Didit (Sumsub rende il tutto compreso in perdita) | §9.1 |
 | **BP-D7** | Regola "zero costi" | Superata dal primo cliente: ~€455/mese prima del go-live, ~€1.295 dopo | P2, P3 |
-| ~~BP-D8~~ | Perimetro del pilota | **Deciso (2026-10-15):** senza routine e senza CRM; CRM subito dopo. Pilota su 5 appartamenti, poi migrazione completa | −2,6/−4 settimane sul percorso critico |
+| ~~BP-D8~~ | Perimetro della prima versione Agenzia | **Deciso (2026-10-15):** senza routine e senza CRM; CRM subito dopo | −2,6/−4 settimane sul percorso critico |
 | **BP-D9** | Marketplace | Fuori dal piano a 36 mesi; allineare la commissione in configurazione (10% contro 3,5%) | Coerenza tra codice e documenti |
-| **BP-D10** | Svizzera | Limitare le funzioni CH ai cantoni e comuni reali di Quokka | Riduce WP1/WP6 |
+| **BP-D10** | Svizzera | Limitare le funzioni CH ai cantoni e ai comuni delle agenzie clienti | Riduce WP1/WP6 |
 | **BP-D11** | Livello di servizio della piattaforma | **Deciso (2026-10-15):** l'operatività verso ospiti e proprietari è dell'agenzia. **Da decidere:** SLA sui guasti della piattaforma (canale, orari, tempi di presa in carico per gravità) compatibile con il lavoro dipendente, avvisi automatici all'agenzia, limiti di responsabilità | Rischio R6; cancello G1 |
-| **BP-D12** | Contratto quadro Quokka | Pilota con prezzo, durata e criteri di successo; condizioni a regime che si attivano da sole; minimo NextPax negoziato dalla migrazione completa | Cancello G0; ~€1.250 di cassa |
 
 ---
 
