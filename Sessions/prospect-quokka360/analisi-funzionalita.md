@@ -663,6 +663,54 @@ Fonti:
 
 ---
 
+## 4ter. Modello di prezzo proposto dal PO (2026-10-15) e valutazione
+
+### Listino pubblico: base €8 + opzioni, tutto compreso €15–16
+
+**Verdetto: non è fuori mercato, è in linea.**
+- La base a €8 sta tra Kross Premium (€6), Octorate (da €8, solo channel manager) e Smoobu (da €9,60).
+- Il tutto compreso a €15–16 costa quanto il pacchetto italiano Kross + Vikey (~€16) ed è sotto le suite internazionali (€20–35).
+
+| Voce | Prezzo/unità/mese | Costo CasaZen | Margine |
+|---|---|---|---|
+| **Base**: gestionale, channel manager (contenuti + chat), inbox con bozze AI, Alloggiati/ISTAT via API, routine, fornitori | €8 | ~€4,1 | ~€3,9 |
+| Opzione check-in biometrico | €4–5, **oppure €0,50 a verifica** (consigliato: il costo segue il numero di ospiti) | ~€3,8 (8 verifiche) | €0,2–1,2 |
+| Opzione portale proprietari + pagamenti ripartiti + documenti SDI | €2–3 | ~€0,1 | ~€2–3 |
+| Opzione CRM + campagne + AI avanzata | €2–3 | ~€0,2 | ~€2–3 |
+| **Tutto compreso** (sconto ~15% sulla somma) | **€15–16** | ~€7,9 | ~€7–8 |
+| Fuori listino | Adempimenti gestiti (back-office) €3–5; serrature, Stripe e intermediario al costo | — | — |
+
+**Utile a 250 unità sulla piattaforma:** solo base ~€575/mese; tutto compreso ~€1.500/mese (dopo €400 di costi fissi).
+
+**Punti di attenzione:**
+1. **Nel B2B la biometria è obbligatoria (R9)**, quindi per un'agenzia la "base €8" non esiste da sola: il prezzo d'ingresso reale è €8 + verifiche. Conviene dirlo in chiaro nel listino.
+2. **La verifica identità va prezzata a verifica, non a unità.** Il costo dipende dal numero di ospiti; a unità si perde sulle strutture con soggiorni brevi.
+3. **Il rischio non è il prezzo alto ma il margine basso.** Con molti clienti sulla sola base, il margine (~€3,9/unità) deve coprire anche l'assistenza e il tuo tempo.
+
+### Programma partner (clienti della prima ora, come Quokka)
+
+**Proposta del PO:** prezzo vicino al pareggio con un margine minimo, bloccato per sempre salvo aumenti dei costi.
+
+**Raccomandazione: bloccare il margine, non il prezzo** (modello "a costo più margine", con costi visibili al partner):
+- **prezzo = costo documentato + margine fisso** (es. €1–1,5/unità);
+- revisione una volta l'anno, **solo** se cambiano le voci di costo dichiarate nel contratto: NextPax, verifica identità, fatturazione elettronica, AI, hosting, cambio USD/EUR. Esempio concreto: Didit cambia i prezzi dal 1/11/2026;
+- vale per le funzionalità del pacchetto alla firma; le nuove opzioni con uno sconto partner (es. −30%);
+- posti limitati (es. le prime 5–10 agenzie entro una data);
+- **in cambio il partner si impegna a:** durata minima (es. 24 mesi), test delle funzionalità nuove, feedback, referenza o caso di studio, pagamento annuale.
+
+**Esempio Quokka** (costo pieno a 250 unità: €7,92 variabile + €1,60 di quota fissa = ~€9,50/unità):
+
+| Formula partner | Quokka paga/mese | Rispetto a Kross (€2.000) |
+|---|---|---|
+| Tutto compreso a €10,50/unità | ~€2.625 | +31% |
+| €6,30/unità + verifiche al costo ($0,48) | ~€2.525 | +26% |
+
+Con ~333 unità il costo pieno scende a ~€8,90/unità (partner ~€9,80) e la quota fissa si diluisce.
+
+**Rischio del "per sempre":** se sono gli unici clienti, i partner coprono tutti i costi fissi. Con la crescita la quota fissa per unità scende e il margine di CasaZen sale, a prezzo invariato. Il contratto deve chiarire che la riduzione dei costi fissi **non** abbassa il prezzo partner. Va fatto controllare a un legale ⚖.
+
+---
+
 ## 5. Roadmap a fasi (da validare con PO e team)
 
 | Fase | Contenuto | Note |
