@@ -521,28 +521,47 @@ Invariato rispetto alla v1:
 
 ---
 
-## 4. Costi ricorrenti (prezzi di listino, IVA esclusa)
+## 4. Costi mensili delle integrazioni a carico di CasaZen
 
-| Componente | Prezzo | Chi lo paga |
-|---|---|---|
-| NextPax | €3,50/unità/mese, minimo €350 (50 unità incluse). Esempio: 100 unità ≈ €525/mese, 250 unità ≈ €1.050/mese | Pass-through nel listino per unità |
-| Stripe carte (EEA) / SEPA DD / TWINT | 1,5% + €0,25 (standard), 2,8% + €0,25 (premium), 3,15% + €0,25 (internazionali, +2% con conversione) / €0,35 / 2,6% + €0,25 | **Ripartite in proporzione tra agenzia e proprietario** (deciso) |
-| Stripe Connect | €2 per account attivo/mese + **0,25% + €0,10 per payout**; nessuna commissione sui trasferimenti | Ripartite come sopra |
-| Stripe Billing (canone CasaZen) | 0,7% | CasaZen |
-| Verifica identità | Didit $0,33 (+$0,15 NFC); Sumsub $1,35 (minimo $149/mese) | Per ospite adulto: incluso nel canone per unità |
-| SDI | Invoicetronic €0,10–0,02 per transazione; Openapi €0,07–0,022 | Trascurabile |
-| Taxually (dichiarazioni IVA) | Non pubblicato | Agenzia (opzionale) |
-| feratel / interfacce di destinazione | A contratto | Agenzia |
-| Intermediario Entratel (dichiarazioni, CU/770, F24) | ~€30 per dichiarazione; altro a contratto | Agenzia |
-| Back-office per portali (comuni, Ticino) | Personale CasaZen o partner; il Ticino richiede un presidio 7 giorni su 7 | Da prezzare come servizio aggiuntivo |
-| pagoPA via Openapi | €2 per pagamento | Agenzia |
-| Stripe Treasury (se D3 = A) | Uscite a listino €0,30 per bonifico; programma su preventivo | Da definire |
+Questa sezione riporta solo i costi base delle API e dei servizi white label che paga CasaZen, non il listino verso i clienti. Prezzi di listino al 2026-10-15, IVA esclusa, verificati sulle pagine ufficiali.
 
-Fonti:
-- <https://stripe.com/en-it/pricing>
-- <https://stripe.com/en-it/connect/pricing>
-- <https://www.veriff.com/pricing>
-- <https://invoicetronic.com/en/pricing/>
+**Ipotesi per l'esempio** (da adattare): 250 unità, 1 proprietario per unità, 4 prenotazioni per unità al mese, 2 adulti per prenotazione (2.000 verifiche d'identità al mese), 10 messaggi AI per prenotazione, una serratura smart per unità.
+
+| Integrazione | Prezzo ufficiale | Esempio 250 unità/mese | Fonte |
+|---|---|---|---|
+| **Channel manager NextPax** | €3,50/unità (€3,15 con fatturazione annuale), **minimo €350/mese** con 50 unità incluse. Prezzo della Supply API white label: "contact us". Octorate non pubblica prezzi | **€980–1.050** | <https://nextpax.com/nextpax-pricing> |
+| **Verifica identità** | Didit $0,33 a verifica (+$0,15 NFC); Sumsub $1,35 (minimo $149/mese) | Didit **$660–960**; Sumsub **$2.700** | <https://didit.me/pricing>, <https://sumsub.com/pricing/> |
+| **Serrature smart** | Seam $5/dispositivo/mese (5 azioni al giorno); igloohome diretto $2/serratura attiva/mese | igloohome **$500**; Seam **$1.250** | <https://www.seam.co/pricing>, <https://www.igloohome.co/pricing> |
+| **Stripe Connect, quote fisse** | €2 per account attivo/mese + 0,25% + €0,10 per payout. Le commissioni sulle prenotazioni sono ripartite tra agenzia e proprietario (D2) | **~€500** (250 proprietari + agenzia), se non ribaltate nello split | <https://stripe.com/en-it/connect/pricing> |
+| Stripe Billing (canone CasaZen) | 0,7% del canone incassato | 0,7% × canone | <https://stripe.com/en-it/pricing> |
+| **Fatturazione elettronica SDI** (Invoicetronic) | Pacchetti prepagati da €0,10 a €0,02 per transazione, senza scadenza + €5/mese per chiave | **~€15–75** (250 fatture proprietari + eventuali fatture all'ospite) | <https://invoicetronic.com/en/pricing/> |
+| **Email marketing** (Resend, account separato; serve Scale per avere un dominio per ogni agenzia) | Scale $90/mese (100k email, 1.000 domini) | **$90** | <https://resend.com/pricing> |
+| **LLM DeepSeek** (risposte in bozza, routine, testi CRM) | V4.1 Flash: $0,15/M token in ingresso ($0,003 se in cache), $0,60/M in uscita; prezzi doppi nelle ore di punta | **~$10–30** (10.000 risposte × ~3k token in ingresso + 300 in uscita) | <https://api-docs.deepseek.com/quick_start/pricing> |
+| Videochiamata alternativa (Daily) | 10.000 minuti-partecipante gratis al mese, poi $0,004 | **$0** (sotto la soglia gratuita) | <https://www.daily.co/pricing/video-sdk/> |
+| Stripe Treasury (solo se D3 = A) | Uscite a listino €0,30 per bonifico; prezzo del programma su preventivo | **~€75** | <https://docs.stripe.com/global-payouts/pricing> |
+| Alloggiati Web, Ross1000, API Sicilia | Gratuiti | €0 | — |
+| Intermediario Entratel partner | A pratica; unico dato pubblico ~€30 per dichiarazione annuale | A contratto | — |
+| Interfaccia feratel (Davos) | Non pubblico | A contratto | — |
+| pagoPA via Openapi | €0,001 per richiesta; €2 per pagamento, a carico del pagatore [NV] | ~€0 per CasaZen | <https://openapi.com/products/pagopa-bill> |
+| WhatsApp (Meta) | Fatturato direttamente a ogni agenzia (Embedded Signup) | €0 per CasaZen | — |
+
+**Totale mensile indicativo per 250 unità:**
+
+| Scenario | EUR | USD | ≈ per unità/mese |
+|---|---|---|---|
+| **Basso**: Didit senza NFC, igloohome, NextPax annuale | ~€1.500 | ~$1.270 | ~€10–11 |
+| **Alto**: Sumsub, Seam, NextPax mensile | ~€1.630 | ~$4.070 | ~€20–22 |
+| Con Treasury (D3 = A) | +€75 | — | +€0,3 |
+
+**Costi fissi anche con zero unità:** NextPax €350 + Resend $90 + Invoicetronic €5 (+ Sumsub $149 se scelto).
+
+**Esclusi** perché non sono integrazioni API:
+- personale del back-office (presidio del Ticino 7 giorni su 7);
+- pareri legali;
+- abbonamento Claude Code usato per lo sviluppo;
+- hosting (Railway, Supabase).
+
+**Voci da ottenere con un preventivo:** NextPax Supply API white label, Octorate, intermediario Entratel, feratel. Il prezzo di DeepSeek su AWS Bedrock in UE (raccomandazione per D8) non è ancora verificato.
 
 ---
 
