@@ -79,8 +79,12 @@ class FixedCosts:
 @dataclass(frozen=True)
 class Scenario:
     name: str
-    quokka_live: int | None            # mese di go-live, None = mai
+    quokka_pilot: int | None           # mese di avvio del pilota Quokka, None = mai
     quokka_units: int = 250
+    quokka_pilot_units: int = 5        # PO 2026-10-15: pilota di 5 appartamenti
+    quokka_pilot_months: int = 2       # IPOTESI
+    quokka_ramp_months: int = 4        # IPOTESI: "migrano tutto nel giro di qualche mese" (PO 2026-10-15)
+    nextpax_min_from_full: bool = False  # True = minimo NextPax negoziato dalla migrazione completa
     fp_start: int | None = None        # primo mese in cui entrano altri Founding Partner
     fp_slots: int = 9                  # posti FP oltre Quokka (PR #526: prime 10 agenzie)
     fp_per_month: float = 0.0
@@ -91,19 +95,36 @@ class Scenario:
     b2c_start: int | None = None
     b2c_per_month: float = 0.0
     b2c_churn: float = 0.03            # IPOTESI: metà della banda 2-5% del piano di giugno
-    founder_pay: float = 0.0           # €/mese, costo azienda, dal go-live di Quokka
+    founder_pay: float = 0.0           # €/mese, costo azienda, dall'avvio del pilota (PO: oggi 0, resta dipendente)
     support_hire_units: int | None = None  # assunzione supporto oltre N unità B2B
     support_cost: float = 3000.0       # IPOTESI: costo azienda mensile 1 FTE supporto
 
 
 SCENARIOS = [
-    Scenario(name="A. Solo Quokka", quokka_live=7),
-    Scenario(name="B. Ritardo", quokka_live=13, fp_start=16, fp_per_month=0.25,
-             list_start=None, b2c_start=16, b2c_per_month=2),
-    Scenario(name="C. Obiettivo", quokka_live=7, fp_start=9, fp_per_month=0.6,
-             list_start=25, list_per_month=1.0, b2c_start=10, b2c_per_month=6,
+    Scenario(name="A. Solo Quokka", quokka_pilot=7),
+    Scenario(name="B. Ritardo", quokka_pilot=13, fp_start=19, fp_per_month=0.25,
+             list_start=None, b2c_start=19, b2c_per_month=2),
+    Scenario(name="C. Obiettivo", quokka_pilot=7, fp_start=14, fp_per_month=0.6,
+             list_start=29, list_per_month=1.0, b2c_start=10, b2c_per_month=6,
              support_hire_units=1000),
 ]
+
+
+def quokka_full_month(s: Scenario) -> int | None:
+    """Primo mese con tutte le unità Quokka migrate."""
+    if s.quokka_pilot is None:
+        return None
+    return s.quokka_pilot + s.quokka_pilot_months + s.quokka_ramp_months - 1
+
+
+def quokka_units_at(s: Scenario, m: int) -> float:
+    if s.quokka_pilot is None or m < s.quokka_pilot:
+        return 0.0
+    if m < s.quokka_pilot + s.quokka_pilot_months:
+        return float(s.quokka_pilot_units)
+    k = m - (s.quokka_pilot + s.quokka_pilot_months) + 1
+    step = (s.quokka_units - s.quokka_pilot_units) / s.quokka_ramp_months
+    return min(float(s.quokka_units), s.quokka_pilot_units + step * k)
 
 
 @dataclass
@@ -151,13 +172,12 @@ class Month:
 def run(s: Scenario, ue: UnitEconomics = UnitEconomics(), fc: FixedCosts = FixedCosts()) -> list[Month]:
     out: list[Month] = []
     fp, lst, b2c = 0.0, 0.0, 0.0
-    first_live = s.quokka_live
-    fp_annual_billed: dict[int, float] = {}  # mese di fatturazione -> canone annuo
+    full_month = quokka_full_month(s)
     for m in range(1, MONTHS + 1):
         row = Month(m=m)
-        live = first_live is not None and m >= first_live
-        if live:
-            row.quokka_units = s.quokka_units
+        live = s.quokka_pilot is not None and m >= s.quokka_pilot
+        full = full_month is not None and m >= full_month
+        row.quokka_units = quokka_units_at(s, m)
         if s.fp_start and m >= s.fp_start and live:
             fp = min(s.fp_slots, fp + s.fp_per_month)
         if s.list_start and m >= s.list_start and live:
@@ -178,7 +198,9 @@ def run(s: Scenario, ue: UnitEconomics = UnitEconomics(), fc: FixedCosts = Fixed
 
         b2c_units = b2c * ue.b2c_units_per_account
         cm_units = row.b2b_units + b2c_units
-        if cm_units > 0:
+        if cm_units > 0 and s.nextpax_min_from_full and not full:
+            row.cost_nextpax = cm_units * ue.nextpax_per_unit
+        elif cm_units > 0:
             row.cost_nextpax = ue.nextpax_min + max(0.0, cm_units - ue.nextpax_included_units) * ue.nextpax_per_unit
         row.cost_services = row.b2b_units * ue.services_per_unit
         row.cost_verifications = (verifications_fp + verifications_list) * ue.verification_cost
@@ -193,10 +215,11 @@ def run(s: Scenario, ue: UnitEconomics = UnitEconomics(), fc: FixedCosts = Fixed
         if s.support_hire_units and row.b2b_units >= s.support_hire_units:
             row.cost_people += s.support_cost
 
-        # Cassa: i Founding Partner pagano 12 mesi anticipati (PR #526 §6.3)
-        if live and (m - first_live) % 12 == 0:
-            fp_annual_billed[m] = row.quokka_units * ue.fp_fee_per_unit * 12
-        row.cash_in_timing = fp_annual_billed.get(m, 0.0) - (row.quokka_units * ue.fp_fee_per_unit)
+        # Cassa: pilota e migrazione fatturati al mese; a regime Quokka paga 12 mesi anticipati (PR #526 §6.3)
+        annual = s.quokka_units * ue.fp_fee_per_unit
+        if full:
+            prepaid = annual * 12 if (m - full_month) % 12 == 0 else 0.0
+            row.cash_in_timing = prepaid - annual
         out.append(row)
     return out
 
@@ -312,8 +335,10 @@ def print_tables() -> None:
     base = SCENARIOS[2]
     variants = [
         ("Base (fondatore non pagato)", base, ue),
-        ("Fondatore €3.000/mese dal go-live", replace(base, founder_pay=3000), ue),
-        ("Fondatore €6.000/mese dal go-live", replace(base, founder_pay=6000), ue),
+        ("Minimo NextPax solo da migrazione completa", replace(base, nextpax_min_from_full=True), ue),
+        ("Migrazione in 8 mesi invece di 4", replace(base, quokka_ramp_months=8), ue),
+        ("Fondatore €3.000/mese dall'avvio del pilota", replace(base, founder_pay=3000), ue),
+        ("Fondatore €6.000/mese dall'avvio del pilota", replace(base, founder_pay=6000), ue),
         ("Verifiche con Sumsub ($1,35)", base, replace(ue, verification_cost=1.35)),
         ("Agenzie a listino dimezzate (0,5/mese)", replace(base, list_per_month=0.5), ue),
         ("Nessun B2C", replace(base, b2c_start=None), ue),

@@ -45,8 +45,12 @@ FC_LABELS = {
     "marketing": "Marketing e vendite dal go-live (€/mese) - IPOTESI",
 }
 SC_LABELS = {
-    "quokka_live": "Mese go-live Quokka (vuoto = mai)",
-    "quokka_units": "Unità Quokka",
+    "quokka_pilot": "Mese di avvio del pilota Quokka (99999 = mai)",
+    "quokka_units": "Unità Quokka a regime",
+    "quokka_pilot_units": "Unità del pilota",
+    "quokka_pilot_months": "Durata del pilota (mesi)",
+    "quokka_ramp_months": "Durata della migrazione dopo il pilota (mesi)",
+    "nextpax_min_from_full": "Minimo NextPax solo da migrazione completa (1 = sì)",
     "fp_start": "Primo mese altri Founding Partner",
     "fp_slots": "Posti Founding Partner oltre Quokka",
     "fp_per_month": "Nuovi Founding Partner al mese",
@@ -57,7 +61,7 @@ SC_LABELS = {
     "b2c_start": "Primo mese B2C a pagamento",
     "b2c_per_month": "Nuovi host B2C al mese",
     "b2c_churn": "Churn mensile B2C",
-    "founder_pay": "Compenso fondatore dal go-live (€/mese, costo azienda)",
+    "founder_pay": "Compenso fondatore dall'avvio del pilota (€/mese, costo azienda)",
     "support_hire_units": "Assunzione supporto oltre N unità B2B",
     "support_cost": "Costo supporto (€/mese)",
 }
@@ -111,7 +115,7 @@ def export(path: str, scenarios: list[Scenario], ue: UnitEconomics, fc: FixedCos
         ip.cell(r, 2, SC_LABELS[f.name])
         for i, s in enumerate(scenarios):
             v = getattr(s, f.name)
-            c = ip.cell(r, 3 + i, 99999 if v is None else v)  # None = mai
+            c = ip.cell(r, 3 + i, 99999 if v is None else int(v) if isinstance(v, bool) else v)  # None = mai
             c.fill = INPUT
         ip[f"{active_col}{r}"] = f"=INDEX({first_sc_col}{r}:{last_sc_col}{r},1,$C$4)"
         names[f.name] = f"Ipotesi!${active_col}${r}"
@@ -127,7 +131,8 @@ def export(path: str, scenarios: list[Scenario], ue: UnitEconomics, fc: FixedCos
     ms["A1"].font = HEAD
     rows = [
         ("m", "Indice mese"),
-        ("live", "Quokka live (1/0)"),
+        ("live", "Pilota Quokka avviato (1/0)"),
+        ("full", "Quokka a regime (1/0)"),
         ("q_units", "Unità Quokka"),
         ("fp", "Altri Founding Partner (agenzie)"),
         ("lst", "Agenzie a listino"),
@@ -168,8 +173,13 @@ def export(path: str, scenarios: list[Scenario], ue: UnitEconomics, fc: FixedCos
         P = {k: f"{prev}{v}" for k, v in row_of.items()}
         f = {}
         f["m"] = m
-        f["live"] = f"=IF({R['m']}>={n['quokka_live']},1,0)"
-        f["q_units"] = f"={R['live']}*{n['quokka_units']}"
+        start, pm, rm = n["quokka_pilot"], n["quokka_pilot_months"], n["quokka_ramp_months"]
+        qu, pu = n["quokka_units"], n["quokka_pilot_units"]
+        full_m = f"({start}+{pm}+{rm}-1)"
+        f["live"] = f"=IF({R['m']}>={start},1,0)"
+        f["full"] = f"=IF({R['m']}>={full_m},1,0)"
+        f["q_units"] = (f"=IF({R['m']}<{start},0,IF({R['m']}<{start}+{pm},{pu},"
+                        f"MIN({qu},{pu}+({qu}-{pu})*({R['m']}-({start}+{pm})+1)/{rm})))")
         fp_prev = "0" if m == 1 else P["fp"]
         lst_prev = "0" if m == 1 else P["lst"]
         b2c_prev = "0" if m == 1 else P["b2c"]
@@ -189,8 +199,8 @@ def export(path: str, scenarios: list[Scenario], ue: UnitEconomics, fc: FixedCos
         f["rev_b2c"] = f"={R['b2c']}*{n['b2c_arpu']}"
         f["revenue"] = f"={R['rev_fee']}+{R['rev_verif']}+{R['rev_b2c']}"
         cm = f"({R['b2b_units']}+{R['b2c']}*{n['b2c_units_per_account']})"
-        f["c_nextpax"] = (f"=IF({cm}>0,{n['nextpax_min']}+MAX(0,{cm}-{n['nextpax_included_units']})"
-                          f"*{n['nextpax_per_unit']},0)")
+        f["c_nextpax"] = (f"=IF({cm}>0,IF(AND({n['nextpax_min_from_full']}=1,{R['full']}=0),{cm}*{n['nextpax_per_unit']},"
+                          f"{n['nextpax_min']}+MAX(0,{cm}-{n['nextpax_included_units']})*{n['nextpax_per_unit']}),0)")
         f["c_services"] = f"={R['b2b_units']}*{n['services_per_unit']}"
         f["c_verif"] = f"={R['b2b_units']}*{n['verifications_per_unit']}*{n['verification_cost']}"
         f["c_b2c"] = f"={R['b2c']}*{n['b2c_units_per_account']}*{n['services_per_unit']}"
@@ -201,14 +211,14 @@ def export(path: str, scenarios: list[Scenario], ue: UnitEconomics, fc: FixedCos
         f["c_people"] = (f"={R['live']}*{n['founder_pay']}+IF(AND({n['support_hire_units']}>0,"
                          f"{R['b2b_units']}>={n['support_hire_units']}),{n['support_cost']},0)")
         f["ebitda"] = f"={R['gm']}-{R['c_fixed']}-{R['c_people']}"
-        f["timing"] = (f"=IF(AND({R['live']}=1,MOD({R['m']}-{n['quokka_live']},12)=0),"
-                       f"{R['q_units']}*{n['fp_fee_per_unit']}*12,0)-{R['q_units']}*{n['fp_fee_per_unit']}")
+        f["timing"] = (f"=IF(AND({R['full']}=1,MOD({R['m']}-{full_m},12)=0),"
+                       f"{qu}*{n['fp_fee_per_unit']}*12,0)-{R['full']}*{qu}*{n['fp_fee_per_unit']}")
         cash_prev = "0" if m == 1 else P["cash"]
         f["cash"] = f"={cash_prev}+{R['ebitda']}+{R['timing']}"
         for key, formula in f.items():
             c = ms[R[key]]
             c.value = formula
-            if key not in ("m", "live", "fp", "lst", "b2c", "verifications_per_unit"):
+            if key not in ("m", "live", "full", "fp", "lst", "b2c"):
                 c.number_format = '#,##0;[Red]-#,##0'
         ms.column_dimensions[col].width = 11
     ms.freeze_panes = "B2"
