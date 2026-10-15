@@ -306,10 +306,10 @@ Prezzi ufficiali, IVA esclusa, al 2026-10-15. Per prudenza USD = EUR 1:1.
 | NextPax, minimo mensile | 350 | Include le prime 50 unità; si paga dalla firma del contratto |
 | Hosting di produzione (Railway Pro + consumo, Supabase Pro) | ~85 | Oggi CasaZen è su piani gratuiti/minimi |
 | Resend Scale (email, un dominio per agenzia) | 90 | Con pochi clienti basta Pro a $20 |
-| Invoicetronic, chiave di produzione | 5 | Le transazioni sono pacchetti prepagati |
+| Invoicetronic | 0 | Solo pacchetti prepagati (il più piccolo €100 per 1.000 transazioni, non scade); i €5/mese sono la postazione web opzionale |
 | Abbonamento Claude Code Max 20x (sviluppo) | ~200 [NV] | La pagina ufficiale mostra solo "from $100"; fa fede l'addebito reale |
 | Sumsub, minimo (solo se scelto al posto di Didit) | (149) | Didit non ha minimi |
-| **Totale fisso** | **~€730** (~€880 con Sumsub) | |
+| **Totale fisso in produzione** | **~€725** (~€875 con Sumsub) | Prima del primo cliente si scende a ~€205 (vedi §5.4) |
 
 **Costi variabili** (crescono con le unità e gli ospiti):
 
@@ -355,6 +355,64 @@ Non sono né costi né ricavi per CasaZen:
 - **Non sono inclusi:** il tempo del PO (assistenza e vendita), i pareri legali una tantum e il costo di sviluppo (§7).
 
 **Rispetto ai calcoli precedenti:** i costi fissi passano da ~€400 a ~€730/mese, perché il minimo NextPax (€350) ora è contato tra i fissi e non per unità. Il canone partner di Quokka (§6.3) resta ~€1.730 + verifiche: copre comunque tutti i costi.
+
+---
+
+### 5.4 Ambienti di test fino al primo cliente (verificato il 2026-10-15)
+
+**Obiettivo:** sviluppare e collaudare tutto in sandbox, a costo zero o quasi, e attivare i piani a pagamento solo con il primo cliente.
+
+| Partner | Ambiente di test | Gratis? | Quando si inizia a pagare | Cosa non si può provare in test |
+|---|---|---|---|---|
+| **Stripe** | Test mode + fino a 5 sandbox; Connect, Accounts v2, Treasury (simulazioni), TWINT | Sì | Solo commissioni in produzione | Payout reali |
+| **Didit** ✓ | Sandbox per applicazione, tutti i fornitori simulati (anche NFC) | Sì: *"never billed"*, 500 sessioni/24h | Solo crediti usati in produzione; nessun minimo | Documenti e chip reali (serve l'SDK nativo) |
+| **Sumsub** ✓ | Sandbox senza fatturazione | Sì (sandbox) | **Attenzione:** alla fine della prova (14 giorni o 50 verifiche) *"you will be switched to the Production mode and charged"* ($149/mese). Non attivare la prova finché non serve | Esiti reali |
+| **Seam** | Workspace sandbox con dispositivi virtuali | Fatturazione della sandbox non indicata [NV]; prova gratuita di 14 giorni | Per dispositivo in produzione | Serrature reali |
+| **Invoicetronic** | Sandbox che simula tutto il flusso SDI | Sì, senza scadenza e senza carta | Pacchetto prepagato da €100 al go-live | Invio reale allo SDI |
+| **A-Cube / Openapi** | Sandbox SDI (Openapi anche bollettini) | A-Cube sì; Openapi richiede "credito sandbox" [NV se reale] | Credito o abbonamento in produzione | Invii e pagamenti reali |
+| **NextPax** | "Full sandbox" + Developer Portal; certificazione prima della produzione | Costo della sandbox non pubblicato [NV] | **Minimo €350/mese: da negoziare con decorrenza dal go-live**, non dalla firma | Annunci e prenotazioni reali sulle OTA |
+| **Octorate** | Proprietà di prova, dati simulati; breve certificazione | Non pubblicato; *"API access is conditional on payment of Octorate services"* | Da chiedere | Connessioni reali ai canali |
+| **Resend** | Piano Free (3.000 email/mese, 100/giorno, 3 domini) | Sì | Pro $20 quando si superano i limiti | — |
+| **Daily** | Piano gratuito (10.000 minuti/mese) | Sì | Oltre i 10.000 minuti | — |
+| **WhatsApp (Meta)** | Account e numero di test creati in automatico | Sì | Per messaggio template in produzione | Messaggi a ospiti reali |
+| **DeepSeek / Bedrock** | Nessuna sandbox | A consumo (pochi euro in sviluppo) | Per token. Su Bedrock in UE DeepSeek V3.2 è disponibile a Stoccolma: $0,74/M in ingresso, $2,22/M in uscita | — |
+| **Alloggiati Web** ✓ | **Nessun ambiente di test.** L'operazione `Test` valida i dati senza inviarli | Gratuito | — | L'invio reale e la ricevuta richiedono **credenziali di una struttura vera** |
+| **Ross1000** | Nessun ambiente di collaudo documentato | Gratuito | — | Serve una struttura vera; l'indirizzo del servizio va chiesto alla Regione (supporto GIES) |
+| **feratel** | Ambiente di test non documentato [NV]; interfacce *"free of charge to all system providers"* | Sì | — | Da chiedere |
+| **Supabase / Railway** | Piani gratuiti (Supabase si mette in pausa dopo 7 giorni di inattività) | Railway Free non basta per l'API sempre attiva | Railway Hobby $5/mese subito; Supabase Pro $25 al go-live | Backup (solo Pro) |
+
+**Costi prima del primo cliente:**
+
+| Voce | €/mese |
+|---|---|
+| Railway Hobby | ~5 |
+| Abbonamento Claude Code (sviluppo) | ~200 |
+| NextPax, solo se fatturato dalla firma | (350) |
+| **Totale** | **~€205/mese** (~€555 se NextPax fattura dalla firma) |
+
+Tutto il resto è a consumo, in sandbox gratuita, oppure si attiva al go-live.
+
+**Azioni consigliate:**
+1. **NextPax:** chiedere per iscritto che il minimo di €350 decorra dal go-live del primo cliente, non dalla firma.
+2. **Sumsub:** restare in sandbox, senza attivare la prova che passa da sola in produzione. Didit è gratis anche in sandbox ed è l'opzione naturale prima dei ricavi.
+3. **Alloggiati e Ross1000:** per il collaudo serve una **struttura reale**: quella del PO oppure un host pilota che fornisce le credenziali. Fino ad allora si usa l'operazione `Test`, che valida senza inviare.
+4. **Octorate:** chiedere se il PoC richiede un abbonamento.
+
+Fonti:
+- <https://docs.didit.me/integration/sandbox-testing>
+- <https://docs.sumsub.com/docs/self-service>
+- <https://docs.sumsub.com/docs/sandbox-mode>
+- <https://docs.stripe.com/sandboxes>
+- <https://invoicetronic.com/en/docs/sandbox/>
+- <https://www.acubeapi.com/en/services/free-sandbox-environment>
+- <https://nextpax.com/products/supply-api>
+- <https://api.octorate.com/connect/start.html>
+- <https://www.seam.co/docs/core-concepts/workspaces>
+- <https://developers.facebook.com/documentation/business-messaging/whatsapp/about-the-platform>
+- <https://aws.amazon.com/bedrock/pricing/>
+- <https://questure.poliziadistato.it/statics/13/manualewebsercices_alloggiatiweb.pdf>
+- <https://railway.com/pricing>
+- <https://supabase.com/pricing>
 
 ---
 
