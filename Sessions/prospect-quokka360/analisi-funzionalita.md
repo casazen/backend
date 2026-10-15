@@ -294,7 +294,7 @@ Prezzi ufficiali, IVA esclusa, al 2026-10-15. Per prudenza USD = EUR 1:1.
 | Verifica identità Didit | $0,33 (+$0,15 con NFC) a verifica | Sumsub $1,35 |
 | Serrature Seam | $5 per serratura | Rivenduto a €6 |
 | Fatture SDI, AI DeepSeek, video Daily | ~€0,4/unità | Daily gratis fino a 10.000 minuti |
-| **Back-office "adempimenti gestiti"** (operatore) | Stima mia: ~€300–600/mese per 250 unità | Ipotesi: Ticino 15 min/giorno + 5 min/unità/mese sui portali comunali, €25/h. **Da validare** |
+| **Back-office "adempimenti gestiti"** | **€0 di cassa: per ora lo svolge il PO** (decisione del 2026-10-15) | Tempo stimato per 250 unità: ~15–20 ore/mese (Ticino ~15 min/giorno + ~5 min/unità/mese sui portali comunali). Ipotesi da validare |
 
 ### 5.2 Cosa pagano i clienti direttamente a terzi
 
@@ -327,7 +327,12 @@ Non sono né costi né ricavi per CasaZen:
 - **Scenario A** (piattaforma pronta, nessun cliente): CasaZen perde ~€730 al mese, di cui €350 sono il minimo NextPax. Conviene firmare con NextPax solo quando il primo cliente è vicino.
 - **Scenario B** (Quokka partner): il partner copre tutti i costi, compresi i fissi, e lascia ~€270 al mese di margine. È un pareggio voluto, non un guadagno.
 - **Scenario C** (stessa dimensione a listino): ~€830–1.130 al mese. La differenza con B è il prezzo che si rinuncia a chiedere ai partner.
-- **Non sono inclusi:** il tuo tempo (assistenza e vendita), i pareri legali una tantum e il costo di sviluppo (§7).
+- **Back-office:** per ora lo svolge il PO, quindi l'opzione "adempimenti gestiti" (€4/unità dove non c'è API) è tutta margine di cassa.
+- **Condizioni per farlo in modo sostenibile:**
+  - CasaZen deve preparare in automatico i file (XML Ticino, CSV comunali) e i promemoria, così che l'operatore debba solo caricarli e scaricare la ricevuta;
+  - serve **un sostituto** abilitato sugli stessi portali (con proprie credenziali) per ferie e malattia: la notifica in Ticino va fatta entro 24 ore, 7 giorni su 7;
+  - mandato scritto e accordo sul trattamento dei dati (GDPR art. 28) con l'agenzia, anche se l'operatore è il PO.
+- **Non sono inclusi:** il tempo del PO (assistenza, vendita, back-office), i pareri legali una tantum e il costo di sviluppo (§7).
 
 **Rispetto ai calcoli precedenti:** i costi fissi passano da ~€400 a ~€730/mese, perché il minimo NextPax (€350) ora è contato tra i fissi e non per unità. Il canone partner di Quokka (§6.3) resta ~€1.730 + verifiche: copre comunque tutti i costi.
 
