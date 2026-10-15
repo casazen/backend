@@ -55,7 +55,7 @@ Ma CasaZen **non è ancora vendibile**:
 1. listino unico **per unità** al posto di 29/79/199 piatti;
 2. condizioni Founding Partner con un termine;
 3. **contratto quadro con Quokka prima di firmare con NextPax**: pilota, criteri di successo e condizioni a regime già fissati;
-4. società italiana: forma e regime (§10);
+4. **SRL italiana come startup innovativa** (§10.1). Prima di costituirla, rileggere il contratto di lavoro su attività accessorie e proprietà del software (§10.2);
 5. **chi risponde a Quokka mentre sei al lavoro**: il supporto in orario d'ufficio è il rischio operativo principale (§8);
 6. **Didit** come fornitore di verifica: con Sumsub il pacchetto tutto compreso va in perdita.
 
@@ -67,7 +67,7 @@ Ma CasaZen **non è ancora vendibile**:
 
 | Tema | Stato | Fonte |
 |---|---|---|
-| Società | **Non costituita.** Dati societari vuoti, partita IVA assente, checkout SaaS bloccato (409) | `Casazen.Web/appsettings.json:63,165-175`; `Sessions/risanamento/DOMANDE-APERTE.md:262,275` ✓ |
+| Società | **Non costituita.** Dati societari vuoti, partita IVA assente, checkout SaaS bloccato (409). Orientamento: SRL italiana (§10.1) | `Casazen.Web/appsettings.json:63,165-175`; `Sessions/risanamento/DOMANDE-APERTE.md:262,275` ✓ |
 | Team | 1 persona (PO e fondatore) + agenti AI: dal 2026-06-01, 462 commit di Claude e ~114 di Cursor | git log ✓ |
 | Tempo del fondatore | Residente in Italia, frontaliere, **lavoro dipendente full-time in Svizzera**, che resta. Su CasaZen: requisiti, test, ricerca dei clienti. Lo sviluppo procede con flussi agentici. Nessun compenso | PO, 2026-10-15 |
 | Clienti, ricavi | **Zero.** Vendita su invito privato, registrazioni Auth0 chiuse (2026-10-13) | git `e02783cb`; `spec-public-marketing-site.md:26,52` ✓ |
@@ -522,7 +522,7 @@ Unità a listino (€15, contribuzione €7,61) necessarie per coprire:
 
 - Oggi il fondatore resta dipendente: vale la prima riga.
 - Le righe successive dicono **quando ha senso lasciare il lavoro** (cancello G5).
-- I compensi sono livelli di esempio, non una proposta. Il costo per l'azienda dipende dalla forma societaria (§10).
+- I compensi sono livelli di esempio, non una proposta. Il costo per l'azienda dipende dalla forma societaria (§10.1).
 - Nello scenario obiettivo neanche la soglia di €3.000 si raggiunge entro ott 2029: 919 unità, ma per circa metà Founding Partner, a contribuzione più bassa.
 
 ### 9.5 Sensibilità sullo scenario C
@@ -555,7 +555,7 @@ Il compenso del fondatore resterebbe il primo fattore se cambiasse la decisione 
 | €6.000/mese dall'avvio del pilota | ~€131k e oltre, senza pareggio a 36 mesi | Capitale esterno. **Non coerente** con il ritmo commerciale dello scenario C |
 
 **Finanziamenti pubblici:**
-- Smart&Start, credito d'imposta R&S e startup innovativa restano opzioni per una società italiana (§10).
+- Smart&Start, credito d'imposta R&S e startup innovativa restano opzioni per una società italiana (§10.1).
 - Sono lenti (3–12 mesi) e non vanno contati per il fabbisogno dei primi mesi (piano di giugno §12).
 
 ### 9.7 Ipotesi da validare (in ordine di impatto)
@@ -572,15 +572,59 @@ Il compenso del fondatore resterebbe il primo fattore se cambiasse la decisione 
 
 ## 10. Aspetti legali, fiscali e societari ⚖
 
+### 10.1 Scelta della società
+
+**Situazione:** il fondatore è residente in Italia, frontaliere, dipendente full-time in Svizzera (PO, 2026-10-15). Norme verificate su fonte ufficiale il 2026-10-15:
+
+| Opzione | Regola | Esito per CasaZen |
+|---|---|---|
+| **GmbH o AG svizzera** | La società "deve poter essere rappresentata da una persona domiciliata in Svizzera", che sia gerente o direttore (CO art. 814 cpv. 3; per la AG art. 718 cpv. 4) ✓ | **Non percorribile da solo.** Serve un socio o un gerente domiciliato in Svizzera. E non serve per vendere in Svizzera (§10.2) |
+| **Ditta individuale in regime forfettario** | Esclude chi nell'anno precedente ha avuto redditi da lavoro dipendente oltre **€35.000** (anni 2025 e 2026), con la soglia che torna a **€30.000 dal 2027** (TU imposte sui redditi, D.Lgs. 117/2026 art. 233). L'AdE applica la soglia **anche al lavoro all'estero**, sul reddito lordo (risposte 81/2021 e 257/2021) ✓. Responsabilità illimitata | **Quasi certamente esclusa** se lo stipendio lordo supera la soglia. [NV] se la franchigia dei frontalieri riduce l'importo da confrontare: nessun documento AdE specifico trovato. In ogni caso è inadatta: con un cliente da 250 unità e uno SLA, la responsabilità illimitata è un rischio personale |
+| **SRL semplificata** | Solo persone fisiche; capitale da €1 a €9.999,99 versato in denaro; atto pubblico sul **modello standard, con clausole inderogabili** (c.c. art. 2463-bis). Atto e iscrizione esenti da bollo e diritti di segreteria, **senza onorari notarili** (DL 1/2012 art. 3 c. 3) ✓. Non sono esenti l'imposta di registro e il diritto annuale della Camera di commercio | **Opzione a costo minimo** con responsabilità limitata. Limite: lo statuto standard non permette clausole per soci di capitale o categorie di quote. Si trasforma in SRL quando entra un socio o un investitore |
+| **SRL ordinaria** | Statuto libero; costi notarili [NV, da preventivo] | Da preferire se entro 12–18 mesi entra un socio (commerciale o per il supporto, BP-D11) o un investitore |
+| **Iscrizione come startup innovativa** (sopra SRLS o SRL) | DL 179/2012 art. 25 c. 2. Requisiti: PMI; costituita da non più di 60 mesi; sede in Italia; oggetto innovativo ad alto valore tecnologico, non prevalentemente agenzia o consulenza. In più **almeno uno** fra tre (lett. h): R&S ≥ **15%** del maggiore tra costi e valore della produzione; personale qualificato; **titolarità di un software originale registrato nel Registro pubblico speciale per i programmi per elaboratore**, legato all'oggetto sociale ✓ | **Requisito raggiungibile** registrando il software CasaZen. Benefici dalla pagina MIMIT ✓ (art. 26 c. 8): esenzione da bolli, diritti di segreteria e diritto annuale camerale; accesso agevolato al Fondo di garanzia PMI; Smart&Start; incentivi agli investitori. **Durata:** 3 anni, estendibili fino a 5 solo con requisiti aggiuntivi (L. 193/2024 art. 28). [NV] se c'è un bando Smart&Start aperto |
+
+**Raccomandazione (BP-D4):**
+- **SRL italiana iscritta come startup innovativa:**
+  - semplificata se il fondatore resta solo;
+  - ordinaria se si prevede un socio a breve.
+- Si esclude la società svizzera.
+- Da confermare con il commercialista, con **tre domande precise**:
+  1. **Previdenza:** il fondatore è dipendente in Svizzera e amministratore non retribuito della SRL in Italia. Quale legislazione si applica? Riferimento da verificare: Reg. CE 883/2004 art. 13, applicabile alla Svizzera con l'accordo sulla libera circolazione [NV].
+  2. **Costi annui reali** della SRL: commercialista, bilancio, diritto annuale, PEC, firma digitale. Sostituiscono il segnaposto di €150/mese in §9.2.
+  3. **Ruoli:** chi ricopre il ruolo di amministratore, e con quali poteri, se entra un socio.
+
+### 10.2 Contratto di lavoro e proprietà del software (prima di costituire)
+
+Le norme svizzere sono verificate su Fedlex. Il contratto individuale può essere più restrittivo.
+
+| Norma | Contenuto | Cosa fare |
+|---|---|---|
+| LDA (URG) art. 17 | Il software creato da un dipendente **nell'esercizio dell'attività di servizio e** nell'adempimento degli obblighi contrattuali spetta al datore di lavoro. Le due condizioni valgono insieme ✓ | Lo sviluppo di CasaZen deve restare fuori dalle mansioni, fuori orario e senza mezzi del datore di lavoro (computer, account, licenze) |
+| CO art. 332 | Le invenzioni fatte nell'attività di servizio ma fuori dagli obblighi contrattuali spettano al datore di lavoro **solo** se c'è un accordo scritto ✓ | Rileggere il contratto: cercare clausole di cessione preventiva |
+| CO art. 321a cpv. 3–4 | Durante il rapporto è vietato il lavoro retribuito per terzi che violi il dovere di fedeltà, in particolare se fa concorrenza al datore di lavoro. Il segreto resta anche dopo la fine del rapporto ✓ | Verificare che CasaZen non sia concorrente del datore di lavoro e non usi informazioni riservate. Se il contratto chiede di autorizzare le attività accessorie, ottenere l'autorizzazione per iscritto |
+
+**Perché conta per il business plan:** la titolarità del software è il primo controllo che fanno un investitore, un acquirente o un cliente enterprise. Ed è anche un requisito della startup innovativa (registrazione del software, §10.1).
+
+### 10.3 IVA e fatturazione
+
+| Caso | Regola | Esito |
+|---|---|---|
+| Agenzia italiana (B2B) | IVA 22%, fattura elettronica SDI | Serve un provider SDI (P1) |
+| **Agenzia svizzera (B2B)** | Servizio fuori campo IVA italiana: luogo della prestazione = paese del committente soggetto passivo (DPR 633/72 art. 7-ter; dal 2027 TU IVA, D.Lgs. 10/2026 art. 17) ✓. In Svizzera paga il cliente con l'imposta sull'acquisto, se è iscritto all'IVA o compra oltre CHF 10.000 l'anno (LIVA art. 45) ✓ | **Nessuna registrazione IVA in Svizzera**, se si vende solo a imprese (LIVA art. 10 cpv. 2 lett. b n. 2) ✓ |
+| Host svizzero non iscritto all'IVA (B2C) | I servizi informatici a destinatari non contribuenti obbligano un fornitore estero a registrarsi in Svizzera, se il fatturato **mondiale** supera CHF 100.000 (LIVA art. 10). Serve anche un rappresentante fiscale svizzero (art. 67) ✓ | **Nel piano, in Svizzera si vende solo a imprese.** Nello scenario C il fatturato complessivo del terzo anno (~€132k) è nell'ordine della soglia: vendere anche a host svizzeri privati renderebbe obbligatoria la registrazione |
+| Host UE privati (B2C) | Oltre €10.000 di vendite transfrontaliere: OSS | Build già previsto (`spec-saas-billing` AC7b) |
+| Dal 1/1/2027 | Entrano in vigore il TU IVA (D.Lgs. 10/2026) e il TU imposte sui redditi (D.Lgs. 117/2026), che rinumerano le norme ✓ | Riverificare i riferimenti in fatture, contratti e file AdE |
+
+### 10.4 Altri temi
+
 | Tema | Stato e rischio | Azione |
 |---|---|---|
-| Società | Non esiste. La forma (SRL/SRLS in Italia, oppure un veicolo svizzero) dipende dalla residenza del fondatore e dai clienti (IT+CH). Il piano di giugno escludeva il forfettario per una società | Parere del commercialista (**BP-D4**) |
-| IVA sulle vendite | B2B italiano: 22% con SDI. B2B svizzero: servizio fuori dal campo IVA italiana (art. 7-ter DPR 633/72) e imposta svizzera a carico del cliente ⚖ [NV]. B2C UE oltre €10k: OSS | Parere; build già previsto (`spec-saas-billing` AC7b) |
-| Pagamenti ospiti | L'agenzia è l'esercente: CasaZen **non** è sostituto d'imposta né responsabile della tassa di soggiorno per l'incasso (PR #526 §3.3) | Restano i pareri DAC7 e Reg. 2024/1028 sul sito di prenotazione |
-| Biometria | GDPR art. 9: consenso e alternativa equivalente obbligatoria; DPIA; cancellazione delle immagini alla ricevuta Alloggiati (nota del Garante 29/04/2026); CdS 9101/2025 | DPIA prima del go-live (cancello G1) |
+| Pagamenti degli ospiti | L'agenzia è l'esercente: CasaZen **non** è sostituto d'imposta né responsabile della tassa di soggiorno per l'incasso (PR #526 §3.3) | Restano i pareri su DAC7 e Reg. 2024/1028 per il sito di prenotazione |
+| Biometria | GDPR art. 9: consenso e alternativa equivalente obbligatoria; DPIA; cancellazione delle immagini alla ricevuta Alloggiati (nota del Garante 29/04/2026); CdS 9101/2025 | DPIA prima del pilota (cancello G1) |
 | Svizzera | Ticino: divieto di fotocopiare il documento (RL 942.120 art. 6, PR #526 §3.5); legge federale sulla protezione dei dati (nLPD) per i dati CH [NV] | Verifica legale del flusso CH |
 | Responsabilità | Le responsabilità di legge restano all'agenzia; CasaZen promette "compliance automatizzata" | Limitazioni di responsabilità e SLA nei contratti |
-| Contratti | ToS, DPA, SLA, contratto Founding Partner, contratti fornitori (NextPax, Didit) con DPA e sub-responsabili | Revisione legale (P4) |
+| Contratti | ToS, DPA, SLA, contratto quadro Quokka, contratto Founding Partner, contratti fornitori (NextPax, Didit) con DPA e sub-responsabili | Revisione legale (P4) |
 
 ---
 
@@ -599,7 +643,7 @@ Il compenso del fondatore resterebbe il primo fattore se cambiasse la decisione 
 | R9 | Norme: biometria contestata, CdS 9101/2025, TU IVA 2027, Reg. 2024/1028 | Media / Medio | Alternativa in videochiamata; pareri; riverifica delle norme prima dello sviluppo |
 | R10 | Stima di sviluppo ottimistica (±40%; storico di funzioni "scritte ma non funzionanti") | Alta / Medio | 5–6 mesi nel piano; collaudo su dati reali; cancello G1 |
 | R11 | Prezzi instabili (tre cambi in cinque giorni) | Alta / Medio | BP-D1 come decisione unica, pubblicata e versionata |
-| R12 | **Compatibilità con il lavoro dipendente:** clausole su attività accessorie, concorrenza e proprietà intellettuale del software ⚖ | Da verificare / Alto | Rileggere il contratto di lavoro e il regolamento aziendale prima di costituire la società (§10); sviluppare fuori orario e senza mezzi del datore di lavoro |
+| R12 | **Compatibilità con il lavoro dipendente:** clausole su attività accessorie, concorrenza e proprietà intellettuale del software ⚖ | Da verificare / Alto | Rileggere il contratto di lavoro e il regolamento aziendale prima di costituire la società (§10.2); sviluppare fuori orario e senza mezzi del datore di lavoro |
 
 ---
 
@@ -637,7 +681,7 @@ Il compenso del fondatore resterebbe il primo fattore se cambiasse la decisione 
 | **BP-D1** | Listino | Un solo listino per unità per B2C e B2B (Base €9/8/7; tutto compreso €15/14/13; canone minimo per gli host piccoli), al posto di 29/79/199 piatti | Sostituisce le decisioni dell'8/10, del 9/10 e del 13/10; chiude P5 |
 | **BP-D2** | Founding Partner | Prezzo vincolato 36 mesi (non "per tutto il rapporto"), posti limitati, quota fissa ricalcolata per le agenzie piccole | ~€1.500/mese di contribuzione in più a regime |
 | **BP-D3** | Quokka | Accettare circa −€300/mese finché Quokka è l'unico cliente, oppure alzare la quota fissa del canone partner; prezzo del pilota | Scenario A |
-| **BP-D4** | Società | Paese e forma (parere del commercialista) | Sblocca P1 e tutti gli incassi |
+| **BP-D4** | Società | **SRL italiana** (semplificata se da solo, ordinaria se entra un socio) **iscritta come startup innovativa** tramite registrazione del software. Esclusa la GmbH svizzera, che richiede un rappresentante domiciliato in Svizzera. Forfettario quasi certamente escluso per il reddito da lavoro dipendente. Conferma del commercialista sulle 3 domande di §10.1 | Sblocca P1 e tutti gli incassi |
 | ~~BP-D5~~ | Fondatore | **Deciso (2026-10-15):** resta dipendente full-time, nessun compenso; su CasaZen requisiti, test e vendita. Lascia il lavoro solo al cancello G5 | Pareggio a ~170 unità; fabbisogno ~€13–20k |
 | **BP-D6** | Verifica d'identità | Didit (Sumsub rende il tutto compreso in perdita) | §9.1 |
 | **BP-D7** | Regola "zero costi" | Superata dal primo cliente: ~€455/mese prima del go-live, ~€1.295 dopo | P2, P3 |
@@ -670,6 +714,27 @@ Il compenso del fondatore resterebbe il primo fattore se cambiasse la decisione 
 - BFS, comunicato 2026-0358: <https://dam-api.bfs.admin.ch/hub/api/dam/assets/36633039/master>
 - BFS, dati 2024: <https://dam-api.bfs.admin.ch/hub/api/dam/assets/35995400/master>
 - Ticino Turismo, tassa di soggiorno: <https://www.ticino.ch/en/hospitality/opportunita/tasse/alloggio.html>
+
+**Società, lavoro e IVA:**
+- Codice delle obbligazioni (artt. 321a, 332, 718, 814): <https://www.fedlex.admin.ch/eli/cc/27/317_321_377/de#art_814>
+- Legge sul diritto d'autore, art. 17: <https://www.fedlex.admin.ch/eli/cc/1993/1798_1798_1798/de#art_17>
+- LIVA, artt. 10, 45, 67: <https://www.fedlex.admin.ch/eli/cc/2009/615/it#art_10>
+- AFC, imprese estere: <https://www.estv.admin.ch/de/mwst-steuerpflicht-auslaendische-unternehmen>
+- AFC, imposta sull'acquisto: <https://www.estv.admin.ch/de/steuerpflicht-bezugsteuer-mwst>
+- L. 190/2014 art. 1 c. 57: <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:legge:2014-12-23;190~art1-com57>
+- L. 207/2024 art. 1 c. 12: <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:legge:2024-12-30;207~art1-com12>
+- L. 199/2025 art. 1 c. 27: <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:legge:2025-12-30;199~art1-com27>
+- D.Lgs. 117/2026: <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2026-06-19;117>
+- AdE, regime forfetario: <https://www.agenziaentrate.gov.it/portale/regime-forfetario-le-regole-2020-/infogen-regime-forfetario-le-regole-2020->
+- AdE, risposta 81/2021: <https://www.agenziaentrate.gov.it/portale/documents/20143/3158187/Risposta+n.+81_03.02.2021.pdf/f8dd07f0-d235-d985-db4f-ce9639b381e1>
+- AdE, risposta 257/2021: <https://www.agenziaentrate.gov.it/portale/documents/20143/3357291/Risposta_257_16.04.2021.pdf/5f302cdc-1622-1c39-13fd-89f3e5124d55>
+- c.c. art. 2463-bis: <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:regio.decreto:1942-03-16;262~art2463bis>
+- DL 1/2012 art. 3: <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legge:2012-01-24;1~art3>
+- DL 179/2012 art. 25: <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legge:2012-10-18;179~art25>
+- L. 193/2024: <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:legge:2024-12-16;193>
+- MIMIT, startup innovative: <https://www.mimit.gov.it/it/startup-innovative>
+- DPR 633/72 art. 7-ter: <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.del.presidente.della.repubblica:1972-10-26;633~art7ter>
+- D.Lgs. 10/2026 (TU IVA): <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2026-01-19;10>
 
 **Norme:**
 - Agenzia delle Entrate, guida locazioni brevi (aprile 2026): <https://www.agenziaentrate.gov.it/portale/documents/d/guest/locazioni_brevi_disciplina_fiscale_e_regole_per_intermediari_aprile-2026>
