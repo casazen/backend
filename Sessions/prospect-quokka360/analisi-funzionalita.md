@@ -1,6 +1,6 @@
 # Tipo host "Agenzia" (B2B): analisi delle 6 funzionalità richieste
 
-**Versione:** v2, 2026-10-15. Sostituisce la v1 del 2026-10-14.
+**Versione:** v3, 2026-10-15. Aggiunge le decisioni raccolte nell'intervista al PO (§6). Sostituisce v2 (2026-10-15) e v1 (2026-10-14).
 **Origine:** requisiti indispensabili posti dal prospect Quokka 360 per proseguire la collaborazione.
 **Tipo:** analisi pre-vendita, nessuna modifica di codice.
 **Metodo:** analisi del codice di `backend`, `frontend` e `mobile` e ricerca su fonti ufficiali (OTA, Stripe, enti pubblici, autorità privacy, documentazione dei fornitori).
@@ -32,10 +32,10 @@ Tre regole **non sono realizzabili alla lettera** per vincoli esterni (legge, St
 
 | Regola | Vincolo esterno verificato | Variante proposta |
 |---|---|---|
-| **R6/R9: riconoscimento facciale obbligatorio** | GDPR art. 9: il dato biometrico richiede consenso esplicito e **non si può condizionare il servizio al consenso**. EDPB Linee guida 3/2019 §86: va offerta un'alternativa *"without restraints or additional cost"*. Il Garante ha sanzionato con €50.000 un consenso biometrico "obbligatorio" (eCampus, 29/01/2026). In Svizzera vale lo stesso (nLPD art. 6 + guida EDÖB). | **Check-in online obbligatorio** (dati + documento). Il **riconoscimento facciale è il percorso predefinito proposto all'ospite**, con consenso esplicito, e c'è un'**alternativa equivalente**: videochiamata con operatore. Vedi §3.6 |
+| **R6/R9: riconoscimento facciale obbligatorio** | GDPR art. 9: il dato biometrico richiede consenso esplicito e **non si può condizionare il servizio al consenso**. EDPB Linee guida 3/2019 §86: va offerta un'alternativa *"without restraints or additional cost"*. Il Garante ha sanzionato con €50.000 un consenso biometrico "obbligatorio" (eCampus, 29/01/2026). In Svizzera vale lo stesso (nLPD art. 6 + guida EDÖB). **Check-in online obbligatorio** (dati + documento). Il **riconoscimento facciale è il percorso predefinito**, tramite **API di terzi** (D5: sviluppo interamente in casa non realistico), con consenso esplicito e un'**alternativa equivalente** in videochiamata. Vedi §3.6 |
 | **R6, validità del check-in in Italia** | Consiglio di Stato n. 9101/2025: il controllo deve avvenire *"hic et nunc"* all'**ingresso della struttura**. Un selfie fatto prima dell'arrivo non basta. | Verifica facciale **all'arrivo**, tramite QR rotante esposto all'ingresso. Parere scritto del Viminale prima di eliminare l'operatore umano ⚖ |
-| **R2: tutti i flussi in Stripe** | I payout di Airbnb e Booking.com arrivano sul conto bancario dell'agenzia, **fuori da Stripe**. L'unico strumento Stripe per portarli dentro è Treasury for platforms: Italia in *private preview*, solo EUR, **Svizzera non disponibile**. | Le prenotazioni dirette passano interamente in Stripe. Per i ricavi OTA: chiedere subito l'accesso a Treasury, oppure deroga motivata (§3.3, decisione D3) |
-| **R4: nessun flusso manuale** | **Non esiste un'API** per: dichiarazioni AdE (imposta di soggiorno annuale, CU/770, DAC7, dati locazioni brevi); notifica ospiti alla polizia in **Ticino** (solo caricamento di file); tassa di soggiorno di Como, Trapani, Tropea, Genova, Portofino, S. Margherita, Cinque Terre e delle OTR ticinesi; F24 (solo per conti Banca Sella o tramite intermediario Entratel); verifica CIN. | Automazione **fino al confine dell'ente**. Oltre quel confine: (a) richiesta formale di API ai fornitori degli enti; (b) **intermediario abilitato** che riceve i dati via API da CasaZen e trasmette (delega R7). Elenco puntuale in §3.5 |
+| **R2: tutti i flussi in Stripe** | I payout di Airbnb e Booking.com arrivano sul conto bancario dell'agenzia, **fuori da Stripe**. L'unico strumento Stripe per portarli dentro è Treasury for platforms: Italia in *private preview*, solo EUR, **Svizzera non disponibile**. | Le prenotazioni dirette passano interamente in Stripe (D2). Per i ricavi OTA la decisione D3 è **in attesa di verifica del PO**: opzioni con processo, costi e responsabilità in §3.3 |
+| **R4: nessun flusso manuale** | **Non esiste un'API** per: dichiarazioni AdE (imposta di soggiorno annuale, CU/770, DAC7, dati locazioni brevi); notifica ospiti alla polizia in **Ticino** (solo caricamento di file); tassa di soggiorno di Como, Trapani, Tropea, Genova, Portofino, S. Margherita, Cinque Terre e delle OTR ticinesi; F24 (solo per conti Banca Sella o tramite intermediario Entratel); verifica CIN. | **D6, deciso:** l'utente fa **tutto da CasaZen e riceve in CasaZen la ricevuta** dell'operazione. Dove non c'è API agisce un intermediario partner (AdE, F24) oppure un back-office CasaZen o del partner come utente delegato sui portali (comuni, Ticino). I costi extra sono accettati. Dettaglio in §3.5 |
 
 ### Le 6 funzionalità in breve
 
@@ -43,10 +43,10 @@ Tre regole **non sono realizzabili alla lettera** per vincoli esterni (legge, St
 |---|---|---|---|
 | 1 | OTA: contenuti, ARI, chat AI | Channel manager via API. **Unico fornitore che dichiara contenuti + messaggi per tutte e 4 le OTA: NextPax** (da confermare per iscritto). **Alternativa: Octorate** (Airbnb + Booking.com + Vrbo; manca la gestione dei contenuti su Expedia). Channex e Rentals United sono **scartati** (R5) | NextPax / Octorate |
 | 2 | CRM e campagne AI | CRM nel nostro DB, invio via Resend (team separato) o SES, WhatsApp via Meta Cloud API | Resend / SES / Meta |
-| 3 | Portale proprietari e fatturazione | Ruolo `PropertyOwner`, rendiconti automatici, split Stripe a 4 parti, fatture con invio SDI via API | Stripe Connect + Invoicing; A-Cube / Invoicetronic |
+| 3 | Portale proprietari e fatturazione | Ruolo `PropertyOwner`, rendiconti automatici, CasaZen incassa e Stripe ripartisce (D2), documenti fiscali generati da CasaZen per conto di ciascun emittente con invio SDI via API | Stripe Connect; Invoicetronic / A-Cube / Openapi |
 | 4 | Fornitori e staff propri | Default: marketplace CasaZen con pagamento Stripe e commissione. Opzione in configurazione: fornitori propri registrati in CasaZen e legati all'agenzia (0%, fatturazione fuori da CasaZen) + staff | — |
-| 5 | Fiscalità IT + CH | Build dove c'è un'API ufficiale; partner dove no; intermediario per Entratel | Polizia di Stato, Regioni, feratel/Chekin, Taxually, intermediario Entratel |
-| 6 | Routine AI e check-in | Motore di attività + AI; check-in biometrico conforme con alternativa video | IDnow / Namirial / Veriff; serrature via Seam/Nuki/igloohome |
+| 5 | Fiscalità IT + CH | Build dove c'è un'API ufficiale; intermediario partner per AdE e F24; back-office delegato per comuni e Ticino; ricevuta sempre in CasaZen (D6) | Polizia di Stato, Regioni, feratel, intermediario Entratel, Openapi pagoPA |
+| 6 | Routine AI e check-in | Motore di attività + AI; check-in biometrico via API di terzi con alternativa video (D5) | Didit / Sumsub (PoC); serrature via Seam/Nuki/igloohome |
 
 **Ordine di grandezza (indicativo, da validare con il team):** circa **110–150 settimane-persona**, cioè 12–18 mesi con 2 sviluppatori. Non include QA, pareri legali e i tempi dei fornitori (conferme scritte, accesso a Treasury, credenziali degli enti).
 
@@ -78,9 +78,10 @@ Tre regole **non sono realizzabili alla lettera** per vincoli esterni (legge, St
 | Check-in online (dati + documento) | Obbligatorio | Obbligatorio |
 | Riconoscimento facciale | Attivabile dall'host | Percorso predefinito, con consenso e alternativa video (§3.6) |
 | Portale proprietari | — | ✓ |
+| Prezzo CasaZen | Piani attuali | **Solo canone per unità** (D1): nessuna percentuale sulle prenotazioni |
 | Fornitori marketplace CasaZen | ✓ | ✓ **default** |
 | Staff e fornitori propri (registrati in CasaZen, 0%, fatturazione fuori da CasaZen) | — | Opzione in configurazione |
-| Flusso Stripe | **Direct charge** sull'account dell'host (come oggi, `docs/runbooks/stripe.md:244`) | **Separate charges and transfers** con `on_behalf_of` = agenzia (§3.3) |
+| Flusso Stripe | **Direct charge** sull'account dell'host (come oggi, `docs/runbooks/stripe.md:244`) | **CasaZen incassa e Stripe ripartisce** (separate charges and transfers; `on_behalf_of` = agenzia per le agenzie italiane). Commissioni Stripe ripartite in proporzione tra agenzia e proprietario (§3.3) |
 
 ---
 
@@ -116,7 +117,13 @@ Un fornitore può **automatizzare** l'adempimento, ma la responsabilità resta i
 
 **Promessa commerciale corretta:** "compliance automatizzata", mai "compliance delegata".
 
-**Da seguire [NV]:** secondo Normattiva i commi 5 e 5-bis dell'art. 4 DL 50/2017 sono abrogati dal 1/1/2027 da un decreto legislativo del 2026 (probabile spostamento in un testo unico). Va riverificato prima di sviluppare.
+**Norme che cambiano dal 1/1/2027** (lo sviluppo cadrà dopo questa data):
+- **Testo unico IVA**, D.Lgs. 19/01/2026 n. 10: si applica dal 1/1/2027 e sostituisce il DPR 633/72 (verificato: <https://www.normattiva.it/eli/id/2026/01/30/26G00022/ORIGINAL>). Corrispondenze indicate dalla ricerca [NV]:
+  - art. 21 (fattura) → art. 72;
+  - art. 3 c. 3 (mandato) → art. 10 c. 3;
+  - art. 15 (esclusioni dalla base imponibile) → art. 29.
+- **Art. 4 DL 50/2017** (locazioni brevi, ritenuta, imposta di soggiorno): secondo la ricerca confluisce nel testo unico delle imposte sui redditi, D.Lgs. 117/2026, artt. 207–208 [NV].
+- Prima di sviluppare, verificare il testo vigente di entrambe le norme.
 
 ---
 
@@ -189,50 +196,91 @@ Invariato rispetto alla v1, salvo la matrice B2C/B2B.
 
 **Perché serve un altro tipo di addebito.** Con direct o destination charge un pagamento va a **un solo** account collegato. Stripe **non trasferisce da un account collegato a un altro**: i fondi passano sempre dalla piattaforma. Per dividere lo stesso pagamento tra agenzia, proprietario e CasaZen serve quindi **separate charges and transfers (SCT)** (<https://docs.stripe.com/connect/separate-charges-and-transfers>).
 
-#### Architettura proposta (prenotazioni dirette)
+#### D2, deciso: CasaZen incassa, Stripe ripartisce (prenotazioni dirette)
+
+**Decisione del PO:** CasaZen incassa e Stripe divide i corrispettivi, con il minor numero possibile di transazioni. Le commissioni Stripe si ripartiscono **in proporzione tra agenzia e proprietario**. CasaZen non trattiene nulla sulla prenotazione: si fa pagare **solo con il canone per unità** (D1).
 
 | Parte | Oggetto Stripe | Note |
 |---|---|---|
-| CasaZen | Account piattaforma (IT): Billing, Tax, Invoicing + app A-Cube | Abbonamento SaaS dell'agenzia + quota per prenotazione (trattenuta nello split) |
-| Agenzia | Account collegato con **contratto di servizio completo** (`card_payments` + `transfers`), su Accounts v2 | È **esercente** (`on_behalf_of`) |
-| Proprietario | Account collegato con `transfers`. IT: contratto *recipient* ammesso; **CH: contratto completo** (i recipient non ricevono payout transfrontalieri) | Payout mensile (`interval=monthly`) |
-| Ospite | PaymentIntent sulla piattaforma con `on_behalf_of` = agenzia e `transfer_group` = prenotazione | Carte, SEPA DD, **TWINT** (CHF) |
+| CasaZen | Account piattaforma (IT): Billing per il canone per unità | Nessuna quota sulla prenotazione |
+| Agenzia | Account collegato con **contratto di servizio completo** (`card_payments` + `transfers`) | **Esercente** (`on_behalf_of`) solo per le agenzie **italiane**. Con un'agenzia svizzera, `on_behalf_of` applica le tariffe svizzere (carte UE trattate come internazionali: 3,25% + CHF 0,30), quindi per le prenotazioni in EUR si omette |
+| Proprietario | Account collegato con `transfers`. IT: contratto *recipient* ammesso; **CH: contratto completo** (i recipient non ricevono payout transfrontalieri) | **Payout mensile** (`interval=monthly`) |
+| Ospite | **Un solo PaymentIntent** per prenotazione, sulla piattaforma, con `transfer_group` = prenotazione | Carte, SEPA DD, TWINT (CHF) |
 
-**Sequenza:**
-1. L'ospite paga.
-2. Quando i fondi sono disponibili (o al check-in), partono due trasferimenti con `source_transaction`:
-   - **al proprietario:** canone − commissione agenzia − ritenuta 21% (se dovuta);
-   - **all'agenzia:** commissione + IVA + ritenuta 21% da versare + tassa di soggiorno + pulizie.
-3. **CasaZen** tiene la differenza come quota di piattaforma.
+**Sequenza (minimo numero di transazioni):**
+1. **Un addebito** all'ospite.
+2. **Due trasferimenti** con `source_transaction`, che partono quando l'addebito è regolato. Non serve saldo disponibile sulla piattaforma e Stripe non applica commissioni ai trasferimenti.
+   - **al proprietario:** canone − commissione agenzia − ritenuta 21% (se dovuta) − sua quota proporzionale delle commissioni Stripe;
+   - **all'agenzia:** il resto, cioè commissione + IVA + ritenuta da versare + tassa di soggiorno + pulizie − sua quota proporzionale delle commissioni Stripe.
+3. **Un payout al mese** per ciascun account.
 4. Rimborsi e contestazioni ricadono sulla piattaforma; si recuperano stornando i trasferimenti.
 
-**Fatture:**
-- **Agenzia → proprietario:** fattura della commissione via Stripe Invoicing, emessa *on behalf of* l'agenzia e marcata **pagata fuori Stripe** perché già trattenuta nello split. Nessuna commissione Invoicing (<https://docs.stripe.com/invoicing/connect>). Invio SDI automatico via API.
-- **Svizzera:** con lo split la QR-bill non serve. Se il saldo del proprietario è negativo (spese superiori ai ricavi), addebito Stripe (SEPA DD / TWINT).
+**Da non usare:** Stripe Invoicing (+0,4%), Stripe Tax sul soggiorno (non ha un codice per gli alloggi: si usano aliquote manuali), Instant Payouts (+1%).
+
+**Costo Stripe, esempio verificato** (prenotazione €1.000; un proprietario con 4 prenotazioni al mese; 2 account attivi):
+
+| Metodo di pagamento | Commissioni del mese | % dell'incassato |
+|---|---|---|
+| Carta EEA standard | €74,70 | 1,87% |
+| SEPA Direct Debit | €15,10 | 0,38% |
+
+**Il costo dipende dal metodo di pagamento, non dal numero di trasferimenti.** Accorpare i payout fa risparmiare solo €0,10 ciascuno. Conviene quindi proporre in evidenza il SEPA DD, che però si regola in circa 6 giorni lavorativi e lascia all'ospite 8 settimane per chiedere il rimborso.
+
+Fonti:
+- <https://stripe.com/en-it/pricing>
+- <https://stripe.com/en-it/connect/pricing>
+- <https://docs.stripe.com/connect/separate-charges-and-transfers>
+- <https://docs.stripe.com/connect/charges>
 
 **Vincoli Stripe verificati:**
-- I fondi si possono trattenere **al massimo 90 giorni** in IT e CH (<https://docs.stripe.com/connect/account-balances>). Ok per il ciclo mensile, ma non per prenotazioni pagate molti mesi prima del soggiorno se si vuole girare i soldi solo dopo il check-in.
-- I conti svizzeri non possono essere regolati in EUR: sui trasferimenti EUR → proprietario CH c'è conversione (1–2%) [NV sul cambio esatto applicato ai trasferimenti].
-- **Agenzia svizzera come esercente + split verso proprietari UE: non documentato [NV].** Serve conferma scritta da Stripe.
+- **"Stripe handles pricing" non è disponibile** con questo modello: con gli addebiti creati sulla piattaforma le commissioni sono sempre a carico della piattaforma. CasaZen le ribalta nello split.
+- I fondi si trattengono **al massimo 90 giorni** in IT e CH (<https://docs.stripe.com/connect/account-balances>). Per una prenotazione pagata più di 90 giorni prima del soggiorno, i trasferimenti non possono aspettare il check-in.
+- Sui trasferimenti EUR → proprietario CH c'è conversione di valuta; il tasso si può bloccare con le FX Quote. Tasso esatto [NV].
 
-#### Decisione D2, rischio fiscale e legale ⚖ (bloccante)
+**"Delegare a Stripe la ownership" ha un limite ⚖.** Stripe copre la licenza di pagamento, ma **non gli obblighi fiscali**. Con i fondi che transitano dalla piattaforma resta il rischio che CasaZen sia considerata sostituto d'imposta (ritenuta 21%), responsabile della tassa di soggiorno e gestore di piattaforma ai fini DAC7: l'obbligo ricade su chi *"interviene nel pagamento"* (Circ. AdE 24/E/2017 §2.2.2), e la delega dell'incasso a terzi non lo trasferisce. Con `on_behalf_of` = agenzia e un contratto che nomina CasaZen incaricata dell'incasso per conto dell'agenzia il rischio si riduce. **Prima del go-live serve un parere fiscale o un interpello.**
 
-Con SCT i fondi transitano dal saldo della piattaforma. L'obbligo di ritenuta ricade su chi *"interviene nel pagamento"* e ha la *"materiale disponibilità"* dei fondi (Circ. AdE 24/E/2017 §2.2.2: <https://www.agenziaentrate.gov.it/portale/documents/20143/297757/Circolare+n.+24+del+12+10+2017_Circolare+n.+24+del+12-10-2017.pdf>).
+#### Fattura unica: verifica richiesta dal PO
 
-Rischio concreto: CasaZen potrebbe essere considerata:
-- sostituto d'imposta;
-- responsabile della tassa di soggiorno;
-- gestore di piattaforma ai fini DAC7.
+| Livello | Esito |
+|---|---|
+| **Stripe** | Possibile ma inutile: una Invoice con `on_behalf_of` si può ripartire con i trasferimenti (<https://docs.stripe.com/invoicing/connect>), ma costa +0,4% e **non è una fattura elettronica SDI** (D.Lgs. 127/2015). Meglio il PaymentIntent + documenti fiscali generati da CasaZen |
+| **Italia** | **Una fattura copre un solo fornitore** (art. 21 DPR 633/72, art. 72 del TU IVA dal 2027): servono identità e P.IVA di chi rende la prestazione. CasaZen però può **emettere ogni documento per conto** di ciascun soggetto (fattura emessa da terzo, `SoggettoEmittente` = "TZ"), in automatico |
+| **Svizzera** | Una sola fattura all'ospite è possibile se l'agenzia agisce **in nome proprio** (MWSTG art. 20): alloggio al 3,8% fino al 31/12/2027; la Kurtaxe esposta a parte è esente; fattura solo su richiesta |
 
-Con `on_behalf_of` = agenzia l'esercente è l'agenzia, il che riduce il rischio. **Prima del go-live serve un parere fiscale, e preferibilmente un interpello all'AdE.**
+**Insieme minimo di documenti in Italia** (agenzia con mandato con rappresentanza):
 
-#### Decisione D3, ricavi OTA (la maggior parte del fatturato di un'agenzia)
+| Quando | Documenti |
+|---|---|
+| Per prenotazione | Nessun documento fiscale obbligatorio all'ospite se l'agenzia fattura i suoi servizi al proprietario; una e-fattura dell'agenzia solo se fattura all'ospite |
+| Ogni mese | Una fattura agenzia → proprietario (differita, entro il 15 del mese successivo) + una fattura CasaZen → agenzia (canone) |
+| Ogni anno | CU al proprietario per la ritenuta |
 
-| Opzione | Stato | Valutazione |
-|---|---|---|
-| **Treasury for platforms**: conto finanziario dell'agenzia con IBAN Stripe; l'agenzia vi trasferisce i payout OTA, poi pagamenti in uscita ai proprietari | IT **private preview**, solo EUR, CH non disponibile (<https://docs.stripe.com/treasury/connect>) | **Raccomandata per l'Italia.** Richiedere subito l'accesso a Stripe. CasaZen non detiene mai i fondi |
-| Addebito SEPA all'agenzia, poi trasferimenti ai proprietari | Rischio "aggregazione" tra le attività soggette a restrizioni (<https://stripe.com/legal/restricted-businesses>) | Solo con **approvazione scritta di Stripe** |
-| Payout OTA fuori Stripe, con bonifici ai proprietari generati automaticamente via API bancaria | Fuori da R2 | Deroga a R2 da decidere. **Unica opzione oggi per la Svizzera** |
+Tutti generati da CasaZen con invio SDI via API.
+
+**Una sola fattura all'ospite per l'intero soggiorno** in Italia sarebbe possibile solo con agenzia **senza rappresentanza** (art. 3 c. 3). Ma allora l'IVA si applica all'intero corrispettivo e il proprietario probabilmente perde il regime delle locazioni brevi [NV] ⚖. **Sconsigliato.**
+
+#### D3, in attesa del PO: ricavi OTA verso i proprietari
+
+**Contesto:** Airbnb e Booking.com pagano sul conto bancario dell'agenzia, fuori da Stripe. In ogni opzione serve **un'autorizzazione dell'agenzia almeno una volta al mese**. CasaZen non può muovere da sola i soldi dell'agenzia, e non deve: altrimenti le servirebbe una licenza di pagamento.
+
+| | **A. Stripe Treasury (solo Italia)** | **B. EBICS con la banca dell'agenzia (Svizzera)** | **C. bLink di SIX (Svizzera)** |
+|---|---|---|---|
+| Processo mensile | 1. CasaZen calcola il totale. 2. L'agenzia fa **un bonifico** dalla sua banca al suo conto Stripe: le OTA non possono pagare direttamente lì, *"You should only credit financial accounts using external bank accounts that you own"*. 3. CasaZen paga i proprietari via SEPA (circa 1 giorno) | 1. CasaZen invia i bonifici alla banca dell'agenzia via EBICS. 2. L'agenzia **approva il lotto** nel suo e-banking. 3. La banca paga | Come B, tramite SIX; approvazione di ogni pagamento in e-banking |
+| Costi | Conto e bonifici in entrata gratuiti. Uscite a listino €0,30 per bonifico (prezzi del programma non pubblici) + probabilmente Connect: €2 per account/mese + 0,25% + €0,10 per payout | Canale gratuito (PostFinance, Raiffeisen, ZKB, BancaStato) + normali costi bancari | CHF 5.000 + CHF 200/mese (dal 2027: CHF 2.500 + almeno CHF 250/mese per servizio) + CHF 0,15 per pagamento |
+| Sviluppo | Alto: migrazione degli account delle agenzie da Express v1 a Accounts v2 senza dashboard Stripe; dashboard e assistenza a carico di CasaZen | Medio: client EBICS + contratto EBICS per agenzia | Medio + ammissione SIX (8–12 settimane) |
+| Responsabilità di CasaZen | Dai termini Stripe: dashboard, assistenza, programma di compliance, approvazione Stripe della comunicazione commerciale, gestione delle contestazioni, **responsabilità in solido per i debiti delle agenzie verso Stripe**, manleva. Fondi custoditi da Stripe come moneta elettronica, senza garanzia dei depositi | Solo fornitore di software; la firma resta all'agenzia. Licenza non necessaria [NV] | Come B + contratto SIX e audit annuale |
+| Rischi | *Private preview*: Stripe può dire di no. "Incasso per conto terzi" è tra le attività soggette a restrizioni (<https://stripe.com/legal/restricted-businesses>) | Ogni agenzia deve firmare il contratto EBICS con la propria banca | Costo fisso alto, nessuna automazione in più |
+
+**Ripiego per l'Italia senza Treasury:** un aggregatore autorizzato all'avvio dei pagamenti (es. Fabrick), con autenticazione forte dell'agenzia sul lotto mensile e prezzo da contrattare.
+
+Fonti:
+- <https://docs.stripe.com/treasury/connect>
+- <https://docs.stripe.com/treasury/connect/moving-money/fund-a-financial-account>
+- <https://stripe.com/legal/ssa-services-terms>
+- <https://docs.blink.six-group.com/downloads/contracts/annex4-pricelist-six-en.pdf>
+- <https://www.postfinance.ch/en/business/products/payment-transactions/e-banking-apps-channels/technical-business-channels.html>
+
+**Raccomandazione:** Italia A (con ripiego aggregatore), Svizzera B.
 
 #### Rendiconto proprietario (automatico)
 
@@ -261,12 +309,13 @@ Con `on_behalf_of` = agenzia l'esercente è l'agenzia, il che riduce il rischio.
 - La modalità di pagamento si decide all'accettazione della richiesta, come oggi (`ServiceRequestPaymentMode`): `External` **solo se** chi richiede è l'agenzia legata al fornitore.
 - Il fornitore legato è **a tutti gli effetti un fornitore CasaZen** (confermato dal PO il 2026-10-15). Può lavorare anche per altri host o agenzie tramite il marketplace, e per quei lavori valgono le regole del marketplace (Stripe + commissione).
   - Per i lavori del marketplace serve il suo account Stripe Connect: vale la regola KYC già esistente, che non permette pagamenti prima che l'account Stripe sia pronto (`ServiceRequestPaymentMode`).
-  - Se non vuole lavori da terzi, **chiude la disponibilità nella propria agenda** (agenda fornitore esistente: orari, ferie, blocchi, iCal; `Casazen.Core/Suppliers/SupplierAgendaRules.cs`, `SupplierPlanning.cs`).
+  - Se non vuole lavori da terzi, **disattiva l'interruttore "visibile nel marketplace"** nel proprio profilo (deciso dal PO il 2026-10-15). L'agenda (orari, ferie, blocchi, iCal: `SupplierAgendaRules.cs`, `SupplierPlanning.cs`) resta la disponibilità reale per tutti, agenzia compresa: oggi è unica per fornitore, quindi chiuderla bloccherebbe anche l'agenzia.
 - Il rendiconto del proprietario resta automatico (R4): il costo arriva dalla richiesta, non da un caricamento manuale.
 
 **Lavoro:**
 - legame agenzia ↔ fornitore con flusso di invito (oggi esiste solo l'invito da admin; `OrgTrustedSupplier` non esiste: `GlobalSearchService.cs:29,344`);
 - modalità `External` + regola di commissione 0% legata al legame;
+- interruttore "visibile nel marketplace" sul profilo del fornitore;
 - ruolo `Staff` e assegnazione dei `ServiceRequest`;
 - interruttore nell'onboarding o nelle impostazioni dell'agenzia;
 - importo approvato → spesa nel rendiconto del proprietario;
@@ -324,16 +373,53 @@ Livelli di automazione: **COMPLETA** = API ufficiale o di un partner, nessun pas
 
 **Chekin come partner:** l'API v3 copre Alloggiati e ISTAT per Lombardia e Marche, ma **non** Liguria e Calabria; nessuna polizia svizzera via API. Chekin agisce solo come *responsabile del trattamento* e *"does not guarantee full compliance"*. **Il valore aggiunto per i nostri territori è basso:** conviene costruire direttamente Alloggiati e Ross1000 e usare feratel per Davos.
 
-**Raccomandazione (rispetta R4 il più possibile)**
-1. **Build:** Alloggiati SOAP; Ross1000 SOAP (Lombardia, Marche); API Sicilia; interfaccia feratel (Davos).
-2. **Richieste formali di API (attività commerciale, da avviare subito):**
-   - Polizia cantonale TI;
-   - Regioni Liguria e Calabria;
-   - Hyksos (StayTour), Advanced Systems, OESIS, Pegaso;
-   - destinazioni di Laax, St. Moritz e Andermatt.
-3. **Intermediario Entratel partner** (CAF o studio) con integrazione API verso CasaZen, per dichiarazioni AdE e F24. È l'unica via conforme a R7 finché l'AdE non pubblica servizi di invio.
-4. **Deroga R4 da decidere (D6):** nelle giurisdizioni "NON POSSIBILE", finché non arriva l'API, CasaZen prepara il file validato e avvisa l'agenzia. In alternativa **non si attiva** la giurisdizione.
-5. **Sconsigliato:** automatizzare i portali via browser con le credenziali del cliente (RPA). È fragile, viola i termini dei portali, e il Ticino richiede 2FA.
+#### D6, deciso: tutto da CasaZen, con la ricevuta in CasaZen
+
+**Decisione del PO:** l'utente fa tutto da CasaZen e riceve in CasaZen la ricevuta dell'operazione completata, tramite API o tramite intermediazione; i costi extra sono accettati.
+
+**Vincoli verificati:**
+- Le credenziali SPID sono di **uso esclusivamente personale** (AgID): automatizzare il login dell'agenzia (RPA) **non è lecito**.
+- CasaZen **non può diventare intermediario Entratel**: servono professionisti, CAF o una società di servizi a maggioranza di commercialisti (AdE Risposte 79/2022 e 87/2022).
+- I portali StayTour, TouristTax e Ticino consentono al gestore di **abilitare altre persone**, ognuna con le proprie credenziali.
+
+| Adempimento | Modello | Chi esegue | Ricevuta in CasaZen | Costo indicativo |
+|---|---|---|---|---|
+| Alloggiati Web | API SOAP | CasaZen, automatico | Sì (`Ricevuta`) | Gratuito |
+| ISTAT Lombardia, Marche, Sicilia | API SOAP/HTTPS | CasaZen, automatico | Sì | Gratuito |
+| ISTAT Liguria, Calabria | API da confermare con le Regioni; altrimenti back-office | CasaZen | Sì | — |
+| Imposta di soggiorno annuale, CU/770, dati locazioni brevi, DAC7 | **Intermediario partner** (CAF o studio): CasaZen genera file validati con i moduli di controllo AdE e li invia via API/SFTP | Partner | Sì (ricevuta AdE caricata dal partner) | ~€30 per dichiarazione (esempio ANBBA); altri a contratto |
+| F24 (ritenute, imposte) | Intermediario partner con addebito sul conto dell'agenzia | Partner | Sì (quietanza) | A contratto |
+| StayTour (Como, Trapani, Tropea) | **Back-office**: operatore delegato (fino a 3 delegati SPID per struttura) | CasaZen o partner, con il proprio SPID | Sì (dichiarazione + ricevuta pagoPA/F24) | Tempo operatore + €2 pagoPA |
+| TouristTax (Genova, Portofino, S. Margherita) | Back-office con utenza secondaria + caricamento file | CasaZen o partner | Sì (lista versamenti + pagoPA) | Tempo operatore |
+| SoggiorniAmo (Milano, Sanremo) | Back-office con delega del gestore + CSV | CasaZen o partner | Sì | Tempo operatore. Portata della delega [NV] |
+| Pegaso (Ascoli Piceno) | Delega da verificare con assistenza@impostasoggiorno.it | — | — | **Incerto** |
+| Cinque Terre | Da verificare | — | — | **Incerto** |
+| Pagamento pagoPA | Openapi "PagoPA Bill" | CasaZen via API | Sì | €2 per pagamento |
+| **Ticino: notifica alla polizia** | Back-office: operatore abilitato dal gestore (§13.1 del manuale), con proprio TOTP + caricamento XML | CasaZen o partner | Sì (pagina esiti + email) | **Presidio 7 giorni su 7 entro 24 ore** |
+| Ticino: tassa OTR | CSV dal portale notifiche + fattura OTR all'agenzia | Back-office | Fattura OTR [NV] | — |
+| Davos (feratel) | Interfaccia feratel per gestionali | CasaZen, automatico | Sì | Contratto feratel |
+| Laax/Flims, Andermatt | Tassa forfettaria o per capacità, nessuna dichiarazione per soggiorno | CasaZen (promemoria) | — | — |
+| Verifica CIN | Solo validazione del formato; richiedere al Ministero un servizio su PDND (aperta ai privati dal 15/01/2026) | — | — | — |
+
+**Condizioni del back-office:**
+- **Contratti:** mandato con l'agenzia (art. 1710 c.c.) e accordo GDPR art. 28 / nLPD; massimali di responsabilità e assicurazione.
+- **Ruolo di CasaZen:** non deve diventare "gestore delegato" con atto formale, perché alcuni regolamenti comunali lo renderebbero corresponsabile del tributo.
+- **Denaro:** CasaZen non paga imposte con fondi propri. I pagamenti partono dal conto dell'agenzia (F24 tramite intermediario, link pagoPA).
+- **Responsabilità:** resta all'agenzia (§2.2).
+
+**In parallelo, richieste di API** (riducono il costo del back-office nel tempo):
+- Hyksos (StayTour), Advanced Systems, OESIS, Pegaso;
+- Polizia cantonale TI (servizio.autorizzazioni@polca.ti.ch);
+- Regioni Liguria e Calabria.
+
+Fonti:
+- <https://www.agid.gov.it/sites/default/files/repository_files/regole_tecniche/obblighi_dei_gestori_e_dei_titolari.pdf>
+- <https://agenziaentrate.gov.it/portale/documents/20143/4169782/Risposta_79_07.02.2022.pdf/69415bb9-9e71-71a7-edda-3a571130e11d>
+- <https://imposta-soggiorno.org/manuale-struttura.pdf>
+- <https://tourtaxmain.servizienti.it/TourTaxHelp/>
+- <https://www4.ti.ch/fileadmin/DI/POLIZIA/documentazione/autorizzazioni/autorizzazioni_e_permessi/Manuale_Utente.pdf>
+- <https://openapi.com/products/pagopa-bill>
+- <https://www.anbba.it/dichiarazione-annuale-imposta-soggiorno-2025-scadenza-30-giugno/>
 
 ---
 
@@ -380,14 +466,43 @@ Livelli di automazione: **COMPLETA** = API ufficiale o di un partner, nessun pas
 4. **Minori:** nessuna biometria. Li dichiara il genitore (sono familiari ai fini di Alloggiati).
 5. **Documenti di compliance:** DPIA prima del lancio (IT e CH); nomina di CasaZen come responsabile del trattamento (art. 28) e dei sub-fornitori; informative art. 13 GDPR / art. 19 nLPD; testo del consenso separato e non preselezionato.
 
-#### Fornitori di verifica identità
+#### D5, deciso: riconoscimento facciale via API di terzi, conservazione conforme al Garante
 
-| Fornitore | NFC | Dati in UE | Prezzo | Nota |
-|---|---|---|---|---|
-| **IDnow** | ✓ | Solo data center UE | Su richiesta | ETSI TS 119 461 (dichiarato dal fornitore) |
-| **Namirial** (QTSP italiano) | ✓ | ? | Su richiesta | Certificazione ETSI TS 119 461 valida fino al 11/2027; prevede anche un flusso con operatore |
-| **Veriff** | ✓ | UE (AWS Irlanda) | da $0,80 (minimo $49/mese) a $1,89 | Conforme iBeta; SDK React Native |
-| Stripe Identity | — | Prevalentemente USA | €1,25 | **Sconsigliato per gli ospiti:** vietato sotto i 16 anni; esclusioni per nazionalità; Stripe è **titolare autonomo** e conserva i dati fino a 7 anni; solo *public beta* per aziende IT e CH; non restituisce nazionalità né luogo di rilascio |
+**Sviluppo interamente in casa: non realistico.**
+- Effort di 50–75 settimane-persona più i test di certificazione.
+- Nessun sistema open source di verifica di presenza dal vivo (liveness) è certificato.
+- I modelli di riconoscimento più accurati non sono utilizzabili a fini commerciali. InsightFace, verificato: *"available for non-commercial research purposes only"* (<https://github.com/deepinsight/insightface>).
+- CERT-AgID (05/2026) segnala che contro i video falsi iniettati nel flusso della fotocamera (deepfake) la liveness attiva *"fallisce strutturalmente"*.
+
+**Conservazione (decisa: conforme al Garante).** La nota del 29/04/2026 impone di cancellare la copia del documento appena Alloggiati rilascia la ricevuta (<https://www.garanteprivacy.it/home/docweb/-/docweb-display/docweb/10244289>).
+- **Le immagini restano consultabili solo fino alla ricevuta. In Ticino non si conservano mai.**
+- Restano consultabili sempre in CasaZen: ricevuta Alloggiati (5 anni), esito della verifica (positivo/negativo, data e ora, riferimento del fornitore), tipo e paese del documento, dati anagrafici trasmessi.
+- Alla ricevuta, CasaZen cancella la sessione presso il fornitore via API.
+
+**Costi e fornitori** (listino ufficiale; volumi di esempio 10.000 e 40.000 verifiche/anno, un adulto = una verifica):
+
+| Fornitore | Prezzo per verifica (documento + selfie + liveness + confronto) | 10k/anno | 40k/anno | Cancellazione via API | Note |
+|---|---|---|---|---|---|
+| **Didit** | **$0,33** (NFC +$0,15); nessun minimo; prezzi in modifica dal 1/11/2026 | ~$3.200 (con NFC ~$4.700) | ~$13.100 (con NFC ~$19.100) | Sì, ma cancella anche l'esito → CasaZen lo salva prima | Dati in UE, SDK React Native/Expo, iBeta livello 1 |
+| **Sumsub** | $1,35 (minimo $149/mese) | ~$13.500 | ~$54.000 | **Modalità "cancella solo le foto del documento"**, mantiene i dati testuali (verificato) | Dati in Germania, iBeta livelli 1–3; cancellazione completa solo con contratto personalizzato |
+| iDenfy Enterprise | $0,55–0,65 + $0,15 confronto volto + $0,15 liveness 3D | ~$9.500 | ~$34.000 | Sì (foto e dati personali) | Dati in UE; nessun SDK React Native ufficiale trovato |
+| Veriff | $0,80–1,89 + minimi | $8.000–18.900 | $32.000–75.600 | **Max 10 cancellazioni al giorno** | **Scartato** (non rispetta il Garante a questi volumi) |
+| Stripe Identity | €1,25 | ~€12.400 | su preventivo | Stripe conserva i dati come titolare autonomo (fino a 7 anni) | **Scartato**: non verifica i minori, titolare autonomo |
+| Regula / Innovatrics / IDnow / Namirial | Su preventivo | — | — | Installazione propria o SaaS | Alternativa se serve certificazione più alta |
+
+Fonti:
+- <https://didit.me/pricing>
+- <https://docs.didit.me/console/data-retention>
+- <https://sumsub.com/pricing/>
+- <https://docs.sumsub.com/changelog/january-2026>
+- <https://idenfy.com/savings/>
+- <https://devdocs.veriff.com/apidocs/v1sessionsid-3>
+- <https://support.stripe.com/questions/managing-your-id-verification-information>
+
+**Raccomandazione:**
+1. Fare un PoC con **Didit** (costo più basso, iBeta livello 1) e con **Sumsub** (miglior aderenza alla nota del Garante, iBeta fino al livello 3).
+2. Chiedere preventivi con le domande sulla cancellazione, sul NFC per CIE e passaporti, sull'addestramento dei modelli con i nostri dati e sui minori.
+3. **Carta d'identità svizzera:** quella con chip è rilasciata solo su richiesta dal 2/11/2026 (verificato: <https://www.fedpol.admin.ch/de/newnsb/aKCjZsaUbIe8>). Per anni la maggior parte delle carte svizzere si leggerà solo da MRZ, con fallback visivo.
 
 **Nessun fornitore restituisce il "luogo di rilascio"** richiesto da Alloggiati: serve una mappatura propria o la conferma da parte dell'ospite. La lettura NFC richiede un'app nativa (Expo development build, non Expo Go).
 
@@ -411,14 +526,17 @@ Invariato rispetto alla v1:
 | Componente | Prezzo | Chi lo paga |
 |---|---|---|
 | NextPax | €3,50/unità/mese, minimo €350 (50 unità incluse). Esempio: 100 unità ≈ €525/mese, 250 unità ≈ €1.050/mese | Pass-through nel listino per unità |
-| Stripe carte (EEA) | 1,5% + €0,25 (standard), 2,8% + €0,25 (premium), 3,15% + €0,25 (internazionali, +2% con conversione) | Agenzia (esercente) |
-| Stripe Connect | €2 per account attivo/mese + **0,25% + €0,10 per payout** | CasaZen (da ribaltare) |
-| Stripe Billing / Tax / Invoicing | 0,7% / 0,5% / 0,4–0,5% (Invoicing gratis se la fattura è pagata fuori Stripe) | CasaZen / agenzia |
-| Verifica identità | ~$0,80–1,89 per verifica (Veriff); IDnow/Namirial su richiesta | Per ospite adulto: pass-through |
+| Stripe carte (EEA) / SEPA DD / TWINT | 1,5% + €0,25 (standard), 2,8% + €0,25 (premium), 3,15% + €0,25 (internazionali, +2% con conversione) / €0,35 / 2,6% + €0,25 | **Ripartite in proporzione tra agenzia e proprietario** (deciso) |
+| Stripe Connect | €2 per account attivo/mese + **0,25% + €0,10 per payout**; nessuna commissione sui trasferimenti | Ripartite come sopra |
+| Stripe Billing (canone CasaZen) | 0,7% | CasaZen |
+| Verifica identità | Didit $0,33 (+$0,15 NFC); Sumsub $1,35 (minimo $149/mese) | Per ospite adulto: incluso nel canone per unità |
 | SDI | Invoicetronic €0,10–0,02 per transazione; Openapi €0,07–0,022 | Trascurabile |
 | Taxually (dichiarazioni IVA) | Non pubblicato | Agenzia (opzionale) |
 | feratel / interfacce di destinazione | A contratto | Agenzia |
-| Intermediario Entratel | A contratto (partner) | Agenzia |
+| Intermediario Entratel (dichiarazioni, CU/770, F24) | ~€30 per dichiarazione; altro a contratto | Agenzia |
+| Back-office per portali (comuni, Ticino) | Personale CasaZen o partner; il Ticino richiede un presidio 7 giorni su 7 | Da prezzare come servizio aggiuntivo |
+| pagoPA via Openapi | €2 per pagamento | Agenzia |
+| Stripe Treasury (se D3 = A) | Uscite a listino €0,30 per bonifico; programma su preventivo | Da definire |
 
 Fonti:
 - <https://stripe.com/en-it/pricing>
@@ -432,7 +550,7 @@ Fonti:
 
 | Fase | Contenuto | Note |
 |---|---|---|
-| **0. Decisioni e conferme esterne** (in parallelo, avvio immediato) | Pareri ⚖ (D2 SCT/ritenuta/DAC7, D5 biometria + DPIA, richiesta al Viminale); richiesta a Stripe (Treasury, conferma sull'agenzia svizzera come esercente, pre-approvazione del modello); 11 domande + PoC a NextPax/Octorate; richieste di API a enti e fornitori (§3.5) | Determina il perimetro reale |
+| **0. Decisioni e conferme esterne** (in parallelo, avvio immediato) | Pareri ⚖ (D2 ritenuta/tassa di soggiorno/DAC7, biometria + DPIA, richiesta al Viminale); Stripe (pre-approvazione del modello SCT, Treasury se D3 = A); 11 domande + PoC a NextPax e Octorate; PoC Didit e Sumsub; contratto con l'intermediario partner (CAF o studio); organizzazione del back-office; richieste di API a enti e fornitori | Determina il perimetro reale |
 | **1. Fondamenta** | `OrgType.Agency`; ruoli `PropertyOwner` e `Staff`; paese, valuta, lingua DE; matrice delle funzionalità per piano; ADR "channel manager", "flussi Stripe B2B", "provider AI per dati personali" | Sblocca tutto |
 | **2. Compliance e check-in** | Alloggiati SOAP, Ross1000, API Sicilia, feratel Davos; check-in online con documento e NFC + verifica all'arrivo (A/B) + serrature | Massimo valore di compliance |
 | **3. Denaro** | SCT a 4 parti, rendiconti, fatture con invio SDI, payout mensili; fornitori marketplace via Stripe + opzione staff propri | Dipende da D2 e D3 |
@@ -441,18 +559,18 @@ Fonti:
 
 ---
 
-## 6. Decisioni aperte per il PO
+## 6. Registro delle decisioni del PO
 
-| ID | Decisione | Raccomandazione |
+| ID | Decisione | Stato |
 |---|---|---|
-| D1 | Matrice B2C/B2B e limiti per piano (§1.2) | Approvare la matrice; definire il listino B2B per unità |
-| D2 | Modello di addebito B2B | SCT con `on_behalf_of` = agenzia, **subordinato a parere fiscale o interpello** ⚖ |
-| D3 | Ricavi OTA verso i proprietari | Richiedere Treasury (IT). Per la Svizzera: deroga a R2 oppure attendere |
-| D4 | Fornitore OTA | NextPax o Octorate, scelto dopo risposte scritte e PoC |
-| D5 | Riconoscimento facciale | Percorso predefinito con consenso + alternativa video (R6 "obbligatorio" non è lecito) ⚖ |
-| D6 | Giurisdizioni senza API | Intermediario Entratel partner per l'AdE; per comuni e Ticino scegliere tra deroga temporanea a R4 o mancata attivazione |
-| ~~D7~~ | Pagamento dei fornitori propri dell'agenzia | **Deciso (2026-10-15):** registrati e gestiti in CasaZen, 0% di commissione quando li usa l'agenzia a cui sono legati, fatturazione fuori da CasaZen; per i lavori per terzi tramite il marketplace valgono le regole del marketplace (§3.4) |
-| D8 | Provider LLM per i dati degli ospiti | DPA UE, nessun addestramento sui dati; **non DeepSeek** (oggi è il provider configurabile) |
+| D1 | Prezzo B2B | **Deciso:** solo canone per unità, nessuna percentuale sulle prenotazioni |
+| D2 | Incasso delle prenotazioni dirette B2B | **Deciso:** CasaZen incassa, Stripe ripartisce (un addebito, due trasferimenti, payout mensili); `on_behalf_of` = agenzia per le agenzie italiane; commissioni Stripe in proporzione tra agenzia e proprietario. Parere fiscale o interpello prima del go-live ⚖ |
+| D3 | Ricavi OTA verso i proprietari | **In attesa del PO** (sta verificando). Raccomandazione: Italia Treasury (ripiego aggregatore), Svizzera EBICS (§3.3) |
+| D4 | Fornitore OTA | **Deciso:** 11 domande + PoC sia con NextPax sia con Octorate, scelta sulle risposte scritte |
+| D5 | Riconoscimento facciale | **Deciso:** API di terzi (in casa non realistico). Conservazione conforme al Garante: immagini cancellate alla ricevuta Alloggiati, esito e ricevuta sempre consultabili. PoC Didit e Sumsub. Resta per legge l'alternativa non biometrica ⚖ |
+| D6 | Adempimenti senza API | **Deciso:** tutto da CasaZen con la ricevuta in CasaZen; intermediario partner (AdE, F24) + back-office delegato (comuni, Ticino); costi extra accettati (§3.5) |
+| D7 | Fornitori propri dell'agenzia | **Deciso:** registrati in CasaZen, 0% e fatturazione fuori da CasaZen quando li usa la loro agenzia; per i lavori di terzi valgono le regole del marketplace; interruttore "visibile nel marketplace" |
+| D8 | Provider LLM | **Deciso dal PO:** DeepSeek, per il costo. **Raccomandazione aperta:** per i dati degli ospiti usare DeepSeek ospitato in UE, perché il Garante ha limitato con urgenza il trattamento dei dati degli utenti italiani da parte di DeepSeek (comunicato del 30/01/2025: <https://www.garanteprivacy.it/home/docweb/-/docweb-display/print/10097450>). DeepSeek-V3.1 è disponibile su AWS Bedrock anche nella regione Europa (Stoccolma) (<https://aws.amazon.com/about-aws/whats-new/2025/09/deepseek-v3-1-model-fully-managed-amazon-bedrock/>); prezzo e compatibilità con il nostro client sono da verificare |
 
 ---
 
