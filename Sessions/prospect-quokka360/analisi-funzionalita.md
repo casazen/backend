@@ -198,7 +198,12 @@ Invariato rispetto alla v1, salvo la matrice B2C/B2B.
 
 #### D2, deciso: CasaZen incassa, Stripe ripartisce (prenotazioni dirette)
 
-**Decisione del PO:** CasaZen incassa e Stripe divide i corrispettivi, con il minor numero possibile di transazioni. Le commissioni Stripe si ripartiscono **in proporzione tra agenzia e proprietario**. CasaZen non trattiene nulla sulla prenotazione: si fa pagare **solo con il canone per unità** (D1).
+**Decisione del PO:** CasaZen incassa e Stripe divide i corrispettivi, con il minor numero possibile di transazioni. CasaZen non trattiene nulla sulla prenotazione: si fa pagare **solo con il canone per unità** (D1).
+
+**Tutti i costi Stripe sono a carico dei clienti e trattenuti da CasaZen sui trasferimenti** (decisione del 2026-10-15):
+- commissioni sugli incassi: ripartite tra agenzia e proprietario in proporzione alle quote;
+- quote Connect (€2 per account attivo al mese, 0,25% + €0,10 per payout) ed eventuali costi Treasury: a carico dell'account che le genera (proprietario o agenzia), calcolate nel rendiconto mensile e trattenute dall'ultimo trasferimento del mese prima del payout;
+- unica eccezione: lo 0,7% di Stripe Billing sul canone CasaZen, che è un costo sull'incasso di CasaZen stessa. Si copre nel prezzo del canone.
 
 | Parte | Oggetto Stripe | Note |
 |---|---|---|
@@ -532,13 +537,12 @@ Questa sezione riporta solo i costi base delle API e dei servizi white label che
 | **Channel manager NextPax** | €3,50/unità (€3,15 con fatturazione annuale), **minimo €350/mese** con 50 unità incluse. Prezzo della Supply API white label: "contact us". Octorate non pubblica prezzi | **€980–1.050** | <https://nextpax.com/nextpax-pricing> |
 | **Verifica identità** | Didit $0,33 a verifica (+$0,15 NFC); Sumsub $1,35 (minimo $149/mese) | Didit **$660–960**; Sumsub **$2.700** | <https://didit.me/pricing>, <https://sumsub.com/pricing/> |
 | **Serrature smart** | Seam $5/dispositivo/mese (5 azioni al giorno); igloohome diretto $2/serratura attiva/mese | igloohome **$500**; Seam **$1.250** | <https://www.seam.co/pricing>, <https://www.igloohome.co/pricing> |
-| **Stripe Connect, quote fisse** | €2 per account attivo/mese + 0,25% + €0,10 per payout. Le commissioni sulle prenotazioni sono ripartite tra agenzia e proprietario (D2) | **~€500** (250 proprietari + agenzia), se non ribaltate nello split | <https://stripe.com/en-it/connect/pricing> |
+| Stripe (incassi, Connect, Treasury) | Commissioni sugli incassi + €2 per account attivo/mese + 0,25% + €0,10 per payout (+ Treasury €0,30 per bonifico se D3 = A) | **€0 per CasaZen**: tutto trattenuto ai clienti (deciso, D2) | <https://stripe.com/en-it/connect/pricing> |
 | Stripe Billing (canone CasaZen) | 0,7% del canone incassato | 0,7% × canone | <https://stripe.com/en-it/pricing> |
 | **Fatturazione elettronica SDI** (Invoicetronic) | Pacchetti prepagati da €0,10 a €0,02 per transazione, senza scadenza + €5/mese per chiave | **~€15–75** (250 fatture proprietari + eventuali fatture all'ospite) | <https://invoicetronic.com/en/pricing/> |
 | **Email marketing** (Resend, account separato; serve Scale per avere un dominio per ogni agenzia) | Scale $90/mese (100k email, 1.000 domini) | **$90** | <https://resend.com/pricing> |
 | **LLM DeepSeek** (risposte in bozza, routine, testi CRM) | V4.1 Flash: $0,15/M token in ingresso ($0,003 se in cache), $0,60/M in uscita; prezzi doppi nelle ore di punta | **~$10–30** (10.000 risposte × ~3k token in ingresso + 300 in uscita) | <https://api-docs.deepseek.com/quick_start/pricing> |
 | Videochiamata alternativa (Daily) | 10.000 minuti-partecipante gratis al mese, poi $0,004 | **$0** (sotto la soglia gratuita) | <https://www.daily.co/pricing/video-sdk/> |
-| Stripe Treasury (solo se D3 = A) | Uscite a listino €0,30 per bonifico; prezzo del programma su preventivo | **~€75** | <https://docs.stripe.com/global-payouts/pricing> |
 | Alloggiati Web, Ross1000, API Sicilia | Gratuiti | €0 | — |
 | Intermediario Entratel partner | A pratica; unico dato pubblico ~€30 per dichiarazione annuale | A contratto | — |
 | Interfaccia feratel (Davos) | Non pubblico | A contratto | — |
@@ -549,9 +553,8 @@ Questa sezione riporta solo i costi base delle API e dei servizi white label che
 
 | Scenario | EUR | USD | ≈ per unità/mese |
 |---|---|---|---|
-| **Basso**: Didit senza NFC, igloohome, NextPax annuale | ~€1.500 | ~$1.270 | ~€10–11 |
-| **Alto**: Sumsub, Seam, NextPax mensile | ~€1.630 | ~$4.070 | ~€20–22 |
-| Con Treasury (D3 = A) | +€75 | — | +€0,3 |
+| **Basso**: Didit senza NFC, igloohome, NextPax annuale | ~€1.000 | ~$1.270 | ~€8–9 |
+| **Alto**: Sumsub, Seam, NextPax mensile | ~€1.130 | ~$4.070 | ~€18–20 |
 
 **Costi fissi anche con zero unità:** NextPax €350 + Resend $90 + Invoicetronic €5 (+ Sumsub $149 se scelto).
 
@@ -583,7 +586,7 @@ Questa sezione riporta solo i costi base delle API e dei servizi white label che
 | ID | Decisione | Stato |
 |---|---|---|
 | D1 | Prezzo B2B | **Deciso:** solo canone per unità, nessuna percentuale sulle prenotazioni |
-| D2 | Incasso delle prenotazioni dirette B2B | **Deciso:** CasaZen incassa, Stripe ripartisce (un addebito, due trasferimenti, payout mensili); `on_behalf_of` = agenzia per le agenzie italiane; commissioni Stripe in proporzione tra agenzia e proprietario. Parere fiscale o interpello prima del go-live ⚖ |
+| D2 | Incasso delle prenotazioni dirette B2B | **Deciso:** CasaZen incassa, Stripe ripartisce (un addebito, due trasferimenti, payout mensili); `on_behalf_of` = agenzia per le agenzie italiane. **Tutti i costi Stripe (incassi, Connect, Treasury) sono a carico dei clienti** e trattenuti sui trasferimenti; costo Stripe per CasaZen = 0, salvo Billing sul proprio canone. Parere fiscale o interpello prima del go-live ⚖ |
 | D3 | Ricavi OTA verso i proprietari | **In attesa del PO** (sta verificando). Raccomandazione: Italia Treasury (ripiego aggregatore), Svizzera EBICS (§3.3) |
 | D4 | Fornitore OTA | **Deciso:** 11 domande + PoC sia con NextPax sia con Octorate, scelta sulle risposte scritte |
 | D5 | Riconoscimento facciale | **Deciso:** API di terzi (in casa non realistico). Conservazione conforme al Garante: immagini cancellate alla ricevuta Alloggiati, esito e ricevuta sempre consultabili. PoC Didit e Sumsub. Resta per legge l'alternativa non biometrica ⚖ |
