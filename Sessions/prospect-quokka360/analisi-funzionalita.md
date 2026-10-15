@@ -357,16 +357,18 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 - **Riduzione dei costi fissi:** con la crescita della piattaforma non abbassa il prezzo partner (da scrivere nel contratto ⚖).
 - **Esempio Quokka** (250 unità; ipotesi di 2.000 verifiche al mese = 4 prenotazioni × 2 adulti per unità; da confermare con i dati reali):
 
-| Voce di costo al mese | Formula con costi fissi a carico del partner | **Formula consigliata**: costi fissi a carico di CasaZen, verifiche a consumo |
+| Voce di costo al mese | Prima ipotesi (verifiche incluse) | **Formula decisa dal PO**: verifiche a consumo, costi fissi coperti dal partner |
 |---|---|---|
 | Channel manager NextPax | €980 | €980 |
 | Verifiche d'identità | €960 (incluse, $0,48 con NFC) | €660–960 **a consumo, al costo** ($0,33–0,48): si paga solo quello che si usa |
 | Fatturazione elettronica, AI, email | ~€100 | ~€100 |
-| Costi fissi di piattaforma (hosting, strumenti) | €400 | **€0** (investimento di CasaZen, si ripartirà sui clienti futuri) |
+| Costi fissi di piattaforma (hosting, strumenti) | €400 | **€400** (deciso dal PO: il partner copre almeno i costi fissi) |
 | Margine CasaZen (+€1/unità) | €250 | €250 |
-| **Totale Quokka** | **~€2.700/mese** | **~€1.990–2.290/mese** |
+| **Totale Quokka** | **~€2.700/mese** | **~€2.390–2.690/mese** |
 
-- Con la formula consigliata Quokka spende **quanto oggi per Kross (~€2.000)** e ottiene in più biometria, compliance CH, portale proprietari, AI e CRM.
+- Con la formula decisa Quokka spende **€390–690 in più** rispetto a Kross (~€2.000, cioè +20–35%) e ottiene in più biometria, compliance CH, portale proprietari, AI e CRM.
+- **Composizione fissa e variabile:** canone partner fisso di **~€1.730/mese** (NextPax €980 + servizi €100 + costi fissi €400 + margine €250 = **€6,92/unità**), più le verifiche a consumo al costo. Le verifiche sono l'unica parte variabile e dipendono dalle prenotazioni reali di Quokka.
+- I €400 di costi fissi restano nel prezzo partner anche quando la piattaforma cresce (clausola già prevista).
 - Il listino pubblico (tutto compreso a €13) costerebbe €3.250.
 - Se Quokka sostituisce anche la sua attuale piattaforma di marketing e CRM, il risparmio complessivo aumenta.
 
