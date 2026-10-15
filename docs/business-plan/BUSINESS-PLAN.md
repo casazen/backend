@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Versione** | 1.0.0 (storico in [`CHANGELOG.md`](./CHANGELOG.md)) |
+| **Versione** | 1.1.0 (storico in [`CHANGELOG.md`](./CHANGELOG.md)) |
 | **Data** | 15 ottobre 2026 |
 | **Stato** | Bozza per presentazione |
 | **Autore** | [nome e cognome], founder e Product Owner di CasaZen |
 | **Destinatari** | Investitori, partner, potenziali soci |
 | **Riservatezza** | Confidenziale. Contiene prezzi, margini e condizioni dei partner |
-| **Documenti collegati** | [`MODELLO-FINANZIARIO.md`](./MODELLO-FINANZIARIO.md) (proiezioni a 36 mesi), [`VERIFICA-PIANI-B2C.md`](./VERIFICA-PIANI-B2C.md) (verifica di mercato dei piani B2C), [`PITCH.md`](./PITCH.md) (presentazione), [`README.md`](./README.md) (come è versionato) |
+| **Documenti collegati** | [`MODELLO-FINANZIARIO.md`](./MODELLO-FINANZIARIO.md) (proiezioni a 36 mesi), [`LISTINO.md`](./LISTINO.md) (listino con costi e margini), [`VERIFICA-PIANI-B2C.md`](./VERIFICA-PIANI-B2C.md) (verifica dei limiti precedenti), [`PITCH.md`](./PITCH.md) (presentazione), [`README.md`](./README.md) (come è versionato) |
 
 **Come leggere il documento.** Scrivo in prima persona perché questo è il mio piano: le scelte sono mie e ne rispondo io.
 Ogni affermazione porta un'etichetta:
@@ -34,7 +34,7 @@ tutti e meno mi costa acquisire il cliente successivo.
 
 **Come guadagno.** Tre righe, nessuna sorpresa:
 
-1. **Abbonamenti**: gli host B2C pagano € 29, € 79 o € 199 al mese; le agenzie B2B pagano per unità gestita (€ 7-15 al mese, tutto compreso);
+1. **Abbonamenti**: gli host B2C pagano € 0, € 29, € 79 o € 199 al mese secondo il piano, più le proprietà oltre quelle incluse; le agenzie B2B pagano per unità gestita (€ 8-15 al mese);
 2. **Zero commissioni** sulle prenotazioni e sui canoni di locazione: il denaro degli ospiti e degli inquilini va direttamente sul conto Stripe dell'host, e un test di architettura impedisce che il codice aggiunga una commissione [FATTO];
 3. **10 % sugli interventi dei fornitori**, pagato dal cliente che ordina il lavoro, in cambio della **Garanzia CasaZen**: fornitore verificato, presa in carico tracciata, pagamento solo a lavoro completato, rimborso gestito da noi se qualcosa va storto. Il cliente resta anche con la commissione perché compra certezza di tempi e affidabilità, non un elenco di numeri di telefono.
 
@@ -53,9 +53,9 @@ gestionale attuale, con cui ho definito un programma Founding Partner a margine 
 | **24 mesi** (ottobre 2028) | Consolidamento e crescita: inbox unificata con AI, recensioni, locazioni lunghe complete, agenzie a listino |
 | **36 mesi** (ottobre 2029) | Lascio il mio lavoro e assumo le prime due persone, pagate dai ricavi |
 
-**I numeri** [STIMA], scenario Base: MRR € 5.200 a 12 mesi, € 16.700 a 24, € 38.000 a 36 (ARR € 456.000), con il
+**I numeri** [STIMA], scenario Base: MRR € 5.700 a 12 mesi, € 18.900 a 24, € 43.300 a 36 (ARR € 520.000), con il
 founder non retribuito fino al mese 36 e un fabbisogno massimo di cassa inferiore a € 7.000. Lo scenario Prudente
-arriva a € 16.100 di MRR a 36 mesi; l'Ambizioso a € 73.700. Il dettaglio è in [`MODELLO-FINANZIARIO.md`](./MODELLO-FINANZIARIO.md).
+arriva a € 17.800 di MRR a 36 mesi; l'Ambizioso a € 83.900. Il dettaglio è in [`MODELLO-FINANZIARIO.md`](./MODELLO-FINANZIARIO.md).
 
 **Cosa chiedo.** Ai partner: entrare nel programma Founding Partner. Ai potenziali soci: una persona che porti vendita e
 rete sul territorio, con quote maturate nel tempo. Agli investitori: il piano base si autofinanzia; un pre-seed
@@ -195,60 +195,73 @@ una regione con 300 host sparsi. Per questo parto da **comuni pilota** e ci lavo
 
 ### 5.1 Abbonamenti B2C (host)
 
-Listino deciso l'8 ottobre 2026 [FATTO], prezzi mensili IVA esclusa; limiti di piano letti dal codice (`PlanCatalog`) [FATTO].
+Listino definito il 15 ottobre 2026 dopo la ricerca di mercato e il calcolo dei costi (derivazione completa, margini e
+confronto con tredici concorrenti in [`LISTINO.md`](./LISTINO.md), generato da `scripts/business-plan/listino.py`;
+verifica dei limiti precedenti in [`VERIFICA-PIANI-B2C.md`](./VERIFICA-PIANI-B2C.md)). Prezzi mensili, IVA esclusa;
+**pagamento annuale −10 %**. Oltre 100 proprietà si passa al listino Agenzia.
 
-| Piano | Prezzo | Proprietà | Persone | Cosa include |
-|---|---:|---:|---:|---|
-| **Starter** | € 29 | fino a 3 | 2 | Sito su sottodominio CasaZen, calendario iCal, compliance guidata, portale ospite, fornitori, app |
-| **Pro** | € 79 | fino a 50 | 10 | Starter + dominio proprio senza marchio CasaZen, temi e branding, dispositivi smart (codice soggiorno, serratura), più persone |
-| **Scale** | € 199 | illimitate | illimitate | Pro + tutto quello che serve a un piccolo gestore |
-| **Opzione channel manager via API** | ~€ 4 / unità | | | Airbnb, Booking.com, Vrbo, Expedia via partner di connettività (costo per CasaZen € 3,15-3,50 a unità) [STIMA, da confermare] |
+| Piano | Prezzo | Annuale | Proprietà | Ogni proprietà in più | Persone | Cosa aggiunge |
+|---|---:|---:|---:|---:|---:|---|
+| **Free** | € 0 | — | 1 | — | 1 | Marketplace fornitori con Garanzia, calendario iCal, pagina pubblica dell'immobile con richiesta di prenotazione "paga in struttura" approvata dall'host, cockpit compliance in sola lettura, app. Marchio "Powered by CasaZen" |
+| **Starter** | € 29 | € 26 | 3 incluse | — (oltre 3 → Pro) | 2 | Sito di prenotazione diretta con checkout Stripe sul proprio conto (sottodominio CasaZen), wizard di compliance (CIN, imposta di soggiorno, sicurezza), portale ospite e file Alloggiati, check-out guidato, suggerimenti stagionali, locazioni lunghe (contratti, RLI assistita, canone). Channel manager via API in opzione a € 4/unità |
+| **Pro** | € 79 | € 71 | 10 incluse | € 8, fino a 50 | 10 | Channel manager via API incluso (Airbnb, Booking.com, Vrbo, Expedia), dominio proprio senza marchio CasaZen, temi e branding, routine (libreria pronta), inbox con risposte AI in bozza (fase 2), serrature smart (€ 7 per serratura), check-in biometrico opzionale (€ 0,75 a verifica) |
+| **Scale** | € 199 | € 179 | 25 incluse | € 7, fino a 100 | illimitate | Routine avanzate e AI automatica (fase 2), persone illimitate con ruoli, supporto prioritario, export e API |
 
 Chi ha solo locazioni lunghe ha un piano dedicato [FATTO, PL-16]. Nota sull'IVA: per gli host privati o in regime
 forfettario il 22 % è un costo reale, non recuperabile [⚖]; i prezzi in comunicazione saranno sempre "IVA esclusa".
 
-#### 5.1.1 Verifica di mercato dei limiti dei piani (15 ottobre 2026)
+**Perché così** (il dettaglio è in `LISTINO.md` § 4):
 
-I limiti qui sopra (3 / 50 / illimitate) sono una mia ipotesi, scritta nel codice senza una ricerca di mercato. Li ho
-confrontati con i listini 2026 di dodici concorrenti (dettaglio e fonti in [`VERIFICA-PIANI-B2C.md`](./VERIFICA-PIANI-B2C.md)):
+- **Free** esiste perché il sistema si auto-alimenta dal marketplace: l'host invitato dal suo fornitore entra senza
+  pagare, ordina interventi (CasaZen incassa il 10 %) e passa a Starter quando vuole il sito con il suo marchio e la
+  compliance eseguita. Costa ~€ 0,45 al mese per host; un solo intervento da € 40 al mese lo ripaga nove volte.
+  Hospitable fa lo stesso con proprietà illimitate; io limito a una proprietà.
+- **Starter € 29** è allineato a Hospitable Host ($ 29) e Guesty Lite ($ 29 per listing) e sotto Smoobu (€ 35 per una
+  sola proprietà); include il sito diretto, che Hospitable vende da $ 59. Margine 92-94 %.
+- **Pro € 79** include il channel manager via API: da 6 unità in su costa meno di Kross Premium + Vikey (€ 15,90 per
+  unità), e meno di Smoobu, Lodgify, Hospitable e Hostaway a ogni taglia. Margine 73 % a utilizzo tipico (5 unità),
+  50 % a pieno utilizzo, 52 % sulle unità in più.
+- **Scale € 199** rileva Pro esattamente a 25 proprietà (entrambi € 199) e resta sotto il listino Agenzia fino al tetto
+  di 100: nessun gradino all'indietro. Margine 51 % a pieno utilizzo, 46 % sulle unità in più.
+- I limiti precedenti (Pro 50 e Scale illimitate a prezzo fisso) erano fuori mercato per difetto e cannibalizzavano il
+  B2B: a 50 unità Pro valeva € 1,58 per unità, sotto il solo costo del channel manager.
 
-| Cosa dice il mercato | Conseguenza per CasaZen |
-|---|---|
-| Quasi tutti prezzano **per unità** (Kross Premium € 6/unità ✓, Smoobu ~€ 35/proprietà, Lodgify ~$ 33-77/rental, Beds24 ~€ 3/proprietà ✓, OwnerRez $ 40 per la prima); i piani flat includono 1-5 proprietà e fanno pagare ogni proprietà in più (Hospitable 1/2/3 incluse + $ 10-30) | **Starter € 29 fino a 3 proprietà è fattibile**, anzi aggressivo (per 3 proprietà Smoobu chiede ~€ 105, Hospitable ~$ 49, Kross € 18 con channel manager API) |
-| Nessuno vende 50 proprietà a prezzo fisso; "illimitate" a prezzo fisso lo fa solo Hospitable, gratis, come esca | **Pro € 79 fino a 50 e Scale € 199 illimitate non reggono**: a 50 unità Pro vale € 1,58 per unità, sotto i costi per unità (channel manager € 3,15, SDI, AI) e sotto il mio stesso listino B2B (€ 7-9): cannibalizza le agenzie |
-| I punti di prezzo $ 29 / $ 59 / $ 99 (Hospitable) e $ 33 / $ 53 / $ 77 (Lodgify) sono la norma | **I tre prezzi vanno bene**; da correggere sono i limiti |
-| Sconto annuale 10-12 % (Smoobu, Hospitable) | Da prevedere anche nel B2C |
+**Confronto a parità di unità** (prezzo mensile del pacchetto più vicino; dettaglio e fonti in `LISTINO.md` § 6):
 
-**Proposta** (decisione aperta, da registrare come nuova versione del piano): stessi prezzi, proprietà incluse più un
-prezzo per unità in più, coerente con il B2B.
+| Unità | CasaZen | Kross Premium ✓ | Kross + Vikey ✓ | Smoobu | Lodgify | Hospitable | Hostaway | Avantio |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 3 | € 29 | € 18 | € 48 | ~€ 105 | ~$ 159 | ~$ 74 | ~$ 160 | € 295 |
+| 10 | € 79 | € 60 | € 159 | ~€ 350 | ~$ 307 | ~$ 179 | ~$ 320 | € 295 |
+| 25 | € 199 | € 150 | € 398 | ~€ 875 | ~$ 574 | ~$ 404 | ~$ 700 | € 350 |
+| 50 | € 374 | € 300 | € 795 | ~€ 1.750 | ~$ 968 | ~$ 779 | ~$ 1.400 | € 700 |
+| 100 | € 724 | € 600 | € 1.590 | ~€ 3.500 | ~$ 1.800 | ~$ 1.529 | ~$ 2.400 | € 1.400 |
 
-| Piano | Prezzo | Incluse | Ogni unità in più | Tetto | Oltre |
-|---|---:|---:|---:|---:|---|
-| Starter | € 29 | 3 | — | 3 | → Pro |
-| Pro | € 79 | 10 | € 7 | 50 | → Scale |
-| Scale | € 199 | 30 | € 6 | 100 | → piano Agenzia (listino B2B) |
-
-Con questa scala un gestore con 20 unità paga € 149 (Kross € 120 ✓, Smoobu ~€ 700, Hospitable ~$ 329), con 50 unità
-€ 319 (Kross € 300 ✓, B2B Base € 400): CasaZen resta sotto tutti tranne Kross, che però non ha compliance, fornitori e
-sito diretto nel prezzo. L'ARPU B2C del modello finanziario (€ 55) non cambia; le unità in più sono un ricavo non
-modellato. Nella stessa nota valuto l'opzione di un **piano gratuito a 1 proprietà** con accesso al marketplace, coerente
-con il sistema che si auto-alimenta: la lascio aperta perché è una scelta di strategia, non di prezzo.
+CasaZen è il più economico a 1-3 unità e il secondo dopo Kross da 5 a 100, con compliance eseguita, fornitori con
+garanzia, sito diretto e portale ospite che Kross non ha nel prezzo.
 
 ### 5.2 Abbonamenti B2B (agenzie)
 
-Prezzi per unità al mese, IVA esclusa, con pagamento annuale (+10 % con pagamento mensile), minimo € 90 al mese [FATTO, analisi Quokka §6.2].
+Prezzi per unità al mese, IVA esclusa, con pagamento annuale (+10 % con pagamento mensile), **minimo € 100 al mese**
+[decisione del 15 ottobre 2026; derivazione in `LISTINO.md` § 5, che aggiorna la proposta dell'analisi Quokka § 6.2].
 
 | Pacchetto | Cosa offre | 10-49 unità | 50-149 | 150-399 | 400+ |
 |---|---|---:|---:|---:|---:|
-| **Base** | Gestionale, channel manager via API con contenuti e recensioni, inbox con risposte AI suggerite, sito diretto, check-in online, adempimenti via API e file pronti, portale proprietari, routine, fornitori e staff | € 9 | € 8 | € 7 | preventivo |
-| **+ AI e Marketing** | Risposte AI inviate in automatico sopra una soglia di confidenza, routine create da una frase, CRM e campagne | + € 4 | + € 4 | + € 4 | |
-| **Check-in biometrico** | Documento e volto all'ingresso, alternativa in videochiamata | € 0,75 a verifica | | | |
-| **Serrature smart** | Codice per soggiorno rilasciato dopo l'identificazione (via Seam) | € 6 per serratura al mese | | | |
-| **Tutto compreso** | Base + AI e Marketing + 8 verifiche per unità al mese | **€ 15** | **€ 14** | **€ 13** | preventivo |
+| **Base** | Gestionale, channel manager via API con contenuti, chat e recensioni, inbox con risposte AI suggerite, sito diretto, check-in online, adempimenti via API e file pronti, portale proprietari con rendiconti, fatture SDI per conto dell'agenzia e file di bonifico, routine, fornitori e staff propri, app | € 10 | € 9 | € 8 | preventivo |
+| **+ AI e Marketing** | Risposte AI inviate in automatico sopra una soglia di confidenza, routine create da una frase, CRM e campagne email e WhatsApp | + € 4 | + € 4 | + € 4 | |
+| **Tutto compreso** | Base + AI e Marketing + **6 verifiche d'identità per unità al mese** | **€ 15** | **€ 14** | **€ 13** | preventivo |
+| **Check-in biometrico** | Documento e volto all'ingresso, alternativa in videochiamata; nel B2B è il predefinito | € 0,75 a verifica (NFC +€ 0,20) | | | |
+| **Serrature smart** | Codice per soggiorno rilasciato dopo l'identificazione (via Seam); hardware escluso | € 7 per serratura al mese | | | |
 
-Margini sul tutto compreso a 250 unità: 45 % / 41 % / 37 % per scaglione; la verifica d'identità rende circa € 0,27
-[STIMA, analisi Quokka §6.2]. Il tutto compreso costa meno del pacchetto Kross + Vikey (~€ 16) e delle suite
-internazionali, con più servizi.
+Margini lordi per unità [STIMA, `LISTINO.md` § 5.1]: Base 56 % / 51 % / 46 %; Base + AI e Marketing 63-57 %; tutto
+compreso 54 % / 51 % / 48 % (41-48 % con verifiche NFC); verifica in più 56 %; serratura 29 %.
+
+**Cosa ho cambiato rispetto all'analisi Quokka e perché.** Base da € 9 / 8 / 7 a € 10 / 9 / 8: con i costi unitari
+reali (channel manager € 3,15, rendiconti, AI, assistenza: € 4,35 per unità) il vecchio scaglione alto rendeva il 38 %.
+Il tutto compreso resta a € 15 / 14 / 13 ma include 6 verifiche per unità al mese invece di 8 (tre prenotazioni da due
+adulti), le altre a € 0,75: il margine sale dal 37-45 % al 48-54 % e il pacchetto sconta del 19-21 % l'acquisto separato,
+così le agenzie vanno dove CasaZen rende di più. Serratura da € 6 a € 7 (costo $ 5). Contro il mercato: sopra Kross
+Premium (€ 6) e Octorate (€ 8), sotto o alla pari con Kross + Vikey Master (€ 15,90), sotto Avantio (€ 14 con minimo
+€ 295), Lodgify Ultimate (~$ 19-31 per rental), Hostaway ($ 24-40) e Guesty Pro ($ 40-72 più onboarding).
 
 ### 5.3 Zero commissioni sulle prenotazioni e sui canoni
 
@@ -329,9 +342,9 @@ all'Agenzia delle Entrate, l'hardware delle serrature. Le verifiche d'identità 
 
 | Linea | Quota dei ricavi a 36 mesi (Base) [STIMA] | Nota |
 |---|---:|---|
-| Abbonamenti B2B | 36 % | Pochi clienti, canoni alti, contratti annuali |
-| Abbonamenti B2C | 52 % | Molti clienti, prodotto self-service |
-| Marketplace fornitori (10 %) | 13 % | Cresce con la densità della rete; è la linea con il margine più alto perché non ha costi di piattaforma per unità |
+| Abbonamenti B2B | 32 % | Pochi clienti, canoni alti, contratti annuali |
+| Abbonamenti B2C | 49 % | Molti clienti, prodotto self-service |
+| Marketplace fornitori (10 %) | 19 % | Cresce con la densità della rete e con gli host Free; è la linea con il margine più alto perché non ha costi di piattaforma per unità |
 
 Il marketplace è la linea più piccola nei numeri ma la più importante per la fedeltà: un host che ha i suoi fornitori
 dentro CasaZen non cambia strumento.
@@ -379,12 +392,12 @@ grande: ho bisogno di densità in pochi comuni.
 
 | Concorrente | Cosa fa bene | Cosa gli manca rispetto a CasaZen | Prezzo di riferimento [FATTO, pagine ufficiali] |
 |---|---|---|---|
-| **Kross Booking** (Italia) | Gestionale + channel manager diffusi tra le agenzie italiane; KDoor per le serrature | Nessun marketplace di fornitori, routine limitate, nessuna locazione lunga; pacchetti a listino con Vikey per il check-in | € 6 per unità (Premium); ~€ 16 con Vikey |
+| **Kross Booking** (Italia) | Gestionale + channel manager diffusi tra le agenzie italiane; KDoor per le serrature | Nessun marketplace di fornitori, routine limitate, nessuna locazione lunga; il check-in con verifica si compra a parte (Vikey, Chekin) | € 6 per unità (Premium, minimo 3); € 15,90 con Vikey Master; € 11,95 con Chekin Premium |
 | **Guesty** | Suite enterprise completa, 60+ OTA, AI pricing | Venduto e prezzato per i grandi, nessuna compliance italiana nativa, nessuna locazione lunga | Personalizzato, 0,5-1 % sui pagamenti |
 | **Hostaway** | Channel manager mid-market, marketplace di 40+ integrazioni | Vendita assistita, costo d'ingresso alto, nessuna compliance italiana | Personalizzato |
 | **Lodgify / Smoobu** | Sito di prenotazione diretta per piccoli host, semplicità | Operazioni e fornitori assenti, compliance italiana assente, nessuna locazione lunga | Da $ 16-29 al mese |
-| **Avantio, Uplisting, OwnerRez** | Portale proprietari (Avantio), prezzi per unità | Mercato internazionale, nessuna compliance italiana e svizzera | $ 16-20 (Avantio); £ 13 + £ 1,25 a verifica (Uplisting); $ 2-8 a unità (OwnerRez) |
-| **Vikey, Chekin** (check-in) | Identificazione e serrature | Sono un pezzo dello stack, non il gestionale | Verifica a € 1,25-2 |
+| **Avantio, Uplisting, OwnerRez** | Portale proprietari (Avantio), prezzi per unità | Mercato internazionale, nessuna compliance italiana e svizzera | € 14 per unità con minimo € 295 (Avantio); $ 100 fino a 5 poi ~$ 20 (Uplisting); $ 40 la prima, decrescente (OwnerRez) |
+| **Vikey, Chekin** (check-in) | Identificazione, invio alla Questura, serrature | Sono un pezzo dello stack, non il gestionale | Vikey € 4,90-9,90 per unità ✓; Chekin € 3,95-7,95 per unità, minimo 3 ✓ |
 | **Enso Connect** (routine) | Automazioni a più passi create in linguaggio naturale | Non collega le routine agli eventi di compliance (identificazione, Alloggiati) | — |
 
 ### 7.2 Dove mi metto
@@ -399,6 +412,7 @@ grande: ho bisogno di densità in pochi comuni.
 | Zero commissioni su prenotazioni e canoni, nessuna fee sui pagamenti | Sì | Smoobu, Beds24, OwnerRez sui pagamenti; nessuno su tutto |
 | Routine collegate alla compliance (codice serratura solo dopo l'identificazione) | Sì | Nessuno [FATTO, analisi Quokka §3.6] |
 | Programma Founding Partner scritto, con margine bloccato | Sì | Quasi assente sul mercato |
+| Piano gratuito con accesso al marketplace dei fornitori | Sì (1 proprietà) | Hospitable (illimitato, senza fornitori con garanzia); Turno (solo pulizie) |
 | Da 1 a 500 unità con lo stesso prodotto | Sì | Guesty ha tre prodotti; Lodgify si ferma presto |
 
 **Quanto dura il vantaggio.** I due asset difficili da copiare sono la compliance italiana già costruita e il
@@ -516,9 +530,9 @@ gantt
 | Filone | Cosa consegno | Indicatore a M12 (Base) |
 |---|---|---|
 | **Rete fornitori** | Comuni pilota scelti dove ci sono già host (i comuni di Quokka e dei partner); onboarding di persona dei fornitori (pulizie prima di tutto, poi manutenzione, idraulico, elettricista, lavanderia); vetrine pubbliche indicizzabili; **pagamenti online con commissione attivati** dopo i pareri fiscali; periodo di lancio a 0 % per i primi fornitori di ogni comune | 18 fornitori attivi |
-| **Onboarding B2C** | Signup self-service con DPA e consensi, piani Starter/Pro/Scale con fattura elettronica, checklist di attivazione, pagine per comune con calcolatore dell'imposta di soggiorno e contenuti sulla compliance, ambiente demo pubblico, app host negli store | 33 host paganti |
+| **Onboarding B2C** | Signup self-service con DPA e consensi, piani Starter/Pro/Scale con fattura elettronica, checklist di attivazione, pagine per comune con calcolatore dell'imposta di soggiorno e contenuti sulla compliance, ambiente demo pubblico, app host negli store | 33 host paganti, ~100 host Free |
 | **Almeno altre 2 agenzie B2B** | Due founding partner in produzione (nel modello: 80 e 60 unità, € 8 per unità) | 3 agenzie, 390 unità |
-| **Marketplace** | Richiesta di pulizia generata dal check-out, "chiedi a un altro fornitore", promemoria, rimborsi dalla console di amministrazione | € 2.000-3.000 di interventi al mese |
+| **Marketplace** | Richiesta di pulizia generata dal check-out, "chiedi a un altro fornitore", promemoria, rimborsi dalla console di amministrazione | ~€ 8.000 di interventi al mese |
 
 **Criteri di uscita:** MRR ≥ € 5.000; almeno un comune in cui ogni richiesta di pulizia viene presa in carico entro 24 ore; churn B2C misurato; primi rimborsi gestiti senza controversie aperte.
 
@@ -534,7 +548,7 @@ gantt
 - **Integrazione con gli assistenti AI** (ChatGPT, Claude) tramite MCP, già pianificata;
 - **Seconda e terza fonte di traffico**: contenuti sulla compliance e partnership con i commercialisti per le locazioni lunghe.
 
-**Indicatori a M24 (Base):** 9 agenzie, 646 unità, 146 host B2C, 78 fornitori, MRR € 16.700, metà degli host B2C che usa il marketplace.
+**Indicatori a M24 (Base):** 9 agenzie, 646 unità, 146 host B2C paganti (più ~440 Free), 78 fornitori, MRR € 18.900, metà degli host paganti che usa il marketplace.
 
 ### 9.4 Fase 3, mesi 25-36 (novembre 2028 - ottobre 2029): scala
 
@@ -544,10 +558,10 @@ gantt
 - App nativa del fornitore; Google Vacation Rentals come canale diretto in più;
 - Funzioni per le agenzie più grandi (multi-marchio, SSO, SLA) e valutazione dei moduli Spagna/Francia;
 - **Mese 36: lascio il mio lavoro** e assumo uno sviluppatore senior e una persona per il successo dei clienti e
-  l'onboarding dei fornitori. Nello scenario Base i ricavi di M36 coprono il costo delle tre persone 2,6 volte; nel
-  Prudente lo coprono al 97 %, e in quel caso scaglionerei la seconda assunzione.
+  l'onboarding dei fornitori. Nello scenario Base i ricavi di M36 coprono il costo delle tre persone 2,4 volte; nel
+  Prudente lo coprono all'80 %, e in quel caso scaglionerei le assunzioni e userei la cassa cumulata (~€ 100.000) per il ponte.
 
-**Indicatori a M36 (Base):** 19 agenzie, 1.128 unità, 356 host B2C, 174 fornitori, MRR € 38.000, ARR € 456.000.
+**Indicatori a M36 (Base):** 19 agenzie, 1.128 unità, 356 host B2C paganti (più ~1.070 Free), 174 fornitori, MRR € 43.300, ARR € 520.000.
 
 ---
 
@@ -558,7 +572,7 @@ gantt
 | Canale | Cosa faccio | Perché funziona |
 |---|---|---|
 | **Quokka 360 come caso di studio** | Referenze, numeri reali (tempo risparmiato, costo per unità), visite congiunte | Un'agenzia crede a un'altra agenzia |
-| **Agenzie che pagano Kross + Vikey** | Confronto scritto: tutto compreso a € 13-15 contro ~€ 16 con meno servizi | Prezzo più basso e più funzioni |
+| **Agenzie che pagano Kross + Vikey** | Confronto scritto: tutto compreso a € 13-15 contro € 15,90 di Kross Premium + Vikey Master, con AI, CRM, portale proprietari e fornitori in più | Stesso prezzo, molte più funzioni |
 | **Associazioni di categoria ed eventi** | Presenza agli eventi di settore (BTO, TTG) e nei gruppi dei gestori; webinar sulla compliance 2027 | Il tema della compliance apre la porta |
 | **Confine italo-svizzero** | Agenzie del Ticino e dei laghi che gestiscono in entrambi i Paesi | Nessun concorrente fa la compliance di entrambi |
 | **Programma Founding Partner** | 10 posti, prezzo bloccato, scritto e pubblico | Distintivo: sul mercato quasi nessuno lo fa |
@@ -610,7 +624,8 @@ del piano rigenera le tabelle. Importi in euro, IVA esclusa.
 | Nuove agenzie a listino al mese (anno 2 / anno 3) | 0,25 / 0,5 | 0,5 / 1 | 1 / 2 | Ciclo di vendita 2-4 mesi |
 | Nuovi host B2C paganti al mese (anno 1 / 2 / 3) | 3 / 6 / 12 | 6 / 12 / 25 | 10 / 20 / 40 | Partenza a M7-M9 |
 | Churn mensile B2C | 4 % | 3 % | 2,5 % | Benchmark SaaS per piccole imprese 2-5 % |
-| ARPU B2C | € 50 | € 55 | € 58 | Mix 60 % Starter, 35 % Pro, 5 % Scale |
+| ARPU host B2C pagante | € 54 | € 60 | € 65 | Listino 1.1.0: mix 55 % Starter, 38 % Pro, 7 % Scale; annuale −10 % |
+| Host Free per ogni host pagante (volume marketplace di un host Free) | 4 (€ 15) | 3 (€ 30) | 2,5 (€ 40) | Costo di un host Free € 0,45 al mese |
 | Host B2C che usano il marketplace a regime | 35 % | 50 % | 60 % | Da misurare dal primo comune |
 | Volume interventi al mese per host che lo usa | € 150 | € 220 | € 260 | ~5 pulizie da € 40 più manutenzioni |
 | Commissione marketplace, pagata dal cliente | 10 % | 10 % | 10 % | Configurazione provvisoria nel codice |
@@ -619,22 +634,25 @@ del piano rigenera le tabelle. Importi in euro, IVA esclusa.
 **Costi**: channel manager € 350 al mese dal go-live del primo partner (50 unità incluse, poi € 3,15 a unità); hosting
 € 5 prima della produzione, poi € 85 → € 185; email, strumenti di sviluppo assistito (€ 200), commercialista (€ 150),
 costituzione (€ 2.000 una tantum), revisione legale e marchio (€ 2.800 una tantum), pareri ricorrenti, assicurazione,
-marketing da € 150 a € 800 al mese. **Il founder non percepisce compenso fino al mese 36.**
+marketing da € 150 a € 800 al mese; costi unitari dal listino (`LISTINO.md` § 3): € 1,00 per unità B2B più € 1,98 di
+verifiche incluse per le agenzie a listino, € 3,10 per host pagante più il channel manager via API (€ 3,15 per unità)
+per gli host Pro e Scale, € 0,45 per host Free. **Il founder non percepisce compenso fino al mese 36.**
 
 ### 11.2 I risultati
 
 | Indicatore | Prudente | Base | Ambizioso |
 |---|---:|---:|---:|
-| MRR a M12 (ottobre 2027) | € 2.452 | € 5.211 | € 8.025 |
-| MRR a M24 (ottobre 2028) | € 8.041 | € 16.686 | € 31.361 |
-| MRR a M36 (ottobre 2029) | € 16.111 | € 37.959 | € 73.659 |
-| ARR a M36 | € 193.335 | € 455.512 | € 883.909 |
-| Ricavi anno 1 / anno 2 / anno 3 | € 10.792 / € 69.709 / € 151.931 | € 23.425 / € 139.134 / € 344.422 | € 36.951 / € 250.664 / € 661.057 |
-| Mix B2B / B2C / marketplace a M36 | 44 / 48 / 7 % | 36 / 52 / 13 % | 36 / 48 / 16 % |
-| Primo mese stabilmente in utile | M8 | M6 | M5 |
-| Fabbisogno massimo di cassa | € 7.475 (M7) | € 6.705 (M5) | € 6.240 (M4) |
-| Risultato cumulato in 36 mesi (founder non retribuito) | € 126.809 | € 361.283 | € 731.367 |
-| Agenzie / unità / host B2C / fornitori a M36 | 11 / 673 / 156 / 104 | 19 / 1.128 / 356 / 174 | 37 / 2.130 / 605 / 270 |
+| MRR a M12 (ottobre 2027) | € 2.565 | € 5.679 | € 8.983 |
+| MRR a M24 (ottobre 2028) | € 8.746 | € 18.852 | € 35.632 |
+| MRR a M36 (ottobre 2029) | € 17.828 | € 43.315 | € 83.937 |
+| ARR a M36 | € 213.938 | € 519.778 | € 1.007.246 |
+| Ricavi anno 1 / anno 2 / anno 3 | € 11.081 / € 75.186 / € 167.431 | € 25.103 / € 156.375 / € 392.247 | € 40.376 / € 284.690 / € 753.162 |
+| Mix B2B / B2C / marketplace a M36 | 41 / 47 / 12 % | 32 / 49 / 19 % | 32 / 47 / 21 % |
+| Primo mese stabilmente in utile | M10 | M6 | M5 |
+| Fabbisogno massimo di cassa | € 7.556 (M9) | € 6.705 (M5) | € 6.240 (M4) |
+| Risultato cumulato in 36 mesi (founder non retribuito) | € 99.781 | € 323.262 | € 675.327 |
+| Agenzie / unità / host B2C paganti / fornitori a M36 | 11 / 673 / 156 / 104 | 19 / 1.128 / 356 / 174 | 37 / 2.130 / 605 / 270 |
+| Host Free a M36 | 624 | 1.069 | 1.511 |
 
 Tre cose da leggere in questi numeri:
 
@@ -642,18 +660,20 @@ Tre cose da leggere in questi numeri:
    costruito apposta. Il fabbisogno di cassa prima di quel momento è sotto € 8.000 in tutti gli scenari: lo copro io.
 2. **I ricavi scalano con gli host B2C e con la rete**, non con il mio tempo: è la parte del piano che richiede la
    fase 1 fatta bene, comune per comune.
-3. **Il marketplace è piccolo nei numeri e grande nella fedeltà**: al 10 % su € 50.000 di interventi al mese (Base, M36)
-   vale € 5.000 di MRR, ma è il motivo per cui l'host non cambia strumento.
+3. **Il marketplace è la terza linea nei numeri e la prima nella fedeltà**: al 10 % su € 80.000 di interventi al mese
+   (Base, M36, host Free compresi) vale € 8.000 di MRR con quasi nessun costo di piattaforma, ed è il motivo per cui
+   l'host non cambia strumento.
 
 ### 11.3 Sensibilità (scenario Base, MRR a M36)
 
 | Variazione | MRR M36 | Differenza |
 |---|---:|---:|
-| ARPU B2C −20 % / +20 % | € 34.041 / € 41.877 | −€ 3.918 / +€ 3.918 |
-| Churn B2C 2 % / 4 % al mese | € 40.294 / € 35.933 | +€ 2.335 / −€ 2.027 |
-| Commissione marketplace 8 % / 12 % | € 36.995 / € 38.923 | −€ 964 / +€ 964 |
-| Nessuna agenzia a listino (solo founding partner) | € 26.670 | −€ 11.289 |
-| Go-live Quokka a M9 invece di M6 | invariato | fabbisogno di cassa € 7.462 a M7 |
+| ARPU B2C −20 % / +20 % | € 39.041 / € 47.589 | −€ 4.274 / +€ 4.274 |
+| Churn B2C 2 % / 4 % al mese | € 46.145 / € 40.858 | +€ 2.830 / −€ 2.456 |
+| Nessun piano Free | € 40.109 | −€ 3.206 |
+| Commissione marketplace 8 % / 12 % | € 41.710 / € 44.920 | −€ 1.605 / +€ 1.605 |
+| Nessuna agenzia a listino (solo founding partner) | € 31.657 | −€ 11.658 |
+| Go-live Quokka a M9 invece di M6 | invariato | fabbisogno di cassa € 7.411 a M7 |
 
 Il driver principale dei ricavi è il numero di host B2C paganti; il driver della cassa nei primi 12 mesi è la data del go-live di Quokka.
 
@@ -668,11 +688,11 @@ Il driver principale dei ricavi è il numero di host B2C paganti; il driver dell
 
 | Scenario | MRR M36 | Margine prima delle persone | Dopo le persone | Copertura |
 |---|---:|---:|---:|---:|
-| Prudente | € 16.111 | € 11.185 | −€ 315 | 97 % |
-| Base | € 37.959 | € 30.124 | € 18.624 | 262 % |
-| Ambizioso | € 73.659 | € 60.224 | € 48.724 | 524 % |
+| Prudente | € 17.828 | € 9.187 | −€ 2.313 | 80 % |
+| Base | € 43.315 | € 27.192 | € 15.692 | 236 % |
+| Ambizioso | € 83.937 | € 55.564 | € 44.064 | 483 % |
 
-Nel Prudente la seconda assunzione aspetta qualche mese e la cassa cumulata (€ 126.809) copre il ponte. In nessuno
+Nel Prudente le assunzioni si scaglionano e la cassa cumulata (€ 99.781) copre il ponte. In nessuno
 scenario le assunzioni dipendono da capitale esterno.
 
 ### 11.5 Con un pre-seed (opzionale)
@@ -814,7 +834,7 @@ agenzie firmate). Condizioni da scrivere con il legale [⚖].
 
 ### 16.3 Agli investitori
 
-Il piano base **si autofinanzia**: fabbisogno massimo sotto € 8.000, in utile dal go-live del primo partner, € 361.000
+Il piano base **si autofinanzia**: fabbisogno massimo sotto € 8.000, in utile dal go-live del primo partner, € 323.000
 di risultato cumulato in 36 mesi nello scenario Base. Un investimento serve ad anticipare, non a sopravvivere.
 
 Proposta di **pre-seed, € 150.000-250.000** [STIMA, da definire con il commercialista e il legale], uso dei fondi su 24 mesi:
@@ -826,35 +846,34 @@ Proposta di **pre-seed, € 150.000-250.000** [STIMA, da definire con il commerc
 | Marketing e contenuti, eventi di settore | ~15 % | Pipeline B2B e traffico B2C |
 | Pareri legali e fiscali, DPIA, marchio, riserva | ~10 % | Nessun blocco regolatorio sul percorso |
 
-Con il capitale, l'obiettivo diventa lo scenario Ambizioso (MRR € 73.700 a 36 mesi, ARR ~€ 884.000). Valutazione,
+Con il capitale, l'obiettivo diventa lo scenario Ambizioso (MRR € 83.900 a 36 mesi, ARR ~€ 1 milione). Valutazione,
 strumento (SAFE-like o aumento di capitale) e governance da discutere; non sono scritti in questo documento.
 
 ---
 
 ## Appendice A. Listino completo
 
-### A.1 B2C (host), al mese, IVA esclusa
+### A.1 B2C (host), al mese, IVA esclusa, annuale −10 %
 
-| Piano | Prezzo | Proprietà | Persone |
-|---|---:|---:|---:|
-| Starter | € 29 | 3 | 2 |
-| Pro | € 79 | 50 | 10 |
-| Scale | € 199 | illimitate | illimitate |
-| Channel manager via API (opzione) | ~€ 4 per unità [STIMA] | | |
+| Piano | Prezzo | Proprietà incluse | Ogni proprietà in più | Tetto | Persone |
+|---|---:|---:|---:|---:|---:|
+| Free | € 0 | 1 | — | 1 | 1 |
+| Starter | € 29 (€ 26 annuale) | 3 | — | 3 | 2 |
+| Pro | € 79 (€ 71) | 10 | € 8 | 50 | 10 |
+| Scale | € 199 (€ 179) | 25 | € 7 | 100 | illimitate |
+| Channel manager via API (opzione Starter) | € 4 per unità | | | | |
+| Check-in biometrico (Pro e Scale) | € 0,75 a verifica (NFC +€ 0,20) | | | | |
+| Serrature smart (Pro e Scale) | € 7 per serratura al mese | | | | |
 
-I limiti di proprietà sono quelli scritti oggi nel codice e sono un'ipotesi: la verifica di mercato del 15 ottobre 2026
-(§ 5.1.1 e [`VERIFICA-PIANI-B2C.md`](./VERIFICA-PIANI-B2C.md)) propone 3 incluse / 10 incluse + € 7 per unità fino a 50 /
-30 incluse + € 6 per unità fino a 100, oltre i quali si passa al listino B2B.
-
-### A.2 B2B (agenzie), per unità al mese, IVA esclusa, pagamento annuale (+10 % mensile), minimo € 90
+### A.2 B2B (agenzie), per unità al mese, IVA esclusa, pagamento annuale (+10 % mensile), minimo € 100
 
 | Pacchetto | 10-49 | 50-149 | 150-399 | 400+ |
 |---|---:|---:|---:|---:|
-| Base | € 9 | € 8 | € 7 | preventivo |
+| Base | € 10 | € 9 | € 8 | preventivo |
 | + AI e Marketing | + € 4 | + € 4 | + € 4 | |
-| Tutto compreso (Base + AI e Marketing + 8 verifiche/unità/mese) | € 15 | € 14 | € 13 | preventivo |
-| Check-in biometrico | € 0,75 a verifica (costo CasaZen $ 0,33-0,48) | | | |
-| Serrature smart | € 6 per serratura al mese (costo CasaZen $ 5) | | | |
+| Tutto compreso (Base + AI e Marketing + 6 verifiche/unità/mese) | € 15 | € 14 | € 13 | preventivo |
+| Verifica d'identità in più | € 0,75 (NFC +€ 0,20; costo CasaZen $ 0,33-0,48) | | | |
+| Serrature smart | € 7 per serratura al mese (costo CasaZen $ 5) | | | |
 
 ### A.3 Founding Partner
 
@@ -884,6 +903,7 @@ restituita in proporzione; nessun canone per il fornitore.
 - `.claude/context/regulations/*`: CIN, Alloggiati, imposta di soggiorno, fiscale, GDPR, canone concordato, con le fonti ufficiali.
 - `Casazen.Core/Services/PlanCatalog.cs`: limiti dei piani Starter/Pro/Scale.
 - `docs/business-plan/VERIFICA-PIANI-B2C.md`: listini 2026 di dodici concorrenti per i piccoli host, con le fonti.
+- `docs/business-plan/LISTINO.md` (generato da `scripts/business-plan/listino.py`): costi fissi e unitari, prezzi, margini, confronto con tredici concorrenti, fonti.
 
 **Fonti esterne** citate nei documenti sopra: Booking.com Connectivity, Airbnb API terms, NextPax e Octorate (prezzi e
 API), Stripe (direct charges, fee payer, sandbox), Avantio, Guesty, Lodgify, OwnerRez, Kross Booking, Uplisting,
@@ -915,6 +935,7 @@ privacy, EDPB, Agenzia delle Entrate, Normattiva (Testo unico IVA 2027).
 
 | Versione | Data | Cosa cambia |
 |---|---|---|
+| 1.1.0 | 2026-10-15 | Listino definitivo B2C e B2B dopo ricerca di mercato e calcolo dei costi (`LISTINO.md`); modello finanziario riallineato |
 | 1.0.0 | 2026-10-15 | Prima versione completa per la presentazione a investitori, partner e soci |
 
 Regole di versione e di export in [`README.md`](./README.md); storico in [`CHANGELOG.md`](./CHANGELOG.md).

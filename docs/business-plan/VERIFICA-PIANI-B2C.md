@@ -1,6 +1,6 @@
 # Verifica di mercato dei piani B2C (Starter, Pro, Scale)
 
-**Data:** 15 ottobre 2026 · **Versione del piano:** 1.0.0 · **Stato:** verifica fatta; decisione del founder aperta.
+**Data:** 15 ottobre 2026 · **Versione del piano:** 1.1.0 · **Stato:** verifica fatta; **decisione presa nella versione 1.1.0** (listino definitivo in [`LISTINO.md`](./LISTINO.md), che aggiorna la proposta del § 3: Scale con 25 proprietà incluse invece di 30, Pro con € 8 per unità in più invece di € 7, channel manager via API incluso in Pro e Scale, piano Free adottato).
 
 **Perché questa nota.** I piani B2C di CasaZen (Starter € 29 fino a 3 proprietà, Pro € 79 fino a 50, Scale € 199
 illimitate) sono un'ipotesi del founder, scritta nel codice (`Casazen.Core/Services/PlanCatalog.cs`) senza una ricerca
@@ -57,7 +57,7 @@ tra fonti sono riportati come intervallo.
 
 ---
 
-## 3. Proposta: stessi prezzi, limiti per unità incluse più prezzo per unità in più
+## 3. Proposta (superata dal listino 1.1.0: vedi `LISTINO.md`)
 
 | Piano | Prezzo al mese | Proprietà incluse | Ogni proprietà in più | Tetto | Oltre il tetto |
 |---|---:|---:|---:|---:|---|
@@ -101,7 +101,7 @@ attrito, più volume per il marketplace. Contro: costi AI e supporto per utenti 
 | Dove | Cosa cambia se la proposta viene accettata |
 |---|---|
 | **Business plan** § 5.1 e Appendice A.1 | Tabella dei piani con proprietà incluse, prezzo per unità in più e tetti; sconto annuale |
-| **Modello finanziario** | L'ARPU B2C di € 55 non cambia (mix Starter/Pro/Scale); le unità in più sono un ricavo aggiuntivo non modellato (prudenziale). Da aggiungere come riga quando ci saranno dati reali |
+| **Modello finanziario** | Riallineato nella versione 1.1.0: ARPU B2C pagante € 60 (mix 55 % Starter, 38 % Pro, 7 % Scale), host Free e loro volume marketplace, channel manager incluso in Pro e Scale |
 | **Codice** | `PlanCatalog` (3 / 50 / illimitate → 3 / 10+extra / 30+extra), `IEntitlementService` (conteggio delle unità in più), prezzi Stripe per quantità (oggi `spec-saas-billing` prevede solo prezzi fissi per piano), test `PlanLimitAndOrgProvisioningPostgresTests`, catalogo demo, testi i18n dei piani |
 | **Sito pubblico** | Pagina prezzi (oggi assente per scelta: iscrizione su invito) |
 

@@ -62,6 +62,8 @@ class Scenario:
     b2c_adds: dict[int, float]               # anno -> nuovi host paganti al mese (lordi)
     b2c_churn: float
     b2c_arpu: float
+    free_hosts_per_paying: float             # host del piano gratuito per ogni host pagante
+    free_gmv_per_host: float                 # volume marketplace mensile di un host gratuito
     # fornitori e marketplace
     supplier_adds: dict[int, float]          # anno -> nuovi fornitori attivi al mese
     mkt_adoption_start: float                # quota host B2C che usano il marketplace (M7)
@@ -75,10 +77,12 @@ class Scenario:
     channel_manager_min: float = 350.0       # minimo mensile NextPax (50 unità incluse)
     channel_manager_unit: float = 3.15       # oltre le 50 unità incluse
     channel_manager_included: int = 50
-    b2c_channel_share: float = 0.30          # host B2C che attivano il channel manager
-    b2c_units_per_host: float = 2.0
-    per_unit_variable: float = 0.40          # SDI, AI, email per unità B2B
-    per_host_ai: float = 0.50                # AI per host B2C
+    b2c_channel_share: float = 0.45          # host paganti nei piani Pro e Scale (channel manager via API incluso)
+    b2c_units_per_host: float = 9.7          # unità medie di un host Pro/Scale
+    per_unit_variable: float = 1.00          # hosting, email, AI in bozza, rendiconto proprietario, assistenza per unità B2B
+    list_agency_verification_cost: float = 1.98  # 6 verifiche d'identità incluse per unità (€ 0,33 l'una), solo agenzie a listino
+    per_host_variable: float = 3.10          # AI, hosting, email, fattura SDI, assistenza per host B2C pagante
+    free_host_cost: float = 0.45             # hosting, email e assistenza di un host gratuito
     stripe_billing_b2c: float = 0.02         # commissioni Stripe sulle fatture mensili B2C
     stripe_billing_b2b: float = 0.005        # fatture annuali B2B
     dev_tooling: float = 200.0               # Claude Code Max (sviluppo assistito)
@@ -132,7 +136,9 @@ def run(s: Scenario) -> list[dict]:
             adoption = s.mkt_adoption_start + (s.mkt_adoption_end - s.mkt_adoption_start) * t
         else:
             adoption = 0.0
-        gmv = b2c_hosts * adoption * s.mkt_gmv_per_adopting_host + b2b_units * s.mkt_gmv_per_b2b_unit
+        free_hosts = b2c_hosts * s.free_hosts_per_paying
+        gmv = (b2c_hosts * adoption * s.mkt_gmv_per_adopting_host + b2b_units * s.mkt_gmv_per_b2b_unit
+               + free_hosts * s.free_gmv_per_host)
         mkt_rev = gmv * s.commission
         revenue = b2b_rev + b2c_rev + mkt_rev
         # --- costi ---
@@ -144,7 +150,8 @@ def run(s: Scenario) -> list[dict]:
             channel = s.channel_manager_min + max(0.0, cm_units - s.channel_manager_included) * s.channel_manager_unit
         else:
             channel = 0.0
-        variable = b2b_units * s.per_unit_variable + b2c_hosts * s.per_host_ai
+        variable = (b2b_units * s.per_unit_variable + list_units * s.list_agency_verification_cost
+                    + b2c_hosts * s.per_host_variable + free_hosts * s.free_host_cost)
         stripe = b2c_rev * s.stripe_billing_b2c + b2b_rev * s.stripe_billing_b2b
         guarantee = gmv * s.guarantee_reserve
         marketing = s.marketing[y] if m >= s.b2c_start else 0.0
@@ -163,7 +170,7 @@ def run(s: Scenario) -> list[dict]:
             "mese": m, "periodo": label(m), "anno": y,
             "agenzie_partner": sum(1 for p in s.partners if m >= p.start),
             "agenzie_listino": list_agencies, "unita_b2b": b2b_units,
-            "host_b2c": b2c_hosts, "fornitori_attivi": suppliers,
+            "host_b2c": b2c_hosts, "host_free": free_hosts, "fornitori_attivi": suppliers,
             "gmv_marketplace": gmv,
             "ricavi_b2b": b2b_rev, "ricavi_b2c": b2c_rev, "ricavi_marketplace": mkt_rev,
             "ricavi_totali": revenue,
@@ -188,8 +195,9 @@ BASE = Scenario(
         Partner("Founding partner 3", start=12, units=60, fee=60 * 8.0),
     ],
     list_agency_adds={2: 0.5, 3: 1.0},
-    list_agency_units=45, list_agency_price_per_unit=14.5, b2b_churn=0.01,
-    b2c_start=7, b2c_adds={1: 6, 2: 12, 3: 25}, b2c_churn=0.03, b2c_arpu=55.0,
+    list_agency_units=45, list_agency_price_per_unit=15.0, b2b_churn=0.01,
+    b2c_start=7, b2c_adds={1: 6, 2: 12, 3: 25}, b2c_churn=0.03, b2c_arpu=60.0,
+    free_hosts_per_paying=3.0, free_gmv_per_host=30.0,
     supplier_adds={1: 3, 2: 5, 3: 8},
     mkt_adoption_start=0.20, mkt_adoption_end=0.50, mkt_gmv_per_adopting_host=220.0,
     mkt_gmv_per_b2b_unit=8.0,
@@ -203,8 +211,9 @@ PRUDENTE = Scenario(
         Partner("Founding partner 3", start=18, units=50, fee=50 * 8.0),
     ],
     list_agency_adds={2: 0.25, 3: 0.5},
-    list_agency_units=40, list_agency_price_per_unit=14.5, b2b_churn=0.015,
-    b2c_start=9, b2c_adds={1: 3, 2: 6, 3: 12}, b2c_churn=0.04, b2c_arpu=50.0,
+    list_agency_units=40, list_agency_price_per_unit=15.0, b2b_churn=0.015,
+    b2c_start=9, b2c_adds={1: 3, 2: 6, 3: 12}, b2c_churn=0.04, b2c_arpu=54.0,
+    free_hosts_per_paying=4.0, free_gmv_per_host=15.0,
     supplier_adds={1: 2, 2: 3, 3: 5},
     mkt_adoption_start=0.15, mkt_adoption_end=0.35, mkt_gmv_per_adopting_host=150.0,
     mkt_gmv_per_b2b_unit=5.0,
@@ -221,7 +230,8 @@ AMBIZIOSO = Scenario(
     ],
     list_agency_adds={2: 1.0, 3: 2.0},
     list_agency_units=50, list_agency_price_per_unit=14.0, b2b_churn=0.01,
-    b2c_start=7, b2c_adds={1: 10, 2: 20, 3: 40}, b2c_churn=0.025, b2c_arpu=58.0,
+    b2c_start=7, b2c_adds={1: 10, 2: 20, 3: 40}, b2c_churn=0.025, b2c_arpu=65.0,
+    free_hosts_per_paying=2.5, free_gmv_per_host=40.0,
     supplier_adds={1: 5, 2: 8, 3: 12},
     mkt_adoption_start=0.25, mkt_adoption_end=0.60, mkt_gmv_per_adopting_host=260.0,
     mkt_gmv_per_b2b_unit=12.0,
@@ -298,7 +308,8 @@ def render(all_rows: dict[str, list[dict]]) -> str:
     L.append("")
     L.append("- **Ricavi B2B**: canoni delle agenzie. I founding partner pagano un canone fisso (costo documentato + € 1/unità);")
     L.append("  le agenzie a listino pagano il tutto compreso per unità. Le verifiche d'identità sono rifatturate al costo e restano fuori.")
-    L.append("- **Ricavi B2C**: abbonamenti degli host (Starter € 29, Pro € 79, Scale € 199; ARPU medio ponderato).")
+    L.append("- **Ricavi B2C**: abbonamenti degli host paganti (Starter € 29, Pro € 79 + unità in più, Scale € 199 + unità in più;")
+    L.append("  ARPU medio ponderato). Gli host del piano Free non pagano: contano nei costi e nel volume del marketplace.")
     L.append("- **Ricavi marketplace**: 10 % sul valore degli interventi dei fornitori pagati tramite CasaZen, a carico del cliente.")
     L.append("  Mai una commissione sulle prenotazioni o sui canoni di locazione.")
     L.append("- **Costi**: piattaforma (hosting, email, channel manager, costi per unità, Stripe sulle nostre fatture, strumenti di sviluppo),")
@@ -321,7 +332,8 @@ def render(all_rows: dict[str, list[dict]]) -> str:
     row("Inizio onboarding B2C", lambda s: f"M{s.b2c_start} ({label(s.b2c_start)})")
     row("Nuovi host paganti al mese (anno 1 / 2 / 3)", lambda s: f"{s.b2c_adds[1]} / {s.b2c_adds[2]} / {s.b2c_adds[3]}")
     row("Churn mensile host B2C", lambda s: f"{s.b2c_churn*100:.1f} %".replace(".", ","))
-    row("ARPU host B2C", lambda s: f"€ {s.b2c_arpu:.0f}")
+    row("ARPU host B2C pagante (listino: Starter € 29, Pro € 79 + extra, Scale € 199 + extra; annuale −10 %)", lambda s: f"€ {s.b2c_arpu:.0f}")
+    row("Host del piano Free per ogni host pagante, volume marketplace di un host Free", lambda s: f"{s.free_hosts_per_paying:g}, € {s.free_gmv_per_host:.0f}")
     row("Nuovi fornitori attivi al mese (anno 1 / 2 / 3)", lambda s: f"{s.supplier_adds[1]} / {s.supplier_adds[2]} / {s.supplier_adds[3]}")
     row("Host B2C che usano il marketplace (inizio → M24)", lambda s: f"{s.mkt_adoption_start*100:.0f} % → {s.mkt_adoption_end*100:.0f} %")
     row("Volume interventi al mese per host che lo usa", lambda s: f"€ {s.mkt_gmv_per_adopting_host:.0f}")
@@ -334,8 +346,10 @@ def render(all_rows: dict[str, list[dict]]) -> str:
     L.append("hosting € 5 prima della produzione, poi € 85 → € 125 → € 185 per anno; email € 20 → € 90; strumenti di sviluppo € 200;")
     L.append("commercialista € 150 + conto/PEC € 30 dal mese di costituzione (M2); costituzione SRL € 2.000 una tantum (M2);")
     L.append("revisione legale e marchio € 2.800 una tantum (M3); pareri fiscali € 100 e RC professionale € 50 dal go-live;")
-    L.append("marketing € 150 → € 400 → € 800 dall'inizio del B2C; costi per unità B2B € 0,40 (SDI, AI, email); AI per host B2C € 0,50;")
-    L.append("Stripe sulle nostre fatture 2 % (B2C) e 0,5 % (B2B).")
+    L.append("marketing € 150 → € 400 → € 800 dall'inizio del B2C; costi per unità B2B € 1,00 (hosting, email, AI, rendiconto, assistenza)")
+    L.append("più € 1,98 di verifiche incluse per le unità delle agenzie a listino; costi per host B2C pagante € 3,10 più il channel")
+    L.append("manager via API per il 45 % di host Pro/Scale (9,7 unità medie); host Free € 0,45; Stripe sulle nostre fatture 2 % (B2C) e")
+    L.append("0,5 % (B2B). Dettaglio dei costi unitari e dei margini per piano in `LISTINO.md`.")
     L.append("")
     # --- Riepilogo per anno ---
     L.append("## 3. Riepilogo per anno")
@@ -390,6 +404,7 @@ def render(all_rows: dict[str, list[dict]]) -> str:
         L.append("| Agenzie (partner + listino) | " + " | ".join(f"{r['agenzie_partner']} + {num(r['agenzie_listino'])}" for r in ms) + " |")
         mrow("Unità B2B", "unita_b2b", num)
         mrow("Host B2C paganti", "host_b2c", num)
+        mrow("Host Free", "host_free", num)
         mrow("Fornitori attivi", "fornitori_attivi", num)
         mrow("Volume marketplace nel mese", "gmv_marketplace")
         mrow("MRR B2B", "ricavi_b2b")
@@ -459,8 +474,9 @@ def render(all_rows: dict[str, list[dict]]) -> str:
         need, need_m = cash_need(rows)
         L.append(f"| {name} | {eur(v)} | {eur(v - base36)} | {eur(rows[35]['cassa_cumulata'])} | {eur(need)} (M{need_m}) |")
     L.append(f"| Scenario Base (riferimento) | {eur(base36)} | € 0 | {eur(base_cash)} | {eur(cash_need(base_rows)[0])} (M{cash_need(base_rows)[1]}) |")
-    variant("ARPU B2C −20 % (€ 44)", b2c_arpu=BASE.b2c_arpu * 0.8)
-    variant("ARPU B2C +20 % (€ 66)", b2c_arpu=BASE.b2c_arpu * 1.2)
+    variant("ARPU B2C −20 % (€ 48)", b2c_arpu=BASE.b2c_arpu * 0.8)
+    variant("ARPU B2C +20 % (€ 72)", b2c_arpu=BASE.b2c_arpu * 1.2)
+    variant("Nessun piano Free (0 host gratuiti)", free_hosts_per_paying=0.0)
     variant("Churn B2C 2 %/mese", b2c_churn=0.02)
     variant("Churn B2C 4 %/mese", b2c_churn=0.04)
     variant("Commissione marketplace 8 %", commission=0.08)

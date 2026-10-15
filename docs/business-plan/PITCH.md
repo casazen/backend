@@ -1,6 +1,6 @@
 # CasaZen: la presentazione
 
-> Versione 1.0.0 del 15 ottobre 2026, allineata a [`BUSINESS-PLAN.md`](./BUSINESS-PLAN.md). Quindici slide più due di
+> Versione 1.1.0 del 15 ottobre 2026, allineata a [`BUSINESS-PLAN.md`](./BUSINESS-PLAN.md). Quindici slide più due di
 > riserva; sotto ogni slide ci sono le note di quello che dico. Durata: 15-20 minuti più domande. Le cifre sono
 > stime [STIMA] salvo dove indicato [FATTO]; i dettagli e le fonti sono nel piano.
 
@@ -69,15 +69,15 @@ flowchart LR
 
 | Linea | Come | Chi paga |
 |---|---|---|
-| **Abbonamenti B2C** | Starter € 29, Pro € 79, Scale € 199 al mese | L'host |
-| **Abbonamenti B2B** | € 7-15 per unità al mese, tutto compreso | L'agenzia |
+| **Abbonamenti B2C** | Free (1 proprietà), Starter € 29 (3), Pro € 79 (10 + € 8/unità), Scale € 199 (25 + € 7/unità) | L'host |
+| **Abbonamenti B2B** | Base € 10 / 9 / 8 per unità, tutto compreso € 15 / 14 / 13 (6 verifiche incluse), minimo € 100 | L'agenzia |
 | **Prenotazioni e canoni** | **Zero commissioni**, nessuna fee sui pagamenti; un test di architettura lo impedisce [FATTO] | Nessuno |
 | **Interventi dei fornitori** | **10 %** sul prezzo dell'intervento, in cambio della Garanzia CasaZen | Il cliente che ordina |
 
 > Tre righe, nessuna sorpresa. Sulle prenotazioni non prendo niente e non lo farò mai: è una scelta di posizionamento e
 > mi tiene fuori dai rischi fiscali di chi incassa.
-> I prezzi B2C sono in linea con il mercato (Hospitable $ 29/59/99, Lodgify $ 33-77); i limiti di proprietà dei piani Pro e
-> Scale li sto rivedendo verso "incluse + prezzo per unità in più", come fa il mercato (dettaglio in `VERIFICA-PIANI-B2C.md`).
+> Il listino viene da una ricerca su tredici concorrenti e dal calcolo dei nostri costi: a parità di unità CasaZen è il più
+> economico fino a 3 unità e il secondo dopo Kross fino a 100, con margini lordi tra il 46 e il 94 % (dettaglio in `LISTINO.md`).
 
 ---
 
@@ -125,7 +125,7 @@ flowchart LR
 
 - Software per affitti brevi: $ 1,5 miliardi nel 2024 → $ 3,2 miliardi nel 2033, +9,2 % l'anno [FATTO]
 - Italia: ~600.000 unità attive, ~150.000 gestite da professionisti, ~5.000 agenzie e gestori, 200.000+ piccoli host [STIMA]
-- A 36 mesi mi bastano **19 agenzie e 356 host** (scenario Base): meno dell'1 % del segmento
+- A 36 mesi mi bastano **19 agenzie e 356 host paganti** (scenario Base): meno dell'1 % del segmento
 - Venti che spingono: compliance obbligatoria, prenotazioni last-minute, agenzie di confine senza uno strumento per due Paesi
 
 > Non mi serve una quota di mercato: mi serve densità in pochi comuni.
@@ -164,13 +164,13 @@ flowchart LR
 
 | | Prudente | **Base** | Ambizioso |
 |---|---:|---:|---:|
-| MRR a 12 mesi | € 2.452 | **€ 5.211** | € 8.025 |
-| MRR a 24 mesi | € 8.041 | **€ 16.686** | € 31.361 |
-| MRR a 36 mesi | € 16.111 | **€ 37.959** | € 73.659 |
-| ARR a 36 mesi | € 193.335 | **€ 455.512** | € 883.909 |
-| Primo mese in utile | M8 | **M6** | M5 |
-| Fabbisogno massimo di cassa | € 7.475 | **€ 6.705** | € 6.240 |
-| Risultato cumulato in 36 mesi | € 126.809 | **€ 361.283** | € 731.367 |
+| MRR a 12 mesi | € 2.565 | **€ 5.679** | € 8.983 |
+| MRR a 24 mesi | € 8.746 | **€ 18.852** | € 35.632 |
+| MRR a 36 mesi | € 17.828 | **€ 43.315** | € 83.937 |
+| ARR a 36 mesi | € 213.938 | **€ 519.778** | € 1.007.246 |
+| Primo mese in utile | M10 | **M6** | M5 |
+| Fabbisogno massimo di cassa | € 7.556 | **€ 6.705** | € 6.240 |
+| Risultato cumulato in 36 mesi | € 99.781 | **€ 323.262** | € 675.327 |
 
 > Founder non retribuito fino al mese 36. Il primo partner copre i costi fissi; i ricavi poi scalano con gli host e
 > con la rete. Il modello è uno script nel repository: cambiate un'ipotesi e le tabelle si rigenerano.
@@ -186,8 +186,8 @@ flowchart LR
 | Customer success e fornitori | € 3.000 |
 | **Totale** | **€ 11.500** |
 
-- Scenario Base: i ricavi di M36 coprono le tre persone **2,6 volte**
-- Scenario Prudente: copertura 97 %, seconda assunzione scaglionata, cassa cumulata a coprire il ponte
+- Scenario Base: i ricavi di M36 coprono le tre persone **2,4 volte**
+- Scenario Prudente: copertura 80 %, assunzioni scaglionate, cassa cumulata (~€ 100.000) a coprire il ponte
 
 > Le assunzioni non dipendono da capitale esterno in nessuno scenario.
 
@@ -226,14 +226,21 @@ flowchart LR
 | IVA sulla commissione e DAC7 | Pareri in fase 0; il flusso manuale resta |
 | Qualità dei fornitori | Requisiti, prova, recensioni, accantonamento 1,5 %, sospensione |
 
-## Riserva B. Il listino B2B
+## Riserva B. Il listino
 
-| Pacchetto | 10-49 | 50-149 | 150-399 |
+| B2C | Prezzo | Proprietà | Unità in più |
 |---|---:|---:|---:|
-| Base | € 9 | € 8 | € 7 |
-| + AI e Marketing | + € 4 | + € 4 | + € 4 |
-| Tutto compreso (8 verifiche/unità incluse) | € 15 | € 14 | € 13 |
-| Check-in biometrico | € 0,75 a verifica | | |
-| Serrature smart | € 6 per serratura al mese | | |
+| Free | € 0 | 1 | — |
+| Starter | € 29 (€ 26 annuale) | 3 | — |
+| Pro | € 79 (€ 71) | 10 incluse | € 8, fino a 50 |
+| Scale | € 199 (€ 179) | 25 incluse | € 7, fino a 100 |
 
-Pagamento annuale (+10 % mensile), minimo € 90 al mese, IVA esclusa. Margini sul tutto compreso: 45 % / 41 % / 37 %.
+| B2B (per unità al mese, annuale; +10 % mensile; minimo € 100) | 10-49 | 50-149 | 150-399 |
+|---|---:|---:|---:|
+| Base | € 10 | € 9 | € 8 |
+| + AI e Marketing | + € 4 | + € 4 | + € 4 |
+| Tutto compreso (6 verifiche/unità incluse) | € 15 | € 14 | € 13 |
+| Check-in biometrico | € 0,75 a verifica (NFC +€ 0,20) | | |
+| Serrature smart | € 7 per serratura al mese | | |
+
+Margini lordi: Starter 92 %, Pro 50-73 %, Scale 47-51 %, B2B Base 46-56 %, tutto compreso 48-54 %. IVA esclusa.

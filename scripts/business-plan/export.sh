@@ -11,7 +11,7 @@ mkdir -p "$OUT"
 
 command -v pandoc >/dev/null 2>&1 || { echo "pandoc non trovato: installalo (https://pandoc.org/installing.html)" >&2; exit 1; }
 
-for name in BUSINESS-PLAN MODELLO-FINANZIARIO VERIFICA-PIANI-B2C PITCH; do
+for name in BUSINESS-PLAN LISTINO MODELLO-FINANZIARIO VERIFICA-PIANI-B2C PITCH; do
   src="$DIR/$name.md"
   dst="$OUT/$name.html"
   pandoc "$src" \
