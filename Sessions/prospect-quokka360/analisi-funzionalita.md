@@ -33,16 +33,16 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | OTA | Channel manager via API con **chat e modifica dei contenuti obbligatorie**. PoC con **NextPax** e **Octorate**; Channex e Rentals United scartati |
 | Pagamenti | **Si applica il modello di mercato:** l'agenzia è l'esercente (direct charge sul suo account Stripe con `fees_collector = stripe`). **Stripe addebita tutti i suoi costi direttamente all'agenzia**: CasaZen non incassa nulla e non paga nulla a Stripe |
 | Proprietari | Rendiconto mensile automatico + **file di bonifico SEPA/CH** che l'agenzia approva in banca (come fa Avantio). Su Airbnb, quando l'annuncio è del proprietario, si usa la **ripartizione nativa co-host**. Automazione completa in seguito con EBICS (CH) |
-| Adempimenti | API dove esistono (Alloggiati, ISTAT Lombardia/Marche/Sicilia, feratel); **intermediario abilitato** per Agenzia delle Entrate e F24; **back-office delegato** per comuni e Ticino. L'utente fa tutto da CasaZen e riceve la ricevuta in CasaZen |
+| Adempimenti | **Regola R12:** dove esiste un'API lo fa CasaZen in automatico (Alloggiati, ISTAT Lombardia/Marche/Sicilia, feratel, pagoPA). Dove non è tecnicamente possibile (Agenzia delle Entrate, F24, portali comunali, polizia del Ticino) **CasaZen prepara file e istruzioni, il caricamento lo fa l'agenzia** e la ricevuta si archivia in CasaZen |
 | Check-in | Riconoscimento del documento e del volto **via API di terzi** (PoC Didit e Sumsub). Per legge serve un'alternativa in videochiamata. Immagini cancellate alla ricevuta Alloggiati |
 | Serrature | **Seam**, come fa il mercato. Costo ribaltato all'agenzia; codice rilasciato **solo dopo l'identificazione** |
 | Prezzo (proposta) | Base **€7–9/unità/mese** a scaglioni (portale proprietari incluso) + AI e Marketing €4 + verifiche €0,75; **tutto compreso €13–15**; programma **Founding Partner** a costo + €1/unità, con margine bloccato |
 | Sviluppo | **~10–16 settimane attive (~2,5–4 mesi)** con 1 abbonamento Claude Code Max 20x + PO. Il percorso critico sono i tempi esterni |
 
 **Rischi principali:**
-1. tempi esterni: fornitori OTA, verifica identità, intermediario, enti;
+1. tempi esterni: fornitori OTA, verifica identità, enti;
 2. obbligo di un'alternativa non biometrica e verifica all'ingresso (CdS 9101/2025) ⚖;
-3. adempimenti senza API (Ticino, diversi comuni): coperti dal back-office, che è un costo operativo;
+3. adempimenti senza API (Ticino ogni giorno, diversi comuni): restano un'attività manuale dell'agenzia, anche se CasaZen prepara tutto;
 4. norme fiscali italiane rinumerate dal 1/1/2027.
 
 ---
@@ -54,13 +54,14 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | R1 | Quokka è un **cliente agenzia**. CasaZen resta il fornitore del servizio; ogni funzionalità è di prodotto |
 | R2 | Il B2B è un nuovo tipo di host `Agency` con una propria gestione: agenzia, CasaZen, ospite (diretto), proprietari. Pagamenti in Stripe; **dal 15/10 si applica il modello di mercato** (§3.3) |
 | R3 | Non si replica Kross Booking: le 6 funzionalità sono condizione per collaborare |
-| R4 | Nessun flusso manuale, tranne la firma dei contratti. **Eccezione accettata:** l'approvazione dei bonifici in banca, che è obbligatoria per l'autenticazione forte (SCA) |
+| R4 | Nessun flusso manuale, tranne la firma dei contratti. **Eccezioni:** l'approvazione dei bonifici in banca (obbligatoria per l'autenticazione forte, SCA) e i casi della regola R12 |
 | R5 | Chat AI e modifica dei contenuti obbligatorie nell'API del fornitore OTA |
 | R6 / R9 | Check-in con riconoscimento del documento e del volto: **predefinito nel B2B, opzionale nel B2C**. Il consenso non può essere obbligatorio per legge (§3.6) |
 | R7 | Delegare a terzi il più possibile, sapendo che **la responsabilità di legge non si delega** (§4) |
 | R8 | **Prodotto unico B2C + B2B**, con limiti per piano. Portale proprietari, staff e fornitori propri solo B2B |
 | R10 | Fornitori CasaZen sempre il default. I fornitori propri sono registrati in CasaZen: 0% e fatturazione fuori da CasaZen quando li usa la loro agenzia |
 | R11 | **Tutti i costi Stripe a carico dei clienti** |
+| R12 | **Fattibilità tecnica** (2026-10-15): se un flusso è **tecnicamente possibile** (esiste un'API), lo esegue CasaZen e il costo è suo; caso per caso si decide se venderlo come extra quando è un servizio a pagamento. Se **non è tecnicamente possibile**, CasaZen prepara tutto (file, dati, istruzioni, promemoria, archivio della ricevuta) ma **l'esecuzione resta all'host o all'agenzia**. Niente back-office umano di CasaZen |
 
 ---
 
@@ -73,7 +74,7 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | D3 | Pagamento dei proprietari: rendiconto + file di bonifico SEPA/CH approvato dall'agenzia in banca; ripartizione Airbnb co-host dove possibile; EBICS (CH) e aggregatore o Treasury (IT) come automazione successiva | **Deciso secondo il mercato** |
 | D4 | Fornitore OTA: 11 domande + PoC con NextPax e Octorate, scelta sulle risposte scritte | Deciso |
 | D5 | Biometria via API di terzi; conservazione conforme al Garante; PoC Didit e Sumsub | Deciso |
-| D6 | Tutto da CasaZen con la ricevuta in CasaZen: API, intermediario partner, back-office delegato; costi extra accettati | Deciso |
+| D6 | Adempimenti secondo la regola R12: API eseguite da CasaZen; senza API, CasaZen prepara e l'agenzia esegue. **Back-office e intermediario partner non sono più a carico di CasaZen** | **Rivisto il 15/10** |
 | D7 | Fornitori propri: registrati in CasaZen; 0% e fatturazione esterna con la propria agenzia, regole del marketplace con gli altri; interruttore "visibile nel marketplace" | Deciso |
 | D8 | LLM: DeepSeek (costo). **Raccomandazione aperta:** per i dati degli ospiti usarlo ospitato in UE (AWS Bedrock, Stoccolma) | Deciso con riserva |
 | D9 | Serrature: Seam, costo ribaltato all'agenzia, codice solo dopo l'identificazione | Deciso (raccomandazione accettata) |
@@ -193,15 +194,17 @@ Fonti:
   - Liguria e Calabria: web service da confermare con le Regioni.
 - **Davos:** interfaccia feratel. Laax e Andermatt hanno tasse forfettarie o per capacità, quindi bastano promemoria.
 
-**Senza API, ma con ricevuta in CasaZen (D6):**
+**Senza API (regola R12): CasaZen prepara, l'agenzia esegue**
 
-| Adempimento | Chi esegue |
-|---|---|
-| Dichiarazione annuale imposta di soggiorno, CU/770, dati locazioni brevi, DAC7, F24 | **Intermediario partner** (CAF o studio): CasaZen genera i file validati, il partner li trasmette e restituisce la ricevuta. ~€30 per dichiarazione (esempio pubblico) |
-| StayTour (Como, Trapani, Tropea), TouristTax (Genova, Portofino, S. Margherita), SoggiorniAmo (Milano) | **Back-office delegato**: operatore con le proprie credenziali (StayTour: fino a 3 delegati SPID) |
-| Pagamento pagoPA | Openapi |
-| **Ticino**: notifica alla polizia | Back-office: operatore abilitato dal gestore, caricamento di un file cumulativo ogni giorno, **7 giorni su 7, entro 24 ore** |
-| Pegaso (Ascoli Piceno), Cinque Terre | Da verificare |
+| Adempimento | Cosa prepara CasaZen | Cosa fa l'agenzia |
+|---|---|---|
+| Dichiarazione annuale imposta di soggiorno, CU/770, dati locazioni brevi, DAC7 | File validati secondo le specifiche AdE (moduli di controllo), scadenze e promemoria | Invio tramite il proprio commercialista o intermediario; carica la ricevuta in CasaZen |
+| F24 (ritenute, imposte) | Importi e codici tributo pronti | Pagamento dalla propria banca o tramite intermediario. Il pagamento via API esiste solo per i conti Banca Sella (Fabrick): si valuta caso per caso |
+| StayTour (Como, Trapani, Tropea), TouristTax (Genova, Portofino, S. Margherita), SoggiorniAmo (Milano), Pegaso, Cinque Terre | File o dati da caricare, link diretto al portale, promemoria con scadenza | Caricamento sul portale con le proprie credenziali; ricevuta in CasaZen |
+| **Ticino**: notifica alla polizia | **File XML pronto ogni giorno** (formato ufficiale), promemoria entro le 24 ore | Caricamento quotidiano su notifiche.ti.ch (2FA) |
+| Tassa OTR in Ticino | CSV dei pernottamenti | Pagamento secondo le regole dell'OTR |
+
+**Eseguiti da CasaZen via API (costo di CasaZen):** pagamento pagoPA via Openapi (€2 a carico di chi paga), oltre ad Alloggiati, ISTAT e feratel indicati sopra.
 
 **Vincoli:**
 - Automatizzare lo SPID dell'agenzia (RPA) non è lecito: le credenziali sono di uso personale (AgID).
@@ -277,7 +280,7 @@ Fonti:
 | IVA sul soggiorno | Nessun codice per alloggio in Stripe Tax ✓ | Aliquote da `TaxRate` |
 | Dichiarazione e versamento IVA IT/CH | No ✓ | Taxually (opzionale, per l'agenzia) |
 | Fattura elettronica | No ✓ | Provider SDI via API |
-| Tassa di soggiorno, ritenuta, F24, DAC7 | No | Intermediario partner + file generati da CasaZen |
+| Tassa di soggiorno, ritenuta, F24, DAC7 | No | File preparati da CasaZen; invio a cura dell'agenzia o del suo commercialista (R12) |
 
 **Responsabilità che per legge non si possono delegare:** art. 109 TULPS (gestore), responsabile dell'imposta di soggiorno (chi incassa), sostituto d'imposta (intermediario che incassa), IVA (soggetto passivo), Kurtaxe e notifica degli ospiti in CH (locatore).
 → **Promessa commerciale corretta: "compliance automatizzata", non "compliance delegata".**
@@ -316,7 +319,6 @@ Prezzi ufficiali, IVA esclusa, al 2026-10-15. Per prudenza USD = EUR 1:1.
 | Verifica identità Didit | $0,33 (+$0,15 con NFC) a verifica | Sumsub $1,35 |
 | Serrature Seam | $5 per serratura | Rivenduto a €6 |
 | Fatture SDI, AI DeepSeek, video Daily | ~€0,4/unità | Daily gratis fino a 10.000 minuti |
-| **Back-office "adempimenti gestiti"** | **€0 di cassa: per ora lo svolge il PO** (decisione del 2026-10-15) | Tempo stimato per 250 unità: ~15–20 ore/mese (Ticino ~15 min/giorno + ~5 min/unità/mese sui portali comunali). Ipotesi da validare |
 
 ### 5.2 Cosa pagano i clienti direttamente a terzi
 
@@ -324,7 +326,7 @@ Non sono né costi né ricavi per CasaZen:
 - **Stripe:** commissioni sugli incassi, addebitate direttamente all'agenzia (`fees_collector = stripe`);
 - **WhatsApp (Meta):** fatturato all'agenzia;
 - **pagoPA:** €2 a pagamento, a carico di chi paga;
-- **intermediario fiscale:** pratiche (~€30 la dichiarazione annuale), fatturate al costo;
+- **commercialista o intermediario fiscale dell'agenzia:** invii all'AdE e F24 (~€30 per la dichiarazione annuale come riferimento);
 - **Taxually** (dichiarazioni IVA, opzionale);
 - **serrature:** l'hardware (igloohome da $129) e gli eventuali abbonamenti della marca (es. Nuki Smart Hosting).
 
@@ -343,18 +345,14 @@ Non sono né costi né ricavi per CasaZen:
 | Verifiche | — | €660–960 (al costo) | incluse |
 | **Totale ricavi CasaZen** | **€0** | **€2.390–2.690** | **€3.250** |
 | **Risultato mensile CasaZen** | **−€730** | **+€270** | **+€830–1.130** |
-| **Extra opzionali** (ricavo − costo) | — | Serrature: 250 × (€6 − $5) ≈ +€250 · Adempimenti gestiti: €4 × unità senza API − costo dell'operatore | Come B |
+| **Extra opzionali** (ricavo − costo) | — | Serrature: 250 × (€6 − $5) ≈ +€250 | Come B |
 
 **Come leggere la tabella:**
 - **Scenario A** (piattaforma pronta, nessun cliente): CasaZen perde ~€730 al mese, di cui €350 sono il minimo NextPax. Conviene firmare con NextPax solo quando il primo cliente è vicino.
 - **Scenario B** (Quokka partner): il partner copre tutti i costi, compresi i fissi, e lascia ~€270 al mese di margine. È un pareggio voluto, non un guadagno.
 - **Scenario C** (stessa dimensione a listino): ~€830–1.130 al mese. La differenza con B è il prezzo che si rinuncia a chiedere ai partner.
-- **Back-office:** per ora lo svolge il PO, quindi l'opzione "adempimenti gestiti" (€4/unità dove non c'è API) è tutta margine di cassa.
-- **Condizioni per farlo in modo sostenibile:**
-  - CasaZen deve preparare in automatico i file (XML Ticino, CSV comunali) e i promemoria, così che l'operatore debba solo caricarli e scaricare la ricevuta;
-  - serve **un sostituto** abilitato sugli stessi portali (con proprie credenziali) per ferie e malattia: la notifica in Ticino va fatta entro 24 ore, 7 giorni su 7;
-  - mandato scritto e accordo sul trattamento dei dati (GDPR art. 28) con l'agenzia, anche se l'operatore è il PO.
-- **Non sono inclusi:** il tempo del PO (assistenza, vendita, back-office), i pareri legali una tantum e il costo di sviluppo (§7).
+- **Adempimenti senza API:** secondo la regola R12 li esegue l'agenzia con i file preparati da CasaZen. Nessun back-office e nessun intermediario a carico di CasaZen.
+- **Non sono inclusi:** il tempo del PO (assistenza e vendita), i pareri legali una tantum e il costo di sviluppo (§7).
 
 **Rispetto ai calcoli precedenti:** i costi fissi passano da ~€400 a ~€730/mese, perché il minimo NextPax (€350) ora è contato tra i fissi e non per unità. Il canone partner di Quokka (§6.3) resta ~€1.730 + verifiche: copre comunque tutti i costi.
 
@@ -401,7 +399,6 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 | **+ AI e Marketing** | Risposte AI **inviate in automatico** (sopra una soglia di confidenza), **routine create da una frase** e azioni AI nelle routine, **CRM**: profili ospite, consensi, segmenti, campagne email e WhatsApp con testi AI | **+€4** |
 | **Check-in biometrico** | Riconoscimento del documento e del volto all'ingresso, con alternativa in videochiamata | **€0,75 a verifica** (B2B: obbligatorio) |
 | **Serrature smart** | Integrazione della serratura già installata (via Seam): codice unico per ogni soggiorno, inviato solo dopo l'identificazione, revocato alla partenza o alla cancellazione, stato della batteria. **Non include l'acquisto della serratura** | **€6 per serratura al mese** (costo CasaZen $5) |
-| **Adempimenti gestiti** | Servizio svolto da una persona (oggi il PO): caricamento dei file sui portali **senza API** (polizia del Ticino ogni giorno entro 24 ore, portali comunali della tassa di soggiorno), con la ricevuta salvata in CasaZen. Senza questa opzione l'agenzia carica da sola i file che CasaZen prepara | **€4/unità al mese**, solo per le unità nelle giurisdizioni senza API |
 | **Tutto compreso** | Base + AI e Marketing + **8 verifiche/unità al mese** | **€15 / €14 / €13** per scaglione (~20% in meno rispetto ai pacchetti separati) |
 
 **Perché il portale proprietari è nella base:** per un'agenzia è indispensabile, e sul mercato è spesso incluso (Avantio; il portale di OwnerRez è gratuito). Il costo marginale per CasaZen è di pochi centesimi per unità (fatture SDI). Il ricavo perso (€2) è recuperato alzando il pacchetto AI e Marketing da €2 a €4.
@@ -462,7 +459,7 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 | WP3 CRM + campagne + WhatsApp | 1,2–1,75 |
 | WP4 Proprietari: portale, rendiconti, SDI per conto, file di bonifico, migrazione degli account Stripe a v2 | 1,3–2,0 |
 | WP5 Fornitori propri e staff | 0,4–0,7 |
-| WP6 Compliance: Alloggiati, ISTAT, feratel, file AdE, partner, console back-office, pagoPA, XML Ticino | 1,5–2,4 |
+| WP6 Compliance: Alloggiati, ISTAT, feratel, pagoPA via API; file AdE, F24, XML Ticino e CSV comunali con promemoria e archivio ricevute | 1,3–2,1 |
 | WP7 Check-in biometrico + QR all'ingresso + videochiamata + serrature | 1,4–2,2 |
 | WP8 Routine: motore eventi/condizioni/azioni con attese (Hangfire), costruttore web, azioni (messaggi, attività, notifiche, serrature, webhook), creazione da linguaggio naturale, libreria, registro | 1,4–2,25 |
 | **Totale** | **~10–16 settimane attive (~2,5–4 mesi)** |
@@ -477,7 +474,6 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 |---|---|
 | NextPax / Octorate: risposte scritte + sandbox | WP2 |
 | Didit / Sumsub: preventivi + PoC; DPIA; parere del Viminale per eliminare l'operatore | WP7 |
-| Intermediario partner (contratto + integrazione); organizzazione del back-office | WP6 in produzione |
 | Enti: documentazione Sicilia, web service Liguria/Calabria, contratto feratel; richieste di API ai portali | Parti di WP6 |
 | Stripe: migrazione degli account delle agenzie ad Accounts v2 | WP4 |
 | Pareri ⚖: DAC7 per il sito di prenotazione, contratto Founding Partner, testi di consenso | Go-live |
