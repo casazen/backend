@@ -43,9 +43,9 @@ class UnitEconomics:
     nextpax_per_unit: float = 3.15    # fatturazione annuale
     services_per_unit: float = 0.40   # SDI, AI, video
     verification_cost: float = 0.48   # Didit $0,33 + $0,15 NFC
-    # B2C (IPOTESI: mix 60% Starter 29, 35% Pro 79, 5% Scale 199, listino PO 2026-10-08)
-    b2c_arpu: float = 0.60 * 29 + 0.35 * 79 + 0.05 * 199
-    b2c_cost_per_account: float = 2.0  # IPOTESI: email, AI, SDI; solo iCal, niente channel manager
+    # B2C (IPOTESI: canone minimo per host da 1-3 unità, channel manager incluso; vedi business-plan.md §6)
+    b2c_arpu: float = 29.0
+    b2c_units_per_account: float = 2.0
 
     def list_price(self, units_per_agency: float) -> float:
         if units_per_agency < 50:
@@ -70,6 +70,7 @@ class FixedCosts:
     company_from_month: int = 2        # IPOTESI: società costituita a dicembre 2026
     one_off_legal: float = 6000.0      # IPOTESI segnaposto: DPIA, DAC7, contratti, revisione ToS/DPA
     one_off_legal_month: int = 3
+    marketing: float = 300.0           # IPOTESI segnaposto dal go-live: fiere, viaggi, demo
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +91,7 @@ class Scenario:
     b2c_start: int | None = None
     b2c_per_month: float = 0.0
     b2c_churn: float = 0.03            # IPOTESI: metà della banda 2-5% del piano di giugno
-    founder_pay: float = 0.0           # €/mese, costo azienda
+    founder_pay: float = 0.0           # €/mese, costo azienda, dal go-live di Quokka
     support_hire_units: int | None = None  # assunzione supporto oltre N unità B2B
     support_cost: float = 3000.0       # IPOTESI: costo azienda mensile 1 FTE supporto
 
@@ -175,19 +176,20 @@ def run(s: Scenario, ue: UnitEconomics = UnitEconomics(), fc: FixedCosts = Fixed
         row.revenue_verif_passthrough = verifications_fp * ue.verification_cost
         row.revenue_b2c = b2c * ue.b2c_arpu
 
-        cm_units = row.b2b_units
+        b2c_units = b2c * ue.b2c_units_per_account
+        cm_units = row.b2b_units + b2c_units
         if cm_units > 0:
             row.cost_nextpax = ue.nextpax_min + max(0.0, cm_units - ue.nextpax_included_units) * ue.nextpax_per_unit
-        row.cost_services = cm_units * ue.services_per_unit
+        row.cost_services = row.b2b_units * ue.services_per_unit
         row.cost_verifications = (verifications_fp + verifications_list) * ue.verification_cost
-        row.cost_b2c = b2c * ue.b2c_cost_per_account
+        row.cost_b2c = b2c_units * ue.services_per_unit
 
-        platform = fc.live_platform + fc.vercel_pro if live else fc.pre_live_platform
+        platform = fc.live_platform + fc.vercel_pro + fc.marketing if live else fc.pre_live_platform
         company = fc.company_admin + fc.insurance if m >= fc.company_from_month else 0.0
         one_off = fc.one_off_legal if m == fc.one_off_legal_month else 0.0
         row.cost_fixed = platform + company + one_off
 
-        row.cost_people = s.founder_pay
+        row.cost_people = s.founder_pay if live else 0.0
         if s.support_hire_units and row.b2b_units >= s.support_hire_units:
             row.cost_people += s.support_cost
 
@@ -240,55 +242,90 @@ def eur(x: float) -> str:
     return f"{sign}€{abs(x):,.0f}".replace(",", ".")
 
 
+def contribution(price: float, ue: UnitEconomics, verif_cost: float | None = None) -> float:
+    vc = ue.verification_cost if verif_cost is None else verif_cost
+    return price - ue.nextpax_per_unit - ue.services_per_unit - ue.verifications_per_unit * vc
+
+
+def print_scenario(s: Scenario, ue: UnitEconomics, fc: FixedCosts) -> None:
+    rows_ = run(s, ue, fc)
+    ys = yearly(rows_)
+    low, low_m = cumulative_min(rows_)
+    be = breakeven_month(rows_)
+    print(f"## {s.name}\n")
+    print("| | Anno 1 (nov 26-ott 27) | Anno 2 | Anno 3 |")
+    print("|---|---|---|---|")
+    print("| Unità B2B a fine anno | " + " | ".join(f"{y['units_end']:.0f}" for y in ys) + " |")
+    print("| Agenzie a fine anno | " + " | ".join(f"{y['agencies_end']:.1f}" for y in ys) + " |")
+    print("| Host B2C paganti a fine anno | " + " | ".join(f"{y['b2c_end']:.0f}" for y in ys) + " |")
+    print("| Ricavi | " + " | ".join(eur(y['revenue']) for y in ys) + " |")
+    print("| Margine lordo | " + " | ".join(eur(y['gross_margin']) for y in ys) + " |")
+    print("| Costi fissi | " + " | ".join(eur(-y['fixed']) for y in ys) + " |")
+    print("| Persone | " + " | ".join(eur(-y['people']) for y in ys) + " |")
+    print("| **EBITDA** | " + " | ".join(f"**{eur(y['ebitda'])}**" for y in ys) + " |")
+    print("| Ricavi mensili a fine anno | " + " | ".join(eur(y['mrr_end']) for y in ys) + " |")
+    print(f"\nCassa cumulata minima: {eur(low)} ({month_label(low_m) if low_m else '-'}); "
+          f"pareggio mensile stabile: {month_label(be) if be else 'non raggiunto'}\n")
+
+
 def print_tables() -> None:
     ue, fc = UnitEconomics(), FixedCosts()
+    prices = [ue.fp_fee_per_unit + ue.verifications_per_unit * ue.verification_cost,
+              ue.list_all_in_small, ue.list_all_in_mid, ue.list_all_in_large]
+    verif = ue.verifications_per_unit * ue.verification_cost
+    var = ue.nextpax_per_unit + ue.services_per_unit
     print("## Margine di contribuzione per unità B2B (€/mese)\n")
     print("| Voce | Founding Partner | Listino 10-49 | Listino 50-149 | Listino 150-399 |")
     print("|---|---|---|---|---|")
-    verif = ue.verifications_per_unit * ue.verification_cost
-    var = ue.nextpax_per_unit + ue.services_per_unit
-    fp_rev = ue.fp_fee_per_unit + verif
-    rows = [("Ricavo", fp_rev, ue.list_all_in_small, ue.list_all_in_mid, ue.list_all_in_large)]
-    rows.append(("NextPax + servizi", -var, -var, -var, -var))
-    rows.append(("Verifiche (8 × €0,48)", -verif, -verif, -verif, -verif))
-    contrib = [fp_rev - var - verif] + [p - var - verif for p in (ue.list_all_in_small, ue.list_all_in_mid, ue.list_all_in_large)]
-    for label, *vals in rows:
-        print(f"| {label} | " + " | ".join(f"{v:.2f}" for v in vals) + " |")
+    print("| Ricavo | " + " | ".join(f"{p:.2f}" for p in prices) + " |")
+    print("| NextPax + servizi | " + " | ".join(f"{-var:.2f}" for _ in prices) + " |")
+    print("| Verifiche (8 × €0,48) | " + " | ".join(f"{-verif:.2f}" for _ in prices) + " |")
+    contrib = [p - var - verif for p in prices]
     print("| **Contribuzione** | " + " | ".join(f"**{c:.2f}**" for c in contrib) + " |")
-    print("| Margine lordo % | " + " | ".join(f"{c / r:.0%}" for c, r in zip(contrib, [fp_rev, ue.list_all_in_small, ue.list_all_in_mid, ue.list_all_in_large])) + " |")
-    print(f"\nB2C ARPU (mix IPOTESI) = €{ue.b2c_arpu:.2f}\n")
+    print("| Margine lordo % | " + " | ".join(f"{c / p:.0%}" for c, p in zip(contrib, prices)) + " |")
+    sumsub = [contribution(p, ue, 1.35) if i else p - var - ue.verifications_per_unit * 1.35
+              for i, p in enumerate(prices)]
+    print("| Contribuzione con Sumsub ($1,35) | " + " | ".join(f"{c:.2f}" for c in sumsub) + " |")
+    b2c_c = ue.b2c_arpu - ue.b2c_units_per_account * var
+    print(f"\nB2C: canone €{ue.b2c_arpu:.0f}, {ue.b2c_units_per_account:.0f} unità, contribuzione €{b2c_c:.2f} ({b2c_c / ue.b2c_arpu:.0%})\n")
 
-    fixed_live = fc.live_platform + fc.vercel_pro + fc.company_admin + fc.insurance + ue.nextpax_min
+    fixed_live = fc.live_platform + fc.vercel_pro + fc.marketing + fc.company_admin + fc.insurance + ue.nextpax_min
     print(f"Costi fissi in produzione incl. minimo NextPax: €{fixed_live:.0f}/mese\n")
     print("## Pareggio: unità a listino (€15, 10-49) necessarie\n")
     print("| Costo da coprire al mese | Unità a listino | Agenzie da 40 unità |")
     print("|---|---|---|")
-    c_list = contrib[1]
-    for label, extra in [("Solo costi fissi", 0), ("+ fondatore part-time €2.000", 2000),
-                         ("+ fondatore full-time €6.000", 6000), ("+ fondatore €6.000 + 1 supporto €3.000", 9000)]:
-        need = (fixed_live + extra) / c_list
+    for label, extra in [("Solo costi fissi", 0), ("+ fondatore €3.000", 3000),
+                         ("+ fondatore €6.000", 6000), ("+ fondatore €6.000 + 1 supporto €3.000", 9000)]:
+        need = (fixed_live + extra) / contrib[1]
         print(f"| {label} (€{fixed_live + extra:,.0f}) | {need:,.0f} | {need / 40:.1f} |".replace(",", "."))
     print()
 
+    fp_gap = SCENARIOS[2].fp_slots * SCENARIOS[2].units_per_agency * (contrib[1] - contrib[0])
+    print(f"Contribuzione rinunciata dai 9 Founding Partner oltre Quokka: €{fp_gap:,.0f}/mese\n".replace(",", "."))
+
     for s in SCENARIOS:
-        rows_ = run(s)
+        print_scenario(s, ue, fc)
+
+    print("## Sensibilità sullo scenario C\n")
+    print("| Variante | EBITDA anno 3 | Cassa cumulata minima | Pareggio mensile stabile |")
+    print("|---|---|---|---|")
+    base = SCENARIOS[2]
+    variants = [
+        ("Base (fondatore non pagato)", base, ue),
+        ("Fondatore €3.000/mese dal go-live", replace(base, founder_pay=3000), ue),
+        ("Fondatore €6.000/mese dal go-live", replace(base, founder_pay=6000), ue),
+        ("Verifiche con Sumsub ($1,35)", base, replace(ue, verification_cost=1.35)),
+        ("Agenzie a listino dimezzate (0,5/mese)", replace(base, list_per_month=0.5), ue),
+        ("Nessun B2C", replace(base, b2c_start=None), ue),
+    ]
+    for label, sc, u in variants:
+        rows_ = run(sc, u, fc)
         ys = yearly(rows_)
         low, low_m = cumulative_min(rows_)
         be = breakeven_month(rows_)
-        print(f"## {s.name}\n")
-        print("| | Anno 1 (nov 26-ott 27) | Anno 2 | Anno 3 |")
-        print("|---|---|---|---|")
-        print("| Unità B2B a fine anno | " + " | ".join(f"{y['units_end']:.0f}" for y in ys) + " |")
-        print("| Agenzie a fine anno | " + " | ".join(f"{y['agencies_end']:.1f}" for y in ys) + " |")
-        print("| Host B2C paganti a fine anno | " + " | ".join(f"{y['b2c_end']:.0f}" for y in ys) + " |")
-        print("| Ricavi | " + " | ".join(eur(y['revenue']) for y in ys) + " |")
-        print("| Margine lordo | " + " | ".join(eur(y['gross_margin']) for y in ys) + " |")
-        print("| Costi fissi | " + " | ".join(eur(-y['fixed']) for y in ys) + " |")
-        print("| Persone | " + " | ".join(eur(-y['people']) for y in ys) + " |")
-        print("| **EBITDA** | " + " | ".join(f"**{eur(y['ebitda'])}**" for y in ys) + " |")
-        print("| Ricavi mensili a fine anno | " + " | ".join(eur(y['mrr_end']) for y in ys) + " |")
-        print(f"\nCassa cumulata minima: {eur(low)} ({month_label(low_m) if low_m else '-'}); "
-              f"pareggio mensile stabile: {month_label(be) if be else 'non raggiunto'}\n")
+        print(f"| {label} | {eur(ys[2]['ebitda'])} | {eur(low)} ({month_label(low_m) if low_m else '-'}) | "
+              f"{month_label(be) if be else 'non raggiunto'} |")
+    print()
 
 
 if __name__ == "__main__":

@@ -30,8 +30,8 @@ UE_LABELS = {
     "nextpax_per_unit": "NextPax oltre il minimo (€/unità)",
     "services_per_unit": "SDI, AI, video (€/unità)",
     "verification_cost": "Costo di una verifica (€)",
-    "b2c_arpu": "ARPU B2C (€/account) - IPOTESI",
-    "b2c_cost_per_account": "Costo variabile B2C (€/account) - IPOTESI",
+    "b2c_arpu": "Canone B2C (€/host) - IPOTESI",
+    "b2c_units_per_account": "Unità medie per host B2C - IPOTESI",
 }
 FC_LABELS = {
     "pre_live_platform": "Piattaforma prima del go-live (€/mese)",
@@ -42,6 +42,7 @@ FC_LABELS = {
     "company_from_month": "Mese da cui la società ha costi",
     "one_off_legal": "Pareri e contratti una tantum (€) - IPOTESI",
     "one_off_legal_month": "Mese della spesa una tantum",
+    "marketing": "Marketing e vendite dal go-live (€/mese) - IPOTESI",
 }
 SC_LABELS = {
     "quokka_live": "Mese go-live Quokka (vuoto = mai)",
@@ -56,7 +57,7 @@ SC_LABELS = {
     "b2c_start": "Primo mese B2C a pagamento",
     "b2c_per_month": "Nuovi host B2C al mese",
     "b2c_churn": "Churn mensile B2C",
-    "founder_pay": "Compenso fondatore (€/mese, costo azienda)",
+    "founder_pay": "Compenso fondatore dal go-live (€/mese, costo azienda)",
     "support_hire_units": "Assunzione supporto oltre N unità B2B",
     "support_cost": "Costo supporto (€/mese)",
 }
@@ -187,16 +188,17 @@ def export(path: str, scenarios: list[Scenario], ue: UnitEconomics, fc: FixedCos
         f["rev_verif"] = f"=({R['q_units']}+{R['fp_units']})*{n['verifications_per_unit']}*{n['verification_cost']}"
         f["rev_b2c"] = f"={R['b2c']}*{n['b2c_arpu']}"
         f["revenue"] = f"={R['rev_fee']}+{R['rev_verif']}+{R['rev_b2c']}"
-        f["c_nextpax"] = (f"=IF({R['b2b_units']}>0,{n['nextpax_min']}+MAX(0,{R['b2b_units']}-{n['nextpax_included_units']})"
+        cm = f"({R['b2b_units']}+{R['b2c']}*{n['b2c_units_per_account']})"
+        f["c_nextpax"] = (f"=IF({cm}>0,{n['nextpax_min']}+MAX(0,{cm}-{n['nextpax_included_units']})"
                           f"*{n['nextpax_per_unit']},0)")
         f["c_services"] = f"={R['b2b_units']}*{n['services_per_unit']}"
         f["c_verif"] = f"={R['b2b_units']}*{n['verifications_per_unit']}*{n['verification_cost']}"
-        f["c_b2c"] = f"={R['b2c']}*{n['b2c_cost_per_account']}"
+        f["c_b2c"] = f"={R['b2c']}*{n['b2c_units_per_account']}*{n['services_per_unit']}"
         f["gm"] = f"={R['revenue']}-{R['c_nextpax']}-{R['c_services']}-{R['c_verif']}-{R['c_b2c']}"
-        f["c_fixed"] = (f"=IF({R['live']}=1,{n['live_platform']}+{n['vercel_pro']},{n['pre_live_platform']})"
+        f["c_fixed"] = (f"=IF({R['live']}=1,{n['live_platform']}+{n['vercel_pro']}+{n['marketing']},{n['pre_live_platform']})"
                         f"+IF({R['m']}>={n['company_from_month']},{n['company_admin']}+{n['insurance']},0)"
                         f"+IF({R['m']}={n['one_off_legal_month']},{n['one_off_legal']},0)")
-        f["c_people"] = (f"={n['founder_pay']}+IF(AND({n['support_hire_units']}>0,"
+        f["c_people"] = (f"={R['live']}*{n['founder_pay']}+IF(AND({n['support_hire_units']}>0,"
                          f"{R['b2b_units']}>={n['support_hire_units']}),{n['support_cost']},0)")
         f["ebitda"] = f"={R['gm']}-{R['c_fixed']}-{R['c_people']}"
         f["timing"] = (f"=IF(AND({R['live']}=1,MOD({R['m']}-{n['quokka_live']},12)=0),"
