@@ -1,425 +1,492 @@
-# Quokka 360 × CasaZen: analisi delle 6 funzionalità richieste
+# Tipo host "Agenzia" (B2B): analisi delle 6 funzionalità richieste
 
-**Data:** 2026-10-14 · **Tipo:** analisi pre-vendita (nessuna modifica di codice)
-**Metodo:**
-- analisi del codice di `backend`, `frontend` e `mobile` (branch `develop` al 2026-10-14);
-- ricerca web su fonti ufficiali (OTA, enti pubblici, documentazione dei vendor).
+**Versione:** v2, 2026-10-15. Sostituisce la v1 del 2026-10-14.
+**Origine:** requisiti indispensabili posti dal prospect Quokka 360 per proseguire la collaborazione.
+**Tipo:** analisi pre-vendita, nessuna modifica di codice.
+**Metodo:** analisi del codice di `backend`, `frontend` e `mobile` e ricerca su fonti ufficiali (OTA, Stripe, enti pubblici, autorità privacy, documentazione dei fornitori).
 
-**Legenda delle fonti:**
-- **[NV]** = non verificato su una fonte ufficiale (fonte secondaria o snippet).
-- **⚖** = serve il parere di un legale o di un commercialista prima di impegnarsi con il cliente.
+**Legenda:**
+- **[NV]** = non verificato su fonte ufficiale.
+- **⚖** = serve un parere legale o fiscale prima del go-live.
 
----
+## Regole di prodotto (decise dal PO)
 
-## 0. Sintesi
-
-| # | Richiesta | Stato attuale in CasaZen | Soluzione raccomandata | Build/Buy | Taglia* | Rischio principale |
-|---|---|---|---|---|---|---|
-| 1 | OTA completa: annunci centralizzati, messaggi, AI | Solo iCal (funzionante). Adapter OTA **stub** e congelati (D10). Nessuna entità messaggi | Integrare un **channel manager via API**: Channex se il contenuto annunci può aspettare, NextPax/Rentals United/Octorate se è un requisito da subito. AI in modalità "bozza + approvazione" | Buy (connettività) + Build (inbox, AI) | L + M (+L per i contenuti) | La connessione diretta alle OTA è impossibile oggi. La creazione degli annunci dipende dal fornitore |
-| 2 | CRM avanzato, campagne, AI | Ospiti con consenso marketing GDPR versionato. Nessuna campagna o segmentazione | CRM leggero sul nostro DB + invio con Resend (team separato) o SES. WhatsApp in fase 2 | Build + Buy (invio) | L + M | **Gli ospiti Airbnb non sono contattabili per marketing** (policy Airbnb). Il valore reale riguarda gli ospiti diretti o con consenso |
-| 3 | Portale proprietari: statistiche, fatturazione (B2B) | KPI host e report fiscali esistono. Nessun ruolo "proprietario", rendiconto o SDI | Ruolo `Owner` limitato alle proprie proprietà, rendiconto mensile, fattura di commissione (IT: SDI via provider; CH: QR-bill) | Build + Buy (SDI) | L | Valuta CHF/EUR. Obblighi fiscali di un intermediario svizzero su immobili italiani ⚖ |
-| 4 | Fornitori/dipendenti propri senza commissioni (B2B) | Marketplace fornitori reale. La modalità `Manual` **non ha già oggi commissioni**. Mancano rubrica "fornitori miei" e ruolo staff | Rubrica fornitori dell'organizzazione + invito diretto + ruolo staff (pulizie/manutenzione) + regola "0% per piano B2B" | Build | M | Cannibalizza il take-rate dei fornitori (oggi comunque spento) |
-| 5 | Fiscalità completa IT + CH con integrazioni | IT: CIN, motore tassa di soggiorno, report cedolare. Alloggiati **solo file manuale**. ISTAT bloccato. **CH: zero** | IT: Alloggiati via SOAP + Ross1000 via WS + generazione file (dichiarazione imposta, dati CU/F24) consegnati al commercialista. CH: via partner (Chekin / sistemi di destinazione) | Build (IT) + Buy (CH) | L (IT) + M/L (CH) | **"Integrazioni funzionanti ovunque" non è ottenibile**: Entratel non ha API REST e molti cantoni non hanno API |
-| 6 | Routine con AI, check-in/out (opzionale) | Check-in online (inserimento dati), wizard di check-out, job Hangfire per sola compliance. Spec serrature (Seam) pianificata | Motore task "prenotazione → attività" + checklist + foto da mobile + AI per controllo foto, sintesi e traduzione. Serrature via la spec esistente | Build + Buy (serrature) | M + M + L | **In Italia il self check-in senza riconoscimento de visu (o video in tempo reale) non è conforme** (CdS 9101/2025) |
-
-\* **Taglie indicative**, per 1 sviluppatore senior: S ≤ 2, M 2–6, L 6–12 settimane-persona. Da validare con il team.
-
-**Ordine di grandezza complessivo:** circa **80–110 settimane-persona**, cioè circa 12 mesi con 2 sviluppatori a tempo pieno. Sono esclusi QA, revisione legale e la creazione/modifica dei contenuti annunci.
-
-### Valutazione critica (da leggere prima di proporre qualcosa)
-
-1. **Il cliente oggi usa Kross Booking (Zucchetti).**
-   - Il loro sito di prenotazione `quokka.kross.travel` riporta "Powered by Kross Booking", con valute CHF/EUR.
-   - Kross offre già channel manager, check-in online, report turistici e area proprietari.
-   - **Il punto non è "cosa chiedono" ma "cosa manca in Kross"**: va chiarito al prossimo incontro (§7), altrimenti rischiamo di ricostruire un PMS completo per inseguire un incumbent.
-2. **Le 6 richieste vanno contro decisioni di prodotto già prese:**
-   - D10 (API OTA congelate);
-   - US-011 inbox unificata e US-012 copilot AI (congelate);
-   - US-016 enterprise e US-017 multi-paese (congelate).
-   - Prima di impegnarsi serve una **decisione esplicita del PO** di aprire il segmento "property manager B2B multi-paese" (§8).
-3. **Prerequisito non visibile al cliente ma bloccante: CasaZen è cablato sull'Italia.**
-   - `Property` non ha un campo paese.
-   - Ci sono 23 valori `"EUR"` scritti a mano nel codice C# e 167 riferimenti a `Europe/Rome` in `Casazen.Core`.
-   - Le lingue sono solo IT/EN, ma Laax, Davos, Andermatt ed Engadina richiedono almeno il DE.
-   - Senza il punto 2 di questo documento nessuna funzionalità svizzera è realizzabile.
-4. **Non firmare un perimetro "tutto incluso".** Vanno proposte delle fasi (§5), con esclusioni scritte (§6).
+| # | Regola |
+|---|---|
+| R1 | Quokka è un **cliente agenzia**. CasaZen resta il fornitore del servizio: nessuna personalizzazione per un singolo cliente, ogni funzionalità è di prodotto. |
+| R2 | Il B2B è un **nuovo tipo di host (`Agency`)** con una propria gestione, inclusa la fatturazione tra agenzia, CasaZen, ospite (prenotazione diretta) e proprietari. **Tutti i flussi economici passano da Stripe.** |
+| R3 | Non si replica Kross Booking. Le 6 funzionalità sono **condizione necessaria** per la collaborazione. |
+| R4 | Ogni flusso è **automatico via API esterne**. Nessun flusso manuale, tranne la firma dei contratti. |
+| R5 | Chat AI e **modifica dei contenuti** degli annunci sono **obbligatorie** nell'API del fornitore OTA. Un fornitore che non le offre è scartato. |
+| R6 | Check-in online con **riconoscimento del documento e riconoscimento facciale**. |
+| R7 | Delegare il più possibile a terzi gli aspetti fiscali e legali (Stripe o altri fornitori). |
+| R8 | **Prodotto unico B2C + B2B.** OTA con chat AI, CRM, fiscalità e routine sono disponibili a entrambi, con limiti per piano. Portale proprietari e staff/fornitori propri sono solo B2B. |
+| R9 | Riconoscimento facciale **obbligatorio nel B2B, opzionale nel B2C**. |
+| R10 | Nel B2B i **fornitori CasaZen sono sempre il default**. Staff e fornitori propri sono un'opzione da attivare in configurazione. |
 
 ---
 
-## 1. Il prospect (dati verificati)
+## 0. Sintesi: dove le regole si scontrano con vincoli esterni
 
-- **Società:** Quokka Sagl, con sede a Massagno–Lugano (CH) e a Maslianico (CO, IT).
-- **Attività:** gestione affitti brevi per conto di proprietari di seconde case.
-- **Zone servite:**
-  - CH: Lugano, Locarno, Bellinzona, Mendrisiotto, Leventina, Laax, Andermatt, Davos, Engadina.
-  - IT: Como, Milano, Liguria, Trapani, Tropea, Ascoli Piceno.
-  - Fonte: <https://www.quokka360.com/en/vacation-rental-management/>
-- **Modello economico:**
-  - commissione del 25% per la gestione completa, esclusi tassa di soggiorno, pulizie, commissioni OTA e carte;
-  - pagamento ai proprietari **mensile**;
-  - i proprietari hanno già un'"area personale" (prenotazioni, calendario, spese, guadagni).
-- **Canali:** Booking.com, Airbnb, Vrbo, Expedia e sito proprio.
-- **Strumento attuale:** Kross Booking (<https://quokka.kross.travel/>).
-- **Numero di unità: non verificato** (il dato "250+" compare solo in fonti secondarie). Va chiesto al cliente.
-- **Franchising "Quokka Point"** [NV]: implicherebbe un modello multi-organizzazione o multi-brand (oggi congelato in US-016).
+Tre regole **non sono realizzabili alla lettera** per vincoli esterni (legge, Stripe, enti pubblici). Per ciascuna propongo la variante più vicina e lecita.
 
----
+| Regola | Vincolo esterno verificato | Variante proposta |
+|---|---|---|
+| **R6/R9: riconoscimento facciale obbligatorio** | GDPR art. 9: il dato biometrico richiede consenso esplicito e **non si può condizionare il servizio al consenso**. EDPB Linee guida 3/2019 §86: va offerta un'alternativa *"without restraints or additional cost"*. Il Garante ha sanzionato con €50.000 un consenso biometrico "obbligatorio" (eCampus, 29/01/2026). In Svizzera vale lo stesso (nLPD art. 6 + guida EDÖB). | **Check-in online obbligatorio** (dati + documento). Il **riconoscimento facciale è il percorso predefinito proposto all'ospite**, con consenso esplicito, e c'è un'**alternativa equivalente**: videochiamata con operatore. Vedi §3.6 |
+| **R6, validità del check-in in Italia** | Consiglio di Stato n. 9101/2025: il controllo deve avvenire *"hic et nunc"* all'**ingresso della struttura**. Un selfie fatto prima dell'arrivo non basta. | Verifica facciale **all'arrivo**, tramite QR rotante esposto all'ingresso. Parere scritto del Viminale prima di eliminare l'operatore umano ⚖ |
+| **R2: tutti i flussi in Stripe** | I payout di Airbnb e Booking.com arrivano sul conto bancario dell'agenzia, **fuori da Stripe**. L'unico strumento Stripe per portarli dentro è Treasury for platforms: Italia in *private preview*, solo EUR, **Svizzera non disponibile**. | Le prenotazioni dirette passano interamente in Stripe. Per i ricavi OTA: chiedere subito l'accesso a Treasury, oppure deroga motivata (§3.3, decisione D3) |
+| **R4: nessun flusso manuale** | **Non esiste un'API** per: dichiarazioni AdE (imposta di soggiorno annuale, CU/770, DAC7, dati locazioni brevi); notifica ospiti alla polizia in **Ticino** (solo caricamento di file); tassa di soggiorno di Como, Trapani, Tropea, Genova, Portofino, S. Margherita, Cinque Terre e delle OTR ticinesi; F24 (solo per conti Banca Sella o tramite intermediario Entratel); verifica CIN. | Automazione **fino al confine dell'ente**. Oltre quel confine: (a) richiesta formale di API ai fornitori degli enti; (b) **intermediario abilitato** che riceve i dati via API da CasaZen e trasmette (delega R7). Elenco puntuale in §3.5 |
 
-## 2. Prerequisiti trasversali (bloccanti per CH e per il B2B)
+### Le 6 funzionalità in breve
 
-| Prerequisito | Oggi | Lavoro | Taglia |
+| # | Funzionalità | Soluzione | Fornitori |
 |---|---|---|---|
-| Modello paese/mercato | `Property` ha solo `ComuneIstatCode` e `RegionCode` italiani (`Casazen.Core/Entities/Property.cs:76-83`). Il modello è previsto solo nella spec congelata `spec-eu-compliance-es-fr.md` | `CountryCode` e una giurisdizione astratta (comune IT oppure comune + cantone CH). Le regole di compliance vanno instradate per paese | L |
-| Valuta | EUR scritto a mano (`ServiceCharges.cs:25`, `RentCharges.cs:18`, `BookingService.cs:463`, …) | Valuta per proprietà/organizzazione, importi `decimal` + ISO 4217, report in più valute (nessuna conversione automatica nei rendiconti) | M |
-| Fuso orario | Default `Europe/Rome` (`Property.cs:201`), 167 riferimenti in Core | `Europe/Zurich` è identico a `Europe/Rome` (stesso offset e stesse regole DST), quindi è un problema di nomenclatura e validazione, non di calcolo | S |
-| Lingue | Solo IT/EN (frontend, mobile, `.resx`) | DE subito per le pagine rivolte agli ospiti e allo staff; FR solo se il cliente opera in Romandia (oggi no) | M |
-| Ruoli B2B | `OrgRole`: Owner, Admin, PropertyManager, Collaborator, Accountant (flag `OrgTeam` spento). Il ruolo "Owner" è il **titolare dell'organizzazione**, non il proprietario dell'immobile | Nuovo ruolo distinto (es. `PropertyOwner`, proprietario dell'immobile) + ruolo `Staff` | M |
-| Prezzi B2B | Piani Starter/Pro/Scale con prezzi in conflitto tra le fonti (`docs/runbooks/open-access.md` contro `FeatureFlags.cs:142`) | Listino B2B per unità/mese che includa i costi pass-through (§4) | — (decisione) |
-| Provider AI | `DeepSeekAiProvider` (default Stub, DeepSeek configurabile), che parla già sia l'API OpenAI sia quella Anthropic | Per dati personali degli ospiti (messaggi) usare un provider con DPA UE e senza addestramento sui dati. **Non DeepSeek**: il Garante ne ha bloccato l'app a gennaio 2025 ⚖ | S |
+| 1 | OTA: contenuti, ARI, chat AI | Channel manager via API. **Unico fornitore che dichiara contenuti + messaggi per tutte e 4 le OTA: NextPax** (da confermare per iscritto). **Alternativa: Octorate** (Airbnb + Booking.com + Vrbo; manca la gestione dei contenuti su Expedia). Channex e Rentals United sono **scartati** (R5) | NextPax / Octorate |
+| 2 | CRM e campagne AI | CRM nel nostro DB, invio via Resend (team separato) o SES, WhatsApp via Meta Cloud API | Resend / SES / Meta |
+| 3 | Portale proprietari e fatturazione | Ruolo `PropertyOwner`, rendiconti automatici, split Stripe a 4 parti, fatture con invio SDI via API | Stripe Connect + Invoicing; A-Cube / Invoicetronic |
+| 4 | Fornitori e staff propri | Default: marketplace CasaZen con pagamento Stripe e commissione. Opzione in configurazione: staff e fornitori propri a 0% | — |
+| 5 | Fiscalità IT + CH | Build dove c'è un'API ufficiale; partner dove no; intermediario per Entratel | Polizia di Stato, Regioni, feratel/Chekin, Taxually, intermediario Entratel |
+| 6 | Routine AI e check-in | Motore di attività + AI; check-in biometrico conforme con alternativa video | IDnow / Namirial / Veriff; serrature via Seam/Nuki/igloohome |
+
+**Ordine di grandezza (indicativo, da validare con il team):** circa **110–150 settimane-persona**, cioè 12–18 mesi con 2 sviluppatori. Non include QA, pareri legali e i tempi dei fornitori (conferme scritte, accesso a Treasury, credenziali degli enti).
+
+---
+
+## 1. Modello B2C / B2B
+
+### 1.1 Cosa cambia nel codice
+
+- **`OrgType`** (`Casazen.Core/Entities/Enums/OrgType.cs`) è *append-only* e oggi vale `Host` o `Supplier`. Va aggiunto **`Agency`** in coda.
+- **Nuovi ruoli** in `OrgRole`:
+  - `PropertyOwner`, il proprietario dell'immobile. È diverso da `Owner`, che oggi indica il titolare dell'organizzazione.
+  - `Staff`, con sottotipi pulizie, manutenzione e check-in.
+- **Prerequisiti multi-paese:**
+  - `Property.CountryCode` e giurisdizione (comune IT oppure comune + cantone CH);
+  - valuta per proprietà: oggi `"EUR"` compare scritto a mano in 23 punti del C#;
+  - lingua DE;
+  - `Europe/Zurich`, che ha le stesse regole di `Europe/Rome`.
+  - Il modello oggi esiste solo nella spec congelata `spec-eu-compliance-es-fr.md`.
+
+### 1.2 Matrice delle funzionalità
+
+| Funzionalità | B2C (`Host`) | B2B (`Agency`) |
+|---|---|---|
+| Channel manager OTA + contenuti + chat AI | ✓ (limiti per piano: numero di unità, invio automatico AI) | ✓ |
+| CRM e campagne | ✓ base | ✓ completo |
+| Fiscalità IT + CH automatizzata | ✓ | ✓ + ritenute 21%, dati CU e rendiconti per proprietario |
+| Routine AI | ✓ | ✓ + assegnazione allo staff proprio |
+| Check-in online (dati + documento) | Obbligatorio | Obbligatorio |
+| Riconoscimento facciale | Attivabile dall'host | Percorso predefinito, con consenso e alternativa video (§3.6) |
+| Portale proprietari | — | ✓ |
+| Fornitori marketplace CasaZen | ✓ | ✓ **default** |
+| Staff e fornitori propri a 0% | — | Opzione in configurazione |
+| Flusso Stripe | **Direct charge** sull'account dell'host (come oggi, `docs/runbooks/stripe.md:244`) | **Separate charges and transfers** con `on_behalf_of` = agenzia (§3.3) |
+
+---
+
+## 2. Stripe e fiscalità: cosa fa Stripe, cosa si delega, cosa non si delega (R2, R7)
+
+### 2.1 Cosa fa e cosa non fa Stripe
+
+| Adempimento | Stripe | Fonte | A chi delegare |
+|---|---|---|---|
+| Calcolo IVA sulle fee CasaZen e sulle commissioni dell'agenzia (IT 22%, CH 8,1%) | **Sì**, Stripe Tax, anche sugli account collegati | <https://docs.stripe.com/tax/tax-for-platforms> | — |
+| IVA sul soggiorno (aliquota alloggio IT; CH 3,8%) | **No**: nessun codice fiscale per alloggio/lodging nel catalogo | <https://docs.stripe.com/tax/tax-codes> | Aliquote manuali (Stripe Tax Rates) prese da `TaxRate`, da validare col commercialista ⚖ |
+| Dichiarazione e versamento IVA IT/CH | **No**: la dichiarazione è disponibile solo per USA e pochi altri casi; Stripe *"doesn't automatically debit"* | <https://docs.stripe.com/tax/filing> | **Taxually** (app Stripe, IT e CH). In Svizzera resta un passaggio sul portale ESTV: non c'è un'API pubblica |
+| Fattura elettronica IT (SDI) | **No**: Stripe *"doesn't generate or transmit legally compliant e-invoice files"* | <https://docs.stripe.com/invoicing/e-invoicing> | **A-Cube** (app Stripe, solo per l'account piattaforma). Per gli account delle agenzie: webhook `invoice.finalized` → API SDI (A-Cube / Invoicetronic / Openapi) |
+| QR-bill CH | **No** | — | Libreria Codecrete.SwissQRBill (MIT). Con lo split Stripe serve solo se il proprietario deve pagare all'agenzia; meglio addebito Stripe (SEPA DD / TWINT) |
+| Imposta/tassa di soggiorno | **No**: solo come riga separata della fattura | — | Nessun fornitore assume la responsabilità. Airbnb la riscuote solo sulle prenotazioni Airbnb e **non in Ticino, Grigioni e Uri** (<https://www.airbnb.com/help/article/2291>) |
+| Ritenuta 21% + F24 + CU/770 | **No**: Stripe non versa imposte | — | Lo split trattiene il 21% nel saldo dell'agenzia; F24 e CU tramite intermediario Entratel (§3.5) |
+| DAC7 | **Parziale, in preview**: raccoglie i TIN, XML solo con lo schema NL, *"Stripe accepts no liability"* | <https://docs.stripe.com/connect/platform-tax-reporting> | Fonoa, oppure file + intermediario |
+| KYC/AML di agenzie e proprietari | **Parziale**: Stripe verifica per i propri obblighi, *"Don't rely on Stripe's verification…"* | <https://docs.stripe.com/connect/identity-verification> | — |
+| Licenza di pagamento | **Sì**, a condizione che i fondi non siano mai *"in the possession or control of the platform"* | <https://stripe.com/guides/how-psd2-impacts-marketplaces-and-platforms> | — |
+
+### 2.2 Responsabilità che per legge non si possono delegare
+
+Un fornitore può **automatizzare** l'adempimento, ma la responsabilità resta in capo al soggetto indicato:
+
+| Obbligo | Responsabile | Fonte |
+|---|---|---|
+| Identificazione e comunicazione degli ospiti (art. 109 TULPS) | Gestore | — |
+| Responsabile del pagamento dell'imposta di soggiorno e dichiarazione annuale | Chi incassa | art. 4 c. 5-ter DL 50/2017 |
+| Sostituto d'imposta per la ritenuta del 21% | Intermediario che *"interviene nel pagamento"* | art. 4 c. 5 DL 50/2017; Circ. 24/E/2017 |
+| IVA | Soggetto passivo | — |
+| DAC7 | Gestore di piattaforma | — |
+| Notifica degli ospiti e Kurtaxe (CH) | Locatore | LStrI art. 16; diritto cantonale |
+
+**Promessa commerciale corretta:** "compliance automatizzata", mai "compliance delegata".
+
+**Da seguire [NV]:** secondo Normattiva i commi 5 e 5-bis dell'art. 4 DL 50/2017 sono abrogati dal 1/1/2027 da un decreto legislativo del 2026 (probabile spostamento in un testo unico). Va riverificato prima di sviluppare.
 
 ---
 
 ## 3. Analisi per funzionalità
 
-### 3.1 Integrazione OTA completa (annunci, disponibilità, messaggi, AI)
+### 3.1 OTA: contenuti, disponibilità/tariffe/prenotazioni, chat AI (R5)
 
-**Cosa c'è oggi**
-- **Sincronizzazione iCal reale** (`Infrastructure/Services/ICal/*`, ADR-002), con conversione del blocco iCal in "soggiorno OTA" (D7).
-- **Adapter OTA:**
-  - stub in `Casazen.Infrastructure/OTA/*` (es. `BookingComAdapter.cs:48` "TODO: Implement actual API call");
-  - `AirbnbAdapter` usa endpoint non documentati;
-  - `IChannelAdapter` non prevede la gestione dei contenuti.
-- **Nessuna entità** Conversation/Message.
+**Oggi:** solo iCal (reale). Gli adapter OTA sono stub congelati (D10). Non esistono entità messaggi.
 
-**Vincoli ufficiali: la connessione diretta non è percorribile**
+**Connessione diretta alle OTA: chiusa.**
+- Booking.com: *"we are pausing integrations with new connectivity providers"* (<https://connect.booking.com/>).
+- Airbnb: accesso API solo a sua discrezione (<https://www.airbnb.com/terms/api>).
 
-| OTA | Stato 2026 | Fonte |
-|---|---|---|
-| Booking.com | *"we are pausing integrations with new connectivity providers until further notice"* | <https://connect.booking.com/> |
-| Airbnb | Accesso API "a sola ed esclusiva discrezione" di Airbnb; nessun modulo pubblico di candidatura | <https://www.airbnb.com/terms/api> · <https://developer.withairbnb.com/> |
-| Expedia/Vrbo | Candidatura via email, accettazione a discrezione di Expedia; la Property API per l'onboarding dei contenuti risulta non disponibile per nuovi partner [NV] | <https://developers.expediagroup.com/supply/lodging/cpp/overview> |
+**Fornitori valutati secondo R5** (✅ documentato · ⚠️ parziale o condizionato · ❌ non supportato · ? non documentato):
 
-**Opzioni: channel manager con API per software house**
-
-| Fornitore | Creazione/modifica annunci | Messaggi | Prezzo ufficiale | Note |
-|---|---|---|---|---|
-| **Channex** (UK) | **No**: *"cannot currently create listings on OTAs"* e non aggiorna immagini o servizi. Roadmap 2027 solo per Booking.com e Airbnb, *"not a guaranteed release date"* | Airbnb, Booking.com, Expedia (non Vrbo) | $130/mese + $0,50/unità + $0,50/unità per messaggi e recensioni. Nessun setup, recesso con 30 giorni di preavviso | Vende solo a software house (nessun conflitto), API OpenAPI, staging gratuito. Vrbo: le valute supportate non includono CHF |
-| **NextPax** (NL) | **Sì** secondo il vendor: contenuti, immagini, servizi, policy, attivazione dei canali | Airbnb, Booking.com, Expedia, Vrbo | €3,50/unità/mese (€3,15 annuale), **minimo €350/mese** (50 unità incluse); prezzo della Supply API "contact us" | Vende anche direttamente ai gestori (concorrente). Verificare chi è titolare dei contratti OTA |
-| **Rentals United** (ES) | **Sì** (approccio content-first, creazione annunci Airbnb documentata) | Airbnb, Booking.com, Vrbo; API "restricted" | Prezzo per software house non pubblico | Solo XML; lock-in sul modello dei contenuti |
-| **Octorate** (IT) | Sì (endpoint contenuti + push al portale) | Chat API, anche con assistente AI | Non pubblico | Vende anche un proprio PMS in Italia (concorrente) |
+| Fornitore | Contenuti (creazione + modifica) | Chat (lettura, invio, webhook) | Esito |
+|---|---|---|---|
+| **NextPax** Supply API (REST) | Airbnb ✅, Booking.com ✅, Vrbo ✅, Expedia: modifica ✅, creazione ?. Non è confermato pubblicamente che il "Full Content" sia attivabile **via API** né il dettaglio per singola OTA: lo Swagger è dietro login | ✅ su tutte e 4, con webhook | **Candidato 1**, previa conferma scritta |
+| **Octorate** Integration Central (REST, OpenAPI pubblica) | Airbnb ✅, Booking.com ✅, Vrbo ✅, **Expedia ❌** | ✅ (webhook `CHAT_MESSAGE_RECEIVED`) | **Candidato 2**: copre le OTA principali; vende anche direttamente ai gestori |
+| Rentals United | Creazione Booking.com/Expedia **solo da interfaccia** (*"you have to connect them via UI first"*) | ✅ (API ristretta dal 17/02/2026) | **Scartato** (R4 + R5) |
+| Channex | ❌ creazione e modifica dei contenuti (roadmap 2027) | ✅ | **Scartato** (R5) |
+| Zodomus | Airbnb solo collegamento | ❌ | Scartato |
+| Beds24, Hostaway, Guesty, Smily, WuBook, Hospitable, Lodgify | Nessuna pubblicazione sulle OTA via API | Variabile | Scartati |
 
 Fonti:
-- <https://channex.io/pricing.md>
-- <https://channex.io/llms.txt>
-- <https://nextpax.com/nextpax-pricing>
-- <https://info.rentalsunited.com/whitelabel-channel-manager-api>
-- <https://api.octorate.com/connect/>
+- NextPax: <https://nextpax.com/products/supply-api>, <https://support.nextpax.com/distribute-new-or-reactivated-properties-to-channels>, <https://nextpax.com/resources/manage-expedia-group-guest-messages-directly-in-nextpax>
+- Octorate: <https://api.octorate.com/connect/rest/v1/integration/openapi.yaml>
+- Rentals United: <https://docs.rentalsunited.com/hc/en-gb/articles/36955698514717>
+- Channex: <https://channex.io/llms.txt>
 
-**Messaggi e AI: vincoli**
-- **Airbnb Off-Platform Policy:** prima della prenotazione la comunicazione resta su Airbnb. È vietato chiedere email o altri canali e usare i contatti per marketing (<https://www.airbnb.com/help/article/2799>).
-- **Booking.com:** le richieste di cambio date e "cancel for less" vanno gestite nell'extranet, non via API (<https://developers.booking.com/connectivity/docs/messaging-api/understanding-the-messaging-api>).
-- **AI Act, art. 50:** obbligo di trasparenza verso chi interagisce con un sistema AI, applicabile dal 2 agosto 2026. Verificare eventuali modifiche dal Digital Omnibus ⚖.
-- **Prassi dei concorrenti** (Guesty ReplyAI, Hostaway AI, Hospitable):
-  - bozza generata dall'AI con base di conoscenza per immobile;
-  - invio automatico solo sopra una soglia di confidenza e su argomenti consentiti;
-  - controllo di sicurezza prima dell'invio.
+**Costi NextPax:** €3,50/unità/mese (€3,15 con fatturazione annuale), con **minimo €350/mese** che include le prime 50 unità (<https://nextpax.com/nextpax-pricing>). Il prezzo della Supply API in white label è "contact us".
+
+**Vincoli per l'AI di chat:**
+- Airbnb: prima della prenotazione non si possono scambiare contatti né link; l'AI deve rimuoverli (<https://www.airbnb.com/help/article/2799>).
+- Booking.com: cambi data e "cancel for less" vanno gestiti nell'extranet.
+- AI Act art. 50: obbligo di trasparenza.
+- Modalità: bozza + invio automatico solo sopra una soglia di confidenza e su argomenti consentiti, come Guesty, Hostaway e Hospitable.
+
+**Svizzera:** e-domizil/Interhome (gruppo HomeToGo) usano NextPax; Google Vacation Rentals è disponibile. feratel Deskline e ticino.ch non sono documentati da nessuno dei due candidati.
 
 **Raccomandazione**
-1. Mantenere `IChannelAdapter` come porta e scrivere **un solo** adapter reale verso il channel manager scelto. Eliminare gli stub per singola OTA.
-2. **Se la creazione/modifica degli annunci è indispensabile al go-live:** fare due diligence scritta con **NextPax** e **Rentals United**. Chiedere:
-   - una matrice per OTA di ciò che si può creare o modificare;
-   - il prezzo della Supply API;
-   - la portabilità degli account e dei contratti OTA in caso di uscita.
-3. **Altrimenti:** usare **Channex** per disponibilità, tariffe, prenotazioni, messaggi e recensioni (il costo più basso e il minor lock-in); per ora i contenuti restano nelle extranet.
-4. **Inbox unificata** (riattiva US-011) + **AI in modalità bozza** (riattiva US-012):
-   - base di conoscenza per immobile;
-   - argomenti bloccati;
-   - rimozione di contatti e link nei thread Airbnb prima della prenotazione;
-   - log di approvazione.
-5. **Da verificare:** copertura delle OTA svizzere (e-domizil, Interhome, ticino.ch, dove Quokka pubblica annunci). Non coperta dalla ricerca.
+1. Inviare a NextPax e Octorate le **11 domande** in allegato A e chiedere un **PoC in sandbox**: creazione di un annuncio nuovo via API su Airbnb e Booking.com, modifica di foto e descrizione IT/EN/DE, ciclo completo di un messaggio.
+2. Scegliere il fornitore solo con le risposte scritte.
+3. **Un solo adapter reale dietro `IChannelAdapter`**, da estendere con contenuti e messaggi. Rimuovere gli stub.
 
 ---
 
-### 3.2 CRM avanzato con campagne e AI
+### 3.2 CRM con campagne e AI
 
-**Cosa c'è oggi**
-- `Guest` con PII cifrati e `MarketingConsent` (`Core/Entities/Guest.cs:122-124`).
-- Consenso versionato e solo in aggiunta (`GuestConsentRecord`).
-- Resend usato solo per email transazionali.
+Invariato rispetto alla v1, salvo la matrice B2C/B2B.
 
-**Vincoli ufficiali (da comunicare al cliente)**
-- **Airbnb:** è vietato *"using guest contact information for marketing communications"* (<https://www.airbnb.com/help/article/2799>; ToS §11.1 <https://www.airbnb.com/help/article/2908>).
-  → **Gli ospiti arrivati da Airbnb non possono entrare in campagne di marketing.**
-- **Booking.com**, General Delivery Terms §2.9.3: è vietato usare i contatti per *"unsolicited electronic communications"* (<https://admin.booking.com/hotelreg/terms-and-conditions.html>).
-  → Si possono contattare solo con un consenso raccolto direttamente dal gestore. La lettura del DMA art. 5(4) va validata ⚖.
-- **Italia:**
-  - art. 130 Codice Privacy: consenso preventivo per email, SMS e WhatsApp;
-  - "soft spam" (c. 4): **solo email**, solo per servizi analoghi, solo se l'email è stata fornita durante la vendita, quindi in pratica **solo prenotazioni dirette**;
-  - linee guida Garante 2013: <https://www.garanteprivacy.it/home/docweb/-/docweb-display/docweb/2542348>.
-  - I dati Alloggiati e dei documenti d'identità **non possono mai** finire nel CRM (limitazione della finalità, art. 5(1)(b) GDPR).
-- **Svizzera:** UWG art. 3 cpv. 1 lett. o richiede l'opt-in, con eccezione per i clienti esistenti e servizi analoghi (<https://www.fedlex.admin.ch/eli/cc/1988/223_223_223/de>). Per l'EDÖB l'accettazione delle condizioni generali non basta.
-- **WhatsApp:** opt-in esplicito che nomina l'azienda. Prezzo per messaggio dal 1° luglio 2025, con template "utility" gratuiti nella finestra di 24 ore (<https://developers.facebook.com/docs/whatsapp/pricing>).
+**Vincolo principale:** Airbnb vieta di usare i contatti degli ospiti per il marketing (<https://www.airbnb.com/help/article/2799>). Booking.com consente il marketing solo con un consenso raccolto direttamente dal gestore.
 
-**Raccomandazione**
-1. **CRM leggero nel nostro DB, per tenant:**
-   - profilo ospite unificato, soggiorni, `ConsentRecord` per canale e base giuridica, lista di soppressione per tenant;
-   - `Segment` salvato come definizione di filtro, `Campaign` / `CampaignRecipient`, eventi di consegna.
-   - Regole nel codice: fonte Airbnb mai marketizzabile; Italia + WhatsApp/SMS solo con consenso.
-2. **Invio email:**
-   - Resend con un **team separato per il marketing**, così le email transazionali restano protette. Le reputazioni condivise tra tenant sono un rischio dichiarato da Resend (<https://resend.com/docs/knowledge-base/setting-up-resend-for-multi-tenants>).
-   - Un sottodominio per ogni gestore, header List-Unsubscribe con un clic, accodamento su Hangfire.
-   - Alternativa con migliore isolamento: Amazon SES con tenant (<https://docs.aws.amazon.com/ses/latest/dg/tenants.html>).
-   - Evitare Resend Broadcasts: i contatti sono globali per team e la disiscrizione vale per tutto il team.
-3. **WhatsApp (fase 2):** Meta Embedded Signup, così ogni gestore è titolare del proprio account WhatsApp Business e Meta gli fattura direttamente.
-4. **AI realistica:**
-   - testi delle campagne in IT/EN/DE/FR con approvazione umana;
-   - richiesta in linguaggio naturale → filtro di segmento con anteprima del numero di destinatari;
-   - offerte sulle notti vuote a partire dal calendario.
-   - **No** all'ottimizzazione dell'orario di invio e a modelli predittivi finché non ci sono dati sufficienti. La profilazione richiede un consenso specifico ⚖.
-5. **Niente HubSpot o Customer.io** come base: costo per tenant fuori scala (HubSpot Pro $800/mese [NV]; Customer.io con workspace illimitati $1.000/mese).
+**Costruzione:**
+- CRM nel nostro DB: profilo ospite, `ConsentRecord` per canale e base giuridica, segmenti, campagne, lista di soppressione per tenant.
+- Invio: Resend con un **team separato per il marketing** (oppure SES con tenant).
+- WhatsApp via Meta Cloud API con Embedded Signup (ogni agenzia o host è titolare del proprio account).
+- AI: testi in IT/EN/DE/FR con approvazione umana; richiesta in linguaggio naturale → segmento con anteprima dei destinatari.
+
+**Automazione (R4):** le campagne si inviano da sole; il consenso si raccoglie nel check-in online e nel checkout diretto.
 
 ---
 
-### 3.3 Portale proprietari con statistiche e fatturazione (solo B2B)
+### 3.3 Portale proprietari e flusso economico a 4 parti in Stripe (solo B2B)
 
-**Cosa c'è oggi**
-- KPI (`DashboardController.cs:36-66`).
-- Report fiscali CSV/PDF (`FiscalController.cs:150-223`).
-- Accesso per proprietà dei membri dell'organizzazione (`PropertyMemberAccess`).
-- SDI non configurato (`UnconfiguredSdiEInvoiceProvider` lancia un'eccezione).
-- Stripe Connect con un account per organizzazione, senza bonifici ai proprietari.
+**Oggi:**
+- Stripe Connect Express, **direct charge** sull'account dell'host, senza commissione per la piattaforma.
+- Stripe **sconsiglia le direct charge con gli account Express v1** (<https://docs.stripe.com/connect/charges>).
+- Nessun ruolo proprietario, nessun rendiconto, SDI non configurato.
 
-**Standard di mercato** (Guesty, Hostaway, Lodgify, Hostfully, Octorate):
-- login del proprietario limitato ai suoi immobili;
-- calendario con blocchi per uso personale;
-- rendiconto mensile in PDF (ricavi, commissione, spese con ricevute, netto);
-- occupazione e ADR.
+**Perché serve un altro tipo di addebito.** Con direct o destination charge un pagamento va a **un solo** account collegato. Stripe **non trasferisce da un account collegato a un altro**: i fondi passano sempre dalla piattaforma. Per dividere lo stesso pagamento tra agenzia, proprietario e CasaZen serve quindi **separate charges and transfers (SCT)** (<https://docs.stripe.com/connect/separate-charges-and-transfers>).
+
+#### Architettura proposta (prenotazioni dirette)
+
+| Parte | Oggetto Stripe | Note |
+|---|---|---|
+| CasaZen | Account piattaforma (IT): Billing, Tax, Invoicing + app A-Cube | Abbonamento SaaS dell'agenzia + quota per prenotazione (trattenuta nello split) |
+| Agenzia | Account collegato con **contratto di servizio completo** (`card_payments` + `transfers`), su Accounts v2 | È **esercente** (`on_behalf_of`) |
+| Proprietario | Account collegato con `transfers`. IT: contratto *recipient* ammesso; **CH: contratto completo** (i recipient non ricevono payout transfrontalieri) | Payout mensile (`interval=monthly`) |
+| Ospite | PaymentIntent sulla piattaforma con `on_behalf_of` = agenzia e `transfer_group` = prenotazione | Carte, SEPA DD, **TWINT** (CHF) |
+
+**Sequenza:**
+1. L'ospite paga.
+2. Quando i fondi sono disponibili (o al check-in), partono due trasferimenti con `source_transaction`:
+   - **al proprietario:** canone − commissione agenzia − ritenuta 21% (se dovuta);
+   - **all'agenzia:** commissione + IVA + ritenuta 21% da versare + tassa di soggiorno + pulizie.
+3. **CasaZen** tiene la differenza come quota di piattaforma.
+4. Rimborsi e contestazioni ricadono sulla piattaforma; si recuperano stornando i trasferimenti.
+
+**Fatture:**
+- **Agenzia → proprietario:** fattura della commissione via Stripe Invoicing, emessa *on behalf of* l'agenzia e marcata **pagata fuori Stripe** perché già trattenuta nello split. Nessuna commissione Invoicing (<https://docs.stripe.com/invoicing/connect>). Invio SDI automatico via API.
+- **Svizzera:** con lo split la QR-bill non serve. Se il saldo del proprietario è negativo (spese superiori ai ricavi), addebito Stripe (SEPA DD / TWINT).
+
+**Vincoli Stripe verificati:**
+- I fondi si possono trattenere **al massimo 90 giorni** in IT e CH (<https://docs.stripe.com/connect/account-balances>). Ok per il ciclo mensile, ma non per prenotazioni pagate molti mesi prima del soggiorno se si vuole girare i soldi solo dopo il check-in.
+- I conti svizzeri non possono essere regolati in EUR: sui trasferimenti EUR → proprietario CH c'è conversione (1–2%) [NV sul cambio esatto applicato ai trasferimenti].
+- **Agenzia svizzera come esercente + split verso proprietari UE: non documentato [NV].** Serve conferma scritta da Stripe.
+
+#### Decisione D2, rischio fiscale e legale ⚖ (bloccante)
+
+Con SCT i fondi transitano dal saldo della piattaforma. L'obbligo di ritenuta ricade su chi *"interviene nel pagamento"* e ha la *"materiale disponibilità"* dei fondi (Circ. AdE 24/E/2017 §2.2.2: <https://www.agenziaentrate.gov.it/portale/documents/20143/297757/Circolare+n.+24+del+12+10+2017_Circolare+n.+24+del+12-10-2017.pdf>).
+
+Rischio concreto: CasaZen potrebbe essere considerata:
+- sostituto d'imposta;
+- responsabile della tassa di soggiorno;
+- gestore di piattaforma ai fini DAC7.
+
+Con `on_behalf_of` = agenzia l'esercente è l'agenzia, il che riduce il rischio. **Prima del go-live serve un parere fiscale, e preferibilmente un interpello all'AdE.**
+
+#### Decisione D3, ricavi OTA (la maggior parte del fatturato di un'agenzia)
+
+| Opzione | Stato | Valutazione |
+|---|---|---|
+| **Treasury for platforms**: conto finanziario dell'agenzia con IBAN Stripe; l'agenzia vi trasferisce i payout OTA, poi pagamenti in uscita ai proprietari | IT **private preview**, solo EUR, CH non disponibile (<https://docs.stripe.com/treasury/connect>) | **Raccomandata per l'Italia.** Richiedere subito l'accesso a Stripe. CasaZen non detiene mai i fondi |
+| Addebito SEPA all'agenzia, poi trasferimenti ai proprietari | Rischio "aggregazione" tra le attività soggette a restrizioni (<https://stripe.com/legal/restricted-businesses>) | Solo con **approvazione scritta di Stripe** |
+| Payout OTA fuori Stripe, con bonifici ai proprietari generati automaticamente via API bancaria | Fuori da R2 | Deroga a R2 da decidere. **Unica opzione oggi per la Svizzera** |
+
+#### Rendiconto proprietario (automatico)
+
+- Generato ogni mese dagli eventi di prenotazione, Stripe e spese.
+- Contenuto: ricavi per canale, commissione, spese con allegati, ritenute, netto, stato del payout.
+- Valuta della proprietà.
+- Area documenti e blocchi per uso personale.
+
+**Dato da raccogliere all'onboarding del proprietario:** lo **status fiscale**. Dal 2026 una persona fisica con più di 2 appartamenti in affitto breve è presunta impresa (L. 199/2025 c. 17), e questo determina se si applica la ritenuta.
+
+---
+
+### 3.4 Fornitori e staff propri (solo B2B, R10)
+
+| Elemento | Default B2B | Opzione in configurazione |
+|---|---|---|
+| Fornitore | Marketplace CasaZen | Rubrica dei fornitori dell'agenzia (`OrgSupplier`) + ruolo `Staff` |
+| Pagamento | **Online via Stripe**, con commissione CasaZen. Oggi è dietro il flag `SupplierOnlinePayments` (spento); il default attuale "Pagato" manuale viola R4 | Staff: stipendio fuori da CasaZen. Fornitori propri: **D7, da decidere**, via Stripe a 0% oppure fuori da CasaZen |
+| Commissione | 10% "provvisoria" (`SupplierPaymentsOptions`) | 0% |
+
+**Lavoro:**
+- rubrica dei fornitori dell'organizzazione (oggi `OrgTrustedSupplier` non esiste: `GlobalSearchService.cs:29,344`);
+- invito diretto dei fornitori;
+- ruolo `Staff` e assegnazione dei `ServiceRequest`;
+- interruttore nell'onboarding o nelle impostazioni dell'agenzia;
+- regola di commissione per tipo di fornitore.
+
+**Taglia:** M.
+
+---
+
+### 3.5 Fiscalità Italia + Svizzera: automazione verificata giurisdizione per giurisdizione (R4)
+
+Livelli di automazione: **COMPLETA** = API ufficiale o di un partner, nessun passaggio manuale · **PARZIALE** = esiste solo un canale file, oppure manca la conferma dell'API · **NON POSSIBILE** = nessun canale automatizzabile oggi.
+
+**Italia: adempimenti nazionali**
+
+| Adempimento | Sistema | API | Automazione |
+|---|---|---|---|
+| Alloggiati Web | `alloggiatiweb.poliziadistato.it/service/service.asmx`: **verificate 12 operazioni** (`GenerateToken`, `Send`, `Ricevuta`, `Tabella`, `GestioneAppartamenti_*`). Autenticazione con utente + password + WsKey (generata dall'host una volta) | SOAP ufficiale, gratuito | **COMPLETA** (oggi CasaZen produce solo il file) |
+| Dichiarazione annuale imposta di soggiorno, CU/770, dati locazioni brevi, DAC7 | Entratel/Fisconline | **Nessuna API di invio.** Il catalogo di interoperabilità AdE (provv. 6/7/2026) offre solo download e verifiche (<https://www.agenziaentrate.gov.it/portale/catalogo-dei-servizi-di-interoperabilita>) | **NON POSSIBILE** via API. CasaZen genera i file validati e un **intermediario Entratel partner** li riceve via API e li trasmette (delega R7) |
+| F24 (ritenute) | Banca / Entratel | Fabrick F24 API solo per conti **Banca Sella**; altrimenti un intermediario | **PARZIALE** |
+| Verifica CIN | Pagina pubblica BDSR | Nessuna | **NON POSSIBILE** (resta la validazione del formato) |
+
+**Italia: ISTAT per regione del cliente**
+
+| Regione | Sistema | API | Automazione |
+|---|---|---|---|
+| Lombardia (Como, Milano) | Ross1000 | **SOAP `checkinV2` verificato** (`inviaMovimentazione`, `inviaMovimentazioneList`) | **COMPLETA** |
+| Marche (Ascoli Piceno) | Istrice-Ross1000 | SOAP `checkinV2` | **COMPLETA** |
+| Sicilia (Trapani) | Osservatorio Turistico | API HTTPS per gestionali (documentazione su richiesta) | **COMPLETA** dopo aver ottenuto la documentazione |
+| Liguria | Ross1000 Liguria | Documentato solo l'import di file; web service [NV] | **PARZIALE**: da chiedere alla Regione |
+| Calabria (Tropea) | SIRDAT (Ross1000) | Web service [NV] | **PARZIALE**: da chiedere alla Regione |
+
+**Italia: imposta di soggiorno per comune**
+
+| Comune | Piattaforma | Automazione |
+|---|---|---|
+| Como, Trapani, Tropea [NV] | StayTour (Hyksos) | **NON POSSIBILE** |
+| Genova, Portofino, S. Margherita | TouristTax (Advanced Systems) | **NON POSSIBILE** |
+| Cinque Terre (Riomaggiore) | Strumento del comune | **NON POSSIBILE** |
+| Milano, Sanremo [NV] | SoggiorniAmo / EntrateOnline (OESIS): solo caricamento CSV | **PARZIALE** |
+| Ascoli Piceno | Pegaso St@y Tourist: import di file | **PARZIALE** |
+| Versamento pagoPA | Il codice IUV lo genera solo il portale del comune | **PARZIALE** |
+
+**Svizzera**
+
+| Adempimento | Sistema | API | Automazione |
+|---|---|---|---|
+| **Ticino**: notifica ospiti alla polizia (RL 942.120) | `notifiche.ti.ch`: solo caricamento di file XML/XLSX/CSV (XSD `F-Modello_4.xsd`) con 2FA | Nessun web service | **NON POSSIBILE** oggi. Chekin: Ticino "coming soon" |
+| Ticino: tassa di soggiorno e registrazione delle unità | OTR / piattaforma ATT | Nessuna | **NON POSSIBILE** |
+| Davos Klosters | feratel MeldeClient (interfaccia per gestionali) | Contratto feratel o Chekin | **COMPLETA** |
+| Laax/Flims, Engadina/St. Moritz, Andermatt (UR) | Sistemi da identificare (feratel probabile) | ? | **NON CONFERMATA** |
+| Riforma federale (EasyGov, notifica elettronica senza firma) | Consultazione 26/8–27/11/2026 | Nessuna specifica | Futuro (~2028 [NV]) |
+
+**Ticino, vincolo sui documenti.** RL 942.120 art. 6 cpv. 2: numero e tipo del documento si registrano *"senza procedere alla fotocopia dello stesso"* (<https://m3.ti.ch/CAN/RLeggi/public/index.php/raccolta-leggi/pdfatto/atto/10301>). Impatto sul check-in in §3.6.
+
+**Chekin come partner:** l'API v3 copre Alloggiati e ISTAT per Lombardia e Marche, ma **non** Liguria e Calabria; nessuna polizia svizzera via API. Chekin agisce solo come *responsabile del trattamento* e *"does not guarantee full compliance"*. **Il valore aggiunto per i nostri territori è basso:** conviene costruire direttamente Alloggiati e Ross1000 e usare feratel per Davos.
+
+**Raccomandazione (rispetta R4 il più possibile)**
+1. **Build:** Alloggiati SOAP; Ross1000 SOAP (Lombardia, Marche); API Sicilia; interfaccia feratel (Davos).
+2. **Richieste formali di API (attività commerciale, da avviare subito):**
+   - Polizia cantonale TI;
+   - Regioni Liguria e Calabria;
+   - Hyksos (StayTour), Advanced Systems, OESIS, Pegaso;
+   - destinazioni di Laax, St. Moritz e Andermatt.
+3. **Intermediario Entratel partner** (CAF o studio) con integrazione API verso CasaZen, per dichiarazioni AdE e F24. È l'unica via conforme a R7 finché l'AdE non pubblica servizi di invio.
+4. **Deroga R4 da decidere (D6):** nelle giurisdizioni "NON POSSIBILE", finché non arriva l'API, CasaZen prepara il file validato e avvisa l'agenzia. In alternativa **non si attiva** la giurisdizione.
+5. **Sconsigliato:** automatizzare i portali via browser con le credenziali del cliente (RPA). È fragile, viola i termini dei portali, e il Ticino richiede 2FA.
+
+---
+
+### 3.6 Routine AI e check-in con riconoscimento del documento e del volto (R6, R9)
+
+#### Vincoli legali (fonti primarie verificate)
+
+**Italia: art. 109 TULPS**
+- **Consiglio di Stato, Sez. III, n. 9101/2025 (testo integrale):**
+  - §6.2: la verifica *"non può che essere effettuata de visu"*; il check-in da remoto non dà garanzie su *"luogo, tempo e corrispondenza visiva"*.
+  - §6.3: è ammesso un *"videocollegamento predisposto dal gestore all'ingresso della struttura"* idoneo ad accertare *"hic et nunc"* la corrispondenza tra ospite e documento (es. *"spioncino digitale o QR code che faccia un fermo immagine"*).
+  - Fonte: <https://mdp.giustizia-amministrativa.it/visualizza/?nodeRef=&schema=cds&nrg=202505732&nomeFile=202509101_11.html&subDir=Provvedimenti>
+  - **Conseguenza: un selfie fatto prima dell'arrivo, sul telefono dell'ospite, non è conforme.**
+- **Viminale, luglio 2025** (risposta ad AssoSoftware): sono ammessi videochiamata o QR/codice *"periodicamente aggiornato e visualizzabile solo presso la struttura"* (<https://www.assosoftware.it/comunicati-stampa/viminale-via-libera-proposta-assosoftware-check-in-distanza-230725/>). Nessuna nuova circolare nel 2026.
+
+**GDPR / Garante**
+- Base giuridica per dati e documento: art. 6(1)(c), obbligo di legge.
+- Per la biometria: **solo consenso esplicito** (art. 9(2)(a)). L'art. 109 non prevede biometria.
+- EDPB 3/2019 §86: non si può condizionare il servizio, serve un'alternativa *"without restraints or additional cost"* (<https://www.edpb.europa.eu/sites/default/files/files/file1/edpb_guidelines_201903_video_devices_en_0.pdf>).
+- **Garante, eCampus (29/01/2026), €50.000:** consenso biometrico non valido perché senza consenso *"sarebbe stata del tutto negata la possibilità di partecipare"*; DPIA obbligatoria (<https://www.garanteprivacy.it/home/docweb/-/docweb-display/docweb/10221611>).
+- Garante, SEA Linate FaceBoarding (12/03/2026): trattamento illecito, con richiamo all'EDPB Opinion 11/2024 (template sotto il **controllo esclusivo** dell'interessato).
+
+**AI Act:** la verifica 1:1 è **esclusa dall'alto rischio** (Allegato III, punto 1(a)). Restano gli art. 4 e 5. Disattivare la stima di età o genere dei fornitori, che ricadrebbe nell'art. 50(3).
+
+**Svizzera**
+- nLPD: art. 5 lett. c n. 4 (dato biometrico = dato degno di particolare protezione), art. 6 cpv. 6–7 (consenso libero ed esplicito), art. 22 (valutazione d'impatto).
+- La guida EDÖB impone alternative.
+- **Ticino:** divieto di fotocopiare il documento (vedi §3.5).
+
+#### Flusso proposto (il più vicino a R6 tra quelli leciti)
+
+1. **Check-in online obbligatorio (pre-arrivo)**
+   - Dati di ogni ospite + documento letto via OCR/MRZ o **NFC** (lettura del chip CIE consentita dal Reg. UE 2025/1208 art. 11(6), con cancellazione a verifica conclusa).
+   - Le immagini del documento si **cancellano alla ricevuta Alloggiati**. **In Ticino non si conservano mai.**
+2. **All'arrivo, all'ingresso**
+   - L'ospite inquadra un **QR rotante** esposto all'ingresso (display o tastierino della serratura).
+   - Due percorsi equivalenti, scelti dall'ospite:
+     - **(A) predefinito:** liveness + confronto 1:1 del volto con la foto del chip o del documento, con consenso esplicito;
+     - **(B) alternativa:** videochiamata live con un operatore dell'agenzia.
+   - Il **codice della serratura** viene rilasciato solo dopo l'esito positivo.
+3. **Supervisione umana**
+   - Ogni esito negativo va a un operatore: nessun rifiuto puramente automatico (art. 22 GDPR).
+   - In Italia, finché non c'è un parere scritto del Viminale, conviene la **conferma dell'operatore sul fermo immagine** anche nel percorso A ⚖.
+4. **Minori:** nessuna biometria. Li dichiara il genitore (sono familiari ai fini di Alloggiati).
+5. **Documenti di compliance:** DPIA prima del lancio (IT e CH); nomina di CasaZen come responsabile del trattamento (art. 28) e dei sub-fornitori; informative art. 13 GDPR / art. 19 nLPD; testo del consenso separato e non preselezionato.
+
+#### Fornitori di verifica identità
+
+| Fornitore | NFC | Dati in UE | Prezzo | Nota |
+|---|---|---|---|---|
+| **IDnow** | ✓ | Solo data center UE | Su richiesta | ETSI TS 119 461 (dichiarato dal fornitore) |
+| **Namirial** (QTSP italiano) | ✓ | ? | Su richiesta | Certificazione ETSI TS 119 461 valida fino al 11/2027; prevede anche un flusso con operatore |
+| **Veriff** | ✓ | UE (AWS Irlanda) | da $0,80 (minimo $49/mese) a $1,89 | Conforme iBeta; SDK React Native |
+| Stripe Identity | — | Prevalentemente USA | €1,25 | **Sconsigliato per gli ospiti:** vietato sotto i 16 anni; esclusioni per nazionalità; Stripe è **titolare autonomo** e conserva i dati fino a 7 anni; solo *public beta* per aziende IT e CH; non restituisce nazionalità né luogo di rilascio |
+
+**Nessun fornitore restituisce il "luogo di rilascio"** richiesto da Alloggiati: serve una mappatura propria o la conferma da parte dell'ospite. La lettura NFC richiede un'app nativa (Expo development build, non Expo Go).
+
+**Hardware per proprietà:** display con QR rotante o tastierino della serratura. Costo da includere nell'offerta.
+
+#### Routine AI
+
+Invariato rispetto alla v1:
+- regole "prenotazione → attività" su Hangfire;
+- checklist a template;
+- foto da mobile;
+- AI per controllo delle foto, sintesi delle segnalazioni, traduzioni;
+- serrature secondo `spec-smart-devices-access.md` (Seam, oppure Nuki/igloohome diretti).
+
+**Automazione (R4):** le attività si generano da sole; il codice della serratura si rilascia solo dopo l'identificazione.
+
+---
+
+## 4. Costi ricorrenti (prezzi di listino, IVA esclusa)
+
+| Componente | Prezzo | Chi lo paga |
+|---|---|---|
+| NextPax | €3,50/unità/mese, minimo €350 (50 unità incluse). Esempio: 100 unità ≈ €525/mese, 250 unità ≈ €1.050/mese | Pass-through nel listino per unità |
+| Stripe carte (EEA) | 1,5% + €0,25 (standard), 2,8% + €0,25 (premium), 3,15% + €0,25 (internazionali, +2% con conversione) | Agenzia (esercente) |
+| Stripe Connect | €2 per account attivo/mese + **0,25% + €0,10 per payout** | CasaZen (da ribaltare) |
+| Stripe Billing / Tax / Invoicing | 0,7% / 0,5% / 0,4–0,5% (Invoicing gratis se la fattura è pagata fuori Stripe) | CasaZen / agenzia |
+| Verifica identità | ~$0,80–1,89 per verifica (Veriff); IDnow/Namirial su richiesta | Per ospite adulto: pass-through |
+| SDI | Invoicetronic €0,10–0,02 per transazione; Openapi €0,07–0,022 | Trascurabile |
+| Taxually (dichiarazioni IVA) | Non pubblicato | Agenzia (opzionale) |
+| feratel / interfacce di destinazione | A contratto | Agenzia |
+| Intermediario Entratel | A contratto (partner) | Agenzia |
 
 Fonti:
-- <https://www.hostaway.com/features/owner-portal/>
-- <https://help.lodgify.com/hc/en-us/articles/26808844059932-Owner-Statements>
-- <https://www.octorate.com/owner-portal/>
-
-**Fatturazione: vincoli**
-- **IT:**
-  - fattura della commissione al proprietario in FatturaPA via SDI;
-  - l'intermediario che **incassa** i canoni trattiene il **21%** a titolo d'acconto, lo versa con F24 (codice 1919) e lo certifica nella CU (art. 4 DL 50/2017; guida AdE aprile 2026: <https://www.agenziaentrate.gov.it/portale/documents/d/guest/locazioni_brevi_disciplina_fiscale_e_regole_per_intermediari_aprile-2026>).
-  - **Quokka Sagl non è residente in Italia** e senza stabile organizzazione serve un **rappresentante fiscale** ⚖ (provv. AdE 12/7/2017).
-- **IT, novità 2026 (L. 199/2025, art. 1 c. 17):** il regime delle locazioni brevi vale **solo fino a 2 appartamenti**; oltre, l'attività si presume d'impresa. Questo cambia lo status fiscale di molti proprietari e quindi i documenti del rendiconto ⚖.
-- **CH:**
-  - QR-bill obbligatoria; dal 21/11/2025 la versione IG v2.3 richiede indirizzi strutturati (<https://www.six-group.com/dam/download/banking-services/standardization/qr-bill/ig-qr-bill-v2.3-en.pdf>);
-  - IVA alloggio al 3,8% (<https://www.estv.admin.ch/en/vat-rates-switzerland>).
-
-**Raccomandazione**
-1. **Build** dentro CasaZen:
-   - ruolo `PropertyOwner` limitato alle proprie proprietà;
-   - rendiconto mensile (entrate per prenotazione, commissione configurabile per proprietario o proprietà, spese con allegati, ritenute, netto) **nella valuta della proprietà**;
-   - PDF + area documenti;
-   - blocchi per uso personale.
-2. **IT, invio SDI tramite provider** dietro un'interfaccia `IEInvoiceProvider` (esiste già il punto di estensione):
-   - **Invoicetronic**: prepagato da €0,10 a €0,02 per transazione, SDK C#, sandbox gratuita (<https://invoicetronic.com/en/pricing/>);
-   - **Openapi**: da €0,07 a €0,022 per invio, conservazione a norma opzionale (<https://console.openapi.com/apis/sdi/pricing>).
-   - **Non** accreditarsi direttamente a SDICoop.
-3. **CH, QR-bill nativa** con **Codecrete.SwissQRBill** (licenza MIT, .NET, supporta la specifica 2.3: <https://www.nuget.org/packages/Codecrete.SwissQRBill.Core/>).
-   - Sincronizzazione con bexio (OAuth2, <https://docs.bexio.com/>) solo se il cliente la usa.
-4. **Pagamenti ai proprietari:**
-   - v1 con esportazione **ISO 20022 pain.001** (SEPA EUR + CHF) per la banca del gestore;
-   - **non** Stripe Connect: la maggior parte dei soldi arriva dai payout OTA fuori da Stripe, e le ricariche della piattaforma in UE sono in preview privata, con la Svizzera non elencata (<https://docs.stripe.com/connect/top-ups>).
-   - La gestione di fondi di terzi va inquadrata contrattualmente ⚖.
+- <https://stripe.com/en-it/pricing>
+- <https://stripe.com/en-it/connect/pricing>
+- <https://www.veriff.com/pricing>
+- <https://invoicetronic.com/en/pricing/>
 
 ---
 
-### 3.4 Fornitori e dipendenti propri senza commissioni CasaZen (solo B2B)
+## 5. Roadmap a fasi (da validare con PO e team)
 
-**Cosa c'è oggi**
-- La commissione si applica solo se `PaymentMode=Online`, con il flag `SupplierOnlinePayments` spento e il 10% indicato come provvisorio (`SupplierPaymentsOptions.cs:33-37`).
-- **La modalità `Manual`, quella di default, non applica già nessuna commissione.**
-- Esiste un override per singolo fornitore (`SupplierCommission.cs`).
-- Mancano:
-  - la rubrica "fornitori miei" (`OrgTrustedSupplier` non esiste: `GlobalSearchService.cs:29,344`);
-  - l'invito di un fornitore da parte dell'host (oggi solo da admin o in autoregistrazione nei comuni pilota);
-  - un ruolo staff interno.
-
-**Raccomandazione** (la richiesta meno costosa e quella col miglior rapporto valore/sforzo)
-1. `OrgSupplier`: rubrica dell'organizzazione.
-   - Il fornitore può essere una persona esterna **senza account** (solo contatto) oppure un'organizzazione fornitore invitata.
-   - Nessun vincolo per comune.
-2. Ruolo `Staff` in `OrgRole`, con sottotipi pulizie/manutenzione/check-in.
-   - Assegnazione dei `ServiceRequest` a un membro staff.
-   - Vista "le mie attività" su mobile.
-3. Regola commerciale nel codice: per i piani B2B la commissione è 0% su fornitori e staff propri. Il fornitore del marketplace resta disponibile, con commissione solo se pagato online.
-4. **Impatto sul business:** rinunciare al take-rate per i B2B va compensato con il canone per unità (§4). Oggi il take-rate è comunque inattivo.
-
----
-
-### 3.5 Fiscalità completa Italia + Svizzera con integrazioni
-
-**Italia**
-
-| Adempimento | Oggi in CasaZen | Integrazione possibile (fonte ufficiale) | Raccomandazione | Taglia |
-|---|---|---|---|---|
-| Alloggiati Web (art. 109 TULPS, entro 24h) | Solo file per caricamento manuale (`AlloggiatiRecordFile.cs`); credenziali Questura salvate ma non usate | **Web service SOAP ufficiale** `alloggiatiweb.poliziadistato.it/service/service.asmx`: `GenerateToken` (utente + password + WsKey), `Test`/`Send`, `Ricevuta`, `Tabella`, `GestioneAppartamenti_*` | **Build**: integrazione stabile, nazionale e gratuita | S–M |
-| ISTAT flussi turistici | Bloccato (`docs/runbooks/ross1000.md`) | Nessuno standard nazionale. **Ross1000** ha un web service (`/ws/checkinV2`) e l'import XML. È adottato da molte regioni (Lazio da maggio 2025); le altre regioni hanno sistemi propri [NV per regione] | **Build** su Ross1000 per le regioni del cliente (Lombardia, Liguria, Calabria, Marche, Sicilia da verificare) | M |
-| Imposta di soggiorno: dichiarazione annuale | Motore di calcolo reale; aliquote **non verificate alla fonte** (`specs/README.md`) | File a tracciato fisso di 1.900 caratteri, inviato via **Entratel/Fisconline** (nessuna REST). Scadenza 30/6 (<https://www.finanze.gov.it/it/archivi/notizie/dettaglio-notizie/Dichiarazione-telematica-imposta-di-soggiorno/>) | **Build: generare il file**, inviato dal commercialista | M |
-| Imposta di soggiorno: versamento e comunicazioni mensili | Report per comune/mese | Portali comunali o pagoPA; dove adottato, PayTourist ha una REST API | Caso per caso sui comuni del cliente | M (per comune) |
-| Ritenuta 21% intermediari + dati CU/770 | Nessuno | CU/770 via file Entratel, nessuna REST. F24 codice 1919 entro il 16 | **Build**: registro delle ritenute + esportazione dati CU/F24 per il commercialista. **Non diventare intermediario Entratel** | M |
-| SDI | Non configurato | Provider API (vedi 3.3) | **Buy** | S |
-| CIN / BDSR | Validazione del formato | Nessuna API pubblica di verifica trovata | Mantenere `CinFormat.cs` | — |
-| Mod. 21 conto giudiziale | — | Cass. SU ord. 1527/2026: il gestore non è più agente contabile [NV] | Nessuna azione | — |
-
-**Svizzera** (la Confederazione fissa i minimi, i cantoni e i comuni l'esecuzione)
-
-| Adempimento | Autorità | Integrazione | Raccomandazione |
-|---|---|---|---|
-| Notifica ospiti (art. 16 LStrI + art. 18 OASA); **Ticino**: tutti gli ospiti entro 24h, **solo elettronica** | Polizia cantonale TI | Piattaforma `notifiche.ti.ch`; API non documentata pubblicamente [NV]. Unità piccole: registrazione preventiva presso Ticino Turismo (<https://www4.ti.ch/di/pol-new/servizi-online/notifiche-degli-ospiti-alla-polizia-no-lear>) | Chiedere alla Polizia cantonale se esiste un'interfaccia per i gestionali; in alternativa Chekin (Ticino "coming soon") |
-| Notifica / tassa di soggiorno nei **Grigioni** (Laax, Davos, Engadina) e a **Uri** (Andermatt) | Destinazioni / comuni | Sistemi di destinazione (feratel Deskline, AVS, …); nessun sistema cantonale trovato [NV] | Via partner (Chekin: feratel e AVS attivi) o accordo per singola destinazione |
-| Riforma federale | SEM | Consultazione 26/8–27/11/2026 per la notifica elettronica senza firma dell'ospite, con soluzione nazionale EasyGov (~2028 [NV]) (<https://www.admin.ch/de/newnsb/STwblroLhJ4->) | Seguire la riforma; non investire troppo nei singoli cantoni prima |
-| Statistica BFS | BFS | HESTA riguarda alberghi; **PASTA** (case vacanza) è a campione e trimestrale, via eSurvey (<https://www.bfs.admin.ch/bfs/de/home/statistiken/tourismus/beherbergung/parahotellerie.html>) | Solo un'esportazione, se il cliente viene estratto nel campione |
-| IVA | AFC/ESTV | 3,8% alloggio (scade a fine 2027, proposta di proroga); iscrizione obbligatoria da CHF 100k | Aliquota configurabile per paese |
-
-**Raccomandazione**
-1. **Italia = build sul nucleo di compliance che è già nostro:**
-   - Alloggiati via SOAP;
-   - Ross1000;
-   - generazione del file della dichiarazione imposta;
-   - registro delle ritenute + dati CU/F24.
-2. **Gli invii Entratel restano al commercialista:** CasaZen produce file validati, non li trasmette.
-3. **Svizzera = buy/partner**, con conferma scritta della copertura per Ticino, Grigioni e Uri:
-   - **Chekin** con REST v3, €3,95–7,95 per proprietà al mese (<https://chekin.com/it/prezzo/>, <https://chekin.com/en/legal-compliance/switzerland/>);
-   - oppure interfacce partner per singola destinazione.
-4. **Da dire al cliente:** "integrazioni funzionanti con tutti gli enti" non è un impegno sostenibile. Entratel non ha API, diversi cantoni e comuni non ne hanno, e la normativa svizzera cambierà intorno al 2027–28.
-
----
-
-### 3.6 Routine con AI, check-in/check-out (opzionale)
-
-**Cosa c'è oggi**
-- Check-in online tramite link con token e dati per ospite; **nessuna acquisizione foto del documento o OCR**.
-- Wizard di check-out con richiesta di pulizia.
-- Alert sui soggiorni.
-- Spec serrature `spec-smart-devices-access.md` (Seam, stato *planned*, #464).
-
-**Vincoli ufficiali**
-- **Italia:**
-  - la circolare del Viminale del 18/11/2024 (identificazione de visu) era stata annullata dal TAR Lazio (10210/2025);
-  - il **Consiglio di Stato, Sez. III, n. 9101 del 21/11/2025** ha riformato il TAR: il controllo visivo è indispensabile. Secondo diverse letture è ammesso un **collegamento video in tempo reale** che accerti la corrispondenza tra ospite e documento.
-  - **Keybox o codice inviato automaticamente dopo il solo caricamento del documento = non conforme.**
-  - Fonti: <https://www.lapresse.it/economia/2025/11/21/bb-e-non-solo-torna-lobbligo-di-identificare-lospite-di-persona/>, <https://www.qualitytravel.it/self-check-in-consiglio-di-stato-riconoscimento-sempre-de-visu-ma-anche-con-la-tecnologia/178822>. Fonti secondarie: **leggere il testo della sentenza** ⚖.
-  - Impatto diretto sul cliente: oggi usa keybox Masterlock [NV per le unità italiane].
-- **Ticino:** la pagina della Polizia cantonale indica che il documento "non può essere fotocopiato" [NV]. Se confermato, conservare foto dei documenti per gli ospiti in Ticino è un problema ⚖.
-
-**Raccomandazione**
-1. **Motore di routine (build):**
-   - regole "evento prenotazione → attività" (pulizia al check-out, controllo pre-arrivo, manutenzione ricorrente) su Hangfire;
-   - checklist a template;
-   - foto con orario da app mobile;
-   - segnalazione → ordine di lavoro → spesa del proprietario, che confluisce nel rendiconto (§3.3).
-   - Il caso d'uso coincide con §3.4 (staff proprio).
-2. **AI utile e misurabile:**
-   - confronto delle foto di fine pulizia con le foto di riferimento;
-   - sintesi delle segnalazioni;
-   - traduzione delle istruzioni per lo staff;
-   - pianificazione suggerita (mai automatica).
-   - **Niente** ottimizzazione autonoma dei turni nella v1.
-3. **Serrature:** implementare la spec esistente.
-   - Seam come aggregatore, oppure Nuki diretto (Smart Hosting a circa €69/serratura/anno [NV]) / igloohome (API $2 per serratura attiva al mese, codici offline: <https://www.igloohome.co/pricing>).
-   - **In Italia il codice viene rilasciato solo dopo il riconoscimento de visu (o video) registrato.**
-4. **Check-in con video:** una sessione video con operatore, registrata nel log, prima del rilascio del codice. Taglia L. Da confermare legalmente prima di costruirla ⚖.
-
----
-
-## 4. Costi ricorrenti stimati per i componenti "buy" (prezzi di listino al 2026-10-14)
-
-N = unità gestite (da confermare). Prezzi IVA esclusa.
-
-| Componente | Formula | N = 100 | N = 250 |
-|---|---|---|---|
-| Channex (disponibilità/tariffe/prenotazioni + messaggi/recensioni) | $130 + $1,00 × N | $230/mese ($2,30/unità) | $380/mese ($1,52/unità) |
-| NextPax (fatturazione mensile) | min €350 (50 unità incluse) + €3,50 × (N − 50) | €525/mese (€5,25/unità) | €1.050/mese (€4,20/unità) |
-| Chekin (solo se serve per la Svizzera) | €3,95–7,95 × N + commissioni per transazione | €395–795/mese | €988–1.988/mese |
-| igloohome API | $2 × serrature attive | $200/mese | $500/mese |
-| SDI (Invoicetronic) | ~1 fattura/proprietario/mese | < €100/anno | ~€275/anno (pacchetto 5k) |
-| Resend (marketing) | Pro $20 → Scale $90 | $20–90/mese | $90/mese |
-| WhatsApp marketing IT | ~€0,066/messaggio [NV, listino Meta da verificare] | a consumo | a consumo |
-| LLM (bozze messaggi, AI routine) | Dipende dal provider e dai volumi | da stimare con un prototipo | da stimare |
-
-I costi pass-through vanno inclusi nel listino B2B per unità. Non vanno assorbiti.
-
----
-
-## 5. Roadmap proposta a fasi (da validare con PO e team)
-
-| Fase | Contenuto | Valore per il cliente | Dipendenze |
-|---|---|---|---|
-| **0. Fondamenta** | Decisione PO (§8); paese/valuta/fuso/lingua DE; ruoli `PropertyOwner` e `Staff`; ADR "channel manager"; ADR "provider AI per dati personali" | Nessuno visibile, ma sblocca tutto | — |
-| **1. Valore rapido** | §3.4 fornitori/staff propri; Alloggiati via SOAP; portale proprietari v1 (KPI + rendiconto PDF); motore routine v1 | Sostituisce subito parti di Kross; compliance italiana | Fase 0 |
-| **2. Distribuzione e soldi** | Channel manager (disponibilità/tariffe/prenotazioni + inbox) + AI in bozza; fatturazione SDI + QR-bill; esportazione pain.001; Ross1000; file della dichiarazione imposta e dati CU/F24 | Copre le richieste 1, 3 e 5 (IT) | Scelta del channel manager (due diligence) |
-| **3. Crescita** | Svizzera via partner; CRM leggero + campagne email; serrature + check-in video; contenuti annunci (in base al fornitore); WhatsApp | Copre le richieste 2, 5 (CH) e 6 | Parere legale; copertura cantonale scritta |
-
-**Approccio consigliato:** proporre al cliente un **pilota** su un sottoinsieme di unità (es. Ticino + Como) prima della migrazione completa da Kross.
-
----
-
-## 6. Cosa NON promettere (esclusioni da mettere per iscritto)
-
-- Connessione diretta Airbnb/Booking.com come "partner" (oggi chiusa).
-- Creazione/modifica degli annunci su tutte le OTA, se si sceglie Channex (roadmap 2027 non garantita).
-- Campagne marketing verso ospiti arrivati da Airbnb.
-- Invio diretto CasaZen → Entratel (CU, 770, dichiarazione imposta di soggiorno, DAC7).
-- "Integrazione con tutti i cantoni e comuni": solo quelli con interfaccia disponibile, elencati per nome.
-- Self check-in in Italia senza riconoscimento de visu o video.
-- Consulenza fiscale: rappresentante fiscale, IVA sulle commissioni, status d'impresa dei proprietari restano al commercialista o fiduciario del cliente.
-
----
-
-## 7. Domande per il prossimo incontro
-
-1. **Numero di unità per paese e per cantone/regione**; previsione di crescita a 12 mesi; ruolo dei Quokka Point (organizzazioni separate?).
-2. **Cosa non funziona in Kross Booking?** Quali delle 6 richieste sono "mancanti" e quali "da migliorare"? Durata del contratto Kross e piano di migrazione dei dati.
-3. **Creazione annunci:** quanti nuovi annunci al mese? Serve davvero dal giorno 1 o basta disponibilità/tariffe/prenotazioni + messaggi?
-4. **Flusso del denaro:** i payout OTA arrivano a Quokka Sagl o ai proprietari? Chi incassa determina la ritenuta del 21%. Esiste già un rappresentante fiscale in Italia?
-5. **Fiscalità:** chi è il commercialista (IT) e il fiduciario (CH)? Quali software usano (Fatture in Cloud, bexio, Abacus)? Per loro "integrazione con AdE" significa file pronti o invio diretto?
-6. **Staff:** quanti dipendenti e quanti fornitori esterni? Lingue dello staff? Smartphone aziendali?
-7. **Check-in:** come identificano oggi gli ospiti nelle unità italiane? Sono disponibili a un check-in con video?
-8. **CRM:** che quota di prenotazioni dirette hanno? Raccolgono già consensi marketing?
-9. **Budget, tempi, disponibilità a fare da design partner** (pilota a prezzo agevolato in cambio di feedback e referenza).
-
----
-
-## 8. Decisioni PO necessarie prima di un'offerta
-
-| ID | Decisione | Note |
+| Fase | Contenuto | Note |
 |---|---|---|
-| Q1 | Aprire il segmento "property manager B2B multi-paese (IT + CH)" | Annulla in parte D10 e i freeze di US-011/012/016/017 |
-| Q2 | Scelta del channel manager (Channex o NextPax/RU) | Dipende dalla risposta del cliente alla domanda 3 (§7) |
-| Q3 | Listino B2B per unità/mese e rinuncia al take-rate per fornitori e staff propri | Coerente con §3.4 e §4 |
-| Q4 | Provider LLM per dati personali degli ospiti (DPA UE, nessun addestramento sui dati) | Sostituisce DeepSeek per questi usi |
-| Q5 | Budget per i pareri legali/fiscali ⚖ (self check-in, rappresentante fiscale, DMA, profilazione, Ticino) | Prima della firma |
+| **0. Decisioni e conferme esterne** (in parallelo, avvio immediato) | Pareri ⚖ (D2 SCT/ritenuta/DAC7, D5 biometria + DPIA, richiesta al Viminale); richiesta a Stripe (Treasury, conferma sull'agenzia svizzera come esercente, pre-approvazione del modello); 11 domande + PoC a NextPax/Octorate; richieste di API a enti e fornitori (§3.5) | Determina il perimetro reale |
+| **1. Fondamenta** | `OrgType.Agency`; ruoli `PropertyOwner` e `Staff`; paese, valuta, lingua DE; matrice delle funzionalità per piano; ADR "channel manager", "flussi Stripe B2B", "provider AI per dati personali" | Sblocca tutto |
+| **2. Compliance e check-in** | Alloggiati SOAP, Ross1000, API Sicilia, feratel Davos; check-in online con documento e NFC + verifica all'arrivo (A/B) + serrature | Massimo valore di compliance |
+| **3. Denaro** | SCT a 4 parti, rendiconti, fatture con invio SDI, payout mensili; fornitori marketplace via Stripe + opzione staff propri | Dipende da D2 e D3 |
+| **4. Distribuzione** | Channel manager (contenuti + disponibilità/tariffe + prenotazioni) + inbox + AI | Dipende dalla scelta del fornitore |
+| **5. Crescita** | CRM + campagne + WhatsApp; nuove giurisdizioni man mano che arrivano le API | — |
 
 ---
 
-## Fonti principali (oltre a quelle citate inline)
+## 6. Decisioni aperte per il PO
 
-- **OTA:**
-  - <https://developers.booking.com/connectivity/docs>
-  - <https://www.airbnb.com/help/article/2908>
-  - <https://docs.channex.io/api-v.1-documentation/messages-collection.md>
-  - <https://nextpax.com/products/supply-api>
-  - <https://docs.rentalsunited.com/hc/en-gb/articles/35380100616605-Adding-new-listing-to-Airbnb>
-- **Fiscale IT:**
-  - <https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/>
-  - <https://www.regione.lazio.it/cittadini/turismo/comunicazione-flussi-turistici-e-cir>
-  - <https://www.agenziaentrate.gov.it/portale/le-locazioni-brevi-e-la-cedolare-secca>
-  - <https://www.fatturapa.gov.it/it/comefare/operatori-economici/inviare-la-fatturapa/>
-  - L. 199/2025 c. 17: <https://www.ecnews.it/fiscale/fisco-e-patrimonio/imposte-sul-reddito/novita-2026-per-le-locazioni-brevi/>
+| ID | Decisione | Raccomandazione |
+|---|---|---|
+| D1 | Matrice B2C/B2B e limiti per piano (§1.2) | Approvare la matrice; definire il listino B2B per unità |
+| D2 | Modello di addebito B2B | SCT con `on_behalf_of` = agenzia, **subordinato a parere fiscale o interpello** ⚖ |
+| D3 | Ricavi OTA verso i proprietari | Richiedere Treasury (IT). Per la Svizzera: deroga a R2 oppure attendere |
+| D4 | Fornitore OTA | NextPax o Octorate, scelto dopo risposte scritte e PoC |
+| D5 | Riconoscimento facciale | Percorso predefinito con consenso + alternativa video (R6 "obbligatorio" non è lecito) ⚖ |
+| D6 | Giurisdizioni senza API | Intermediario Entratel partner per l'AdE; per comuni e Ticino scegliere tra deroga temporanea a R4 o mancata attivazione |
+| D7 | Pagamento dei fornitori propri dell'agenzia | Via Stripe a 0% (coerente con R2) oppure fuori da CasaZen |
+| D8 | Provider LLM per i dati degli ospiti | DPA UE, nessun addestramento sui dati; **non DeepSeek** (oggi è il provider configurabile) |
+
+---
+
+## Allegato A: domande per NextPax e Octorate (risposta scritta)
+
+1. Per Airbnb, Booking.com, Vrbo ed Expedia: si può creare **da zero via API** un annuncio nuovo? Elencare ogni passaggio che richiede interfaccia o intervento dell'host (OAuth, Legal Entity ID, contratto, SSO).
+2. Quali campi di contenuto si possono inviare per ciascuna OTA: titolo e descrizione IT/EN/DE/FR, foto (ordine, didascalie), servizi, regole, camere e letti, campi licenza (**CIN**)?
+3. Messaggi per ciascuna OTA: lettura e invio, richieste prima della prenotazione, allegati, offerte speciali, webhook o polling, latenza, limiti di frequenza.
+4. Le risposte automatiche o generate dall'AI sono ammesse dai vostri termini e da quelli delle OTA? Servono certificazioni o etichette?
+5. Recensioni: lettura e risposta per ciascuna OTA.
+6. Prezzi per un software vendor: per unità, minimi, setup e certificazione, eventuale sovrapprezzo per i messaggi, a chi si fattura.
+7. Chi è titolare degli account e dei contratti OTA? In caso di uscita si può migrare senza ripubblicare (mantenendo le recensioni)? Tutto il contenuto è esportabile via API?
+8. Esiste una sandbox con annunci di test su ciascuna OTA?
+9. Vendete direttamente ai gestori in Italia e Svizzera? Accettate una clausola di non sollecitazione?
+10. Potete documentare i livelli di partnership con Airbnb, Booking.com, Expedia e Vrbo, fornire un DPA, dati ospitati in UE e l'elenco dei sub-fornitori?
+11. Collegate e-domizil/HomeToGo, feratel Deskline e Google Vacation Rentals?
+
+## Fonti principali aggiuntive
+
+- **Stripe:**
+  - <https://docs.stripe.com/connect/charges>
+  - <https://docs.stripe.com/connect/cross-border-payouts>
+  - <https://docs.stripe.com/connect/service-agreement-types>
+  - <https://docs.stripe.com/connect/top-ups>
+  - <https://docs.stripe.com/payments/twint>
+  - <https://stripe.com/en-it/guides/send-e-invoices-on-stripe-billing-through-app-marketplace-partners>
+- **Identity:**
+  - <https://docs.stripe.com/identity/use-cases>
+  - <https://stripe.com/legal/ssa-service-terms>
+- **AdE:**
+  - <https://www.agenziaentrate.gov.it/portale/documents/d/guest/locazioni_brevi_disciplina_fiscale_e_regole_per_intermediari_aprile-2026>
+  - <https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legge:2017-04-24;50~art4>
+- **ISTAT:**
+  - <https://www.flussituristici.servizirl.it/Turismo5/app/ws/checkinV2?wsdl>
+  - <https://istrice-ross1000.turismo.marche.it/ws/checkinV2?wsdl>
+  - <https://osservatorioturistico.regione.sicilia.it/>
+- **Tassa di soggiorno:**
+  - <https://www.comune.como.it/it/servizi/tasse-e-imposte/imposta-di-soggiorno/>
+  - <https://www.comune.milano.it/en/servizi/tributi/imposta-di-soggiorno>
+  - <https://www.comune.genova.it/servizi/tributi-finanze-e-contravvenzioni/imposta-di-soggiorno-ids>
 - **Svizzera:**
-  - <https://m3.ti.ch/CAN/RLeggi/public/index.php/raccolta-leggi/pdfatto/atto/10301>
-  - <https://www.estv.admin.ch/en/vat-rates-switzerland>
-  - <https://www.edoeb.admin.ch/de/werbung-marketing>
-- **Privacy/marketing:**
-  - <https://www.garanteprivacy.it/home/docweb/-/docweb-display/docweb/1490553>
-  - <https://developers.facebook.com/docs/whatsapp/overview/getting-opt-in>
-- **Operazioni:**
-  - <https://www.breezeway.io/pricing>
-  - <https://developer.nuki.io/t/nuki-web-api-updates-version-v-1-5-0/21795>
-  - <https://developer.saltosystems.com/ks/connect-api/>
+  - <https://www4.ti.ch/di/pol-new/servizi-online/importare-i-pernottamenti>
+  - <https://www.dkinfo.ch/fileadmin/user_upload/dokumente/Gaestetaxen/Factsheet_Info_Vermieter_de.pdf>
+  - <https://www.admin.ch/de/newnsb/STwblroLhJ4->
+- **Privacy:**
+  - <https://www.garanteprivacy.it/home/docweb/-/docweb-display/docweb/10244289>
+  - <https://eur-lex.europa.eu/eli/reg/2024/1689/oj>
+  - <https://eur-lex.europa.eu/eli/reg/2025/1208/oj>
+  - <https://www.fedlex.admin.ch/eli/cc/2022/491/de>
