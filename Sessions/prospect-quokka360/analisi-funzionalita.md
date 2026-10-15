@@ -259,7 +259,9 @@ Con `on_behalf_of` = agenzia l'esercente è l'agenzia, il che riduce il rischio.
 
 **Regole:**
 - La modalità di pagamento si decide all'accettazione della richiesta, come oggi (`ServiceRequestPaymentMode`): `External` **solo se** chi richiede è l'agenzia legata al fornitore.
-- Se lo stesso fornitore lavora anche per altri host o agenzie tramite il marketplace, per quei lavori valgono le regole del marketplace (Stripe + commissione).
+- Il fornitore legato è **a tutti gli effetti un fornitore CasaZen** (confermato dal PO il 2026-10-15). Può lavorare anche per altri host o agenzie tramite il marketplace, e per quei lavori valgono le regole del marketplace (Stripe + commissione).
+  - Per i lavori del marketplace serve il suo account Stripe Connect: vale la regola KYC già esistente, che non permette pagamenti prima che l'account Stripe sia pronto (`ServiceRequestPaymentMode`).
+  - Se non vuole lavori da terzi, **chiude la disponibilità nella propria agenda** (agenda fornitore esistente: orari, ferie, blocchi, iCal; `Casazen.Core/Suppliers/SupplierAgendaRules.cs`, `SupplierPlanning.cs`).
 - Il rendiconto del proprietario resta automatico (R4): il costo arriva dalla richiesta, non da un caricamento manuale.
 
 **Lavoro:**
