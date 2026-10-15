@@ -56,7 +56,7 @@ Ma CasaZen **non è ancora vendibile**:
 2. condizioni Founding Partner con un termine;
 3. **contratto quadro con Quokka prima di firmare con NextPax**: pilota, criteri di successo e condizioni a regime già fissati;
 4. **SRL italiana come startup innovativa** (§10.1). Prima di costituirla, rileggere il contratto di lavoro su attività accessorie e proprietà del software (§10.2);
-5. **chi risponde a Quokka mentre sei al lavoro**: il supporto in orario d'ufficio è il rischio operativo principale (§8);
+5. **livello di servizio della piattaforma**: gli ospiti e i proprietari sono dell'agenzia, ma i guasti della piattaforma sono di CasaZen. Servono avvisi automatici all'agenzia e uno SLA compatibile con il tuo lavoro dipendente (§8);
 6. **Didit** come fornitore di verifica: con Sumsub il pacchetto tutto compreso va in perdita.
 
 ---
@@ -422,7 +422,8 @@ Minimo €90/mese.
 |---|---|---|
 | Sviluppo | PO + 1 abbonamento Claude Code (~€200/mese [NV], PR #526 §5.1) | Invariato. Processo di review e test già maturo (6.000+ test) |
 | Supporto | Nessuno | Canale e orari scritti nello SLA; supporto in IT/EN/DE per la CH tedesca [IPOTESI] |
-| **Supporto in orario d'ufficio** | **Il fondatore è al lavoro dipendente** | Check-in, serrature, overbooking e Alloggiati succedono di giorno. **Serve qualcuno che risponda in orario d'ufficio dal pilota in poi:** un socio, un collaboratore a ore o il personale di Quokka formato come primo livello, con un livello di servizio scritto nel contratto. **BP-D11** |
+| **Operatività verso ospiti e proprietari** | — | **A carico dell'agenzia** (PO, 2026-10-15): check-in, serrature, richieste degli ospiti, proprietari, overbooking da gestire con l'ospite. CasaZen fornisce la piattaforma, non è un'agenzia |
+| **Guasti della piattaforma** | **Il fondatore è al lavoro dipendente** | **A carico di CasaZen**, come per ogni fornitore SaaS. Esempi: sincronizzazione dei canali ferma, invio Alloggiati fallito, codice della serratura non emesso per un errore, rendiconto sbagliato. Servono:<br>1. **avvisi automatici all'agenzia** nella piattaforma, così l'agenzia può intervenire a mano senza aspettare CasaZen (requisito da aggiungere a WP2, WP6 e WP7);<br>2. **monitoraggio con allarmi** verso il fondatore (P3);<br>3. **SLA scritto** con canale, orari e tempi di presa in carico compatibili con il lavoro dipendente;<br>4. **limiti di responsabilità** nel contratto (§10.4).<br>**BP-D11** |
 | Reperibilità | Nessuna | Un channel manager che si ferma causa overbooking all'agenzia: serve monitoraggio con allarmi e una procedura per gli incidenti (P3) |
 | Continuità | Persona chiave unica, con un altro lavoro | Documentazione operativa (i runbook esistono già), accessi di emergenza, backup verificati |
 | Fornitori critici | — | NextPax/Octorate, Didit, Stripe, Supabase, Resend: contratti, DPA e piano di uscita per ciascuno |
@@ -581,7 +582,7 @@ Il compenso del fondatore resterebbe il primo fattore se cambiasse la decisione 
 | **GmbH o AG svizzera** | La società "deve poter essere rappresentata da una persona domiciliata in Svizzera", che sia gerente o direttore (CO art. 814 cpv. 3; per la AG art. 718 cpv. 4) ✓ | **Non percorribile da solo.** Serve un socio o un gerente domiciliato in Svizzera. E non serve per vendere in Svizzera (§10.2) |
 | **Ditta individuale in regime forfettario** | Esclude chi nell'anno precedente ha avuto redditi da lavoro dipendente oltre **€35.000** (anni 2025 e 2026), con la soglia che torna a **€30.000 dal 2027** (TU imposte sui redditi, D.Lgs. 117/2026 art. 233). L'AdE applica la soglia **anche al lavoro all'estero**, sul reddito lordo (risposte 81/2021 e 257/2021) ✓. Responsabilità illimitata | **Quasi certamente esclusa** se lo stipendio lordo supera la soglia. [NV] se la franchigia dei frontalieri riduce l'importo da confrontare: nessun documento AdE specifico trovato. In ogni caso è inadatta: con un cliente da 250 unità e uno SLA, la responsabilità illimitata è un rischio personale |
 | **SRL semplificata** | Solo persone fisiche; capitale da €1 a €9.999,99 versato in denaro; atto pubblico sul **modello standard, con clausole inderogabili** (c.c. art. 2463-bis). Atto e iscrizione esenti da bollo e diritti di segreteria, **senza onorari notarili** (DL 1/2012 art. 3 c. 3) ✓. Non sono esenti l'imposta di registro e il diritto annuale della Camera di commercio | **Opzione a costo minimo** con responsabilità limitata. Limite: lo statuto standard non permette clausole per soci di capitale o categorie di quote. Si trasforma in SRL quando entra un socio o un investitore |
-| **SRL ordinaria** | Statuto libero; costi notarili [NV, da preventivo] | Da preferire se entro 12–18 mesi entra un socio (commerciale o per il supporto, BP-D11) o un investitore |
+| **SRL ordinaria** | Statuto libero; costi notarili [NV, da preventivo] | Da preferire se entro 12–18 mesi entra un socio (ad esempio commerciale) o un investitore |
 | **Iscrizione come startup innovativa** (sopra SRLS o SRL) | DL 179/2012 art. 25 c. 2. Requisiti: PMI; costituita da non più di 60 mesi; sede in Italia; oggetto innovativo ad alto valore tecnologico, non prevalentemente agenzia o consulenza. In più **almeno uno** fra tre (lett. h): R&S ≥ **15%** del maggiore tra costi e valore della produzione; personale qualificato; **titolarità di un software originale registrato nel Registro pubblico speciale per i programmi per elaboratore**, legato all'oggetto sociale ✓ | **Requisito raggiungibile** registrando il software CasaZen. Benefici dalla pagina MIMIT ✓ (art. 26 c. 8): esenzione da bolli, diritti di segreteria e diritto annuale camerale; accesso agevolato al Fondo di garanzia PMI; Smart&Start; incentivi agli investitori. **Durata:** 3 anni, estendibili fino a 5 solo con requisiti aggiuntivi (L. 193/2024 art. 28). [NV] se c'è un bando Smart&Start aperto |
 
 **Raccomandazione (BP-D4):**
@@ -637,7 +638,7 @@ Le norme svizzere sono verificate su Fedlex. Il contratto individuale può esser
 | R3 | Il pilota slitta, oppure la migrazione cade in alta stagione | Media / Medio | Perimetro ridotto (WP8 e WP3 dopo, deciso); partire subito sulle dipendenze esterne; migrazione a ondate per stagione. Scenario B |
 | R4 | **Fornitore channel manager:** acquisito, cambia prezzi o vende direttamente alle agenzie | Media / Alto | Due fornitori in PoC (NextPax, Octorate); clausola di non sollecitazione (Allegato A domanda 9); astrazione `IChannelAdapter` |
 | R5 | Margine schiacciato dal costo delle verifiche | Media / Alto | Didit; numero di verifiche incluse legato all'uso misurato |
-| R6 | **Persona chiave unica, con un lavoro dipendente full-time:** requisiti, test, vendita e supporto nel tempo libero; **nessuno risponde in orario d'ufficio** | Alta / Alto | BP-D11 (primo livello in orario d'ufficio) dal pilota; SLA realistici; monitoraggio con allarmi; runbook; accessi di emergenza |
+| R6 | **Persona chiave unica, con un lavoro dipendente full-time:** requisiti, test, vendita e risoluzione dei guasti della piattaforma nel tempo libero | Alta / Alto | L'operatività verso ospiti e proprietari è dell'agenzia. Per i guasti: avvisi automatici all'agenzia, monitoraggio con allarmi, SLA con tempi realistici (BP-D11), runbook, accessi di emergenza |
 | R7 | Incidente in produzione su un cliente da 250 unità (overbooking, dati) | Media / Alto | P2 + P3; assicurazione cyber; procedura per gli incidenti; test end to end prima del go-live |
 | R8 | Concorrenti finanziati (Guesty, Hostaway) che puntano all'Italia | Alta / Medio | Nicchia agenzie IT+CH; prezzo tutto compreso sotto la somma dei fornitori; relazione diretta |
 | R9 | Norme: biometria contestata, CdS 9101/2025, TU IVA 2027, Reg. 2024/1028 | Media / Medio | Alternativa in videochiamata; pareri; riverifica delle norme prima dello sviluppo |
@@ -665,7 +666,7 @@ Le norme svizzere sono verificate su Fedlex. Il contratto individuale può esser
 | Cancello | Condizione per passare | Cosa sblocca |
 |---|---|---|
 | **G0** | Contratto quadro Quokka firmato (pilota, criteri di successo, condizioni a regime: 24 mesi, annuale anticipato, penale, data di migrazione); società costituita; risposte scritte di NextPax/Octorate | Firma NextPax, sviluppo WP2 |
-| **G1** | Collaudo su struttura reale (Alloggiati, Ticino); DPIA; P2–P4 chiusi; primo livello di supporto in orario d'ufficio attivo (BP-D11) | Pilota Quokka su 5 appartamenti |
+| **G1** | Collaudo su struttura reale (Alloggiati, Ticino); DPIA; P2–P4 chiusi; SLA della piattaforma concordato e avvisi automatici all'agenzia attivi (BP-D11) | Pilota Quokka su 5 appartamenti |
 | **G1b** | Criteri di successo del pilota rispettati, ad esempio: nessun overbooking; 100% delle schedine Alloggiati entro 24 ore; sincronizzazione dei canali entro i tempi concordati; rendiconto proprietari corretto; nessun incidente grave **[IPOTESI: da concordare con Quokka]** | Migrazione delle 250 unità |
 | **G2** | 60 giorni di Quokka a regime senza incidenti gravi; contribuzione per unità misurata ≥ quella del piano | Founding Partner 2–10 |
 | **G3** | Channel manager API e Alloggiati automatico in produzione; listino per unità pubblicato | B2C a pagamento |
@@ -688,7 +689,7 @@ Le norme svizzere sono verificate su Fedlex. Il contratto individuale può esser
 | ~~BP-D8~~ | Perimetro del pilota | **Deciso (2026-10-15):** senza routine e senza CRM; CRM subito dopo. Pilota su 5 appartamenti, poi migrazione completa | −2,6/−4 settimane sul percorso critico |
 | **BP-D9** | Marketplace | Fuori dal piano a 36 mesi; allineare la commissione in configurazione (10% contro 3,5%) | Coerenza tra codice e documenti |
 | **BP-D10** | Svizzera | Limitare le funzioni CH ai cantoni e comuni reali di Quokka | Riduce WP1/WP6 |
-| **BP-D11** | Supporto in orario d'ufficio | Primo livello coperto dal pilota in poi: personale di Quokka formato, collaboratore a ore o socio. Livello di servizio scritto nel contratto quadro | Rischio R6; cancello G1 |
+| **BP-D11** | Livello di servizio della piattaforma | **Deciso (2026-10-15):** l'operatività verso ospiti e proprietari è dell'agenzia. **Da decidere:** SLA sui guasti della piattaforma (canale, orari, tempi di presa in carico per gravità) compatibile con il lavoro dipendente, avvisi automatici all'agenzia, limiti di responsabilità | Rischio R6; cancello G1 |
 | **BP-D12** | Contratto quadro Quokka | Pilota con prezzo, durata e criteri di successo; condizioni a regime che si attivano da sole; minimo NextPax negoziato dalla migrazione completa | Cancello G0; ~€1.250 di cassa |
 
 ---
