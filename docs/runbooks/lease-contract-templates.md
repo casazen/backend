@@ -184,6 +184,15 @@ the API now goes through one service.
 (`Casazen.Infrastructure/Documents/`, singleton). The callers build a `PdfDocumentContent` (title, headings,
 paragraphs, tables, optional watermark) and never lay out text themselves.
 
+**One document at a time per process (BE-PDF-01).** PDFsharp and MigraDoc share state between documents (the global
+font resolver, the caches of font faces and glyphs) and lose or garble words when two documents are built at the same
+time: with 16 threads 13 to 60 of 192 PDFs came out incomplete, none with one thread. `Render` therefore takes a static
+lock around everything that touches the libraries, whichever instance it is called on, and two contracts or reports
+requested together are rendered one after the other (tens of milliseconds for an ordinary contract). The cost is a
+waiting thread per concurrent request: if the volume of PDFs ever grows, generate them in a background job instead of
+removing the lock. For the same reason every PDF goes through `IPdfDocumentRenderer`: PDFsharp or MigraDoc used
+elsewhere would not be covered by the lock.
+
 | PDF | Built by | Endpoint |
 |---|---|---|
 | Final contract | `LeaseContractTemplateService.GeneratePdfAsync` | `GET /api/leases/{id}/contract.pdf` |
@@ -262,7 +271,8 @@ fonts. For the RLI the Agenzia wants the **signed** copy in PDF/A-1a/1b or TIFF 
 1. Download the preview of a draft lease: A4 (viewer → document properties → page size 21 × 29.7 cm), `Pagina N di M`
    at the bottom, `BOZZA` on every page, names with accents intact.
 2. Document properties → fonts: only `DejaVuSans` / `DejaVuSans-Bold`, "embedded subset".
-3. Tests: `MigraDocPdfDocumentRendererTests`, `LeaseContractTemplateServiceTests` (contract of more than 20,000
+3. Tests: `MigraDocPdfDocumentRendererTests`, `MigraDocPdfDocumentRendererConcurrencyTests` (16 threads render one
+   document: every PDF has the text of the serial render), `LeaseContractTemplateServiceTests` (contract of more than 20,000
    characters on 3+ A4 pages with every word in order, non-Latin names, watermark), `FiscalRegimeServiceTests`.
 
 ## Prerequisite before the first approval
