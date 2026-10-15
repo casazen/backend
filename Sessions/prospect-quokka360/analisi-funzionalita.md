@@ -513,6 +513,43 @@ Fonti:
 
 **Hardware per proprietà:** display con QR rotante o tastierino della serratura. Costo da includere nell'offerta.
 
+#### Serrature: cosa usa Quokka e cosa fa il mercato (verificato il 2026-10-15)
+
+**Cosa usa Quokka oggi: lo sappiamo solo in parte.** Le condizioni del loro sito di prenotazione dicono *"The keys are located inside the Masterlock key box"* (<https://quokka.kross.travel/>). Sono quindi **cassette meccaniche con combinazione**, almeno come regola generale. Non sappiamo se tutte le unità le usano né se ci sono già serrature smart: **va chiesto a Quokka**.
+
+**Concorrenti** (pagine ufficiali; ✓ = verificato da me, il resto letto dalla ricerca su fonti ufficiali):
+
+| Concorrente | Modello | Prezzo all'host | Codice dopo l'identificazione? |
+|---|---|---|---|
+| Smoobu | Seam | €4/serratura/mese, solo piano Pro | No |
+| Hostaway | Integrazione propria (probabile Seam) | 8→3 per dispositivo/mese a scaglioni di volume | No |
+| Guesty | Locks Manager (Seam citato) | $8→$3 per serratura/mese | No |
+| Lodgify | Componente aggiuntivo (probabile Seam) | €6/serratura/mese | No |
+| Uplisting | Seam | £4 per serratura attiva/mese | No |
+| Host Tools ✓ | Seam: *"Seam charges Host Tools a monthly fee for each connected lock that we must pass on directly to the user"* | $3/serratura/mese | No |
+| **Kross Booking** ✓ (strumento attuale di Quokka) | Hardware proprio KDoor (serratura, cilindro, tastierino, centralina) | **da €29/mese** + IVA, richiede il Guest Portal | **Sì**: l'host verifica i dati e conferma, poi parte l'email con il codice |
+| Chekin | Oltre 20 marche con una sola integrazione | Nel piano Premium (€5,95/proprietà/mese) | **Sì**: codici mostrati solo dopo registrazione e verifica biometrica |
+| Vikey | Hardware proprio | €19,90/ingresso/mese | **Sì**: dopo il riconoscimento, anche in videochiamata |
+| Octorate | Nuki, OK Home | Non pubblicato | Sì: dati → documenti → condizioni → codice |
+
+**Cosa ne ricaviamo:**
+1. **Lo standard di mercato è un aggregatore (quasi sempre Seam) venduto all'host come componente aggiuntivo**, a €3–8 per serratura al mese. La piattaforma paga Seam e ribalta il costo; gli abbonamenti delle marche (es. Nuki Smart Hosting) li paga l'host a parte.
+2. **Rilasciare il codice solo dopo l'identificazione** lo fanno solo i fornitori italiani (Kross, Chekin, Vikey, Octorate). In Italia è di fatto un obbligo dopo CdS 9101/2025, e per CasaZen è un punto di differenziazione rispetto ai PMS internazionali.
+
+**Raccomandazione (aggiorna §4):**
+- usare **Seam**, coerente con `spec-smart-devices-access.md` e con il mercato, perché non sappiamo quali marche useranno le agenzie;
+- **ribaltare il costo all'agenzia** come componente aggiuntivo, quindi €0 per CasaZen;
+- rilasciare il codice **solo dopo la verifica all'ingresso** (§3.6).
+- Se un'agenzia sceglie una sola marca per tutto il parco (es. igloohome a $2), l'integrazione diretta resta un'ottimizzazione successiva.
+
+Fonti:
+- <https://www.krossbooking.com/kdoor>
+- <https://help.hosttools.com/en/articles/8160685-how-much-do-smart-locks-cost>
+- <https://www.seam.co/customers>
+- <https://chekin.com/en/self-check-in/>
+- <https://vikey.it/prezzi/>
+- <https://www.octorate.com/it/self-check-in/>
+
 #### Routine AI
 
 Invariato rispetto alla v1:
@@ -536,7 +573,7 @@ Questa sezione riporta solo i costi base delle API e dei servizi white label che
 |---|---|---|---|
 | **Channel manager NextPax** | €3,50/unità (€3,15 con fatturazione annuale), **minimo €350/mese** con 50 unità incluse. Prezzo della Supply API white label: "contact us". Octorate non pubblica prezzi | **€980–1.050** | <https://nextpax.com/nextpax-pricing> |
 | **Verifica identità** | Didit $0,33 a verifica (+$0,15 NFC); Sumsub $1,35 (minimo $149/mese) | Didit **$660–960**; Sumsub **$2.700** | <https://didit.me/pricing>, <https://sumsub.com/pricing/> |
-| **Serrature smart** | Seam $5/dispositivo/mese (5 azioni al giorno); igloohome diretto $2/serratura attiva/mese | igloohome **$500**; Seam **$1.250** | <https://www.seam.co/pricing>, <https://www.igloohome.co/pricing> |
+| **Serrature smart** | Seam $5/dispositivo/mese (5 azioni al giorno); igloohome diretto $2/serratura attiva/mese. **Prassi di mercato: costo ribaltato all'host** come componente aggiuntivo (vedi §3.6) | Se ribaltato: **€0**; altrimenti igloohome $500, Seam $1.250 | <https://www.seam.co/pricing>, <https://www.igloohome.co/pricing> |
 | Stripe (incassi, Connect, Treasury) | Commissioni sugli incassi + €2 per account attivo/mese + 0,25% + €0,10 per payout (+ Treasury €0,30 per bonifico se D3 = A) | **€0 per CasaZen**: tutto trattenuto ai clienti (deciso, D2) | <https://stripe.com/en-it/connect/pricing> |
 | Stripe Billing (canone CasaZen) | 0,7% del canone incassato | 0,7% × canone | <https://stripe.com/en-it/pricing> |
 | **Fatturazione elettronica SDI** (Invoicetronic) | Pacchetti prepagati da €0,10 a €0,02 per transazione, senza scadenza + €5/mese per chiave | **~€15–75** (250 fatture proprietari + eventuali fatture all'ospite) | <https://invoicetronic.com/en/pricing/> |
