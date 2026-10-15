@@ -156,6 +156,7 @@ Fonti:
      - **EBICS** (CH, canale gratuito presso PostFinance, Raiffeisen, ZKB, BancaStato): CasaZen invia il lotto, l'agenzia firma;
      - **aggregatore autorizzato** (es. Fabrick) oppure **Stripe Treasury** (IT, *private preview*).
 4. **Airbnb:** quando l'annuncio è intestato al proprietario e l'agenzia è co-host, si usa la **ripartizione nativa** di Airbnb. La ritenuta del 21% Airbnb la calcola sul lordo, prima della quota co-host, e la quota co-host non è soggetta a ritenuta ✓ (<https://www.airbnb.com/help/article/3527>). In Svizzera è ammesso un solo co-host per annuncio.
+   - **Per Quokka non si applica:** gli annunci sono intestati a Quokka su tutte le OTA (dato del PO). Tutti i ricavi OTA arrivano a Quokka, che paga i proprietari con il file di bonifico ed è l'intermediario che incassa: ritenuta del 21% sui proprietari privati italiani e relativa CU (registro già previsto nell'opzione Proprietari).
 5. **Documenti fiscali generati da CasaZen per conto dell'emittente**, con invio SDI via API (Invoicetronic, A-Cube o Openapi):
    - fattura dell'agenzia al proprietario (mensile, differita);
    - fattura di CasaZen all'agenzia;
@@ -319,19 +320,21 @@ Prezzi di listino ufficiali, IVA esclusa. **Esempio:** 250 unità sulla piattafo
 
 **Quokka oggi paga ~€2.000/mese a Kross** (dato del PO).
 
-### 6.2 Proposta
+### 6.2 Proposta di listino
 
 Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con pagamento mensile). Minimo €90/mese.
 
-| Voce | 10–49 unità | 50–149 | 150–399 | 400+ |
-|---|---|---|---|---|
-| **Base**: gestionale, channel manager (contenuti + chat), inbox con bozze AI, sito di prenotazione, Alloggiati/ISTAT/feratel via API, file per gli adempimenti, routine, fornitori e staff | **€9** | **€8** | **€7** | Preventivo |
-| Opzione **Proprietari**: portale, rendiconti, fatture SDI, file di bonifico | €2 | €2 | €2 | — |
-| Opzione **AI + CRM**: risposte automatiche, campagne, testi AI | €2 | €2 | €2 | — |
-| **Check-in biometrico** (obbligatorio nel B2B) | €0,75 a verifica | €0,75 | €0,75 | — |
-| **Tutto compreso** (base + Proprietari + AI/CRM + 8 verifiche/unità/mese) | **€15** | **€14** | **€13** | Preventivo |
-| Serrature (Seam) | €6 per serratura | €6 | €6 | — |
-| Adempimenti gestiti (back-office) | €4/unità, solo nelle giurisdizioni senza API, + pratiche dell'intermediario al costo | | | |
+**Cosa contiene ogni pacchetto:**
+
+| Pacchetto | Cosa offre | Prezzo |
+|---|---|---|
+| **Base** | **Gestionale**: proprietà, calendario, prenotazioni, ospiti, KPI.<br>**Channel manager** (Airbnb, Booking.com, Vrbo, Expedia): sincronizzazione di disponibilità, prezzi e prenotazioni; creazione e modifica degli annunci da CasaZen; recensioni.<br>**Inbox unificata** con **risposte AI suggerite**, inviate dall'operatore.<br>**Sito di prenotazione diretta** con pagamento Stripe sull'account dell'agenzia.<br>**Check-in online**: dati degli ospiti e documento, senza biometria.<br>**Adempimenti via API**: Alloggiati Web, ISTAT (regioni con API), feratel; calcolo della tassa di soggiorno; file pronti per dichiarazioni e CU.<br>**Routine**: pulizie e manutenzioni generate dalle prenotazioni, checklist, app per staff e fornitori.<br>**Fornitori**: marketplace CasaZen, fornitori propri a 0%, staff | **€9** (10–49 unità) · **€8** (50–149) · **€7** (150–399) · preventivo (400+) |
+| **+ Proprietari** | Portale proprietario con dati e documenti, rendiconto mensile automatico, fatture elettroniche SDI per conto dell'agenzia, file di bonifico SEPA/CH per pagare i proprietari, registro delle ritenute e dati CU | **+€2** |
+| **+ AI e Marketing** | Risposte AI **inviate in automatico** (sopra una soglia di confidenza), AI nelle routine (controllo foto, traduzioni per lo staff), **CRM**: profili ospite, consensi, segmenti, campagne email e WhatsApp con testi AI | **+€2** |
+| **Check-in biometrico** | Riconoscimento del documento e del volto all'ingresso, con alternativa in videochiamata; codice della serratura solo dopo l'identificazione | **€0,75 a verifica** (B2B: obbligatorio) |
+| **Serrature smart** | Codici per soggiorno via Seam, molte marche | **€6 per serratura** |
+| **Adempimenti gestiti** | Back-office CasaZen o partner per i portali senza API (Ticino, comuni); pratiche dell'intermediario fiscale al costo | **€4/unità**, solo nelle giurisdizioni senza API |
+| **Tutto compreso** | Base + Proprietari + AI e Marketing + **8 verifiche/unità al mese** | **€15 / €14 / €13** per scaglione (−20% circa rispetto ai pacchetti separati) |
 
 **Margini** (costo di piattaforma a 250 unità: ~€4,1 la base, ~€8,2 il tutto compreso):
 
@@ -352,9 +355,20 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 - **Posti:** le prime 10 agenzie, entro una data da definire.
 - **In cambio:** durata minima 24 mesi, pagamento annuale, test e feedback, referenza o caso di studio.
 - **Riduzione dei costi fissi:** con la crescita della piattaforma non abbassa il prezzo partner (da scrivere nel contratto ⚖).
-- **Esempio Quokka** (250 unità; costo pieno ~€9,80/unità = €8,20 variabile + €1,60 di quota fissa): **~€10,80/unità ≈ €2.700/mese**.
-  - +35% rispetto a Kross (€2.000), ma con biometria, compliance CH, portale proprietari, AI e CRM.
-  - Lo stesso pacchetto a listino costerebbe €13 → €3.250.
+- **Esempio Quokka** (250 unità; ipotesi di 2.000 verifiche al mese = 4 prenotazioni × 2 adulti per unità; da confermare con i dati reali):
+
+| Voce di costo al mese | Formula con costi fissi a carico del partner | **Formula consigliata**: costi fissi a carico di CasaZen, verifiche a consumo |
+|---|---|---|
+| Channel manager NextPax | €980 | €980 |
+| Verifiche d'identità | €960 (incluse, $0,48 con NFC) | €660–960 **a consumo, al costo** ($0,33–0,48): si paga solo quello che si usa |
+| Fatturazione elettronica, AI, email | ~€100 | ~€100 |
+| Costi fissi di piattaforma (hosting, strumenti) | €400 | **€0** (investimento di CasaZen, si ripartirà sui clienti futuri) |
+| Margine CasaZen (+€1/unità) | €250 | €250 |
+| **Totale Quokka** | **~€2.700/mese** | **~€1.990–2.290/mese** |
+
+- Con la formula consigliata Quokka spende **quanto oggi per Kross (~€2.000)** e ottiene in più biometria, compliance CH, portale proprietari, AI e CRM.
+- Il listino pubblico (tutto compreso a €13) costerebbe €3.250.
+- Se Quokka sostituisce anche la sua attuale piattaforma di marketing e CRM, il risparmio complessivo aumenta.
 
 **B2C:** il listino deciso l'8/10 (Starter €29, Pro €79, Scale €199) non copre il channel manager (€3,15–3,50 a unità). Per il B2C va venduto come opzione per unità (es. €4).
 
@@ -402,9 +416,9 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 ## 8. Punti aperti e domande per Quokka
 
 **Per Quokka:**
-1. Quante unità gestite, separate tra Italia e Svizzera (cantoni e comuni)?
-2. Cosa pagano oltre ai ~€2.000/mese di Kross: check-in, keybox, contabilità, notifiche CH?
-3. **Gli annunci Airbnb sono intestati ai proprietari o a Quokka?** Decide se si può usare la ripartizione co-host.
+1. ~~Quante unità?~~ **250 proprietà** (dato del PO). Resta da sapere la ripartizione tra Italia e Svizzera (cantoni e comuni).
+2. Cosa pagano oltre ai ~€2.000/mese di Kross? Il PO ricorda una **piattaforma di marketing e CRM**: servono nome e costo. Dal sito pubblico non si ricava: carica solo Google Tag Manager, iubenda e Kross; un plugin per i form WordPress (Tablesome) ha un connettore HubSpot che risulta disattivato. Chiedere anche numero di prenotazioni e ospiti al mese, che determinano il costo delle verifiche.
+3. ~~Intestazione degli annunci?~~ **Intestati a Quokka ovunque** (dato del PO): niente ripartizione co-host, i proprietari si pagano con il file di bonifico.
 4. Chi incassa oggi e con quale status fiscale dei proprietari (ritenuta, P.IVA)?
 5. Serrature: tutte keybox Masterlock o ci sono già serrature smart? Quali marche?
 6. Staff interno e fornitori esterni: quanti, in quali lingue?
