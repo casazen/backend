@@ -2,6 +2,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Payments;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -41,16 +42,24 @@ public class PaymentsController(
     /// <c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, Europe/Rome days, both included) keep the payments settled in the period
     /// (<see cref="PaymentListCriteria"/>). Filtered in SQL by the caller's scope whatever the criteria: a caller who reaches some
     /// properties only never sees the payments of the others. 400 <c>payment_list_invalid_range</c>.
+    /// <para>
+    /// Without <c>page</c> and <c>pageSize</c> the answer is the array above, all the payments, as it always was. With either of them
+    /// (SR-03b) it is one page of the same list in the same order, <c>{ items, totalCount, page, pageSize }</c> like the bookings
+    /// (<c>page</c> from 1, 1 when missing; <c>pageSize</c> 20 when missing, at most 100).
+    /// </para>
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<PaymentListItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResultDto<PaymentListItemDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IEnumerable<PaymentListItemDto>>> GetAll(
+    public async Task<ActionResult<object>> GetAll(
         [FromQuery] Guid? propertyId,
         [FromQuery] Guid? bookingId = null,
         [FromQuery(Name = "from")] DateOnly? fromDay = null,
-        [FromQuery(Name = "to")] DateOnly? toDay = null)
+        [FromQuery(Name = "to")] DateOnly? toDay = null,
+        [FromQuery] int? page = null,
+        [FromQuery] int? pageSize = null)
     {
         logger.LogInformation(
             "Getting payments (filters: property {HasProperty}, booking {HasBooking}, period {HasPeriod})",
@@ -75,9 +84,22 @@ public class PaymentsController(
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
             return Unauthorized();
 
-        var payments = await paymentList.ListAsync(
-            scope, new PaymentListCriteria(propertyId, bookingId, fromDay, toDay), HttpContext.RequestAborted);
-        return Ok(payments.Select(PaymentListItemDto.From).ToList());
+        var criteria = new PaymentListCriteria(propertyId, bookingId, fromDay, toDay);
+        if (page is null && pageSize is null)
+        {
+            var payments = await paymentList.ListAsync(scope, criteria, HttpContext.RequestAborted);
+            return Ok(payments.Select(PaymentListItemDto.From).ToList());
+        }
+
+        var paged = await paymentList.ListPageAsync(
+            scope, criteria, page ?? 1, pageSize ?? PaymentListPage.DefaultPageSize, HttpContext.RequestAborted);
+        return Ok(new PagedResultDto<PaymentListItemDto>
+        {
+            Items = paged.Items.Select(PaymentListItemDto.From).ToList(),
+            TotalCount = paged.TotalCount,
+            Page = paged.Page,
+            PageSize = paged.PageSize,
+        });
     }
 
     [HttpGet("{id}")]

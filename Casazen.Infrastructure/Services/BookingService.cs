@@ -45,15 +45,6 @@ public class BookingService(
         CancellationToken cancellationToken = default) =>
         repository.GetByScopeAsync(scope, propertyId, guestId, cancellationToken);
 
-    public Task<(IReadOnlyList<Booking> Items, int TotalCount)> GetPagedBookingsAsync(
-        HostScope scope,
-        int page,
-        int pageSize,
-        Guid? propertyId = null,
-        Guid? guestId = null,
-        CancellationToken cancellationToken = default) =>
-        repository.GetPagedByScopeAsync(scope, page, pageSize, propertyId, guestId, cancellationToken);
-
     public async Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest)
     {
         ArgumentNullException.ThrowIfNull(booking);

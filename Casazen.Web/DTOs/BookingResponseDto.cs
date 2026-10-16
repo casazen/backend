@@ -78,6 +78,64 @@ public class BookingResponseDto
     public DateTime UpdatedAt { get; set; }
 }
 
+/// <summary>
+/// A row of the booking list (SR-03b, <c>GET /api/bookings</c> and <c>GET /api/bookings/search</c>): the booking, as everywhere, and
+/// what a list says besides it. Only the lists read these, so they are not on the booking of the other endpoints.
+/// </summary>
+public class BookingListItemDto : BookingResponseDto
+{
+    /// <summary>
+    /// The channel the booking came from, in the words of the channel filter: <c>Direct</c> (the booking site), <c>Manual</c> (entered
+    /// by the host), <c>Airbnb</c>, <c>BookingCom</c> or <c>Other</c>. The exact one is <see cref="BookingResponseDto.Source"/>.
+    /// </summary>
+    public string Channel { get; set; } = string.Empty;
+
+    /// <summary>How much of the total came in: <c>None</c>, <c>Partial</c>, <c>Paid</c> or <c>Refunded</c> (a failed or open payment is nothing).</summary>
+    public string PaymentState { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The money that came in, in euros: the payments collected minus what was refunded. <c>null</c> for a caller who may not read
+    /// payments (the collaborator): the state is still there.
+    /// </summary>
+    public decimal? PaidAmount { get; set; }
+
+    /// <summary>
+    /// Where the Alloggiati Web communication stands (<c>DaInviare</c>, <c>DaInviareManualmente</c>, <c>Inviato</c>,
+    /// <c>InviatoManualmente</c>, <c>Errore</c>, <c>Rifiutato</c>); <c>null</c> for a booking that has none (pending, cancelled).
+    /// </summary>
+    public string? AlloggiatiStatus { get; set; }
+
+    /// <summary>Until when the host may answer a "pay at the property" request (UTC); <c>null</c> for any other booking.</summary>
+    public DateTime? RespondBy { get; set; }
+}
+
+/// <summary>The bookings in each chip of the list (SR-03b, <c>GET /api/bookings/counts</c>).</summary>
+public class BookingCountsDto
+{
+    /// <summary>Every booking that satisfies the filters.</summary>
+    public int All { get; set; }
+
+    public int ToConfirm { get; set; }
+
+    public int Upcoming { get; set; }
+
+    public int InProgress { get; set; }
+
+    public int Completed { get; set; }
+
+    public int Cancelled { get; set; }
+
+    public static BookingCountsDto From(Casazen.Core.Services.BookingCounts counts) => new()
+    {
+        All = counts.All,
+        ToConfirm = counts.ToConfirm,
+        Upcoming = counts.Upcoming,
+        InProgress = counts.InProgress,
+        Completed = counts.Completed,
+        Cancelled = counts.Cancelled,
+    };
+}
+
 /// <summary>The iCal block of an OTA stay (CO-21): its dates as the channel publishes them (check-out day excluded).</summary>
 public class OtaChannelBlockDto
 {
