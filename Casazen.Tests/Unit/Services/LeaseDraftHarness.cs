@@ -6,10 +6,10 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Tests.Unit.Logging;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace Casazen.Tests.Unit.Services;
@@ -55,6 +55,11 @@ internal sealed class LeaseDraftHarness : IDisposable
 
     public Mock<IFileStorage> Storage { get; } = new();
 
+    /// <summary>What the service and the deletion logged, with the structured values: the tests read it to prove no personal data is in it.</summary>
+    public CapturingLogger<LeaseDraftService> ServiceLog { get; } = new();
+
+    public CapturingLogger<LeaseDraftDeleter> DeleterLog { get; } = new();
+
     public LeaseDraftService Service { get; }
 
     public Guid OrgId { get; private set; }
@@ -70,8 +75,8 @@ internal sealed class LeaseDraftHarness : IDisposable
             Eligibility.Object,
             Ape.Object,
             Templates.Object,
-            new LeaseDraftDeleter(db, Storage.Object, NullLogger<LeaseDraftDeleter>.Instance),
-            NullLogger<LeaseDraftService>.Instance,
+            new LeaseDraftDeleter(db, Storage.Object, DeleterLog),
+            ServiceLog,
             Clock);
     }
 

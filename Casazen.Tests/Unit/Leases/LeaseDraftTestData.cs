@@ -71,17 +71,17 @@ internal static class LeaseDraftTestData
         DateTime? sentForSignatureAt = null,
         LeaseDraftFacts? facts = null,
         LeaseDraftConcordatoOutcome? concordato = null) => new()
-    {
-        Origin = origin,
-        Status = status,
-        WizardMaxStep = wizardMaxStep,
-        ReviewConfirmedAt = reviewConfirmedAt,
-        SentForSignatureAt = sentForSignatureAt,
-        Values = values ?? Complete(),
-        Facts = facts ?? GoodFacts,
-        Concordato = concordato,
-        Today = Today,
-    };
+        {
+            Origin = origin,
+            Status = status,
+            WizardMaxStep = wizardMaxStep,
+            ReviewConfirmedAt = reviewConfirmedAt,
+            SentForSignatureAt = sentForSignatureAt,
+            Values = values ?? Complete(),
+            Facts = facts ?? GoodFacts,
+            Concordato = concordato,
+            Today = Today,
+        };
 
     public static readonly DateTime Moment = new(2026, 10, 9, 8, 0, 0, DateTimeKind.Utc);
 

@@ -558,19 +558,35 @@ public class LeaseDraftServiceTests
     {
         using var h = await NewAsync();
         var (created, _) = await h.CompleteAsync();
+        var otherProperty = await h.SeedPropertyAsync();
+        LeaseContract Other(Guid propertyId, LeaseStatus status, DateTime start, DateTime end) => new()
+        {
+            PropertyId = propertyId,
+            OrgId = h.OrgId,
+            Status = status,
+            StartDate = start,
+            EndDate = end,
+            MonthlyRent = 800m,
+        };
+
         await using (var db = h.SecondContext())
         {
-            db.LeaseContracts.AddRange(
-                // Overlaps, signed: a warning.
-                new LeaseContract { PropertyId = h.PropertyId, OrgId = h.OrgId, Status = LeaseStatus.Signed, StartDate = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc), EndDate = new DateTime(2030, 5, 31, 0, 0, 0, DateTimeKind.Utc), MonthlyRent = 800m },
-                // Overlaps, a draft nobody handed out for signature: not a contract that stands.
-                new LeaseContract { PropertyId = h.PropertyId, OrgId = h.OrgId, Status = LeaseStatus.Draft, StartDate = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc), EndDate = new DateTime(2030, 10, 31, 0, 0, 0, DateTimeKind.Utc), MonthlyRent = 800m },
-                // Rejected: it will never take effect.
-                new LeaseContract { PropertyId = h.PropertyId, OrgId = h.OrgId, Status = LeaseStatus.Rejected, StartDate = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc), EndDate = new DateTime(2030, 10, 31, 0, 0, 0, DateTimeKind.Utc), MonthlyRent = 800m },
-                // Ended before this one starts.
-                new LeaseContract { PropertyId = h.PropertyId, OrgId = h.OrgId, Status = LeaseStatus.Registered, StartDate = new DateTime(2022, 1, 1, 0, 0, 0, DateTimeKind.Utc), EndDate = new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc), MonthlyRent = 800m },
-                // Another property.
-                new LeaseContract { PropertyId = (await h.SeedPropertyAsync()).Id, OrgId = h.OrgId, Status = LeaseStatus.Registered, StartDate = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc), EndDate = new DateTime(2030, 5, 31, 0, 0, 0, DateTimeKind.Utc), MonthlyRent = 800m });
+            DateTime Day(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+
+            // Overlaps, signed: a warning.
+            db.LeaseContracts.Add(Other(h.PropertyId, LeaseStatus.Signed, Day(2026, 6, 1), Day(2030, 5, 31)));
+
+            // Overlaps, a draft nobody handed out for signature: not a contract that stands.
+            db.LeaseContracts.Add(Other(h.PropertyId, LeaseStatus.Draft, Day(2026, 11, 1), Day(2030, 10, 31)));
+
+            // Rejected: it will never take effect.
+            db.LeaseContracts.Add(Other(h.PropertyId, LeaseStatus.Rejected, Day(2026, 11, 1), Day(2030, 10, 31)));
+
+            // Ended before this one starts.
+            db.LeaseContracts.Add(Other(h.PropertyId, LeaseStatus.Registered, Day(2022, 1, 1), Day(2026, 10, 31)));
+
+            // Another property.
+            db.LeaseContracts.Add(Other(otherProperty.Id, LeaseStatus.Registered, Day(2026, 6, 1), Day(2030, 5, 31)));
             await db.SaveChangesAsync();
         }
 
@@ -919,6 +935,41 @@ public class LeaseDraftServiceTests
         Assert.Null(lease.ConcordatoAssessment);
         Assert.Equal(LeaseContractType.Libero, lease.ContractType);
         Assert.Equal(new DateTime(2030, 10, 31, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
+    }
+
+    // ---- no personal data in a log -------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task TheLogs_OfAWholeLifeOfADraft_HoldNoPersonalData_OnlyIdsStepsAndCounts()
+    {
+        using var h = await NewAsync();
+        var created = await h.CreateAsync();
+        var version = created.Version;
+        version = (await h.SaveAsync(created.Id, version, 2, """
+            {"landlords":[{"firstName":"Zefiro","lastName":"Quarantaquattro","fiscalCode":"RSSMRA80A01H501U","citizenship":"IT","residence":"Via Segretissima 7, Pozzuoli","contactEmail":"zefiro@riservato.example"}],
+             "tenants":[{"firstName":"Arianna","lastName":"Boldrini","fiscalCode":"VRDGLI85B02F205A","citizenship":"IT","residence":"Corso Nascosto 12, Taranto"}]}
+            """)).Version;
+        version = (await h.SaveAsync(created.Id, version, 3, """{"contractType":"Libero","taxRegime":"CedolareSecca","monthlyRent":901.5,"securityDeposit":1500}""")).Version;
+        version = (await h.SaveAsync(created.Id, version, 4, """{"startDate":"2026-11-01"}""")).Version;
+        version = (await h.Service.ConfirmReviewAsync(created.Id, version)).Version;
+        version = (await h.Service.MarkSentAsync(created.Id, version)).Version;
+        await Assert.ThrowsAsync<LeaseDraftValuesException>(() => h.SaveAsync(created.Id, version, 2, """{"landlords":[{"firstName":7,"lastName":"Quarantaquattro"}]}"""));
+        await Assert.ThrowsAsync<DomainConflictException>(() => h.SaveAsync(created.Id, 1, 3, """{"monthlyRent":1}"""));
+        await h.Service.DeleteAsync(created.Id);
+
+        var logged = h.ServiceLog.AllOutput + h.DeleterLog.AllOutput;
+
+        Assert.NotEmpty(h.ServiceLog.Entries);
+        foreach (var secret in new[]
+                 {
+                     "Zefiro", "Quarantaquattro", "Arianna", "Boldrini", "RSSMRA80A01H501U", "VRDGLI85B02F205A", "Segretissima",
+                     "Pozzuoli", "Nascosto", "Taranto", "riservato.example",
+                 })
+        {
+            Assert.DoesNotContain(secret, logged, StringComparison.OrdinalIgnoreCase);
+        }
+
+        Assert.Contains(created.Id.ToString(), logged);
     }
 
     // ---- a company as a tenant -----------------------------------------------------------------------------------

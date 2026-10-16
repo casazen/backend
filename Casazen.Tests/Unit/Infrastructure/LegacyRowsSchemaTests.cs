@@ -34,6 +34,7 @@ public class LegacyRowsSchemaTests
     private const string Sp05 = "AddSupplierBusyWindowFeedKey";
     private const string Sp15b = "AddSupplierPaymentRefunds";
     private const string Db03 = "AddDirectBookingPublicData";
+    private const string Lr12 = "AddGuidedLeaseDraft";
     private const string Latest = "*";
 
     private static readonly Regex InsertShape = new(
@@ -104,6 +105,10 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyLeaseRows), Lr01 },
         { RentScheduleRows, Lr01 },
         { RentInstallmentRows, Lr01 },
+        { nameof(LegacyOrgRows), Lr12 },
+        { nameof(LegacyPropertyRows), Lr12 },
+        { nameof(LegacyLeaseRows), Lr12 },
+        { nameof(LegacyPartyRows), Lr12 },
     };
 
     /// <summary>The first migration after which each helper is valid (see the summary of each helper).</summary>
