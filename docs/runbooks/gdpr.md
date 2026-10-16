@@ -135,7 +135,14 @@ with other leases, or a tenant who signed a new lease). The lease is retried eve
 
 **What is removed**: first and last name, fiscal code (`ANONYMIZED`), citizenship (empty), e-mail
 (`ANON-{partyId}@deleted.local`), and the provider signing link, its expiry and the provider signer id of the party.
-Each party gets `AnonymizedAt`. The RLI reminder skips anonymized leases and parties.
+Since LR-12 also the residence and the day the identity document was checked of the party, and the lease's `DraftData` (the typed
+state of a draft that is still incomplete). Each party gets `AnonymizedAt`. The RLI reminder skips anonymized leases and parties.
+
+**Drafts of a lease (LR-12).** A guided draft holds names, fiscal codes and residences before the contract exists. `DraftData` and
+`Parties.Residence` are encrypted ([`encryption.md`](encryption.md)), the landlord can delete the draft at any time
+(`DELETE /api/leases/{id}`), and the nightly job `lease-draft-retention` deletes the drafts nobody changed for
+`LongRentLease:DraftRetentionDays` days (180 by default, never one with a signed copy): see
+[`long-rent-lease-draft.md`](long-rent-lease-draft.md) § 8. No identity document is stored, only the day it was checked.
 
 **What stays**: role and extra-EU flag of each party (shape of the lease and Questura history, no identity left), dates,
 amounts and status of the lease, the timeline events (no personal data), the registration code and dates, and **the stored
