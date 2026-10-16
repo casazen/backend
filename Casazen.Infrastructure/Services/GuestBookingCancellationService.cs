@@ -1,7 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
-using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -18,7 +17,10 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// The refund is computed from the property's <see cref="CancellationPolicy"/> only — no CasaZen floor
 /// (<see cref="Booking.FreeRefundDeadline"/> is ignored), and the base is <see cref="Booking.BasePrice"/>
-/// (tourist tax excluded), as decided on 2026-10-08.
+/// (tourist tax excluded), as decided on 2026-10-08. The calculation is
+/// <see cref="CancellationRefundPolicy.EvaluateGuestRefund(Booking, DateTimeOffset, decimal)"/>;
+/// <see cref="BookingCancellationService"/> checks it again under its lock (the guest's minimum is the policy's refund,
+/// DB-08h) and spends the link in the same transaction as the cancellation; an error leaves it usable until it expires.
 /// </remarks>
 public sealed class GuestBookingCancellationService(
     AppDbContext db,
@@ -103,74 +105,65 @@ public sealed class GuestBookingCancellationService(
         if (!GuestCancellationTokens.TokenMatches(booking.GuestCancelTokenHash, token))
             throw new DomainRuleException("guest_cancel_token_invalid", "GuestCancelTokenInvalid");
 
-        var now = _clock.GetUtcNow().UtcDateTime;
-        if (booking.GuestCancelTokenExpiresAt is not { } expiresAt || expiresAt < now)
+        // A cancelled booking answers with the outcome of its cancellation and refunds nothing again, whoever cancelled it:
+        // the host, this link (spent by that cancellation, but the hash stays so the click is recognised), or a click of
+        // this link that was first. It is the cancelled state, not the link, that stops a second refund.
+        if (booking.Status == BookingStatus.Cancelled)
+            return await AlreadyCancelledAsync(booking, cancellationToken);
+
+        var now = _clock.GetUtcNow();
+        if (booking.GuestCancelTokenExpiresAt is not { } expiresAt || expiresAt < now.UtcDateTime)
             throw new DomainRuleException("guest_cancel_token_expired", "GuestCancelTokenExpired");
 
         if (!IsCancellableByGuest(booking.Status))
             throw new DomainRuleException("booking_not_cancellable_by_guest", "BookingNotCancellableByGuest");
 
-        // Get quote first (reads payments, needed for refund math)
+        // Refund from the property policy alone (no FreeRefundDeadline floor), base = BasePrice, capped at what is
+        // refundable: the one calculation, in Core, that the cancellation checks again under its lock.
         var quote = await cancellationService.GetQuoteAsync(bookingId, cancellationToken);
+        var decision = CancellationRefundPolicy.EvaluateGuestRefund(booking, now, quote.RefundableAmount);
 
-        // Compute guest refund: property policy only (no FreeRefundDeadline floor), base = BasePrice
-        var nights = (booking.CheckOutDate.Date - booking.CheckInDate.Date).Days;
-        var policy = CancellationRefundPolicy.EffectivePolicy(booking.Property, nights);
-        var policyPercent = EvaluatePolicyPercent(policy, booking.CheckInDate, now);
-        var refundAmount = ComputeGuestRefund(quote.RefundableAmount, booking.BasePrice, policyPercent);
-
-        // Invalidate token before cancelling to prevent replay even on failure
-        booking.GuestCancelTokenHash = null;
-        booking.GuestCancelTokenExpiresAt = null;
-        booking.UpdatedAt = now;
-        await db.SaveChangesAsync(cancellationToken);
-
+        // Logged before the cancellation: if it is refused (a rule, a payment in progress, Stripe) this is what was asked.
         logger.LogInformation(
             "Guest self-cancellation of booking {BookingId}: policy {PolicyPercent}%, refund {RefundAmount} EUR",
-            bookingId, policyPercent, refundAmount);
+            bookingId, decision.Percent, decision.Amount);
 
-        var result = await cancellationService.CancelAsync(
-            new BookingCancellationRequest(
-                bookingId,
-                refundAmount > 0 ? refundAmount : null,
-                "Annullamento autonomo dell'ospite tramite link firmato",
-                RequestedByUserId: null),
-            cancellationToken);
+        // The cancellation spends the link in its own transaction, and only when it succeeds: any error leaves the link
+        // usable until it expires.
+        BookingCancellationResult result;
+        try
+        {
+            result = await cancellationService.CancelAsync(
+                new BookingCancellationRequest(
+                    bookingId,
+                    decision.Amount,
+                    "Annullamento autonomo dell'ospite tramite link firmato",
+                    RequestedByUserId: null,
+                    BookingCancellationInitiator.Guest),
+                cancellationToken);
+        }
+        catch (DomainConflictException ex) when (ex.Code == BookingErrorCodes.AlreadyCancelled)
+        {
+            // Two clicks at once: the other one cancelled while this one waited for the lock. It refunded once.
+            return await AlreadyCancelledAsync(await LoadBookingAsync(bookingId, cancellationToken), cancellationToken);
+        }
 
-        return new GuestCancellationResult(result.Booking, result.Refunds, refundAmount);
+        return new GuestCancellationResult(result.Booking, result.Refunds, decision.Amount);
     }
 
     /// <summary>
-    /// Refund percent from the property policy alone (BK-02, PO 2026-10-08): no FreeRefundDeadline floor,
-    /// no invented clauses. 0 when the booking has no policy.
+    /// The outcome of the cancellation that a repeated click finds: the booking as it is and the refunds that cancellation
+    /// reserved, as Stripe left them.
     /// </summary>
-    private static decimal EvaluatePolicyPercent(CancellationPolicy? policy, DateTime checkInDate, DateTime nowUtc)
+    private async Task<GuestCancellationResult> AlreadyCancelledAsync(Booking booking, CancellationToken cancellationToken)
     {
-        if (policy is null)
-            return 0m;
+        var refunds = await db.PaymentRefunds
+            .AsNoTracking()
+            .Where(r => r.Origin == PaymentRefundOrigin.BookingCancellation && r.Payment.BookingId == booking.Id)
+            .ToListAsync(cancellationToken);
 
-        var hoursBeforeCheckIn = (RomeCalendar.StartOfDayUtc(checkInDate) - nowUtc).TotalHours;
-
-        if (hoursBeforeCheckIn >= policy.FullRefundHours)
-            return 100m;
-
-        if (hoursBeforeCheckIn >= policy.PartialRefundHours)
-            return Math.Clamp(policy.PartialRefundPercent, 0m, 100m);
-
-        return 0m;
-    }
-
-    /// <summary>
-    /// Amount to refund: policy percent of <paramref name="basePrice"/> (tourist tax excluded), capped at
-    /// <paramref name="refundableAmount"/>, never negative.
-    /// </summary>
-    private static decimal ComputeGuestRefund(decimal refundableAmount, decimal basePrice, decimal policyPercent)
-    {
-        if (refundableAmount <= 0 || policyPercent <= 0)
-            return 0m;
-
-        var due = Math.Round(basePrice * policyPercent / 100m, 2, MidpointRounding.AwayFromZero);
-        return Math.Max(0m, Math.Min(refundableAmount, due));
+        logger.LogInformation("Guest cancel link of booking {BookingId} used again: the booking is already cancelled", booking.Id);
+        return new GuestCancellationResult(booking, refunds, refunds.Sum(r => r.Amount));
     }
 
     private static bool IsCancellableByGuest(BookingStatus status) =>

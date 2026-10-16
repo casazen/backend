@@ -28,10 +28,11 @@ public class BookingCancellationServiceTests : IDisposable
     // 2026-09-24 10:00 in Rome.
     private static readonly DateTimeOffset Now = new(2026, 9, 24, 8, 0, 0, TimeSpan.Zero);
 
-    private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
+    private readonly DbContextOptions<AppDbContext> _options = new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase($"cancellations-{Guid.NewGuid():N}")
-        .Options);
+        .Options;
 
+    private readonly AppDbContext _db;
     private readonly Mock<IStripeService> _stripe = new();
     private readonly Mock<IEmailQueue> _emails = new();
     private readonly List<StripeRefundCreateRequest> _refunds = [];
@@ -39,6 +40,7 @@ public class BookingCancellationServiceTests : IDisposable
 
     public BookingCancellationServiceTests()
     {
+        _db = new AppDbContext(_options);
         _stripe
             .Setup(s => s.CreateRefundAsync(It.IsAny<StripeRefundCreateRequest>(), It.IsAny<CancellationToken>()))
             .Callback<StripeRefundCreateRequest, CancellationToken>((r, _) => _refunds.Add(r))
@@ -368,17 +370,219 @@ public class BookingCancellationServiceTests : IDisposable
         Assert.False(quote.RequiresRefundDecision);
     }
 
-    private BookingCancellationService Service()
+    // ── The guest cancels (DB-08h, BK-02, BK-07): the minimum is the policy's refund, not everything refundable ──
+    // Moderata: 50% from 30 days to 48 hours before check-in. The check-in is 470 hours after Now, so 50% applies.
+    // Base price 280 + tourist tax 20 = 300 paid.
+
+    [Fact]
+    public async Task CancelAsync_GuestInThePartialRefundWindow_RefundsThePolicyShareWhereTheHostWouldBeRefused()
     {
-        var notifier = new BookingNotifier(_db, _emails.Object, EmailTestHelpers.Links(), Mock.Of<IPushNotificationService>(), NullLogger<BookingNotifier>.Instance);
+        var guestSeed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+        var hostSeed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+
+        var hostRefused = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            Service().CancelAsync(new BookingCancellationRequest(hostSeed.BookingId, 140m, null, "auth0|host")));
+        var result = await Service().CancelAsync(
+            new BookingCancellationRequest(guestSeed.BookingId, 140m, "Annullamento autonomo", null, BookingCancellationInitiator.Guest));
+
+        Assert.Equal("booking_cancel_refund_below_minimum", hostRefused.Code);
+        Assert.Equal(300m, Assert.Single(hostRefused.MessageArgs));
+        Assert.Equal(BookingStatus.Cancelled, result.Booking.Status);
+        var request = Assert.Single(_refunds);
+        Assert.Equal(14_000, request.AmountCents);
+        Assert.Equal(PaymentRefundOrigin.BookingCancellation, Assert.Single(result.Refunds).Origin);
+        Assert.Equal(
+            PaymentStatus.PartiallyRefunded,
+            (await _db.Payments.AsNoTracking().SingleAsync(p => p.Id == guestSeed.PaymentId)).Status);
+    }
+
+    [Fact]
+    public async Task GetQuoteAsync_PartialPolicyWindow_StillAsksTheHostForEverythingRefundable()
+    {
+        // The quote is the host's: the guest's minimum is never shown in the host's confirmation dialog.
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+
+        var quote = await Service().GetQuoteAsync(seed.BookingId);
+
+        Assert.Equal(300m, quote.MinimumRefundAmount);
+        Assert.Equal(quote.RefundableAmount, quote.MinimumRefundAmount);
+    }
+
+    [Fact]
+    public async Task CancelAsync_GuestAmountBelowThePolicyRefund_ThrowsBelowMinimumAndKeepsTheBooking()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 139.99m, null, null, BookingCancellationInitiator.Guest)));
+
+        Assert.Equal("booking_cancel_refund_below_minimum", ex.Code);
+        Assert.Equal(140m, Assert.Single(ex.MessageArgs));
+        Assert.Equal(BookingStatus.Confirmed, (await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId)).Status);
+        Assert.Empty(_refunds);
+    }
+
+    [Fact]
+    public async Task CancelAsync_GuestAmountAboveWhatIsRefundable_StillThrows()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 300.01m, null, null, BookingCancellationInitiator.Guest)));
+
+        Assert.Equal("refund_amount_exceeds_refundable", ex.Code);
+        Assert.Empty(_refunds);
+    }
+
+    [Fact]
+    public async Task CancelAsync_GuestPolicyBasePriceAbovePaid_MinimumIsNeverAboveWhatIsRefundable()
+    {
+        // 100% policy and a base price of 400, but only 300 was collected: the minimum is capped at the 300 refundable.
+        var policy = CatalogPolicies.Get(CatalogPolicies.Ampia);
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: policy, basePrice: 400m);
+
+        var result = await Service().CancelAsync(
+            new BookingCancellationRequest(seed.BookingId, 300m, null, null, BookingCancellationInitiator.Guest));
+
+        Assert.Equal(30_000, Assert.Single(_refunds).AmountCents);
+        Assert.Equal(PaymentStatus.Refunded, (await _db.Payments.AsNoTracking().SingleAsync(p => p.Id == seed.PaymentId)).Status);
+        Assert.Equal(BookingStatus.Cancelled, result.Booking.Status);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public async Task CancelAsync_GuestWhosePolicyRefundsNothing_CancelsWithoutAnAmountOrWithZero(int? amount)
+    {
+        // 0% from 25 days to 2 days before check-in.
+        var policy = new CancellationPolicy { Name = "Rigida", FullRefundHours = 1000, PartialRefundHours = 600, PartialRefundPercent = 50m };
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: policy, basePrice: 280m);
+
+        var result = await Service().CancelAsync(
+            new BookingCancellationRequest(seed.BookingId, amount, null, null, BookingCancellationInitiator.Guest));
+
+        Assert.Equal(BookingStatus.Cancelled, result.Booking.Status);
+        Assert.Empty(result.Refunds);
+        Assert.Empty(_refunds);
+        Assert.Equal(PaymentStatus.Completed, (await _db.Payments.AsNoTracking().SingleAsync(p => p.Id == seed.PaymentId)).Status);
+    }
+
+    [Fact]
+    public async Task CancelAsync_GuestWithoutAnAmountWhenThePolicyRefundsSomething_ThrowsRefundRequired()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, null, null, null, BookingCancellationInitiator.Guest)));
+
+        Assert.Equal("booking_cancel_refund_required", ex.Code);
+        Assert.Equal(BookingStatus.Confirmed, (await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId)).Status);
+    }
+
+    [Fact]
+    public async Task CancelAsync_HostWithoutAnAmountOnAPartialPolicy_StillThrowsRefundRequired()
+    {
+        // Same booking as the guest's above: the host owes everything refundable, so a missing amount is still refused.
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, null, null, "auth0|host")));
+
+        Assert.Equal("booking_cancel_refund_required", ex.Code);
+        Assert.Equal(300m, Assert.Single(ex.MessageArgs));
+    }
+
+    [Fact]
+    public async Task CancelAsync_AnotherClickCancelledAndRefundedAfterTheCallerReadTheBooking_ThrowsConflictInsteadOfRefundingTheRest()
+    {
+        // The caller (a guest's request) has read the booking and its payment; another click then cancels and refunds 140 of
+        // the 300 paid. The 160 left is still refundable: a cancellation that went on from what it read before the lock
+        // would refund 140 once more. It reads again under the lock, finds the booking cancelled and stops.
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+        await using var late = new AppDbContext(_options);
+        var staleQuote = await Service(late).GetQuoteAsync(seed.BookingId);
+        Assert.Equal(300m, staleQuote.RefundableAmount);
+
+        await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 140m, null, null, BookingCancellationInitiator.Guest));
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() =>
+            Service(late).CancelAsync(new BookingCancellationRequest(seed.BookingId, 140m, null, null, BookingCancellationInitiator.Guest)));
+
+        Assert.Equal("booking_already_cancelled", ex.Code);
+        Assert.Single(_refunds);
+        Assert.Single(await _db.PaymentRefunds.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CancelAsync_GuestSpendsTheCancelLinkInTheCancellationWhereTheHostLeavesItAlone()
+    {
+        var guestSeed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+        var hostSeed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+        var expiresAt = Now.UtcDateTime.AddDays(5);
+        await GiveCancelLinkAsync(guestSeed.BookingId, "guest-hash", expiresAt);
+        await GiveCancelLinkAsync(hostSeed.BookingId, "host-hash", expiresAt);
+
+        await Service().CancelAsync(new BookingCancellationRequest(guestSeed.BookingId, 140m, null, null, BookingCancellationInitiator.Guest));
+        await Service().CancelAsync(new BookingCancellationRequest(hostSeed.BookingId, 300m, null, "auth0|host"));
+
+        var spent = await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == guestSeed.BookingId);
+        Assert.Equal("guest-hash", spent.GuestCancelTokenHash);
+        Assert.Equal(Now.UtcDateTime, spent.GuestCancelTokenExpiresAt);
+        var untouched = await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == hostSeed.BookingId);
+        Assert.Equal("host-hash", untouched.GuestCancelTokenHash);
+        Assert.Equal(expiresAt, untouched.GuestCancelTokenExpiresAt);
+    }
+
+    [Fact]
+    public async Task CancelAsync_GuestWhoseLinkAlreadyExpired_DoesNotMoveTheExpiryForward()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+        var expiredAt = Now.UtcDateTime.AddDays(-2);
+        await GiveCancelLinkAsync(seed.BookingId, "old-hash", expiredAt);
+
+        await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 140m, null, null, BookingCancellationInitiator.Guest));
+
+        Assert.Equal(expiredAt, (await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId)).GuestCancelTokenExpiresAt);
+    }
+
+    [Fact]
+    public async Task CancelAsync_GuestRefusedByARule_LeavesTheCancelLinkUsable()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
+        var expiresAt = Now.UtcDateTime.AddDays(5);
+        await GiveCancelLinkAsync(seed.BookingId, "guest-hash", expiresAt);
+
+        await Assert.ThrowsAsync<DomainRuleException>(() =>
+            Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 100m, null, null, BookingCancellationInitiator.Guest)));
+
+        var booking = await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
+        Assert.Equal(BookingStatus.Confirmed, booking.Status);
+        Assert.Equal(expiresAt, booking.GuestCancelTokenExpiresAt);
+    }
+
+    private async Task GiveCancelLinkAsync(Guid bookingId, string hash, DateTime expiresAt)
+    {
+        var booking = await _db.Bookings.SingleAsync(b => b.Id == bookingId);
+        booking.GuestCancelTokenHash = hash;
+        booking.GuestCancelTokenExpiresAt = expiresAt;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+    }
+
+    private static CancellationPolicy Moderata() =>
+        new() { Name = "Moderata", Description = "50% fino a 48 ore", FullRefundHours = 30 * 24, PartialRefundHours = 48, PartialRefundPercent = 50m };
+
+    private BookingCancellationService Service(AppDbContext? db = null)
+    {
+        db ??= _db;
+        var notifier = new BookingNotifier(db, _emails.Object, EmailTestHelpers.Links(), Mock.Of<IPushNotificationService>(), NullLogger<BookingNotifier>.Instance);
         return new BookingCancellationService(
-            _db, RefundService(), _stripe.Object, notifier, NullLogger<BookingCancellationService>.Instance, new FixedTimeProvider(Now));
+            db, RefundService(db), _stripe.Object, notifier, NullLogger<BookingCancellationService>.Instance, new FixedTimeProvider(Now));
     }
 
     // One queue for the refund emails and the cancellation email: BK-10 checks the guest gets one email, not two.
-    private PaymentRefundService RefundService() =>
+    private PaymentRefundService RefundService(AppDbContext? db = null) =>
         new(
-            _db,
+            db ?? _db,
             _stripe.Object,
             Mock.Of<IPaymentRefundRetryScheduler>(),
             _emails.Object,
@@ -405,7 +609,8 @@ public class BookingCancellationServiceTests : IDisposable
         string? paymentIntent = "generate",
         string? savedCard = null,
         int? freeRefundUntilDaysFromNow = null,
-        CancellationPolicy? policy = null)
+        CancellationPolicy? policy = null,
+        decimal basePrice = 0m)
     {
         var today = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
         var org = new OrgEntity
@@ -435,6 +640,7 @@ public class BookingCancellationServiceTests : IDisposable
             CheckInDate = today.AddDays(20),
             CheckOutDate = today.AddDays(23),
             Status = bookingStatus,
+            BasePrice = basePrice,
             TotalPrice = amount,
             FreeRefundDeadline = freeRefundUntilDaysFromNow is { } days ? today.AddDays(days) : null,
             StripePaymentMethodId = savedCard,

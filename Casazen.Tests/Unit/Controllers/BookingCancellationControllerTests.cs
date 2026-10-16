@@ -113,6 +113,19 @@ public class BookingCancellationControllerTests
     }
 
     [Fact]
+    public async Task Cancel_ByTheHost_IsARequestOfTheHostSoTheGuestGetsEverythingRefundable()
+    {
+        // DB-08h: the request carries who cancels; the host's endpoint must never ask for the guest's (policy) minimum.
+        GivenQuote(refundable: 400m);
+
+        await Controller().Cancel(_booking.Id, new CancelBookingRequest { RefundAmount = 100m });
+
+        _cancellations.Verify(c => c.CancelAsync(
+            It.Is<BookingCancellationRequest>(r => r.Initiator == BookingCancellationInitiator.Host && r.RefundAmount == 400m),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task GetQuote_WithoutPaymentRead_Returns403()
     {
         GivenQuote(refundable: 400m);

@@ -26,19 +26,33 @@ public interface IGuestBookingCancellationService
 
     /// <summary>
     /// Verifies the token, computes the refund from the property cancellation policy (base = BasePrice, no CasaZen
-    /// floor), cancels the booking and invalidates the token.
+    /// floor, <see cref="CancellationRefundPolicy.EvaluateGuestRefund(Booking, DateTimeOffset, decimal)"/>) and cancels
+    /// the booking. The link is spent by the cancellation that succeeds, in the same transaction (its expiry becomes
+    /// the moment of the cancellation): an error (a rule, a payment in progress, Stripe not reachable) leaves the link
+    /// usable until it expires.
     /// </summary>
+    /// <remarks>
+    /// A booking that is already cancelled (by the host, by an earlier click of the link, or by a click that raced this
+    /// one) answers with the outcome of that cancellation and refunds nothing again, however many times the link is used.
+    /// </remarks>
     /// <returns>The cancellation result including the booking and any Stripe refunds initiated.</returns>
     /// <exception cref="Exceptions.NotFoundException">The booking does not exist.</exception>
-    /// <exception cref="Exceptions.DomainRuleException">Token invalid, expired, or booking not cancellable.</exception>
-    /// <exception cref="Exceptions.DomainConflictException">Already cancelled or a payment is completing.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// Token invalid or expired, booking not cancellable, or a rule of the cancellation refused the refund (a payment
+    /// changed between the decision and the lock: nothing is cancelled and the link stays usable, a new click decides again).
+    /// </exception>
+    /// <exception cref="Exceptions.DomainConflictException">A payment is completing.</exception>
     Task<GuestCancellationResult> CancelByGuestLinkAsync(Guid bookingId, string token, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Result of a guest self-service cancellation.</summary>
 /// <param name="Booking">The cancelled booking.</param>
-/// <param name="Refunds">Stripe refunds initiated (may be empty when nothing was paid).</param>
-/// <param name="RefundAmount">Amount actually refunded (0 when nothing was paid or policy grants 0%).</param>
+/// <param name="Refunds">Refunds the cancellation created, as Stripe left them (may be empty when nothing was paid).</param>
+/// <param name="RefundAmount">
+/// The refund the cancellation decided: the policy's share of the base price, capped at what was refundable (0 when nothing
+/// was paid online or the policy grants 0%). It is the decision, not Stripe's confirmation: a refund that Stripe has not
+/// confirmed yet, or rejected, is in <paramref name="Refunds"/> with its status.
+/// </param>
 public sealed record GuestCancellationResult(
     Booking Booking,
     IReadOnlyList<PaymentRefund> Refunds,
