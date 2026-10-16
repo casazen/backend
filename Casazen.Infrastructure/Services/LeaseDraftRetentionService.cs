@@ -89,7 +89,7 @@ public sealed class LeaseDraftRetentionService(
     }
 
     /// <summary>Deletes one draft if it is still abandoned once the row is locked; false when it was left (changed, signed) or could not be deleted.</summary>
-    private async Task<bool> TryDeleteAsync(Guid leaseId, DateTime cutoff, CancellationToken cancellationToken)
+    internal async Task<bool> TryDeleteAsync(Guid leaseId, DateTime cutoff, CancellationToken cancellationToken)
     {
         IReadOnlyList<string> files;
         try

@@ -27,11 +27,15 @@ internal sealed class LeaseDraftHarness : IDisposable
 
     private readonly DbContextOptions<AppDbContext> _options;
 
-    public LeaseDraftHarness()
+    private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? _dataProtection;
+
+    /// <param name="dataProtection">Encrypts the columns of EncryptedColumns, as the application does; none by default, like every other unit test.</param>
+    public LeaseDraftHarness(Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? dataProtection = null)
     {
         _options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        // No Data Protection provider, like every other unit test (see PropertyModeHarness): the encryption has its own test.
-        Db = new AppDbContext(_options);
+        // No Data Protection provider by default, like every other unit test (see PropertyModeHarness): EF keeps one model per provider.
+        _dataProtection = dataProtection;
+        Db = new AppDbContext(_options, tenantContext: null, _dataProtection);
         Clock = new FakeTimeProvider(Now);
         Ape.Setup(a => a.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).Returns(Task.CompletedTask);
         Templates.Setup(t => t.GetFinalContractBlocker(It.IsAny<LeaseContract>())).Returns((string?)null);
@@ -60,7 +64,7 @@ internal sealed class LeaseDraftHarness : IDisposable
     /// <summary>A service on another context over the same database, as a second request, a second tab or a second device would have.</summary>
     public LeaseDraftService NewService(AppDbContext? db = null)
     {
-        db ??= new AppDbContext(_options);
+        db ??= new AppDbContext(_options, tenantContext: null, _dataProtection);
         return new LeaseDraftService(
             db,
             Eligibility.Object,
@@ -71,7 +75,10 @@ internal sealed class LeaseDraftHarness : IDisposable
             Clock);
     }
 
-    public AppDbContext SecondContext() => new(_options);
+    public AppDbContext SecondContext() => new(_options, tenantContext: null, _dataProtection);
+
+    /// <summary>A context without encryption over the same database: it reads what the table holds, the payloads.</summary>
+    public AppDbContext PlainContext() => new(_options);
 
     public void Dispose() => Db.Dispose();
 

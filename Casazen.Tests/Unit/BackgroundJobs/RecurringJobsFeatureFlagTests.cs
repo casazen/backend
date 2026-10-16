@@ -150,6 +150,50 @@ public class RecurringJobsFeatureFlagTests
         Assert.DoesNotContain(ServiceRequestAutoCancelJob.RecurringJobId, registered);
     }
 
+    // ─── LR-12: the retention of the abandoned lease drafts, only with the flag of the long-term area ───
+
+    [Fact]
+    public void Configure_LongRentAreaOff_DoesNotScheduleTheDraftRetention_AndRemovesTheScheduleOfAnEarlierDeploy()
+    {
+        var (manager, registered) = Manager();
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false));
+
+        Assert.Equal("lease-draft-retention", LeaseDraftRetentionJob.RecurringJobId);
+        Assert.DoesNotContain(LeaseDraftRetentionJob.RecurringJobId, registered);
+        manager.Verify(m => m.RemoveIfExists(LeaseDraftRetentionJob.RecurringJobId), Times.Once);
+        // The rest of the schedule is not touched by the flag, nor is the registration reminder of the leases.
+        Assert.Contains("rli-deadline-reminder", registered);
+    }
+
+    [Fact]
+    public void Configure_LongRentAreaOn_SchedulesTheDraftRetentionDailyAt0350Utc()
+    {
+        var manager = new Mock<IRecurringJobManager>();
+        var scheduled = new Dictionary<string, (string Cron, RecurringJobOptions Options)>();
+        manager
+            .Setup(m => m.AddOrUpdate(It.IsAny<string>(), It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<RecurringJobOptions>()))
+            .Callback<string, Job, string, RecurringJobOptions>((id, _, cron, options) => scheduled[id] = (cron, options));
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false, longRentArea: true));
+
+        var job = scheduled[LeaseDraftRetentionJob.RecurringJobId];
+        Assert.Equal("50 3 * * *", job.Cron);
+        Assert.Equal(TimeZoneInfo.Utc, job.Options.TimeZone);
+        manager.Verify(m => m.RemoveIfExists(LeaseDraftRetentionJob.RecurringJobId), Times.Never);
+    }
+
+    [Fact]
+    public void Configure_OtherFlagsOn_DoNotTurnTheDraftRetentionOn()
+    {
+        var (manager, registered) = Manager();
+
+        RecurringJobsRegistration.Configure(
+            manager.Object, Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true, propertyModeChange: true));
+
+        Assert.DoesNotContain(LeaseDraftRetentionJob.RecurringJobId, registered);
+    }
+
     // ─── SP-10: the upkeep of the bookings from the suppliers' public showcases is always on ───
 
     [Fact]
@@ -203,7 +247,8 @@ public class RecurringJobsFeatureFlagTests
         bool eSignProvider = false,
         bool supplierRequestAutoCancel = false,
         bool supplierOnlinePayments = false,
-        bool propertyModeChange = false)
+        bool propertyModeChange = false,
+        bool longRentArea = false)
     {
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.OtaPartnerApi)).Returns(otaPartnerApi);
@@ -212,6 +257,7 @@ public class RecurringJobsFeatureFlagTests
         flags.Setup(f => f.IsEnabled(FeatureFlags.SupplierRequestAutoCancel)).Returns(supplierRequestAutoCancel);
         flags.Setup(f => f.IsEnabled(FeatureFlags.SupplierOnlinePayments)).Returns(supplierOnlinePayments);
         flags.Setup(f => f.IsEnabled(FeatureFlags.PropertyModeChange)).Returns(propertyModeChange);
+        flags.Setup(f => f.IsEnabled(FeatureFlags.LongRentArea)).Returns(longRentArea);
         return flags.Object;
     }
 

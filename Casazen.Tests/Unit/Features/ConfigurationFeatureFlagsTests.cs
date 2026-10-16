@@ -83,6 +83,8 @@ public class ConfigurationFeatureFlagsTests
                 "GlobalSearch",
                 // SEO-INVITE: the call to action to sign up on the public SEO pages, off while CasaZen is on invitation.
                 "SeoSignupCta",
+                // LR-12: the single flag of the new long-term rental area, off until every screen of the first release exists.
+                "LongRentArea",
             },
             FeatureFlags.All);
     }
