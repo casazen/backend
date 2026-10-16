@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
 using Casazen.Core.Regulatory;
@@ -935,6 +936,160 @@ public class LeaseDraftServiceTests
         Assert.Null(lease.ConcordatoAssessment);
         Assert.Equal(LeaseContractType.Libero, lease.ContractType);
         Assert.Equal(new DateTime(2030, 10, 31, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
+    }
+
+    // ---- what the review of the draft found ----------------------------------------------------------------------
+
+    private const string ValidParties = """
+        {"landlords":[{"firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501U","citizenship":"IT","residence":"Bari, via Sparano 1","contactEmail":"mario@example.com"}],
+         "tenants":[{"firstName":"Giulia","lastName":"Verdi","fiscalCode":"VRDGLI85B02F205A","citizenship":"IT","residence":"Bari, via Argiro 7"}]}
+        """;
+
+    [Fact]
+    public async Task Save_TheIdOfAnEntryOfTheOtherRole_MakesANewEntry_NeverTwoRowsWithOneKey_AndTheNextSaveStillWorks()
+    {
+        using var h = await NewAsync();
+        var (created, version) = await h.CompleteAsync();
+        var tenantId = (await h.Service.GetAsync(created.Id)).Values.Tenants.Single().Id;
+
+        // The tenant's id inside the landlords, the tenants left alone: the same key would end in two rows of Parties (a 500), or in a
+        // draft whose parties nobody can save any more.
+        var saved = await h.SaveAsync(created.Id, version, 2, $$"""
+            {"landlords":[{"id":"{{tenantId}}","firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501U","citizenship":"IT","residence":"Bari, via Sparano 1"}]}
+            """);
+
+        var lease = await h.LoadAsync(created.Id);
+        Assert.Equal(2, lease.Parties.Select(p => p.Id).Distinct().Count());
+        Assert.NotEqual(tenantId, Assert.Single(saved.LandlordIds));
+        Assert.Equal([tenantId], saved.TenantIds);
+        var again = await h.SaveAsync(created.Id, saved.Version, 5, "{}");
+        Assert.Equal(saved.Version + 1, again.Version);
+    }
+
+    [Fact]
+    public async Task ConfirmReview_WhenTheDataBecameCompleteWithoutASave_WritesTheColumnsAndStopsKeepingTheTypedState()
+    {
+        using var h = await NewAsync();
+        h.SetupConcordatoUnavailable();
+        var created = await h.CreateAsync();
+        var version = created.Version;
+        version = (await h.SaveAsync(created.Id, version, 2, ValidParties)).Version;
+        version = (await h.SaveAsync(created.Id, version, 3, LeaseDraftHarness.ConcordatoStep3)).Version;
+        version = (await h.SaveAsync(created.Id, version, 4, """{"startDate":"2026-11-01"}""")).Version;
+        var before = await h.LoadAsync(created.Id);
+        Assert.NotNull(before.DraftData); // the comune has no agreement data: the typed state is kept, there is no range to store
+        Assert.Null(before.ConcordatoAssessment);
+
+        // The agreement data of the comune are loaded: nothing in the draft changed, and nothing blocks any more.
+        h.SetupConcordatoRange(minMonthly: 800m, maxMonthly: 1000m);
+        var confirmed = await h.Service.ConfirmReviewAsync(created.Id, version);
+
+        var after = await h.LoadAsync(created.Id);
+        Assert.Null(after.DraftData);
+        Assert.NotNull(after.ConcordatoAssessment);
+        Assert.Equal(LeaseContractType.Concordato, after.ContractType);
+        Assert.Equal(900m, after.MonthlyRent);
+        Assert.Equal(2, after.Parties.Count);
+        Assert.NotNull(after.ReviewConfirmedAt);
+        Assert.Equal(version + 1, confirmed.Version);
+        Assert.Equal(version + 1, after.DraftVersion);
+        Assert.Contains(after.Events, e => e.EventType == LeaseEventType.ReviewConfirmed);
+        // And from now on a repeated autosave of the same values leaves the review as it is.
+        var repeated = await h.SaveAsync(created.Id, confirmed.Version, 3, LeaseDraftHarness.ConcordatoStep3);
+        Assert.NotNull((await h.LoadAsync(created.Id)).ReviewConfirmedAt);
+        Assert.Equal(LeaseStepState.Done, repeated.Flow[6].State);
+    }
+
+    private static async Task<Guid> SeedOldFormDraftAsync(LeaseDraftHarness h, LeaseContractType type, DateTime end)
+    {
+        // A draft made by POST /api/leases before the guided draft existed: every column set, the parties without a residence (the old
+        // form never asked for one), no typed state, no version.
+        await using var db = h.SecondContext();
+        var lease = new LeaseContract
+        {
+            PropertyId = h.PropertyId,
+            OrgId = h.OrgId,
+            Status = LeaseStatus.Draft,
+            StartDate = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate = end,
+            MonthlyRent = 800m,
+            WizardMaxStep = LeaseDraftDefaults.LastDataStep,
+            Parties =
+            [
+                new Party { Role = PartyRole.Landlord, FirstName = "Mario", LastName = "Rossi", FiscalCode = "RSSMRA80A01H501U", Citizenship = "IT", ContactEmail = "mario@example.com" },
+                new Party { Role = PartyRole.Tenant, FirstName = "Giulia", LastName = "Verdi", FiscalCode = "VRDGLI85B02F205A", Citizenship = "IT", ContactEmail = "giulia@example.com" },
+            ],
+        };
+        lease.SetContractTerms(type, LeaseTaxRegime.CedolareSecca);
+        db.LeaseContracts.Add(lease);
+        await db.SaveChangesAsync();
+        return lease.Id;
+    }
+
+    [Fact]
+    public async Task Save_TheFirstSaveOfADraftMadeByTheOldForm_KeepsItsTransitoryTypeAndEnd_UntilTheLandlordChoosesAType()
+    {
+        using var h = await NewAsync();
+        var id = await SeedOldFormDraftAsync(h, LeaseContractType.Transitorio, new DateTime(2027, 4, 30, 0, 0, 0, DateTimeKind.Utc));
+
+        // The documents of the parties: nothing to do with the type, which the wizard cannot offer and must not change on its own.
+        var saved = await h.SaveAsync(id, 0, 5, "{}");
+
+        var lease = await h.LoadAsync(id);
+        Assert.Equal(LeaseContractType.Transitorio, lease.ContractType);
+        Assert.Equal(new DateTime(2027, 4, 30, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
+        Assert.Contains(LeaseNeedCodes.LeaseTypeNotAvailable, Needs(saved.Flow, 3));
+
+        // The landlord chooses a type that can be created: the term is the one of the type.
+        await h.SaveAsync(id, saved.Version, 3, """{"contractType":"Libero"}""");
+        lease = await h.LoadAsync(id);
+        Assert.Equal(LeaseContractType.Libero, lease.ContractType);
+        Assert.Equal(new DateTime(2030, 10, 31, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
+    }
+
+    [Fact]
+    public async Task Save_TheFirstSaveOfADraftMadeByTheOldForm_GivesALiberoTheTermOfItsType()
+    {
+        using var h = await NewAsync();
+        var id = await SeedOldFormDraftAsync(h, LeaseContractType.Libero, new DateTime(2032, 10, 31, 0, 0, 0, DateTimeKind.Utc));
+
+        var saved = await h.SaveAsync(id, 0, 5, "{}");
+
+        // The wizard owns the term: it shows the end its type gives (computed.endDate), and the save writes the same.
+        var lease = await h.LoadAsync(id);
+        Assert.Equal(new DateTime(2030, 10, 31, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
+        Assert.Equal("2030-10-31", (await h.Service.GetAsync(id)).Computed.EndDate);
+        Assert.Equal(1, saved.Version);
+    }
+
+    [Fact]
+    public async Task GetReview_ReadsThePropertyWithItsEnergyCertificate_TheDataTheTemplatePrints()
+    {
+        using var h = await NewAsync();
+        var (created, _) = await h.CompleteAsync();
+        var seen = -1;
+        h.Templates.Setup(t => t.GetFinalContractBlocker(It.IsAny<LeaseContract>()))
+            .Callback<LeaseContract>(l => seen = l.Property?.PropertyDocuments.Count(d => d.DocumentType == DocumentType.Ape) ?? -1)
+            .Returns((string?)null);
+
+        await h.Service.GetReviewAsync(created.Id);
+
+        Assert.Equal(1, seen);
+    }
+
+    [Fact]
+    public async Task MarkSent_ReadsThePropertyWithItsEnergyCertificate_BeforeItAsksTheTemplate()
+    {
+        using var h = await NewAsync();
+        var (created, version) = await h.CompleteAsync();
+        version = (await h.Service.ConfirmReviewAsync(created.Id, version)).Version;
+        var seen = -1;
+        h.Templates.Setup(t => t.EnsureFinalContractAvailable(It.IsAny<LeaseContract>()))
+            .Callback<LeaseContract>(l => seen = l.Property?.PropertyDocuments.Count(d => d.DocumentType == DocumentType.Ape) ?? -1);
+
+        await h.Service.MarkSentAsync(created.Id, version);
+
+        Assert.Equal(1, seen);
     }
 
     // ---- no personal data in a log -------------------------------------------------------------------------------

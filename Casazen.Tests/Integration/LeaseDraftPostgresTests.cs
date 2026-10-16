@@ -75,6 +75,32 @@ public class LeaseDraftPostgresTests(LongRentAreaFactory factory) : IClassFixtur
     }
 
     [PostgresFact]
+    public async Task Save_WhileAnotherTransactionHoldsTheRow_WaitsAFewSeconds_ThenAnswers409_NeverAGatewayTimeout()
+    {
+        using var client = Owner();
+        var (id, version) = await CreateAsync(client, _world.P1);
+
+        // Somebody else holds the draft (a confirmation that reads the energy certificate from the storage, a job that deletes it).
+        await using var scope = factory.Services.CreateAsyncScope();
+        var holder = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await using var transaction = await holder.Database.BeginTransactionAsync();
+        await holder.Database.SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "LeaseContracts" WHERE "Id" = {id} FOR UPDATE""").ToListAsync();
+
+        var started = DateTime.UtcNow;
+        var response = await client.PatchAsync($"/api/leases/{id}/draft", SaveBody(version, 3, """{"monthlyRent":900}"""));
+        var waited = DateTime.UtcNow - started;
+
+        await ExpectProblemAsync(response, HttpStatusCode.Conflict, "lease_draft_conflict");
+        // It waited for the lock (5 seconds) and gave up; it did not hang until the command timeout.
+        Assert.InRange(waited, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(25));
+        await transaction.RollbackAsync();
+
+        // Nothing was written, and once the holder is gone the same save goes through.
+        Assert.Equal(version, (await LoadAsync(id)).DraftVersion);
+        await PatchAsync(client, id, version, 3, """{"monthlyRent":900}""");
+    }
+
+    [PostgresFact]
     public async Task SavesOfDifferentDrafts_AtTheSameMoment_AreAllApplied()
     {
         using var client = Owner();

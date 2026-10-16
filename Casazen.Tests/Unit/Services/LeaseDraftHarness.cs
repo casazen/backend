@@ -27,12 +27,14 @@ internal sealed class LeaseDraftHarness : IDisposable
 
     private readonly DbContextOptions<AppDbContext> _options;
 
+    private readonly string _databaseName = Guid.NewGuid().ToString();
+
     private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? _dataProtection;
 
     /// <param name="dataProtection">Encrypts the columns of EncryptedColumns, as the application does; none by default, like every other unit test.</param>
     public LeaseDraftHarness(Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? dataProtection = null)
     {
-        _options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        _options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options;
         // No Data Protection provider by default, like every other unit test (see PropertyModeHarness): EF keeps one model per provider.
         _dataProtection = dataProtection;
         Db = new AppDbContext(_options, tenantContext: null, _dataProtection);
@@ -81,6 +83,13 @@ internal sealed class LeaseDraftHarness : IDisposable
     }
 
     public AppDbContext SecondContext() => new(_options, tenantContext: null, _dataProtection);
+
+    /// <summary>A context over the same database whose writes go through <paramref name="interceptor"/>: a way to make one fail.</summary>
+    public AppDbContext ContextWith(Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor interceptor) =>
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).AddInterceptors(interceptor).Options,
+            tenantContext: null,
+            _dataProtection);
 
     /// <summary>A context without encryption over the same database: it reads what the table holds, the payloads.</summary>
     public AppDbContext PlainContext() => new(_options);

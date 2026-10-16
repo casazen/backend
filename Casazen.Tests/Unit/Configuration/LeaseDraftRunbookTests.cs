@@ -100,6 +100,8 @@ public class LeaseDraftRunbookTests
         Assert.Contains($"`registrationDays: {LongRentRules.Current.RegistrationDays}`", runbook);
         Assert.Equal("50 3 * * *", LeaseDraftRetentionJob.Cron);
         Assert.Contains("Every day at 03:50 UTC", runbook);
+        Assert.Equal("SET LOCAL lock_timeout = '5s'", Casazen.Infrastructure.Services.LeaseDrafts.LeaseDraftLocking.SetLockTimeoutSql);
+        Assert.Contains("limited to 5 seconds", runbook);
 
         // The numbers of the four new events are in the runbook (the rollback deletes them by number): the enum is append-only, so
         // they only move when another event is added before them, and then this page is to be updated.

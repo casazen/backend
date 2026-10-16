@@ -415,6 +415,17 @@ public class LeaseDraftApiIntegrationTests(LongRentAreaFactory factory) : IClass
     }
 
     [Fact]
+    public async Task Save_ANumberTooBigToHold_IsAWrongValueReportedInTheFlow_NotA400()
+    {
+        using var client = Owner();
+        var (id, version) = await CreateAsync(client, _world.P1);
+
+        var saved = await PatchAsync(client, id, version, 3, """{"monthlyRent":1e30,"securityDeposit":-1e30}""");
+
+        Assert.Equal(["contract_type_missing", "tax_regime_missing", "rent_invalid", "deposit_invalid"], NeedCodes(saved.GetProperty("flow"), 3));
+    }
+
+    [Fact]
     public async Task Save_AnythingOver256KB_IsRefused()
     {
         using var client = Owner();

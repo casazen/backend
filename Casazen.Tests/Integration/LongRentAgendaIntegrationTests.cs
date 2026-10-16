@@ -444,6 +444,18 @@ public class LongRentAgendaIntegrationTests(LongRentAggregatesFactory factory) :
     }
 
     [Fact]
+    public async Task Deadlines_ASignedLeaseWithATypedStateLeftBehind_IsStillOnTheAgenda()
+    {
+        // The guard is about drafts: once a lease is signed, whatever DraftData it kept (a copy of the typed state) hides nothing.
+        await MarkAsBeingTypedAsync(_world.Signed);
+        using var client = _world.OwnerClient(factory);
+
+        var registrations = Items(await GetAsync(client, "/api/long-rent/deadlines?type=RliRegistration")).ToList();
+
+        Assert.Contains(registrations, i => i.GetProperty("leaseId").GetGuid() == _world.Signed);
+    }
+
+    [Fact]
     public async Task Overview_ADraftStillBeingTyped_IsStillCountedAmongTheLeasesToSign_ButHasNeitherDateNorLeaseInTheChecklist()
     {
         // The only draft of the world is being typed: the counters say what the list says (one lease to sign), the checklist

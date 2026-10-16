@@ -61,7 +61,7 @@ public class LeaseDraftFingerprintTests
     public static TheoryData<string> Changes => new()
     {
         "the property", "a first name", "a last name", "a fiscal code", "a citizenship", "a residence", "an email", "the day the documents were checked",
-        "another tenant", "the order of the tenants", "the type", "the regime", "the rent", "the deposit", "no deposit", "the start date", "the characteristics of the unit",
+        "another tenant", "the order of the tenants", "the type", "the regime", "the rent", "the deposit", "no deposit", "the start date",
     };
 
     private static LeaseDraftValues Change(LeaseDraftValues v, string what) => what switch
@@ -82,7 +82,6 @@ public class LeaseDraftFingerprintTests
         "the deposit" => v with { SecurityDeposit = 900m },
         "no deposit" => v with { SecurityDeposit = null },
         "the start date" => v with { StartDate = "2026-11-02" },
-        "the characteristics of the unit" => v with { Concordato = new LeaseDraftConcordato { Sqm = 70 } },
         _ => throw new ArgumentOutOfRangeException(nameof(what)),
     };
 
@@ -93,6 +92,35 @@ public class LeaseDraftFingerprintTests
         var original = Complete() with { Tenants = [Tenant()] };
 
         Assert.NotEqual(LeaseDraftFingerprint.Compute(original), LeaseDraftFingerprint.Compute(Change(original, what)));
+    }
+
+    private static LeaseDraftValues AConcordato(decimal sqm = 60m, decimal garage = 0m) =>
+        Complete() with { ContractType = "Concordato", Concordato = new LeaseDraftConcordato { Sqm = sqm, GarageSqm = garage } };
+
+    [Fact]
+    public void TheCharacteristicsOfTheUnit_AreAChangeOfAConcordato()
+    {
+        Assert.NotEqual(LeaseDraftFingerprint.Compute(AConcordato(60m)), LeaseDraftFingerprint.Compute(AConcordato(70m)));
+        Assert.NotEqual(LeaseDraftFingerprint.Compute(AConcordato(garage: 0m)), LeaseDraftFingerprint.Compute(AConcordato(garage: 12m)));
+    }
+
+    [Fact]
+    public void TheCharacteristicsOfTheUnit_AreNothingForAnyOtherType_TheirColumnsKeepNone()
+    {
+        // A form that goes on sending the characteristics after the landlord chose the libero must not withdraw the review at every save.
+        var libero = Complete();
+        var leftOver = libero with { Concordato = new LeaseDraftConcordato { Sqm = 70m } };
+
+        Assert.Equal(LeaseDraftFingerprint.Compute(libero), LeaseDraftFingerprint.Compute(leftOver));
+    }
+
+    [Fact]
+    public void TheAreas_AreKeptToTheCentsOfTheirColumns_SoWhatIsReadBackIsTheSameAsWhatWasTyped()
+    {
+        var typed = AConcordato(sqm: 70.004m, garage: 12.345m);
+        var read = AConcordato(sqm: 70.00m, garage: 12.35m); // numeric(10,2): the database rounds half away from zero
+
+        Assert.Equal(LeaseDraftFingerprint.Compute(typed), LeaseDraftFingerprint.Compute(read));
     }
 
     [Fact]

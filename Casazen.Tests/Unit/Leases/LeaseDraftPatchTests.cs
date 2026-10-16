@@ -104,6 +104,56 @@ public class LeaseDraftPatchTests
     }
 
     [Fact]
+    public void Step2_TheIdOfAnEntryOfTheOtherRole_IsNotTaken_SoNoIdIsEverInTwoEntries()
+    {
+        var typed = Apply(Start, 2, """{"landlords":[{"firstName":"Mario"}],"tenants":[{"firstName":"Giulia"}]}""");
+        var landlordId = typed.Landlords.Single().Id;
+        var tenantId = typed.Tenants.Single().Id;
+
+        // The tenant's id inside the landlords, the tenants left as they are: the entry is a new one, never a second entry with the
+        // tenant's id (two rows of Parties with one key, or a list that nobody can save again).
+        var next = Apply(typed, 2, $$"""{"landlords":[{"id":"{{tenantId}}","firstName":"Intruder"}]}""");
+
+        var landlord = Assert.Single(next.Landlords);
+        Assert.NotEqual(tenantId, landlord.Id);
+        Assert.NotEqual(landlordId, landlord.Id);
+        Assert.Equal(tenantId, Assert.Single(next.Tenants).Id);
+        Assert.Equal(2, next.Landlords.Concat(next.Tenants).Select(p => p.Id).Distinct().Count());
+    }
+
+    [Fact]
+    public void Step2_TwoRolesThatSwapTheirIds_GetNewEntries_NotTheOthersIds()
+    {
+        var typed = Apply(Start, 2, """{"landlords":[{"firstName":"Mario"}],"tenants":[{"firstName":"Giulia"}]}""");
+        var landlordId = typed.Landlords.Single().Id;
+        var tenantId = typed.Tenants.Single().Id;
+
+        var next = Apply(typed, 2, $$"""{"landlords":[{"id":"{{tenantId}}","firstName":"A"}],"tenants":[{"id":"{{landlordId}}","firstName":"B"}]}""");
+
+        var ids = next.Landlords.Concat(next.Tenants).Select(p => p.Id).ToList();
+        Assert.Equal(2, ids.Distinct().Count());
+        Assert.DoesNotContain(landlordId, ids);
+        Assert.DoesNotContain(tenantId, ids);
+    }
+
+    [Fact]
+    public void Step2_ADraftThatAlreadyHasTheSameIdTwice_DoesNotBreakTheNextSave()
+    {
+        // A state nothing in the system writes any more, read back from an older save: the save does not fail on it.
+        var id = Guid.NewGuid();
+        var corrupt = Start with
+        {
+            Landlords = [new LeaseDraftParty { Id = id, FirstName = "A" }],
+            Tenants = [new LeaseDraftParty { Id = id, FirstName = "B" }],
+        };
+
+        var next = Apply(corrupt, 2, $$"""{"landlords":[{"id":"{{id}}","firstName":"A2"}],"tenants":[{"id":"{{id}}","firstName":"B2"}]}""");
+
+        Assert.Equal(id, Assert.Single(next.Landlords).Id);
+        Assert.NotEqual(id, Assert.Single(next.Tenants).Id);
+    }
+
+    [Fact]
     public void Step2_TheSameIdTwiceInOneRequest_IsUsedOnce()
     {
         var first = Apply(Start, 2, """{"tenants":[{"firstName":"Giulia"}]}""");
@@ -219,6 +269,33 @@ public class LeaseDraftPatchTests
         Assert.Equal(0m, concordato.GarageSqm);
         Assert.Equal("Centro", concordato.ZoneName);
         Assert.Null(Apply(next, 3, """{"concordato":null}""").Concordato);
+    }
+
+    [Fact]
+    public void Step3_ANumberTooBigToHold_IsAWrongValueKept_NotARefusedRequest()
+    {
+        // The autosave goes on: 1e30 is not a rent, it is a rent that no rule accepts, and the flow says so.
+        var next = Apply(Start, 3, """{"monthlyRent":1e30,"securityDeposit":-1e30,"concordato":{"sqm":1e40,"typeAElementCount":3000000000,"typeBElementCount":-3000000000}}""");
+
+        Assert.Equal(decimal.MaxValue, next.MonthlyRent);
+        Assert.Equal(decimal.MinValue, next.SecurityDeposit);
+        Assert.Equal(decimal.MaxValue, next.Concordato!.Sqm);
+        Assert.Equal(int.MaxValue, next.Concordato.TypeAElementCount);
+        Assert.Equal(int.MinValue, next.Concordato.TypeBElementCount);
+        Assert.False(LeaseDraftRules.IsValidRent(next.MonthlyRent));
+        Assert.False(LeaseDraftRules.IsValidDeposit(next.SecurityDeposit));
+        Assert.False(LeaseDraftRules.IsConcordatoValid(next.Concordato));
+    }
+
+    [Fact]
+    public void Step3_TheExtremesThatWereKept_SurviveTheJsonOfTheDraft()
+    {
+        var next = Apply(Start, 3, """{"monthlyRent":1e30,"concordato":{"typeAElementCount":3000000000}}""");
+
+        var read = LeaseDraftValues.FromJson(next.ToJson());
+
+        Assert.Equal(decimal.MaxValue, read!.MonthlyRent);
+        Assert.Equal(int.MaxValue, read.Concordato!.TypeAElementCount);
     }
 
     [Theory]

@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -190,6 +191,75 @@ public class LeaseDraftRetentionServiceTests
 
         Assert.Equal(0, result.Deleted);
         Assert.True(await ExistsAsync(h, id));
+    }
+
+    /// <summary>Refuses the deletion of the given leases with an error that is none of the ones the service knows (a failure of the database).</summary>
+    private sealed class FailOnDelete(HashSet<Guid> leases) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<LeaseContract>().Any(e => e.State == EntityState.Deleted && leases.Contains(e.Entity.Id)))
+                throw new InvalidOperationException("The write was refused.");
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Run_ADraftThatFailsForAnyReason_IsLeft_TheOnesBehindItAreStillDeleted()
+    {
+        using var h = await new LeaseDraftHarness().SeedAsync();
+        var poisoned = await IdleDraftAsync(h, 300); // the oldest: the first of the list
+        var fine = await IdleDraftAsync(h, 200);
+        await using var db = h.ContextWith(new FailOnDelete([poisoned]));
+
+        var result = await NewRetention(h, db: db).RunAsync();
+
+        Assert.False(result.Skipped);
+        Assert.Equal(1, result.Deleted);
+        Assert.True(await ExistsAsync(h, poisoned));
+        Assert.False(await ExistsAsync(h, fine));
+    }
+
+    [Fact]
+    public async Task Run_MoreRefusedDraftsThanABatch_DoNotHideTheOnesBehindThem_NightAfterNight()
+    {
+        using var h = await new LeaseDraftHarness().SeedAsync();
+        // A full batch of drafts that cannot be deleted, older than any other: the run goes past them instead of reading them again.
+        var poisoned = new HashSet<Guid>();
+        await using (var seed = h.SecondContext())
+        {
+            for (var i = 0; i <= LeaseDraftRetentionService.BatchSize; i++)
+            {
+                var lease = new LeaseContract
+                {
+                    PropertyId = h.PropertyId,
+                    OrgId = h.OrgId,
+                    Status = LeaseStatus.Draft,
+                    StartDate = LeaseDraftDefaults.PlaceholderDate,
+                    EndDate = LeaseDraftDefaults.PlaceholderDate,
+                    MonthlyRent = 0m,
+                    UpdatedAt = LeaseDraftHarness.Now.UtcDateTime.AddDays(-400).AddMinutes(i),
+                };
+                seed.LeaseContracts.Add(lease);
+                poisoned.Add(lease.Id);
+            }
+
+            await seed.SaveChangesAsync();
+        }
+
+        var fine = await IdleDraftAsync(h, 200);
+        await using var db = h.ContextWith(new FailOnDelete(poisoned));
+
+        var result = await NewRetention(h, db: db).RunAsync();
+
+        Assert.Equal(1, result.Deleted);
+        Assert.False(await ExistsAsync(h, fine));
+        await using var read = h.SecondContext();
+        Assert.Equal(poisoned.Count, await read.LeaseContracts.CountAsync(l => poisoned.Contains(l.Id)));
     }
 
     [Fact]

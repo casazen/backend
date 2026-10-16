@@ -111,4 +111,60 @@ public class LeaseDraftPrivacyTests
         Assert.Null(party.DocumentsVerifiedOn);
         Assert.Equal(LeasePartyPrivacyService.AnonymizedValue, party.FirstName);
     }
+
+    [Fact]
+    public async Task AnErasureRequest_OnAnEndedDraftWhoseEntriesNeverBecameParties_StillRemovesTheTypedState()
+    {
+        // The entries of a draft are rows of Parties only when they are complete: a draft whose entries all lack something lives in
+        // DraftData alone, with the names and the fiscal codes, and there is no row to anonymize.
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var leaseId = Guid.NewGuid();
+        await using (var seed = new AppDbContext(options))
+        {
+            var org = new OrgEntity { Name = "Org", Slug = $"org-{Guid.NewGuid():N}", ContactEmail = "org@example.com" };
+            seed.Orgs.Add(org);
+            var property = new Property
+            {
+                OrgId = org.Id,
+                OwnerId = "auth0|owner",
+                Name = "Casa",
+                Address = "Via Roma 1",
+                City = "Bari",
+                PostalCode = "70121",
+                Bedrooms = 1,
+                Bathrooms = 1,
+            };
+            seed.Properties.Add(property);
+            seed.LeaseContracts.Add(new LeaseContract
+            {
+                Id = leaseId,
+                PropertyId = property.Id,
+                OrgId = org.Id,
+                Status = LeaseStatus.Draft,
+                StartDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                EndDate = new DateTime(2023, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                MonthlyRent = 900m,
+                DraftData = """{"landlords":[{"firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501U"}]}""",
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = new AppDbContext(options))
+        {
+            var service = new LeasePartyPrivacyService(
+                db,
+                Options.Create(new GdprOptions()),
+                new FakeTimeProvider(new DateTimeOffset(2026, 10, 9, 8, 0, 0, TimeSpan.Zero)),
+                NullLogger<LeasePartyPrivacyService>.Instance);
+
+            var result = await service.RequestErasureAsync(leaseId);
+
+            Assert.Equal(LeaseErasureStatus.Anonymized, result.Status);
+        }
+
+        await using var read = new AppDbContext(options);
+        var lease = await read.LeaseContracts.AsNoTracking().SingleAsync(l => l.Id == leaseId);
+        Assert.Null(lease.DraftData);
+        Assert.NotNull(lease.PartiesAnonymizedAt);
+    }
 }
