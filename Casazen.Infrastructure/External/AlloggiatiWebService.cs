@@ -442,8 +442,7 @@ public class AlloggiatiWebService(
 
     /// <summary>The report of the booking's guest, or else the latest report of the booking (same guest slot).</summary>
     private static AlloggiatiWebReport? SlotReport(IReadOnlyCollection<AlloggiatiWebReport> reports, Guid guestId) =>
-        reports.FirstOrDefault(r => r.GuestId == guestId)
-        ?? reports.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
+        AlloggiatiStatusRules.SlotReport(reports, guestId);
 
     private AlloggiatiStatusInfo BuildStatusInfo(Booking booking, AlloggiatiWebReport? report, bool dataComplete)
     {
