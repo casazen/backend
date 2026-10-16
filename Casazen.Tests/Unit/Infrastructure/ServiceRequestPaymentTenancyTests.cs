@@ -32,6 +32,7 @@ public class ServiceRequestPaymentTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs"] = "The system jobs (SP-15b: sync, reminders, pending requests) run over the payments in a state, across every supplier, and handle each payment by id under its lock; a job has no tenant.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs"] = "The emails after a commit (SP-15b): the payment is read by its id.",
         ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = "The platform admin's list, detail and commission export (SP-15b, AdminOnly): read-only projections across the suppliers, on purpose.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentReadModels.cs"] = "The supplier console's read models (SP-04e): the payment summary of a job, the counters and the figures of the home. Read-only, and every statement carries the caller's SupplierOrgId.",
     };
 
     // The statements that are allowed after "db.ServiceRequestPayments" (whitespace removed): an insert, or a predicate on the
@@ -52,6 +53,8 @@ public class ServiceRequestPaymentTenancyTests
     {
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs"] = [".AsNoTracking().Where(p=>"],
         ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = [".AsNoTracking()"],
+        // The console reads one supplier's payments: the supplier org of the caller is the first predicate of every statement.
+        ["Casazen.Infrastructure/Services/SupplierPaymentReadModels.cs"] = [".AsNoTracking().Where(p=>p.SupplierOrgId=="],
     };
 
     // Any way to reach the table from code: the DbSet through whatever the context variable is called, or Set<T>().
@@ -216,6 +219,7 @@ public class ServiceRequestPaymentTenancyTests
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentReadModels.cs")]
     public void EveryStatementOnTheTable_CarriesAnExplicitPredicateOrIsAnInsert(string relative)
     {
         var text = File.ReadAllText(Path.Combine(FindRepositoryRoot(), relative.Replace('/', Path.DirectorySeparatorChar)));

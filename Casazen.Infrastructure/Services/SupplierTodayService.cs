@@ -19,7 +19,10 @@ public sealed class SupplierTodayService(
     ISupplierAgendaService agenda,
     TimeProvider? timeProvider = null) : ISupplierTodayService
 {
-    /// <summary>Jobs of the day listed: far above the daily maximum a supplier can set (50).</summary>
+    /// <summary>
+    /// Jobs listed: far above the daily maximum a supplier can set (50), so it never bites for one day; a week can pass it, which is
+    /// why the answer also carries how many jobs there are (<see cref="SupplierToday.JobsTotal"/>).
+    /// </summary>
     private const int MaxJobsListed = 50;
 
     /// <summary>New requests listed on the home (the console shows the first three); the total is given apart.</summary>
@@ -35,13 +38,27 @@ public sealed class SupplierTodayService(
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    public async Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
+    public Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
+        GetTodayAsync(supplierOrgId, 1, cancellationToken);
+
+    public async Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, int days, CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(days, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(days, SupplierTodayLimits.MaxDays);
+
         var today = _clock.TodayInRomeAsDateOnly();
 
-        var (jobs, _) = await requests.ListAsync(
+        // The jobs of today and of the days after it, in one read: the first in time first.
+        var (jobs, jobsTotal) = await requests.ListAsync(
             supplierOrgId,
-            new SupplierInboxQuery(JobStatuses, null, null, 1, MaxJobsListed, SupplierInboxSort.WorkTime, When: SupplierInboxWhen.Today),
+            new SupplierInboxQuery(
+                JobStatuses,
+                null,
+                null,
+                1,
+                MaxJobsListed,
+                SupplierInboxSort.WorkTime,
+                WorkDays: new SupplierDateRange(today, today.AddDays(days - 1))),
             cancellationToken);
 
         var (newRequests, newTotal) = await requests.ListAsync(
@@ -51,7 +68,7 @@ public sealed class SupplierTodayService(
 
         var earnings = await kpis.GetEarningsSummaryAsync(supplierOrgId, cancellationToken);
 
-        return new SupplierToday(today, jobs, newRequests, newTotal, earnings);
+        return new SupplierToday(today, jobs, newRequests, newTotal, earnings, jobsTotal, days);
     }
 
     public async Task<SupplierChecklist?> GetChecklistAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)

@@ -28,6 +28,13 @@ public sealed record CancellationRefundFloor(CancellationRefundRule Rule, decima
     public static CancellationRefundFloor NoRule { get; } = new(CancellationRefundRule.None, null);
 }
 
+/// <summary>What the guest gets back when they cancel, under the property's cancellation policy alone.</summary>
+/// <param name="Percent">Share of <see cref="Booking.BasePrice"/> the policy grants, 0–100.</param>
+/// <param name="Amount">
+/// EUR, 2 decimals: <paramref name="Percent"/> of the base price, never more than what is still refundable, never negative.
+/// </param>
+public sealed record GuestRefundDecision(decimal Percent, decimal Amount);
+
 /// <summary>
 /// Refund due to the guest when a booking is cancelled, from the rules already in the model (BK-02, #51). No rule is
 /// invented here: with none that applies the host chooses the amount (full or partial, never more than what was paid).
@@ -100,6 +107,45 @@ public static class CancellationRefundPolicy
         }
 
         return floor;
+    }
+
+    /// <summary>
+    /// What the guest gets back when they cancel themselves (BK-02, BK-07, PO 2026-10-08): the percent of the policy that
+    /// applies to the stay (<see cref="EffectivePolicy"/>: the catalog policy of the property with the host's overrides
+    /// for a stay under 28 nights; no <see cref="Booking.FreeRefundDeadline"/> floor, no clause the model does not have)
+    /// of <see cref="Booking.BasePrice"/> (lodging and cleaning, tourist tax excluded), capped at
+    /// <paramref name="refundableAmount"/>. The one calculation of the guest's refund: the cancellation validates and
+    /// pays it, and the guest-area preview of DB-08a is to show the same figure. A booking without a policy refunds
+    /// nothing. Needs <see cref="Booking.Property"/> and its cancellation policy loaded.
+    /// </summary>
+    /// <param name="refundableAmount">What can still be refunded through Stripe (the cap); 0 when nothing was paid online.</param>
+    public static GuestRefundDecision EvaluateGuestRefund(Booking booking, DateTimeOffset now, decimal refundableAmount)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+
+        var nights = (booking.CheckOutDate.Date - booking.CheckInDate.Date).Days;
+        return EvaluateGuestRefund(booking, EffectivePolicy(booking.Property, nights), now, refundableAmount);
+    }
+
+    /// <summary>
+    /// The same calculation for a policy given by the caller (null: the booking has none). Callers of the production
+    /// code use the overload that resolves the policy of the stay, so none forgets the host's overrides or counts the
+    /// nights differently.
+    /// </summary>
+    public static GuestRefundDecision EvaluateGuestRefund(
+        Booking booking,
+        CancellationPolicy? policy,
+        DateTimeOffset now,
+        decimal refundableAmount)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+
+        var percent = policy is null ? 0m : PolicyPercent(policy, booking.CheckInDate, now);
+        if (refundableAmount <= 0 || percent <= 0)
+            return new GuestRefundDecision(percent, 0m);
+
+        var due = Math.Round(booking.BasePrice * percent / 100m, 2, MidpointRounding.AwayFromZero);
+        return new GuestRefundDecision(percent, Math.Max(0m, Math.Min(refundableAmount, due)));
     }
 
     /// <summary>

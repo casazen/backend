@@ -9,6 +9,18 @@ namespace Casazen.Core.Suppliers;
 public static class SupplierResponseTimes
 {
     /// <summary>
+    /// The <b>average</b> of <paramref name="minutes"/> (the minutes each request waited for the supplier's answer) in whole minutes,
+    /// <c>null</c> when there are none: the figure of the supplier's own home (<c>GET api/supplier/today</c>, and the overview of
+    /// SP-04e for a period). The public showcase uses the median instead (<see cref="PublicMedianMinutes"/>, SP-09): both are
+    /// documented in <c>docs/runbooks/suppliers.md</c> § 27.
+    /// </summary>
+    public static int? AverageMinutes(IReadOnlyCollection<double> minutes)
+    {
+        ArgumentNullException.ThrowIfNull(minutes);
+        return minutes.Count == 0 ? null : (int)Math.Round(minutes.Average());
+    }
+
+    /// <summary>
     /// The median of <paramref name="minutes"/> (the minutes each request waited for the supplier's answer), in whole minutes
     /// (a half minute rounds up); <c>null</c> when there are fewer than <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/>:
     /// below that the public page shows no response time at all. A median, not an average: one request left for a weekend
