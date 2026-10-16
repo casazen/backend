@@ -104,4 +104,10 @@ public static class BookingErrorCodes
 
     /// <summary>409: the property is declared ready before the check-out of the stay (CO-17).</summary>
     public const string CheckoutNotCompleted = "checkout_not_completed";
+
+    /// <summary>
+    /// 409: the booking is already cancelled (a double click, another device, a cancellation that was first). The guest's
+    /// cancel link answers it with the outcome of that cancellation instead (DB-08h).
+    /// </summary>
+    public const string AlreadyCancelled = "booking_already_cancelled";
 }
