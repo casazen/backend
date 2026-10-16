@@ -304,7 +304,7 @@
     <value>L'ospite ha prenotazioni in corso o future: non può essere eliminato finché non sono concluse o annullate.</value>
   </data>
   <data name="SupplierKpiPeriodInvalid" xml:space="preserve">
-    <value>Periodo non valido: usa CurrentMonth, PreviousMonth, Last30Days o CurrentYear.</value>
+    <value>Periodo non valido: usa CurrentMonth, PreviousMonth, Last30Days, Last3Months o CurrentYear.</value>
   </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Profilo fornitore non trovato</value>
@@ -2567,10 +2567,22 @@
     <value>Carica almeno una foto (campo photos).</value>
   </data>
   <data name="SupplierInboxTabInvalid" xml:space="preserve">
-    <value>Scheda non valida: usa nuove, programmate, da-incassare oppure archivio.</value>
+    <value>Scheda non valida: usa nuove, da-rispondere, in-attesa, programmate, da-incassare oppure archivio.</value>
   </data>
   <data name="SupplierInboxWhenInvalid" xml:space="preserve">
     <value>Periodo non valido: usa oggi, settimana oppure mese.</value>
+  </data>
+  <data name="SupplierInboxSourceInvalid" xml:space="preserve">
+    <value>Provenienza non valida: usa casazen oppure showcase.</value>
+  </data>
+  <data name="SupplierInboxSearchInvalid" xml:space="preserve">
+    <value>Testo di ricerca non valido: usa da {0} a {1} caratteri.</value>
+  </data>
+  <data name="SupplierOverviewPeriodInvalid" xml:space="preserve">
+    <value>Periodo non valido: usa current-month, last-30-days oppure last-3-months.</value>
+  </data>
+  <data name="SupplierTodayDaysInvalid" xml:space="preserve">
+    <value>Numero di giorni non valido: usa un numero da 1 a {0}.</value>
   </data>
   <data name="SupplierSlotsServiceRequired" xml:space="preserve">
     <value>Indica il servizio di cui vuoi vedere gli orari (parametro service).</value>

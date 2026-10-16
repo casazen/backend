@@ -74,6 +74,9 @@ internal sealed class ServiceRequestScenario : IDisposable
 
     public SupplierServiceRequestReader Reader => _kit.Reader;
 
+    /// <summary>The supplier KPIs and the overview of the home (SP-04e), over the scenario's flags and payments.</summary>
+    public SupplierKpiService Kpis => _kit.Kpis;
+
     public SupplierAgendaService Agenda => _kit.Agenda;
 
     public SupplierServiceCatalogService Catalog => _kit.Catalog;

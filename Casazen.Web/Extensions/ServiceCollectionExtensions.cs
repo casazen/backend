@@ -547,7 +547,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
         services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();
         services.AddScoped<IServiceCustomerPrivacyService, ServiceCustomerPrivacyService>();
-        // Supplier dashboard KPIs from the service requests (SU-11, A4-15) and the money of the console home (SP-04).
+        // The reads of the payments of a request for the supplier console: the summary of a job, the counters and the figures of the
+        // home (SP-04e). The only reader of the payment table outside the payments service.
+        services.AddScoped<ISupplierPaymentReadModels, SupplierPaymentReadModels>();
+        // Supplier dashboard KPIs from the service requests (SU-11, A4-15), the money of the console home (SP-04) and its overview (SP-04e).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
         // The home ("Oggi") and the activation checklist of the supplier console (SP-04).
         services.AddScoped<ISupplierTodayService, SupplierTodayService>();

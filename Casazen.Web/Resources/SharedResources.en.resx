@@ -304,7 +304,7 @@
     <value>The guest has ongoing or upcoming bookings: it cannot be deleted until they are completed or cancelled.</value>
   </data>
   <data name="SupplierKpiPeriodInvalid" xml:space="preserve">
-    <value>Invalid period: use CurrentMonth, PreviousMonth, Last30Days or CurrentYear.</value>
+    <value>Invalid period: use CurrentMonth, PreviousMonth, Last30Days, Last3Months or CurrentYear.</value>
   </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Supplier profile not found</value>
@@ -2567,10 +2567,22 @@
     <value>Upload at least one photo (field photos).</value>
   </data>
   <data name="SupplierInboxTabInvalid" xml:space="preserve">
-    <value>Invalid tab: use nuove, programmate, da-incassare or archivio.</value>
+    <value>Invalid tab: use nuove, da-rispondere, in-attesa, programmate, da-incassare or archivio.</value>
   </data>
   <data name="SupplierInboxWhenInvalid" xml:space="preserve">
     <value>Invalid period: use oggi, settimana or mese.</value>
+  </data>
+  <data name="SupplierInboxSourceInvalid" xml:space="preserve">
+    <value>Invalid source: use casazen or showcase.</value>
+  </data>
+  <data name="SupplierInboxSearchInvalid" xml:space="preserve">
+    <value>Invalid search text: use from {0} to {1} characters.</value>
+  </data>
+  <data name="SupplierOverviewPeriodInvalid" xml:space="preserve">
+    <value>Invalid period: use current-month, last-30-days or last-3-months.</value>
+  </data>
+  <data name="SupplierTodayDaysInvalid" xml:space="preserve">
+    <value>Invalid number of days: use a number from 1 to {0}.</value>
   </data>
   <data name="SupplierSlotsServiceRequired" xml:space="preserve">
     <value>Specify the service whose times you want to see (service parameter).</value>
