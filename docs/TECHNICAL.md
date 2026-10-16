@@ -122,8 +122,11 @@ stored; three requests a day for each person.
 
 **Completions of the team backend (AM-02c, `docs/runbooks/org-team.md` part 6, behind the flag `OrgTeam`).** The screens of the
 account area read the matrix of the roles from one place (`OrgCapabilityCatalog`: twelve capabilities whose level comes from the
-permissions of the seeded roles, so it cannot drift from the authorization; a test fails on a permission with no capability), change
-the areas of a member (`IOrgMembershipService.SetAreasAsync`, same lock as the change of role), give a «Solo alcuni» collaborator its
+permissions of the seeded roles, never a second table, with real actions run against the levels that have an enforcing action today; a
+test fails on a permission with no capability; `billing`, `suppliers` and `settings` report their permission rows before their endpoints
+ask for them, AM-02c-FU4), change the areas of a member (`IOrgMembershipService.SetAreasAsync`, same lock as the change of role; a
+«Solo alcuni» collaborator that works in one area reaches only the given properties of that mode, in the lists, the single resources, the
+notification audience and the people count), give a «Solo alcuni» collaborator its
 properties in the invitation (`OrgInvitationProperties`, turned into grants in the transaction of the acceptance), and show a home
 that is one request (`GET /api/orgs/me/overview`, a fixed number of SQL statements). The emails of the invitations are capped
 (`OrgTeam__InvitationDailyLimit`, `OrgTeam__ResendMinutes`). The property manager has the restricted membership `account/org_manager`
