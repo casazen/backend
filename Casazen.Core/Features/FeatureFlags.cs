@@ -141,6 +141,19 @@ public static class FeatureFlags
     /// </summary>
     public const string SeoSignupCta = "SeoSignupCta";
 
+    /// <summary>
+    /// LR-12 (redesign wave, decision D7 of the long-term area): the single flag of the whole new long-term rental area, off by
+    /// default and turned on once, when every screen of the first release exists. In the backend it gates the <b>new write
+    /// endpoints</b> of the guided lease draft — <c>POST api/leases/drafts</c>, <c>GET|PATCH api/leases/{id}/draft</c>,
+    /// <c>GET api/leases/{id}/review</c>, <c>POST|DELETE …/review/confirm</c>, <c>POST|DELETE …/sent</c>,
+    /// <c>DELETE api/leases/{id}</c> — and the two reads that serve the wizard (<c>GET api/long-rent/landlord-defaults</c>,
+    /// <c>GET api/long-rent/rules</c>): 404 before authentication while it is off. The daily job that deletes the abandoned drafts
+    /// (<c>lease-draft-retention</c>) is registered only with it on. The reads LR-01 added (<c>GET api/leases</c> with its views,
+    /// the rent register, the agenda, the overview) and the complete creation <c>POST api/leases</c> are <b>not</b> behind it. The
+    /// frontend reads the key <c>longRentArea</c>. Runbook: <c>docs/runbooks/long-rent-lease-draft.md</c>.
+    /// </summary>
+    public const string LongRentArea = "LongRentArea";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -157,5 +170,6 @@ public static class FeatureFlags
         InAppNotifications,
         GlobalSearch,
         SeoSignupCta,
+        LongRentArea,
     ];
 }

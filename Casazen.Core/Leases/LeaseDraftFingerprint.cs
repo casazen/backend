@@ -1,0 +1,63 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using Casazen.Core.Regulatory;
+
+namespace Casazen.Core.Leases;
+
+/// <summary>
+/// The impression of the values of the five data steps (LR-12): a SHA-256 of the values read in a fixed order and form, saved when
+/// the landlord confirms the review. The next save recomputes it; the confirmation holds only if it is the same, so the autosave
+/// that repeats the values already confirmed (or writes a space more, a lower-case fiscal code, the same number with another
+/// notation) leaves the review as it is, and a real change withdraws it. Nothing personal can be read back from a hash, and none of
+/// the ids of the entries enters it: deleting an entry and typing the same data again is not a change.
+/// </summary>
+public static class LeaseDraftFingerprint
+{
+    public static string Compute(LeaseDraftValues values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        var text = new StringBuilder(512);
+        Field(text, "property", values.PropertyId?.ToString("D"));
+        Parties(text, "landlord", values.Landlords);
+        Parties(text, "tenant", values.Tenants);
+        Field(text, "type", LeaseDraftRules.ParseContractType(values.ContractType)?.ToString() ?? LeaseDraftRules.Clean(values.ContractType)?.ToLowerInvariant());
+        Field(text, "regime", LeaseDraftRules.ParseTaxRegime(values.TaxRegime)?.ToString() ?? LeaseDraftRules.Clean(values.TaxRegime)?.ToLowerInvariant());
+        Field(text, "rent", Number(values.MonthlyRent));
+        Field(text, "deposit", Number(values.SecurityDeposit));
+        if (values.Concordato is { } c)
+        {
+            Field(text, "c.sqm", Number(c.Sqm));
+            Field(text, "c.counts", string.Join(',', c.TypeAElementCount, c.TypeBElementCount, c.TypeCElementCount, c.TypeDElementCount, c.QualifyingTypeDElementCount));
+            Field(text, "c.flags", string.Join(',', c.IsFurnished, c.StoveHeating, c.AirConditioning));
+            Field(text, "c.appurtenances", string.Join(',', Number(c.GarageSqm), Number(c.BalconySqm), Number(c.OtherAppurtenanceSqm), Number(c.PrivateGreenSqm)));
+            Field(text, "c.zone", LeaseDraftRules.Clean(c.ZoneName));
+            Field(text, "c.sheet", LeaseDraftRules.Clean(c.CadastralSheet));
+        }
+
+        Field(text, "start", LeaseDraftRules.ParseDate(values.StartDate)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? LeaseDraftRules.Clean(values.StartDate));
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString()))).ToLowerInvariant();
+    }
+
+    private static void Parties(StringBuilder text, string role, IReadOnlyList<LeaseDraftParty> parties)
+    {
+        for (var i = 0; i < parties.Count; i++)
+        {
+            var p = parties[i];
+            Field(text, $"{role}[{i}].name", $"{LeaseDraftRules.Clean(p.FirstName)}|{LeaseDraftRules.Clean(p.LastName)}");
+            Field(text, $"{role}[{i}].fiscal", ItalianFiscalCode.Normalize(p.FiscalCode));
+            Field(text, $"{role}[{i}].citizenship", LeaseDraftRules.Clean(p.Citizenship)?.ToUpperInvariant());
+            Field(text, $"{role}[{i}].residence", LeaseDraftRules.Clean(p.Residence));
+            Field(text, $"{role}[{i}].email", LeaseDraftRules.Clean(p.ContactEmail)?.ToLowerInvariant());
+            Field(text, $"{role}[{i}].documents", LeaseDraftRules.ParseDate(p.DocumentsVerifiedOn)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? LeaseDraftRules.Clean(p.DocumentsVerifiedOn));
+        }
+    }
+
+    /// <summary>One line, with the length of the value first: no value can be mistaken for the end of another.</summary>
+    private static void Field(StringBuilder text, string name, string? value) =>
+        text.Append(name).Append('=').Append(value?.Length.ToString(CultureInfo.InvariantCulture) ?? "-").Append(':').Append(value).Append('\n');
+
+    private static string? Number(decimal? value) => value?.ToString("0.########", CultureInfo.InvariantCulture);
+}
