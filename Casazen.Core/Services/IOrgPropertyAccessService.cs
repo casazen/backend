@@ -3,10 +3,14 @@ using Casazen.Core.Entities.Enums;
 namespace Casazen.Core.Services;
 
 /// <summary>One property of the org as the access page shows it for a member (AM-03).</summary>
-/// <param name="Granted">The member reaches it: every property for a member with every property, the given ones otherwise.</param>
+/// <param name="Granted">
+/// The member was given it: every property for a member with every property, the given ones otherwise. It is the grant as it is
+/// stored, what an editor sends back: a collaborator «Solo alcuni» that gave up an area keeps the grants of the other mode (AM-02c),
+/// which it does not reach until the area is given back (the lists apply that rule, and the count below does too).
+/// </param>
 /// <param name="PeopleWithAccess">
 /// «Chi può accedere»: the active members who reach it. Every member with every property counts, and so does every
-/// collaborator «Solo alcuni» who was given it; the deactivated do not.
+/// collaborator «Solo alcuni» who was given it <b>and works in an area of its mode</b> (AM-02c); the deactivated do not.
 /// </param>
 public sealed record PropertyAccessItem(Guid PropertyId, string Name, string City, bool Granted, int PeopleWithAccess);
 

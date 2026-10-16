@@ -142,6 +142,12 @@ public sealed record OrgMemberAreasChange(OrgMember Member, IReadOnlyList<string
 {
     /// <summary>The areas are not the same as before.</summary>
     public bool Changed => !Before.SequenceEqual(After, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Something was written that a person looking at the log must be able to find: the areas changed, or (with the same areas)
+    /// a person in charge was released because the member no longer reaches a property it was named for.
+    /// </summary>
+    public bool Matters => Changed || Released > 0;
 }
 
 /// <summary>Stable codes of the refusals of <see cref="IOrgMembershipService"/> (422 and 409), translated by the clients.</summary>

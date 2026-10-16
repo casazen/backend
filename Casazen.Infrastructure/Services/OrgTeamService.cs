@@ -101,8 +101,9 @@ public sealed class OrgTeamService(
 
             var change = await membership.SetAreasAsync(target.UserId, areas, cancellationToken);
 
-            // Same transaction as the change; nothing to say when the person already worked in exactly these areas.
-            if (change.Changed)
+            // Same transaction as the change; nothing to say when the person already worked in exactly these areas and nobody was
+            // released (a person in charge that is released is a change of state, so it has its line even with the same areas).
+            if (change.Matters)
             {
                 var details = new List<(string Key, string Value)>
                 {

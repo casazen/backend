@@ -1,3 +1,6 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -49,5 +52,44 @@ internal static class PropertyResponsibility
         }
 
         return released.Select(p => p.Id).ToList();
+    }
+
+    /// <summary>
+    /// A property that changes mode can stop being reachable for the person in charge of it (AM-02c): a collaborator «Solo alcuni»
+    /// that works in one area only reaches the given properties of the mode of that area. Stages the end of that responsibility on
+    /// <paramref name="property"/> (tracked; the caller saves) and says whether it did. Everybody else keeps the name: a member that
+    /// reaches every property by its role or its scope, one that works in both areas, one with no area known (the rule of
+    /// <see cref="OrgRoleCatalog.SingleModeOf"/>, the same as the lists and the snapshot apply).
+    /// </summary>
+    public static async Task<bool> ReleaseIfOutsideItsAreasAsync(
+        AppDbContext db,
+        Property property,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        if (property.ResponsibleUserId is not { } responsible)
+            return false;
+
+        // IgnoreQueryFilters: scoped to the org of the property, which is the one the caller works in (a job, with no tenant).
+        var limited = await db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(
+                m => m.UserId == responsible
+                     && m.OrgId == property.OrgId
+                     && m.Role == OrgRole.Collaborator
+                     && m.PropertyScope == PropertyScope.Selected,
+                cancellationToken);
+        if (!limited)
+            return false;
+
+        var areas = await db.UserContextMemberships.AsNoTracking()
+            .Where(c => c.UserId == responsible)
+            .Select(c => c.ContextKey)
+            .ToListAsync(cancellationToken);
+        if (OrgRoleCatalog.SingleModeOf(areas) is not { } worksIn || worksIn == property.RentalMode)
+            return false;
+
+        property.ResponsibleUserId = null;
+        property.UpdatedAt = now;
+        return true;
     }
 }

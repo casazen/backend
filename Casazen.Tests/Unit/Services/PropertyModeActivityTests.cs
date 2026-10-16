@@ -224,9 +224,10 @@ public class PropertyModeActivityTests : IDisposable
     }
 
     [Fact]
-    public async Task WithoutALogAtAll_TheServiceStillWorks()
+    public async Task TheDefaultServiceOfTheHarness_HasTheLogSwitchedOff_SoItWritesNothingAndTheChangeWorks()
     {
-        // A host that does not have the writer (a test, a tool): the change is what matters.
+        // The log is a required dependency (a host without it would drop the audit lines in silence); the harness gives the
+        // one with the flag off by default, which is how every other test of the change of mode runs.
         var property = await _h.SeedPropertyAsync();
 
         await _h.Service.ScheduleAsync(property.Id, RentalMode.Long, Day(20), UserId);
@@ -234,8 +235,103 @@ public class PropertyModeActivityTests : IDisposable
         Assert.Empty(await LinesAsync());
     }
 
+    // ─── The person in charge goes with the reach (AM-02c) ──────────────────────────────────────────
+
+    /// <summary>
+    /// A property of <paramref name="mode"/> given to <paramref name="userId"/> and with that person in charge of it: a member of
+    /// the org with <paramref name="role"/> and <paramref name="scope"/>, working in <paramref name="areas"/>.
+    /// </summary>
+    private async Task<Property> InChargeAsync(
+        RentalMode mode,
+        OrgRole role,
+        PropertyScope scope,
+        params string[] areas)
+    {
+        const string userId = "auth0|anna";
+        var property = await _h.SeedPropertyAsync(mode);
+        _h.Db.Users.Add(new User
+        {
+            Id = userId,
+            Email = $"{Guid.NewGuid():N}@example.com",
+            FirstName = "Anna",
+            LastName = "Test",
+            OrgId = property.OrgId,
+            IsActive = true,
+        });
+        _h.Db.OrgMembers.Add(new OrgMember { OrgId = property.OrgId, UserId = userId, Role = role, PropertyScope = scope, Status = OrgMemberStatus.Active });
+        foreach (var area in areas)
+            _h.Db.UserContextMemberships.Add(new UserContextMembership { UserId = userId, ContextKey = area, RoleId = 9 });
+
+        _h.Db.PropertyMemberAccesses.Add(new PropertyMemberAccess { OrgId = property.OrgId, UserId = userId, PropertyId = property.Id });
+        (await _h.Db.Properties.SingleAsync(p => p.Id == property.Id)).ResponsibleUserId = userId;
+        await _h.Db.SaveChangesAsync();
+        _h.Db.ChangeTracker.Clear();
+        return property;
+    }
+
     [Fact]
-    public void TheEventsAreNoLongerReserved_AndTheTrustedSuppliersStillAre()
+    public async Task ApplyDue_ACollaboratorSoloAlcuniWhoWorksOnlyInTheModeLeft_LosesTheResponsibility_AndTheLineSaysIt()
+    {
+        var property = await InChargeAsync(RentalMode.Short, OrgRole.Collaborator, PropertyScope.Selected, "short-rent");
+        await _h.SeedChangeAsync(property, RentalMode.Long, Today);
+
+        await WithLog().ApplyDueAsync();
+
+        // The property is a long-term one now and the person works in short-term rentals only: it cannot open it, so it cannot be
+        // in charge of it (and the notifications of its stays no longer go to it). The grant row is untouched.
+        var stored = await _h.ReloadPropertyAsync(property.Id);
+        Assert.Equal(RentalMode.Long, stored.RentalMode);
+        Assert.Null(stored.ResponsibleUserId);
+        Assert.Single(_h.Db.PropertyMemberAccesses.IgnoreQueryFilters().Where(a => a.PropertyId == property.Id));
+        var line = Assert.Single(await LinesAsync());
+        var details = OrgActivityDetails.Parse(line.DetailsJson);
+        Assert.Equal(("Short", "Long", "1"), (details["fromMode"], details["toMode"], details["released"]));
+    }
+
+    [Fact]
+    public async Task ApplyDue_ACollaboratorSoloAlcuniWhoWorksOnlyInTheLongTermArea_LosesAPropertyThatGoesBackToShortStays()
+    {
+        var property = await InChargeAsync(RentalMode.Long, OrgRole.Collaborator, PropertyScope.Selected, "long-rent");
+        await _h.SeedChangeAsync(property, RentalMode.Short, Today);
+
+        await WithLog().ApplyDueAsync();
+
+        Assert.Null((await _h.ReloadPropertyAsync(property.Id)).ResponsibleUserId);
+        Assert.Equal("1", OrgActivityDetails.Parse(Assert.Single(await LinesAsync()).DetailsJson)["released"]);
+    }
+
+    [Theory]
+    [InlineData(OrgRole.Collaborator, PropertyScope.Selected, new[] { "short-rent", "long-rent" })]
+    [InlineData(OrgRole.Collaborator, PropertyScope.Selected, new[] { "long-rent" })]
+    [InlineData(OrgRole.Collaborator, PropertyScope.All, new[] { "short-rent" })]
+    [InlineData(OrgRole.PropertyManager, PropertyScope.All, new[] { "short-rent" })]
+    [InlineData(OrgRole.Admin, PropertyScope.All, new[] { "short-rent" })]
+    [InlineData(OrgRole.Collaborator, PropertyScope.Selected, new string[0])]
+    public async Task ApplyDue_ANameThatStillReachesTheProperty_Stays(OrgRole role, PropertyScope scope, string[] areas)
+    {
+        // Both areas, the area of the new mode, every property by scope or by role, and no area known (nothing narrows the grants).
+        var property = await InChargeAsync(RentalMode.Short, role, scope, areas);
+        await _h.SeedChangeAsync(property, RentalMode.Long, Today);
+
+        await WithLog().ApplyDueAsync();
+
+        Assert.Equal("auth0|anna", (await _h.ReloadPropertyAsync(property.Id)).ResponsibleUserId);
+        Assert.False(OrgActivityDetails.Parse(Assert.Single(await LinesAsync()).DetailsJson).ContainsKey("released"));
+    }
+
+    [Fact]
+    public async Task ApplyDue_NobodyInCharge_ReleasesNothing_AndTheLineHasNoCount()
+    {
+        var property = await _h.SeedPropertyAsync();
+        await _h.SeedChangeAsync(property, RentalMode.Long, Today);
+
+        await WithLog().ApplyDueAsync();
+
+        Assert.False(OrgActivityDetails.Parse(Assert.Single(await LinesAsync()).DetailsJson).ContainsKey("released"));
+    }
+
+    [Fact]
+    public void Catalog_TheModeEvents_AreNoLongerReservedAndTheTrustedSuppliersStillAre()
     {
         foreach (var type in new[] { OrgActivityType.PropertyModeChangeScheduled, OrgActivityType.PropertyModeChangeCancelled, OrgActivityType.PropertyModeChanged })
             Assert.False(OrgActivityCatalog.Describe(type).Reserved, type.ToString());

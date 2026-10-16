@@ -25,7 +25,8 @@ public static class OrgActivityDetailKeys
 
     /// <summary>
     /// How many properties lost their person in charge (<c>Property.ResponsibleUserId</c>) because the member no longer reaches
-    /// them (AM-03b). Written only when there were some; the details of a change that released nothing are as they were.
+    /// them (AM-03b: its access was narrowed; AM-02c: it gave up an area, or the property changed mode). Written only when there
+    /// were some; the details of a change that released nothing are as they were.
     /// </summary>
     public const string Released = "released";
 
@@ -86,7 +87,7 @@ public static class PlanChangeSourceExtensions
 }
 
 /// <summary>What the activity log knows about one <see cref="OrgActivityType"/>.</summary>
-/// <param name="DefaultArea">The area the line belongs to, unless the caller says otherwise (the reserved events of the property mode).</param>
+/// <param name="DefaultArea">The area the line belongs to, unless the caller says otherwise (the events of the property mode: the area of the property).</param>
 /// <param name="SubjectType">What the id of the line is.</param>
 /// <param name="DetailKeys">The only keys a detail of this type may have (<see cref="OrgActivityDetailKeys"/>).</param>
 /// <param name="Reserved">The code is fixed and nothing writes it yet.</param>
@@ -145,7 +146,7 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.PropertyModeChangeCancelled, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
             [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode]),
         new(OrgActivityType.PropertyModeChanged, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
-            [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode]),
+            [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode, OrgActivityDetailKeys.Released]),
 
         // Reserved: the trusted suppliers of the host.
         new(OrgActivityType.TrustedSupplierAdded, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: true),
