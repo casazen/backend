@@ -47,7 +47,7 @@ public partial class SupplierServiceRequestReader(
     /// <summary>
     /// The statuses, period and filters of the console applied to the rows of one supplier. The period is made of Europe/Rome
     /// calendar days, <c>[00:00 Rome of From, 00:00 Rome of the day after To)</c>, and applies to the activity date of each
-    /// request; <c>When</c> applies to the day of the job.
+    /// request; <c>When</c> and <c>WorkDays</c> apply to the day of the job.
     /// </summary>
     internal IQueryable<SupplierRequestRow> Filter(IQueryable<SupplierRequestRow> rows, SupplierInboxQuery query)
     {
@@ -95,8 +95,8 @@ public partial class SupplierServiceRequestReader(
         }
 
         // The days of the job: the ones asked in days (today?days=) win over the named period (when).
-        (DateOnly First, DateOnly Last)? workDays = query.WorkDays is { } days
-            ? (days.First, days.Last)
+        (DateOnly From, DateOnly To)? workDays = query.WorkDays is { } days
+            ? (days.From, days.To)
             : query.When is { } when
                 ? SupplierInboxWhens.RangeOf(when, _clock.TodayInRomeAsDateOnly())
                 : null;
@@ -104,8 +104,8 @@ public partial class SupplierServiceRequestReader(
         {
             // The day of the job: the scheduled time, else the check-out day of the stay (stored as midnight UTC of its date,
             // which falls inside the Europe/Rome day it names). A request with neither has no day, so it never matches.
-            var startUtc = RomeCalendar.StartOfDayUtc(range.First);
-            var endUtc = RomeCalendar.StartOfDayUtc(range.Last.AddDays(1));
+            var startUtc = RomeCalendar.StartOfDayUtc(range.From);
+            var endUtc = RomeCalendar.StartOfDayUtc(range.To.AddDays(1));
             rows = rows.Where(r => r.WorkAt >= startUtc && r.WorkAt < endUtc);
         }
 
@@ -130,12 +130,13 @@ public partial class SupplierServiceRequestReader(
     /// </summary>
     /// <remarks>
     /// The booking code is a credential of the customer (with its e-mail it manages the booking, SP-11) and the supplier never sees it, so
-    /// only a <b>whole</b> code matches, never a part of it: a search by prefix would let a supplier find a code out character by character.
+    /// only a <b>whole</b> code matches here, never a part of it. (The global search of the console already finds a request by the start
+    /// of its code; that is older than this filter and is not changed by it.)
     /// </remarks>
     private static IQueryable<SupplierRequestRow> FilterByText(IQueryable<SupplierRequestRow> rows, string text)
     {
         var term = text.ToLowerInvariant();
-        var categories = CategorySearch
+        var categories = CategorySearchWords.Value
             .Where(category => category.Words.Any(word => word.Contains(term, StringComparison.Ordinal)))
             .Select(category => category.Code)
             .ToArray();
@@ -157,20 +158,21 @@ public partial class SupplierServiceRequestReader(
 
     /// <summary>
     /// The words a category is found by: its code and its label in Italian and in English, lower case (the consoles show the label, not
-    /// the code, so a supplier types "pulizie").
+    /// the code, so a supplier types "pulizie"). Built on the first search, not with the type (it reads the e-mail texts), and
+    /// <see cref="LazyThreadSafetyMode.PublicationOnly"/> so that a failure is tried again instead of being kept until the next restart.
     /// </summary>
-    private static readonly Lazy<IReadOnlyList<(string Code, string[] Words)>> CategorySearchWords = new(() => ServiceCategories.All
-        .Select(code => (
-            code,
-            new[]
-            {
+    private static readonly Lazy<IReadOnlyList<(string Code, string[] Words)>> CategorySearchWords = new(
+        () => ServiceCategories.All
+            .Select(code => (
                 code,
-                EmailTemplates.ServiceCategoryLabel(CultureInfo.GetCultureInfo("it-IT"), code).ToLowerInvariant(),
-                EmailTemplates.ServiceCategoryLabel(CultureInfo.GetCultureInfo("en"), code).ToLowerInvariant(),
-            }))
-        .ToArray());
-
-    private static IReadOnlyList<(string Code, string[] Words)> CategorySearch => CategorySearchWords.Value;
+                new[]
+                {
+                    code,
+                    EmailTemplates.ServiceCategoryLabel(CultureInfo.GetCultureInfo("it-IT"), code).ToLowerInvariant(),
+                    EmailTemplates.ServiceCategoryLabel(CultureInfo.GetCultureInfo("en"), code).ToLowerInvariant(),
+                }))
+            .ToArray(),
+        LazyThreadSafetyMode.PublicationOnly);
 
     internal static IOrderedQueryable<SupplierRequestRow> Sort(IQueryable<SupplierRequestRow> rows, SupplierInboxSort sort) => sort switch
     {

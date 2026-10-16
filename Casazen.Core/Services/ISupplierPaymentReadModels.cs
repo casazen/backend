@@ -25,11 +25,10 @@ public sealed record SupplierPaymentSummaryInput(
 /// <param name="GrossCents">What the payers paid.</param>
 /// <param name="CommissionCents">What CasaZen kept (0 for a payment without commission).</param>
 /// <param name="NetCents">What the supplier received before Stripe's own fees.</param>
-/// <param name="Count">How many payments.</param>
-public sealed record SupplierPaymentTotals(long GrossCents, long CommissionCents, long NetCents, int Count)
+public sealed record SupplierPaymentTotals(long GrossCents, long CommissionCents, long NetCents)
 {
     /// <summary>No payment at all.</summary>
-    public static SupplierPaymentTotals None { get; } = new(0, 0, 0, 0);
+    public static SupplierPaymentTotals None { get; } = new(0, 0, 0);
 }
 
 /// <summary>

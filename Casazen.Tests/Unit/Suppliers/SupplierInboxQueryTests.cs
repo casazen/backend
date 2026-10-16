@@ -119,4 +119,30 @@ public class SupplierInboxQueryTests
         Assert.True(SupplierInboxSearch.TryNormalize("  " + new string('a', 60) + "  ", out _));
         Assert.False(SupplierInboxSearch.TryNormalize("  a  ", out _));
     }
+
+    [Theory]
+    [InlineData("\0\0")] // a NUL cannot be sent to PostgreSQL: it would be a 500, not a 400
+    [InlineData("\0ab")]
+    [InlineData("ab\0")]
+    [InlineData("a\0b")]
+    [InlineData("a\tb")]
+    [InlineData("a\nb")]
+    [InlineData("pu\u001Flizie")]
+    [InlineData("pulizie\u007F")]
+    public void Search_TryNormalize_AControlCharacter_IsRefused(string value)
+    {
+        Assert.False(SupplierInboxSearch.TryNormalize(value, out var text));
+        Assert.Null(text);
+    }
+
+    [Theory]
+    [InlineData("  pulizie\t\r\n ")] // the white space around the text is trimmed away, not refused
+    [InlineData("forlì")]
+    [InlineData("caffè e c.")]
+    [InlineData("a%b_c")]
+    public void Search_TryNormalize_LettersAccentsAndPunctuation_AreFine(string value)
+    {
+        Assert.True(SupplierInboxSearch.TryNormalize(value, out var text));
+        Assert.Equal(value.Trim(), text);
+    }
 }

@@ -25,6 +25,7 @@ public class SupplierTodayDaysTests
         var byDefault = await Today(s).GetTodayAsync(s.SupplierOrgId);
 
         Assert.Equal(new[] { today }, result.Jobs.Select(job => job.Id));
+        Assert.Equal(1, result.JobsTotal);
         Assert.Equal(1, result.Days);
         Assert.Equal(new DateOnly(2026, 10, 8), result.LastDate);
         Assert.Equal(result.Jobs.Select(job => job.Id), byDefault.Jobs.Select(job => job.Id));
@@ -69,7 +70,7 @@ public class SupplierTodayDaysTests
     [InlineData("2026-10-10T22:00:00Z", false)] // 00:00 on Sunday
     [InlineData("2026-10-07T21:59:59Z", false)] // 23:59:59 on Wednesday: yesterday
     [InlineData("2026-10-07T22:00:00Z", true)] // 00:00 on Thursday: today
-    public async Task TheDaysAreRomeDays(string start, bool listed)
+    public async Task Days_AreRomeDays_AtTheEdgesOfTheLastAndTheFirstOne(string start, bool listed)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await JobAsync(s, start);
@@ -80,7 +81,7 @@ public class SupplierTodayDaysTests
     }
 
     [Fact]
-    public async Task TheDaysAreRomeDays_AlsoWhenTheClocksGoBackInTheMiddleOfThem()
+    public async Task Days_AreRomeDays_AlsoWhenTheClocksGoBackInTheMiddleOfThem()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         s.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 24, 10, 0, 0, TimeSpan.Zero)); // Saturday 24 October, 12:00 in Rome
@@ -147,16 +148,20 @@ public class SupplierTodayDaysTests
     }
 
     [Fact]
-    public async Task Jobs_AreCappedAtFifty_TheFirstInTime()
+    public async Task Jobs_AreCappedAtFifty_TheFirstInTime_AndTheTotalSaysHowManyThereAre()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         for (var i = 0; i < 55; i++)
             await JobAsync(s, Now.AddDays(1).AddMinutes(i).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture));
 
-        var jobs = (await Today(s).GetTodayAsync(s.SupplierOrgId, 7)).Jobs;
+        var result = await Today(s).GetTodayAsync(s.SupplierOrgId, 7);
+        var jobs = result.Jobs;
 
         Assert.Equal(50, jobs.Count);
+        Assert.Equal(55, result.JobsTotal);
         Assert.Equal(jobs.OrderBy(job => job.Schedule.StartUtc).Select(job => job.Id), jobs.Select(job => job.Id));
+        // The 50 kept are the first 50 in time: the five that are left out are the latest ones.
+        Assert.Equal(Now.AddDays(1).AddMinutes(49), jobs[^1].Schedule.StartUtc);
     }
 
     [Fact]
@@ -185,7 +190,7 @@ public class SupplierTodayDaysTests
     }
 
     [Fact]
-    public async Task EveryJobCarriesItsPhase()
+    public async Task Jobs_EachOneCarriesItsPhase()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await JobAsync(s, "2026-10-09T08:00:00Z");

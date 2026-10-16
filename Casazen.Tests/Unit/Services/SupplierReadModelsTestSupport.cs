@@ -1,7 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Suppliers;
-using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Tests.Unit.Services;
 
@@ -111,8 +110,4 @@ internal static class SupplierReadModelsTestSupport
                 request.PaymentMode = mode;
                 change?.Invoke(request);
             });
-
-    /// <summary>The payment records of the supplier, as saved.</summary>
-    public static Task<List<ServiceRequestPayment>> AllPaymentsAsync(this ServiceRequestScenario s) =>
-        s.Db.ServiceRequestPayments.AsNoTracking().OrderBy(p => p.CreatedAt).ToListAsync();
 }

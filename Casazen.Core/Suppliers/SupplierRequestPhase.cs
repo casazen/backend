@@ -4,9 +4,9 @@ namespace Casazen.Core.Suppliers;
 
 /// <summary>
 /// The <b>phase</b> of a service request as the supplier console talks about it (<c>phase</c> of the items of
-/// <c>GET api/supplier/inbox</c>, <c>today</c> and the calendar), derived <b>once, here</b>, so the frontend never repeats the
-/// rules. It is a <b>derived</b> value, never stored: <see cref="ServiceRequestStatus"/> keeps its seven values (the mobile app
-/// does not know new ones).
+/// <c>GET api/supplier/inbox</c> and <c>today</c> since SP-04e, and of the calendar once SP-03b adopts it), derived <b>once, here</b>,
+/// so the frontend never repeats the rules. It is a <b>derived</b> value, never stored: <see cref="ServiceRequestStatus"/> keeps its
+/// seven values (the mobile app does not know new ones).
 /// </summary>
 /// <remarks>
 /// <para><b>The set is open.</b> The values of today are the constants below; other areas will add more (the quote of SP-04b,

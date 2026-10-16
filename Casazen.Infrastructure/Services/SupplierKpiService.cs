@@ -85,9 +85,7 @@ public partial class SupplierKpiService(
         // Read as pairs and averaged here, so the arithmetic on instants does not depend on the provider.
         var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-SupplierEarningsSummary.ResponseWindowDays);
         var answers = await AnswersOf(db, supplierOrgId, since).ToListAsync(cancellationToken);
-        int? averageMinutes = answers.Count == 0
-            ? null
-            : (int)Math.Round(answers.Average(answer => (answer.TakenAt - answer.CreatedAt).TotalMinutes));
+        var averageMinutes = SupplierResponseTimes.AverageMinutes(answers.Select(answer => answer.Minutes).ToList());
 
         return new SupplierEarningsSummary(
             from,
@@ -114,8 +112,7 @@ public partial class SupplierKpiService(
         var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-SupplierEarningsSummary.ResponseWindowDays);
         var answers = await RecentAnswersOf(db, supplierOrgId, since, PublicShowcaseLimits.ResponseTimeMaxSamples)
             .ToListAsync(cancellationToken);
-        return SupplierResponseTimes.PublicMedianMinutes(
-            answers.Select(answer => (answer.TakenAt - answer.CreatedAt).TotalMinutes).ToList());
+        return SupplierResponseTimes.PublicMedianMinutes(answers.Select(answer => answer.Minutes).ToList());
     }
 
     /// <summary>The jobs and the final amounts of the requests of the supplier completed (or paid) inside <c>[startUtc, endUtc)</c>.</summary>
@@ -163,5 +160,9 @@ public partial class SupplierKpiService(
     internal sealed record AmountGroup(int Jobs, long? Amount);
 
     /// <summary>The moment a request was received and the moment the supplier took it.</summary>
-    internal sealed record AnswerPair(DateTime CreatedAt, DateTime TakenAt);
+    internal sealed record AnswerPair(DateTime CreatedAt, DateTime TakenAt)
+    {
+        /// <summary>The minutes the request waited for the answer.</summary>
+        public double Minutes => (TakenAt - CreatedAt).TotalMinutes;
+    }
 }

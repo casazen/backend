@@ -37,8 +37,8 @@ public partial class SupplierKpiService
 
         // Read as pairs and averaged here, like the home does, so the arithmetic on instants does not depend on the provider.
         var answers = await AnswersBetween(db, supplierOrgId, previousStart, currentEnd).ToListAsync(cancellationToken);
-        var currentWaits = answers.Where(a => a.TakenAt >= currentStart).Select(Minutes).ToList();
-        var previousWaits = answers.Where(a => a.TakenAt < currentStart).Select(Minutes).ToList();
+        var currentWaits = answers.Where(a => a.TakenAt >= currentStart).Select(a => a.Minutes).ToList();
+        var previousWaits = answers.Where(a => a.TakenAt < currentStart).Select(a => a.Minutes).ToList();
 
         // Still to collect, now: the declared total of a job paid outside CasaZen, the net of the payment of one paid inside it.
         var open = await OpenJobsOf(db, supplierOrgId).ToListAsync(cancellationToken);
@@ -96,12 +96,11 @@ public partial class SupplierKpiService
             toCollectCents,
             toCollectJobs);
 
-    private static double Minutes(AnswerPair answer) => (answer.TakenAt - answer.CreatedAt).TotalMinutes;
-
     /// <summary>
     /// What came in, was answered and was completed in each of the two periods, counted by the database in one pass over the requests of
     /// the supplier: arrived (by <c>CreatedAt</c>), taken (by <c>TakenAt</c>, whatever became of it after), refused (a final status: its
-    /// last update is the refusal, like the KPIs of SU-11) and completed (<c>Completato</c> or <c>Pagato</c>, by <c>CompletedAt</c>).
+    /// last update is the refusal, like the KPIs of SU-11; the retention job of the customers' data also updates it, a limit of the
+    /// two, see <c>docs/runbooks/suppliers.md</c> § 27.2) and completed (<c>Completato</c> or <c>Pagato</c>, by <c>CompletedAt</c>).
     /// </summary>
     /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
     internal static IQueryable<OverviewCounts> OverviewCountsOf(

@@ -258,6 +258,12 @@ public class SupplierTodayDto
 
     /// <summary>The last day <see cref="Jobs"/> cover (<c>YYYY-MM-DD</c>, Europe/Rome): <see cref="Date"/> plus <see cref="Days"/> minus one.</summary>
     public DateOnly DateTo { get; set; }
+
+    /// <summary>
+    /// How many jobs fall on those days (SP-04e): more than the length of <see cref="Jobs"/> when the list was cut at 50 (the first in
+    /// time are the ones kept).
+    /// </summary>
+    public int JobsTotal { get; set; }
 }
 
 /// <summary>The money of the supplier's home, in cents of euro.</summary>
@@ -379,6 +385,7 @@ public static class SupplierServiceRequestMapper
         DateTo = today.LastDate,
         TimeZone = Casazen.Core.Utilities.RomeCalendar.TimeZoneId,
         Jobs = today.Jobs.Select(view => ToDto(view)).ToList(),
+        JobsTotal = today.JobsTotal,
         NewRequests = today.NewRequests.Select(view => ToDto(view)).ToList(),
         NewRequestsTotal = today.NewRequestsTotal,
         Earnings = new SupplierTodayEarningsDto

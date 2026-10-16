@@ -190,7 +190,7 @@ public class SupplierReadModelsSqlTests
             1,
             50,
             SupplierInboxSort.WorkTime,
-            WorkDays: new SupplierInboxDayRange(new DateOnly(2026, 10, 8), new DateOnly(2026, 10, 14)));
+            WorkDays: new SupplierDateRange(new DateOnly(2026, 10, 8), new DateOnly(2026, 10, 14)));
 
         var sql = reader.Filter(reader.Rows(SupplierOrg), query).ToQueryString();
 

@@ -19,7 +19,10 @@ public sealed class SupplierTodayService(
     ISupplierAgendaService agenda,
     TimeProvider? timeProvider = null) : ISupplierTodayService
 {
-    /// <summary>Jobs of the day listed: far above the daily maximum a supplier can set (50).</summary>
+    /// <summary>
+    /// Jobs listed: far above the daily maximum a supplier can set (50), so it never bites for one day; a week can pass it, which is
+    /// why the answer also carries how many jobs there are (<see cref="SupplierToday.JobsTotal"/>).
+    /// </summary>
     private const int MaxJobsListed = 50;
 
     /// <summary>New requests listed on the home (the console shows the first three); the total is given apart.</summary>
@@ -46,7 +49,7 @@ public sealed class SupplierTodayService(
         var today = _clock.TodayInRomeAsDateOnly();
 
         // The jobs of today and of the days after it, in one read: the first in time first.
-        var (jobs, _) = await requests.ListAsync(
+        var (jobs, jobsTotal) = await requests.ListAsync(
             supplierOrgId,
             new SupplierInboxQuery(
                 JobStatuses,
@@ -55,7 +58,7 @@ public sealed class SupplierTodayService(
                 1,
                 MaxJobsListed,
                 SupplierInboxSort.WorkTime,
-                WorkDays: new SupplierInboxDayRange(today, today.AddDays(days - 1))),
+                WorkDays: new SupplierDateRange(today, today.AddDays(days - 1))),
             cancellationToken);
 
         var (newRequests, newTotal) = await requests.ListAsync(
@@ -65,7 +68,7 @@ public sealed class SupplierTodayService(
 
         var earnings = await kpis.GetEarningsSummaryAsync(supplierOrgId, cancellationToken);
 
-        return new SupplierToday(today, jobs, newRequests, newTotal, earnings, days);
+        return new SupplierToday(today, jobs, newRequests, newTotal, earnings, jobsTotal, days);
     }
 
     public async Task<SupplierChecklist?> GetChecklistAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)

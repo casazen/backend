@@ -27,8 +27,8 @@ namespace Casazen.Core.Suppliers;
 /// look at it.
 /// </param>
 /// <param name="WorkDays">
-/// The days of the job (SP-04e, <c>today?days=</c>): like <paramref name="When"/> but for any number of Europe/Rome days; it takes
-/// the place of <paramref name="When"/> when both are given.
+/// The days of the job (SP-04e, <c>today?days=</c>): like <paramref name="When"/> but for any run of Europe/Rome days (both ends
+/// included); it takes the place of <paramref name="When"/> when both are given.
 /// </param>
 public sealed record SupplierInboxQuery(
     IReadOnlyCollection<ServiceRequestStatus> Statuses,
@@ -44,10 +44,7 @@ public sealed record SupplierInboxQuery(
     ServiceRequestSource? Source = null,
     string? Text = null,
     bool? AwaitingCustomer = null,
-    SupplierInboxDayRange? WorkDays = null);
-
-/// <summary>A run of Europe/Rome calendar days, both ends included.</summary>
-public readonly record struct SupplierInboxDayRange(DateOnly First, DateOnly Last);
+    SupplierDateRange? WorkDays = null);
 
 /// <summary>The limits of the free text of the inbox (<c>q</c>, SP-04e).</summary>
 public static class SupplierInboxSearch
@@ -60,7 +57,8 @@ public static class SupplierInboxSearch
 
     /// <summary>
     /// The text to search for: <paramref name="value"/> trimmed. <c>null</c> for nothing to search (a missing or blank value). False
-    /// when it is shorter than <see cref="MinLength"/> or longer than <see cref="MaxLength"/> characters.
+    /// when it is shorter than <see cref="MinLength"/> or longer than <see cref="MaxLength"/> characters, or holds a control character
+    /// (a NUL cannot be sent to PostgreSQL: the answer would be a 500, not a 400).
     /// </summary>
     public static bool TryNormalize(string? value, out string? text)
     {
@@ -69,7 +67,7 @@ public static class SupplierInboxSearch
             return true;
 
         var trimmed = value.Trim();
-        if (trimmed.Length is < MinLength or > MaxLength)
+        if (trimmed.Length is < MinLength or > MaxLength || trimmed.Any(char.IsControl))
             return false;
 
         text = trimmed;

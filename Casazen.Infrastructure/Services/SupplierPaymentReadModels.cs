@@ -172,8 +172,7 @@ public sealed class SupplierPaymentReadModels(
             .Select(g => new SupplierPaymentTotals(
                 g.Sum(p => (long)p.AmountCents),
                 g.Sum(p => (long)p.ApplicationFeeCents),
-                g.Sum(p => (long)p.NetCents),
-                g.Count()));
+                g.Sum(p => (long)p.NetCents)));
 
     /// <summary>The supplier's side of the rules: whether it may act at all and whether it can be paid through CasaZen.</summary>
     private async Task<SupplierFacts> ReadSupplierAsync(Guid supplierOrgId, CancellationToken cancellationToken)

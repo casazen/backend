@@ -43,7 +43,8 @@ public sealed record ServicePaymentActionFacts(
 /// </summary>
 /// <remarks>
 /// <para>What cannot be known without asking Stripe is not here: a payment that is paid or being processed there while CasaZen still
-/// says <c>Requested</c> makes the endpoint answer 409 although the rules allow it. That is a race, not a rule.</para>
+/// says <c>Requested</c> makes the endpoint answer 409 although the rules allow it. That is a race, not a rule. Nor is a link that
+/// could not be queued for sending (<c>service_payment_request_not_sent</c>): a failure of the moment, not a state of the request.</para>
 /// <para>The reason that is mandatory when an <c>Online</c> request is recorded as paid outside CasaZen is an input of the action, not a
 /// condition of it.</para>
 /// </remarks>

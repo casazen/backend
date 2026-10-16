@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -174,13 +176,13 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         Assert.Equal(1, counts.GetProperty("archive").GetInt32());
         Assert.Equal(0, counts.GetProperty("paymentsLate").GetInt32());
         // A chip and its list agree.
-        Assert.Equal(counts.GetProperty("toAnswer").GetInt32(), (await Tab(supplier, "da-rispondere")).GetProperty("total").GetInt32());
-        Assert.Equal(counts.GetProperty("awaitingCustomer").GetInt32(), (await Tab(supplier, "in-attesa")).GetProperty("total").GetInt32());
-        Assert.Equal(counts.GetProperty("scheduled").GetInt32(), (await Tab(supplier, "programmate")).GetProperty("total").GetInt32());
-        Assert.Equal(counts.GetProperty("toCollect").GetInt32(), (await Tab(supplier, "da-incassare")).GetProperty("total").GetInt32());
-        Assert.Equal(counts.GetProperty("archive").GetInt32(), (await Tab(supplier, "archivio")).GetProperty("total").GetInt32());
-        Assert.Equal(new[] { toAnswer1, toAnswer2 }.Order(), Ids(await Tab(supplier, "da-rispondere")).Order());
-        Assert.Equal(new[] { proposed }, Ids(await Tab(supplier, "in-attesa")));
+        Assert.Equal(counts.GetProperty("toAnswer").GetInt32(), (await TabAsync(supplier, "da-rispondere")).GetProperty("total").GetInt32());
+        Assert.Equal(counts.GetProperty("awaitingCustomer").GetInt32(), (await TabAsync(supplier, "in-attesa")).GetProperty("total").GetInt32());
+        Assert.Equal(counts.GetProperty("scheduled").GetInt32(), (await TabAsync(supplier, "programmate")).GetProperty("total").GetInt32());
+        Assert.Equal(counts.GetProperty("toCollect").GetInt32(), (await TabAsync(supplier, "da-incassare")).GetProperty("total").GetInt32());
+        Assert.Equal(counts.GetProperty("archive").GetInt32(), (await TabAsync(supplier, "archivio")).GetProperty("total").GetInt32());
+        Assert.Equal(new[] { toAnswer1, toAnswer2 }.Order(), Ids(await TabAsync(supplier, "da-rispondere")).Order());
+        Assert.Equal(new[] { proposed }, Ids(await TabAsync(supplier, "in-attesa")));
     }
 
     [Fact]
@@ -207,9 +209,9 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         using var supplier = factory.Supplier(world);
         await ProposeAsync(supplier, proposed, ServiceRequestWorlds.Slot(hour: 15, day: DayOfWeek.Tuesday, minDaysAhead: 4));
 
-        var all = await Tab(supplier, "nuove");
-        var toAnswer = await Tab(supplier, "da-rispondere");
-        var awaiting = await Tab(supplier, "in-attesa");
+        var all = await TabAsync(supplier, "nuove");
+        var toAnswer = await TabAsync(supplier, "da-rispondere");
+        var awaiting = await TabAsync(supplier, "in-attesa");
 
         Assert.Equal(new[] { plain, proposed }.Order(), Ids(all).Order());
         Assert.Equal(new[] { plain }, Ids(toAnswer));
@@ -281,29 +283,30 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         // The supplier works in H501, the comune of the request when it is made; the property is later known by its real name.
         await using (var scope = factory.Services.CreateAsyncScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<Casazen.Infrastructure.Data.AppDbContext>();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var property = await db.Properties.IgnoreQueryFilters().SingleAsync(p => p.Id == world.PropertyId);
             property.City = "Lecce";
             await db.SaveChangesAsync();
         }
 
         foreach (var found in new[] { "pulizia", "PULIZIA", "appartamento", "lecce", "Cleaning", "pulizie" })
-            Assert.Equal(new[] { id }, Ids(await Query(supplier, $"q={found}")));
+            Assert.Equal(new[] { id }, Ids(await QueryAsync(supplier, $"q={found}")));
 
         foreach (var notFound in new[] { "elicottero", ServiceRequestWorlds.PropertyName, "Riservata", ServiceRequestWorlds.PropertyAddress, "citofono" })
-            Assert.Empty(Ids(await Query(supplier, $"q={Uri.EscapeDataString(notFound)}")));
+            Assert.Empty(Ids(await QueryAsync(supplier, $"q={Uri.EscapeDataString(notFound)}")));
     }
 
     [Fact]
-    public async Task Text_ABlankText_IsNoFilter_AndTheWrongLengthIsRefused()
+    public async Task Text_ABlankText_IsNoFilter_AndTheWrongLengthOrAControlCharacterIsRefused()
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var id = await factory.CreateRequestAsync(world);
         using var supplier = factory.Supplier(world);
 
-        Assert.Equal(new[] { id }, Ids(await Query(supplier, "q=")));
-        Assert.Equal(new[] { id }, Ids(await Query(supplier, "q=%20%20")));
-        foreach (var bad in new[] { "a", "%20a%20", new string('a', 61) })
+        Assert.Equal(new[] { id }, Ids(await QueryAsync(supplier, "q=")));
+        Assert.Equal(new[] { id }, Ids(await QueryAsync(supplier, "q=%20%20")));
+        // A NUL (%00) cannot be sent to PostgreSQL: it has to be a 400 of ours and never reach the database as a 500.
+        foreach (var bad in new[] { "a", "%20a%20", new string('a', 61), "%00%00", "%00ab", "a%00b", "a%09b" })
         {
             var response = await supplier.GetAsync($"/api/supplier/inbox?q={bad}");
 
@@ -323,9 +326,9 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         await factory.CreateRequestAsync(world);
         using var supplier = factory.Supplier(world);
 
-        Assert.Empty(Ids(await Query(supplier, "q=%25%25")));
-        Assert.Empty(Ids(await Query(supplier, "q=pul_zia")));
-        Assert.Empty(Ids(await Query(supplier, "q=p%25a")));
+        Assert.Empty(Ids(await QueryAsync(supplier, "q=%25%25")));
+        Assert.Empty(Ids(await QueryAsync(supplier, "q=pul_zia")));
+        Assert.Empty(Ids(await QueryAsync(supplier, "q=p%25a")));
     }
 
     [Fact]
@@ -336,7 +339,7 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         await factory.CreateRequestAsync(stranger);
         using var supplier = factory.Supplier(world);
 
-        Assert.Empty(Ids(await Query(supplier, "q=pulizia&status=all")));
+        Assert.Empty(Ids(await QueryAsync(supplier, "q=pulizia&status=all")));
     }
 
     // ─── Phase and payment of every item ───
@@ -369,7 +372,7 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         await supplier.PostAsync($"/api/service-requests/{id}/take", content: null);
         await supplier.PostAsync($"/api/service-requests/{id}/complete", content: null);
 
-        var before = (await Tab(supplier, "da-incassare")).GetProperty("items")[0];
+        var before = (await TabAsync(supplier, "da-incassare")).GetProperty("items")[0];
         var payment = before.GetProperty("payment");
 
         Assert.Equal("completed", before.GetProperty("phase").GetString());
@@ -385,7 +388,7 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         var recorded = await supplier.PostAsJsonAsync($"/api/supplier/requests/{id}/payment/offline", new { reason = "Pagato in contanti" });
         Assert.Equal(HttpStatusCode.OK, recorded.StatusCode);
 
-        var after = (await Tab(supplier, "archivio")).GetProperty("items")[0];
+        var after = (await TabAsync(supplier, "archivio")).GetProperty("items")[0];
         Assert.Equal("paid", after.GetProperty("phase").GetString());
         var paid = after.GetProperty("payment");
         Assert.Equal("Paid", paid.GetProperty("status").GetString());
@@ -427,6 +430,7 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         var week = await supplier.GetFromJsonAsync<JsonElement>("/api/supplier/today?days=7");
 
         Assert.Equal(1, one.GetProperty("days").GetInt32());
+        Assert.Equal(0, one.GetProperty("jobsTotal").GetInt32());
         Assert.Equal(one.GetProperty("date").GetString(), one.GetProperty("dateTo").GetString());
         Assert.Equal(7, week.GetProperty("days").GetInt32());
         var first = DateOnly.Parse(week.GetProperty("date").GetString()!);
@@ -437,27 +441,34 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
     public async Task Today_WithDays_ListsTheJobsOfTheNextDaysToo_WithTheirPhase()
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
-        var id = await factory.CreateRequestAsync(world, ServiceRequestWorlds.Slot(hour: 10, day: DayOfWeek.Wednesday, minDaysAhead: 1));
+        var id = await factory.CreateRequestAsync(world);
         using var supplier = factory.Supplier(world);
         var take = await supplier.PostAsync($"/api/service-requests/{id}/take", content: null);
         Assert.Equal(HttpStatusCode.OK, take.StatusCode);
-        var request = await factory.LoadRequestAsync(id);
-        var daysAhead = request.ScheduledStartUtc!.Value.Date.DayNumberFromToday();
 
-        var short1 = await supplier.GetFromJsonAsync<JsonElement>("/api/supplier/today?days=1");
-        var long7 = await supplier.GetFromJsonAsync<JsonElement>("/api/supplier/today?days=7");
+        // The job is two days from now whatever day the test runs on (the working days of the supplier are not what is tested here).
+        var inTwoDays = RomeCalendar.TodayInRomeAsDateOnly(TimeProvider.System).AddDays(2);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var stored = await db.ServiceRequests.IgnoreQueryFilters().SingleAsync(r => r.Id == id);
+            stored.ScheduledStartUtc = RomeCalendar.StartOfDayUtc(inTwoDays).AddHours(8);
+            stored.ScheduledEndUtc = stored.ScheduledStartUtc.Value.AddHours(2);
+            await db.SaveChangesAsync();
+        }
 
-        // Within a week it is listed, and today only it is not (unless it happens to be today).
-        if (daysAhead is >= 1 and <= 6)
-        {
-            Assert.Equal(new[] { id }, long7.GetProperty("jobs").EnumerateArray().Select(job => job.GetProperty("id").GetGuid()));
-            Assert.Empty(short1.GetProperty("jobs").EnumerateArray());
-            Assert.Equal("scheduled", long7.GetProperty("jobs")[0].GetProperty("phase").GetString());
-        }
-        else
-        {
-            Assert.DoesNotContain(id, long7.GetProperty("jobs").EnumerateArray().Select(job => job.GetProperty("id").GetGuid()));
-        }
+        var oneDay = await supplier.GetFromJsonAsync<JsonElement>("/api/supplier/today?days=1");
+        var twoDays = await supplier.GetFromJsonAsync<JsonElement>("/api/supplier/today?days=2");
+        var threeDays = await supplier.GetFromJsonAsync<JsonElement>("/api/supplier/today?days=3");
+        var week = await supplier.GetFromJsonAsync<JsonElement>("/api/supplier/today?days=7");
+
+        Assert.Empty(Ids(oneDay, "jobs"));
+        Assert.Empty(Ids(twoDays, "jobs"));
+        Assert.Equal(new[] { id }, Ids(threeDays, "jobs"));
+        Assert.Equal(new[] { id }, Ids(week, "jobs"));
+        Assert.Equal(1, threeDays.GetProperty("jobsTotal").GetInt32());
+        Assert.Equal(0, twoDays.GetProperty("jobsTotal").GetInt32());
+        Assert.Equal("scheduled", week.GetProperty("jobs")[0].GetProperty("phase").GetString());
     }
 
     [Theory]
@@ -484,28 +495,18 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
 
     // ─── helpers ───
 
-    private static async Task<JsonElement> Tab(HttpClient supplier, string tab) =>
+    private static async Task<JsonElement> TabAsync(HttpClient supplier, string tab) =>
         await supplier.GetFromJsonAsync<JsonElement>($"/api/supplier/inbox?tab={tab}&pageSize=100");
 
-    private static async Task<JsonElement> Query(HttpClient supplier, string query) =>
+    private static async Task<JsonElement> QueryAsync(HttpClient supplier, string query) =>
         await supplier.GetFromJsonAsync<JsonElement>($"/api/supplier/inbox?{query}");
 
-    private static List<Guid> Ids(JsonElement body) =>
-        body.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("id").GetGuid()).ToList();
+    private static List<Guid> Ids(JsonElement body, string list = "items") =>
+        body.GetProperty(list).EnumerateArray().Select(item => item.GetProperty("id").GetGuid()).ToList();
 
     private static async Task ProposeAsync(HttpClient supplier, Guid id, DateTime startUtc)
     {
         var response = await supplier.PostAsJsonAsync($"/api/service-requests/{id}/propose-time", new { startUtc, message = "Posso solo nel pomeriggio" });
         Assert.True(response.StatusCode == HttpStatusCode.OK, $"propose-time: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
-    }
-}
-
-/// <summary>Days between today in Rome and a date, for the tests that look at the next days.</summary>
-internal static class DayCounting
-{
-    public static int DayNumberFromToday(this DateTime utc)
-    {
-        var today = Casazen.Core.Utilities.RomeCalendar.TodayInRomeAsDateOnly(TimeProvider.System);
-        return Casazen.Core.Utilities.RomeCalendar.DateInRome(utc).DayNumber - today.DayNumber;
     }
 }

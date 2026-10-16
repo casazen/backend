@@ -15,6 +15,10 @@ namespace Casazen.Core.Services;
 /// <param name="NewRequests">The first requests waiting for the supplier's answer, the one with the earliest deadline first.</param>
 /// <param name="NewRequestsTotal">How many requests wait for the supplier's answer.</param>
 /// <param name="Earnings">The earnings of the month, the amount to collect and the average response time (an estimate until SP-15).</param>
+/// <param name="JobsTotal">
+/// How many jobs fall on those days (SP-04e): more than <paramref name="Jobs"/> holds when the list was cut at its maximum, which a
+/// week can reach where a day cannot.
+/// </param>
 /// <param name="Days">
 /// How many days <paramref name="Jobs"/> cover, from <paramref name="Date"/> on (SP-04e, <c>today?days=</c>, 1 to
 /// <see cref="SupplierTodayLimits.MaxDays"/>): 1 is today only, as before.
@@ -25,6 +29,7 @@ public sealed record SupplierToday(
     IReadOnlyList<SupplierServiceRequestView> NewRequests,
     int NewRequestsTotal,
     SupplierEarningsSummary Earnings,
+    int JobsTotal,
     int Days = 1)
 {
     /// <summary>The last day <see cref="Jobs"/> cover.</summary>
