@@ -80,6 +80,11 @@ public sealed class OrgActivityService(AppDbContext db) : IOrgActivityService
             var actor = filter.ActorUserId.Trim();
             query = query.Where(e => e.ActorUserId == actor);
         }
+        else if (filter.PeopleOnly)
+        {
+            // Whatever person: the lines with an actor (AM-02c, the home of the account shows no «Sistema»).
+            query = query.Where(e => e.ActorUserId != null);
+        }
 
         return query;
     }
