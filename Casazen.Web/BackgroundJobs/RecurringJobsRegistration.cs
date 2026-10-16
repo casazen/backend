@@ -97,6 +97,8 @@ public static class RecurringJobsRegistration
 
         ConfigurePropertyModeJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.PropertyModeChange));
 
+        ConfigureLongRentJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.LongRentArea));
+
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
             job => job.ExecuteAsync(),
@@ -262,6 +264,26 @@ public static class RecurringJobsRegistration
             PropertyModeChangeJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             PropertyModeChangeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The jobs of the long-term area (LR-12): only with <see cref="FeatureFlags.LongRentArea"/> on. With the flag off no draft is
+    /// created through the guided endpoints and the drafts of the complete creation are not touched, so there is nothing to clean up;
+    /// the schedule of an earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureLongRentJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(LeaseDraftRetentionJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<LeaseDraftRetentionJob>(
+            LeaseDraftRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            LeaseDraftRetentionJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
