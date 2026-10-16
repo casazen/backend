@@ -2170,6 +2170,9 @@
   <data name="SupplierAvailabilityRangeTooLong" xml:space="preserve">
     <value>L'intervallo massimo è di {0} giorni.</value>
   </data>
+  <data name="SupplierAvailabilityRangeOutOfBounds" xml:space="preserve">
+    <value>Le date indicate non sono valide.</value>
+  </data>
   <data name="SupplierConflictsRangeOutOfBounds" xml:space="preserve">
     <value>Le date devono cadere tra {0} anno fa e {1} anni da oggi.</value>
   </data>

@@ -277,6 +277,41 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Contains("10", problem.GetProperty("detail").GetString());
     }
 
+    [Theory]
+    [InlineData("from=9999-12-01&to=9999-12-31")]
+    [InlineData("from=9999-12-31")]
+    [InlineData("to=9999-12-31")]
+    [InlineData("from=0001-01-01&to=0001-01-31")]
+    [InlineData("from=0001-01-01")]
+    public async Task Calendar_DatesAtAnEndOfTheCalendar_Are400_NeverAnOverflow(string query)
+    {
+        var (userId, _) = await SupplierCatalogTestData.SeedSupplierAsync(factory);
+        using var client = SupplierClient(userId);
+
+        var response = await client.GetAsync($"/api/supplier/calendar?{query}");
+
+        // The same dates that overflowed the arithmetic on days (a 500) are a 400 now, as they are for the conflicts.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("validation_error", (await ReadAsync(response)).GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Calendar_TheOrdinaryRanges_AreStillAnswered_AndAReversedOrTooLongOneIsStill400()
+    {
+        var (userId, _) = await SupplierCatalogTestData.SeedSupplierAsync(factory);
+        using var client = SupplierClient(userId);
+
+        var ok = await client.GetAsync($"/api/supplier/calendar?from={Today:yyyy-MM-dd}&to={Today.AddDays(61):yyyy-MM-dd}");
+        var past = await client.GetAsync($"/api/supplier/calendar?from={Today.AddYears(-20):yyyy-MM-dd}&to={Today.AddYears(-20).AddDays(5):yyyy-MM-dd}");
+        var tooLong = await client.GetAsync($"/api/supplier/calendar?from={Today:yyyy-MM-dd}&to={Today.AddDays(62):yyyy-MM-dd}");
+        var reversed = await client.GetAsync($"/api/supplier/calendar?from={Today.AddDays(5):yyyy-MM-dd}&to={Today:yyyy-MM-dd}");
+
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, past.StatusCode); // the calendar is not limited to the recent past: only the ends of the calendar are refused
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, reversed.StatusCode);
+    }
+
     [Fact]
     public async Task Conflicts_TheFarEdgesOfTheBounds_AreAccepted()
     {

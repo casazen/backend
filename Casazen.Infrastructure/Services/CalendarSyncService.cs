@@ -546,16 +546,10 @@ public class CalendarSyncService
         if (profile is null)
             return false;
 
-        var days = await _db.SupplierAvailability
-            .Where(sa => sa.OrgId == orgId && sa.Source == SupplierAvailabilitySource.ICalFeed)
-            .ToListAsync(ct);
-        _db.SupplierAvailability.RemoveRange(days);
-
-        var windows = await FeedWindowsOf(_db, orgId).ToListAsync(ct);
-        _db.RemoveRange(windows);
-
-        var freeEvents = await _db.SupplierFreeCalendarEvents.Where(e => e.OrgId == orgId).ToListAsync(ct);
-        _db.SupplierFreeCalendarEvents.RemoveRange(freeEvents);
+        var days = await DeleteRowsAsync(
+            _db.SupplierAvailability.Where(sa => sa.OrgId == orgId && sa.Source == SupplierAvailabilitySource.ICalFeed), ct);
+        var windows = await DeleteRowsAsync(FeedWindowsOf(_db, orgId), ct);
+        var freeEvents = await DeleteRowsAsync(_db.SupplierFreeCalendarEvents.Where(e => e.OrgId == orgId), ct);
 
         var hadFeed = profile.CalendarSyncType == CalendarSyncType.ICalFeed || !string.IsNullOrWhiteSpace(profile.IcalFeedUrl);
         if (hadFeed)
@@ -577,7 +571,24 @@ public class CalendarSyncService
 
         _logger.LogInformation(
             "iCal feed of supplier {OrgId} unlinked: {Days} days, {Windows} windows of hours and {FreeEvents} \"Available\" events removed (had a feed: {HadFeed})",
-            orgId, days.Count, windows.Count, freeEvents.Count, hadFeed);
+            orgId, days, windows, freeEvents, hadFeed);
         return true;
+    }
+
+    /// <summary>
+    /// Deletes the rows of <paramref name="rows"/> and says how many went. On PostgreSQL it is one statement in the current
+    /// transaction (no row is loaded or tracked, and a row that another writer removed meanwhile is not an error: the unlink and
+    /// <c>PUT calendar/ical</c>, which does not take the lock, both delete the "Available" events); on the in-memory provider, which
+    /// has no set-based delete, the rows are loaded and removed one by one.
+    /// </summary>
+    private async Task<int> DeleteRowsAsync<T>(IQueryable<T> rows, CancellationToken ct)
+        where T : class
+    {
+        if (_db.Database.IsRelational())
+            return await rows.ExecuteDeleteAsync(ct);
+
+        var loaded = await rows.ToListAsync(ct);
+        _db.RemoveRange(loaded);
+        return loaded.Count;
     }
 }

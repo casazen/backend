@@ -25,27 +25,22 @@ public class SupplierConflictDto
     /// <summary><c>danger</c> (the time cannot be kept as it is) or <c>warning</c> (the supplier may decide to live with it).</summary>
     public string Severity { get; set; } = string.Empty;
 
-    /// <summary>The other request in the way (<c>overlap</c>, <c>buffer</c>): its id, as listed by <c>GET api/supplier/calendar</c>.</summary>
+    /// <summary>
+    /// The other request in the way (<c>overlap</c>, <c>buffer</c>): its id, the id of its entry in <c>requests</c> of
+    /// <c>GET api/supplier/calendar</c>. The calendar lists a request on the Europe/Rome day it starts: a request that lies across the
+    /// edge of the range (a pause or a job over midnight reaches into the next day) is in the calendar of the day before or after, so
+    /// read the calendar one day more on each side of the range.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Guid? OtherRequestId { get; set; }
 
-    /// <summary>The block or engagement of the supplier's calendar in the way (<c>block</c>, <c>external</c>, <c>buffer</c>): the id of its entry in <c>blocks</c> of <c>GET api/supplier/calendar</c>.</summary>
+    /// <summary>
+    /// The block or engagement of the supplier's calendar in the way (<c>block</c>, <c>external</c>, <c>buffer</c>): the id of its
+    /// entry in <c>blocks</c> of <c>GET api/supplier/calendar</c>, which lists the windows that overlap the range: one that is only
+    /// close to the job (<c>buffer</c>) can be just outside it, so read the calendar one day more on each side of the range.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Guid? WindowId { get; set; }
-}
-
-/// <summary>A time to propose instead: the first free slot as long as the job.</summary>
-public class SupplierSuggestedSlotDto
-{
-    public DateTime StartUtc { get; set; }
-
-    public DateTime EndUtc { get; set; }
-
-    /// <summary>The same start on the clock of Rome, with its offset (<c>2026-10-20T09:00:00+02:00</c>).</summary>
-    public DateTimeOffset StartLocal { get; set; }
-
-    /// <summary>The same end on the clock of Rome, with its offset.</summary>
-    public DateTimeOffset EndLocal { get; set; }
 }
 
 /// <summary>A job of the supplier that has conflicts.</summary>
@@ -68,11 +63,12 @@ public class SupplierRequestConflictsDto
     public IReadOnlyList<SupplierConflictDto> Conflicts { get; set; } = [];
 
     /// <summary>
-    /// A time to propose instead (<c>POST api/supplier/requests/{id}/propose-time</c>): the first free slot as long as the job, from
-    /// its day on, as the planner offers it. Only for a request still <c>Richiesto</c> (the only one a time can be proposed on) and
-    /// only when a slot is free within 21 days of its day (and inside the supplier's horizon); <c>null</c> otherwise.
+    /// A time to propose instead (<c>POST api/service-requests/{id}/propose-time</c> with this slot's <c>startUtc</c>): the first free
+    /// slot as long as the job, from its day on, as the planner offers it, in the shape of a slot of the public page. Only for a
+    /// request still <c>Richiesto</c> (the only one a time can be proposed on) and only when a slot is free within 21 days of its day
+    /// (and inside the supplier's horizon); <c>null</c> otherwise.
     /// </summary>
-    public SupplierSuggestedSlotDto? SuggestedSlot { get; set; }
+    public PublicSlotDto? SuggestedSlot { get; set; }
 }
 
 /// <summary>Body of <c>GET api/supplier/calendar/conflicts</c>: the jobs to come with something wrong, by start.</summary>
@@ -149,8 +145,8 @@ public static class SupplierAgendaReadsMapper
             RequestId = item.RequestId,
             Status = item.Status,
             Date = item.Date,
-            StartUtc = AsUtc(item.StartUtc),
-            EndUtc = AsUtc(item.EndUtc),
+            StartUtc = UtcDateTime.Normalize(item.StartUtc),
+            EndUtc = UtcDateTime.Normalize(item.EndUtc),
             Conflicts = item.Conflicts
                 .Select(conflict => new SupplierConflictDto
                 {
@@ -161,10 +157,10 @@ public static class SupplierAgendaReadsMapper
                 })
                 .ToList(),
             SuggestedSlot = item.SuggestedSlot is { } slot
-                ? new SupplierSuggestedSlotDto
+                ? new PublicSlotDto
                 {
-                    StartUtc = AsUtc(slot.StartUtc),
-                    EndUtc = AsUtc(slot.EndUtc),
+                    StartUtc = UtcDateTime.Normalize(slot.StartUtc),
+                    EndUtc = UtcDateTime.Normalize(slot.EndUtc),
                     StartLocal = RomeCalendar.ToRome(slot.StartUtc),
                     EndLocal = RomeCalendar.ToRome(slot.EndUtc),
                 }
@@ -189,6 +185,4 @@ public static class SupplierAgendaReadsMapper
                 : null,
         };
     }
-
-    private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }

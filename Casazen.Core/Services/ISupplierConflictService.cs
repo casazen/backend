@@ -34,7 +34,10 @@ public interface ISupplierConflictService
     /// The conflicts of the requests with hours that fall from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days,
     /// both included, at most <see cref="SupplierAgendaLimits.MaxCalendarDays"/>). Read-only.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">The range is reversed or longer than the limit (the controller answers 400 before).</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The range is reversed, longer than the limit or too close to an end of the calendar (<see cref="SupplierAgendaRange"/>: the
+    /// controller answers 400 before; a caller that is not the controller never gets an overflow instead).
+    /// </exception>
     Task<SupplierConflictReport> GetConflictsAsync(
         Guid supplierOrgId,
         DateOnly from,

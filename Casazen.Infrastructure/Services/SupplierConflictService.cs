@@ -1,21 +1,27 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <inheritdoc cref="ISupplierConflictService"/>
 /// <remarks>
-/// <para><b>What it reads.</b> The planning input of the agenda for the range and for the days after it where a time can be
-/// suggested (<see cref="ISupplierAgendaService.BuildPlanningInputAsync(Guid, DateOnly, DateOnly, CancellationToken)"/>: the same
-/// rules, hours, time off, blocks, engagements of the calendar feed, requests and bookings waiting as the slot planner reads), the
-/// requests of the range with their hours and catalog service (<see cref="ISupplierServiceRequestReader.ListForAgendaAsync"/>) and,
-/// only when a request still waiting for an answer is for a catalog service, that service's notice and weekdays (a suggested
-/// time must be one <c>propose-time</c> accepts). It never names a table of the agenda or of the catalog: the guards of
+/// <para><b>What it reads.</b> The requests of the range with their hours and catalog service
+/// (<see cref="ISupplierServiceRequestReader.ListForAgendaAsync"/>), the planning input of the agenda for the range and for the days
+/// after it where a time can be suggested
+/// (<see cref="ISupplierAgendaService.BuildPlanningInputAsync(Guid, DateOnly, DateOnly, CancellationToken)"/>: the same rules, hours,
+/// time off, blocks, engagements of the calendar feed, requests and bookings waiting as the slot planner reads) and, only when a
+/// request still waiting for an answer is for a catalog service, that service's notice and weekdays (a suggested time must be one
+/// <c>propose-time</c> accepts). It never names a table of the agenda or of the catalog: the guards of
 /// <c>SupplierAgendaTenancyTests</c> and <c>SupplierServiceListingTenancyTests</c> need no new file.</para>
-/// <para><b>Cost.</b> Three reads and one pure pass over at most <see cref="SupplierAgendaLimits.MaxConflictRequests"/> jobs of
-/// at most 62 days of one supplier (the planning input is built once; a suggestion plans at most
-/// <see cref="SupplierAgendaLimits.ConflictSuggestionDays"/> + 1 days in memory).</para>
+/// <para><b>Order of the reads.</b> The jobs to check are read <i>before</i> the planning input, and nothing is in a transaction:
+/// a booking that is confirmed in between is then a request of the input that was not looked at yet (it is checked by the next call),
+/// never a request looked at beside the hold it just replaced. The requests of the range are read twice (the input reads them again
+/// with the days around the range); the second read is the price of leaving the interface of the agenda as it is.</para>
+/// <para><b>Cost.</b> One read of the jobs, the planning input (seven statements), at most one read of the catalog, and one pure
+/// pass over at most <see cref="SupplierAgendaLimits.MaxConflictRequests"/> jobs of at most 62 days of one supplier (a suggestion
+/// plans at most <see cref="SupplierAgendaLimits.ConflictSuggestionDays"/> + 1 days in memory).</para>
 /// </remarks>
 public sealed class SupplierConflictService(
     ISupplierAgendaService agenda,
@@ -28,10 +34,9 @@ public sealed class SupplierConflictService(
         DateOnly to,
         CancellationToken cancellationToken = default)
     {
-        if (to < from)
-            throw new ArgumentOutOfRangeException(nameof(to), "The last day cannot be before the first.");
-        if (to.DayNumber - from.DayNumber + 1 > SupplierAgendaLimits.MaxCalendarDays)
-            throw new ArgumentOutOfRangeException(nameof(to), $"The range covers at most {SupplierAgendaLimits.MaxCalendarDays} days.");
+        SupplierAgendaRange.Ensure(from, to, SupplierAgendaLimits.MaxCalendarDays);
+
+        var listed = await requests.ListForAgendaAsync(supplierOrgId, from, to, cancellationToken);
 
         // The planner's input reaches past the range: a suggestion looks for a free slot in the days after the job.
         var input = await agenda.BuildPlanningInputAsync(
@@ -40,40 +45,31 @@ public sealed class SupplierConflictService(
             to.AddDays(SupplierAgendaLimits.ConflictSuggestionDays),
             cancellationToken);
 
-        var listed = await requests.ListForAgendaAsync(supplierOrgId, from, to, cancellationToken);
-        var candidates = listed
-            .Where(request => request is { HasHours: true } && IsJob(request.Status))
-            .OrderBy(request => request.StartUtc)
-            .ThenBy(request => request.Id)
+        // Which of them the detector looks at is its own rule (a job with hours, still to come); the bound is applied to those, the
+        // nearest first, so what is furthest away is cut.
+        var nowUtc = UtcDateTime.Normalize(input.NowUtc);
+        var upcoming = listed
+            .Where(request => request is { HasHours: true })
+            .Select(request => (Request: request, Job: new SupplierConflictRequest(request.Id, request.Status, request.StartUtc!.Value, request.EndUtc!.Value)))
+            .Where(pair => SupplierConflictDetector.IsChecked(pair.Job, nowUtc))
+            .OrderBy(pair => pair.Job.StartUtc)
+            .ThenBy(pair => pair.Job.Id)
             .ToList();
-
-        // The nearest first: the bound cuts what is furthest away. Jobs already over are in the list and are left out by the
-        // detector, so the bound is applied to the ones that count.
-        var upcoming = candidates.Where(request => request.StartUtc >= input.NowUtc).ToList();
         var truncated = upcoming.Count > SupplierAgendaLimits.MaxConflictRequests;
         if (truncated)
             upcoming = upcoming.Take(SupplierAgendaLimits.MaxConflictRequests).ToList();
 
-        var services = await ServiceConstraintsAsync(supplierOrgId, upcoming, cancellationToken);
+        var services = await ServiceConstraintsAsync(supplierOrgId, upcoming.Select(pair => pair.Request).ToList(), cancellationToken);
         var jobs = upcoming
-            .Select(request =>
+            .Select(pair =>
             {
-                var constraints = request.ServiceListingId is { } id && services.TryGetValue(id, out var found) ? found : default;
-                return new SupplierConflictRequest(
-                    request.Id,
-                    request.Status,
-                    request.StartUtc!.Value,
-                    request.EndUtc!.Value,
-                    constraints.MinNoticeHours,
-                    constraints.WeekdaysMask);
+                var constraints = pair.Request.ServiceListingId is { } id && services.TryGetValue(id, out var found) ? found : default;
+                return pair.Job with { ServiceMinNoticeHours = constraints.MinNoticeHours, ServiceWeekdaysMask = constraints.WeekdaysMask };
             })
             .ToList();
 
         return new SupplierConflictReport(from, to, SupplierConflictDetector.Detect(input, jobs), truncated);
     }
-
-    private static bool IsJob(ServiceRequestStatus status) =>
-        status is ServiceRequestStatus.Richiesto or ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso;
 
     /// <summary>
     /// The notice and weekdays of the catalog services behind the requests a time can be proposed on (<c>Richiesto</c>): the only

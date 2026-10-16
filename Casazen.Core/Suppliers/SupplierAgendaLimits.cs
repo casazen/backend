@@ -112,6 +112,13 @@ public static class SupplierAgendaLimits
     /// <summary>The range of <c>GET api/supplier/calendar</c> when the request does not say: today and the next 30 days.</summary>
     public const int DefaultCalendarDays = 31;
 
+    /// <summary>
+    /// Days kept clear at each end of the calendar (the year 1 and the year 9999) by a range of the agenda
+    /// (<see cref="SupplierAgendaRange"/>): the arithmetic around a range (a day more or less on each side, the days a suggestion looks
+    /// ahead, the start of a day in UTC) overflows there, so a date that close to an end is a 400 and never a 500.
+    /// </summary>
+    public const int RangeEdgeDays = 90;
+
     // ─── Conflicts (SP-03b) ──────────────────────────────────────────────────────
 
     /// <summary>

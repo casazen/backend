@@ -182,17 +182,49 @@ public class SupplierCalendarTitlesTests
     }
 
     [Fact]
-    public async Task ListForAgendaAsync_TheLightReadOfThePlanner_HasNoTitles_ButCarriesTheService()
+    public async Task ListForAgendaAsync_TheLightReadOfThePlanner_HasNoTitles_ButCarriesTheServiceTheSourceAndThePhase()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        await s.RequestAsync();
+        await s.SeedAsync(ServiceRequestStatus.Richiesto, request =>
+        {
+            request.ScheduledStartUtc = ServiceRequestScenario.FridayAt10;
+            request.ScheduledEndUtc = ServiceRequestScenario.FridayAt10.AddHours(2);
+            request.ServiceListingId = s.ListingId;
+            request.Source = ServiceRequestSource.Showcase;
+            request.ProposedStartUtc = ServiceRequestScenario.FridayAt14;
+            request.ProposedEndUtc = ServiceRequestScenario.FridayAt14.AddHours(2);
+            request.ProposedAt = ServiceRequestScenario.Instant.UtcDateTime;
+        });
 
         var item = Assert.Single(await s.Reader.ListForAgendaAsync(s.SupplierOrgId, From, To));
+        var titled = Assert.Single(await s.Reader.ListForCalendarAsync(s.SupplierOrgId, From, To));
 
         Assert.Equal(s.ListingId, item.ServiceListingId);
         Assert.Null(item.ServiceName);
         Assert.Null(item.ClientLabel);
         Assert.Null(item.Comune);
+        // What is a column of the request itself is right in the light read too (not the default of the record): a showcase request
+        // with a proposal that waits says so wherever the record comes from.
+        Assert.Equal("showcase", item.Source);
+        Assert.True(item.HasPendingProposal);
+        Assert.Equal("proposal_pending", item.Phase);
+        Assert.Equal((titled.Source, titled.HasPendingProposal, titled.Phase), (item.Source, item.HasPendingProposal, item.Phase));
+    }
+
+    [Fact]
+    public async Task Calendar_ARangeAtAnEndOfTheCalendar_IsRefused_TheFarthestRangesThatPassAreAnswered()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var first = DateOnly.MinValue.AddDays(SupplierAgendaLimits.RangeEdgeDays);
+        var last = DateOnly.MaxValue.AddDays(-SupplierAgendaLimits.RangeEdgeDays);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => s.Agenda.GetCalendarAsync(s.SupplierOrgId, DateOnly.MinValue, DateOnly.MinValue.AddDays(30)));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => s.Agenda.GetCalendarAsync(s.SupplierOrgId, DateOnly.MaxValue.AddDays(-30), DateOnly.MaxValue));
+
+        Assert.Empty((await s.Agenda.GetCalendarAsync(s.SupplierOrgId, last.AddDays(-30), last)).Requests);
+        Assert.Empty((await s.Agenda.GetCalendarAsync(s.SupplierOrgId, first, first.AddDays(30))).Requests);
     }
 
     [Fact]

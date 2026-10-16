@@ -130,7 +130,7 @@ public class SupplierCalendarDisconnectTests
     }
 
     [Fact]
-    public async Task Disconnect_NeverTouchesAnotherSupplier()
+    public async Task Disconnect_AnotherSupplier_IsNeverTouched()
     {
         await using var db = CreateDb();
         var mine = await SeedProfileAsync(db);

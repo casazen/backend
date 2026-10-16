@@ -214,6 +214,78 @@ public class SupplierConflictServiceTests
         Assert.NotNull(await Service(s).GetConflictsAsync(s.SupplierOrgId, From, From.AddDays(61)));
     }
 
+    [Fact]
+    public async Task GetConflicts_ARangeAtAnEndOfTheCalendar_IsRefused_TheFarthestRangesThatPassAreAnswered()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var first = DateOnly.MinValue.AddDays(SupplierAgendaLimits.RangeEdgeDays);
+        var last = DateOnly.MaxValue.AddDays(-SupplierAgendaLimits.RangeEdgeDays);
+
+        // The rule is the service's own too (the controller answers 400 before): no caller makes a made-up date reach the arithmetic.
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => Service(s).GetConflictsAsync(s.SupplierOrgId, DateOnly.MinValue, DateOnly.MinValue.AddDays(30)));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => Service(s).GetConflictsAsync(s.SupplierOrgId, DateOnly.MaxValue.AddDays(-30), DateOnly.MaxValue));
+
+        // The farthest ranges that pass: a day on each side of the reads and the days a suggestion looks ahead do not overflow.
+        Assert.NotNull(await Service(s).GetConflictsAsync(s.SupplierOrgId, last.AddDays(-30), last));
+        Assert.NotNull(await Service(s).GetConflictsAsync(s.SupplierOrgId, first, first.AddDays(30)));
+    }
+
+    [Fact]
+    public async Task GetConflicts_ADayClosedByTheCalendarFeed_IsExternal_AndOneClosedByHand_IsDayOff()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var monday = new DateOnly(2026, 10, 12);
+        var tuesday = new DateOnly(2026, 10, 13);
+        s.Db.SupplierAvailability.AddRange(
+            new SupplierAvailability { OrgId = s.SupplierOrgId, Date = monday, Available = false, Source = SupplierAvailabilitySource.ICalFeed },
+            new SupplierAvailability { OrgId = s.SupplierOrgId, Date = tuesday, Available = false, Source = SupplierAvailabilitySource.Manual });
+        await s.Db.SaveChangesAsync();
+        // 10:00 in Rome on both days, inside the working hours: the closed day is the only thing wrong.
+        var onMonday = await Seed(s, ServiceRequestStatus.Richiesto, new DateTime(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc));
+        var onTuesday = await Seed(s, ServiceRequestStatus.Richiesto, new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Utc));
+
+        var items = (await Service(s).GetConflictsAsync(s.SupplierOrgId, From, To)).Items;
+
+        // What the feed closed is "another engagement" (external, danger), what the supplier closed is "a day off" (warning).
+        Assert.Equal([SupplierConflictCodes.External], items.Single(item => item.RequestId == onMonday.Id).Conflicts.Select(conflict => conflict.Code));
+        Assert.Equal([SupplierConflictCodes.DayOff], items.Single(item => item.RequestId == onTuesday.Id).Conflicts.Select(conflict => conflict.Code));
+    }
+
+    [Fact]
+    public async Task GetConflicts_AnEngagementOfTheFeedAndABlockByHand_AreNamedByTheirOwnWindows()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var engagement = new SupplierBusyWindow
+        {
+            OrgId = s.SupplierOrgId,
+            StartUtc = ServiceRequestScenario.FridayAt10.AddHours(1), // 11:00-12:00 in Rome
+            EndUtc = ServiceRequestScenario.FridayAt10.AddHours(2),
+            Kind = SupplierBusyWindowKind.External,
+            Source = SupplierBusyWindowSource.ICalFeed,
+            Label = "Dentista",
+            ExternalUid = "uid-1",
+        };
+        s.Db.SupplierBusyWindows.Add(engagement);
+        await s.Db.SaveChangesAsync();
+        var block = await s.Agenda.AddBlockAsync(s.SupplierOrgId, new SupplierBlockInput(
+            SupplierBusyWindowKind.Block, ServiceRequestScenario.FridayAt14.AddMinutes(30), ServiceRequestScenario.FridayAt14.AddMinutes(90), "Chiuso"));
+        var overTheEngagement = await Seed(s, ServiceRequestStatus.Richiesto, ServiceRequestScenario.FridayAt10); // 10:00-12:00
+        var overTheBlock = await Seed(s, ServiceRequestStatus.Richiesto, ServiceRequestScenario.FridayAt14); // 14:00-16:00
+
+        var items = (await Service(s).GetConflictsAsync(s.SupplierOrgId, From, To)).Items;
+
+        var external = Assert.Single(items.Single(item => item.RequestId == overTheEngagement.Id).Conflicts);
+        Assert.Equal(SupplierConflictCodes.External, external.Code);
+        Assert.Equal(engagement.Id, external.WindowId);
+        Assert.Null(external.OtherRequestId);
+        var blocked = Assert.Single(items.Single(item => item.RequestId == overTheBlock.Id).Conflicts);
+        Assert.Equal(SupplierConflictCodes.Block, blocked.Code);
+        Assert.Equal(block.Id, blocked.WindowId);
+        Assert.Null(blocked.OtherRequestId);
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────────
 
     /// <summary>A request of the supplier written straight to the database, with hours, in <paramref name="status"/>.</summary>

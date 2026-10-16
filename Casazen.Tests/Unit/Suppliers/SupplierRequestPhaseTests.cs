@@ -57,7 +57,7 @@ public class SupplierRequestPhaseTests
     }
 
     [Fact]
-    public void Phases_AreStable()
+    public void Phases_TheValuesOnTheWire_AreStable()
     {
         Assert.Equal(
             ["to_answer", "proposal_pending", "quote_pending", "scheduled", "in_progress", "completed", "paid", "rejected", "cancelled", "unknown"],

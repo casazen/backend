@@ -43,9 +43,11 @@ public readonly record struct SupplierInterval(DateTime StartUtc, DateTime EndUt
 {
     /// <summary>
     /// True when the two stretches share time. Half-open, like the stretches: one that ends at the instant the other starts does
-    /// not overlap it. <b>The one definition of "overlap" of a supplier's agenda</b>: the check made when a job is taken or a
-    /// request is created (409 <c>supplier_commitment_conflict</c>) and the <c>overlap</c> conflict of the console
-    /// (<see cref="SupplierConflictDetector"/>) both call it, so they cannot disagree.
+    /// not overlap it. <b>The one definition of "overlap" between two stretches of a supplier's agenda</b>: what is in the way of a
+    /// slot (<see cref="SupplierSlotPlanner"/>), the check made when a job is taken or a request is created (409
+    /// <c>supplier_commitment_conflict</c>) and the <c>overlap</c> conflict of the console (<see cref="SupplierConflictDetector"/>)
+    /// all call it. What each one compares is its own rule: the 409 compares the jobs the supplier took, the conflict also counts
+    /// what still waits for an answer.
     /// </summary>
     public bool Overlaps(SupplierInterval other) => StartUtc < other.EndUtc && other.StartUtc < EndUtc;
 }
@@ -135,6 +137,12 @@ public sealed record SupplierOccupancy
 
     /// <summary>True for a request and a hold: they count for <c>MaxJobsPerDay</c>.</summary>
     public bool CountsTowardsDailyMax => Kind is SupplierOccupancyKind.Request or SupplierOccupancyKind.Hold;
+
+    /// <summary>
+    /// True for what still waits for an answer: a booking waiting for its e-mail check and a request the supplier has not taken. The
+    /// planner counts it like anything else; the conflict detector (SP-03b) never counts it against a job already taken.
+    /// </summary>
+    public bool IsWaiting => Kind == SupplierOccupancyKind.Hold || (Kind == SupplierOccupancyKind.Request && !Committed);
 
     /// <summary>The hours it takes as an interval; <c>null</c> for a request that only has a day.</summary>
     public SupplierInterval? Interval =>

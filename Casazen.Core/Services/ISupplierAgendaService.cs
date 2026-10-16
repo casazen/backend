@@ -36,8 +36,15 @@ public sealed record SupplierClosedDay(DateOnly Date, SupplierAvailabilitySource
 /// <see cref="Services.ISupplierServiceRequestReader.ListForCalendarAsync"/>.
 /// </param>
 /// <param name="Comune">The comune of the work as written (a property's city, or the place the customer wrote); the postal code and the street are not here. Filled only by <see cref="Services.ISupplierServiceRequestReader.ListForCalendarAsync"/>.</param>
-/// <param name="Source">Where the request comes from: <see cref="SupplierRequestSources.CasaZen"/> or <see cref="SupplierRequestSources.Showcase"/>.</param>
-/// <param name="HasPendingProposal">True while a time the supplier proposed has no answer (the <see cref="Phase"/> is then <c>proposal_pending</c>).</param>
+/// <param name="Source">
+/// Where the request comes from: <see cref="SupplierRequestSources.CasaZen"/> or <see cref="SupplierRequestSources.Showcase"/>. A
+/// column of the request itself: both reads fill it, so it is right wherever the record comes from (the three titles above are the only
+/// ones that need the join of the calendar).
+/// </param>
+/// <param name="HasPendingProposal">
+/// True while a time the supplier proposed has no answer (the <see cref="Phase"/> is then <c>proposal_pending</c>). Filled by both
+/// reads, like <paramref name="Source"/>.
+/// </param>
 public sealed record SupplierAgendaRequest(
     Guid Id,
     DateOnly Date,
@@ -166,6 +173,10 @@ public interface ISupplierAgendaService
     /// included, at most <see cref="SupplierAgendaLimits.MaxCalendarDays"/>): hours, closed days, time off, windows and the
     /// requests that have a day. Read-only.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The range is reversed, too long or too close to an end of the calendar (<see cref="SupplierAgendaRange"/>; the controller
+    /// answers 400 before).
+    /// </exception>
     Task<SupplierCalendar> GetCalendarAsync(
         Guid supplierOrgId,
         DateOnly from,

@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
@@ -68,9 +69,18 @@ public sealed class SupplierSlotPreviewService(
         if (place.IsEmpty)
             return null;
 
+        // The matcher reads only these three columns: nothing else of the profile (the iCal feed URL, a secret, is an encrypted
+        // column) is read, or decrypted, for a preview.
         var profile = await db.SupplierProfiles
             .AsNoTracking()
-            .FirstOrDefaultAsync(sp => sp.OrgId == supplierOrgId, cancellationToken);
+            .Where(sp => sp.OrgId == supplierOrgId)
+            .Select(sp => new SupplierProfile
+            {
+                OrgId = sp.OrgId,
+                ComuniJson = sp.ComuniJson,
+                ComuneIstatCodesJson = sp.ComuneIstatCodesJson,
+            })
+            .FirstOrDefaultAsync(cancellationToken);
         var inside = profile is not null && await comuneMatcher.CoversAsync(profile, place, cancellationToken);
         return new SupplierPreviewCoverage(inside, comune!.Trim());
     }

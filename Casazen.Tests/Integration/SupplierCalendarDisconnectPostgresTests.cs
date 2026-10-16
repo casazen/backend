@@ -123,7 +123,7 @@ public class SupplierCalendarDisconnectPostgresTests(SupplierCalendarSyncPostgre
     }
 
     [PostgresFact]
-    public async Task TwoUnlinksAtTheSameTime_BothAnswer204_AndTheAgendaIsClean()
+    public async Task ThreeUnlinksAtTheSameTime_AllAnswer204_AndTheAgendaIsClean()
     {
         var (userId, orgId, url) = await SeedSupplierWithFeedAsync();
         await SyncOnceAsync(orgId, url);

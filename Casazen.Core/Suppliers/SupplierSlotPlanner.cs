@@ -72,13 +72,14 @@ public static class SupplierSlotPlanner
 
         var dayStartUtc = RomeCalendar.StartOfDayUtc(day);
         var dayEndUtc = RomeCalendar.StartOfDayUtc(day.AddDays(1));
-        var capacity = Math.Max(1, context.Rules.ParallelJobs);
+        var capacity = context.Capacity;
         var duration = TimeSpan.FromMinutes(context.Query.DurationMinutes);
         var step = TimeSpan.FromMinutes(context.Rules.SlotStepMinutes);
 
         // Only what can touch this day: a stretch that ends before the day starts or starts after it ends cannot overlap a slot.
+        var dayInterval = new SupplierInterval(dayStartUtc, dayEndUtc);
         var nearby = context.Widened
-            .Where(interval => interval.EndUtc > dayStartUtc && interval.StartUtc < dayEndUtc)
+            .Where(interval => interval.Overlaps(dayInterval))
             .ToList();
 
         var slots = new List<SupplierSlot>();
@@ -113,7 +114,7 @@ public static class SupplierSlotPlanner
         if (!context.HasHours(day))
             return SupplierDayClosure.NoHours;
 
-        if (context.JobsOn(day) >= context.Rules.MaxJobsPerDay)
+        if (context.IsDayFull(day))
             return SupplierDayClosure.MaxJobsReached;
 
         if (RomeCalendar.StartOfDayUtc(day.AddDays(1)) <= context.EarliestStartUtc)
@@ -168,7 +169,8 @@ public static class SupplierSlotPlanner
     /// </summary>
     internal static bool HasRoom(DateTime start, DateTime end, IReadOnlyList<SupplierInterval> widened, int capacity)
     {
-        var overlapping = widened.Where(interval => interval.StartUtc < end && interval.EndUtc > start).ToList();
+        var slot = new SupplierInterval(start, end);
+        var overlapping = widened.Where(interval => interval.Overlaps(slot)).ToList();
         if (overlapping.Count < capacity)
             return true;
 
@@ -201,6 +203,8 @@ public static class SupplierSlotPlanner
             Rules = input.Rules;
             TimeOff = input.TimeOff;
             ClosedDays = input.ClosedDays;
+            Buffer = TimeSpan.FromMinutes(Math.Max(0, input.Rules.BufferMinutes));
+            Capacity = Math.Max(1, input.Rules.ParallelJobs);
 
             var nowUtc = UtcDateTime.Normalize(input.NowUtc);
             Today = DateOnly.FromDateTime(RomeCalendar.TodayAt(new DateTimeOffset(nowUtc)));
@@ -215,7 +219,6 @@ public static class SupplierSlotPlanner
                 .ToLookup(opening => RomeCalendar.DateInRome(opening.StartUtc));
 
             var widened = new List<SupplierInterval>();
-            var buffer = TimeSpan.FromMinutes(Math.Max(0, input.Rules.BufferMinutes));
             foreach (var occupancy in input.Occupancies)
             {
                 // A hold that lapsed no longer holds a place (the planner is given the instant it is judged at).
@@ -230,7 +233,7 @@ public static class SupplierSlotPlanner
                         _jobsByDay[counted] = _jobsByDay.GetValueOrDefault(counted) + 1;
                 }
 
-                if (occupancy.Widened(buffer) is { } stretch)
+                if (occupancy.Widened(Buffer) is { } stretch)
                     widened.Add(stretch);
             }
 
@@ -244,6 +247,12 @@ public static class SupplierSlotPlanner
         public IReadOnlyList<SupplierDateRange> TimeOff { get; }
 
         public IReadOnlySet<DateOnly> ClosedDays { get; }
+
+        /// <summary>The pause kept before and after everything that takes the supplier's time (never negative).</summary>
+        public TimeSpan Buffer { get; }
+
+        /// <summary>How many jobs the supplier can do at once (at least 1).</summary>
+        public int Capacity { get; }
 
         /// <summary>Today in Europe/Rome.</summary>
         public DateOnly Today { get; }
@@ -261,6 +270,9 @@ public static class SupplierSlotPlanner
         public bool HasHours(DateOnly day) => _weekly[day.DayOfWeek].Any() || _extraByDay[day].Any();
 
         public int JobsOn(DateOnly day) => _jobsByDay.GetValueOrDefault(day);
+
+        /// <summary>True when the day already holds as many jobs as the supplier takes at most in a day (<c>MaxJobsPerDay</c>).</summary>
+        public bool IsDayFull(DateOnly day) => JobsOn(day) >= Rules.MaxJobsPerDay;
 
         /// <summary>True when the supplier is off that day (a time off covers it).</summary>
         public bool IsOnTimeOff(DateOnly day) => TimeOff.Any(range => range.From <= day && day <= range.To);
