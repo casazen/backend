@@ -66,6 +66,44 @@ public class DashboardController(
     }
 
     /// <summary>
+    /// The numbers of the Home in one read (SR-03b): the figures of <c>kpis</c> (same code) for the period and for the one before,
+    /// the difference between them worked out here (<c>occupancy.deltaPoints</c> in percentage points, <c>revenue.deltaPercent</c>),
+    /// the stays that arrive in the period and in the one before with the requests waiting for the host (<c>upcoming</c>), the next
+    /// three arrivals from today (<c>nextArrivals</c>) and the revenue by ISO week or by month, which adds up to the revenue
+    /// (<c>series</c>). <c>period=Month</c> (default, with an optional <c>month=yyyy-MM</c>), <c>Last30Days</c>, <c>Next30Days</c> or
+    /// <c>Custom</c> with <c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, both included, at most 366 days); 400
+    /// <c>dashboard_invalid_period</c>. <c>propertyId</c> narrows everything to one property of the caller's reach (404 for any other).
+    /// Money is payment data (SR-D7): without <c>payment.read</c> the answer has no <c>revenue</c>, <c>collected</c> or <c>series</c>
+    /// (nor the same inside <c>previous</c>) at all.
+    /// </summary>
+    [HttpGet("overview")]
+    [ProducesResponseType(typeof(HostOverviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HostOverviewDto>> GetOverview(
+        [FromQuery] string? period,
+        [FromQuery] string? month,
+        [FromQuery(Name = "from")] DateOnly? fromDay,
+        [FromQuery(Name = "to")] DateOnly? toDay,
+        [FromQuery] Guid? propertyId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseOverviewPeriod(period, month, fromDay, toDay, out var kind, out var monthStart))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidPeriodCode, "DashboardInvalidOverviewPeriod");
+
+        var scope = await GetScopeAsync(cancellationToken);
+        if (scope is null)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var overview = await dashboardService.GetOverviewAsync(
+            scope,
+            new HostOverviewQuery(kind, monthStart, fromDay, toDay, propertyId, await CanReadPaymentsAsync()),
+            cancellationToken);
+        return Ok(HostOverviewDto.From(overview));
+    }
+
+    /// <summary>
     /// The host's day in one read (SR-03): today's arrivals and departures (Europe/Rome) with how far their online check-in is, the
     /// check-ins to come, the "pay at the property" requests waiting with the time left to answer, and the things to do, most
     /// pressing first, each with what it lacks and where it leads (a key, never a path). The stays whose payment failed are
@@ -136,18 +174,55 @@ public class DashboardController(
     /// </summary>
     public static bool TryParsePeriod(string? period, string? month, out HostDashboardPeriodKind kind, out DateOnly? monthStart)
     {
-        kind = HostDashboardPeriodKind.Month;
         monthStart = null;
 
-        if (!string.IsNullOrWhiteSpace(period))
+        // A free period has days to say, which kpis does not take: it is as unknown a name there as before it existed.
+        return TryParseKind(period, out kind) && kind != HostDashboardPeriodKind.Custom && TryParseMonth(kind, month, out monthStart);
+    }
+
+    /// <summary>
+    /// <c>period</c> of the overview (SR-03b): the periods of <see cref="TryParsePeriod"/> and <c>Custom</c>, which needs <c>from</c>
+    /// and <c>to</c> (both days, in order, at most <see cref="HostDashboardPeriod.MaxCustomDays"/> days, in the supported years) and
+    /// takes no <c>month</c>; the others take no <c>from</c> or <c>to</c>.
+    /// </summary>
+    public static bool TryParseOverviewPeriod(
+        string? period,
+        string? month,
+        DateOnly? from,
+        DateOnly? to,
+        out HostDashboardPeriodKind kind,
+        out DateOnly? monthStart)
+    {
+        monthStart = null;
+        if (!TryParseKind(period, out kind))
+            return false;
+
+        if (kind == HostDashboardPeriodKind.Custom)
         {
-            // Names only: a number would bind to an undefined enum value.
-            if (!Enum.TryParse(period.Trim(), ignoreCase: true, out kind)
-                || !Enum.IsDefined(kind)
-                || period.Trim().All(char.IsAsciiDigit))
-                return false;
+            return string.IsNullOrWhiteSpace(month)
+                && from is { } first
+                && to is { } last
+                && HostDashboardPeriod.TryCustom(first, last, out _);
         }
 
+        return from is null && to is null && TryParseMonth(kind, month, out monthStart);
+    }
+
+    // Names only: a number would bind to an undefined enum value.
+    private static bool TryParseKind(string? period, out HostDashboardPeriodKind kind)
+    {
+        kind = HostDashboardPeriodKind.Month;
+        if (string.IsNullOrWhiteSpace(period))
+            return true;
+
+        return Enum.TryParse(period.Trim(), ignoreCase: true, out kind)
+            && Enum.IsDefined(kind)
+            && !period.Trim().All(char.IsAsciiDigit);
+    }
+
+    private static bool TryParseMonth(HostDashboardPeriodKind kind, string? month, out DateOnly? monthStart)
+    {
+        monthStart = null;
         if (string.IsNullOrWhiteSpace(month))
             return true;
 
