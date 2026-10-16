@@ -35,13 +35,27 @@ public sealed class SupplierTodayService(
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    public async Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
+    public Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
+        GetTodayAsync(supplierOrgId, 1, cancellationToken);
+
+    public async Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, int days, CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(days, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(days, SupplierTodayLimits.MaxDays);
+
         var today = _clock.TodayInRomeAsDateOnly();
 
+        // The jobs of today and of the days after it, in one read: the first in time first.
         var (jobs, _) = await requests.ListAsync(
             supplierOrgId,
-            new SupplierInboxQuery(JobStatuses, null, null, 1, MaxJobsListed, SupplierInboxSort.WorkTime, When: SupplierInboxWhen.Today),
+            new SupplierInboxQuery(
+                JobStatuses,
+                null,
+                null,
+                1,
+                MaxJobsListed,
+                SupplierInboxSort.WorkTime,
+                WorkDays: new SupplierInboxDayRange(today, today.AddDays(days - 1))),
             cancellationToken);
 
         var (newRequests, newTotal) = await requests.ListAsync(
@@ -51,7 +65,7 @@ public sealed class SupplierTodayService(
 
         var earnings = await kpis.GetEarningsSummaryAsync(supplierOrgId, cancellationToken);
 
-        return new SupplierToday(today, jobs, newRequests, newTotal, earnings);
+        return new SupplierToday(today, jobs, newRequests, newTotal, earnings, days);
     }
 
     public async Task<SupplierChecklist?> GetChecklistAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)

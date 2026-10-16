@@ -9,18 +9,34 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <param name="Date">Today, in Europe/Rome.</param>
 /// <param name="Jobs">
-/// The jobs whose day is today (taken, in progress, completed or paid), the first in time first; a job with no day (to agree
-/// with the host) is not here.
+/// The jobs whose day is today, or one of the <paramref name="Days"/> from today (taken, in progress, completed or paid), the first in
+/// time first; a job with no day (to agree with the host) is not here.
 /// </param>
 /// <param name="NewRequests">The first requests waiting for the supplier's answer, the one with the earliest deadline first.</param>
 /// <param name="NewRequestsTotal">How many requests wait for the supplier's answer.</param>
 /// <param name="Earnings">The earnings of the month, the amount to collect and the average response time (an estimate until SP-15).</param>
+/// <param name="Days">
+/// How many days <paramref name="Jobs"/> cover, from <paramref name="Date"/> on (SP-04e, <c>today?days=</c>, 1 to
+/// <see cref="SupplierTodayLimits.MaxDays"/>): 1 is today only, as before.
+/// </param>
 public sealed record SupplierToday(
     DateOnly Date,
     IReadOnlyList<SupplierServiceRequestView> Jobs,
     IReadOnlyList<SupplierServiceRequestView> NewRequests,
     int NewRequestsTotal,
-    SupplierEarningsSummary Earnings);
+    SupplierEarningsSummary Earnings,
+    int Days = 1)
+{
+    /// <summary>The last day <see cref="Jobs"/> cover.</summary>
+    public DateOnly LastDate => Date.AddDays(Days - 1);
+}
+
+/// <summary>The limits of the home of the console (SP-04e).</summary>
+public static class SupplierTodayLimits
+{
+    /// <summary>Most days <c>GET api/supplier/today?days=</c> covers: "today and the next days" of the home, a week at most.</summary>
+    public const int MaxDays = 7;
+}
 
 /// <summary>
 /// The steps of the activation checklist of the console (SP-04, <c>GET api/supplier/checklist</c>), each computed from what the
@@ -55,6 +71,14 @@ public interface ISupplierTodayService
 {
     /// <summary>The home of the supplier for today (Europe/Rome). Read-only.</summary>
     Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The home of the supplier for today and the next days (SP-04e): the jobs go from today to today plus
+    /// <paramref name="days"/> minus one (at most 50 of them), the rest is as for today. <paramref name="days"/> is from 1 to
+    /// <see cref="SupplierTodayLimits.MaxDays"/>. Read-only.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="days"/> is outside that range.</exception>
+    Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, int days, CancellationToken cancellationToken = default);
 
     /// <summary>The activation checklist of the supplier. Read-only; <c>null</c> when the org has no supplier profile.</summary>
     Task<SupplierChecklist?> GetChecklistAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);

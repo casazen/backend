@@ -76,18 +76,25 @@ public class SupplierRequestsController(
     /// requests to answer with the most urgent first (and how many there are), the earnings of the month from the <b>final amounts
     /// of the jobs completed</b> (<c>earnings.estimated</c> is true until the payments of SP-15 exist), what is left to collect,
     /// and the average time to answer (<c>takenAt − createdAt</c> over the last 90 days). The items follow the inbox's privacy
-    /// rule (decision D9).
+    /// rule (decision D9). With <c>days</c> (SP-04e, from 1 to 7, 1 by default) the jobs go from today to today plus
+    /// <c>days</c> minus one (at most 50): "today and the next days" in one call; the rest is unchanged. Every item carries its
+    /// <c>phase</c> and, for a completed job, its <c>payment</c> summary. 400 <c>validation_error</c> for <c>days</c> out of range.
     /// </summary>
     [HttpGet("today")]
     [ProducesResponseType(typeof(SupplierTodayDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<SupplierTodayDto>> GetToday(CancellationToken cancellationToken)
+    public async Task<ActionResult<SupplierTodayDto>> GetToday([FromQuery] int days = 1, CancellationToken cancellationToken = default)
     {
+        if (days is < 1 or > SupplierTodayLimits.MaxDays)
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierTodayDaysInvalid", SupplierTodayLimits.MaxDays);
+
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
-        return Ok(SupplierServiceRequestMapper.ToTodayDto(await today.GetTodayAsync(orgId.Value, cancellationToken)));
+        return Ok(SupplierServiceRequestMapper.ToTodayDto(await today.GetTodayAsync(orgId.Value, days, cancellationToken)));
     }
 
     /// <summary>

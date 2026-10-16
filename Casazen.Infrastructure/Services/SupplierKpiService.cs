@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
@@ -9,9 +10,18 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Supplier dashboard KPIs from <c>ServiceRequests</c> (SU-11, A4-15). The dashboard used to count the supplier jobs,
-/// which no real flow created, so a supplier with five completed requests read "0 completed".
+/// which no real flow created, so a supplier with five completed requests read "0 completed". The overview of the home (SP-04e)
+/// is in <c>SupplierKpiService.Overview.cs</c>; the payments it adds up come from <see cref="ISupplierPaymentReadModels"/>.
 /// </summary>
-public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : ISupplierKpiService
+/// <param name="db">The context.</param>
+/// <param name="timeProvider">The clock: "today" and the periods are Europe/Rome days.</param>
+/// <param name="features">The feature flags; without them the overview talks about no online payments.</param>
+/// <param name="payments">The reads of the payments; without them the overview talks about no online payments.</param>
+public partial class SupplierKpiService(
+    AppDbContext db,
+    TimeProvider timeProvider,
+    IFeatureFlags? features = null,
+    ISupplierPaymentReadModels? payments = null) : ISupplierKpiService
 {
     public async Task<SupplierServiceRequestKpis> GetKpisAsync(
         Guid supplierOrgId,

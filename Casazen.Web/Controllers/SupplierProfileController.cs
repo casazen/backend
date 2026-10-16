@@ -287,14 +287,20 @@ public class SupplierProfileController(
     /// A page of the service requests sent to the caller's supplier org (SU-08, A4-14; SP-04), server-side paginated.
     /// <c>tab</c>: the console's own way to pick the requests, <c>nuove</c> (waiting for the answer, the one to answer first on
     /// top), <c>programmate</c> (taken or in progress, the next job on top), <c>da-incassare</c> (completed, not paid) or
-    /// <c>archivio</c> (paid, rejected, cancelled); when it is sent, <c>status</c> is ignored. <c>status</c>: <c>open</c>
+    /// <c>archivio</c> (paid, rejected, cancelled); since SP-04e also <c>da-rispondere</c> (<c>nuove</c> with no proposed time
+    /// waiting: the supplier still has to answer) and <c>in-attesa</c> (<c>nuove</c> with a proposed time the customer has not
+    /// answered), both the one to answer first on top, while <c>nuove</c> is what it was; when it is sent, <c>status</c> is
+    /// ignored. <c>status</c>: <c>open</c>
     /// (default: waiting, taken, in progress), <c>history</c> (completed, paid, rejected, cancelled), <c>all</c>, or one status
     /// name. Filters: <c>service</c> (a service of the catalog by id, or a category code), <c>comune</c> (ISTAT code or name),
     /// <c>when</c> (<c>oggi</c>, <c>settimana</c> = the next 7 days, <c>mese</c> = this month: the day of the job), <c>clientId</c>
-    /// (the host org, the <c>clientId</c> of the items); <c>from</c>/<c>to</c>: Europe/Rome days (<c>YYYY-MM-DD</c>, both
+    /// (the host org, the <c>clientId</c> of the items), <c>source</c> (<c>casazen</c> or <c>showcase</c>: where the request comes from)
+    /// and <c>q</c> (a text of 2 to 60 characters, any case: the service name, the category, the comune, or a whole booking code; never
+    /// the customer, the property or the notes, so the search by name stays on the rows the console loaded);
+    /// <c>from</c>/<c>to</c>: Europe/Rome days (<c>YYYY-MM-DD</c>, both
     /// included) on the activity date of each request (<see cref="SupplierInboxStatusFilter"/>). 400 <c>validation_error</c>
-    /// for another tab, status or <c>when</c>, or <c>from</c> after <c>to</c>. Items carry comune, postal code, day and time,
-    /// price, <c>source</c> and <c>respondBy</c>; the name of the property, the host's notes, the street address and the
+    /// for another tab, status, <c>when</c> or <c>source</c>, a <c>q</c> of the wrong length, or <c>from</c> after <c>to</c>. Items carry comune, postal code, day and time,
+    /// price, <c>source</c> and <c>respondBy</c>, since SP-04e <c>phase</c> and, for a completed job, the <c>payment</c> summary; the name of the property, the host's notes, the street address and the
     /// host contact only for the requests the supplier took (decision D9); never the guest.
     /// </summary>
     [HttpGet("inbox")]
@@ -313,10 +319,13 @@ public class SupplierProfileController(
         [FromQuery] string? comune = null,
         [FromQuery] string? when = null,
         [FromQuery] Guid? clientId = null,
+        [FromQuery] string? source = null,
+        [FromQuery] string? q = null,
         CancellationToken cancellationToken = default)
     {
         IReadOnlyCollection<ServiceRequestStatus> statuses;
         var sort = SupplierInboxSort.Activity;
+        bool? awaitingCustomer = null;
         if (!string.IsNullOrWhiteSpace(tab))
         {
             // The tab says which requests and in which order; the status is left out.
@@ -325,6 +334,7 @@ public class SupplierProfileController(
 
             statuses = SupplierInboxTabs.StatusesOf(inboxTab);
             sort = SupplierInboxTabs.SortOf(inboxTab);
+            awaitingCustomer = SupplierInboxTabs.AwaitingCustomerOf(inboxTab);
         }
         else if (!SupplierInboxStatusFilter.TryParse(status, out statuses))
         {
@@ -342,6 +352,23 @@ public class SupplierProfileController(
 
         if (from is { } start && to is { } end && start > end)
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxPeriodInvalid");
+
+        ServiceRequestSource? inboxSource = null;
+        if (!string.IsNullOrWhiteSpace(source))
+        {
+            if (!SupplierRequestSources.TryParse(source, out var parsedSource))
+                return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxSourceInvalid");
+
+            inboxSource = parsedSource;
+        }
+
+        if (!SupplierInboxSearch.TryNormalize(q, out var text))
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest,
+                ProblemCodes.ValidationError,
+                "SupplierInboxSearchInvalid",
+                SupplierInboxSearch.MinLength,
+                SupplierInboxSearch.MaxLength);
 
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null)
@@ -362,7 +389,10 @@ public class SupplierProfileController(
                 Truncate(service, ServiceRequestLimits.InboxFilterMaxLength),
                 Truncate(comune, ServiceRequestLimits.InboxFilterMaxLength),
                 inboxWhen,
-                clientId),
+                clientId,
+                inboxSource,
+                text,
+                awaitingCustomer),
             cancellationToken);
 
         logger.LogDebug("Supplier inbox: tab={Tab}, status={Status}, page={Page}, total={Total}", tab, status, page, total);
@@ -397,6 +427,26 @@ public class SupplierProfileController(
             return ServiceRequestsController.ServiceRequestNotFound(this);
 
         return Ok(SupplierServiceRequestMapper.ToDetailDto(request));
+    }
+
+    /// <summary>
+    /// The counters of the tabs of the inbox and the payments that are late (SP-04e): <c>toAnswer</c> (tab <c>da-rispondere</c>),
+    /// <c>awaitingCustomer</c> (<c>in-attesa</c>; <c>nuove</c> is the sum of the two), <c>scheduled</c> (<c>programmate</c>),
+    /// <c>toCollect</c> (<c>da-incassare</c>), <c>archive</c> (<c>archivio</c>) and <c>paymentsLate</c>. One place for the chips of the
+    /// list, the menu and the home: they agree with the lists because they use the same rules.
+    /// </summary>
+    [HttpGet("inbox/counts")]
+    [ProducesResponseType(typeof(SupplierInboxCountsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierInboxCountsDto>> GetInboxCounts(
+        [FromServices] ISupplierServiceRequestReader reader,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        return Ok(SupplierReadModelsMapper.ToDto(await reader.GetInboxCountsAsync(orgId.Value, cancellationToken)));
     }
 
     /// <summary>A filter of the inbox cut to <paramref name="maxLength"/> characters: a longer value matches nothing anyway.</summary>
@@ -530,6 +580,34 @@ public class SupplierProfileController(
             Upcoming = kpis.Upcoming,
             TotalRequests = kpis.TotalRequests,
         });
+    }
+
+    /// <summary>
+    /// The three numbers of the console home with the period before them (SP-04e): how often the supplier says yes
+    /// (<c>acceptanceRate</c>), how long it takes to answer (<c>averageResponseMinutes</c>) and what came in (<c>paidNetCents</c>),
+    /// with what it received, accepted and refused and the jobs it completed, for <c>period</c> (<c>current-month</c> by default,
+    /// <c>last-30-days</c>, <c>last-3-months</c>; Europe/Rome days) and for the same number of days just before it. A figure that
+    /// does not exist is <c>null</c>, never 0. The money counts only when <c>onlinePayments</c> is true (the flag
+    /// <c>SupplierOnlinePayments</c> is on and the supplier has payments); otherwise it is 0 and the console talks about the jobs
+    /// completed. Definitions: <c>docs/runbooks/suppliers.md</c> § 27. 400 <c>validation_error</c> for another period.
+    /// </summary>
+    [HttpGet("dashboard/overview")]
+    [ProducesResponseType(typeof(SupplierOverviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierOverviewDto>> GetOverview(
+        [FromServices] ISupplierKpiService kpiService,
+        [FromQuery] string? period = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!SupplierKpiPeriods.TryParseOverview(period, out var overviewPeriod))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierOverviewPeriodInvalid");
+
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        return Ok(SupplierReadModelsMapper.ToDto(await kpiService.GetOverviewAsync(orgId.Value, overviewPeriod, cancellationToken)));
     }
 
     // ─── Photo Upload ─────────────────────────────────────────────────────────
