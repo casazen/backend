@@ -2864,7 +2864,7 @@
     <value>Linen</value>
   </data>
   <data name="SeoSupplierCategory_check-in" xml:space="preserve">
-    <value>Check-in</value>
+    <value>Guest check-in</value>
   </data>
   <data name="SeoSupplierCategory_gardening" xml:space="preserve">
     <value>Gardening</value>
