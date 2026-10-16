@@ -22,8 +22,9 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <para>A party whose fiscal code is also a party, not anonymized, of another lease of the same org that has not ended
 /// is kept until that lease ends: the lease is retried at every run and marked anonymized only when every party is.</para>
-/// <para>What is removed: names, fiscal code, citizenship and e-mail of the party, and the provider signing link and signer
-/// id of its signature. What stays: role and extra-EU flag (shape of the lease, Questura history), dates and amounts of
+/// <para>What is removed: names, fiscal code, citizenship, e-mail, residence and the day the documents were checked of the
+/// party (LR-12), the values the landlord typed in the wizard and kept in the draft (<see cref="LeaseContract.DraftData"/>),
+/// and the provider signing link and signer id of its signature. What stays: role and extra-EU flag (shape of the lease, Questura history), dates and amounts of
 /// the lease, the events (no personal data), and the stored documents (signed contract, RLI and Questura receipts): their
 /// deletion is a decision of the product owner (runbook § 7).</para>
 /// <para>The nightly run is a system job: the tenant filter is off, the queries span every org on purpose; the request
@@ -186,6 +187,9 @@ public sealed class LeasePartyPrivacyService(
 
         if (anonymizedIds.Count > 0)
         {
+            // The values typed in the wizard repeat the data of the parties: they go with them (LR-12).
+            lease.DraftData = null;
+
             var signers = await db.LeaseSigners
                 .Where(s => s.LeaseContractId == lease.Id && anonymizedIds.Contains(s.PartyId))
                 .ToListAsync(cancellationToken);
@@ -214,7 +218,10 @@ public sealed class LeasePartyPrivacyService(
         return (anonymizedIds.Count, kept);
     }
 
-    /// <summary>Replaces every personal field of <paramref name="party"/>; role and extra-EU flag stay.</summary>
+    /// <summary>
+    /// Replaces every personal field of <paramref name="party"/> (names, fiscal code, citizenship, e-mail) and clears the residence
+    /// and the day the documents were checked (LR-12); role and extra-EU flag stay.
+    /// </summary>
     public static void AnonymizeParty(Party party, DateTime now)
     {
         party.FirstName = AnonymizedValue;
@@ -222,6 +229,8 @@ public sealed class LeasePartyPrivacyService(
         party.FiscalCode = AnonymizedValue;
         party.Citizenship = string.Empty;
         party.ContactEmail = AnonymizedEmail(party.Id);
+        party.Residence = null;
+        party.DocumentsVerifiedOn = null;
         party.AnonymizedAt ??= now;
     }
 
