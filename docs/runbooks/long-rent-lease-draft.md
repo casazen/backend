@@ -248,6 +248,9 @@ its parties and the tax regime, which the old form never asked, are to do.
 
 **Rollback**: flag off first (the endpoints answer 404, the job is removed). `Down` drops the columns: the typed state of the drafts still
 incomplete, the residences, the day documents were checked and the wizard progress are **lost** (the contracts themselves are untouched).
+The events of the four new types stay in `LeaseEvents` (`Down` does not touch them): if the code is rolled back too, delete them first,
+`DELETE FROM "LeaseEvents" WHERE "EventType" IN (16, 17, 18, 19)` (the numbers of `LeaseEventType` at the merge; check the enum), because the
+previous code does not know them.
 Proved on PostgreSQL with historical rows written by SQL, revert and reapply by `AddGuidedLeaseDraftMigrationPostgresTests` (CI).
 
 ## 13. Configuration

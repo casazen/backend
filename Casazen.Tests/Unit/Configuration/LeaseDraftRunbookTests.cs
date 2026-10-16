@@ -1,4 +1,5 @@
 using System.Reflection;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Leases;
 using Casazen.Core.Options;
@@ -99,6 +100,14 @@ public class LeaseDraftRunbookTests
         Assert.Contains($"`registrationDays: {LongRentRules.Current.RegistrationDays}`", runbook);
         Assert.Equal("50 3 * * *", LeaseDraftRetentionJob.Cron);
         Assert.Contains("Every day at 03:50 UTC", runbook);
+
+        // The numbers of the four new events are in the runbook (the rollback deletes them by number): the enum is append-only, so
+        // they only move when another event is added before them, and then this page is to be updated.
+        Assert.Equal(
+            [16, 17, 18, 19],
+            new[] { LeaseEventType.ReviewConfirmed, LeaseEventType.ReviewReopened, LeaseEventType.SentForSignature, LeaseEventType.SentRevoked }
+                .Select(e => (int)e));
+        Assert.Contains("IN (16, 17, 18, 19)", runbook);
     }
 
     [Fact]
