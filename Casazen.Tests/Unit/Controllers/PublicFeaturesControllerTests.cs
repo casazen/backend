@@ -9,8 +9,7 @@ using Xunit;
 namespace Casazen.Tests.Unit.Controllers;
 
 /// <summary>
-/// <c>GET /api/public/features</c> (FD-20): one camelCase key per flag of <see cref="FeatureFlags.All"/>. BL-01 adds
-/// <c>uiRedesign</c>, off unless <c>Features:UiRedesign</c> is explicitly <c>true</c>.
+/// <c>GET /api/public/features</c> (FD-20): one camelCase key per flag of <see cref="FeatureFlags.All"/>.
 /// </summary>
 public class PublicFeaturesControllerTests
 {
@@ -25,24 +24,13 @@ public class PublicFeaturesControllerTests
     }
 
     [Fact]
-    public void Get_DefaultConfiguration_ListsEveryFlagOff_UiRedesignIncluded()
+    public void Get_DefaultConfiguration_ListsEveryFlagOff()
     {
         var features = Get(new Dictionary<string, string?>());
 
-        Assert.True(features.ContainsKey("uiRedesign"));
-        Assert.False(features["uiRedesign"]);
         Assert.Equal(
             FeatureFlags.All.Select(JsonNamingPolicy.CamelCase.ConvertName).Order(),
             features.Keys.Order());
         Assert.All(features, feature => Assert.False(feature.Value, $"{feature.Key} must be off by default"));
-    }
-
-    [Fact]
-    public void Get_UiRedesignOn_ReportsOnlyThatFlagOn()
-    {
-        var features = Get(new Dictionary<string, string?> { ["Features:UiRedesign"] = "true" });
-
-        Assert.True(features["uiRedesign"]);
-        Assert.All(features.Where(feature => feature.Key != "uiRedesign"), feature => Assert.False(feature.Value));
     }
 }

@@ -13,7 +13,7 @@ namespace Casazen.Tests.Unit.Services;
 /// AM-02c (AM-02b-FU4): the activity log learns the change of mode of a property. Programming a change, cancelling it and the
 /// daily job that applies it each leave one line (<c>PropertyModeChangeScheduled</c>, <c>PropertyModeChangeCancelled</c>,
 /// <c>PropertyModeChanged</c>), in the transaction of the change: ids and codes only, the area of the property at that moment, no
-/// actor for the job; a change that fails, a refusal and a flag that is off write nothing. The service over EF InMemory with the
+/// actor for the job; a change that fails and a refusal write nothing. The service over EF InMemory with the
 /// real log writer; the rollback that takes the line away is the transaction's, proved by <c>OrgActivityPostgresTests</c> (CI).
 /// </summary>
 public class PropertyModeActivityTests : IDisposable
@@ -28,7 +28,7 @@ public class PropertyModeActivityTests : IDisposable
         return await _h.Db.OrgActivityEntries.IgnoreQueryFilters().AsNoTracking().OrderBy(e => e.When).ThenBy(e => e.Type).ToListAsync();
     }
 
-    private PropertyModeService WithLog(bool orgTeamOn = true) => _h.NewService(_h.Db, _h.ActivityLogFor(_h.Db, orgTeamOn));
+    private PropertyModeService WithLog() => _h.NewService(_h.Db, _h.ActivityLogFor(_h.Db));
 
     // ─── Programming ────────────────────────────────────────────────────────────────────────────────
 
@@ -200,39 +200,6 @@ public class PropertyModeActivityTests : IDisposable
         Assert.Equal(
             new[] { (first.OrgId, OrgActivityArea.LongRent), (second.OrgId, OrgActivityArea.ShortRent) }.Order(),
             lines.Select(l => (l.OrgId, l.Area)).Order());
-    }
-
-    // ─── Switched off, and absent ───────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task WithTheOrgTeamFlagOff_TheLogCollectsNothing_AndTheChangeWorksAsBefore()
-    {
-        var property = await _h.SeedPropertyAsync();
-        var due = await _h.SeedPropertyAsync(name: "In scadenza");
-        var dueChange = await _h.SeedChangeAsync(due, RentalMode.Long, Today);
-        var service = WithLog(orgTeamOn: false);
-
-        var scheduled = await service.ScheduleAsync(property.Id, RentalMode.Long, Day(20), UserId);
-        await service.CancelAsync(property.Id, scheduled.Id, UserId);
-        await service.ApplyDueAsync();
-
-        // Programmed, cancelled and applied as before, and the log, dormant while the flag is off, collected nothing.
-        Assert.Empty(await LinesAsync());
-        Assert.Equal(PropertyModeChangeStatus.Cancelled, (await _h.ReloadChangeAsync(scheduled.Id)).Status);
-        Assert.Equal(RentalMode.Long, (await _h.ReloadPropertyAsync(due.Id)).RentalMode);
-        Assert.Equal(PropertyModeChangeStatus.Applied, (await _h.ReloadChangeAsync(dueChange.Id)).Status);
-    }
-
-    [Fact]
-    public async Task TheDefaultServiceOfTheHarness_HasTheLogSwitchedOff_SoItWritesNothingAndTheChangeWorks()
-    {
-        // The log is a required dependency (a host without it would drop the audit lines in silence); the harness gives the
-        // one with the flag off by default, which is how every other test of the change of mode runs.
-        var property = await _h.SeedPropertyAsync();
-
-        await _h.Service.ScheduleAsync(property.Id, RentalMode.Long, Day(20), UserId);
-
-        Assert.Empty(await LinesAsync());
     }
 
     // ─── The person in charge goes with the reach (AM-02c) ──────────────────────────────────────────

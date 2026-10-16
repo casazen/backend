@@ -42,8 +42,6 @@ internal sealed class OrgInvitationTestKit
 
     public Dictionary<string, string?> Settings { get; } = [];
 
-    public bool OrgTeamFlag { get; set; } = true;
-
     /// <summary>When false the queue refuses every email (provider not configured, queue down).</summary>
     public bool QueueAccepts { get; set; } = true;
 
@@ -128,7 +126,6 @@ internal sealed class OrgInvitationTestKit
 
     public OrgInvitationMaintenanceService Maintenance(AppDbContext db) => new(
         db,
-        Flags(),
         Queue(),
         EmailTestHelpers.Links(PublicSiteBaseUrl),
         Config(),
@@ -137,15 +134,8 @@ internal sealed class OrgInvitationTestKit
 
     // ─── The activity log (AM-02b) ──────────────────────────────────────────────────────────────────────
 
-    private IFeatureFlags Flags()
-    {
-        var flags = new Mock<IFeatureFlags>();
-        flags.Setup(f => f.IsEnabled(FeatureFlags.OrgTeam)).Returns(OrgTeamFlag);
-        return flags.Object;
-    }
-
     /// <summary>The activity log writer on <paramref name="db"/>: the service that saves with that context saves its lines too.</summary>
-    public ActivityLog Activity(AppDbContext db) => new(db, Flags(), Clock);
+    public ActivityLog Activity(AppDbContext db) => new(db, Clock);
 
     public OrgPropertyAccessService PropertyAccess(AppDbContext db) =>
         new(db, Cache.Object, Activity(db), NullLogger<OrgPropertyAccessService>.Instance, Clock);

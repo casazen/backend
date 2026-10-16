@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Auth;
@@ -65,13 +64,10 @@ public class MeControllerTests
         Assert.Equal("short-rent", payload.LastUsedContextKey);
     }
 
-    [Theory]
-    [InlineData(false, new[] { "long-rent", "short-rent" })]
-    [InlineData(true, new[] { "account", "long-rent", "short-rent" })]
-    public async Task GetContexts_AccountContext_IsListedOnlyWithTheOrgTeamFlag(bool orgTeam, string[] expectedContexts)
+    [Fact]
+    public async Task GetContexts_AccountContext_IsListedFirst()
     {
-        // AM-01: the clients of today do not know the account context (the web workspace switcher has no icon for it and
-        // the first context of the list becomes the active one): it stays out of the list until the flag is on.
+        // AM-01: the account context is a context like the others, listed by key (the clients that have no area for it leave it out).
         var userService = new Mock<IUserService>();
         var contextService = new Mock<IContextAuthorizationService>();
         userService.Setup(x => x.GetCurrentUserAsync("auth0|owner", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
@@ -83,16 +79,16 @@ public class MeControllerTests
                 new ContextAccess("short-rent", "Affitti brevi", "property_owner", ["booking.read"], "/app/short-rent"),
             ]);
 
-        var controller = BuildController(userService.Object, contextService.Object, "auth0|owner", orgTeam);
+        var controller = BuildController(userService.Object, contextService.Object, "auth0|owner");
 
         var result = await controller.GetContexts(CancellationToken.None);
 
         var payload = Assert.IsType<UserContextsResponse>(Assert.IsType<OkObjectResult>(result.Result).Value);
-        Assert.Equal(expectedContexts, payload.Contexts.Select(c => c.ContextKey));
+        Assert.Equal(new[] { "account", "long-rent", "short-rent" }, payload.Contexts.Select(c => c.ContextKey));
     }
 
     [Fact]
-    public async Task GetContexts_StaffAndSupplierContexts_AreNeverFilteredByTheFlag()
+    public async Task GetContexts_StaffAndSupplierContexts_AreListed()
     {
         var userService = new Mock<IUserService>();
         var contextService = new Mock<IContextAuthorizationService>();
@@ -104,7 +100,7 @@ public class MeControllerTests
                 new ContextAccess("supplier", "Fornitore", "supplier", ["supplier.inbox.read"], "/supplier/inbox"),
             ]);
 
-        var controller = BuildController(userService.Object, contextService.Object, "auth0|staff", orgTeam: false);
+        var controller = BuildController(userService.Object, contextService.Object, "auth0|staff");
 
         var result = await controller.GetContexts(CancellationToken.None);
 
@@ -115,12 +111,9 @@ public class MeControllerTests
     private static MeController BuildController(
         IUserService userService,
         IContextAuthorizationService contextAuthorizationService,
-        string userId,
-        bool orgTeam = false)
+        string userId)
     {
-        var featureFlags = new Mock<IFeatureFlags>();
-        featureFlags.Setup(f => f.IsEnabled(FeatureFlags.OrgTeam)).Returns(orgTeam);
-        var controller = new MeController(userService, contextAuthorizationService, featureFlags.Object);
+        var controller = new MeController(userService, contextAuthorizationService);
         var identity = new ClaimsIdentity(new[] { new Claim("sub", userId) }, "TestAuth");
         controller.ControllerContext = new ControllerContext
         {

@@ -16,19 +16,18 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// UI-12a over the real pipeline with <c>Features:InAppNotifications</c> on: the four endpoints of the bell with the token of
+/// UI-12a over the real pipeline: the four endpoints of the bell with the token of
 /// the user, the isolation between users and orgs, and the whole chain from a push queued by a service to the notification the
 /// user reads (decorator, job, endpoint), once. The updates (<c>read</c>, <c>read-all</c>) are single SQL statements the in-memory
-/// fallback does not run, so those tests are <c>[PostgresFact]</c>. With the flag off see
-/// <see cref="InAppNotificationsFlagOffIntegrationTests"/>.
+/// fallback does not run, so those tests are <c>[PostgresFact]</c>.
 /// </summary>
-public class InAppNotificationsIntegrationTests : IClassFixture<InAppNotificationsIntegrationTests.EnabledFactory>
+public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private static readonly DateTime Day = new(2026, 10, 9, 8, 0, 0, DateTimeKind.Utc);
 
-    private readonly EnabledFactory _factory;
+    private readonly CasazenWebApplicationFactory _factory;
 
-    public InAppNotificationsIntegrationTests(EnabledFactory factory) => _factory = factory;
+    public InAppNotificationsIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
     // ─── Access ───
 
@@ -41,16 +40,6 @@ public class InAppNotificationsIntegrationTests : IClassFixture<InAppNotificatio
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/me/notifications/unread-count")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsync($"/api/me/notifications/{Guid.NewGuid()}/read", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsync("/api/me/notifications/read-all", null)).StatusCode);
-    }
-
-    [Fact]
-    public async Task PublicFeatures_WithTheFlagOn_ExposesIt()
-    {
-        using var anonymous = _factory.CreateClient();
-
-        var features = await anonymous.GetFromJsonAsync<JsonElement>("/api/public/features");
-
-        Assert.True(features.GetProperty("inAppNotifications").GetBoolean());
     }
 
     // ─── The list and the count ───
@@ -332,77 +321,4 @@ public class InAppNotificationsIntegrationTests : IClassFixture<InAppNotificatio
             .Select(i => (Job)i.Arguments[0])
             .Where(j => j.Args.Count > 0 && j.Args[0] is string key && key == deliveryKey)
             .ToList();
-
-    /// <summary>The integration host with <c>Features:InAppNotifications</c> on.</summary>
-    public sealed class EnabledFactory : CasazenWebApplicationFactory
-    {
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            base.ConfigureWebHost(builder);
-            builder.ConfigureAppConfiguration((_, config) =>
-                config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:InAppNotifications"] = "true" }));
-        }
-    }
-}
-
-/// <summary>
-/// UI-12a with the default configuration (<c>Features:InAppNotifications</c> off): the four endpoints answer 404 like a route
-/// that does not exist, before authentication, a push queues the push and nothing else, and nothing is written.
-/// </summary>
-public class InAppNotificationsFlagOffIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
-{
-    private readonly CasazenWebApplicationFactory _factory;
-
-    public InAppNotificationsFlagOffIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
-
-    [Fact]
-    public async Task Endpoints_FlagOff_Answer404ToTheOwnerAndToAnonymous()
-    {
-        var property = await _factory.SeedPropertyAsync($"auth0|bell-off-{Guid.NewGuid():N}");
-        using var owner = _factory.CreateAuthenticatedClient(property.OwnerId, "PropertyOwner");
-        using var anonymous = _factory.CreateClient();
-
-        foreach (var client in new[] { owner, anonymous })
-        {
-            await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(await client.GetAsync("/api/me/notifications"));
-            await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(await client.GetAsync("/api/me/notifications/unread-count"));
-            await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(
-                await client.PostAsync($"/api/me/notifications/{Guid.NewGuid()}/read", null));
-            await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(await client.PostAsync("/api/me/notifications/read-all", null));
-        }
-    }
-
-    [Fact]
-    public async Task APush_FlagOff_QueuesThePushAndNothingElse_AndNothingIsWritten()
-    {
-        var property = await _factory.SeedPropertyAsync($"auth0|bell-off-push-{Guid.NewGuid():N}");
-        var key = $"service-request:{Guid.NewGuid():N}:Completato";
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            scope.ServiceProvider.GetRequiredService<IPushNotificationService>().Enqueue(
-                key,
-                PushAudience.PropertyHosts(property.Id),
-                new PushNotificationPayload("t", "b", PushTypes.ServiceRequestCompleted, null, PushRoutes.Properties, Guid.NewGuid()));
-        }
-
-        var jobs = _factory.BackgroundJobClientMock.Invocations
-            .Where(i => i.Method.Name == nameof(Hangfire.IBackgroundJobClient.Create))
-            .Select(i => (Job)i.Arguments[0])
-            .Where(j => j.Args.Count > 0 && j.Args[0] is string queuedKey && queuedKey == key)
-            .ToList();
-        Assert.Equal([typeof(PushDeliveryJob)], jobs.Select(j => j.Type));
-        using var check = _factory.Services.CreateScope();
-        Assert.False(await check.ServiceProvider.GetRequiredService<AppDbContext>().InAppNotifications.IgnoreQueryFilters().AnyAsync(n => n.DeliveryKey == key));
-    }
-
-    [Fact]
-    public async Task PublicFeatures_Default_ReturnsInAppNotificationsOff()
-    {
-        using var anonymous = _factory.CreateClient();
-
-        var features = await anonymous.GetFromJsonAsync<JsonElement>("/api/public/features");
-
-        Assert.False(features.GetProperty("inAppNotifications").GetBoolean());
-    }
 }
