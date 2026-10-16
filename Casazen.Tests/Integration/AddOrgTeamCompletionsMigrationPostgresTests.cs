@@ -16,11 +16,12 @@ namespace Casazen.Tests.Integration;
 
 /// <summary>
 /// AM-02c on a real PostgreSQL database: the migration <c>AddOrgTeamCompletions</c> applied to a database that already has
-/// invitations and a property manager written with SQL at the schema before it. The two new columns of the invitations take
-/// safe values for the rows that exist (no send recorded, so the cap does not count them and «reinvia» is not held back), the
-/// new table has its unique index and its three cascades, the role of the property manager (id 13) is seeded with its one
-/// permission and no membership is written by the migration (the reconcile does it); and the rollback takes away what the
-/// migration added, even when a property manager already holds the new role.
+/// invitations (rows written with SQL at the schema before it: <c>LegacyOrgRows</c> and <c>LegacyOrgInvitationRows</c>, so a column
+/// that a later migration adds to a table cannot break this test). The two new columns of the invitations take safe values for the
+/// rows that exist (no send recorded, so the cap does not count them and «reinvia» is not held back), the new table has its unique
+/// index and its three cascades, the role of the property manager (id 13) is seeded with its one permission and no membership is
+/// written by the migration (the reconcile does it, on a property manager that exists already); and the rollback takes away what
+/// the migration added, even when a property manager already holds the new role.
 /// </summary>
 public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
 {
@@ -50,9 +51,11 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
     {
         await using var db = _database!.CreateContext();
         db.GetService<IMigrator>().Migrate(PreviousMigration(db));
-        var (org, _) = await _kit.SeedOwnerOrgAsync();
-        var pending = await InsertHistoricalInvitationAsync(db, org.Id, "storica@example.com", OrgInvitationStatus.Pending);
-        await InsertHistoricalInvitationAsync(db, org.Id, "revocata@example.com", OrgInvitationStatus.Revoked);
+        var org = NewOrg();
+        await LegacyOrgRows.InsertAsync(db, org);
+        var pending = NewHistoricalInvitation(org.Id, "storica@example.com", OrgInvitationStatus.Pending);
+        await LegacyOrgInvitationRows.InsertAsync(db, pending);
+        await LegacyOrgInvitationRows.InsertAsync(db, NewHistoricalInvitation(org.Id, "revocata@example.com", OrgInvitationStatus.Revoked));
 
         await db.Database.MigrateAsync();
 
@@ -68,17 +71,26 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
 
         // The model reads the old rows with the new columns: no list that is null, no date that is not there.
         db.ChangeTracker.Clear();
-        var stored = await db.OrgInvitations.IgnoreQueryFilters().AsNoTracking().SingleAsync(i => i.Id == pending);
+        var stored = await db.OrgInvitations.IgnoreQueryFilters().AsNoTracking().SingleAsync(i => i.Id == pending.Id);
         Assert.Equal((OrgInvitationStatus.Pending, OrgRole.Collaborator), (stored.Status, stored.Role));
         Assert.Equal(["short-rent"], stored.Areas);
         Assert.Empty(stored.SendLog);
         Assert.Null(stored.LastSentAt);
 
+        // The org gets its people after the migration (written with the model of today, which is fine from here on) and a plan
+        // with room for them.
+        var upgraded = await db.Orgs.SingleAsync(o => o.Id == org.Id);
+        upgraded.PlanTier = PlanTier.Pro;
+        upgraded.SubscriptionStatus = SubscriptionStatus.Active;
+        upgraded.SubscriptionId = $"sub_{Guid.NewGuid():N}";
+        await db.SaveChangesAsync();
+        await _kit.SeedOwnerOfOrgAsync(org.Id, OwnerId);
+
         // The cap counts the sends of the last 24 hours: the rows of before used none of the allowance, and an invitation
         // written before the column existed can be sent again at once (nothing says it was sent a minute ago).
         _kit.Settings["OrgTeam:InvitationDailyLimit"] = "2";
         await using (var resend = _kit.NewDb())
-            Assert.True((await _kit.Invitations(resend).ResendAsync(org.Id, pending, OwnerId)).EmailQueued);
+            Assert.True((await _kit.Invitations(resend).ResendAsync(org.Id, pending.Id, OwnerId)).EmailQueued);
         await using (var create = _kit.NewDb())
             await _kit.Invitations(create).CreateAsync(NewInvitation(org.Id, "nuova@example.com"));
         await using (var third = _kit.NewDb())
@@ -92,7 +104,7 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
         await using (var again = _kit.NewDb())
         {
             var tooSoon = await Assert.ThrowsAsync<DomainTooManyRequestsException>(
-                () => _kit.Invitations(again).ResendAsync(org.Id, pending, OwnerId));
+                () => _kit.Invitations(again).ResendAsync(org.Id, pending.Id, OwnerId));
             Assert.Equal(OrgInvitationErrors.ResendTooSoon, tooSoon.Code);
         }
     }
@@ -139,25 +151,20 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task Reconcile_AfterTheMigration_GivesEveryExistingPropertyManagerItsRestrictedAccountMembership()
+    public async Task Reconcile_OfAPropertyManagerWithoutTheAccountRow_GivesItTheRestrictedAccountMembership()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await db.Database.MigrateAsync();
         var (org, _) = await _kit.SeedOwnerOrgAsync();
 
-        // A property manager as the team wrote it before AM-02c: the rental membership of its role and no account one.
+        // A property manager as the team wrote it before AM-02c: the rental membership of its role and no account one. (The
+        // migration itself writes no membership: its script has no INSERT into UserContextMemberships, see the SQL test.)
         const string historic = "auth0|pia-storica";
         db.Users.Add(NewUser(historic, org.Id));
         db.OrgMembers.Add(new OrgMember { OrgId = org.Id, UserId = historic, Role = OrgRole.PropertyManager, Status = OrgMemberStatus.Active });
         db.UserContextMemberships.Add(
             new UserContextMembership { UserId = historic, ContextKey = "short-rent", RoleId = ShortRentPropertyManagerRoleId });
         await db.SaveChangesAsync();
-        var accountRowsBefore = await ScalarAsync("""SELECT COUNT(*) FROM "UserContextMemberships" WHERE "ContextKey" = 'account'""");
-
-        await db.Database.MigrateAsync();
-
-        // The migration only seeds the role: it writes no membership (the flag is off, and a migration guesses nothing).
-        Assert.Equal(accountRowsBefore, await ScalarAsync("""SELECT COUNT(*) FROM "UserContextMemberships" WHERE "ContextKey" = 'account'"""));
         Assert.Equal(["short-rent/property_manager"], await _kit.MembershipsAsync(historic));
 
         OrgMembershipReconcileReport dryRun;
@@ -229,33 +236,37 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
         IReadOnlyCollection<Guid>? propertyIds = null) =>
         new(orgId, OwnerId, email, "Persona di Prova", OrgRole.Collaborator, ["short-rent"], scope, PropertyIds: propertyIds);
 
-    /// <summary>
-    /// An invitation as the schema before this migration stored it: written with SQL, because the model of today has two
-    /// columns more than that table.
-    /// </summary>
-    private static async Task<Guid> InsertHistoricalInvitationAsync(AppDbContext db, Guid orgId, string email, OrgInvitationStatus status)
+    private static OrgEntity NewOrg() => new()
     {
-        var id = Guid.NewGuid();
+        Name = "Org AM-02c",
+        Slug = $"am02c-{Guid.NewGuid():N}",
+        DisplayName = "Org AM-02c",
+        ContactEmail = "am02c@example.com",
+        PlanTier = PlanTier.Starter,
+        IsActive = true,
+    };
+
+    /// <summary>An invitation as the schema before this migration stored it (it has no send recorded: the columns do not exist yet).</summary>
+    private static OrgInvitation NewHistoricalInvitation(Guid orgId, string email, OrgInvitationStatus status)
+    {
         var now = DateTime.UtcNow;
-        var name = "Persona Storica";
-        var role = (int)OrgRole.Collaborator;
-        var areas = new[] { "short-rent" };
-        var scope = (int)PropertyScope.All;
-        var tokenHash = Casazen.Core.OrgTeam.OrgInvitationTokens.Hash(Guid.NewGuid().ToString("N"));
-        var state = (int)status;
-        var expiresAt = now.AddDays(7);
-        var language = "it";
-        var closedAt = status == OrgInvitationStatus.Pending ? (DateTime?)null : now;
-        var createdAt = now.AddDays(-2);
-        await db.Database.ExecuteSqlAsync($"""
-            INSERT INTO "OrgInvitations"
-                ("Id", "OrgId", "Email", "Name", "Role", "Areas", "PropertyScope", "TokenHash", "Status", "ExpiresAt",
-                 "InvitedByUserId", "Language", "ClosedAt", "CreatedAt", "UpdatedAt")
-            VALUES
-                ({id}, {orgId}, {email}, {name}, {role}, {areas}, {scope}, {tokenHash}, {state}, {expiresAt},
-                 {OwnerId}, {language}, {closedAt}, {createdAt}, {createdAt})
-            """);
-        return id;
+        return new OrgInvitation
+        {
+            OrgId = orgId,
+            Email = email,
+            Name = "Persona Storica",
+            Role = OrgRole.Collaborator,
+            Areas = ["short-rent"],
+            PropertyScope = PropertyScope.All,
+            TokenHash = Casazen.Core.OrgTeam.OrgInvitationTokens.Hash(Guid.NewGuid().ToString("N")),
+            Status = status,
+            ExpiresAt = now.AddDays(7),
+            InvitedByUserId = OwnerId,
+            Language = "it",
+            ClosedAt = status == OrgInvitationStatus.Pending ? null : now,
+            CreatedAt = now.AddDays(-2),
+            UpdatedAt = now.AddDays(-2),
+        };
     }
 
     private static User NewUser(string id, Guid orgId) => new()

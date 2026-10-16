@@ -90,6 +90,9 @@ public class AddOrgTeamCompletionsMigrationSqlTests
         Assert.DoesNotContain("UPDATE ", script);
         Assert.DoesNotContain("DELETE FROM", script);
         Assert.DoesNotContain("DROP ", script);
+        // The migration seeds the role and writes no membership: a property manager that exists gets its account row from the
+        // reconcile (docs/runbooks/org-team.md, sections 46 and 54), which the PostgreSQL tests run on such a member.
+        Assert.DoesNotContain("UserContextMemberships", script);
     }
 
     [Fact]

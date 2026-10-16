@@ -182,6 +182,35 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         Assert.Equal([OrgActivityType.MemberInvited], (await _kit.ReadActivityAsync(org.Id)).Select(l => l.Type));
     }
 
+    [PostgresFact]
+    public async Task Maintenance_ThePurgeOfAnOldInvitation_TakesItsCarriedPropertiesWithIt_ByTheCascadeOfTheDatabase()
+    {
+        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        var first = await _kit.SeedPropertyAsync(org.Id, "Casa Uno");
+        var second = await _kit.SeedPropertyAsync(org.Id, "Casa Due");
+        var (old, _) = await _kit.SeedInvitationAsync(
+            org.Id, "vecchio@example.com", status: OrgInvitationStatus.Revoked, expiresAt: _kit.Now.AddDays(-40), closedAt: _kit.Now.AddDays(-31));
+        var (recent, _) = await _kit.SeedInvitationAsync(
+            org.Id, "recente@example.com", status: OrgInvitationStatus.Revoked, expiresAt: _kit.Now.AddDays(-10), closedAt: _kit.Now.AddDays(-5));
+        await using (var seed = _kit.NewDb())
+        {
+            seed.OrgInvitationProperties.AddRange(
+                new OrgInvitationProperty { OrgId = org.Id, InvitationId = old.Id, PropertyId = first },
+                new OrgInvitationProperty { OrgId = org.Id, InvitationId = old.Id, PropertyId = second },
+                new OrgInvitationProperty { OrgId = org.Id, InvitationId = recent.Id, PropertyId = first });
+            await seed.SaveChangesAsync();
+        }
+
+        OrgInvitationMaintenanceResult result;
+        await using (var db = _kit.NewDb())
+            result = await _kit.Maintenance(db).RunAsync();
+
+        // On PostgreSQL the purge does not read the carried rows: the foreign key deletes them with the invitation.
+        Assert.Equal(1, result.Purged);
+        Assert.Empty(await _kit.ReadInvitationPropertiesAsync(old.Id));
+        Assert.Equal([first], await _kit.ReadInvitationPropertiesAsync(recent.Id));
+    }
+
     // ─── The areas of a member ──────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
@@ -263,6 +292,28 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         await using var db = _kit.NewDb();
         var overview = await _kit.Overview(db).GetAsync(org.Id, onlyShort, OrgOverviewSections.All.ToHashSet());
         Assert.Equal((1, 1, 0), (overview.Properties!.Total, overview.Properties.Short, overview.Properties.Long));
+    }
+
+    [PostgresFact]
+    public async Task Audience_ACollaboratorOfOneArea_IsToldAboutAGrantedPropertyOfItsMode_AndNotOfTheOtherOne()
+    {
+        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        var shortProperty = await _kit.SeedPropertyAsync(org.Id, "Breve", RentalMode.Short);
+        var longProperty = await _kit.SeedPropertyAsync(org.Id, "Lunga", RentalMode.Long);
+        var (_, member) = await _kit.SeedMemberAsync(org.Id, "auth0|anna", OrgRole.Collaborator, ["short-rent"]);
+        await using (var grant = _kit.NewDb())
+            await _kit.PropertyAccess(grant).SetAsync(org.Id, member.Id, OwnerId, PropertyScope.Selected, [shortProperty, longProperty]);
+
+        await using var db = _kit.NewDb();
+        var forShort = await HostNotificationAudience.UsersToTell(db, org.Id, shortProperty, "auth0|anna", OwnerId).Select(u => u.Id).ToListAsync();
+        var forLong = await HostNotificationAudience.UsersToTell(db, org.Id, longProperty, "auth0|anna", OwnerId).Select(u => u.Id).ToListAsync();
+
+        // The person in charge is told only about the property it can open: the grant on the long-term one stays in the table and
+        // no longer reaches anybody who works in short-term rentals only. The owner hears of both, as always.
+        Assert.Contains("auth0|anna", forShort);
+        Assert.DoesNotContain("auth0|anna", forLong);
+        Assert.Contains(OwnerId, forShort);
+        Assert.Contains(OwnerId, forLong);
     }
 
     private async Task<List<Guid>> ReachedAsync(HostScope scope)

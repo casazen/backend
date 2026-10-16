@@ -156,7 +156,7 @@ public class OrgInvitationEmailCapTests
     }
 
     [Fact]
-    public async Task TheCap_IsPerOrg()
+    public async Task CreateAsync_TheCapOfTwoOrgs_IsPerOrg()
     {
         var orgA = await SeedScaleOrgAsync("auth0|owner-a");
         var orgB = await SeedScaleOrgAsync("auth0|owner-b");
@@ -169,7 +169,7 @@ public class OrgInvitationEmailCapTests
     }
 
     [Fact]
-    public async Task TheCap_IsConfigurable()
+    public async Task CreateAsync_TheDailyLimitSetting_ChangesTheCap()
     {
         _kit.Settings[OrgInvitationRules.DailyLimitConfigKey] = "2";
         var orgId = await SeedScaleOrgAsync();
@@ -237,7 +237,7 @@ public class OrgInvitationEmailCapTests
     }
 
     [Fact]
-    public async Task ResendAsync_TheWaitIsConfigurable()
+    public async Task ResendAsync_TheResendMinutesSetting_ChangesTheWait()
     {
         _kit.Settings[OrgInvitationRules.ResendMinutesConfigKey] = "5";
         var orgId = await SeedScaleOrgAsync();
@@ -332,7 +332,7 @@ public class OrgInvitationEmailCapTests
     }
 
     [Fact]
-    public async Task ListAsync_ShowsTheLastSend()
+    public async Task ListAsync_AnInvitationThatWasSent_ShowsTheLastSend()
     {
         var orgId = await SeedScaleOrgAsync();
         var sent = await InviteAsync(orgId, "anna@example.com");
@@ -393,7 +393,7 @@ public class OrgInvitationEmailCapTests
     // ─── Refusals are all or nothing ────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ARefusedSend_DoesNotRotateTheTokenNorMoveTheExpiry()
+    public async Task ResendAsync_ARefusedSend_DoesNotRotateTheTokenNorMoveTheExpiry()
     {
         var orgId = await SeedScaleOrgAsync();
         var sent = await InviteAsync(orgId, "anna@example.com");
@@ -407,7 +407,7 @@ public class OrgInvitationEmailCapTests
     }
 
     [Fact]
-    public async Task TheEarlierRefusalsOfAResend_StillComeFirst()
+    public async Task ResendAsync_TheEarlierRefusals_StillComeFirst()
     {
         var orgId = await SeedScaleOrgAsync();
         var sent = await InviteAsync(orgId, "anna@example.com");
@@ -420,7 +420,7 @@ public class OrgInvitationEmailCapTests
     }
 
     [Fact]
-    public async Task ThePersonWhoMayNotResendIt_IsRefusedBeforeAnyCapIsLookedAt()
+    public async Task ResendAsync_APersonWhoMayNotResendIt_IsRefusedBeforeAnyCapIsLookedAt()
     {
         var orgId = await SeedScaleOrgAsync();
         var sent = await InviteAsync(orgId, "anna@example.com");

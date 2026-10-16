@@ -62,7 +62,7 @@ public class OrgRoleMatrixServiceTests
     }
 
     [Fact]
-    public async Task GetAsync_AssignableIsRelativeToTheCaller()
+    public async Task GetAsync_TheAssignableFlag_IsRelativeToTheCaller()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync();
         await _kit.SeedMemberAsync(org.Id, "auth0|ada", OrgRole.Admin);

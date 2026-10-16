@@ -187,7 +187,7 @@ public class OrgInvitationPropertiesTests
     }
 
     [Fact]
-    public async Task AcceptAsync_GivesTheCollaboratorExactlyThePropertiesTheInvitationCarried()
+    public async Task AcceptAsync_ACollaborator_GetsExactlyThePropertiesTheInvitationCarried()
     {
         var (orgId, trullo, bilocale, casa) = await OrgWithThreePropertiesAsync();
         var sent = await InviteAsync(orgId, propertyIds: [trullo, bilocale]);

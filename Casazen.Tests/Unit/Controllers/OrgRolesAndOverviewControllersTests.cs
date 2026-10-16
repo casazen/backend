@@ -163,7 +163,7 @@ public class OrgRolesAndOverviewControllersTests
         ]);
 
     [Fact]
-    public async Task GetOverview_PassesTheOrgTheScopeAndTheSectionsTheCallerMaySee()
+    public async Task GetOverview_ForACaller_PassesTheOrgTheScopeAndTheSectionsItMaySee()
     {
         var scope = new HostScope(OrgId);
         _scopes.Setup(s => s.ResolveAsync("auth0|owner", It.IsAny<IReadOnlySet<string>>(), OrgId, It.IsAny<CancellationToken>())).ReturnsAsync(scope);

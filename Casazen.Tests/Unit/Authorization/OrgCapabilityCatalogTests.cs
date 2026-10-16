@@ -40,7 +40,7 @@ public class OrgCapabilityCatalogTests
     // ─── The twelve capabilities ────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Catalog_HasTheTwelveCapabilitiesWithStableIdsInTheOrderOfTheScreen()
+    public void Catalog_TheTwelveCapabilities_HaveStableIdsInTheOrderOfTheScreen()
     {
         Assert.Equal(CapabilityIds, OrgCapabilityCatalog.All.Select(c => c.Id));
         Assert.Equal(12, OrgCapabilityCatalog.All.Select(c => c.Id).Distinct().Count());
@@ -59,7 +59,7 @@ public class OrgCapabilityCatalogTests
     [InlineData("suppliers", "account")]
     [InlineData("settings", "account")]
     [InlineData("security", "account")]
-    public void Catalog_EveryCapabilityBelongsToItsGroup(string id, string group) =>
+    public void Catalog_EveryCapability_BelongsToItsGroup(string id, string group) =>
         Assert.Equal(group, OrgCapabilityCatalog.All.Single(c => c.Id == id).Group);
 
     // ─── The table of the analysis (§2.3), by hand ──────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ public class OrgCapabilityCatalogTests
     }
 
     [Fact]
-    public void Levels_ThereIsNoLevelForOnlyHisProperties()
+    public void Levels_OfAnyRole_HaveNoLevelForOnlyHisProperties()
     {
         // Which properties a person reaches is the person's (PropertyScope), never the role's: three levels, no more.
         Assert.Equal(["No", "Read", "Yes"], Enum.GetNames<OrgCapabilityLevel>().Order(StringComparer.Ordinal));
@@ -103,7 +103,7 @@ public class OrgCapabilityCatalogTests
     // ─── The roles, as the endpoint describes them ──────────────────────────────────────────────────────
 
     [Fact]
-    public void Build_TheFiveRolesOwnerFirst()
+    public void Build_TheRoles_AreTheFiveOnesOwnerFirst()
     {
         Assert.Equal(
             [OrgRole.Owner, OrgRole.Admin, OrgRole.PropertyManager, OrgRole.Collaborator, OrgRole.Accountant],
@@ -111,7 +111,7 @@ public class OrgCapabilityCatalogTests
     }
 
     [Fact]
-    public void Build_ScopeIsSupportedByTheCollaboratorOnly()
+    public void Build_TheScopeSoloAlcuni_IsSupportedByTheCollaboratorOnly()
     {
         var scope = OrgRoleMatrix.Build(Seeded.Value, OrgRole.Owner).ToDictionary(r => r.Role, r => r.ScopeSupported);
 
@@ -133,7 +133,7 @@ public class OrgCapabilityCatalogTests
     }
 
     [Fact]
-    public void Build_TheOwnerIsNeverAssignable()
+    public void Build_TheOwnerRole_IsNeverAssignable()
     {
         foreach (var caller in Enum.GetValues<OrgRole>())
             Assert.False(RoleOf(OrgRole.Owner, caller).Assignable);
@@ -164,7 +164,7 @@ public class OrgCapabilityCatalogTests
     }
 
     [Fact]
-    public void Build_TheOwnerRowsAreTheOnesOfTheOnboarding()
+    public void Build_TheOwnerRows_AreTheOnesOfTheOnboarding()
     {
         var owner = RoleOf(OrgRole.Owner);
 
@@ -202,7 +202,7 @@ public class OrgCapabilityCatalogTests
     // ─── Tripwire: a seeded permission without a place in the matrix ────────────────────────────────────
 
     [Fact]
-    public void Tripwire_EveryPermissionOfTheSeededRolesHasACapability()
+    public void Tripwire_EveryPermissionOfTheSeededRoles_HasACapability()
     {
         var unknown = new List<string>();
         foreach (var role in Enum.GetValues<OrgRole>())
@@ -222,7 +222,7 @@ public class OrgCapabilityCatalogTests
     }
 
     [Fact]
-    public void Tripwire_EveryPermissionTheMatrixReadsIsHeldByAtLeastOneSeededRole()
+    public void Tripwire_EveryPermissionTheMatrixReads_IsHeldByAtLeastOneSeededRole()
     {
         // The other direction: a capability that reads a permission nobody holds is a typo that would make everybody «No».
         var held = Enum.GetValues<OrgRole>()
@@ -259,7 +259,7 @@ public class OrgCapabilityCatalogTests
 
     [Theory]
     [MemberData(nameof(Probes))]
-    public void Levels_AgreeWithWhatTheActionsOfTheApiAllow(
+    public void Levels_OfTheCapabilitiesWithAnAction_AgreeWithWhatTheActionsOfTheApiAllow(
         string capabilityId,
         Type readController,
         string readAction,

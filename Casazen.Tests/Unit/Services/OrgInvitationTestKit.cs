@@ -190,25 +190,40 @@ internal sealed class OrgInvitationTestKit
         PlanTier tier = PlanTier.Pro,
         SubscriptionStatus status = SubscriptionStatus.Active)
     {
-        await using var db = NewDb();
-        var org = AddOrg(db);
-        org.Name = org.DisplayName = "Casa Rossi";
-        org.PlanTier = tier;
-        org.SubscriptionStatus = status;
-        org.SubscriptionId = status == SubscriptionStatus.None ? null : $"sub_{Guid.NewGuid():N}";
+        OrgEntity org;
+        await using (var db = NewDb())
+        {
+            org = AddOrg(db);
+            org.Name = org.DisplayName = "Casa Rossi";
+            org.PlanTier = tier;
+            org.SubscriptionStatus = status;
+            org.SubscriptionId = status == SubscriptionStatus.None ? null : $"sub_{Guid.NewGuid():N}";
+            await db.SaveChangesAsync();
+        }
 
-        var owner = AddUser(db, ownerId, org.Id, UserRole.PropertyOwner);
+        return (org, await SeedOwnerOfOrgAsync(org.Id, ownerId));
+    }
+
+    /// <summary>
+    /// The owner of an org that already exists, as the onboarding leaves it: the account with the owner role, the rental
+    /// membership, the org member row, the account membership and the consents of the org. For the migration tests, whose org was
+    /// written with SQL at the schema before the migration (<c>LegacyOrgRows</c>) and gets its people after it.
+    /// </summary>
+    public async Task<User> SeedOwnerOfOrgAsync(Guid orgId, string ownerId = "auth0|owner")
+    {
+        await using var db = NewDb();
+        var owner = AddUser(db, ownerId, orgId, UserRole.PropertyOwner);
         owner.Email = $"{ownerId.Replace("auth0|", string.Empty, StringComparison.Ordinal)}@example.com";
         owner.FirstName = "Giulia";
         owner.LastName = "Rinaldi";
         owner.RentalType = RentalType.ShortTerm;
         owner.OnboardingCompletedAt = Now;
         AddMembership(db, ownerId, "short-rent", "property_owner");
-        AddConsents(db, ownerId, org.Id);
+        AddConsents(db, ownerId, orgId);
         await db.SaveChangesAsync();
 
-        await Membership(db).EnsureOwnerAsync(ownerId, org.Id);
-        return (org, owner);
+        await Membership(db).EnsureOwnerAsync(ownerId, orgId);
+        return owner;
     }
 
     /// <summary>A person with no org yet who just signed up (no role, not onboarded), with the given email.</summary>

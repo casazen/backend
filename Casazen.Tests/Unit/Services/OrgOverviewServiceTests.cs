@@ -55,7 +55,7 @@ public class OrgOverviewServiceTests
     }
 
     [Fact]
-    public async Task Properties_AreCountedByModeAndWhatIsStillToComplete()
+    public async Task Properties_OfAnOrg_AreCountedByModeAndWhatIsStillToComplete()
     {
         var orgId = await SeedOrgAsync();
         await SeedPropertiesAsync(orgId);
@@ -68,7 +68,7 @@ public class OrgOverviewServiceTests
     }
 
     [Fact]
-    public async Task Properties_NeverCountThoseOfAnotherOrg()
+    public async Task Properties_OfAnotherOrg_AreNeverCounted()
     {
         var orgId = await SeedOrgAsync();
         var (other, _) = await _kit.SeedOwnerOrgAsync("auth0|other-owner");
@@ -135,7 +135,7 @@ public class OrgOverviewServiceTests
     }
 
     [Fact]
-    public async Task Alloggiati_IsCountedInsideTheScopeOfTheCaller()
+    public async Task Alloggiati_ForALimitedCaller_AreCountedInsideItsScope()
     {
         var orgId = await SeedOrgAsync();
         var (pending, _, _, _, longOne, _) = await SeedPropertiesAsync(orgId);
@@ -159,7 +159,7 @@ public class OrgOverviewServiceTests
     [InlineData(SubscriptionStatus.PastDue, "attention")]
     [InlineData(SubscriptionStatus.Unpaid, "attention")]
     [InlineData(SubscriptionStatus.Incomplete, "attention")]
-    public async Task Standing_FollowsTheStateOfTheSubscription(SubscriptionStatus status, string expected)
+    public async Task Standing_OfEachSubscriptionStatus_FollowsTheState(SubscriptionStatus status, string expected)
     {
         var overview = await GetAsync(await SeedOrgAsync(status: status));
 
@@ -167,7 +167,7 @@ public class OrgOverviewServiceTests
     }
 
     [Fact]
-    public async Task OpenAccess_IsTheFlagOfTheEntitlement()
+    public async Task OpenAccess_OfTheEntitlement_IsReported()
     {
         var orgId = await SeedOrgAsync(PlanTier.Starter, SubscriptionStatus.None);
         Assert.False((await GetAsync(orgId)).OpenAccess);
@@ -181,7 +181,7 @@ public class OrgOverviewServiceTests
     // ─── People ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Seats_AreTheUsedAndTheMaxOfThePlan()
+    public async Task Seats_OfTheOrg_AreTheUsedAndTheMaxOfThePlan()
     {
         var orgId = await SeedOrgAsync();
         await _kit.SeedMemberAsync(orgId, "auth0|anna", OrgRole.Collaborator);
@@ -231,7 +231,7 @@ public class OrgOverviewServiceTests
     }
 
     [Fact]
-    public async Task Invitations_NeverCountThoseOfAnotherOrg()
+    public async Task Invitations_OfAnotherOrg_AreNeverCounted()
     {
         var orgId = await SeedOrgAsync();
         var (other, _) = await _kit.SeedOwnerOrgAsync("auth0|other-owner");
@@ -290,7 +290,7 @@ public class OrgOverviewServiceTests
     }
 
     [Fact]
-    public async Task RecentActivity_NeverShowsTheLinesOfAnotherOrg()
+    public async Task RecentActivity_OfAnotherOrg_IsNeverShown()
     {
         var orgId = await SeedOrgAsync();
         var (other, _) = await _kit.SeedOwnerOrgAsync("auth0|other-owner");
@@ -302,7 +302,7 @@ public class OrgOverviewServiceTests
     // ─── Sections the caller may not see ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task EverySectionIsThere_ForTheCallerWhoHoldsEveryPermission()
+    public async Task GetAsync_ACallerWhoHoldsEveryPermission_GetsEverySection()
     {
         var overview = await GetAsync(await SeedOrgAsync());
 
@@ -318,7 +318,7 @@ public class OrgOverviewServiceTests
     }
 
     [Fact]
-    public async Task ASectionWhoseOwnPermissionIsMissing_IsLeftOut()
+    public async Task GetAsync_ASectionWhoseOwnPermissionIsMissing_IsLeftOut()
     {
         var orgId = await SeedOrgAsync();
 
@@ -347,7 +347,7 @@ public class OrgOverviewServiceTests
     }
 
     [Fact]
-    public void TheSections_AreBehindThePermissionsOfTheAccountContext()
+    public void Sections_EachOfThem_IsBehindAPermissionOfTheAccountContext()
     {
         Assert.Equal("org.billing.read", OrgOverviewSections.Billing);
         Assert.Equal("org.members.manage", OrgOverviewSections.People);
