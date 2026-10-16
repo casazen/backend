@@ -270,6 +270,12 @@
   <data name="AccessRequestLimitReached" xml:space="preserve">
     <value>You already sent several requests today and the administrators have been told. Try again tomorrow.</value>
   </data>
+  <data name="InvitationDailyLimitReached" xml:space="preserve">
+    <value>You already sent {0} invitation emails in the last 24 hours, counting the ones sent again. Try again later.</value>
+  </data>
+  <data name="InvitationResendTooSoon" xml:space="preserve">
+    <value>This invitation was sent a moment ago. You can send it again in {0} minutes.</value>
+  </data>
   <data name="OrgActivityTypeUnknown" xml:space="preserve">
     <value>Unknown activity type.</value>
   </data>

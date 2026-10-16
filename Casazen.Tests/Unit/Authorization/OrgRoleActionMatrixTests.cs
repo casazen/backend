@@ -144,4 +144,33 @@ public class OrgRoleActionMatrixTests
 
         Assert.Equal(expectedRoles.Split(',').Order(StringComparer.Ordinal).ToList(), allowed);
     }
+
+    /// <summary>
+    /// AM-02c (AM-D12): the property manager has a membership of the account context, so a policy of the account context could
+    /// start to let it in. Every action of the API found by reflection that asks for a permission of the account context is
+    /// checked: the property manager passes it only when the permission is the one of the trusted suppliers, whatever the
+    /// controller (so a team, billing, settings or activity endpoint added later is covered without anyone listing it).
+    /// </summary>
+    [Fact]
+    public void PropertyManager_InTheAccountContext_PassesNoAccountActionButTheTrustedSuppliers()
+    {
+        var accountPermissions = typeof(OrgMembersController).Assembly.GetTypes()
+            .Where(t => typeof(Microsoft.AspNetCore.Mvc.ControllerBase).IsAssignableFrom(t) && t is { IsAbstract: false, IsPublic: true })
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            .SelectMany(PoliciesOf)
+            .Select(CasazenPolicies.ParseContextPolicy)
+            .Where(p => p.ContextKeys.Any(AccountContext.IsAccountContext))
+            .Select(p => p.PermissionKey)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        // The team, the activity log and the other pages of the area are really found (the test is not vacuous).
+        Assert.Contains(AccountContext.Permissions.MembersManage, accountPermissions);
+        Assert.Contains(AccountContext.Permissions.ActivityRead, accountPermissions);
+
+        var held = PermissionsOf(OrgRole.PropertyManager, AccountContext.Key);
+        Assert.Equal([AccountContext.Permissions.SuppliersManage], held.ToArray());
+        foreach (var permission in accountPermissions)
+            Assert.Equal(permission == AccountContext.Permissions.SuppliersManage, held.Contains(permission));
+    }
 }

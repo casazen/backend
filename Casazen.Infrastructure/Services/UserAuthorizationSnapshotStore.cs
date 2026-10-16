@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -54,16 +55,23 @@ public sealed record UserAuthorizationSnapshot(
 /// <summary>What a user is in its org (<see cref="OrgMember"/>), as the authorization reads it.</summary>
 /// <param name="PropertyScope">Every property of the org, or only the ones in <paramref name="GrantedPropertyIds"/> (AM-03).</param>
 /// <param name="GrantedPropertyIds">
-/// The properties a member «Solo alcuni» was given (<see cref="PropertyMemberAccess"/>), read with the member and cached with
-/// it (a single-resource check needs no query); <c>null</c> for everybody else, and for a member whose scope is not restricted.
-/// The lists never use it: they say <c>EXISTS</c> in SQL.
+/// The properties a member «Solo alcuni» was given (<see cref="PropertyMemberAccess"/>) <b>and reaches</b> (AM-02c: those of a
+/// mode the member works in, see <paramref name="GrantedMode"/>), read with the member and cached with it (a single-resource
+/// check needs no query); <c>null</c> for everybody else, and for a member whose scope is not restricted. The lists never use
+/// it: they say <c>EXISTS</c> in SQL.
+/// </param>
+/// <param name="GrantedMode">
+/// With «Solo alcuni» (AM-02c): the one rental mode the member works in, when it works in a single area (short-rent: <see cref="RentalMode.Short"/>,
+/// long-rent: <see cref="RentalMode.Long"/>); <c>null</c> when it works in both areas or none is known. The granted properties of
+/// the other mode are given and not reached.
 /// </param>
 public sealed record OrgMemberSnapshot(
     Guid OrgId,
     OrgRole Role,
     OrgMemberStatus Status,
     PropertyScope PropertyScope = PropertyScope.All,
-    IReadOnlySet<Guid>? GrantedPropertyIds = null);
+    IReadOnlySet<Guid>? GrantedPropertyIds = null,
+    RentalMode? GrantedMode = null);
 
 public interface IUserAuthorizationSnapshotStore : IUserAuthorizationCache
 {
@@ -168,13 +176,19 @@ public sealed class UserAuthorizationSnapshotStore(
         // its grants are read; IgnoreQueryFilters for the same reason as above, scoped to this user and its org explicitly.
         if (orgMember is { Role: OrgRole.Collaborator, PropertyScope: PropertyScope.Selected })
         {
-            var granted = await db.PropertyMemberAccesses
+            // AM-02c: the grants of a property of a mode the member does not work in stay in the table and are not reached
+            // (OrgRoleCatalog.SingleModeOf: the member has the membership of exactly one rental context).
+            var grantedMode = OrgRoleCatalog.SingleModeOf(memberships.Select(m => m.ContextKey));
+
+            var grants = db.PropertyMemberAccesses
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .Where(a => a.UserId == userId && a.OrgId == orgMember.OrgId)
-                .Select(a => a.PropertyId)
-                .ToListAsync(cancellationToken);
-            orgMember = orgMember with { GrantedPropertyIds = granted.ToHashSet() };
+                .Where(a => a.UserId == userId && a.OrgId == orgMember.OrgId);
+            if (grantedMode is { } mode)
+                grants = grants.Where(a => a.Property.RentalMode == mode);
+
+            var granted = await grants.Select(a => a.PropertyId).ToListAsync(cancellationToken);
+            orgMember = orgMember with { GrantedPropertyIds = granted.ToHashSet(), GrantedMode = grantedMode };
         }
 
         // A deactivated member reaches nothing, whatever its memberships say: this closes the cached read while the

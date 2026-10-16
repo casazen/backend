@@ -63,6 +63,21 @@ public class OrgInvitation : ITenantOwned
     /// <summary>UTC when the reminder of the third day was sent; <c>null</c> until then (and again after the invitation is sent again).</summary>
     public DateTime? ReminderSentAt { get; set; }
 
+    /// <summary>
+    /// UTC when an email of the invitation last went out because a person asked for it: the creation or the last «reinvia»
+    /// (AM-02c, decision AM-D15). It spaces two «reinvia» of the same invitation (<c>OrgTeam:ResendMinutes</c>). The reminder of the
+    /// third day is the system's and does not move it. <c>null</c> for a row written before it was tracked: nothing is invented, it
+    /// is simply not limited.
+    /// </summary>
+    public DateTime? LastSentAt { get; set; }
+
+    /// <summary>
+    /// The instants (UTC) of the emails sent by a person's action in the last 24 hours, the creation and every «reinvia»: pruned at
+    /// each send, so it never holds more than a day of them. What the cap of the org counts (<c>OrgTeam:InvitationDailyLimit</c>):
+    /// the emails, not the invitations, so sending the same invitation again counts. Not personal data.
+    /// </summary>
+    public List<DateTime> SendLog { get; set; } = [];
+
     /// <summary>Who invited (<c>User.Id</c>). No foreign key: the history outlives the account.</summary>
     [Required, MaxLength(255)]
     public string InvitedByUserId { get; set; } = string.Empty;

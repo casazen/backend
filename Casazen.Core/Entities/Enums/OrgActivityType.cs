@@ -2,8 +2,9 @@ namespace Casazen.Core.Entities.Enums;
 
 /// <summary>
 /// The stable code of what happened (<see cref="OrgActivityEntry.Type"/>, AM-02b). The list is the whole perimeter of the
-/// activity log: an event is added here, in <c>OrgActivityCatalog</c> and in the runbook <c>docs/runbooks/org-team.md</c> (~20 at
-/// most), never without. The client composes the sentence from the type and the ids; nothing here carries a name, an email,
+/// activity log: an event is added here, in <c>OrgActivityCatalog</c> and in the runbook <c>docs/runbooks/org-team.md</c>, never
+/// without (about 25 in the end, decision AM-D18: the catalog is closed and grows one row at a time, each written by the task that
+/// introduces the action). The client composes the sentence from the type and the ids; nothing here carries a name, an email,
 /// an amount or a free text. Persisted as int, explicit values in groups of ten: append-only, never reorder or reuse a
 /// value. The ones marked <i>reserved</i> have their code fixed now and are written by the task that builds the feature.
 /// </summary>
@@ -44,6 +45,12 @@ public enum OrgActivityType
     /// </summary>
     AccessRequested = 9,
 
+    /// <summary>
+    /// The areas a member works in were changed (AM-02c). Subject: the member. Details: the areas before and after, and how many
+    /// properties lost their person in charge with it (only when some did).
+    /// </summary>
+    MemberAreasChanged = 10,
+
     // ─── Plan and organization (account) ─────────────────────────────────────────────────────────────────
 
     /// <summary>The plan of the org changed. Subject: the org. Details: the tier before and after, and who or what changed it.</summary>
@@ -55,15 +62,21 @@ public enum OrgActivityType
     /// <summary>The public address (slug) of the org was changed. Subject: the org. No details: the slug itself is never recorded.</summary>
     OrgSlugChanged = 22,
 
-    // ─── Property mode (reserved: PM-02) ─────────────────────────────────────────────────────────────────
+    // ─── Property mode (PM-02, written since AM-02c) ─────────────────────────────────────────────────────
 
-    /// <summary><i>Reserved.</i> A change of the rental mode of a property was scheduled. Subject: the property.</summary>
+    /// <summary>
+    /// A change of the rental mode of a property was scheduled (AM-02c, written by <c>PropertyModeService</c>). Subject: the
+    /// property. Details: the mode before and after and the day it takes effect. The area is the one of the mode the property is in.
+    /// </summary>
     PropertyModeChangeScheduled = 40,
 
-    /// <summary><i>Reserved.</i> A scheduled change of mode was cancelled. Subject: the property.</summary>
+    /// <summary>A scheduled change of mode was cancelled (AM-02c). Subject: the property. Details: the mode before and after. The area is the property's.</summary>
     PropertyModeChangeCancelled = 41,
 
-    /// <summary><i>Reserved.</i> The mode of a property changed (the daily job: no actor). Subject: the property.</summary>
+    /// <summary>
+    /// The mode of a property changed (AM-02c; the daily job: no actor). Subject: the property. Details: the mode before and
+    /// after. The area is the one of the mode the property is in now.
+    /// </summary>
     PropertyModeChanged = 42,
 
     // ─── Trusted suppliers (reserved: the host's trusted suppliers) ──────────────────────────────────────

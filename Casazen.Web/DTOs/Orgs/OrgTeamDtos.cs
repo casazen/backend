@@ -31,8 +31,17 @@ public class CreateOrgInvitationRequest
     [Required(ErrorMessage = "OrgMemberAreaRequired")]
     public List<string> Areas { get; set; } = [];
 
-    /// <summary><c>All</c> (default) or <c>Selected</c> («Solo alcuni», a collaborator only: 422 <c>org_member_scope_not_supported</c> otherwise). The properties are given afterwards, with <c>PUT /api/orgs/me/members/{id}/properties</c>; until then the person reaches none.</summary>
+    /// <summary><c>All</c> (default) or <c>Selected</c> («Solo alcuni», a collaborator only: 422 <c>org_member_scope_not_supported</c> otherwise). The properties of a <c>Selected</c> collaborator are in <see cref="PropertyIds"/>; with none the person reaches none until the owner gives them (<c>PUT /api/orgs/me/members/{id}/properties</c>).</summary>
     public PropertyScope PropertyScope { get; set; } = PropertyScope.All;
+
+    /// <summary>
+    /// The properties a <c>Selected</c> collaborator will reach once it accepts (AM-02c), no more than 500: live properties of the
+    /// org that the inviter reaches (422 <c>org_member_property_unknown</c> otherwise). Allowed only with <c>Selected</c> and the
+    /// <c>Collaborator</c> role (422 <c>org_member_scope_not_supported</c> for anything else). A property deleted before the
+    /// invitation is accepted is skipped without an error.
+    /// </summary>
+    [MaxLength(500, ErrorMessage = "OrgMemberPropertyIdsTooMany")]
+    public List<Guid>? PropertyIds { get; set; }
 
     /// <summary>Language of the emails: <c>it</c> (default) or <c>en</c>.</summary>
     [RegularExpression("^(?i:it|en)$", ErrorMessage = "OrgInvitationLanguageInvalid")]
@@ -48,8 +57,22 @@ public class OrgInvitationDto
     public OrgRole Role { get; set; }
     public IReadOnlyList<string> Areas { get; set; } = [];
     public PropertyScope PropertyScope { get; set; }
+
+    /// <summary>
+    /// The properties a <c>Selected</c> collaborator gets when it accepts (AM-02c); empty for every other invitation. Ids only: the
+    /// client resolves the names from the properties it already reads. The public lookup never shows them.
+    /// </summary>
+    public IReadOnlyList<Guid> PropertyIds { get; set; } = [];
+
     public OrgInvitationStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// When an email of the invitation last went out because of a person's action (UTC): the creation or the last «reinvia»
+    /// (AM-02c); null for an invitation written before it was tracked. «Reinvia» is refused for <c>OrgTeam:ResendMinutes</c> after it
+    /// (429 <c>invitation_resend_too_soon</c>). The reminder of the third day is the system's and does not move it.
+    /// </summary>
+    public DateTime? LastSentAt { get; set; }
 
     /// <summary>When the link stops working (UTC).</summary>
     public DateTime ExpiresAt { get; set; }
@@ -68,8 +91,10 @@ public class OrgInvitationDto
         Role = view.Role,
         Areas = view.Areas,
         PropertyScope = view.PropertyScope,
+        PropertyIds = view.PropertyIds,
         Status = view.Status,
         CreatedAt = view.CreatedAt,
+        LastSentAt = view.LastSentAt,
         ExpiresAt = view.ExpiresAt,
         ReminderSentAt = view.ReminderSentAt,
         InvitedByUserId = view.InvitedByUserId,
@@ -192,6 +217,13 @@ public class ChangeOrgMemberRoleRequest
 {
     /// <summary><c>Admin</c> (owner only), <c>PropertyManager</c>, <c>Collaborator</c> or <c>Accountant</c>. Never <c>Owner</c>.</summary>
     public OrgRole Role { get; set; }
+}
+
+/// <summary>Body of <c>PUT /api/orgs/me/members/{id}/areas</c> (AM-02c): the areas the person works in. Role and properties stay as they are.</summary>
+public class SetOrgMemberAreasRequest
+{
+    /// <summary><c>short-rent</c> and/or <c>long-rent</c>. At least one: none (or only values that are not an area) is 422 <c>org_member_area_required</c>.</summary>
+    public List<string>? Areas { get; set; }
 }
 
 /// <summary>Body of <c>POST /api/org-invitations/lookup</c>: the secret of the link, in the body so it never appears in a URL.</summary>

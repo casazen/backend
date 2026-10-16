@@ -12,7 +12,7 @@ namespace Casazen.Core.Services;
 /// <param name="ActorUserId">Who did it (<c>User.Id</c>); <c>null</c> when nobody did (a job, a webhook).</param>
 /// <param name="SubjectId">The id of the thing it is about, as the type says (a member's account, an invitation, the org, a property). Never a name.</param>
 /// <param name="Details">The few codes the type allows (<c>OrgActivityDetailKeys</c>): a role, a tier, a count.</param>
-/// <param name="Area">Only when the type does not fix it (the reserved events of the property mode); otherwise the catalog's.</param>
+/// <param name="Area">Only when the type does not fix it (the events of the property mode, written by <c>PropertyModeService</c> with the area of the property); otherwise the catalog's.</param>
 public sealed record OrgActivity(
     Guid OrgId,
     OrgActivityType Type,

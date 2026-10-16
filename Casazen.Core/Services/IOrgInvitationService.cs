@@ -10,8 +10,14 @@ namespace Casazen.Core.Services;
 /// <param name="Name">The person's name, as the inviter knows it (shown in the team page and in the email).</param>
 /// <param name="Role">The org role. Never <see cref="OrgRole.Owner"/>; <see cref="OrgRole.Admin"/> only from the owner.</param>
 /// <param name="Areas">The areas the person works in: <c>short-rent</c> and/or <c>long-rent</c>.</param>
-/// <param name="PropertyScope">All the properties, or only some: <c>Selected</c> is the collaborator's alone (422 <c>org_member_scope_not_supported</c> for another role); the properties are given to the member afterwards (AM-03).</param>
+/// <param name="PropertyScope">All the properties, or only some: <c>Selected</c> is the collaborator's alone (422 <c>org_member_scope_not_supported</c> for another role).</param>
 /// <param name="Language">Language of the emails: <c>it</c> (default) or <c>en</c>.</param>
+/// <param name="PropertyIds">
+/// The properties a <c>Selected</c> collaborator reaches once it accepts (AM-02c, AM-03-FU1), kept with the invitation and given in the
+/// transaction of the acceptance. Only with <see cref="PropertyScope.Selected"/> and <see cref="OrgRole.Collaborator"/> (422
+/// <c>org_member_scope_not_supported</c> otherwise); each must be a live property of the org the inviter reaches (422
+/// <c>org_member_property_unknown</c>). <c>null</c> or empty: none, the owner gives them later.
+/// </param>
 public sealed record CreateOrgInvitation(
     Guid OrgId,
     string ActorUserId,
@@ -20,13 +26,16 @@ public sealed record CreateOrgInvitation(
     OrgRole Role,
     IReadOnlyCollection<string> Areas,
     PropertyScope PropertyScope = PropertyScope.All,
-    string? Language = null);
+    string? Language = null,
+    IReadOnlyCollection<Guid>? PropertyIds = null);
 
 /// <summary>
 /// An invitation as the team page shows it: never the token or its hash. <paramref name="Status"/> is the <b>effective</b>
 /// state: <see cref="OrgInvitationStatus.Pending"/> while it can still be accepted, <see cref="OrgInvitationStatus.Expired"/>
 /// once its expiry has passed (also before the job marks it).
 /// </summary>
+/// <param name="PropertyIds">The properties a «Solo alcuni» collaborator gets on acceptance (AM-02c); empty otherwise. Ids only.</param>
+/// <param name="LastSentAt">When an email of the invitation last went out by a person's action (the creation or the last «reinvia»); <c>null</c> for one written before it was tracked.</param>
 public sealed record OrgInvitationView(
     Guid Id,
     string Email,
@@ -38,7 +47,9 @@ public sealed record OrgInvitationView(
     DateTime CreatedAt,
     DateTime ExpiresAt,
     DateTime? ReminderSentAt,
-    string InvitedByUserId);
+    string InvitedByUserId,
+    IReadOnlyList<Guid> PropertyIds,
+    DateTime? LastSentAt);
 
 /// <summary>
 /// The invitation after it was created or sent again. <paramref name="EmailQueued"/> is false when the email could not be
@@ -135,6 +146,14 @@ public static class OrgInvitationErrors
 
     public const string NotFound = "org_invitation_not_found";
     public const string MemberNotFound = "org_member_not_found";
+
+    // 429: the emails of the invitations are capped (AM-02c, decision AM-D15), so the invitation is not a channel of outgoing mail.
+
+    /// <summary>The org already sent <c>OrgTeam:InvitationDailyLimit</c> invitation emails (created or sent again) in the last 24 hours.</summary>
+    public const string DailyLimitReached = "invitation_daily_limit_reached";
+
+    /// <summary>The invitation was sent less than <c>OrgTeam:ResendMinutes</c> ago: «reinvia» waits.</summary>
+    public const string ResendTooSoon = "invitation_resend_too_soon";
 }
 
 /// <summary>

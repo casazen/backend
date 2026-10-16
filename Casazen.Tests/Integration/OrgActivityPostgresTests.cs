@@ -315,6 +315,8 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         _kit.Emails,
         Casazen.Tests.Unit.Email.EmailTestHelpers.Links(),
         activityLog,
+        _kit.PropertyAccess(db),
+        _kit.Config(),
         NullLogger<OrgInvitationService>.Instance,
         _kit.Clock);
 

@@ -82,6 +82,11 @@ public static class HostScopeQueryExtensions
             return p => p.OwnerId == ownerId && p.MemberAccesses.Any(a => a.UserId == memberId);
         if (ownerId is not null)
             return p => p.OwnerId == ownerId;
+
+        // A collaborator «Solo alcuni» that works in one area only reaches the granted properties of that mode (AM-02c): the
+        // grants of the other mode stay in the table and come back with the area.
+        if (memberId is not null && scope.GrantedMode is { } mode)
+            return p => p.RentalMode == mode && p.MemberAccesses.Any(a => a.UserId == memberId);
         if (memberId is not null)
             return p => p.MemberAccesses.Any(a => a.UserId == memberId);
 

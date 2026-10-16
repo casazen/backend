@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
@@ -19,10 +20,12 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>The person in charge must still reach the property (AM-03b).</b> Being named is not enough: a notification carries the
 /// name and email of the guest, the dates and the prices of a stay, so it goes only to someone who can open that stay. The
 /// rule is the one that lets a person be put in charge (<c>OrgPropertyAccessService</c>): an active member of the org who is not a
-/// collaborator limited to some properties, or who was given this one. An account that is in no org team (an owner of before the
-/// team) reaches the property it created, as it always did, and only that. The access service also takes the responsibility
-/// away when the access is taken away; this check is the second level, so a stale name (a write on another instance, a row
-/// changed by hand) fails closed: nobody but the administrators is told.</para>
+/// collaborator limited to some properties, or who was given this one <b>and works in the area of its mode</b> (AM-02c: a
+/// collaborator that works in one area only does not reach the given properties of the other mode, and a property can change
+/// mode after it was given). An account that is in no org team (an owner of before the team) reaches the property it created, as
+/// it always did, and only that. The access service also takes the responsibility away when the access is taken away, and the
+/// change of mode of a property does the same (<c>PropertyResponsibility</c>); this check is the second level, so a stale name
+/// (a write on another instance, a row changed by hand) fails closed: nobody but the administrators is told.</para>
 /// <para>One place for the push (<c>PushDeliveryJob</c>) and the emails (<c>BookingNotifier</c>), so the two cannot disagree.
 /// The queries run in jobs with no tenant: every read says <c>IgnoreQueryFilters</c> and scopes to the org explicitly.</para>
 /// </remarks>
@@ -55,8 +58,24 @@ internal static class HostNotificationAudience
                                  && m.Status == OrgMemberStatus.Active
                                  && (m.Role != OrgRole.Collaborator
                                      || m.PropertyScope != PropertyScope.Selected
-                                     || db.PropertyMemberAccesses.IgnoreQueryFilters().Any(a =>
-                                         a.UserId == u.Id && a.OrgId == orgId && a.PropertyId == propertyId)))
+                                     || (db.PropertyMemberAccesses.IgnoreQueryFilters().Any(a =>
+                                             a.UserId == u.Id && a.OrgId == orgId && a.PropertyId == propertyId)
+                                         // AM-02c: the grant is reached only in an area the collaborator works in, read on the live
+                                         // property (OrgRoleCatalog.SingleModeOf, as HostScope and the snapshot do): a property that
+                                         // changed mode since it was granted is out for one who works in the other mode only.
+                                         && db.Properties.IgnoreQueryFilters().Any(p =>
+                                             p.Id == propertyId
+                                             && p.OrgId == orgId
+                                             && (db.UserContextMemberships.Any(c =>
+                                                     c.UserId == u.Id
+                                                     && c.ContextKey == (p.RentalMode == RentalMode.Long
+                                                         ? OrgRoleCatalog.LongRent
+                                                         : OrgRoleCatalog.ShortRent))
+                                                 || !db.UserContextMemberships.Any(c =>
+                                                     c.UserId == u.Id
+                                                     && c.ContextKey == (p.RentalMode == RentalMode.Long
+                                                         ? OrgRoleCatalog.ShortRent
+                                                         : OrgRoleCatalog.LongRent)))))))
                              // An account in no team keeps the rule of before it: it reaches the property it created.
                              || (u.Id == creatorUserId && !db.OrgMembers.IgnoreQueryFilters().Any(m => m.UserId == u.Id))))
                         || db.OrgMembers.IgnoreQueryFilters().Any(m =>
