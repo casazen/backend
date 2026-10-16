@@ -1,8 +1,10 @@
 using System.Data;
+using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
+using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -48,6 +50,11 @@ namespace Casazen.Infrastructure.Services;
 /// nightly check (<c>property-compliance-check</c>) takes it up.</item>
 /// <item><b>Notices.</b> The host is told after the commit, never inside the transaction (a failed e-mail never undoes a
 /// change).</item>
+/// <item><b>Activity log (AM-02c).</b> The programming, the cancellation and the application of a change each leave a line
+/// (<c>PropertyModeChangeScheduled</c>, <c>PropertyModeChangeCancelled</c>, <c>PropertyModeChanged</c>), staged in the very
+/// transaction of the change, so a change that is rolled back leaves none and a line is never written for a change that did not
+/// happen. The line says the area of the property at that moment; the daily job has no actor. A change that fails writes nothing.
+/// While the <c>OrgTeam</c> flag is off the log collects nothing, so this changes nothing before the flag is turned on.</item>
 /// </list>
 /// </remarks>
 public sealed class PropertyModeService(
@@ -55,6 +62,7 @@ public sealed class PropertyModeService(
     IConfiguration configuration,
     IPropertyComplianceStatusService complianceStatus,
     INotificationService notifications,
+    IActivityLog activityLog,
     ILogger<PropertyModeService> logger,
     TimeProvider? timeProvider = null) : IPropertyModeService
 {
@@ -131,6 +139,15 @@ public sealed class PropertyModeService(
             if (to == RentalMode.Long)
                 await CloseCalendarAsync(property.Id, property.OrgId, day, cancellationToken);
 
+            // Who programmed which change, in the save that writes it (AM-02c): the property is still in the mode it leaves.
+            RecordMode(
+                OrgActivityType.PropertyModeChangeScheduled,
+                change,
+                userId,
+                (OrgActivityDetailKeys.FromMode, change.FromMode.ToString()),
+                (OrgActivityDetailKeys.ToMode, change.ToMode.ToString()),
+                (OrgActivityDetailKeys.EffectiveOn, day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
@@ -182,6 +199,13 @@ public sealed class PropertyModeService(
             // nothing, and the block of the property (it is long-term) stays where it is.
             if (change.ToMode == RentalMode.Long)
                 await ReopenCalendarAsync(propertyId, cancellationToken);
+
+            RecordMode(
+                OrgActivityType.PropertyModeChangeCancelled,
+                change,
+                userId,
+                (OrgActivityDetailKeys.FromMode, change.FromMode.ToString()),
+                (OrgActivityDetailKeys.ToMode, change.ToMode.ToString()));
 
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
@@ -328,6 +352,24 @@ public sealed class PropertyModeService(
 
                     change.Status = PropertyModeChangeStatus.Applied;
                     change.AppliedAt = now;
+
+                    // The mode decides what a collaborator «Solo alcuni» that works in one area reaches (AM-02c): one that works only
+                    // in the mode the property just left no longer reaches it, and cannot stay in charge of it (AM-03b), in the same
+                    // save as the change. The lists follow the mode at once; the cached copy of that person's reach, on the single
+                    // resources, within the cache duration (docs/runbooks/org-team.md, section 42).
+                    var released = await PropertyResponsibility.ReleaseIfOutsideItsAreasAsync(db, property, now, cancellationToken);
+
+                    // The daily job did it: no actor. The area is the one the property is in now (AM-02c).
+                    var applied = new List<(string Key, string Value)>
+                    {
+                        (OrgActivityDetailKeys.FromMode, change.FromMode.ToString()),
+                        (OrgActivityDetailKeys.ToMode, change.ToMode.ToString()),
+                    };
+                    if (released)
+                        applied.Add((OrgActivityDetailKeys.Released, "1"));
+
+                    RecordMode(OrgActivityType.PropertyModeChanged, change, actorUserId: null, [.. applied]);
+
                     notice = new PropertyModeNotice(change.Id, PropertyModeNoticeKind.Applied);
                     reevaluate = change.ToMode == RentalMode.Short;
                     outcome = Outcome.Applied;
@@ -358,6 +400,28 @@ public sealed class PropertyModeService(
             await NotifyAsync(notice, cancellationToken);
 
         return outcome;
+    }
+
+    /// <summary>
+    /// Stages a line of the activity log (AM-02c) in the unit of work of the change; the caller saves. The area is the one of the
+    /// property in the mode it is in at that moment: the one it leaves for a programming and a cancellation, the one it enters for
+    /// an application.
+    /// </summary>
+    private void RecordMode(
+        OrgActivityType type,
+        PropertyModeChange change,
+        string? actorUserId,
+        params (string Key, string Value)[] details)
+    {
+        // Programmed and cancelled: the property is still in FromMode; applied: it has just entered ToMode.
+        var inMode = type == OrgActivityType.PropertyModeChanged ? change.ToMode : change.FromMode;
+        activityLog.Record(new OrgActivity(
+            change.OrgId,
+            type,
+            actorUserId,
+            change.PropertyId.ToString(),
+            details.ToDictionary(d => d.Key, d => d.Value),
+            inMode == RentalMode.Long ? OrgActivityArea.LongRent : OrgActivityArea.ShortRent));
     }
 
     private static void Fail(PropertyModeChange change, string reason, DateTime now)

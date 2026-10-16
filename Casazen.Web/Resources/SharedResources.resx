@@ -270,6 +270,12 @@
   <data name="AccessRequestLimitReached" xml:space="preserve">
     <value>Hai già inviato diverse richieste oggi e gli amministratori sono stati avvisati. Riprova domani.</value>
   </data>
+  <data name="InvitationDailyLimitReached" xml:space="preserve">
+    <value>Hai già mandato {0} email d'invito nelle ultime 24 ore, anche contando i reinvii. Riprova più tardi.</value>
+  </data>
+  <data name="InvitationResendTooSoon" xml:space="preserve">
+    <value>Questo invito è stato mandato da poco. Puoi mandarlo di nuovo tra {0} minuti.</value>
+  </data>
   <data name="OrgActivityTypeUnknown" xml:space="preserve">
     <value>Tipo di attività non riconosciuto.</value>
   </data>
@@ -1635,6 +1641,24 @@
   </data>
   <data name="PaymentListInvalidRange" xml:space="preserve">
     <value>Intervallo non valido: la data di inizio (from) non può essere dopo quella di fine (to).</value>
+  </data>
+  <data name="DashboardInvalidOverviewPeriod" xml:space="preserve">
+    <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, period=Last30Days, period=Next30Days oppure period=Custom con from e to nel formato AAAA-MM-GG (da 1 a 366 giorni).</value>
+  </data>
+  <data name="BookingListInvalidArrivalRange" xml:space="preserve">
+    <value>Intervallo non valido: la data di inizio degli arrivi (arrivalFrom) non può essere dopo quella di fine (arrivalTo).</value>
+  </data>
+  <data name="BookingListInvalidView" xml:space="preserve">
+    <value>Vista non valida: usa uno dei nomi all, toConfirm, upcoming, inProgress, completed o cancelled.</value>
+  </data>
+  <data name="BookingListInvalidChannel" xml:space="preserve">
+    <value>Canale non valido: usa i nomi Direct, Manual, Airbnb, BookingCom o Other, ripetuti o separati da virgole.</value>
+  </data>
+  <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
+    <value>Stato del check-in non valido: usa i nomi NotSent, Sent, InProgress, Completed o Expired, ripetuti o separati da virgole.</value>
+  </data>
+  <data name="BookingListInvalidSort" xml:space="preserve">
+    <value>Ordinamento non valido: usa checkIn, createdAt, total, status o guest, seguiti da :asc o :desc.</value>
   </data>
   <data name="SeoCounselRequired" xml:space="preserve">
     <value>Questa pagina è tra le prime {0} e può essere pubblicata solo dopo la revisione legale: conferma che il testo è stato revisionato.</value>

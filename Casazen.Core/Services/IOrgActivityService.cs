@@ -9,13 +9,15 @@ namespace Casazen.Core.Services;
 /// <param name="Area">Only this area.</param>
 /// <param name="ActorUserId">Only what this account did.</param>
 /// <param name="SystemActor">Only what nobody did: the jobs and the webhooks (it excludes <paramref name="ActorUserId"/>).</param>
+/// <param name="PeopleOnly">Only what some person did, whoever (the opposite of <paramref name="SystemActor"/>; AM-02c: the home of the account shows no «Sistema»).</param>
 public sealed record OrgActivityFilter(
     DateTime? From = null,
     DateTime? To = null,
     IReadOnlyCollection<OrgActivityType>? Types = null,
     OrgActivityArea? Area = null,
     string? ActorUserId = null,
-    bool SystemActor = false);
+    bool SystemActor = false,
+    bool PeopleOnly = false);
 
 /// <summary>One line of the activity log as the endpoints return it: ids and codes only (see <see cref="Casazen.Core.Entities.OrgActivityEntry"/>).</summary>
 public sealed record OrgActivityItem(
@@ -44,6 +46,16 @@ public interface IOrgActivityService
         OrgActivityFilter filter,
         int page,
         int pageSize,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The latest <paramref name="count"/> matching lines, newest first, with no total: one statement, so the home of the account
+    /// (AM-02c) does not count a whole year of lines to show three of them.
+    /// </summary>
+    Task<IReadOnlyList<OrgActivityItem>> LatestAsync(
+        Guid orgId,
+        OrgActivityFilter filter,
+        int count,
         CancellationToken cancellationToken = default);
 
     /// <summary>

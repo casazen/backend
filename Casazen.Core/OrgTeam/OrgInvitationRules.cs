@@ -23,6 +23,24 @@ public static class OrgInvitationRules
     /// <summary>Configuration key of the retention.</summary>
     public const string RetentionDaysConfigKey = "OrgTeam:InvitationRetentionDays";
 
+    /// <summary>Configuration key of the cap on the invitation emails of an org in <see cref="DailyWindow"/> (AM-02c, decision AM-D15).</summary>
+    public const string DailyLimitConfigKey = "OrgTeam:InvitationDailyLimit";
+
+    /// <summary>
+    /// Invitation emails an org may send in <see cref="DailyWindow"/>, creations and «reinvia» together, when the configuration
+    /// does not say (AM-D15: 10 in 24 hours). A value that is not a positive number is ignored.
+    /// </summary>
+    public const int DefaultDailyLimit = 10;
+
+    /// <summary>The window of the cap: the last 24 hours, sliding.</summary>
+    public static readonly TimeSpan DailyWindow = TimeSpan.FromHours(24);
+
+    /// <summary>Configuration key of the wait between two «reinvia» of the same invitation, in minutes (AM-02c, decision AM-D15).</summary>
+    public const string ResendMinutesConfigKey = "OrgTeam:ResendMinutes";
+
+    /// <summary>Minutes between two «reinvia» of the same invitation when the configuration does not say (AM-D15: one an hour). A value that is not a positive number is ignored.</summary>
+    public const int DefaultResendMinutes = 60;
+
     public const int MaxEmailLength = 255;
     public const int MaxNameLength = 200;
 

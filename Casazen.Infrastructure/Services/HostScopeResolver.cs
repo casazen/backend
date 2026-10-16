@@ -76,8 +76,9 @@ public sealed class HostScopeResolver(
                 OrgRole.Owner or OrgRole.Admin or OrgRole.PropertyManager or OrgRole.Accountant => new HostScope(orgId),
 
                 // Only the collaborator can be limited to some properties; with none given it reaches none.
+                // The properties it was given are reached while their mode is one of its areas (AM-02c).
                 OrgRole.Collaborator => member.PropertyScope == PropertyScope.Selected
-                    ? new HostScope(orgId, GrantedToUserId: userId)
+                    ? new HostScope(orgId, GrantedToUserId: userId, GrantedMode: member.GrantedMode)
                     : new HostScope(orgId),
 
                 // An unknown role is never widened.

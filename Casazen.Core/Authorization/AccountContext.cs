@@ -36,6 +36,13 @@ public static class AccountContext
 
         /// <summary>The accountant: reads the org's invoices.</summary>
         public const string Accountant = "org_accountant";
+
+        /// <summary>
+        /// The property manager (AM-02c, decision AM-D12): a restricted membership of the account context with the trusted
+        /// suppliers only (<see cref="Permissions.SuppliersManage"/>). It never holds <see cref="Permissions.MembersManage"/>
+        /// nor <see cref="Permissions.BillingManage"/>, so it reaches «Fornitori» and nothing else of the account area.
+        /// </summary>
+        public const string Manager = "org_manager";
     }
 
     /// <summary>Permissions of the context (<c>RolePermissions.PermissionKey</c>).</summary>
@@ -56,7 +63,10 @@ public static class AccountContext
         /// <summary>Org name, slug, contacts and languages.</summary>
         public const string SettingsManage = "org.settings.manage";
 
-        /// <summary>The org's trusted suppliers. Also held by the property managers, in the rental contexts they work in.</summary>
+        /// <summary>
+        /// The org's trusted suppliers. Also held by the property managers, in the rental contexts they work in and, since
+        /// AM-02c, by their <see cref="RoleKeys.Manager"/> membership of the account context.
+        /// </summary>
         public const string SuppliersManage = "org.suppliers.manage";
 
         /// <summary>The org's activity log.</summary>

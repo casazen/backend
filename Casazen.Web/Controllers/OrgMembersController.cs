@@ -109,6 +109,32 @@ public class OrgMembersController(
     }
 
     /// <summary>
+    /// Sets the areas the member works in (AM-02c): <c>short-rent</c> and/or <c>long-rent</c>, at least one. Role and properties
+    /// stay as they are (a collaborator «Solo alcuni» keeps what it was given); the change is seen on the member's next request on
+    /// this API instance and within the authorization cache duration (60 s) on the others. 403 <c>org_owner_required</c> (only the
+    /// owner touches an administrator), 404 <c>org_member_not_found</c>, 409 <c>org_last_owner</c> (the owner's areas are not the
+    /// team's), 422 <c>org_member_area_required</c>.
+    /// </summary>
+    [HttpPut("{id:guid}/areas")]
+    [ProducesResponseType(typeof(OrgMemberDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OrgMemberDto>> SetAreas(
+        Guid id,
+        [FromBody] SetOrgMemberAreasRequest request,
+        CancellationToken cancellationToken)
+    {
+        var caller = await this.ResolveOrgTeamCallerAsync(orgContextResolver, cancellationToken);
+        if (caller.Problem is not null)
+            return caller.Problem;
+
+        var member = await team.SetAreasAsync(caller.OrgId, id, request.Areas ?? [], caller.UserId, cancellationToken);
+        return Ok(OrgMemberDto.From(member));
+    }
+
+    /// <summary>
     /// Switches the member's access off: from its next request it gets 403 <c>member_inactive</c>, and its seat is free.
     /// Its CasaZen account and its Auth0 login are not touched. Idempotent. 403 <c>org_owner_required</c>, 404
     /// <c>org_member_not_found</c>, 409 <c>org_last_owner</c>.

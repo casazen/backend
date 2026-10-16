@@ -51,6 +51,15 @@ public static class ComplianceMissingCodes
 
     /// <summary>The payment of a confirmed stay failed and nothing else paid it (<c>GET /api/dashboard/today</c>).</summary>
     public const string PaymentFailed = "payment_failed";
+
+    /// <summary>A supplier proposed another time for a service request and the host has not answered (SR-03b, <c>GET /api/dashboard/today</c>).</summary>
+    public const string ProposalNotAnswered = "proposal_not_answered";
+
+    /// <summary>The final amount of a finished job is above the quote and the host has not confirmed it (SR-03b, <c>GET /api/dashboard/today</c>).</summary>
+    public const string FinalAmountNotConfirmed = "final_amount_not_confirmed";
+
+    /// <summary>A finished job has not been paid (SR-03b, <c>GET /api/dashboard/today</c>).</summary>
+    public const string ServiceNotPaid = "service_not_paid";
 }
 
 /// <summary>

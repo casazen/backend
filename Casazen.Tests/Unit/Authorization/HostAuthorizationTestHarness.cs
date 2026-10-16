@@ -38,7 +38,11 @@ public static class HostAuthorizationTestHarness
 
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddAuthorizationCore();
+        // The role's own permission, asked by name (AuthorizeAsync(user, CasazenPolicies.PaymentRead)) as the Home and the lists do to
+        // keep money from a caller who may not read payments (SR-D7): granted unless hasPermission says the role lacks it.
+        services.AddAuthorizationCore(options => options.AddPolicy(
+            CasazenPolicies.PaymentRead,
+            policy => policy.RequireAssertion(_ => hasPermission?.Invoke("short-rent", "payment.read") ?? true)));
         services.AddSingleton(tenant.Object);
         services.AddSingleton(contexts.Object);
         services.AddSingleton(scopeResolver ?? ScopeResolver());

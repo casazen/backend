@@ -18,7 +18,7 @@ namespace Casazen.Infrastructure.Services;
 /// meanwhile still has its guests and its money. Queries are bounded by the period or by <see cref="ListSize"/>: the
 /// bookings of the org are never loaded whole (A2-29).
 /// </remarks>
-public sealed class HostDashboardService(
+public sealed partial class HostDashboardService(
     AppDbContext db,
     IConfiguration configuration,
     TimeProvider? timeProvider = null) : IHostDashboardService
@@ -201,40 +201,43 @@ public sealed class HostDashboardService(
         IReadOnlyCollection<Guid> propertyIds,
         HostDashboardPeriod period,
         DateTime nowUtc,
+        CancellationToken cancellationToken) =>
+        (await GetFiguresWithStaysAsync(scope, query, propertyIds, period, nowUtc, cancellationToken)).Figures;
+
+    // The same, with the confirmed stays the revenue is made of: the overview (SR-03b) cuts them into the bars of its chart.
+    private async Task<(HostDashboardFigures Figures, IReadOnlyList<HostRevenueStay> Stays)> GetFiguresWithStaysAsync(
+        HostScope scope,
+        HostDashboardQuery query,
+        IReadOnlyCollection<Guid> propertyIds,
+        HostDashboardPeriod period,
+        DateTime nowUtc,
         CancellationToken cancellationToken)
     {
         var occupancy = await GetOccupancyAsync(propertyIds, period, nowUtc, cancellationToken);
-        var (revenue, revenueStays, directStays) = await GetRevenueAsync(scope, query.PropertyId, period, cancellationToken);
+        var stays = await GetRevenueStaysAsync(scope, query.PropertyId, period, cancellationToken);
+        var counted = StayKpiRules.WithNightsIn(stays, period.From, period.To).ToList();
+        var revenue = StayKpiRules.RevenueOf(counted, period.From, period.To);
+        var directStays = counted.Count(s => s.Source == BookingSource.Direct);
         var collected = query.IncludeCollected
             ? await GetCollectedAsync(scope, query.PropertyId, period, cancellationToken)
             : null;
 
-        return new HostDashboardFigures(
-            period, occupancy, revenue, revenueStays, collected, new HostDashboardDirectShare(directStays, revenueStays));
+        var figures = new HostDashboardFigures(
+            period, occupancy, revenue, counted.Count, collected, new HostDashboardDirectShare(directStays, counted.Count));
+        return (figures, stays);
     }
 
-    private async Task<(decimal Revenue, int Stays, int DirectStays)> GetRevenueAsync(
+    // The confirmed stays that have a night in the period, with what the revenue needs of each.
+    private async Task<IReadOnlyList<HostRevenueStay>> GetRevenueStaysAsync(
         HostScope scope,
         Guid? propertyId,
         HostDashboardPeriod period,
-        CancellationToken cancellationToken)
-    {
-        var stays = await BookingsInScope(scope, propertyId)
+        CancellationToken cancellationToken) =>
+        await BookingsInScope(scope, propertyId)
             .Where(StayKpiRules.IsConfirmedStay())
             .Where(PropertyOccupancy.BookingTakesNightIn(period.From, period.To))
-            .Select(b => new { b.BasePrice, b.CheckInDate, b.CheckOutDate, b.Source })
+            .Select(b => new HostRevenueStay(b.BasePrice, b.CheckInDate, b.CheckOutDate, b.Source))
             .ToListAsync(cancellationToken);
-
-        var counted = stays
-            .Where(s => PropertyOccupancy.NightsIn(s.CheckInDate, s.CheckOutDate, period.From, period.To).Any())
-            .ToList();
-        var revenue = counted.Sum(s =>
-            StayKpiRules.RevenueInPeriod(s.BasePrice, s.CheckInDate, s.CheckOutDate, period.From, period.To));
-        return (
-            Math.Round(revenue, 2, MidpointRounding.AwayFromZero),
-            counted.Count,
-            counted.Count(s => s.Source == BookingSource.Direct));
-    }
 
     // Money collected in the period, by cash (SR-03, PaymentCashRules): the payments of the scope that came in on those days.
     private async Task<HostDashboardCollected> GetCollectedAsync(
@@ -267,6 +270,7 @@ public sealed class HostDashboardService(
     {
         HostDashboardPeriodKind.Last30Days => HostDashboardPeriod.ForLast30Days(todayInRome),
         HostDashboardPeriodKind.Next30Days => HostDashboardPeriod.ForNext30Days(todayInRome),
+        HostDashboardPeriodKind.Custom => CustomPeriodOf(query),
         _ => HostDashboardPeriod.ForMonth(query.Month ?? DateOnly.FromDateTime(todayInRome)),
     };
 

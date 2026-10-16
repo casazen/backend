@@ -67,7 +67,7 @@ internal sealed class OrgInvitationTestKit
 
     public AppDbContext NewDb() => _contextFactory?.Invoke() ?? OrgTeamTestData.NewDb(Database);
 
-    private IConfiguration Config() => new ConfigurationBuilder().AddInMemoryCollection(Settings).Build();
+    public IConfiguration Config() => new ConfigurationBuilder().AddInMemoryCollection(Settings).Build();
 
     private IEmailQueue Queue() => QueueAccepts ? Emails : new RefusingEmailQueue();
 
@@ -113,6 +113,8 @@ internal sealed class OrgInvitationTestKit
         Queue(),
         EmailTestHelpers.Links(PublicSiteBaseUrl),
         Activity(db),
+        PropertyAccess(db),
+        Config(),
         NullLogger<OrgInvitationService>.Instance,
         clock ?? Clock);
 
@@ -150,6 +152,10 @@ internal sealed class OrgInvitationTestKit
 
     public OrgActivityService ActivityReader(AppDbContext db) => new(db);
 
+    public OrgOverviewService Overview(AppDbContext db) => new(db, Entitlement(db), Seats(db), ActivityReader(db), Clock);
+
+    public OrgRoleMatrixService RoleMatrix(AppDbContext db) => new(db);
+
     public OrgActivityRetentionService Retention(AppDbContext db) =>
         new(db, Config(), NullLogger<OrgActivityRetentionService>.Instance, Clock);
 
@@ -184,25 +190,40 @@ internal sealed class OrgInvitationTestKit
         PlanTier tier = PlanTier.Pro,
         SubscriptionStatus status = SubscriptionStatus.Active)
     {
-        await using var db = NewDb();
-        var org = AddOrg(db);
-        org.Name = org.DisplayName = "Casa Rossi";
-        org.PlanTier = tier;
-        org.SubscriptionStatus = status;
-        org.SubscriptionId = status == SubscriptionStatus.None ? null : $"sub_{Guid.NewGuid():N}";
+        OrgEntity org;
+        await using (var db = NewDb())
+        {
+            org = AddOrg(db);
+            org.Name = org.DisplayName = "Casa Rossi";
+            org.PlanTier = tier;
+            org.SubscriptionStatus = status;
+            org.SubscriptionId = status == SubscriptionStatus.None ? null : $"sub_{Guid.NewGuid():N}";
+            await db.SaveChangesAsync();
+        }
 
-        var owner = AddUser(db, ownerId, org.Id, UserRole.PropertyOwner);
+        return (org, await SeedOwnerOfOrgAsync(org.Id, ownerId));
+    }
+
+    /// <summary>
+    /// The owner of an org that already exists, as the onboarding leaves it: the account with the owner role, the rental
+    /// membership, the org member row, the account membership and the consents of the org. For the migration tests, whose org was
+    /// written with SQL at the schema before the migration (<c>LegacyOrgRows</c>) and gets its people after it.
+    /// </summary>
+    public async Task<User> SeedOwnerOfOrgAsync(Guid orgId, string ownerId = "auth0|owner")
+    {
+        await using var db = NewDb();
+        var owner = AddUser(db, ownerId, orgId, UserRole.PropertyOwner);
         owner.Email = $"{ownerId.Replace("auth0|", string.Empty, StringComparison.Ordinal)}@example.com";
         owner.FirstName = "Giulia";
         owner.LastName = "Rinaldi";
         owner.RentalType = RentalType.ShortTerm;
         owner.OnboardingCompletedAt = Now;
         AddMembership(db, ownerId, "short-rent", "property_owner");
-        AddConsents(db, ownerId, org.Id);
+        AddConsents(db, ownerId, orgId);
         await db.SaveChangesAsync();
 
-        await Membership(db).EnsureOwnerAsync(ownerId, org.Id);
-        return (org, owner);
+        await Membership(db).EnsureOwnerAsync(ownerId, orgId);
+        return owner;
     }
 
     /// <summary>A person with no org yet who just signed up (no role, not onboarded), with the given email.</summary>
@@ -303,6 +324,48 @@ internal sealed class OrgInvitationTestKit
         db.OrgInvitations.Add(invitation);
         await db.SaveChangesAsync();
         return (invitation, token);
+    }
+
+    /// <summary>A property of the org written directly (AM-02c: the tests of the areas, the invitation properties and the overview).</summary>
+    public async Task<Guid> SeedPropertyAsync(
+        Guid orgId,
+        string name,
+        RentalMode mode = RentalMode.Short,
+        bool deleted = false,
+        string ownerId = "auth0|owner",
+        PropertyComplianceStatus compliance = PropertyComplianceStatus.Pending)
+    {
+        await using var db = NewDb();
+        var property = HostScopeScenario.NewProperty(orgId, ownerId, name);
+        property.RentalMode = mode;
+        property.IsDeleted = deleted;
+        property.DeletedAt = deleted ? Now : null;
+        property.ComplianceStatus = compliance;
+        db.Properties.Add(property);
+        await db.SaveChangesAsync();
+        return property.Id;
+    }
+
+    /// <summary>The properties given to a person (the rows of «Solo alcuni»), sorted.</summary>
+    public async Task<List<Guid>> ReadGrantsAsync(string userId)
+    {
+        await using var db = NewDb();
+        return await db.PropertyMemberAccesses.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.UserId == userId)
+            .Select(a => a.PropertyId)
+            .OrderBy(id => id)
+            .ToListAsync();
+    }
+
+    /// <summary>The properties an invitation carries, sorted.</summary>
+    public async Task<List<Guid>> ReadInvitationPropertiesAsync(Guid invitationId)
+    {
+        await using var db = NewDb();
+        return await db.OrgInvitationProperties.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.InvitationId == invitationId)
+            .Select(p => p.PropertyId)
+            .OrderBy(id => id)
+            .ToListAsync();
     }
 
     private void AddConsents(AppDbContext db, string userId, Guid orgId)

@@ -71,7 +71,7 @@ public class BookingsControllerSearchTests
         return resolver.Object;
     }
 
-    private Task<ActionResult<PagedResultDto<BookingResponseDto>>> CallAsync(
+    private Task<ActionResult<PagedResultDto<BookingListItemDto>>> CallAsync(
         BookingsController controller,
         DateOnly? from = null,
         DateOnly? to = null,
@@ -194,7 +194,7 @@ public class BookingsControllerSearchTests
             page: 3,
             pageSize: 10);
 
-        var page = Assert.IsType<PagedResultDto<BookingResponseDto>>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        var page = Assert.IsType<PagedResultDto<BookingListItemDto>>(Assert.IsType<OkObjectResult>(result.Result).Value);
         Assert.Equal((41, 3, 10), (page.TotalCount, page.Page, page.PageSize));
         var dto = Assert.Single(page.Items);
         Assert.Equal(booking.Id, dto.Id);
@@ -226,7 +226,7 @@ public class BookingsControllerSearchTests
 
         var result = await CallAsync(CreateController(), page: 2, pageSize: 5, orgResolver: resolver.Object);
 
-        var page = Assert.IsType<PagedResultDto<BookingResponseDto>>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        var page = Assert.IsType<PagedResultDto<BookingListItemDto>>(Assert.IsType<OkObjectResult>(result.Result).Value);
         Assert.Empty(page.Items);
         Assert.Equal((0, 2, 5), (page.TotalCount, page.Page, page.PageSize));
         _search.Verify(s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -253,8 +253,8 @@ public class BookingsControllerSearchTests
             Times.Once);
     }
 
-    private static PagedResultDto<BookingResponseDto> PageOf(ActionResult<PagedResultDto<BookingResponseDto>> result) =>
-        Assert.IsType<PagedResultDto<BookingResponseDto>>(Assert.IsType<OkObjectResult>(result.Result).Value);
+    private static PagedResultDto<BookingListItemDto> PageOf(ActionResult<PagedResultDto<BookingListItemDto>> result) =>
+        Assert.IsType<PagedResultDto<BookingListItemDto>>(Assert.IsType<OkObjectResult>(result.Result).Value);
 
     // --- The property the caller asks about ---------------------------------------------------------------
 

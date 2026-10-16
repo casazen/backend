@@ -184,11 +184,25 @@ public class ShortRentReadRulesTests
     // --- The things to do -------------------------------------------------------------------------------
 
     [Fact]
-    public void Priority_EveryActionHasItsOwnPlace_OneToEight()
+    public void Priority_EveryActionHasAPlace_OneToEight_AndEveryPlaceIsTaken()
     {
-        var priorities = Enum.GetValues<HostTodoAction>().Select(HostTodoPriority.Of).Order().ToList();
+        // SR-03b added three actions about the interventions: they stand with the thing they are like (1, 5 and 6) and nothing is
+        // renumbered, so the priorities stay 1 to 8 and no action falls in the "unknown" 9.
+        var priorities = Enum.GetValues<HostTodoAction>().Select(HostTodoPriority.Of).Distinct().Order().ToList();
 
         Assert.Equal(Enumerable.Range(1, 8), priorities);
+    }
+
+    [Fact]
+    public void Priority_TheActionsAboutInterventions_StandWithTheOnesTheyAreLike()
+    {
+        Assert.Equal(HostTodoPriority.Of(HostTodoAction.RespondToRequest), HostTodoPriority.Of(HostTodoAction.RespondToServiceRequest));
+        Assert.Equal(HostTodoPriority.Of(HostTodoAction.ReviewFailedPayment), HostTodoPriority.Of(HostTodoAction.ConfirmFinalAmount));
+        Assert.Equal(HostTodoPriority.Of(HostTodoAction.CheckOut), HostTodoPriority.Of(HostTodoAction.PayServiceRequest));
+        Assert.Equal(
+            [1, 5, 6],
+            new[] { HostTodoAction.RespondToServiceRequest, HostTodoAction.ConfirmFinalAmount, HostTodoAction.PayServiceRequest }
+                .Select(HostTodoPriority.Of));
     }
 
     [Fact]

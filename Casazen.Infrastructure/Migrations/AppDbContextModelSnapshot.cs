@@ -2205,6 +2205,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)");
 
+                    b.Property<DateTime?>("LastSentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2221,6 +2224,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Role")
                         .HasColumnType("integer");
+
+                    b.PrimitiveCollection<List<DateTime>>("SendLog")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone[]")
+                        .HasDefaultValueSql("'{}'");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -2251,6 +2260,35 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("IX_OrgInvitations_Status_ExpiresAt");
 
                     b.ToTable("OrgInvitations");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OrgInvitationProperty", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("InvitationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId")
+                        .HasDatabaseName("IX_OrgInvitationProperties_PropertyId");
+
+                    b.HasIndex("InvitationId", "PropertyId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OrgInvitationProperties_InvitationId_PropertyId");
+
+                    b.ToTable("OrgInvitationProperties");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OrgMember", b =>
@@ -4078,6 +4116,12 @@ namespace Casazen.Infrastructure.Migrations
                             Id = 12,
                             ContextKey = "long-rent",
                             RoleKey = "accountant"
+                        },
+                        new
+                        {
+                            Id = 13,
+                            ContextKey = "account",
+                            RoleKey = "org_manager"
                         });
                 });
 
@@ -4469,6 +4513,11 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 12,
                             PermissionKey = "lease.read"
+                        },
+                        new
+                        {
+                            RoleId = 13,
+                            PermissionKey = "org.suppliers.manage"
                         });
                 });
 
@@ -7084,6 +7133,27 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.Org", null)
                         .WithMany()
                         .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OrgInvitationProperty", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.OrgInvitation", null)
+                        .WithMany()
+                        .HasForeignKey("InvitationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

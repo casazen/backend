@@ -150,7 +150,8 @@ public class OrgTeamServiceTests
         var changed = await RunAsync(t => t.ChangeRoleAsync(orgId, adminId, OrgRole.PropertyManager, OwnerId));
 
         Assert.Equal(OrgRole.PropertyManager, changed.Role);
-        Assert.Equal(["short-rent/property_manager"], await _kit.MembershipsAsync("auth0|admin"));
+        // The administrator's account row becomes the property manager's restricted one (AM-02c): the trusted suppliers, nothing else.
+        Assert.Equal(["account/org_manager", "short-rent/property_manager"], await _kit.MembershipsAsync("auth0|admin"));
     }
 
     [Fact]

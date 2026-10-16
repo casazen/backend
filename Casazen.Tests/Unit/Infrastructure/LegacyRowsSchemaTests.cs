@@ -35,6 +35,7 @@ public class LegacyRowsSchemaTests
     private const string Sp15b = "AddSupplierPaymentRefunds";
     private const string Db03 = "AddDirectBookingPublicData";
     private const string Lr12 = "AddGuidedLeaseDraft";
+    private const string Am02c = "AddOrgTeamCompletions";
     private const string Latest = "*";
 
     private static readonly Regex InsertShape = new(
@@ -57,6 +58,7 @@ public class LegacyRowsSchemaTests
         [nameof(LegacyGuestRows)] = LegacyGuestRows.Statement(new Guest()),
         [nameof(LegacyPartyRows)] = LegacyPartyRows.Statement(new Party()),
         [nameof(LegacyServiceRequestRows)] = LegacyServiceRequestRows.Statement(new ServiceRequest()),
+        [nameof(LegacyOrgInvitationRows)] = LegacyOrgInvitationRows.Statement(new OrgInvitation()),
         [RentScheduleRows] = LegacyRentRows.ScheduleStatement(new Casazen.Core.Entities.RentSchedule()),
         [RentInstallmentRows] = LegacyRentRows.InstallmentStatement(new RentLedgerEntry()),
     };
@@ -109,6 +111,8 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyPropertyRows), Lr12 },
         { nameof(LegacyLeaseRows), Lr12 },
         { nameof(LegacyPartyRows), Lr12 },
+        { nameof(LegacyOrgRows), Am02c },
+        { nameof(LegacyOrgInvitationRows), Am02c },
     };
 
     /// <summary>The first migration after which each helper is valid (see the summary of each helper).</summary>
@@ -120,6 +124,7 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyGuestRows), "GuestPrivacyConsentsAndRetention" },
         { nameof(LegacyPartyRows), "LeaseMultipleParties" },
         { RentInstallmentRows, "AddRentCollection" },
+        { nameof(LegacyOrgInvitationRows), "AddOrgInvitations" },
     };
 
     [Theory]

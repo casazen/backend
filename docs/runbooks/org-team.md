@@ -7,7 +7,10 @@ from the database, and the finer permissions; stakes S3 and S5 of the wave spec;
 sections 20 to 28. Task AM-02b (step 4: the activity log, with its CSV and its 12-month retention, and the requests for
 access to the administrators; decision D17; backend only) is described in sections 29 to 39. Task AM-03b (the two findings of the
 security review of AM-03, the limit of the authorization cache with more than one API instance, and the crossing of the property
-scope with the payments of the suppliers; backend only) is described in sections 40 to 44. The screens come with AM-04:
+scope with the payments of the suppliers; backend only) is described in sections 40 to 44. Task AM-02c (the completions the screens
+of the account area need: the matrix of the roles, the areas of a member, the properties inside an invitation, the overview of the home, the
+cap on the emails of the invitations, the restricted membership of the property manager and the events of the mode of a property; one
+migration, `AddOrgTeamCompletions`; backend only) is described in sections 45 to 55. The screens come with AM-04:
 **nothing here changes what a user sees today, but for a collaborator limited to "Solo alcuni" (section 20), which nobody is
 yet**. The flag `OrgTeam` is off by default and gates every endpoint of the team (sections 18, 26 and 37).
 
@@ -36,22 +39,23 @@ schema (nothing forbids it) and reported by the reconcile (`org_several_owners`)
 ## 2. Roles and permissions
 
 One membership per user per context (unique `(UserId, ContextKey)`): the role of the org decides which row each
-context gets. The `account` row exists for the roles that administer or read the org; the rental rows (`short-rent`,
-`long-rent`) are the **areas** the person works in, chosen when they are added and kept as the contexts of their
-memberships.
+context gets. The `account` row exists for the roles that administer or read the org (and, since AM-02c, for the property
+manager, with one permission only); the rental rows (`short-rent`, `long-rent`) are the **areas** the person works in,
+chosen when they are added and kept as the contexts of their memberships.
 
 | Org role | `account` | `short-rent` / `long-rent` |
 |---|---|---|
 | Owner | `org_owner` | `property_owner` / `long_term_landlord` (written by the onboarding from the rental type, never by this service) |
 | Admin | `org_admin` | `property_manager` / `property_manager` |
-| PropertyManager | none | `property_manager` / `property_manager` |
+| PropertyManager | `org_manager` (AM-02c, decision AM-D12: the trusted suppliers only, section 46; it was none) | `property_manager` / `property_manager` |
 | Collaborator | none | `staff` / `staff` |
 | Accountant | `org_accountant` | `accountant` / `accountant` |
 
 `OrgRoleCatalog` (Core) is the one place that says it: the service writes the projection from it, the reconcile
 re-aligns to it, the model seeds the roles from it and `OrgRoleCatalogTests` checks the three agree.
 
-Seeded roles (migration `AddOrgMembership`, `HasData`, explicit ids; 1 to 3 are the owner roles and the staff role, older):
+Seeded roles (migration `AddOrgMembership`, `HasData`, explicit ids; 1 to 3 are the owner roles and the staff role, older; 13 comes
+with `AddOrgTeamCompletions`, AM-02c):
 
 | Id | Role | Permissions |
 |---|---|---|
@@ -64,6 +68,7 @@ Seeded roles (migration `AddOrgMembership`, `HasData`, explicit ids; 1 to 3 are 
 | 10 | `long-rent/staff` | `property.read` only (D14) |
 | 11 | `short-rent/accountant` | `property.read`, `booking.read`, `payment.read` |
 | 12 | `long-rent/accountant` | `property.read`, `lease.read` |
+| 13 | `account/org_manager` (AM-02c) | `org.suppliers.manage` only (section 46) |
 
 The finer permissions the collaborator needs (service requests without `property.write`, guest erasure, the Alloggiati
 declaration) are AM-03's: section 21. The owner role (id 1) holds them too, so nothing changes for it.
@@ -84,6 +89,7 @@ lock, `PostgresAdvisoryLocks.Scope.OrgMembership` = 1401; the authorization cach
 | `EnsureOwnerAsync` | member Owner + `account/org_owner`, never touches the owner rental rows. **Called by the onboarding** right after the org is created. | 409 `org_member_other_org`, `org_member_already_member` |
 | `AddMemberAsync` | member + the memberships of the role for the chosen areas, all or nothing; sets `User.OrgId` when empty and records the property scope (AM-02); the onboarding and the four consents of the person are the acceptance's (D14), not copied here | 422 `org_owner_not_assignable`, `org_member_area_required`; 409 `org_member_already_member`, `org_member_other_org` |
 | `ChangeRoleAsync` | re-points the account row and the role key of every rental row, keeping the areas | 422 `org_owner_not_assignable`; 409 `org_last_owner` |
+| `SetAreasAsync` | AM-02c: exactly the wanted rental rows, each with the role key of the member's role; the account row and the property scope stay; releases the person in charge of what the member no longer reaches (section 48) | 422 `org_member_area_required`; 409 `org_last_owner` (the owner's areas are the onboarding's) |
 | `DeactivateAsync` / `ReactivateAsync` | status only; idempotent; the account and the memberships stay | 409 `org_last_owner` (deactivating the owner) |
 | `RemoveAsync` | deletes the member and every membership the org gave and **unlinks the org** (`User.OrgId`, and the last used context when it was one of the org's; AM-02-FU1), so a later onboarding provisions a new org and never makes the person a second owner of this one; the account stays | 409 `org_last_owner` |
 | `AbandonEmptyOrgAsync` | AM-02: the owner of an empty org leaves it (owner row, memberships, `OrgId`); only the acceptance of an invitation calls it (section 12) | 409 `org_member_other_org` |
@@ -777,10 +783,11 @@ something **asks the administrators for access**. Backend only; the screens are 
 
 ## 30. The events (the whole perimeter)
 
-Seventeen events, **twelve written today and five reserved**. The runbook, `OrgActivityCatalog` and `OrgActivityType` list the
+Eighteen events, **sixteen written today and two reserved** (AM-02c: the three events of the mode of a property are written since then,
+and `MemberAreasChanged` is new). The runbook, `OrgActivityCatalog` and `OrgActivityType` list the
 same ones: a test fails if they disagree, and another one if an event that is not reserved is recorded by nobody or a reserved
 one by somebody. A new event is an enum value (integers in groups of ten, never reused), an entry of the catalog, a row here and
-a test; the limit is about twenty.
+a test; the perimeter grows row by row to about twenty-five events (decision AM-D18), never by an open list.
 
 | Event (`Type`) | Value | Area | Subject (`SubjectId`) | Details | Written by, and when |
 |---|---|---|---|---|---|
@@ -793,18 +800,21 @@ a test; the limit is about twenty.
 | `MemberRemoved` | 7 | `account` | the member's account | `role` | `RemoveAsync` |
 | `MemberPropertyAccessChanged` | 8 | `account` | the member's account | `scope`, `granted`, `revoked`, `released` | `OrgPropertyAccessService.SetAsync`: **who gave what to whom** (AM-03-FU5). One line for the change: the scope the member now has and how many properties were given and taken away; none when nothing changed. AM-03b: `released` is how many properties lost their person in charge with it (section 41), written only when some did |
 | `AccessRequested` | 9 | `account` | the org | `requestedArea` | `OrgAccessRequestService` (section 36); the actor is the member who asked |
+| `MemberAreasChanged` | 10 | `account` | the member's account | `fromAreas`, `toAreas`, `released` | AM-02c: `OrgTeamService.SetAreasAsync`, in the transaction of the change; `fromAreas` and `toAreas` are `short-rent`, `long-rent`, `long-rent.short-rent` or `none` (a member with no rental membership: a drift the reconcile reports, which this change repairs); `released` (section 48) only when some property lost its person in charge; the same areas write nothing, unless a person in charge was released (then the line says so) |
 | `PlanChanged` | 20 | `account` | the org | `fromTier`, `toTier`, `source` | `OrgService.UpdatePlanTierAsync` (`source` `org` for the billing administrator, `staff` for CasaZen staff), the Stripe webhook and `EntitlementService.SyncFromSubscriptionAsync` (`subscription`, **no actor**) |
 | `OrgNameChanged` | 21 | `account` | the org | none | `OrgService.UpdateSettingsAsync`; **the name itself is never recorded** |
 | `OrgSlugChanged` | 22 | `account` | the org | none | same; **the slug itself is never recorded** |
-| `PropertyModeChangeScheduled` | 40 | the property's | the property | `fromMode`, `toMode`, `effectiveOn` | *reserved*: PM-02 (the area is passed by the caller, `ShortRent` by default) |
-| `PropertyModeChangeCancelled` | 41 | the property's | the property | `fromMode`, `toMode` | *reserved*: PM-02 |
-| `PropertyModeChanged` | 42 | the property's | the property | `fromMode`, `toMode` | *reserved*: PM-02 (the daily job: no actor) |
+| `PropertyModeChangeScheduled` | 40 | the property's | the property | `fromMode`, `toMode`, `effectiveOn` | AM-02c: `PropertyModeService.ScheduleAsync`, in the save that writes the change (and closes the calendar); the actor is who programmed it; the area is the mode the property is in, the one it leaves |
+| `PropertyModeChangeCancelled` | 41 | the property's | the property | `fromMode`, `toMode` | AM-02c: `CancelAsync`, same transaction; the actor is who cancelled; the area is the mode the property is still in |
+| `PropertyModeChanged` | 42 | the property's | the property | `fromMode`, `toMode`, `released` | AM-02c: the daily job (`ApplyDueAsync`), in the save that changes the mode: **no actor**; the area is the mode the property has entered; `released` (`1`) only when the person in charge no longer reaches the property in its new mode (section 48). A change that fails writes nothing |
 | `TrustedSupplierAdded` | 60 | `supplier` | the supplier | none | *reserved*: the trusted suppliers of the host (wave spec P10) |
 | `TrustedSupplierRemoved` | 61 | `supplier` | the supplier | none | *reserved*: same |
 
 The area is one of `account`, `short-rent`, `long-rent`, `supplier` (the keys of the contexts of the web app). A reserved event is
 **not written by anything yet**: its code and its details are fixed now so that the integers do not change when the task that builds
-the feature arrives.
+the feature arrives (today the two of the trusted suppliers only). The events of the mode of a property carry the area of the property
+(`short-rent` or `long-rent`), so the screens of each area can filter their own; `PropertyModeService` writes them only when an `IActivityLog` is
+registered (every deploy) and, like all the others, **nothing is collected while `Features__OrgTeam` is off**.
 
 **Not instrumented on purpose** (the task says: nothing else): sending an invitation again or copying its link, the person in
 charge of a property, the contact email and the publication of the org, the billing profile, prices and bookings (other areas and
@@ -997,7 +1007,7 @@ real SQL, retention in batches and its run lock, **six access requests at once f
 - **FU3.** The responsible of a property (AM-03) and the contact email of the org are not in the log; add the events (and the rows here) if the
   product wants them.
 - **FU4 (PM-02 and the trusted suppliers).** The reserved events are written by their tasks: `PropertyModeChangeScheduled`, `PropertyModeChangeCancelled`,
-  `PropertyModeChanged` (area of the property) and `TrustedSupplierAdded`, `TrustedSupplierRemoved`.
+  `PropertyModeChanged` (area of the property; **done by AM-02c**, section 52) and `TrustedSupplierAdded`, `TrustedSupplierRemoved` (still reserved).
 
 ---
 
@@ -1073,6 +1083,7 @@ it expires. The architecture is not changed by AM-03b; this is the limit to know
 | Change of role | next request | **up to 60 s with the old role** |
 | Limit a collaborator ("Tutti" to "Solo alcuni") | next request | **up to 60 s treated as org-wide**: the restriction is late |
 | Fewer properties for a limited collaborator | next request | the lists at once (they read the grants in SQL); a single property opened by id, up to 60 s |
+| A scheduled change of mode of a property given to a collaborator «Solo alcuni» that works in one area (AM-02c, section 48) | the lists and the notifications at once (they read the live mode); the single resources, up to 60 s | the same: the daily job cannot invalidate the copy of the grantees on any instance |
 | More properties, or back to "Tutti" | next request | up to 60 s (the single resources and the decision "limited or not"; until then the person may see less, never more) |
 
 So with several replicas a person whose role or scope was just narrowed can still do, for up to a minute, what it could before.
@@ -1127,3 +1138,240 @@ and the existing `ServicePaymentsIntegrationTests` for the rest of the payment.
 - **AM-03b-FU3 - a collaborator and the payment**: the product owner decides whether a collaborator may confirm a final amount and pay online (section 43).
 - **Other recipients, not changed**: the email of a service request to the host still goes to the contact of the org (AM-03-FU3); the guests of the org
   are still listed to every member with `guest.read` (AM-03-FU2).
+
+---
+
+# Part 6 - AM-02c: completions of the team backend for the account area
+
+## 45. What AM-02c adds
+
+The account area (AM-04) reads the team from the backend of AM-02 and AM-03. This task closes what its screens still lacked and gives the
+activity log the events of the mode of a property. Backend only, behind the flag `OrgTeam` (no new flag), **one migration**
+(`AddOrgTeamCompletions`, section 53): nothing here changes what a user sees today.
+
+| Piece | Where | What it does |
+|---|---|---|
+| Matrix of the roles | `OrgCapabilityCatalog` and `OrgRoleMatrix` (Core), `OrgRoleMatrixService`, `OrgRolesController` | `GET /api/orgs/me/roles`: the five roles, what each holds, and how much of twelve capabilities (section 47) |
+| Areas of a member | `IOrgMembershipService.SetAreasAsync`, `OrgTeamService.SetAreasAsync`, `OrgMembersController.SetAreas` | `PUT /api/orgs/me/members/{id}/areas` and the event `MemberAreasChanged` (section 48) |
+| Properties in the invitation | table `OrgInvitationProperties`, `OrgInvitationService`, `OrgPropertyAccessService.GrantFromInvitationAsync` | the invitation of a «Solo alcuni» collaborator carries its properties, given when it accepts (section 49) |
+| Overview of the home | `IOrgOverviewService`, `OrgOverviewController` | `GET /api/orgs/me/overview` (section 50) |
+| Cap on the emails | `OrgInvitation.LastSentAt` and `SendLog`, `OrgInvitationService` | 10 emails of invitations in 24 hours for each org, one «reinvia» an hour for each invitation (section 51) |
+| Property manager in «Fornitori» | role 13 `account/org_manager`, `OrgRoleCatalog` | the account membership with the trusted suppliers only (section 46) |
+| Events of the mode of a property | `PropertyModeService` | three lines of the log (sections 30 and 52) |
+
+## 46. The property manager and the suppliers (decision AM-D12)
+
+The `PropertyManager` gets a **restricted membership of the account context**: `account/org_manager`, role row 13, whose only permission is
+`org.suppliers.manage` (the page «Fornitori»: the trusted suppliers of the org, AM-10). It is the daily work of a manager and needs neither the team nor
+the billing. Until now the role had no `account` row at all.
+
+- With the flag on, `GET /api/me/contexts` lists `account` for a property manager, with that one permission; the screens of the account show it
+  «Fornitori» and nothing else.
+- **Nothing else of the account opens to it**: `org.members.manage`, `org.billing.*`, `org.settings.manage` and `org.activity.read` stay with `org_owner` and
+  `org_admin`. `OrgRoleActionMatrixTests` finds every action of the account by reflection and fails if a property manager passes one that is not the
+  suppliers'. `OrgBillingAdmin` and `OrgOwnerRoles.All` do not change: `org_manager` holds no `org.billing.manage`.
+- The projection is written wherever the others are: `AddMemberAsync` (an invitation accepted as property manager), `ChangeRoleAsync` (to the role it adds the
+  row, from it removes it) and `ReconcileAsync`. A property manager that exists **before** this deploy (invited in a test environment with the flag on) has no
+  `org_manager` row until the reconcile runs: `POST /api/admin/org-members/reconcile?dryRun=true` lists it as `account_membership_added`, then `dryRun=false`
+  (section 54). The migration only seeds the role: it writes no membership.
+
+## 47. The matrix of the roles (`GET /api/orgs/me/roles`)
+
+Any active member of the org may read it (policy `Authenticated`: the people of a team may know what their role can do; the endpoint reads no personal
+data). 404 while the flag is off, before the authentication, like every endpoint of the team. The answer is `{ roles: [...] }`, the five roles with the
+owner first, and each one carries:
+
+| Field | Meaning |
+|---|---|
+| `role` | `Owner`, `Admin`, `PropertyManager`, `Collaborator`, `Accountant` |
+| `assignable` | **the caller** may give the role (`OrgTeamRules.CanAssign`): the owner gives every role but its own; an administrator every one but the administrator and the owner; nobody else any |
+| `scopeSupported` | the role can be limited to some properties («Solo alcuni»): the collaborator only |
+| `permissionsByContext` | the role key and the permissions it holds in `account`, `short-rent`, `long-rent` (a context with no row for the role is absent): the shape of `GET /api/me/contexts` |
+| `capabilities` | twelve rows, always in the same order, `{ id, group, level }` with `level` `Yes` (sees and changes), `Read` (sees only) or `No` |
+
+The twelve capabilities (`OrgCapabilityCatalog`, stable ids; the words are the client's, i18n): `booking`, `prices`, `guests`, `money` (group `short-rent`),
+`leases`, `rents` (`long-rent`), `jobs` (`both`: the interventions of the suppliers), `people`, `billing`, `suppliers`, `settings`, `security` (`account`).
+
+| | Owner | Admin | Property manager | Collaborator | Accountant |
+|---|---|---|---|---|---|
+| `booking`, `prices` | Yes | Yes | Yes | Read | Read |
+| `guests` | Yes | Yes | Yes | Yes | No |
+| `money`, `leases`, `rents` | Yes | Yes | Yes | No | Read |
+| `jobs` | Yes | Yes | Yes | Yes | Read |
+| `people`, `settings`, `security` | Yes | Yes | No | No | No |
+| `billing` | Yes | Yes | No | No | Read |
+| `suppliers` | Yes | Yes | Yes | No | No |
+
+**The level is read from the permissions of the seeded roles** (`RolePermissions`, the rows the policies read), not from a second table, so the matrix never says
+what a role does not hold. `Levels_OfTheCapabilitiesWithAnAction_AgreeWithWhatTheActionsOfTheApiAllow` runs real actions against the levels of the capabilities that have an enforcing action today
+(`booking`, `prices`, `guests`, `money`, `leases`, `rents`, `jobs`, `people`, `security`); a **tripwire** fails when a seeded role holds a permission that no capability
+claims (`OrgCapabilityCatalog.Claims`): whoever adds a permission to a role decides in which row it belongs. There is no «only his properties» level: which properties a
+person reaches is the person's (`PropertyScope`), never the role's. The collaborator's `Yes` on `guests` and `jobs` is the narrower one (no erasure of a guest, no
+Alloggiati declaration, no final amount nor online payment of an intervention): the client says it in words.
+
+**What the matrix reports and the endpoints do not enforce yet (AM-02c-FU4).** `billing`, `suppliers` and `settings` report their permission rows
+(`org.billing.read`, `org.billing.manage`, `org.suppliers.manage`, `org.settings.manage`) and have no probe: the endpoints of the billing are the policy `OrgBillingAdmin`
+(owner and administrators; an accountant gets 403 although the matrix says `Read`), nobody asks for `org.suppliers.manage` before AM-10 and nothing asks for
+`org.settings.manage`. The screens must not offer an action the endpoint refuses: until those policies exist, AM-04 treats `Read` on `billing` as «the permission is
+held», not as «the page opens».
+
+## 48. The areas of a member (`PUT /api/orgs/me/members/{id}/areas`)
+
+Body `{ "areas": ["short-rent", "long-rent"] }`; 200 the member. Policy `org.members.manage`, flag `OrgTeam`; the org is the caller's own.
+
+- **Same rules as every action on a member** (`OrgTeamService.EnsureCanAct`, section 14): 403 `org_owner_required` (an administrator does not touch another
+  administrator), 404 `org_member_not_found`, 409 `org_last_owner` (the rental contexts of the owner are the onboarding's), 422 `org_member_area_required`
+  (none, or no valid area).
+- **One transaction under the lock of the people** (`OrgMembership`, 1401, the lock of the change of role): the member ends up with exactly the wanted
+  rental rows, each with the role key of its role (`property_manager`, `staff`, `accountant`); the account row, the role and the property scope stay.
+  The same areas change nothing and write no line (unless a person in charge is released, below). The authorization cache of the member is invalidated (instantly on
+  this instance, within 60 s on the others: section 42).
+- **A collaborator «Solo alcuni» and the area.** One that works in one area only reaches only the properties it was given **of that mode** (`short-rent`:
+  the short-term ones; `long-rent`: the long-term ones); in both areas it reaches all it was given, and with no area known (a drift) nothing narrows the grants
+  (`OrgRoleCatalog.SingleModeOf`). The grants stay when an area is taken away (giving it back restores the reach), but the person in charge of a property it no
+  longer reaches is **released in the same save** (`PropertyResponsibility.ReleaseAsync`, section 41). **The other roles are unchanged**: they reach every property
+  of the org whatever their areas (the areas decide which contexts they open, not which properties).
+- **Who applies the rule.** The lists (`HostScopeQueryExtensions.PropertyPredicate`, in SQL, on the live mode of the property); the single resources (the snapshot,
+  `UserAuthorizationSnapshotStore`: the grants of the mode, cached); the person who can be put in charge (`EnsureCanBeInChargeAsync`) and who stays in charge when
+  the access is saved (`OrgPropertyAccessService.SetAsync` keeps in charge only the properties reached); the **notification audience** (`HostNotificationAudience`:
+  the person in charge is told only while it works in the area of the property's mode, read on the live property); and «chi può accedere» (the count of the people
+  who reach a property, `OrgPropertyAccessService.BuildViewAsync`). `granted` on the page of a member stays the stored grant, so that an editor that sends the page
+  back does not take the grants of the other mode away (AM-02c-FU2).
+- **A property that changes mode** (the daily job of PM-02) can take the reach away from a collaborator that works in the other area only: the responsibility is
+  released in the same save as the change (`PropertyResponsibility.ReleaseIfOutsideItsAreasAsync`), the line `PropertyModeChanged` carries `released`, and the
+  notifications stop at once. The lists follow at once too; the single resources use the cached copy of that person for up to 60 s (section 42, AM-02c-FU5).
+- **The line of the log**: `MemberAreasChanged` (section 30) with `fromAreas`, `toAreas` (`none` for a member that had no area) and, only when some property lost its
+  person in charge, `released`; it is written also when the areas are the same and a person in charge was released.
+
+## 49. The properties in the invitation
+
+`POST /api/orgs/me/invitations` takes `propertyIds` (at most 500, `OrgMemberPropertyIdsTooMany` otherwise) next to `propertyScope: "Selected"`, so the
+owner can invite a collaborator who already sees the right properties.
+
+- **Only for the «Solo alcuni» collaborator** (422 `org_member_scope_not_supported` for any other role or scope, at the creation, where the inviter is).
+  Every id must be a live property of the org (422 `org_member_property_unknown`: unknown, of another org or deleted); the people who invite (owner and
+  administrators) reach every property of their org, so «a property the inviter reaches» is a property of the org. A `Selected` invitation with none is valid:
+  the person reaches no property until the owner gives some (`PUT /api/orgs/me/members/{id}/properties`).
+- **Stored** in `OrgInvitationProperties` (`OrgId`, `InvitationId`, `PropertyId`; unique `(InvitationId, PropertyId)`; cascade with the invitation, the org and the
+  property), in the same save as the invitation. `GET /api/orgs/me/invitations` returns `propertyIds` (sorted) and `lastSentAt` for each invitation.
+- **Granted on the acceptance, in the same transaction that creates the member** (`OrgPropertyAccessService.GrantFromInvitationAsync`, `CreatedByUserId` = the
+  inviter): all or nothing with the membership. A property deleted meanwhile is skipped without an error; a property already given is not given twice. The
+  line `MemberPropertyAccessChanged` (`scope` `Selected`, `granted` n) is written with the acceptance. An invitation that is revoked or expires grants
+  nothing, and its rows go with it when the maintenance job deletes it after 30 days.
+
+## 50. The overview of the home (`GET /api/orgs/me/overview`)
+
+One request for the home of the account instead of six. Policy `org.members.manage` (owner and administrators), flag `OrgTeam`. Every section is behind its **own**
+permission of the account context and is **left out** (`null`) when the caller lacks it:
+
+| Section | Permission | Content |
+|---|---|---|
+| `standing`, `openAccess` | `org.billing.read` | `standing` is `attention` while the subscription is `PastDue`, `Unpaid` or `Incomplete`, `ok` otherwise (an org that never subscribed included); `openAccess`: the plans are open to everybody for now |
+| `seats` | `org.members.manage` | `used`, `max`, `unlimited` (the numbers of `GET /api/orgs/me/members`) |
+| `properties` | `org.members.manage` | `total`, `short`, `long`, `toComplete`: the properties **the caller reaches** (`HostScope`); «to complete» is an active short-term property whose compliance status is not active, the field that already says it (no new rule); a long-term property is never to complete |
+| `invitations` | `org.members.manage` | `pending` (not expired, same rule as the seats) and `oldestPendingDays` (whole days, `null` with none) |
+| `accessRequests` | `org.members.manage` | `pending`: **0 until AM-02d** builds the queue of the requests |
+| `suppliers` | `org.suppliers.manage` | `trusted`: **0 until AM-10**; the field exists from the start |
+| `alloggiati` | `org.members.manage` | `propertiesWithoutCredentials`: short-term properties of the caller with no Alloggiati Web credentials |
+| `recentActivity` | `org.activity.read` | the last three lines of the log done by a person (no job, no webhook: the home shows no «Sistema») |
+
+Every figure is a count or a grouped count **in SQL**: a fixed number of statements whatever the size of the org (nothing per property or per person;
+`OrgOverviewSqlShapeTests` proves on Npgsql that each query is translated, to one statement each, and `OrgTeamCompletionsPostgresTests` counts the commands
+at three sizes of the org, in CI). 403 for a caller with no reach of the host data (a deactivated member), 404 with no org.
+
+## 51. The cap on the emails of the invitations (decision AM-D15)
+
+Two limits, both in configuration (`docs/runbooks/deploy-checklist.md`), a value that is not a positive integer is ignored and the default applies:
+
+| Variable | Default | Rule | Refusal |
+|---|---|---|---|
+| `OrgTeam__InvitationDailyLimit` | 10 | at most this many emails of invitations **for each org** in a rolling 24 hours | 429 `invitation_daily_limit_reached` (the message says the number) |
+| `OrgTeam__ResendMinutes` | 60 | one «reinvia» for each invitation every this many minutes (the creation is the first send) | 429 `invitation_resend_too_soon` (the message says the minutes left) |
+
+- **What counts**: the creation and every «reinvia» that went through; a revoked invitation still counts (the email left). **What does not**: copying the link
+  (`/link` sends nothing), and the reminder and the expiry of the maintenance job (system emails, one for each invitation).
+- **Where**: `OrgInvitationService`, inside the transaction that holds the seats lock (`OrgSeats`, 1403), so the check and the write of the send cannot be
+  interleaved: two requests at the last place cannot both pass.
+- **Stored on the invitation**, not in the activity log: `LastSentAt` and `SendLog` (the instants of the last 24 hours, pruned at each send). The log is a
+  closed catalog that on purpose does not record a «reinvia» (section 30), is dormant with the flag off and is kept 12 months; the cap needs none of that.
+- **A send that never left is given back**: when the email cannot be queued (`emailQueued: false`) the allowance returns (best effort, after the commit), so
+  «reinvia» can be tried again at once and the cap does not count an email nobody received.
+
+## 52. The events of the mode of a property
+
+`PropertyModeService` (PM-02: the scheduled change of a property between short and long stays) writes the three lines that had been reserved since AM-02b, in the
+very save of the change: `PropertyModeChangeScheduled` (who programmed it), `PropertyModeChangeCancelled` (who cancelled it) and `PropertyModeChanged` (the daily
+job: no actor). The area of the line is the mode the property is in at that moment (`short-rent` or `long-rent`); the details are `fromMode`, `toMode` and, for the
+programming, `effectiveOn`, and for the application `released` when the person in charge no longer reaches the property in its new mode (section 48). A change that
+fails, a refused one and a second cancellation write nothing. The table is in section 30; the log is a required dependency of the service (a host without it would
+drop the lines in silence), and with the flag off it collects nothing.
+
+## 53. The migration (`AddOrgTeamCompletions`)
+
+One migration, generated with `dotnet ef` after `AddSupplierFreeCalendarEvents`:
+
+| Change | Detail |
+|---|---|
+| `OrgInvitations.LastSentAt` | `timestamptz`, null; no backfill: the invitations of before are not counted by the cap |
+| `OrgInvitations.SendLog` | `timestamptz[]`, **not null with default `'{}'`** (the table already has rows) |
+| `OrgInvitationProperties` | new table, `UIX_OrgInvitationProperties_InvitationId_PropertyId`, indexes on `OrgId` and `PropertyId`, cascades |
+| `Roles` / `RolePermissions` | role 13 `account/org_manager` with `org.suppliers.manage` |
+
+`Down` first deletes the memberships of role 13 (a property manager added since holds one, and the foreign key would refuse to delete the role: the same rule as
+`AddOrgMembership`), then drops what `Up` made. That line is a hand-written hook: **if the migration is regenerated (another migration landed first, as LR-12's
+may), the line has to be put back**; `AddOrgTeamCompletionsMigrationSqlTests` fails if it is missing. The tests on historical rows written with SQL
+(`AddOrgTeamCompletionsMigrationPostgresTests`) run in CI.
+
+## 54. Deploy, flag and rollback of AM-02c
+
+1. **Variables** (optional, in `deploy-checklist.md`): `OrgTeam__InvitationDailyLimit` (10) and `OrgTeam__ResendMinutes` (60).
+2. **The migration** runs at the startup like the others and is additive.
+3. **The flag stays off** (`Features__OrgTeam`): no new flag, nothing is visible, the new endpoints answer 404 with the rest of the team. Turn it on together with
+   the account screens (AM-04), never before.
+4. **Before turning the flag on**: run the reconcile (`POST /api/admin/org-members/reconcile?dryRun=true`, read it, then `dryRun=false`) so that every property
+   manager gets `account/org_manager` (section 46).
+
+| Level | How | Effect |
+|---|---|---|
+| Hide | `Features__OrgTeam` unset | the endpoints and the `account` context disappear |
+| Loosen the cap | raise `OrgTeam__InvitationDailyLimit` or lower `OrgTeam__ResendMinutes` and restart | nothing to migrate: the cap reads the configuration at each call |
+| Previous build | the schema stays (additive) | the old code ignores the columns, the table and role 13; its reconcile would remove the `org_manager` rows (it did not know them) |
+| Undo the migration | `dotnet ef database update 20261013223355_AddSupplierFreeCalendarEvents` with the previous build deployed | drops `OrgInvitationProperties`, the two columns and role 13 with its memberships; the invitations keep working without properties |
+
+## 55. Tests, decisions and follow-ups of AM-02c
+
+**Tests.** Unit (they run everywhere): `OrgCapabilityCatalogTests` (levels, tripwire, coherence with the real actions), `OrgRoleMatrixServiceTests` (the matrix is read
+from the rows of the database), `OrgRoleActionMatrixTests`, `OrgMemberAreasTests`, `OrgInvitationPropertiesTests`, `OrgInvitationEmailCapTests`, `OrgOverviewServiceTests`,
+`PropertyModeActivityTests` (the three events, and the release of the person in charge when the mode changes), `HostNotificationAudienceReachTests` (the area rule of the
+audience), `OrgRolesAndOverviewControllersTests`, `AddOrgTeamCompletionsMigrationSqlTests`, the SQL on Npgsql with no server (`OrgOverviewSqlShapeTests`,
+`OrgPropertyAccessSqlShapeTests` and `HostScopeSqlShapeTests` for the mode of the collaborator), and the updated `OrgActivityCatalogTests`, `OrgRoleCatalogTests`,
+`OrgMembershipReconcileTests`, `EndpointAuthorizationArchitectureTests`, `LegacyRowsSchemaTests` (the rows the migration test writes fit the schema before it). HTTP over
+the real pipeline, on the in-memory fallback too (`OrgInvitationsHttpIntegrationTests`: the matrix, the property manager, the areas, the overview, the invitation with its
+properties, the two 429, and the three new endpoints answering 404 with the flag off).
+`[PostgresFact]` (CI only, `OrgTeamCompletionsPostgresTests`): the cap against requests that arrive together, one «reinvia» out of three at once, the acceptance with
+properties five times at once and inside a transaction that is rolled back, the purge of an invitation with its carried properties by the cascade, the change of areas
+against the change of role and the deactivation (eight rounds), the reach of a collaborator of one mode and the audience on the real SQL, the overview command count at
+three sizes, and the matrix read from the rows the migrations seeded; `AddOrgTeamCompletionsMigrationPostgresTests`: the migration on historical invitations written with
+SQL (`LegacyOrgRows`, `LegacyOrgInvitationRows`), the reconcile of a property manager that has no account row, and the `Down`.
+
+**Decisions applied** (the defaults of the product owner's open questions): AM-D12 yes (property manager in «Fornitori» with `account/org_manager`, section 46);
+AM-D14 the text of the invitation is fixed, no personal message; AM-D15 10 emails in 24 hours for each org and one «reinvia» an hour for each invitation, in
+configuration; AM-D16 «Solo alcuni» stays the collaborator's only; AM-D18 the log grows row by row (the catalog is still closed).
+
+**Follow-ups.**
+
+- **AM-02c-FU1 - the area rule for the org-wide roles.** The rule «works in one area, reaches only that mode» (section 48) applies to the collaborator «Solo alcuni».
+  An administrator, a manager or an accountant who works in one area still reaches every property of the org: the areas decide the contexts they open. If the product
+  owner wants them narrowed too, it is `HostScope.GrantedMode` extended to the org-wide roles (one place) and a decision about what an administrator is.
+- **AM-02c-FU2 - `reachable` on the page of the access of a member.** `GET /api/orgs/me/members/{id}/properties` lists `granted` as stored, including the grants of a
+  mode the collaborator no longer works in (the rows stay on purpose, so a save of the page cannot take them away); the editor of AM-04 should mark them as «not
+  reachable». A field `reachable` next to `granted` is additive; the count «chi può accedere» already counts only the people who reach a property.
+- **AM-02c-FU3 - the queue of the requests for access** (`accessRequests.pending` is 0) is AM-02d's and the trusted suppliers (`suppliers.trusted`) AM-10's.
+- **AM-02c-FU4 - the policies behind the matrix.** `org.billing.read`, `org.suppliers.manage` and `org.settings.manage` are in the matrix and no endpoint asks for them
+  (section 47): the billing reads should accept `org.billing.read`, the page of the trusted suppliers `org.suppliers.manage` (AM-10), the settings `org.settings.manage`,
+  and a probe for each belongs in `Levels_OfTheCapabilitiesWithAnAction_AgreeWithWhatTheActionsOfTheApiAllow`.
+- **AM-02c-FU5 - the reach of a collaborator of one area on the single resources.** `HostScopeResolver.Reaches` reads the cached, pre-filtered set of ids and is never
+  given the live mode of the property, so a change of mode of a granted property is seen by the by-id checks up to 60 s late (section 42). Passing the mode of the
+  property (`HostResource` already carries it through the property row) to `Reaches` and invalidating the grantees at the flip would close it; the lists, the audience and
+  the release of the responsibility are already exact.
+- **Migration order.** LR-12 generates a migration in parallel: whoever merges second regenerates theirs (and puts back the line of `Down`, section 53).

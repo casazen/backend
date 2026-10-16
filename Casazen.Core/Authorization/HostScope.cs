@@ -13,11 +13,24 @@ namespace Casazen.Core.Authorization;
 /// that is in no org team, as it has always been); <b>granted</b> (<see cref="GrantedToUserId"/>: the properties that have a
 /// <see cref="Casazen.Core.Entities.PropertyMemberAccess"/> row for the user, the collaborator «Solo alcuni»). If both were
 /// set a row would have to satisfy both.</para>
+/// <para><b>Granted and area (AM-02c).</b> The properties a collaborator «Solo alcuni» was given are reached only while their
+/// mode corresponds to an area the collaborator works in: with <see cref="GrantedMode"/> set, a granted property of the other
+/// mode stays given (the rows are kept, so giving the area back gives the properties back) and is not reached. It applies to this
+/// shape only: the other roles reach every property of the org, as they always did, and what they may do on it is decided by the
+/// permissions of their contexts.</para>
 /// </remarks>
 /// <param name="OrgId">The caller's org.</param>
 /// <param name="OwnerId">Restrict to properties created by this user; <c>null</c> = no such restriction.</param>
 /// <param name="GrantedToUserId">Restrict to properties granted to this member; <c>null</c> = no such restriction.</param>
-public sealed record HostScope(Guid OrgId, string? OwnerId = null, string? GrantedToUserId = null)
+/// <param name="GrantedMode">
+/// With <paramref name="GrantedToUserId"/>: only the granted properties of this rental mode (the member works in the area of
+/// that mode and not in the other one); <c>null</c> = both modes (the member works in both areas, or in none that is known).
+/// </param>
+public sealed record HostScope(
+    Guid OrgId,
+    string? OwnerId = null,
+    string? GrantedToUserId = null,
+    Casazen.Core.Entities.Enums.RentalMode? GrantedMode = null)
 {
     /// <summary>The whole org: no property restriction at all.</summary>
     public bool IsOrgWide => OwnerId is null && GrantedToUserId is null;

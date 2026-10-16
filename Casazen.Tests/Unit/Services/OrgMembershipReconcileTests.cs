@@ -211,6 +211,46 @@ public class OrgMembershipReconcileTests
     }
 
     [Fact]
+    public async Task ReconcileAsync_PropertyManagersOfBeforeTheAccountRole_GetTheRestrictedAccountMembership()
+    {
+        // AM-02c (AM-D12): a property manager added before the role existed has the two rental rows and no account row.
+        await using var db = NewDb(_database);
+        var org = AddOrg(db);
+        AddUser(db, "auth0|manager", org.Id);
+        AddMember(db, "auth0|manager", org.Id, OrgRole.PropertyManager);
+        AddMembership(db, "auth0|manager", "short-rent", "property_manager");
+        AddMembership(db, "auth0|manager", "long-rent", "property_manager");
+        AddUser(db, "auth0|manager-short", org.Id);
+        AddMember(db, "auth0|manager-short", org.Id, OrgRole.PropertyManager);
+        AddMembership(db, "auth0|manager-short", "short-rent", "property_manager");
+        await db.SaveChangesAsync();
+
+        // The dry run says what a real run does, and saves nothing.
+        var dryRun = await NewService(db).ReconcileAsync(dryRun: true);
+        Assert.Equal(
+            [OrgMembershipReconcileCodes.AccountMembershipAdded, OrgMembershipReconcileCodes.AccountMembershipAdded],
+            Codes(dryRun.Fixes));
+        Assert.All(dryRun.Fixes, fix => Assert.Equal("account/org_manager added.", fix.Detail));
+        await using (var unchanged = NewDb(_database))
+            Assert.DoesNotContain(await unchanged.UserContextMemberships.ToListAsync(), m => m.ContextKey == "account");
+
+        var report = await NewService(db).ReconcileAsync(dryRun: false);
+
+        Assert.Equal(2, report.Fixes.Count);
+        Assert.Empty(report.Issues);
+        await using var verify = NewDb(_database);
+        Assert.Equal(
+            ["account/org_manager", "long-rent/property_manager", "short-rent/property_manager"],
+            await MembershipsOfAsync(verify, "auth0|manager"));
+        Assert.Equal(["account/org_manager", "short-rent/property_manager"], await MembershipsOfAsync(verify, "auth0|manager-short"));
+
+        // A second run finds nothing to do.
+        await using var again = NewDb(_database);
+        var second = await NewService(again).ReconcileAsync(dryRun: false);
+        Assert.Empty(second.Fixes);
+    }
+
+    [Fact]
     public async Task ReconcileAsync_AdminMemberHoldingAnOwnerRow_IsNotASecondOwnerCandidate()
     {
         // The org member row is what says who someone is: the stray owner's row of the administrator is drift to align in
@@ -326,8 +366,9 @@ public class OrgMembershipReconcileTests
         Assert.Contains(report.Issues, i => i.Code == OrgMembershipReconcileCodes.OwnerWithoutHostMembership && i.UserIds.SequenceEqual(["auth0|owner"]));
         Assert.Contains(report.Issues, i => i.Code == OrgMembershipReconcileCodes.MemberWithoutHostMembership && i.UserIds.SequenceEqual(["auth0|member"]));
         await using var verify = NewDb(_database);
-        // Its areas are unknown: nothing is added for the member.
-        Assert.Empty(await MembershipsOfAsync(verify, "auth0|member"));
+        // Its areas are unknown: no rental row is added for the member. The account row follows the role, as it does for the
+        // administrators and the accountants (AM-02c: the property manager's is the restricted one, the trusted suppliers only).
+        Assert.Equal(["account/org_manager"], await MembershipsOfAsync(verify, "auth0|member"));
     }
 
     [Fact]

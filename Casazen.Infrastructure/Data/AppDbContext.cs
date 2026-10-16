@@ -185,6 +185,9 @@ public class AppDbContext(
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
     public DbSet<OrgMember> OrgMembers { get; set; } = null!;
     public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
+
+    // The properties a «Solo alcuni» collaborator will reach once it accepts its invitation (AM-02c)
+    public DbSet<OrgInvitationProperty> OrgInvitationProperties { get; set; } = null!;
     public DbSet<PropertyMemberAccess> PropertyMemberAccesses { get; set; } = null!;
 
     // Who did what in an org, as ids and codes (AM-02b)
@@ -1050,6 +1053,41 @@ public class AppDbContext(
             // The maintenance job scans by state and date: the invitations to remind, expire or delete.
             entity.HasIndex(i => new { i.Status, i.ExpiresAt })
                 .HasDatabaseName("IX_OrgInvitations_Status_ExpiresAt");
+
+            // The sends of the last 24 hours (AM-02c): an empty list for every invitation written before they were tracked, so the
+            // column can be NOT NULL on a table that already has rows. No send is invented for them.
+            entity.Property(i => i.SendLog).HasDefaultValueSql("'{}'");
+        });
+
+        // ─── The properties an invitation carries (AM-02c) ──────────────────────
+        modelBuilder.Entity<OrgInvitationProperty>(entity =>
+        {
+            // They go with the invitation (which goes with the org, and 30 days after it closed).
+            entity.HasOne<OrgInvitation>()
+                .WithMany()
+                .HasForeignKey(p => p.InvitationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(p => p.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The property is soft-deleted, so in practice never removed; if it ever is, its mention goes with it.
+            entity.HasOne<Property>()
+                .WithMany()
+                .HasForeignKey(p => p.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A property is carried once by an invitation: the second one of the same pair loses the race on this index (23505).
+            // It also serves the read of the properties of one invitation (and the tenant filter on top of it).
+            entity.HasIndex(p => new { p.InvitationId, p.PropertyId })
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgInvitationProperties_InvitationId_PropertyId");
+
+            // The cascade of a property reads the rows that mention it.
+            entity.HasIndex(p => p.PropertyId)
+                .HasDatabaseName("IX_OrgInvitationProperties_PropertyId");
         });
 
         // ─── Property scope of the org members (AM-03) ──────────────────────────

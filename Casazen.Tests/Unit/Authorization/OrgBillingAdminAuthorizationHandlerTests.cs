@@ -96,6 +96,15 @@ public class OrgBillingAdminAuthorizationHandlerTests
         yield return Row("both: Staff jwt + account/org_admin (a denied role wins)", ["Staff"], UserRole.None, ["account/org_admin"], false);
         yield return Row("both: PropertyManager jwt + account/org_admin", ["PropertyManager"], UserRole.None, ["account/org_admin"], true);
         yield return Row("both: PropertyManager jwt + account/org_accountant", ["PropertyManager"], UserRole.None, ["account/org_accountant"], false);
+
+        // The property manager in the account context (AM-02c, AM-D12): the trusted suppliers only, never the billing.
+        yield return Row("db: account/org_manager", [], UserRole.None, ["account/org_manager"], false);
+        yield return Row(
+            "db: account/org_manager + both property_manager rows (the property manager)",
+            [], UserRole.None, ["account/org_manager", "short-rent/property_manager", "long-rent/property_manager"], false);
+        yield return Row(
+            "both: PropertyManager jwt + account/org_manager + property_manager row",
+            ["PropertyManager"], UserRole.PropertyManager, ["account/org_manager", "short-rent/property_manager"], false);
     }
 
     [Theory]
@@ -241,6 +250,7 @@ public class OrgBillingAdminAuthorizationHandlerTests
     [InlineData("PropertyOwner", OrgRole.Collaborator, "short-rent/staff")]
     [InlineData("LongTermLandlord", OrgRole.Collaborator, "long-rent/staff")]
     [InlineData("PropertyOwner", OrgRole.PropertyManager, "short-rent/property_manager")]
+    [InlineData("PropertyOwner", OrgRole.PropertyManager, "account/org_manager")]
     [InlineData("PropertyOwner", OrgRole.Accountant, "account/org_accountant")]
     public async Task HandleAsync_AMemberWhoIsNotTheOwner_IsNotMadeBillingAdminByAnOwnerRoleLeftInTheToken(
         string tokenRole,

@@ -270,6 +270,12 @@
   <data name="AccessRequestLimitReached" xml:space="preserve">
     <value>You already sent several requests today and the administrators have been told. Try again tomorrow.</value>
   </data>
+  <data name="InvitationDailyLimitReached" xml:space="preserve">
+    <value>You already sent {0} invitation emails in the last 24 hours, counting the ones sent again. Try again later.</value>
+  </data>
+  <data name="InvitationResendTooSoon" xml:space="preserve">
+    <value>This invitation was sent a moment ago. You can send it again in {0} minutes.</value>
+  </data>
   <data name="OrgActivityTypeUnknown" xml:space="preserve">
     <value>Unknown activity type.</value>
   </data>
@@ -1635,6 +1641,24 @@
   </data>
   <data name="PaymentListInvalidRange" xml:space="preserve">
     <value>Invalid range: the start date (from) cannot be after the end date (to).</value>
+  </data>
+  <data name="DashboardInvalidOverviewPeriod" xml:space="preserve">
+    <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days, period=Next30Days or period=Custom with from and to as YYYY-MM-DD (1 to 366 days).</value>
+  </data>
+  <data name="BookingListInvalidArrivalRange" xml:space="preserve">
+    <value>Invalid range: the first arrival date (arrivalFrom) cannot be after the last one (arrivalTo).</value>
+  </data>
+  <data name="BookingListInvalidView" xml:space="preserve">
+    <value>Invalid view: use one of the names all, toConfirm, upcoming, inProgress, completed or cancelled.</value>
+  </data>
+  <data name="BookingListInvalidChannel" xml:space="preserve">
+    <value>Invalid channel: use the names Direct, Manual, Airbnb, BookingCom or Other, repeated or separated by commas.</value>
+  </data>
+  <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
+    <value>Invalid check-in status: use the names NotSent, Sent, InProgress, Completed or Expired, repeated or separated by commas.</value>
+  </data>
+  <data name="BookingListInvalidSort" xml:space="preserve">
+    <value>Invalid order: use checkIn, createdAt, total, status or guest, followed by :asc or :desc.</value>
   </data>
   <data name="SeoCounselRequired" xml:space="preserve">
     <value>This page is among the first {0} and can be published only after the legal review: confirm that the text has been reviewed.</value>
