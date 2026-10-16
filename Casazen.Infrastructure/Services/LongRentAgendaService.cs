@@ -300,7 +300,7 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
         var rows = await db.LeaseContracts
             .AsNoTracking()
             .WithinScope(scope)
-            .Where(l => l.Status != LeaseStatus.Rejected && l.EndDate >= todayStored && l.DraftData == null)
+            .Where(l => l.Status != LeaseStatus.Rejected && l.EndDate >= todayStored && (l.DraftData == null || l.Status != LeaseStatus.Draft))
             .Select(l => new
             {
                 l.Id,

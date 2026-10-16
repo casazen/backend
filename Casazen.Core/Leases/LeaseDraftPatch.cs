@@ -81,7 +81,8 @@ public static class LeaseDraftPatch
 
     private static LeaseDraftValues ApplyParties(LeaseDraftValues current, Dictionary<string, JsonElement> properties, Func<Guid> newId)
     {
-        var known = current.Landlords.Concat(current.Tenants).ToDictionary(p => p.Id);
+        // Every id the draft has, of either role: a new entry never takes one of them.
+        var reserved = current.Landlords.Concat(current.Tenants).Select(p => p.Id).ToHashSet();
         var used = new HashSet<Guid>();
 
         IReadOnlyList<LeaseDraftParty> Entries(string key, IReadOnlyList<LeaseDraftParty> existing)
@@ -93,11 +94,17 @@ public static class LeaseDraftPatch
             if (list.ValueKind != JsonValueKind.Array)
                 throw new LeaseDraftValuesException(key, "not a list");
 
+            // An entry takes again the id of an entry of the SAME role: the id of one of the other role is a new entry, so no id
+            // is ever in two entries of the draft (two rows of Parties with one key, a list nobody can save again).
+            var known = new Dictionary<Guid, LeaseDraftParty>();
+            foreach (var entry in existing)
+                known.TryAdd(entry.Id, entry);
+
             var entries = new List<LeaseDraftParty>();
             var index = 0;
             foreach (var element in list.EnumerateArray())
             {
-                var entry = Party(element, $"{key}[{index++}]", known, used, newId);
+                var entry = Party(element, $"{key}[{index++}]", known, reserved, used, newId);
                 if (entry is not null)
                     entries.Add(entry);
             }
@@ -114,7 +121,12 @@ public static class LeaseDraftPatch
     }
 
     private static LeaseDraftParty? Party(
-        JsonElement element, string path, Dictionary<Guid, LeaseDraftParty> known, HashSet<Guid> used, Func<Guid> newId)
+        JsonElement element,
+        string path,
+        Dictionary<Guid, LeaseDraftParty> known,
+        HashSet<Guid> reserved,
+        HashSet<Guid> used,
+        Func<Guid> newId)
     {
         if (element.ValueKind != JsonValueKind.Object)
             throw new LeaseDraftValuesException(path, "not an object");
@@ -142,13 +154,13 @@ public static class LeaseDraftPatch
         if (LeaseDraftRules.IsBlank(party))
             return null;
 
-        // The id the server gave the entry stays with it (and so does what step 5 recorded for it); an id it does not know, or one
-        // already used in this request, is a new entry.
+        // The id the server gave the entry stays with it (and so does what step 5 recorded for it); an id it does not know, one of
+        // the other role, or one already used in this request, is a new entry.
         if (sentId is { } existingId && known.TryGetValue(existingId, out var previous) && used.Add(existingId))
             return party with { Id = existingId, DocumentsVerifiedOn = previous.DocumentsVerifiedOn };
 
         var fresh = newId();
-        while (!used.Add(fresh) || known.ContainsKey(fresh))
+        while (reserved.Contains(fresh) || !used.Add(fresh))
             fresh = newId();
         return party with { Id = fresh };
     }
@@ -277,19 +289,33 @@ public static class LeaseDraftPatch
     {
         if (value.ValueKind == JsonValueKind.Null)
             return null;
-        if (value.ValueKind != JsonValueKind.Number || !value.TryGetDecimal(out var number))
+        if (value.ValueKind != JsonValueKind.Number)
             throw new LeaseDraftValuesException(path, "not a number");
-        return number;
+
+        // A number the type cannot hold (1e30) is a value that is wrong, not a request that is badly made: it is kept as the largest
+        // (or the smallest) amount, which no rule accepts, so the flow reports it like any other wrong value and the autosave goes on.
+        return value.TryGetDecimal(out var number) ? number : IsNegative(value) ? decimal.MinValue : decimal.MaxValue;
     }
 
     private static int WholeNumber(JsonElement value, string path)
     {
         if (value.ValueKind == JsonValueKind.Null)
             return 0;
-        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var number))
+        if (value.ValueKind != JsonValueKind.Number)
             throw new LeaseDraftValuesException(path, "not a whole number");
-        return number;
+
+        if (value.TryGetInt32(out var number))
+            return number;
+
+        // A fraction is not a whole number at all: the request is badly made. A whole number too big for a count (3000000000) is a
+        // value that is wrong, kept as an extreme no rule accepts (see Number).
+        if (value.TryGetDecimal(out var other) && other != decimal.Truncate(other))
+            throw new LeaseDraftValuesException(path, "not a whole number");
+
+        return IsNegative(value) ? int.MinValue : int.MaxValue;
     }
+
+    private static bool IsNegative(JsonElement number) => number.GetRawText().StartsWith('-');
 
     private static bool ReadBoolean(JsonElement value, string path) => value.ValueKind switch
     {

@@ -3,6 +3,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services.LeaseDrafts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -53,14 +54,18 @@ public sealed class LeaseDraftRetentionService(
         var cutoff = _clock.GetUtcNow().UtcDateTime.AddDays(-options.Value.DraftRetentionDays);
 
         var deleted = 0;
+        // The drafts this run could not delete (busy, saved in the meantime, refused): not read again, so one that refuses to go at the
+        // head of the list cannot stop the ones behind it, night after night.
+        var left = new HashSet<Guid>();
         for (var batch = 0; batch < MaxBatchesPerRun; batch++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            var skip = left.ToArray();
             var ids = await db.LeaseContracts
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .AsNoTracking()
-                .Where(l => l.Status == LeaseStatus.Draft && l.SignedPdfStoragePath == null && l.UpdatedAt < cutoff)
+                .Where(l => l.Status == LeaseStatus.Draft && l.SignedPdfStoragePath == null && l.UpdatedAt < cutoff && !skip.Contains(l.Id))
                 .OrderBy(l => l.UpdatedAt)
                 .ThenBy(l => l.Id)
                 .Select(l => l.Id)
@@ -74,16 +79,22 @@ public sealed class LeaseDraftRetentionService(
             {
                 if (await TryDeleteAsync(id, cutoff, cancellationToken))
                     deletedInBatch++;
+                else
+                    left.Add(id);
             }
 
             deleted += deletedInBatch;
-            // A batch that deleted nothing (every draft was just saved, or refuses to go) would be read again: stop.
-            if (deletedInBatch == 0 || ids.Count < BatchSize)
+            // Fewer than a full batch: nothing is left to read. A batch that deleted nothing is not read again either (its drafts are in `left`).
+            if (ids.Count < BatchSize)
                 break;
         }
 
-        if (deleted > 0)
-            logger.LogInformation("Lease draft retention: {Deleted} drafts not changed since {Cutoff:O} deleted", deleted, cutoff);
+        if (deleted > 0 || left.Count > 0)
+        {
+            logger.LogInformation(
+                "Lease draft retention: {Deleted} drafts not changed since {Cutoff:O} deleted, {Left} left for the next run",
+                deleted, cutoff, left.Count);
+        }
 
         return new LeaseDraftRetentionResult(false, deleted, cutoff);
     }
@@ -98,12 +109,7 @@ public sealed class LeaseDraftRetentionService(
                 ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
                 : null;
             db.ChangeTracker.Clear();
-            if (db.Database.IsNpgsql())
-            {
-                await db.Database
-                    .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "LeaseContracts" WHERE "Id" = {leaseId} FOR UPDATE""")
-                    .ToListAsync(cancellationToken);
-            }
+            await LeaseDraftLocking.LockRowAsync(db, leaseId, cancellationToken);
 
             var lease = await deleter.WithChildren()
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -118,6 +124,18 @@ public sealed class LeaseDraftRetentionService(
         catch (DomainConflictException)
         {
             // Not deletable after all (a record that refers to it): left for the owner, who will see it in the list.
+            return false;
+        }
+        catch (Exception ex) when (LeaseDraftLocking.IsContention(ex))
+        {
+            // Somebody is working on it right now: it is not abandoned. The next run looks again.
+            return false;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // One draft that cannot be read or deleted (a value that cannot be decrypted, a record added after this code was written)
+            // must not stop the run before the ones behind it. Its id is not personal data; what failed is in the exception.
+            logger.LogWarning(ex, "Lease draft retention: a draft could not be deleted and is left. LeaseId={LeaseId}", leaseId);
             return false;
         }
         finally

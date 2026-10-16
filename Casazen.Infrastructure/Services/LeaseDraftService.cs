@@ -136,11 +136,7 @@ public sealed class LeaseDraftService(
         var evaluation = await EvaluateAsync(lease, next, fullApeCheck: false, cancellationToken);
         var now = UtcNow();
 
-        await RewritePartiesAsync(lease, LeaseDraftProjection.ToRows(next, lease.Id, evaluation.Input.Today), cancellationToken);
-        LeaseDraftProjection.ApplyColumns(lease, evaluation.Reading, evaluation.Concordato);
-
-        // The typed state is kept only while something of it cannot live in the columns and the rows.
-        lease.DraftData = evaluation.Flow.DataComplete ? null : next.ToJson();
+        await ProjectAsync(lease, next, evaluation, cancellationToken);
         lease.WizardMaxStep = Math.Max(lease.WizardMaxStep, step);
 
         var fingerprint = LeaseDraftFingerprint.Compute(next);
@@ -162,6 +158,18 @@ public sealed class LeaseDraftService(
             lease.UpdatedAt,
             next.Landlords.Select(p => p.Id).ToList(),
             next.Tenants.Select(p => p.Id).ToList());
+    }
+
+    /// <summary>
+    /// Writes the typed values where every other reader of the lease looks — the columns and the rows of the parties — and keeps the typed
+    /// state only while something of it cannot live there. The one place the projection is applied: a save does it, and so does the
+    /// confirmation of the review when the data became complete since the last save.
+    /// </summary>
+    private async Task ProjectAsync(LeaseContract lease, LeaseDraftValues values, DraftEvaluation evaluation, CancellationToken cancellationToken)
+    {
+        await RewritePartiesAsync(lease, LeaseDraftProjection.ToRows(values, lease.Id, evaluation.Input.Today), cancellationToken);
+        LeaseDraftProjection.ApplyColumns(lease, evaluation.Reading, evaluation.Concordato);
+        lease.DraftData = evaluation.Flow.DataComplete ? null : values.ToJson();
     }
 
     /// <summary>
@@ -187,9 +195,11 @@ public sealed class LeaseDraftService(
 
     public async Task<LeaseReviewView> GetReviewAsync(Guid leaseId, CancellationToken cancellationToken = default)
     {
+        // The property comes with its energy certificate: the template of the contract prints it, and a lease read without it would
+        // always look as if the data of the template were missing.
         var lease = await db.LeaseContracts
             .AsNoTracking()
-            .Include(l => l.Property)
+            .Include(l => l.Property).ThenInclude(p => p.PropertyDocuments.Where(d => d.DocumentType == DocumentType.Ape))
             .Include(l => l.Parties)
             .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken)
             ?? throw LeaseNotFound(leaseId);
@@ -217,18 +227,35 @@ public sealed class LeaseDraftService(
         if (LeaseReview.HasBlock(checks))
             throw new DomainRuleException(LeaseDraftErrorCodes.ReviewBlocked, "LeaseReviewBlocked");
 
+        // The data may have become complete without a save (the agreement data of the comune were loaded, a date typed ahead of today has
+        // come): the columns and the rows are written now, as a save would, so what is confirmed is what every other reader sees and
+        // the draft stops looking like one that is still being typed.
+        var projected = false;
+        if (lease.DraftData is not null && evaluation.Flow.DataComplete)
+        {
+            await ProjectAsync(lease, values, evaluation, cancellationToken);
+            projected = true;
+        }
+
         var fingerprint = LeaseDraftFingerprint.Compute(values);
-        if (lease.ReviewConfirmedAt is null || lease.ReviewFingerprint != fingerprint)
+        var confirms = lease.ReviewConfirmedAt is null || lease.ReviewFingerprint != fingerprint;
+        if (projected || confirms)
         {
             var now = UtcNow();
-            lease.ReviewConfirmedAt = now;
-            lease.ReviewFingerprint = fingerprint;
-            lease.WizardMaxStep = Math.Max(lease.WizardMaxStep, 6);
+            if (confirms)
+            {
+                lease.ReviewConfirmedAt = now;
+                lease.ReviewFingerprint = fingerprint;
+                lease.WizardMaxStep = Math.Max(lease.WizardMaxStep, 6);
+                db.LeaseEvents.Add(new LeaseEvent { LeaseContractId = lease.Id, EventType = LeaseEventType.ReviewConfirmed, OccurredAt = now });
+            }
+
             lease.DraftVersion++;
             lease.UpdatedAt = now;
-            db.LeaseEvents.Add(new LeaseEvent { LeaseContractId = lease.Id, EventType = LeaseEventType.ReviewConfirmed, OccurredAt = now });
             await db.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Lease draft review confirmed. LeaseId={LeaseId} Version={Version}", lease.Id, lease.DraftVersion);
+            logger.LogInformation(
+                "Lease draft review confirmed. LeaseId={LeaseId} Version={Version} Confirmed={Confirmed} Projected={Projected}",
+                lease.Id, lease.DraftVersion, confirms, projected);
         }
 
         if (transaction is not null)
@@ -539,15 +566,18 @@ public sealed class LeaseDraftService(
 
         try
         {
-            if (db.Database.IsNpgsql())
-            {
-                await db.Database
-                    .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "LeaseContracts" WHERE "Id" = {leaseId} FOR UPDATE""")
-                    .ToListAsync(cancellationToken);
-            }
-
+            await LeaseDraftLocking.LockRowAsync(db, leaseId, cancellationToken);
             db.ChangeTracker.Clear();
             return transaction;
+        }
+        catch (Exception ex) when (LeaseDraftLocking.IsContention(ex))
+        {
+            // Somebody else holds the draft for longer than a few seconds, or the database stopped this change in a race: the same answer
+            // as an old version (nothing was written), not a timeout of the connection.
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+            logger.LogInformation("Lease draft busy: the change was refused. LeaseId={LeaseId}", leaseId);
+            throw new DomainConflictException(LeaseDraftErrorCodes.Conflict, "LeaseDraftConflict");
         }
         catch
         {
@@ -561,7 +591,10 @@ public sealed class LeaseDraftService(
     {
         var query = db.LeaseContracts.Include(l => l.Parties).AsQueryable();
         if (includeProperty)
-            query = query.Include(l => l.Property);
+        {
+            // With its energy certificate, which the template of the contract prints (see GetReviewAsync).
+            query = query.Include(l => l.Property).ThenInclude(p => p.PropertyDocuments.Where(d => d.DocumentType == DocumentType.Ape));
+        }
 
         return await query.FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken) ?? throw LeaseNotFound(leaseId);
     }

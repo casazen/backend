@@ -144,16 +144,26 @@ internal static class LeaseDraftProjection
     /// <summary>
     /// Writes the valid values into the columns that cannot be empty and into the ones that can: the type and the regime (and the
     /// legacy combined regime they give), the rent, the deposit, the first period, and the range of a canone concordato when it was
-    /// computed and the rent does not break it. Nothing that was not valid is written: it takes its starting value.
+    /// computed and the rent does not break it. Nothing that was not valid is written: it takes its starting value (but for the
+    /// transitory type a lease already has, below). The end of the first period is always the one the type gives (48 or 36 months from
+    /// the start): the wizard owns the term, so a draft made by the old form with another term gets the term of its type at its first save.
     /// </summary>
     public static void ApplyColumns(LeaseContract lease, LeaseDraftReading reading, ConcordatoAssessmentResult? concordato)
     {
-        var type = reading.TypeAvailable ? reading.Type!.Value : LeaseDraftDefaults.PlaceholderType;
+        // A type the old form accepted and the wizard cannot offer (the transitory lease) stays on a lease that already has it until the
+        // landlord chooses another: the first save of any step must not turn it into a libero of four years on its own. For every other
+        // draft the type is not available only because the landlord has just typed it, and the column keeps its starting value.
+        var keepsItsType = !reading.TypeAvailable && reading.Type is { } named && named == lease.ContractType;
+        var type = reading.TypeAvailable ? reading.Type!.Value : keepsItsType ? lease.ContractType : LeaseDraftDefaults.PlaceholderType;
+        var startDate = reading.Start is { } start ? LeaseDraftRules.ToStoredDate(start) : LeaseDraftDefaults.PlaceholderDate;
+        var keepsItsEnd = keepsItsType && startDate == lease.StartDate;
+
         lease.SetContractTerms(type, reading.TaxRegime);
         lease.MonthlyRent = reading.Rent ?? LeaseDraftDefaults.PlaceholderRent;
         lease.SecurityDeposit = reading.Deposit;
-        lease.StartDate = reading.Start is { } start ? LeaseDraftRules.ToStoredDate(start) : LeaseDraftDefaults.PlaceholderDate;
-        lease.EndDate = reading.End is { } end ? LeaseDraftRules.ToStoredDate(end) : LeaseDraftDefaults.PlaceholderDate;
+        lease.StartDate = startDate;
+        if (!keepsItsEnd)
+            lease.EndDate = reading.End is { } end ? LeaseDraftRules.ToStoredDate(end) : LeaseDraftDefaults.PlaceholderDate;
 
         // A range is stored only as the complete creation of a lease stores it: for a concordato, with the rent inside it or
         // with data that are only indicative (A7-23). A rent outside a verified range is a block, never stored.

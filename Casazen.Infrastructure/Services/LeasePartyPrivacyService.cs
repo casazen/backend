@@ -204,7 +204,13 @@ public sealed class LeasePartyPrivacyService(
 
         var kept = pending.Count - anonymizedIds.Count;
         if (kept == 0)
+        {
             lease.PartiesAnonymizedAt = now;
+
+            // Every party is anonymized (or the lease never had one: a draft whose entries are all incomplete lives in DraftData only):
+            // the typed state goes too, whatever it holds for entries that never became a party (LR-12).
+            lease.DraftData = null;
+        }
         if (anonymizedIds.Count > 0 || kept == 0)
             lease.UpdatedAt = now;
 

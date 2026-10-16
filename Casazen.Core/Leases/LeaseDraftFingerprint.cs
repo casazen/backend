@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Leases;
@@ -26,12 +27,15 @@ public static class LeaseDraftFingerprint
         Field(text, "regime", LeaseDraftRules.ParseTaxRegime(values.TaxRegime)?.ToString() ?? LeaseDraftRules.Clean(values.TaxRegime)?.ToLowerInvariant());
         Field(text, "rent", Number(values.MonthlyRent));
         Field(text, "deposit", Number(values.SecurityDeposit));
-        if (values.Concordato is { } c)
+        // The characteristics of the unit are part of the contract only for a canone concordato: the columns of any other type keep none,
+        // so a form that goes on sending them after the landlord chose the libero must not look like a change. The areas are kept to the
+        // cents of their columns (10,2), so the value read back from the database is the same as the one typed.
+        if (LeaseDraftRules.ParseContractType(values.ContractType) == LeaseContractType.Concordato && values.Concordato is { } c)
         {
-            Field(text, "c.sqm", Number(c.Sqm));
+            Field(text, "c.sqm", Cents(c.Sqm));
             Field(text, "c.counts", string.Join(',', c.TypeAElementCount, c.TypeBElementCount, c.TypeCElementCount, c.TypeDElementCount, c.QualifyingTypeDElementCount));
             Field(text, "c.flags", string.Join(',', c.IsFurnished, c.StoveHeating, c.AirConditioning));
-            Field(text, "c.appurtenances", string.Join(',', Number(c.GarageSqm), Number(c.BalconySqm), Number(c.OtherAppurtenanceSqm), Number(c.PrivateGreenSqm)));
+            Field(text, "c.appurtenances", string.Join(',', Cents(c.GarageSqm), Cents(c.BalconySqm), Cents(c.OtherAppurtenanceSqm), Cents(c.PrivateGreenSqm)));
             Field(text, "c.zone", LeaseDraftRules.Clean(c.ZoneName));
             Field(text, "c.sheet", LeaseDraftRules.Clean(c.CadastralSheet));
         }
@@ -60,4 +64,7 @@ public static class LeaseDraftFingerprint
         text.Append(name).Append('=').Append(value?.Length.ToString(CultureInfo.InvariantCulture) ?? "-").Append(':').Append(value).Append('\n');
 
     private static string? Number(decimal? value) => value?.ToString("0.########", CultureInfo.InvariantCulture);
+
+    private static string Cents(decimal value) =>
+        decimal.Round(value, 2, MidpointRounding.AwayFromZero).ToString("0.########", CultureInfo.InvariantCulture);
 }
