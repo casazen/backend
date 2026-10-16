@@ -270,6 +270,12 @@
   <data name="AccessRequestLimitReached" xml:space="preserve">
     <value>Hai già inviato diverse richieste oggi e gli amministratori sono stati avvisati. Riprova domani.</value>
   </data>
+  <data name="InvitationDailyLimitReached" xml:space="preserve">
+    <value>Hai già mandato {0} email d'invito nelle ultime 24 ore, anche contando i reinvii. Riprova più tardi.</value>
+  </data>
+  <data name="InvitationResendTooSoon" xml:space="preserve">
+    <value>Questo invito è stato mandato da poco. Puoi mandarlo di nuovo tra {0} minuti.</value>
+  </data>
   <data name="OrgActivityTypeUnknown" xml:space="preserve">
     <value>Tipo di attività non riconosciuto.</value>
   </data>
@@ -298,7 +304,7 @@
     <value>L'ospite ha prenotazioni in corso o future: non può essere eliminato finché non sono concluse o annullate.</value>
   </data>
   <data name="SupplierKpiPeriodInvalid" xml:space="preserve">
-    <value>Periodo non valido: usa CurrentMonth, PreviousMonth, Last30Days o CurrentYear.</value>
+    <value>Periodo non valido: usa CurrentMonth, PreviousMonth, Last30Days, Last3Months o CurrentYear.</value>
   </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Profilo fornitore non trovato</value>
@@ -1612,6 +1618,24 @@
   <data name="PaymentListInvalidRange" xml:space="preserve">
     <value>Intervallo non valido: la data di inizio (from) non può essere dopo quella di fine (to).</value>
   </data>
+  <data name="DashboardInvalidOverviewPeriod" xml:space="preserve">
+    <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, period=Last30Days, period=Next30Days oppure period=Custom con from e to nel formato AAAA-MM-GG (da 1 a 366 giorni).</value>
+  </data>
+  <data name="BookingListInvalidArrivalRange" xml:space="preserve">
+    <value>Intervallo non valido: la data di inizio degli arrivi (arrivalFrom) non può essere dopo quella di fine (arrivalTo).</value>
+  </data>
+  <data name="BookingListInvalidView" xml:space="preserve">
+    <value>Vista non valida: usa uno dei nomi all, toConfirm, upcoming, inProgress, completed o cancelled.</value>
+  </data>
+  <data name="BookingListInvalidChannel" xml:space="preserve">
+    <value>Canale non valido: usa i nomi Direct, Manual, Airbnb, BookingCom o Other, ripetuti o separati da virgole.</value>
+  </data>
+  <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
+    <value>Stato del check-in non valido: usa i nomi NotSent, Sent, InProgress, Completed o Expired, ripetuti o separati da virgole.</value>
+  </data>
+  <data name="BookingListInvalidSort" xml:space="preserve">
+    <value>Ordinamento non valido: usa checkIn, createdAt, total, status o guest, seguiti da :asc o :desc.</value>
+  </data>
   <data name="SeoCounselRequired" xml:space="preserve">
     <value>Questa pagina è tra le prime {0} e può essere pubblicata solo dopo la revisione legale: conferma che il testo è stato revisionato.</value>
   </data>
@@ -2567,10 +2591,22 @@
     <value>Carica almeno una foto (campo photos).</value>
   </data>
   <data name="SupplierInboxTabInvalid" xml:space="preserve">
-    <value>Scheda non valida: usa nuove, programmate, da-incassare oppure archivio.</value>
+    <value>Scheda non valida: usa nuove, da-rispondere, in-attesa, programmate, da-incassare oppure archivio.</value>
   </data>
   <data name="SupplierInboxWhenInvalid" xml:space="preserve">
     <value>Periodo non valido: usa oggi, settimana oppure mese.</value>
+  </data>
+  <data name="SupplierInboxSourceInvalid" xml:space="preserve">
+    <value>Provenienza non valida: usa casazen oppure showcase.</value>
+  </data>
+  <data name="SupplierInboxSearchInvalid" xml:space="preserve">
+    <value>Testo di ricerca non valido: usa da {0} a {1} caratteri.</value>
+  </data>
+  <data name="SupplierOverviewPeriodInvalid" xml:space="preserve">
+    <value>Periodo non valido: usa current-month, last-30-days oppure last-3-months.</value>
+  </data>
+  <data name="SupplierTodayDaysInvalid" xml:space="preserve">
+    <value>Numero di giorni non valido: usa un numero da 1 a {0}.</value>
   </data>
   <data name="SupplierSlotsServiceRequired" xml:space="preserve">
     <value>Indica il servizio di cui vuoi vedere gli orari (parametro service).</value>

@@ -47,6 +47,24 @@ public interface IOrgTeamService
     /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgMembershipErrors.LastOwner"/>.</exception>
     Task<OrgMemberView> ChangeRoleAsync(Guid orgId, Guid memberId, OrgRole role, string actorUserId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Sets the areas the member works in (AM-02c): at least one of <c>short-rent</c> and <c>long-rent</c>, the role and the
+    /// properties it reaches staying as they are (a collaborator «Solo alcuni» keeps what it was given). Same rules of who may do
+    /// what as <see cref="ChangeRoleAsync"/>: an administrator is in the hands of the owner only, the owner is not touched. The
+    /// change is seen on the member's next request on this API instance (the cache of the member is invalidated), within the
+    /// cache duration on the others.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.MemberNotFound"/>.</exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException"><see cref="OrgInvitationErrors.OwnerRequired"/>.</exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException"><see cref="OrgMembershipErrors.AreaRequired"/>.</exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgMembershipErrors.LastOwner"/>.</exception>
+    Task<OrgMemberView> SetAreasAsync(
+        Guid orgId,
+        Guid memberId,
+        IReadOnlyCollection<string> areas,
+        string actorUserId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Switches the member's access off at once (<c>member_inactive</c> from the next request) and frees its seat.</summary>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.MemberNotFound"/>.</exception>
     /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException"><see cref="OrgInvitationErrors.OwnerRequired"/>.</exception>

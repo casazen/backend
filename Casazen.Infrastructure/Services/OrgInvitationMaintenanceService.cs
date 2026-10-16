@@ -299,6 +299,18 @@ public sealed class OrgInvitationMaintenanceService(
         if (old.Count == 0)
             return 0;
 
+        // The properties an invitation carried (AM-02c) go with it: the foreign key cascades on PostgreSQL, so nothing is read for
+        // them there (an invitation may carry up to 500 and a batch has 200 invitations). A provider with no cascade (the in-memory
+        // one of the tests) has them named. IgnoreQueryFilters: scoped to the org the job passes, which runs with no tenant.
+        if (!db.Database.IsRelational())
+        {
+            var oldIds = old.Select(i => i.Id).ToList();
+            var carried = await db.OrgInvitationProperties.IgnoreQueryFilters()
+                .Where(p => p.OrgId == orgId && oldIds.Contains(p.InvitationId))
+                .ToListAsync(cancellationToken);
+            db.OrgInvitationProperties.RemoveRange(carried);
+        }
+
         db.OrgInvitations.RemoveRange(old);
         await db.SaveChangesAsync(cancellationToken);
 

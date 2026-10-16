@@ -1,3 +1,4 @@
+using System.Reflection;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Suppliers;
 using Xunit;
@@ -5,67 +6,82 @@ using Xunit;
 namespace Casazen.Tests.Unit.Suppliers;
 
 /// <summary>
-/// SP-03b: the phase of a request, derived in one place. Every status has its phase, a proposal or a quote that waits only matters
-/// for a request still <c>Richiesto</c>, and a status nobody knows yet is <c>unknown</c>, never an exception.
+/// SP-04e: the <c>phase</c> of a request is derived once, here, from the status and the proposed time. The status keeps its seven
+/// values (the mobile app does not know new ones); the phase is an open set a client reads with a fallback.
 /// </summary>
 public class SupplierRequestPhaseTests
 {
     [Theory]
-    [InlineData(ServiceRequestStatus.Richiesto, "to_answer")]
-    [InlineData(ServiceRequestStatus.PresoInCarico, "scheduled")]
-    [InlineData(ServiceRequestStatus.InCorso, "in_progress")]
-    [InlineData(ServiceRequestStatus.Completato, "completed")]
-    [InlineData(ServiceRequestStatus.Pagato, "paid")]
-    [InlineData(ServiceRequestStatus.Rifiutato, "rejected")]
-    [InlineData(ServiceRequestStatus.Annullato, "cancelled")]
-    public void Of_EveryStatus_HasItsPhase(ServiceRequestStatus status, string phase)
+    [InlineData(ServiceRequestStatus.Richiesto, false, false, "to_answer")]
+    [InlineData(ServiceRequestStatus.Richiesto, true, false, "proposal_pending")]
+    [InlineData(ServiceRequestStatus.Richiesto, false, true, "quote_pending")]
+    [InlineData(ServiceRequestStatus.PresoInCarico, false, false, "scheduled")]
+    [InlineData(ServiceRequestStatus.InCorso, false, false, "in_progress")]
+    [InlineData(ServiceRequestStatus.Completato, false, false, "completed")]
+    [InlineData(ServiceRequestStatus.Pagato, false, false, "paid")]
+    [InlineData(ServiceRequestStatus.Rifiutato, false, false, "rejected")]
+    [InlineData(ServiceRequestStatus.Annullato, false, false, "cancelled")]
+    public void Of_EveryStatus_GivesItsPhase(ServiceRequestStatus status, bool proposal, bool quote, string expected)
     {
-        Assert.Equal(phase, SupplierRequestPhases.Of(status, hasPendingProposal: false));
+        Assert.Equal(expected, SupplierRequestPhases.Of(status, proposal, quote));
     }
 
     [Fact]
-    public void Of_EveryStatusOfTheEnum_HasAPhaseThatIsNotUnknown()
+    public void Of_ProposalAndQuoteAtOnce_ProposalWins()
     {
-        // A new status added to the enum without a phase would show up here as "unknown": the task that adds it adds its phase too.
-        Assert.All(
-            Enum.GetValues<ServiceRequestStatus>(),
-            status => Assert.NotEqual(SupplierRequestPhases.Unknown, SupplierRequestPhases.Of(status, hasPendingProposal: false)));
+        // The order is part of the contract shared with the agenda (SP-03b): a proposal, then a quote, else the supplier answers.
+        Assert.Equal(SupplierRequestPhases.ProposalPending, SupplierRequestPhases.Of(ServiceRequestStatus.Richiesto, true, true));
+    }
+
+    [Theory]
+    [InlineData(ServiceRequestStatus.PresoInCarico)]
+    [InlineData(ServiceRequestStatus.InCorso)]
+    [InlineData(ServiceRequestStatus.Completato)]
+    [InlineData(ServiceRequestStatus.Pagato)]
+    [InlineData(ServiceRequestStatus.Rifiutato)]
+    [InlineData(ServiceRequestStatus.Annullato)]
+    public void Of_ProposalOrQuoteMeanNothingOutsideANewRequest(ServiceRequestStatus status)
+    {
+        Assert.Equal(SupplierRequestPhases.Of(status, false), SupplierRequestPhases.Of(status, true));
+        Assert.Equal(SupplierRequestPhases.Of(status, false), SupplierRequestPhases.Of(status, false, true));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(99)]
+    [InlineData(int.MaxValue)]
+    public void Of_AStatusItDoesNotKnow_IsUnknown_AndNeverThrows(int value)
+    {
+        // A request forwarded to an external provider (spec #466) would be an eighth status: no exception, a value the client can show.
+        Assert.Equal(SupplierRequestPhases.Unknown, SupplierRequestPhases.Of((ServiceRequestStatus)value, false));
+        Assert.Equal(SupplierRequestPhases.Unknown, SupplierRequestPhases.Of((ServiceRequestStatus)value, true, true));
+        Assert.Equal("unknown", SupplierRequestPhases.Unknown);
     }
 
     [Fact]
-    public void Of_AProposalWaitingForAnAnswer_OnlyChangesARequestStillWaiting()
+    public void Of_EveryDefinedStatus_HasAPhaseOfItsOwn_SoANewStatusMustBePlacedOnPurpose()
     {
-        Assert.Equal("proposal_pending", SupplierRequestPhases.Of(ServiceRequestStatus.Richiesto, hasPendingProposal: true));
-        Assert.Equal("scheduled", SupplierRequestPhases.Of(ServiceRequestStatus.PresoInCarico, hasPendingProposal: true));
-        Assert.Equal("cancelled", SupplierRequestPhases.Of(ServiceRequestStatus.Annullato, hasPendingProposal: true));
+        var phases = Enum.GetValues<ServiceRequestStatus>()
+            .Select(status => SupplierRequestPhases.Of(status, hasPendingProposal: false))
+            .ToList();
+
+        Assert.DoesNotContain(SupplierRequestPhases.Unknown, phases);
+        Assert.Equal(phases.Count, phases.Distinct().Count());
     }
 
     [Fact]
-    public void Of_AQuoteWaitingForTheCustomer_IsQuotePending_AProposalComesFirst()
+    public void Constants_AreDistinctLowerSnakeCaseWords()
     {
-        Assert.Equal("quote_pending", SupplierRequestPhases.Of(ServiceRequestStatus.Richiesto, hasPendingProposal: false, hasPendingQuote: true));
-        Assert.Equal("proposal_pending", SupplierRequestPhases.Of(ServiceRequestStatus.Richiesto, hasPendingProposal: true, hasPendingQuote: true));
-        Assert.Equal("completed", SupplierRequestPhases.Of(ServiceRequestStatus.Completato, hasPendingProposal: false, hasPendingQuote: true));
-    }
+        var values = typeof(SupplierRequestPhases)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field.IsLiteral && field.FieldType == typeof(string))
+            .Select(field => (string)field.GetRawConstantValue()!)
+            .ToList();
 
-    [Fact]
-    public void Of_AStatusThisVersionDoesNotKnow_IsUnknown_NeverAnException()
-    {
-        // The enum travels by name and may grow (a request handed to an external provider): the console must not break on it.
-        Assert.Equal("unknown", SupplierRequestPhases.Of((ServiceRequestStatus)99, hasPendingProposal: false));
-        Assert.Equal("unknown", SupplierRequestPhases.Of((ServiceRequestStatus)(-1), hasPendingProposal: true));
-    }
-
-    [Fact]
-    public void Phases_TheValuesOnTheWire_AreStable()
-    {
-        Assert.Equal(
-            ["to_answer", "proposal_pending", "quote_pending", "scheduled", "in_progress", "completed", "paid", "rejected", "cancelled", "unknown"],
-            new[]
-            {
-                SupplierRequestPhases.ToAnswer, SupplierRequestPhases.ProposalPending, SupplierRequestPhases.QuotePending, SupplierRequestPhases.Scheduled,
-                SupplierRequestPhases.InProgress, SupplierRequestPhases.Completed, SupplierRequestPhases.Paid, SupplierRequestPhases.Rejected,
-                SupplierRequestPhases.Cancelled, SupplierRequestPhases.Unknown,
-            });
+        Assert.Equal(10, values.Count);
+        Assert.Equal(values.Count, values.Distinct().Count());
+        Assert.All(values, value => Assert.Matches("^[a-z]+(_[a-z]+)*$", value));
     }
 }

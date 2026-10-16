@@ -270,6 +270,12 @@
   <data name="AccessRequestLimitReached" xml:space="preserve">
     <value>You already sent several requests today and the administrators have been told. Try again tomorrow.</value>
   </data>
+  <data name="InvitationDailyLimitReached" xml:space="preserve">
+    <value>You already sent {0} invitation emails in the last 24 hours, counting the ones sent again. Try again later.</value>
+  </data>
+  <data name="InvitationResendTooSoon" xml:space="preserve">
+    <value>This invitation was sent a moment ago. You can send it again in {0} minutes.</value>
+  </data>
   <data name="OrgActivityTypeUnknown" xml:space="preserve">
     <value>Unknown activity type.</value>
   </data>
@@ -298,7 +304,7 @@
     <value>The guest has ongoing or upcoming bookings: it cannot be deleted until they are completed or cancelled.</value>
   </data>
   <data name="SupplierKpiPeriodInvalid" xml:space="preserve">
-    <value>Invalid period: use CurrentMonth, PreviousMonth, Last30Days or CurrentYear.</value>
+    <value>Invalid period: use CurrentMonth, PreviousMonth, Last30Days, Last3Months or CurrentYear.</value>
   </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Supplier profile not found</value>
@@ -1612,6 +1618,24 @@
   <data name="PaymentListInvalidRange" xml:space="preserve">
     <value>Invalid range: the start date (from) cannot be after the end date (to).</value>
   </data>
+  <data name="DashboardInvalidOverviewPeriod" xml:space="preserve">
+    <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days, period=Next30Days or period=Custom with from and to as YYYY-MM-DD (1 to 366 days).</value>
+  </data>
+  <data name="BookingListInvalidArrivalRange" xml:space="preserve">
+    <value>Invalid range: the first arrival date (arrivalFrom) cannot be after the last one (arrivalTo).</value>
+  </data>
+  <data name="BookingListInvalidView" xml:space="preserve">
+    <value>Invalid view: use one of the names all, toConfirm, upcoming, inProgress, completed or cancelled.</value>
+  </data>
+  <data name="BookingListInvalidChannel" xml:space="preserve">
+    <value>Invalid channel: use the names Direct, Manual, Airbnb, BookingCom or Other, repeated or separated by commas.</value>
+  </data>
+  <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
+    <value>Invalid check-in status: use the names NotSent, Sent, InProgress, Completed or Expired, repeated or separated by commas.</value>
+  </data>
+  <data name="BookingListInvalidSort" xml:space="preserve">
+    <value>Invalid order: use checkIn, createdAt, total, status or guest, followed by :asc or :desc.</value>
+  </data>
   <data name="SeoCounselRequired" xml:space="preserve">
     <value>This page is among the first {0} and can be published only after the legal review: confirm that the text has been reviewed.</value>
   </data>
@@ -2567,10 +2591,22 @@
     <value>Upload at least one photo (field photos).</value>
   </data>
   <data name="SupplierInboxTabInvalid" xml:space="preserve">
-    <value>Invalid tab: use nuove, programmate, da-incassare or archivio.</value>
+    <value>Invalid tab: use nuove, da-rispondere, in-attesa, programmate, da-incassare or archivio.</value>
   </data>
   <data name="SupplierInboxWhenInvalid" xml:space="preserve">
     <value>Invalid period: use oggi, settimana or mese.</value>
+  </data>
+  <data name="SupplierInboxSourceInvalid" xml:space="preserve">
+    <value>Invalid source: use casazen or showcase.</value>
+  </data>
+  <data name="SupplierInboxSearchInvalid" xml:space="preserve">
+    <value>Invalid search text: use from {0} to {1} characters.</value>
+  </data>
+  <data name="SupplierOverviewPeriodInvalid" xml:space="preserve">
+    <value>Invalid period: use current-month, last-30-days or last-3-months.</value>
+  </data>
+  <data name="SupplierTodayDaysInvalid" xml:space="preserve">
+    <value>Invalid number of days: use a number from 1 to {0}.</value>
   </data>
   <data name="SupplierSlotsServiceRequired" xml:space="preserve">
     <value>Specify the service whose times you want to see (service parameter).</value>

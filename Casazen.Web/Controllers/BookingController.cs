@@ -40,18 +40,33 @@ public class BookingsController(
 
     private readonly BookingsOptions _bookingsOptions = bookingsOptions.Value;
 
+    /// <summary>Code of a <c>view</c> query value of the search that is not the name of a chip (SR-03b).</summary>
+    public const string InvalidViewCode = "booking_list_invalid_view";
+
+    /// <summary>Code of a <c>channel</c> query value of the search that is not the name of a channel (SR-03b).</summary>
+    public const string InvalidChannelCode = "booking_list_invalid_channel";
+
+    /// <summary>Code of a <c>checkInStatus</c> query value of the search that is not the name of a check-in state (SR-03b).</summary>
+    public const string InvalidCheckInStatusCode = "booking_list_invalid_check_in_status";
+
+    /// <summary>Code of a <c>sort</c> query value of the search that is not an order the list knows (SR-03b).</summary>
+    public const string InvalidSortCode = "booking_list_invalid_sort";
+
     /// <summary>
     /// The bookings the caller sees, latest check-in first, a page at a time (PC-14: <c>{ items, totalCount, page, pageSize }</c>,
     /// <c>Bookings:DefaultPageSize</c> when <c>pageSize</c> is missing): <c>propertyId</c> and <c>guestId</c> narrow it.
     /// TN-3: filtered in SQL by the caller's scope (org, and the owned properties for a non org-wide role) in one query whatever
     /// the number of bookings (A2-17). With <c>propertyId</c>: 404 when the property is not in the caller's org, 403 without
-    /// <c>booking.read</c> on it. <c>GET /api/bookings/search</c> adds days, status and text.
+    /// <c>booking.read</c> on it. <c>GET /api/bookings/search</c> adds days, status, text, the chips and the order. Since SR-03b it
+    /// is that search without a filter but these two (<see cref="IBookingSearchService"/>: one rule for the order and the scope), so
+    /// the answer is the same, rows included.
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(typeof(PagedResultDto<BookingResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResultDto<BookingListItemDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<PagedResultDto<BookingResponseDto>>> GetAll(
+    public async Task<ActionResult<PagedResultDto<BookingListItemDto>>> GetAll(
+        [FromServices] IBookingSearchService searchService,
         [FromServices] IOrgContextResolver orgContextResolver,
         [FromServices] IAuthorizationService hostAuthorization,
         [FromServices] IHostScopeResolver hostScopeResolver,
@@ -72,22 +87,22 @@ public class BookingsController(
         // No org yet, or no reach on it: nothing of any org is visible (the tenant filter showed nothing either).
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
-            return Ok(new PagedResultDto<BookingResponseDto> { Items = [], TotalCount = 0, Page = page, PageSize = effectivePageSize });
+            return Ok(new PagedResultDto<BookingListItemDto> { Items = [], TotalCount = 0, Page = page, PageSize = effectivePageSize });
 
         if (await DenyPropertyFilterAsync(propertyId, hostAuthorization) is { } denied)
             return denied;
 
-        var (bookings, totalCount) = await bookingService.GetPagedBookingsAsync(
-            scope, page, effectivePageSize, propertyId, guestId, cancellationToken);
+        var result = await searchService.SearchAsync(
+            scope,
+            new BookingSearchCriteria(
+                PropertyId: propertyId,
+                GuestId: guestId,
+                Page: page,
+                PageSize: effectivePageSize,
+                IncludePaidAmount: await CanReadPaymentsAsync(hostAuthorization)),
+            cancellationToken);
 
-        var nowUtc = DateTime.UtcNow;
-        return Ok(new PagedResultDto<BookingResponseDto>
-        {
-            Items = bookings.Select(b => BookingMapper.ToResponse(b, nowUtc)).ToList(),
-            TotalCount = totalCount,
-            Page = page,
-            PageSize = effectivePageSize,
-        });
+        return Ok(ToPage(result));
     }
 
     /// <summary>
@@ -98,16 +113,30 @@ public class BookingsController(
     /// <c>CheckedIn</c>, <c>CheckedOut</c>, <c>Cancelled</c>), repeated or separated by commas. <c>q</c>: the name or email of the
     /// guest, the name of the property or the booking code, any case. <c>propertyId</c> and <c>guestId</c> as in the plain list.
     /// <c>page</c> (from 1) and <c>pageSize</c> (the <c>Bookings:DefaultPageSize</c> of the plain list when missing, at most
-    /// 100). Latest check-in first, the id as the tie-break: a total order, so a page never repeats or skips a booking.
+    /// 100). Latest check-in first unless <c>sort</c> says otherwise, the id as the last criterion: a total order, so a page never
+    /// repeats or skips a booking.
+    /// <para>
+    /// SR-03b, all optional: <c>arrivalFrom</c> and <c>arrivalTo</c> (<c>yyyy-MM-dd</c>, both included) keep the stays that
+    /// <i>arrive</i> in the range (the check-in date: not the stays that have a day in it, which <c>from</c>/<c>to</c> do);
+    /// <c>view</c> is a chip, <c>all</c> (default), <c>toConfirm</c>, <c>upcoming</c>, <c>inProgress</c>, <c>completed</c> or
+    /// <c>cancelled</c> (<see cref="BookingListRules.InView"/>); <c>channel</c> one or more of <c>Direct</c>, <c>Manual</c>,
+    /// <c>Airbnb</c>, <c>BookingCom</c>, <c>Other</c>; <c>checkInStatus</c> one or more of <c>NotSent</c>, <c>Sent</c>,
+    /// <c>InProgress</c>, <c>Completed</c>, <c>Expired</c> (the state of the online check-in link, as in
+    /// <c>GET /api/dashboard/today</c>); <c>sort</c> is <c>checkIn</c>, <c>createdAt</c>, <c>total</c>, <c>status</c> or
+    /// <c>guest</c>, then <c>:asc</c> (default) or <c>:desc</c>. Each row also says <c>channel</c>, <c>paymentState</c>,
+    /// <c>paidAmount</c> (only for a caller with <c>payment.read</c>), <c>alloggiatiStatus</c> and <c>respondBy</c>.
+    /// </para>
     /// TN-3: filtered in SQL by the caller's scope; with <c>propertyId</c>: 404 when the property is not in the caller's org,
-    /// 403 without <c>booking.read</c> on it. 400 <c>booking_list_invalid_status</c> and <c>booking_list_invalid_range</c>.
+    /// 403 without <c>booking.read</c> on it. 400 <c>booking_list_invalid_status</c>, <c>booking_list_invalid_range</c> (also for
+    /// <c>arrivalFrom</c> after <c>arrivalTo</c>), <c>booking_list_invalid_view</c>, <c>booking_list_invalid_channel</c>,
+    /// <c>booking_list_invalid_check_in_status</c> and <c>booking_list_invalid_sort</c>.
     /// </summary>
     [HttpGet("search")]
-    [ProducesResponseType(typeof(PagedResultDto<BookingResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResultDto<BookingListItemDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<PagedResultDto<BookingResponseDto>>> Search(
+    public async Task<ActionResult<PagedResultDto<BookingListItemDto>>> Search(
         [FromServices] IBookingSearchService searchService,
         [FromServices] IOrgContextResolver orgContextResolver,
         [FromServices] IAuthorizationService hostAuthorization,
@@ -119,7 +148,13 @@ public class BookingsController(
         [FromQuery] Guid? propertyId = null,
         [FromQuery] Guid? guestId = null,
         [FromQuery] int page = 1,
-        [FromQuery] int? pageSize = null)
+        [FromQuery] int? pageSize = null,
+        [FromQuery] DateOnly? arrivalFrom = null,
+        [FromQuery] DateOnly? arrivalTo = null,
+        [FromQuery] string? view = null,
+        [FromQuery(Name = "channel")] string[]? channel = null,
+        [FromQuery(Name = "checkInStatus")] string[]? checkInStatus = null,
+        [FromQuery] string? sort = null)
     {
         if (GetUserId() == null)
             return Unauthorized();
@@ -127,11 +162,10 @@ public class BookingsController(
         // The size of a page of the plain list when the caller does not say (PC-14: Bookings:DefaultPageSize).
         var requestedPageSize = pageSize ?? _bookingsOptions.DefaultPageSize;
 
-        if (!TryParseStatuses(status, out var statuses))
-            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidStatusCode, "BookingListInvalidStatus");
-
-        if (fromDay is { } first && toDay is { } last && first > last)
-            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidRangeCode, "BookingListInvalidRange");
+        if (TryReadFilters(
+                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, view, channel, checkInStatus, sort, out var filters)
+            is { } invalid)
+            return invalid;
 
         var cancellationToken = HttpContext.RequestAborted;
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
@@ -139,7 +173,7 @@ public class BookingsController(
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
         {
-            return Ok(new PagedResultDto<BookingResponseDto>
+            return Ok(new PagedResultDto<BookingListItemDto>
             {
                 Items = [],
                 TotalCount = 0,
@@ -153,18 +187,131 @@ public class BookingsController(
 
         var result = await searchService.SearchAsync(
             scope,
-            new BookingSearchCriteria(fromDay, toDay, statuses, q, propertyId, guestId, page, requestedPageSize),
+            filters with { Page = page, PageSize = requestedPageSize, IncludePaidAmount = await CanReadPaymentsAsync(hostAuthorization) },
             cancellationToken);
 
+        return Ok(ToPage(result));
+    }
+
+    /// <summary>
+    /// How many bookings are in each chip of the list (SR-03b): <c>{ all, toConfirm, upcoming, inProgress, completed, cancelled }</c>
+    /// for the bookings that satisfy the filters of <c>GET /api/bookings/search</c> but the chip (<c>view</c>), the page and the
+    /// order. One aggregate query, filtered in SQL by the caller's scope like the list. A booking is in at most one chip, so the
+    /// counters never count it twice. Same 400s as the search for the filters it takes; same 404 and 403 for <c>propertyId</c>.
+    /// </summary>
+    [HttpGet("counts")]
+    [ProducesResponseType(typeof(BookingCountsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BookingCountsDto>> Counts(
+        [FromServices] IBookingSearchService searchService,
+        [FromServices] IOrgContextResolver orgContextResolver,
+        [FromServices] IAuthorizationService hostAuthorization,
+        [FromServices] IHostScopeResolver hostScopeResolver,
+        [FromQuery(Name = "from")] DateOnly? fromDay = null,
+        [FromQuery(Name = "to")] DateOnly? toDay = null,
+        [FromQuery(Name = "status")] string[]? status = null,
+        [FromQuery] string? q = null,
+        [FromQuery] Guid? propertyId = null,
+        [FromQuery] Guid? guestId = null,
+        [FromQuery] DateOnly? arrivalFrom = null,
+        [FromQuery] DateOnly? arrivalTo = null,
+        [FromQuery(Name = "channel")] string[]? channel = null,
+        [FromQuery(Name = "checkInStatus")] string[]? checkInStatus = null)
+    {
+        if (GetUserId() == null)
+            return Unauthorized();
+
+        if (TryReadFilters(
+                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, null, channel, checkInStatus, null, out var filters)
+            is { } invalid)
+            return invalid;
+
+        var cancellationToken = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
+            return Ok(new BookingCountsDto());
+
+        if (await DenyPropertyFilterAsync(propertyId, hostAuthorization) is { } denied)
+            return denied;
+
+        return Ok(BookingCountsDto.From(await searchService.CountAsync(scope, filters, cancellationToken)));
+    }
+
+    // The filters of a request as criteria, or the 400 that says which one is not understood (the same words for the list and the
+    // counters of its chips). The page, the size and the money are the caller's to add.
+    private ObjectResult? TryReadFilters(
+        DateOnly? fromDay,
+        DateOnly? toDay,
+        string[]? status,
+        string? q,
+        Guid? propertyId,
+        Guid? guestId,
+        DateOnly? arrivalFrom,
+        DateOnly? arrivalTo,
+        string? view,
+        string[]? channel,
+        string[]? checkInStatus,
+        string? sort,
+        out BookingSearchCriteria filters)
+    {
+        filters = new BookingSearchCriteria();
+
+        if (!TryParseStatuses(status, out var statuses))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidStatusCode, "BookingListInvalidStatus");
+
+        if (fromDay is { } first && toDay is { } last && first > last)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidRangeCode, "BookingListInvalidRange");
+
+        if (arrivalFrom is { } firstArrival && arrivalTo is { } lastArrival && firstArrival > lastArrival)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidRangeCode, "BookingListInvalidArrivalRange");
+
+        if (!BookingListRules.TryParseView(view, out var chip))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidViewCode, "BookingListInvalidView");
+
+        if (!BookingListRules.TryParseNames<BookingChannel>(channel, out var channels))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidChannelCode, "BookingListInvalidChannel");
+
+        if (!BookingListRules.TryParseNames<HostTodayCheckInState>(checkInStatus, out var checkInStates))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidCheckInStatusCode, "BookingListInvalidCheckInStatus");
+
+        if (!BookingListRules.TryParseSort(sort, out var order))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidSortCode, "BookingListInvalidSort");
+
+        filters = new BookingSearchCriteria(
+            fromDay,
+            toDay,
+            statuses,
+            q,
+            propertyId,
+            guestId,
+            ArrivalFrom: arrivalFrom,
+            ArrivalTo: arrivalTo,
+            View: chip,
+            Channels: channels,
+            CheckInStates: checkInStates,
+            Sort: order);
+        return null;
+    }
+
+    // The answer of the lists: each booking with what its row says besides it.
+    private static PagedResultDto<BookingListItemDto> ToPage(BookingSearchPage result)
+    {
         var nowUtc = DateTime.UtcNow;
-        return Ok(new PagedResultDto<BookingResponseDto>
+        return new PagedResultDto<BookingListItemDto>
         {
-            Items = result.Items.Select(b => BookingMapper.ToResponse(b, nowUtc)).ToList(),
+            Items = result.Items.Select(b => BookingMapper.ToListItem(b, result.Details.GetValueOrDefault(b.Id), nowUtc)).ToList(),
             TotalCount = result.TotalCount,
             Page = result.Page,
             PageSize = result.PageSize,
-        });
+        };
     }
+
+    // Money (what came in on a booking) is payment data: it needs payment.read, which the collaborator does not hold (SR-D7).
+    private async Task<bool> CanReadPaymentsAsync(IAuthorizationService hostAuthorization) =>
+        (await hostAuthorization.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
 
     // 404 when the property is not in the caller's org, 403 without booking.read on it; null when the filter may be used.
     private async Task<ActionResult?> DenyPropertyFilterAsync(Guid? propertyId, IAuthorizationService hostAuthorization)

@@ -2,7 +2,8 @@
 
 Tasks PC-10 (audit defects A2-10, A2-12, A2-23, A9-13), PC-11 (A2-11, A2-20), PC-12 (A2-22), SU-15 (A4-11, A9-14:
 supplier sync in Hangfire, [Supplier calendars](#supplier-calendars-su-15)), SP-05 (a supplier's events by the hour,
-[Events by the hour](#events-by-the-hour-sp-05)), CO-21 (GC-AC9, decision D7) and PC-09
+[Events by the hour](#events-by-the-hour-sp-05)), SP-03b (unlinking a supplier's calendar,
+[Unlinking the calendar](#unlinking-the-calendar-sp-03b)), CO-21 (GC-AC9, decision D7) and PC-09
 (A2-25, manual blocks). The
 download of the feed (anti-SSRF client, size and time limits, error codes) is described in
 [external-fetch.md](external-fetch.md) (FD-16). This page covers the import feeds of a property (many per property, URL
@@ -679,7 +680,10 @@ FROM "SupplierFreeCalendarEvents" WHERE "OrgId" = '<supplier org id>' ORDER BY "
 Until SP-03b a supplier could only **replace** the URL: `IcalFeedUrl` is required by `PUT calendar/ical`, so a saved URL never went away,
 and the days and windows of a feed nobody wanted any more stayed in the agenda (BE-SP05-4). `DELETE /api/supplier/calendar/ical` ends it
 (`CalendarSyncService.DisconnectIcalFeedAsync`), **in one transaction under the supplier's advisory lock `SupplierCalendarSync`** — the lock
-of the sync and of every write of the agenda, so an unlink and a sync never write the same rows at once:
+of the sync and of every write of the agenda, so an unlink and a sync never write the same rows at once. The rows go with **one set-based `DELETE`
+per table**, in a fixed order (days, windows, "Available" events, then the profile row): nothing is loaded or tracked, and a row that
+`PUT calendar/ical` — which takes no lock and also removes the "Available" events when the URL changes — removed in the meantime is not an error
+(on the in-memory provider of the unit tests, which has no set-based delete, the rows are loaded and removed one by one):
 
 | What | Result |
 |---|---|

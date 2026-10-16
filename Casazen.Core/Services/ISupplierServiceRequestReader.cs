@@ -47,4 +47,23 @@ public interface ISupplierServiceRequestReader
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// How many requests of <paramref name="supplierOrgId"/> each tab of the inbox holds, and how many payments are late (SP-04e,
+    /// <c>GET api/supplier/inbox/counts</c>): the numbers on the chips of the list and on the menu, computed in one place so they
+    /// agree with the lists. Read-only, scoped by the supplier org.
+    /// </summary>
+    Task<SupplierInboxCounts> GetInboxCountsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// The counters of the tabs of the supplier's inbox (SP-04e). The tabs <c>da-rispondere</c> and <c>in-attesa</c> split <c>nuove</c>:
+/// their sum is what <c>nuove</c> holds.
+/// </summary>
+/// <param name="ToAnswer">Requests waiting for the supplier's answer, with no proposed time (nor quote) waiting (tab <c>da-rispondere</c>).</param>
+/// <param name="AwaitingCustomer">Requests the supplier answered with a proposed time (or a quote) the customer has not answered (tab <c>in-attesa</c>).</param>
+/// <param name="Scheduled">Requests taken or in progress (tab <c>programmate</c>).</param>
+/// <param name="ToCollect">Requests completed and not paid yet (tab <c>da-incassare</c>).</param>
+/// <param name="Archive">Requests that are over for the supplier: paid, rejected or cancelled (tab <c>archivio</c>).</param>
+/// <param name="PaymentsLate">Payments asked for that are late and still owed.</param>
+public sealed record SupplierInboxCounts(int ToAnswer, int AwaitingCustomer, int Scheduled, int ToCollect, int Archive, int PaymentsLate);

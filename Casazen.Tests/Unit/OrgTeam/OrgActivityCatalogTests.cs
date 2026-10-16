@@ -30,6 +30,7 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.MemberRemoved, 7)]
     [InlineData(OrgActivityType.MemberPropertyAccessChanged, 8)]
     [InlineData(OrgActivityType.AccessRequested, 9)]
+    [InlineData(OrgActivityType.MemberAreasChanged, 10)]
     [InlineData(OrgActivityType.PlanChanged, 20)]
     [InlineData(OrgActivityType.OrgNameChanged, 21)]
     [InlineData(OrgActivityType.OrgSlugChanged, 22)]
@@ -47,7 +48,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(17, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(18, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]
@@ -64,30 +65,64 @@ public class OrgActivityCatalogTests
     }
 
     [Fact]
-    public void Catalog_DescribesEveryEventOnce_AndTheRunbookStaysUnderTwentyEvents()
+    public void Catalog_DescribesEveryEventOnce_AndTheCatalogStaysUnderTwentyFiveEvents()
     {
         var described = OrgActivityCatalog.All.Select(e => e.Type).ToList();
 
         Assert.Equal(Enum.GetValues<OrgActivityType>().Order(), described.Order());
         Assert.Equal(described.Count, described.Distinct().Count());
-        Assert.InRange(described.Count, 1, 20);
+        // AM-D18: the catalog is closed and grows one row at a time, to about twenty-five events in all.
+        Assert.InRange(described.Count, 1, 25);
     }
 
     [Fact]
-    public void Catalog_TheReservedEvents_AreTheFiveOfTheFeaturesThatDoNotExistYet()
+    public void Catalog_TheReservedEvents_AreTheTwoOfTheTrustedSuppliersThatDoNotExistYet()
     {
+        // The three events of the property mode are written since AM-02c (PropertyModeService); the trusted suppliers are not.
         var reserved = OrgActivityCatalog.All.Where(e => e.Reserved).Select(e => e.Type).Order().ToList();
 
         Assert.Equal(
-            new[]
-            {
-                OrgActivityType.PropertyModeChangeScheduled,
-                OrgActivityType.PropertyModeChangeCancelled,
-                OrgActivityType.PropertyModeChanged,
-                OrgActivityType.TrustedSupplierAdded,
-                OrgActivityType.TrustedSupplierRemoved,
-            }.Order(),
+            new[] { OrgActivityType.TrustedSupplierAdded, OrgActivityType.TrustedSupplierRemoved }.Order(),
             reserved);
+    }
+
+    [Fact]
+    public void Catalog_TheEventsOfAm02c_HaveTheirAreaSubjectAndDetails()
+    {
+        // The areas of a member: «fromAreas» and «toAreas» are short codes, and «released» is the count of AM-03b.
+        var areas = OrgActivityCatalog.Describe(OrgActivityType.MemberAreasChanged);
+        Assert.Equal((OrgActivityArea.Account, OrgActivitySubjectType.Member), (areas.DefaultArea, areas.SubjectType));
+        Assert.Equal(
+            new[] { "fromAreas", "toAreas", "released" }.Order(),
+            areas.DetailKeys.Order());
+
+        // The mode of a property: the subject is the property, the area is the one the service passes.
+        foreach (var type in new[] { OrgActivityType.PropertyModeChangeScheduled, OrgActivityType.PropertyModeChangeCancelled, OrgActivityType.PropertyModeChanged })
+        {
+            var mode = OrgActivityCatalog.Describe(type);
+            Assert.Equal(OrgActivitySubjectType.Property, mode.SubjectType);
+            Assert.False(mode.Reserved);
+            Assert.Contains(OrgActivityDetailKeys.FromMode, mode.DetailKeys);
+            Assert.Contains(OrgActivityDetailKeys.ToMode, mode.DetailKeys);
+        }
+
+        Assert.Contains(OrgActivityDetailKeys.EffectiveOn, OrgActivityCatalog.Describe(OrgActivityType.PropertyModeChangeScheduled).DetailKeys);
+    }
+
+    [Theory]
+    [InlineData("short-rent")]
+    [InlineData("long-rent")]
+    [InlineData("long-rent.short-rent")]
+    public void AreasCode_IsAShortCodeTheLogAccepts(string code)
+    {
+        Assert.True(OrgActivityCatalog.IsSafeDetailValue(code));
+        Assert.Equal(code, OrgActivityDetails.AreasCode(code.Split('.')));
+    }
+
+    [Fact]
+    public void AreasCode_IsSortedAndWithoutRepeats_SoTheSameAreasAlwaysReadTheSame()
+    {
+        Assert.Equal("long-rent.short-rent", OrgActivityDetails.AreasCode(["short-rent", "LONG-RENT", "short-rent"]));
     }
 
     // ─── Areas and names the API speaks ─────────────────────────────────────────────────────────────────

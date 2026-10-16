@@ -3,68 +3,61 @@ using Casazen.Core.Entities.Enums;
 namespace Casazen.Core.Suppliers;
 
 /// <summary>
-/// The <b>phase</b> of a service request as the supplier's console names it (SP-03b, SP-04e): derived from the status of the
-/// request and from what is waiting on it, in <b>one place</b>, so the calendar, the inbox and every other read of the console
-/// say the same thing and the frontend never repeats the rules. A phase is never stored and never a new value of
-/// <see cref="ServiceRequestStatus"/> (it travels by name to the mobile app, which does not know new ones).
+/// The <b>phase</b> of a service request as the supplier console talks about it (<c>phase</c> of the items of
+/// <c>GET api/supplier/inbox</c> and <c>today</c> since SP-04e, and of the calendar once SP-03b adopts it), derived <b>once, here</b>,
+/// so the frontend never repeats the rules. It is a <b>derived</b> value, never stored: <see cref="ServiceRequestStatus"/> keeps its
+/// seven values (the mobile app does not know new ones).
 /// </summary>
 /// <remarks>
-/// <para><b>An open set.</b> Other areas add phases (a negotiation of the public showcase, a payment held by CasaZen): a client
-/// shows a value it does not know with a neutral label. A status this code does not know yet (an enum that grows, for instance
-/// a request handed to an external provider) is <see cref="Unknown"/>, never an exception.</para>
-/// <list type="table">
-/// <listheader><term>Status</term><description>Phase</description></listheader>
-/// <item><term><c>Richiesto</c></term><description><see cref="ToAnswer"/>; <see cref="ProposalPending"/> when the supplier proposed another time and waits for the answer; <see cref="QuotePending"/> when a quote waits for the customer</description></item>
-/// <item><term><c>PresoInCarico</c></term><description><see cref="Scheduled"/></description></item>
-/// <item><term><c>InCorso</c></term><description><see cref="InProgress"/></description></item>
-/// <item><term><c>Completato</c></term><description><see cref="Completed"/></description></item>
-/// <item><term><c>Pagato</c></term><description><see cref="Paid"/></description></item>
-/// <item><term><c>Rifiutato</c></term><description><see cref="Rejected"/></description></item>
-/// <item><term><c>Annullato</c></term><description><see cref="Cancelled"/></description></item>
-/// </list>
+/// <para><b>The set is open.</b> The values of today are the constants below; other areas will add more (the quote of SP-04b,
+/// the "su misura" trattative of the showcase, the held payments of SP-15c). A client must show a generic wording for a value it
+/// does not know, never fail. <see cref="Of"/> is total: any status it does not know gives <see cref="Unknown"/> (a request
+/// forwarded to an external provider, spec #466, would be a new status), it never throws.</para>
+/// <para><b>Correspondence</b> with the status: <c>Richiesto</c> is <see cref="ToAnswer"/> (the supplier still has to answer),
+/// <see cref="ProposalPending"/> (the supplier proposed another time and the customer has not answered) or
+/// <see cref="QuotePending"/> (reserved: SP-04b, never produced before it); <c>PresoInCarico</c> is <see cref="Scheduled"/>,
+/// <c>InCorso</c> <see cref="InProgress"/>, <c>Completato</c> <see cref="Completed"/>, <c>Pagato</c> <see cref="Paid"/>,
+/// <c>Rifiutato</c> <see cref="Rejected"/> and <c>Annullato</c> <see cref="Cancelled"/>.</para>
 /// </remarks>
 public static class SupplierRequestPhases
 {
-    /// <summary>A new request the supplier has not answered.</summary>
+    /// <summary>New: the supplier has to answer (take it, refuse it, propose another time).</summary>
     public const string ToAnswer = "to_answer";
 
-    /// <summary>The supplier proposed another time and the host or the customer has not answered.</summary>
+    /// <summary>The supplier proposed another time and waits for the customer.</summary>
     public const string ProposalPending = "proposal_pending";
 
-    /// <summary>A quote of the supplier waits for the customer (not produced until the quote exists, SP-04b).</summary>
+    /// <summary>The supplier sent a quote and waits for the customer. Reserved for SP-04b: nothing produces it yet.</summary>
     public const string QuotePending = "quote_pending";
 
-    /// <summary>Taken by the supplier, the work is still to do.</summary>
+    /// <summary>Taken, the work is yet to start.</summary>
     public const string Scheduled = "scheduled";
 
-    /// <summary>The supplier started the work.</summary>
+    /// <summary>The work started.</summary>
     public const string InProgress = "in_progress";
 
-    /// <summary>The work is done.</summary>
+    /// <summary>The work is done and not paid yet.</summary>
     public const string Completed = "completed";
 
-    /// <summary>The work is done and paid.</summary>
+    /// <summary>Paid.</summary>
     public const string Paid = "paid";
 
-    /// <summary>The supplier turned the request down.</summary>
+    /// <summary>The supplier refused it.</summary>
     public const string Rejected = "rejected";
 
-    /// <summary>The request was cancelled.</summary>
+    /// <summary>Cancelled by the host, the customer, the supplier or CasaZen.</summary>
     public const string Cancelled = "cancelled";
 
-    /// <summary>A status this version does not know: never an error.</summary>
+    /// <summary>A status this code does not know: the client shows a generic wording.</summary>
     public const string Unknown = "unknown";
 
-    /// <summary>
-    /// The phase of a request in <paramref name="status"/>. <paramref name="hasPendingProposal"/> is true while a time the supplier
-    /// proposed has no answer; <paramref name="hasPendingQuote"/> while a quote has none. Both only matter for a request still
-    /// <c>Richiesto</c>, and a proposal wins over a quote (the time is what the customer is asked first).
-    /// </summary>
+    /// <summary>The phase of a request in <paramref name="status"/>.</summary>
+    /// <param name="status">Where the request is in its life.</param>
+    /// <param name="hasPendingProposal">The supplier proposed another time that nobody answered yet.</param>
+    /// <param name="hasPendingQuote">The supplier sent a quote that nobody answered yet (SP-04b).</param>
     public static string Of(ServiceRequestStatus status, bool hasPendingProposal, bool hasPendingQuote = false) => status switch
     {
-        ServiceRequestStatus.Richiesto when hasPendingProposal => ProposalPending,
-        ServiceRequestStatus.Richiesto when hasPendingQuote => QuotePending,
-        ServiceRequestStatus.Richiesto => ToAnswer,
+        ServiceRequestStatus.Richiesto => hasPendingProposal ? ProposalPending : hasPendingQuote ? QuotePending : ToAnswer,
         ServiceRequestStatus.PresoInCarico => Scheduled,
         ServiceRequestStatus.InCorso => InProgress,
         ServiceRequestStatus.Completato => Completed,

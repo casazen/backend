@@ -57,7 +57,9 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
         Assert.Single(oneBooking);
         Assert.Equal(10, tenBookings.Count);
         Assert.True(oneCount > 0, "The counter saw no SQL command for GET /api/bookings.");
-        Assert.Equal(oneCount, tenCount);
+        // The total is asked for only when the page is full (SR-03b: the list is the search): ten bookings fill the page of ten and
+        // one booking does not, so one command more, never one per booking.
+        Assert.InRange(tenCount, oneCount, oneCount + 1);
     }
 
     [PostgresFact]

@@ -232,7 +232,13 @@ public class SupplierServiceRequestViewTests
     [Fact]
     public void InboxTabs_EveryStatusIsInExactlyOneTab_SoNoRequestIsLostFromTheInbox()
     {
-        var all = Enum.GetValues<SupplierInboxTab>().SelectMany(SupplierInboxTabs.StatusesOf).ToList();
+        // The two tabs of SP-04e that split "nuove" (da-rispondere, in-attesa) are not counted a second time: they are the halves of
+        // one of these four. That they are, and nothing else, is checked by SupplierInboxQueryTests.Tabs_ToAnswerAndAwaitingCustomer_
+        // SplitTheNewRequestsInTwo; a tab added later has to be counted here, or named in that test.
+        var all = Enum.GetValues<SupplierInboxTab>()
+            .Where(tab => tab is not (SupplierInboxTab.ToAnswer or SupplierInboxTab.AwaitingCustomer))
+            .SelectMany(SupplierInboxTabs.StatusesOf)
+            .ToList();
 
         Assert.Equal(Enum.GetValues<ServiceRequestStatus>().Order(), all.Order());
         Assert.Equal(all.Count, all.Distinct().Count());

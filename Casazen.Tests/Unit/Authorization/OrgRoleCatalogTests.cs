@@ -15,15 +15,14 @@ public class OrgRoleCatalogTests
     [Theory]
     [InlineData(OrgRole.Owner, "org_owner")]
     [InlineData(OrgRole.Admin, "org_admin")]
+    [InlineData(OrgRole.PropertyManager, "org_manager")]
     [InlineData(OrgRole.Accountant, "org_accountant")]
-    public void AccountRoleKey_RolesThatAdministerOrReadTheOrg_HaveAnAccountRole(OrgRole role, string expected) =>
+    public void AccountRoleKey_RolesThatAdministerReadOrManageSuppliers_HaveAnAccountRole(OrgRole role, string expected) =>
         Assert.Equal(expected, OrgRoleCatalog.AccountRoleKey(role));
 
-    [Theory]
-    [InlineData(OrgRole.PropertyManager)]
-    [InlineData(OrgRole.Collaborator)]
-    public void AccountRoleKey_OperationalRoles_HaveNone(OrgRole role) =>
-        Assert.Null(OrgRoleCatalog.AccountRoleKey(role));
+    [Fact]
+    public void AccountRoleKey_Collaborator_HasNone() =>
+        Assert.Null(OrgRoleCatalog.AccountRoleKey(OrgRole.Collaborator));
 
     [Theory]
     [InlineData(OrgRole.Owner, "short-rent", "property_owner")]
@@ -81,8 +80,20 @@ public class OrgRoleCatalogTests
     {
         var projection = OrgRoleCatalog.ProjectionOf(OrgRole.PropertyManager, ["admin", "account", "SHORT-RENT", "short-rent", "supplier"]);
 
-        Assert.Equal([new ProjectedRole("short-rent", "property_manager")], projection);
+        Assert.Equal(
+            [new ProjectedRole("account", "org_manager"), new ProjectedRole("short-rent", "property_manager")],
+            projection);
     }
+
+    [Fact]
+    public void ProjectionOf_PropertyManager_IsTheRestrictedAccountRowAndAPropertyManagerRowPerArea() =>
+        Assert.Equal(
+            [
+                new ProjectedRole("account", "org_manager"),
+                new ProjectedRole("short-rent", "property_manager"),
+                new ProjectedRole("long-rent", "property_manager"),
+            ],
+            OrgRoleCatalog.ProjectionOf(OrgRole.PropertyManager, BothAreas));
 
     [Fact]
     public void SeededRoles_HaveContiguousIdsFromFour_AndOneRowPerContextAndKey()
@@ -90,6 +101,9 @@ public class OrgRoleCatalogTests
         var roles = OrgRoleCatalog.SeededRoles;
 
         Assert.Equal(Enumerable.Range(4, roles.Count), roles.Select(r => r.Id));
+        // The property manager of the account context is the last one added (AM-02c): ids are append-only.
+        Assert.Equal(13, roles[^1].Id);
+        Assert.Equal(("account", "org_manager"), (roles[^1].ContextKey, roles[^1].RoleKey));
         Assert.Equal(roles.Count, roles.Select(r => (r.ContextKey, r.RoleKey)).Distinct().Count());
         Assert.All(roles, role => Assert.Contains(role.ContextKey, new[] { "account", "short-rent", "long-rent" }));
         Assert.All(roles, role => Assert.NotEmpty(role.Permissions));
@@ -136,6 +150,28 @@ public class OrgRoleCatalogTests
             Assert.DoesNotContain(role.Permissions, p => p.StartsWith("org.billing", StringComparison.Ordinal));
             Assert.DoesNotContain(role.Permissions, p => p.StartsWith("org.members", StringComparison.Ordinal));
         }
+    }
+
+    [Fact]
+    public void SeededRoles_TheAccountRoleOfThePropertyManager_HasTheTrustedSuppliersAndNothingElse()
+    {
+        // AM-D12: «Fornitori» is the only page of the account area the property manager reaches.
+        Assert.Equal(
+            [AccountContext.Permissions.SuppliersManage],
+            PermissionsOf("account", AccountContext.RoleKeys.Manager));
+    }
+
+    [Fact]
+    public void SeededRoles_TheAccountRoleOfThePropertyManager_NeverHoldsTeamBillingSettingsOrActivity()
+    {
+        // The role that could slip: it must hold neither the team nor the billing, the settings or the activity log.
+        var manager = OrgRoleCatalog.SeededRoles.Single(r => r.RoleKey == AccountContext.RoleKeys.Manager);
+
+        Assert.DoesNotContain(AccountContext.Permissions.MembersManage, manager.Permissions);
+        Assert.DoesNotContain(AccountContext.Permissions.BillingManage, manager.Permissions);
+        Assert.DoesNotContain(AccountContext.Permissions.BillingRead, manager.Permissions);
+        Assert.DoesNotContain(AccountContext.Permissions.SettingsManage, manager.Permissions);
+        Assert.DoesNotContain(AccountContext.Permissions.ActivityRead, manager.Permissions);
     }
 
     [Fact]

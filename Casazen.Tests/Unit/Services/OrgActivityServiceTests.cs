@@ -89,6 +89,37 @@ public class OrgActivityServiceTests
     }
 
     [Fact]
+    public async Task Latest_TheNewestLinesOfThePeople_NewestFirst_WithoutThoseOfTheJobs()
+    {
+        var org = await OrgAsync();
+        for (var i = 0; i < 5; i++)
+            await AddAsync(org, OrgActivityType.MemberDeactivated, T0.AddMinutes(i), subject: $"auth0|p{i}");
+        // A job (nobody did it) between the newest ones: the home of the account shows what people did.
+        await AddAsync(org, OrgActivityType.PlanChanged, T0.AddMinutes(10), actor: null, subject: org.ToString());
+        await AddAsync(org, OrgActivityType.MemberDeactivated, T0.AddMinutes(-3), subject: "auth0|old");
+
+        await using var db = _kit.NewDb();
+        var latest = await _kit.ActivityReader(db).LatestAsync(org, new OrgActivityFilter(PeopleOnly: true), 3);
+
+        Assert.Equal(["auth0|p4", "auth0|p3", "auth0|p2"], latest.Select(i => i.SubjectId));
+        // More than there are: all of them, still no job; and a count below one is one line.
+        Assert.Equal(6, (await _kit.ActivityReader(db).LatestAsync(org, new OrgActivityFilter(PeopleOnly: true), 50)).Count);
+        Assert.Single(await _kit.ActivityReader(db).LatestAsync(org, new OrgActivityFilter(PeopleOnly: true), 0));
+    }
+
+    [Fact]
+    public async Task Latest_OfAnotherOrg_IsNeverRead()
+    {
+        var org = await OrgAsync();
+        var other = await OrgAsync("auth0|other-owner");
+        await AddAsync(other, OrgActivityType.MemberDeactivated, T0, subject: "auth0|theirs");
+
+        await using var db = _kit.NewDb();
+
+        Assert.Empty(await _kit.ActivityReader(db).LatestAsync(org, new OrgActivityFilter(), 10));
+    }
+
+    [Fact]
     public async Task List_LinesOfTheSameInstant_AreOrderedById_SoNoPageRepeatsOrSkipsALine()
     {
         var org = await OrgAsync();

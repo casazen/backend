@@ -1,3 +1,5 @@
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Compliance;
 
@@ -27,6 +29,12 @@ public sealed class HostTodayDto
     /// <summary>The things to do, most pressing first (<see cref="HostTodoItemDto.Priority"/>).</summary>
     public HostTodayListDto<HostTodoItemDto> Todo { get; init; } = new();
 
+    /// <summary>
+    /// The interventions (service requests) of today in Europe/Rome, in order of time (SR-03b): the ones scheduled for today and, for the
+    /// ones with no time, those of a stay that leaves today. Not the ones refused or cancelled.
+    /// </summary>
+    public HostTodayListDto<HostTodayServiceRequestDto> Services { get; init; } = new();
+
     public static HostTodayDto From(HostToday today) => new()
     {
         Today = DateOnly.FromDateTime(today.TodayInRome),
@@ -35,6 +43,7 @@ public sealed class HostTodayDto
         Upcoming = HostTodayListDto<HostTodayStayDto>.From(today.Upcoming, HostTodayStayDto.From),
         Approvals = HostTodayListDto<HostTodayApprovalDto>.From(today.Approvals, HostTodayApprovalDto.From),
         Todo = HostTodayListDto<HostTodoItemDto>.From(today.Todo, HostTodoItemDto.From),
+        Services = HostTodayListDto<HostTodayServiceRequestDto>.From(today.Services, HostTodayServiceRequestDto.From),
     };
 }
 
@@ -85,6 +94,14 @@ public sealed class HostTodayStayDto
     /// <summary>How far the online check-in is; <c>null</c> for a departure.</summary>
     public HostTodayCheckInDto? CheckIn { get; init; }
 
+    /// <summary>
+    /// Where the Alloggiati Web communication stands and, until it is sent, its legal term (SR-03b); <c>null</c> for a departure.
+    /// </summary>
+    public HostTodayAlloggiatiDto? Alloggiati { get; init; }
+
+    /// <summary>The latest cleaning request tied to the stay and where it stands (SR-03b); <c>null</c> for an arrival and for a departure with none.</summary>
+    public HostTodayCleaningDto? Cleaning { get; init; }
+
     public static HostTodayStayDto From(HostTodayStay item) => new()
     {
         BookingId = item.Stay.BookingId,
@@ -99,6 +116,8 @@ public sealed class HostTodayStayDto
         Source = item.Stay.Source.ToString(),
         ArrivedAt = item.Stay.ArrivedAt,
         CheckIn = item.CheckIn is null ? null : HostTodayCheckInDto.From(item.CheckIn),
+        Alloggiati = item.Alloggiati is null ? null : HostTodayAlloggiatiDto.From(item.Alloggiati),
+        Cleaning = item.Cleaning is null ? null : HostTodayCleaningDto.From(item.Cleaning),
     };
 }
 
@@ -119,6 +138,90 @@ public sealed class HostTodayCheckInDto
     {
         State = checkIn.State,
         DataComplete = checkIn.DataComplete,
+    };
+}
+
+/// <summary>Where the Alloggiati Web communication of an arriving stay stands (SR-03b).</summary>
+public sealed class HostTodayAlloggiatiDto
+{
+    /// <summary>
+    /// <c>DaInviare</c> (before the arrival day), <c>DaInviareManualmente</c> (from the arrival day: the host sends it on the Questura
+    /// portal), <c>Inviato</c>, <c>InviatoManualmente</c>, <c>Errore</c> or <c>Rifiutato</c>: the stored status, read as the Alloggiati
+    /// page reads it.
+    /// </summary>
+    public AlloggiatiWebStatus Status { get; init; }
+
+    /// <summary>
+    /// The legal term of the communication (UTC): 24 hours from the arrival, 6 for a stay of one night or less; <c>null</c> once it is
+    /// sent.
+    /// </summary>
+    public DateTime? DeadlineAt { get; init; }
+
+    public static HostTodayAlloggiatiDto From(HostTodayAlloggiati alloggiati) => new()
+    {
+        Status = alloggiati.Status,
+        DeadlineAt = alloggiati.DeadlineAt,
+    };
+}
+
+/// <summary>The cleaning of a leaving stay (SR-03b): its latest request and where it stands.</summary>
+public sealed class HostTodayCleaningDto
+{
+    public Guid ServiceRequestId { get; init; }
+
+    /// <summary><c>Richiesto</c>, <c>PresoInCarico</c>, <c>InCorso</c>, <c>Completato</c>, <c>Pagato</c>, <c>Rifiutato</c> or <c>Annullato</c>.</summary>
+    public ServiceRequestStatus Status { get; init; }
+
+    public static HostTodayCleaningDto From(HostTodayCleaning cleaning) => new()
+    {
+        ServiceRequestId = cleaning.ServiceRequestId,
+        Status = cleaning.Status,
+    };
+}
+
+/// <summary>An intervention (service request) of the day (SR-03b).</summary>
+public sealed class HostTodayServiceRequestDto
+{
+    public Guid Id { get; init; }
+
+    /// <summary>The category code (<c>cleaning</c>, <c>maintenance</c>, ...): the client translates it.</summary>
+    public string Category { get; init; } = string.Empty;
+
+    /// <summary>The name of the service of the supplier's catalog when the request was made; <c>null</c> for a request by category only.</summary>
+    public string? ServiceName { get; init; }
+
+    /// <summary>When the work starts (UTC); <c>null</c> for a request with no time.</summary>
+    public DateTime? ScheduledStart { get; init; }
+
+    /// <summary>When the work ends (UTC); <c>null</c> for a request with no time.</summary>
+    public DateTime? ScheduledEnd { get; init; }
+
+    /// <summary><c>Richiesto</c>, <c>PresoInCarico</c>, <c>InCorso</c>, <c>Completato</c> or <c>Pagato</c>.</summary>
+    public ServiceRequestStatus Status { get; init; }
+
+    public Guid SupplierOrgId { get; init; }
+
+    public string SupplierName { get; init; } = string.Empty;
+
+    public Guid PropertyId { get; init; }
+
+    public string PropertyName { get; init; } = string.Empty;
+
+    public Guid? BookingId { get; init; }
+
+    public static HostTodayServiceRequestDto From(HostTodayServiceRequest request) => new()
+    {
+        Id = request.Id,
+        Category = request.Category,
+        ServiceName = request.ServiceName,
+        ScheduledStart = request.ScheduledStart,
+        ScheduledEnd = request.ScheduledEnd,
+        Status = request.Status,
+        SupplierOrgId = request.SupplierOrgId,
+        SupplierName = request.SupplierName,
+        PropertyId = request.PropertyId,
+        PropertyName = request.PropertyName,
+        BookingId = request.BookingId,
     };
 }
 
@@ -166,7 +269,8 @@ public sealed class HostTodoItemDto
 {
     /// <summary>
     /// <c>RespondToRequest</c>, <c>ResolveAlloggiatiFailure</c>, <c>SendAlloggiati</c>, <c>CompleteGuestCheckIn</c>,
-    /// <c>ReviewFailedPayment</c>, <c>CheckOut</c>, <c>ConfirmPropertyReady</c> or <c>ActivateProperty</c>.
+    /// <c>ReviewFailedPayment</c>, <c>CheckOut</c>, <c>ConfirmPropertyReady</c>, <c>ActivateProperty</c> and, about an intervention
+    /// (SR-03b), <c>RespondToServiceRequest</c>, <c>ConfirmFinalAmount</c> or <c>PayServiceRequest</c>.
     /// </summary>
     public HostTodoAction Action { get; init; }
 
@@ -188,6 +292,9 @@ public sealed class HostTodoItemDto
     /// <summary>The failed payment, for <c>ReviewFailedPayment</c>.</summary>
     public Guid? PaymentId { get; init; }
 
+    /// <summary>The intervention (service request), for <c>RespondToServiceRequest</c>, <c>ConfirmFinalAmount</c> and <c>PayServiceRequest</c> (SR-03b).</summary>
+    public Guid? ServiceRequestId { get; init; }
+
     /// <summary>What it lacks; never empty.</summary>
     public IReadOnlyList<ComplianceMissingDto> Missing { get; init; } = [];
 
@@ -201,6 +308,7 @@ public sealed class HostTodoItemDto
         PropertyName = item.PropertyName,
         BookingId = item.BookingId,
         PaymentId = item.PaymentId,
+        ServiceRequestId = item.ServiceRequestId,
         Missing = item.Missing.Select(ComplianceMissingDto.From).ToList(),
     };
 }

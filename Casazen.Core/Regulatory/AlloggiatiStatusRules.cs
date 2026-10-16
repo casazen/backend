@@ -9,6 +9,14 @@ namespace Casazen.Core.Regulatory;
 /// </summary>
 public static class AlloggiatiStatusRules
 {
+    /// <summary>
+    /// The report that stands for a booking: the one of the booking's guest, or else the latest report of the booking (the same
+    /// guest slot, CO-11). The Home (SR-03b) and the summary of the Alloggiati page read the same one.
+    /// </summary>
+    public static AlloggiatiWebReport? SlotReport(IReadOnlyCollection<AlloggiatiWebReport> reports, Guid guestId) =>
+        reports.FirstOrDefault(r => r.GuestId == guestId)
+        ?? reports.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
+
     /// <summary>Sent with a receipt, or declared sent by the host.</summary>
     public static bool IsSent(AlloggiatiWebStatus status) =>
         status is AlloggiatiWebStatus.Inviato or AlloggiatiWebStatus.InviatoManualmente;

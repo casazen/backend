@@ -130,7 +130,7 @@ public class OrgInvitationAcceptanceTests
 
     [Theory]
     [InlineData(OrgRole.Admin, new[] { "short-rent", "long-rent" }, new[] { "account/org_admin", "long-rent/property_manager", "short-rent/property_manager" })]
-    [InlineData(OrgRole.PropertyManager, new[] { "long-rent" }, new[] { "long-rent/property_manager" })]
+    [InlineData(OrgRole.PropertyManager, new[] { "long-rent" }, new[] { "account/org_manager", "long-rent/property_manager" })]
     [InlineData(OrgRole.Collaborator, new[] { "short-rent", "long-rent" }, new[] { "long-rent/staff", "short-rent/staff" })]
     [InlineData(OrgRole.Accountant, new[] { "short-rent" }, new[] { "account/org_accountant", "short-rent/accountant" })]
     public async Task AcceptAsync_EachRoleGetsTheMembershipsOfItsAreas(OrgRole role, string[] areas, string[] expected)
@@ -254,6 +254,8 @@ public class OrgInvitationAcceptanceTests
         await using (var db = _kit.NewDb())
             created = await _kit.Invitations(db).CreateAsync(new CreateOrgInvitation(org.Id, "auth0|owner", AnnaEmail, "Anna Leone", OrgRole.Collaborator, ["short-rent"]));
         var firstToken = OrgInvitationTestKit.TokenInEmail(Assert.Single(_kit.Emails.Snapshot()));
+        // «Reinvia» waits an hour after the last email (AM-D15).
+        _kit.Clock.Advance(TimeSpan.FromMinutes(OrgInvitationRules.DefaultResendMinutes));
         await using (var db = _kit.NewDb())
             await _kit.Invitations(db).ResendAsync(org.Id, created.Invitation.Id, "auth0|owner");
         var secondToken = OrgInvitationTestKit.TokenInEmail(_kit.Emails.Snapshot()[1]);

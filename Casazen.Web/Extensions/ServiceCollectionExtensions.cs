@@ -446,6 +446,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgActivityService, OrgActivityService>();
         services.AddScoped<IOrgAccessRequestService, OrgAccessRequestService>();
         services.AddScoped<IOrgActivityRetentionService, OrgActivityRetentionService>();
+        // AM-02c: the matrix of the roles for the team screens, and the overview of the org for the account home.
+        services.AddScoped<IOrgRoleMatrixService, OrgRoleMatrixService>();
+        services.AddScoped<IOrgOverviewService, OrgOverviewService>();
         services.AddScoped<IAccountEmailResolver, AccountEmailResolver>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         // SE-04: events of the SEO funnel (no personal data) and the featured properties of a comune.
@@ -548,7 +551,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
         services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();
         services.AddScoped<IServiceCustomerPrivacyService, ServiceCustomerPrivacyService>();
-        // Supplier dashboard KPIs from the service requests (SU-11, A4-15) and the money of the console home (SP-04).
+        // The reads of the payments of a request for the supplier console: the summary of a job, the counters and the figures of the
+        // home (SP-04e). The only reader of the payment table outside the payments service.
+        services.AddScoped<ISupplierPaymentReadModels, SupplierPaymentReadModels>();
+        // Supplier dashboard KPIs from the service requests (SU-11, A4-15), the money of the console home (SP-04) and its overview (SP-04e).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
         // The home ("Oggi") and the activation checklist of the supplier console (SP-04).
         services.AddScoped<ISupplierTodayService, SupplierTodayService>();
