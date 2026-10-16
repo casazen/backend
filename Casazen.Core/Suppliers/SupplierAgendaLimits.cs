@@ -111,4 +111,18 @@ public static class SupplierAgendaLimits
 
     /// <summary>The range of <c>GET api/supplier/calendar</c> when the request does not say: today and the next 30 days.</summary>
     public const int DefaultCalendarDays = 31;
+
+    // ─── Conflicts (SP-03b) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Jobs <c>GET api/supplier/calendar/conflicts</c> looks at in one answer, the nearest first (the range holds a few jobs a
+    /// day: this is a bound on the work, not a product rule). A longer list is cut and the answer says so (<c>truncated</c>).
+    /// </summary>
+    public const int MaxConflictRequests = 300;
+
+    /// <summary>
+    /// How many days after the day of a job the first free slot is looked for, to suggest another time for a request still waiting
+    /// for an answer. Never beyond the supplier's own horizon (the planner closes the days past it).
+    /// </summary>
+    public const int ConflictSuggestionDays = 21;
 }
