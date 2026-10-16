@@ -8,6 +8,14 @@ namespace Casazen.Infrastructure.Migrations
     /// <inheritdoc />
     public partial class AddGuidedLeaseDraft : Migration
     {
+        /// <summary>
+        /// LR-12: the drafts that exist now were all created complete in one call (<c>POST api/leases</c> asks for every value of the
+        /// data steps), so each has been through steps 1 to 5 and opens in the guided draft with those steps done. Only the rows still
+        /// at the column's starting value are touched, so a run over drafts the new code already advanced changes nothing; the other
+        /// new columns start empty and nothing else is invented.
+        /// </summary>
+        public const string BackfillSql = """UPDATE "LeaseContracts" SET "WizardMaxStep" = 5 WHERE "Status" = 0 AND "WizardMaxStep" = 0;""";
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -69,9 +77,7 @@ namespace Casazen.Infrastructure.Migrations
                 nullable: false,
                 defaultValue: 0);
 
-            // LR-12: the drafts that exist now were all created complete in one call (POST api/leases asks for every value of the data
-            // steps), so each has been through steps 1 to 5. Nothing else is invented: the other new columns start empty.
-            migrationBuilder.Sql("""UPDATE "LeaseContracts" SET "WizardMaxStep" = 5 WHERE "Status" = 0;""");
+            migrationBuilder.Sql(BackfillSql);
         }
 
         /// <inheritdoc />
