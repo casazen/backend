@@ -42,6 +42,21 @@ public sealed class OrgActivityService(AppDbContext db) : IOrgActivityService
         return new OrgActivityPage(rows.Select(ToItem).ToList(), total, page, pageSize);
     }
 
+    public async Task<IReadOnlyList<OrgActivityItem>> LatestAsync(
+        Guid orgId,
+        OrgActivityFilter filter,
+        int count,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+
+        var rows = await Ordered(Query(orgId, filter))
+            .Take(Math.Clamp(count, 1, OrgActivityRules.MaxPageSize))
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(ToItem).ToList();
+    }
+
     public async IAsyncEnumerable<OrgActivityItem> StreamAsync(
         Guid orgId,
         OrgActivityFilter filter,

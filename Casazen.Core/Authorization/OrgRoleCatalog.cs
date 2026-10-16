@@ -58,9 +58,6 @@ public static class OrgRoleCatalog
     public static bool IsRentalContext(string contextKey) =>
         RentalContexts.Contains(contextKey, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The rental context (area) a property of the mode belongs to: <c>short-rent</c> or <c>long-rent</c>.</summary>
-    public static string ContextOf(RentalMode mode) => mode == RentalMode.Long ? LongRent : ShortRent;
-
     /// <summary>
     /// The one rental mode a member works in, when it works in a single area; <c>null</c> when it works in both, or in none that
     /// is known (AM-02c). A collaborator «Solo alcuni» reaches the properties it was given only while their mode is one of its

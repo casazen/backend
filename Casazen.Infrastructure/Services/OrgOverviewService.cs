@@ -72,9 +72,8 @@ public sealed class OrgOverviewService(
         IReadOnlyList<OrgActivityItem>? recent = null;
         if (accountPermissions.Contains(OrgOverviewSections.Activity))
         {
-            var page = await activity.ListAsync(
-                orgId, new OrgActivityFilter(PeopleOnly: true), page: 1, pageSize: RecentActivityCount, cancellationToken);
-            recent = page.Items;
+            recent = await activity.LatestAsync(
+                orgId, new OrgActivityFilter(PeopleOnly: true), RecentActivityCount, cancellationToken);
         }
 
         return new OrgOverview(standing, openAccess, seatsSection, properties, invitations, accessRequests, suppliers, alloggiati, recent);
@@ -99,6 +98,7 @@ public sealed class OrgOverviewService(
     internal async Task<OrgOverviewInvitations> InvitationsAsync(Guid orgId, DateTime now, CancellationToken cancellationToken)
     {
         // The same rule as the seats: pending and not past its expiry (an expired one the job has not marked yet is already out).
+        // IgnoreQueryFilters like the seats do: the org is the caller's own (passed in, read from its account), explicit below.
         var open = db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
             .Where(i => i.OrgId == orgId && i.Status == OrgInvitationStatus.Pending && i.ExpiresAt > now);
 

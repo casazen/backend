@@ -184,9 +184,10 @@ public sealed class UserAuthorizationSnapshotStore(
                 .IgnoreQueryFilters()
                 .AsNoTracking()
                 .Where(a => a.UserId == userId && a.OrgId == orgMember.OrgId);
-            var granted = grantedMode is { } mode
-                ? await grants.Where(a => a.Property.RentalMode == mode).Select(a => a.PropertyId).ToListAsync(cancellationToken)
-                : await grants.Select(a => a.PropertyId).ToListAsync(cancellationToken);
+            if (grantedMode is { } mode)
+                grants = grants.Where(a => a.Property.RentalMode == mode);
+
+            var granted = await grants.Select(a => a.PropertyId).ToListAsync(cancellationToken);
             orgMember = orgMember with { GrantedPropertyIds = granted.ToHashSet(), GrantedMode = grantedMode };
         }
 

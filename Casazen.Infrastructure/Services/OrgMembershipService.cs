@@ -217,6 +217,7 @@ public sealed partial class OrgMembershipService(
         if (OrgRoleCatalog.SingleModeOf(areas) is not { } mode)
             return 0;
 
+        // IgnoreQueryFilters: the member's own grants, scoped to its org explicitly (the writer may be a request of another tenant).
         var reached = await db.PropertyMemberAccesses.IgnoreQueryFilters().AsNoTracking()
             .Where(a => a.UserId == member.UserId && a.OrgId == member.OrgId && a.Property.RentalMode == mode)
             .Select(a => a.PropertyId)

@@ -63,14 +63,14 @@ public sealed partial class OrgInvitationService(
         if (request.Role == OrgRole.Owner)
             throw new DomainRuleException(OrgMembershipErrors.OwnerNotAssignable, "OrgMemberOwnerNotAssignable");
 
-        // «Solo alcuni» is the collaborator's (AM-03): refused here, not at the acceptance, where the inviter is gone.
-        if (request.PropertyScope == PropertyScope.Selected && request.Role != OrgRole.Collaborator)
-            throw new DomainRuleException(OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported");
-
-        // The properties of the invitation (AM-02c) are the «Solo alcuni» collaborator's too, and only that one's.
+        // «Solo alcuni» (AM-03) and the properties it carries (AM-02c) are the collaborator's alone: refused here, not at the
+        // acceptance, where the inviter is gone.
         var propertyIds = (request.PropertyIds ?? []).Distinct().Order().ToList();
-        if (propertyIds.Count > 0 && (request.PropertyScope != PropertyScope.Selected || request.Role != OrgRole.Collaborator))
+        if ((request.PropertyScope == PropertyScope.Selected && request.Role != OrgRole.Collaborator)
+            || (propertyIds.Count > 0 && request.PropertyScope != PropertyScope.Selected))
+        {
             throw new DomainRuleException(OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported");
+        }
 
         var areas = NormalizeAreas(request.Areas);
         if (areas.Count == 0)

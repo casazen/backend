@@ -49,8 +49,11 @@ public sealed record OrgCapabilityGrant(string Id, string Group, OrgCapabilityLe
 /// <summary>
 /// The matrix «chi può fare cosa» (AM-02c, <c>GET /api/orgs/me/roles</c>): twelve capabilities with stable ids, and the rule
 /// that gives each role its level <b>from the permissions of the seeded roles</b> — the same rows the policies of the API
-/// read — so the matrix is a reading of the authorization and never a second table that could drift from it. The words that
-/// explain each capability are the client's (i18n); nothing here is a sentence.
+/// read — so the matrix is a reading of the permissions and never a second table that could drift from them. The words that
+/// explain each capability are the client's (i18n); nothing here is a sentence. Not every permission has an endpoint that asks
+/// for it yet: <c>billing</c> (the endpoints ask for <c>OrgBillingAdmin</c>, owner and administrators), <c>suppliers</c> (AM-10)
+/// and <c>settings</c> report the permission rows and have no probe in the coherence test (AM-02c-FU4,
+/// <c>docs/runbooks/org-team.md</c> section 47).
 /// </summary>
 /// <remarks>
 /// <para>Expected values (analysis of the area, §2.3, decision D14: the collaborator reads the prices): the owner and the
@@ -68,7 +71,7 @@ public static class OrgCapabilityCatalog
 {
     private const string Short = OrgRoleCatalog.ShortRent;
     private const string Long = OrgRoleCatalog.LongRent;
-    private const string Account = "account";
+    private const string Account = AccountContext.Key;
 
     private static ContextPermission P(string context, string permission) => new(context, permission);
 

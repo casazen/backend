@@ -97,7 +97,7 @@ public class OrgOverviewSqlShapeTests
     }
 
     [Fact]
-    public async Task Standing_IsOneSelectOfTheStatusOfTheSubscription()
+    public async Task Standing_OfTheSubscription_IsOneSelectOfItsStatus()
     {
         var statements = await StatementsOfAsync(service => service.StandingAsync(OrgId, CancellationToken.None));
 
@@ -107,16 +107,20 @@ public class OrgOverviewSqlShapeTests
     }
 
     [Fact]
-    public async Task RecentActivity_TheFilterOfThePeople_IsInTheStatementsThatListTheLines()
+    public async Task RecentActivity_TheLatestLinesOfThePeople_AreOneStatementWithNoCount()
     {
         var statements = new List<string>();
         await using var db = NpgsqlTranslationProbe.NewContext(statements);
 
-        await NpgsqlTranslationProbe.AssertTranslatesAsync(() => new OrgActivityService(db).ListAsync(
-            OrgId, new OrgActivityFilter(PeopleOnly: true), page: 1, pageSize: OrgOverviewService.RecentActivityCount, CancellationToken.None));
+        await NpgsqlTranslationProbe.AssertTranslatesAsync(() => new OrgActivityService(db).LatestAsync(
+            OrgId, new OrgActivityFilter(PeopleOnly: true), OrgOverviewService.RecentActivityCount, CancellationToken.None));
 
-        // Whatever the statements are (the count, then the page), every one of them leaves the jobs and the webhooks out.
-        Assert.NotEmpty(statements);
-        Assert.All(statements, sql => Assert.Contains("\"ActorUserId\" IS NOT NULL", sql, StringComparison.Ordinal));
+        // The home shows three lines: one statement that leaves the jobs and the webhooks out, newest first, and no count over the
+        // whole log (a year of lines) to throw the total away.
+        var sql = Assert.Single(statements);
+        Assert.Contains("\"ActorUserId\" IS NOT NULL", sql, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY", sql, StringComparison.Ordinal);
+        Assert.Contains("LIMIT", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("count(", sql, StringComparison.OrdinalIgnoreCase);
     }
 }

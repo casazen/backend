@@ -49,6 +49,16 @@ public interface IOrgActivityService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The latest <paramref name="count"/> matching lines, newest first, with no total: one statement, so the home of the account
+    /// (AM-02c) does not count a whole year of lines to show three of them.
+    /// </summary>
+    Task<IReadOnlyList<OrgActivityItem>> LatestAsync(
+        Guid orgId,
+        OrgActivityFilter filter,
+        int count,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every matching line, newest first, read one at a time from the database (the CSV does not hold the log in memory). The
     /// database connection is held until the caller has read the last line or stopped.
     /// </summary>
