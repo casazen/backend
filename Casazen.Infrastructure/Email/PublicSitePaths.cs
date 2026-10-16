@@ -11,9 +11,12 @@ public static class PublicSitePaths
     /// <summary>Sitemap index of the booking sites: one entry per org that has something to index (BK-15).</summary>
     public const string OrgSitemapIndex = "/sitemap-book.xml";
 
+    /// <summary>Sitemap of the supplier showcases (one entry per active supplier with a slug).</summary>
+    public const string SupplierSitemap = "/sitemap-fornitori.xml";
+
     /// <summary>
     /// Public showcase of a supplier (<c>/fornitori/{slug}</c>, SU-13): a page of the web app's own host, never of an org's
-    /// booking site. <c>noindex</c> in v0 (it is in <c>robots.txt</c> too).
+    /// booking site. Indexable: it is in <see cref="SupplierSitemap"/> and has a crawler page.
     /// </summary>
     public static string SupplierShowcase(string slug)
     {

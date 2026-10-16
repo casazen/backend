@@ -49,6 +49,18 @@ public interface IPublicSeoService
     /// </summary>
     Task<SeoPageResult> RenderHostPageAsync(string host, string path, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The public showcase of an <b>active</b> supplier (<c>/fornitori/{slug}</c>): 404 for an unknown, pending or suspended
+    /// one, a 301 to the lowercase slug otherwise.
+    /// </summary>
+    Task<SeoPageResult> RenderSupplierAsync(string slug, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sitemap of the supplier showcases (<c>/sitemap-fornitori.xml</c>): every active supplier with a slug and something to
+    /// show. Throws when the public URL is not configured.
+    /// </summary>
+    Task<string> BuildSupplierSitemapAsync(CancellationToken cancellationToken = default);
+
     /// <summary>A compliance guide (<c>/p/affitti-brevi/{region}/{comune}</c>).</summary>
     Task<SeoPageResult> RenderGuideAsync(string regionSlug, string comuneSlug, CancellationToken cancellationToken = default);
 

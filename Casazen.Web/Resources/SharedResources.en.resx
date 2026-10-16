@@ -2833,4 +2833,52 @@
   <data name="HostInviteEmailMismatch" xml:space="preserve">
     <value>This invitation was written for another email address: sign in with the account it was sent to.</value>
   </data>
+  <data name="SeoSupplierTitle" xml:space="preserve">
+    <value>{0} — Supplier on CasaZen</value>
+  </data>
+  <data name="SeoSupplierServices" xml:space="preserve">
+    <value>Services</value>
+  </data>
+  <data name="SeoSupplierAreas" xml:space="preserve">
+    <value>Areas served</value>
+  </data>
+  <data name="SeoSupplierDescriptionFull" xml:space="preserve">
+    <value>{0}: {1} in {2}. Supplier on CasaZen.</value>
+  </data>
+  <data name="SeoSupplierDescriptionBasic" xml:space="preserve">
+    <value>{0}: service supplier for short-term rentals on CasaZen.</value>
+  </data>
+  <data name="SeoSupplierCategory_cleaning" xml:space="preserve">
+    <value>Cleaning</value>
+  </data>
+  <data name="SeoSupplierCategory_maintenance" xml:space="preserve">
+    <value>Maintenance</value>
+  </data>
+  <data name="SeoSupplierCategory_plumbing" xml:space="preserve">
+    <value>Plumbing</value>
+  </data>
+  <data name="SeoSupplierCategory_laundry" xml:space="preserve">
+    <value>Laundry</value>
+  </data>
+  <data name="SeoSupplierCategory_linen" xml:space="preserve">
+    <value>Linen</value>
+  </data>
+  <data name="SeoSupplierCategory_check-in" xml:space="preserve">
+    <value>Check-in</value>
+  </data>
+  <data name="SeoSupplierCategory_gardening" xml:space="preserve">
+    <value>Gardening</value>
+  </data>
+  <data name="SeoSupplierCategory_events" xml:space="preserve">
+    <value>Events</value>
+  </data>
+  <data name="SeoSupplierCategory_rental" xml:space="preserve">
+    <value>Rental</value>
+  </data>
+  <data name="SeoSupplierCategory_excursions" xml:space="preserve">
+    <value>Excursions</value>
+  </data>
+  <data name="SeoSupplierCategory_electrical" xml:space="preserve">
+    <value>Electrician</value>
+  </data>
 </root>
