@@ -1456,6 +1456,9 @@ Each item adds `price`, `scheduledStart`, `scheduledEnd`, `source` (`casazen`; `
 `startedAt`, `clientId`/`clientName`, `serviceListingId`/`serviceName`, `proposal`, `cancelledAt`/`cancelledBy`/`cancellationReason`,
 `completionNotes` and `workPhotos`; the detail adds `history`.
 
+**SP-04e adds** (section 27): the tabs `da-rispondere` and `in-attesa` (halves of `nuove`, which is unchanged), the filters `source` and `q`, `GET inbox/counts`,
+`phase` and `payment` on every item, `GET today?days=` and `GET dashboard/overview`.
+
 `POST /api/supplier/inbox/accept { ids: [up to 20] }` takes the requests one by one **as a `take` without a time** (the same rules, terms of
 service and active-supplier check) and answers `{ results: [{ id, accepted, status, code, message }], accepted, failed }` with the
 **localized** message of each refused row; a request of another supplier or an unknown id answers `service_request_not_found`, as if it did not
@@ -2443,6 +2446,178 @@ the jobs, the refunds and the export are in [`stripe.md`](stripe.md) § "Service
       the admin tool and check in the Stripe Dashboard that the refund came out of the supplier's balance and that the commission came back; set a
       supplier's own commission and see the next payment carry it; download the export (`stripe.md` → Verification, points 2 and 3).
 - [ ] Production: `Features__SupplierOnlinePayments` still off until the legal texts and the tax treatment of the commission are approved.
+
+## 27. Read models for the console: "Oggi" and "Richieste" — SP-04e
+
+Redesign wave task SP-04e (branch `feature/rd-supplier-read-models`, backend only: **no flag, no migration, no new table**; the screens that
+use it are SP-08a "Oggi", SP-08b "Richieste" and SP-08c, the page of one request). It gives those screens the data the design shows and the
+backend did not give: three numbers with the period before them, the counters of the tabs, the tabs "Da rispondere" and "In attesa del
+cliente", a search, a **phase** computed once by the server, and the **payment summary** of a completed job. Everything is a **read of the
+authenticated supplier's own requests and payments** (an explicit supplier predicate, section 27.8), and **additive**: no endpoint changes
+shape, `nuove` is what it was, and `status` keeps its seven values (the mobile app does not know new ones).
+
+### 27.1 Endpoints at a glance (policy `RequireSupplier`, supplier org from the caller, not behind a flag)
+
+| Endpoint | What | |
+|---|---|---|
+| `GET api/supplier/dashboard/overview?period=` | the three numbers of the home for a period and for the one before it (27.2) | new |
+| `GET api/supplier/inbox/counts` | the numbers of the chips of the list and of the menu (27.3) | new |
+| `GET api/supplier/inbox?tab=da-rispondere\|in-attesa` and `source=`, `q=` | the two new tabs and two new filters (27.4) | extended |
+| every item of `inbox`, `inbox/{id}` and `today` | `phase` (27.5) and `payment` (27.6) | extended |
+| `GET api/supplier/today?days=` | the jobs of today and of the next days in one call (27.7) | extended |
+| `GET api/supplier/dashboard/kpis?period=Last3Months` | the enum of the old KPIs gained the value `Last3Months` | extended |
+
+### 27.2 `GET api/supplier/dashboard/overview?period=`
+
+`period`: `current-month` (default; the 1st of the month to today), `last-30-days` (today and the 29 days before) or `last-3-months` (the last
+three calendar months, today included: from the day after the same day three months ago, on 16 October from 17 July). Days are **Europe/Rome
+calendar days**, both ends included (`[00:00 Rome of the first, 00:00 Rome of the day after the last)` in UTC, so the two changes of the clock are
+handled by the zone). Any case, `_` or `-`; another value, the enum names (`CurrentMonth`, `PreviousMonth`…) included, is 400 `validation_error`
+(`SupplierOverviewPeriodInvalid`).
+
+**The period before** (`previous`) is the **same number of days that end the day before `current` starts**: adjacent, never overlapping, always of
+the same length. On 16 October `current-month` is 1-16 October (16 days) and `previous` is 15-30 September (16 days), **not the calendar month of
+September**: a part of a month is not compared with a whole one. The answer carries `previous.from`/`to`, so the console can say what it compares with.
+
+| Field (in `current` and in `previous`) | Definition |
+|---|---|
+| `from`, `to` | the first and the last day of the period (`YYYY-MM-DD`) |
+| `received` | requests that **arrived** in the period (`CreatedAt`), whatever became of them |
+| `accepted` | requests the supplier **took** (`TakenAt`), counted on the day of the take, not of the arrival; a request cancelled **after** the take is still accepted |
+| `rejected` | requests the supplier **refused**, on the day of the refusal (`Rifiutato`: its last update, like the KPIs of SU-11) |
+| `acceptanceRate` | `accepted / (accepted + rejected)`, from 0 to 1, four decimals; **`null` when the supplier answered none**. A request nobody answered (new, or cancelled by CasaZen for no answer) is no answer; a cancellation after the take does not change the rate |
+| `averageResponseMinutes` | the **mean** of `TakenAt − CreatedAt` of the requests taken in the period, in whole minutes; `null` when none was. The same pairs as `GET today` (which looks at the last 90 days). A request accepted by itself (SP-04d, not merged yet) will not count |
+| `completedJobs` | jobs completed in the period (`Completato`, or `Pagato` afterwards), by `CompletedAt` |
+| `paidNetCents`, `paidGrossCents`, `commissionCents` | the payments with status **`Paid`** and `PaidAt` in the period (one recorded as received outside CasaZen included: no commission); `net = gross − commission`. **0 unless `onlinePayments`**. A payment that was paid and then refunded (`PartiallyRefunded`, `Refunded`) is **left out** until the earnings page (SP-16a) defines how a refund moves the figures |
+| `toCollectCents`, `toCollectJobs` | what is **still to be collected now**, only in `current` (`null` in `previous`: it is a state, not a flow). The jobs `Completato`: for a job paid outside CasaZen the **declared total** (gross, no commission exists), for one asked for inside it the **net** of its payment (while it is asked for, in progress, failed or under review). A job with no payment yet that waits for the host to confirm an amount above the quote (decision D7) counts at the declared total: the commission is computed when the payment is created. A job with no declared amount is a job to collect and adds nothing |
+
+`onlinePayments` is **true only when the flag `SupplierOnlinePayments` is on and the supplier has at least one payment** (not withdrawn). Otherwise
+it is `false` and the three money figures are **0**: the console then shows "Lavori completati" and never "Incassi" (SP-D13). A supplier that
+never had a payment, or whose flag was switched off, shows no money; one with payments shows them, zeros included.
+
+**Two definitions of "how fast", on purpose.** The supplier's home shows the **mean** (`averageResponseMinutes`: its own view, a late answer weighs);
+the public showcase (SP-09, section 22) shows the **median** of the same pairs, once there are 5 of them, so one request left for a weekend does not
+turn a supplier that answers in minutes into one that answers in hours. They are not expected to be equal.
+
+### 27.3 `GET api/supplier/inbox/counts`
+
+`toAnswer` (tab `da-rispondere`), `awaitingCustomer` (`in-attesa`), `scheduled` (`programmate`: taken or in progress), `toCollect` (`da-incassare`),
+`archive` (`archivio`: paid, rejected, cancelled) and `paymentsLate`. `nuove` is `toAnswer + awaitingCustomer`. One grouped query over the supplier's
+requests with the **same statuses and the same "has a proposal" test as the tabs**, so a chip and its list cannot disagree
+(`SupplierInboxCountsTests` checks it for every tab); `paymentsLate` is one more query, on the payments (27.6, `late`).
+
+### 27.4 The inbox: two tabs, `source`, `q`
+
+- **`tab=da-rispondere`**: `Richiesto` with **no** proposed time waiting (nor, from SP-04b, a quote): the supplier still has to answer.
+  **`tab=in-attesa`**: `Richiesto` **with** a proposed time the customer has not answered. Both by urgency (`ResponseDueAt`, the ones without last),
+  both on the statuses of `nuove`. **`tab=nuove` is unchanged** (every new request, same order): the Golden Journey and the other users do not change.
+  The 400 for another tab (`SupplierInboxTabInvalid`) now lists the six.
+- **`source=casazen|showcase`**: where the request comes from (`item.source`): a CasaZen host, or the supplier's public showcase. Any case; another
+  value is 400 (`SupplierInboxSourceInvalid`).
+- **`q`**: a text of **2 to 60 characters** after trimming (blank = no filter; another length is 400 `SupplierInboxSearchInvalid`), any case. It
+  finds the requests whose **service name** (the copy kept on the request), **category** (the code, or its label in Italian or English: a supplier
+  types "pulizie", not `cleaning`) or **comune** contains it, or whose **booking code** it is. It **never** searches the customer (a private
+  customer's name is encrypted, and the host org's name is not a thing the supplier searches: SP-D23, the search by name stays on the rows the console
+  loaded), nor what the take discloses (property name, the host's notes, address, floor, access notes), nor an e-mail or a phone. A `%` or an `_` is
+  the character it is (the provider escapes the pattern: `LIKE @p` with `\%` and `\_`). The booking code is the customer's credential (with its e-mail
+  it manages the booking, section 24) and the supplier never reads it from the console, so it matches **only as a whole** (dash and case ignored): a part
+  of a code finds nothing, and a supplier cannot find a code out character by character.
+
+### 27.5 `phase`
+
+Derived **once**, by `SupplierRequestPhases.Of(status, hasPendingProposal, hasPendingQuote)` (`Casazen.Core/Suppliers/SupplierRequestPhase.cs`, shared with the
+agenda of SP-03b), never stored, never a new value of `status`. **An open set**: a client shows a generic wording for a value it does not know.
+
+| `phase` | When | `status` |
+|---|---|---|
+| `to_answer` | the supplier has to answer (take, refuse, propose another time) | `Richiesto`, no proposed time waiting |
+| `proposal_pending` | the supplier proposed another time, the customer has not answered | `Richiesto` with a proposed time |
+| `quote_pending` | the supplier sent a quote, the customer has not answered. **Reserved for SP-04b: nothing produces it yet** | `Richiesto` |
+| `scheduled` | taken, the work is yet to start | `PresoInCarico` |
+| `in_progress` | the work started | `InCorso` |
+| `completed` | done, not paid yet | `Completato` |
+| `paid` | paid | `Pagato` |
+| `rejected` | the supplier refused it | `Rifiutato` |
+| `cancelled` | cancelled by the host, the customer, the supplier or CasaZen | `Annullato` |
+| `unknown` | a status this version does not know (it never throws: spec #466 would add `InoltratoEsterno`, and those rows are not the supplier's anyway) | — |
+
+More values will come from other areas (the "su misura" trattative of the showcase as sub-phases of `Richiesto`, the held payments of SP-15c); the
+contract is the list above plus "the set is open".
+
+### 27.6 `payment`
+
+An object on every item of `inbox`, `inbox/{id}` and `today` (null where it does not apply). **When it exists**: the request has a payment record (not
+withdrawn) **or** is `Completato`. So a completed job paid outside CasaZen has one too (without a record: `id` and `status` are `null`, `amountCents` is the
+declared total, the commission fields are `null`), because the supplier's actions must be told for it. A job the host marked paid by hand has no record
+and no summary (`paidAt` is on the item). Before the completion there is none.
+
+| Field | |
+|---|---|
+| `id`, `status` | the record and where it is (`Requested`, `Processing`, `Paid`, `Failed`, `PartiallyRefunded`, `Refunded`, `NeedsReview`); `null` while there is none. **`status` is an open set** (the held payments of SP-15c will add values) |
+| `amountCents`, `commissionPercent`, `commissionCents`, `netCents` | the split gross / commission / net of the record, **as it was when the payment was created** (a snapshot: never recomputed, the frontend never calculates a commission); `null` while there is no record. A payment recorded as received outside CasaZen has commission 0 |
+| `paidAt`, `paidVia` (`Stripe`, `Offline`) | when and how it was paid |
+| `requestedAt`, `lastSentAt`, `sentCount` | when the payer was first asked, when they were last sent a link, how many links went out |
+| `late` | the record was flagged late (`SupplierPayments__LateAfterDays`, 7, by the daily job) **and is still owed** (`Requested`, `Failed`): the flag is never cleared, so a payment paid after being late is not late |
+| `needsAmountConfirmation` | the final amount is above the quote by more than the tolerance and the host has not confirmed it (decision D7) |
+| `canRequest` | the supplier may ask the payer for the payment, or remind them: `POST api/supplier/requests/{id}/payment-request` would not refuse |
+| `canRecordOffline` | the supplier may record that it was paid outside CasaZen: `POST api/supplier/requests/{id}/payment/offline` would not refuse (a reason is an input of that action, mandatory for a request paid inside CasaZen) |
+
+**`canRequest` and `canRecordOffline` are the rules of the two endpoints, in the same order** (`ServicePaymentActions`, `Casazen.Core/Suppliers`):
+`canRequest` needs the flag on, an active supplier that accepted the current Terms, `paymentMode = Online`, the job `Completato` with a final amount of at
+least `SupplierPayments__MinAmountCents` that nobody still has to confirm, a supplier whose Stripe account takes charges and payouts, a host org with a
+contact address, a payment that is not paid, being processed or under review, and no link sent in the last 24 hours; `canRecordOffline` needs an
+active supplier that accepted the current Terms, a job that can still become `Pagato` (`Completato`), a final amount, and a payment that is not paid, being
+processed or under review. It does not depend on the flag. A test runs the **real services** against 27 states a job can be in and checks that the
+service accepts the action exactly when the summary says it may (`SupplierPaymentSummaryTests`). What cannot be known without asking Stripe is not here:
+a payment already paid or in progress **on Stripe** while CasaZen still says `Requested` makes the endpoint answer 409 although the rules allow it: a race,
+not a rule. The Terms and the status of the supplier are global to every action of the console (`GET profile/activation`); they are repeated here only
+because these two endpoints refuse for them too.
+
+### 27.7 `GET api/supplier/today?days=`
+
+`days` from 1 to 7 (default 1; another value is 400 `SupplierTodayDaysInvalid`). The jobs (taken, in progress, completed or paid) go from today to today plus
+`days − 1` (Europe/Rome days, at most 50, the first in time first); the new requests, the earnings and the average are unchanged. The answer adds `days` and
+`dateTo`. A job with no day of its own (a long-rent one with no time, to agree with the host) is never listed; a short-rent job with no time is on the
+check-out day of its stay, as everywhere (section 21).
+
+### 27.8 Tenancy, cost, no index
+
+`ServiceRequests` and `ServiceRequestPayments` are not tenant-filtered (two parties): **every statement carries `SupplierOrgId == the caller's org`**. The
+payments are read in one file, `SupplierPaymentReadModels`, listed in the allow-list of `ServiceRequestPaymentTenancyTests` with its reason, which also checks
+that each statement starts with that predicate; it selects only the columns the console needs (never the hash of a payment link, a PaymentIntent or the line
+items). A request whose `SupplierOrgId` is not the caller's, and one forwarded to an external provider (spec #466: `SupplierOrgId` null), are in no count, no
+list and no figure. Cost per call: `overview` three queries on the requests (one grouped pass with `count(*) FILTER`, the pairs for the mean, the open jobs)
+and on the payments one (the nets of the open jobs) with the flag off and four with it on (that one, whether the supplier has any payment, and the two
+sums); `inbox/counts` one grouped pass and one count; a page of the inbox one query more for the payments of its completed jobs and, when it has one,
+two for the supplier's account and Terms. All `AsNoTracking`, no cache shared between suppliers. **No index was
+added**: every query starts from `IX_ServiceRequests_SupplierOrgId_Status` or `IX_ServiceRequestPayments_SupplierOrgId_Status`; if a supplier ever has tens of
+thousands of requests, `(SupplierOrgId, CreatedAt)` is the first candidate (with a migration made by `dotnet ef`).
+
+### 27.9 For the tasks that use it or extend it
+
+- **SP-08a/b/c/d (frontend)**: `phase` replaces every client-side derivation; `counts` is the only source of the chips and the menu badge; `payment` gives
+  the split and the two buttons, `late` the "Da fare" row; `overview.onlinePayments` decides "Incassi" or "Lavori completati"; `previous.from/to` say what
+  the delta compares with. The Golden Journey keeps using `nuove`.
+- **SP-04b (quote)**: add `Quote` to `SupplierServiceRequestView` and pass `hasPendingQuote: Quote is not null` in `SupplierServiceRequestView.Phase`; add the
+  same test to the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and to `TabCountsOf`. **SP-04d (auto-accept)**: exclude the
+  requests accepted in automatic from `SupplierKpiService.AnswersBetween` (and from the average of `today`), as decided. **LR-08a (`tenantContact`)**: independent
+  fields of the same DTO.
+- **SP-16a (earnings)**: the definitions of "collected" (`Paid` by `PaidAt`) and "late" (flagged and still owed) are here (`ServicePaymentSchedule.IsOwed`,
+  `SupplierPaymentReadModels`); reuse them, and decide how a refund moves the figures. **SP-15c (held payments)**: `payment.status` is an open set.
+
+### 27.10 Decisions applied (defaults, nothing asked)
+
+SP-D13 (three numbers; acceptance = taken / (taken + refused); mean, not median; "Incassi" = net of the `Paid` payments by payment date); SP-D23 (no search by
+customer name in the server); the period before = the same number of days just before (not the calendar month); `onlinePayments` = flag on **and** a payment
+exists; `payment` also for a completed job with no record; `late` = flagged and still owed; refunded payments left out of the money of the home; the booking
+code matches only as a whole; `q` out of 2-60 characters, `source` and `days` out of range are 400 (not silently cut).
+
+### 27.11 After a deploy
+
+- [ ] Nothing to configure: no flag, no migration, no new setting. With `Features__SupplierOnlinePayments` off (production) `overview.onlinePayments` is
+      `false` and every `payment` of a completed job has `canRequest: false`.
+- [ ] A supplier token gets 200 from `GET /api/supplier/inbox/counts`, `GET /api/supplier/dashboard/overview` and `GET /api/supplier/today?days=7`; a
+      host token gets 403 and no token 401.
 
 ## Known limits (other tasks)
 
