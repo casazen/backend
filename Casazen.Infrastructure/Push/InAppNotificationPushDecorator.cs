@@ -1,5 +1,4 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Hangfire;
 using Microsoft.Extensions.Logging;
@@ -7,16 +6,15 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Push;
 
 /// <summary>
-/// Gives every push an in-app notification (UI-12a): it forwards the push to the real queue (<see cref="HangfirePushQueue"/>) and,
-/// with <c>Features:InAppNotifications</c> on, queues an <see cref="InAppNotificationJob"/> for the same event, with the same
+/// Gives every push an in-app notification (UI-12a): it forwards the push to the real queue (<see cref="HangfirePushQueue"/>) and
+/// queues an <see cref="InAppNotificationJob"/> for the same event, with the same
 /// delivery key and audience, so the bell of the shell lists what the phone was told. The callers of
 /// <see cref="IPushNotificationService"/> (the booking, service request and showcase notifiers, the stay alerts) do not change and
 /// do not know it exists. Runbook: <c>docs/runbooks/in-app-notifications.md</c>.
 /// </summary>
 /// <remarks>
 /// <para><b>The push is never touched.</b> The inner queue is called first, with the same arguments, and its answer is returned
-/// whatever happens to the notification: a notification that cannot be queued is logged and costs the push nothing. With the flag
-/// off this class is a pass-through: no job, no read, no log.</para>
+/// whatever happens to the notification: a notification that cannot be queued is logged and costs the push nothing.</para>
 /// <para><b>Why a job, and why users there.</b> The audience of a push is a booking, a property or a supplier org, not a list of
 /// people: the push job turns it into devices when it runs, and the notification job turns it into users the same way, so
 /// nothing is resolved inside the request that caused the event. A push whose audience has nobody (no user, no device) writes
@@ -28,7 +26,6 @@ namespace Casazen.Infrastructure.Push;
 public sealed class InAppNotificationPushDecorator(
     IPushNotificationService inner,
     IBackgroundJobClient backgroundJobClient,
-    IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<InAppNotificationPushDecorator> logger) : IPushNotificationService
 {
@@ -36,8 +33,7 @@ public sealed class InAppNotificationPushDecorator(
     {
         var pushQueued = inner.Enqueue(deliveryKey, audience, payload);
 
-        if (featureFlags.IsEnabled(FeatureFlags.InAppNotifications))
-            QueueNotification(deliveryKey, audience, payload);
+        QueueNotification(deliveryKey, audience, payload);
 
         return pushQueued;
     }

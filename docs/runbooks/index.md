@@ -13,15 +13,15 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | [`auth0.md`](auth0.md) | Auth0 (tenants, Management API, Action, mobile client) | FD-05, FD-14, FN-04, MO-01, MO-03, MO-05, PL-01, PL-02 |
 | [`onboarding-consents.md`](onboarding-consents.md) | onboarding gate and legal consents | PL-02, PL-03, PL-14 |
 | [`host-invites.md`](host-invites.md) | invitation of new independent hosts by admins and hosts: endpoints, token, acceptance with the verified email, daily quota and pending cap, no account enumeration, audit, GDPR retention, demo | host invites |
-| [`org-team.md`](org-team.md) | org membership (`OrgMember`), org roles, the `account` context, owner backfill and reconcile, `member_inactive`, flag `OrgTeam`; invitations, members, seats, change of org, maintenance job (AM-02); the properties each member reaches ("Solo alcuni"), the fine permissions, who is told, the holder for RLI and IMU (AM-03); the activity log (events, no personal data, CSV, 12-month retention) and the requests for access to the administrators (AM-02b); the org export is the holder's, the person in charge goes with the access, the authorization cache with several instances, the payments of the interventions and the scope (AM-03b); the matrix of the roles, the areas of a member, the properties an invitation carries, the overview of the home, the cap on the invitation emails, the property manager in the account context and the events of the property mode (AM-02c) | AM-01, AM-02, AM-03, AM-02b, AM-03b, AM-02c |
+| [`org-team.md`](org-team.md) | org membership (`OrgMember`), org roles, the `account` context, owner backfill and reconcile, `member_inactive`; invitations, members, seats, change of org, maintenance job (AM-02); the properties each member reaches ("Solo alcuni"), the fine permissions, who is told, the holder for RLI and IMU (AM-03); the activity log (events, no personal data, CSV, 12-month retention) and the requests for access to the administrators (AM-02b); the org export is the holder's, the person in charge goes with the access, the authorization cache with several instances, the payments of the interventions and the scope (AM-03b); the matrix of the roles, the areas of a member, the properties an invitation carries, the overview of the home, the cap on the invitation emails, the property manager in the account context and the events of the property mode (AM-02c) | AM-01, AM-02, AM-03, AM-02b, AM-03b, AM-02c |
 | [`activation-checklist.md`](activation-checklist.md) | activation checklist and "site published" flag | BK-07, BK-13, BK-16, PC-03, PC-05, PL-04, PL-15 |
 | [`stripe.md`](stripe.md) | Stripe webhooks and platform billing (idempotency, one subscription per org) | BK-02, BK-04, BK-07, BK-08, BK-09, BK-10, BK-19, BK-21 |
 | [`billing-tax.md`](billing-tax.md) | VAT on the CasaZen subscriptions (Stripe Tax) and Italian e-invoices (SDI) | PL-10, PL-11, PL-13, RS-5 |
 | [`legal-documents.md`](legal-documents.md) | legal documents and subprocessors | BK-14, CO-13, CO-16, PL-02, PL-13, PL-14 |
 | [`demo-mode.md`](demo-mode.md) | web demo mode (no login) | PL-01 |
-| [`feature-flags.md`](feature-flags.md) | feature flags (including `UiRedesign`, the rollout of the new interface) | BL-01, FD-20, FD-21, LT-01, LT-02 |
+| [`feature-flags.md`](feature-flags.md) | feature flags (the ones still in the code, how to add and to remove one) | BL-01, FD-20, FD-21, LT-01, LT-02 |
 | [`open-access.md`](open-access.md) | "accesso aperto": every org served as a chosen plan at least, from configuration (`Entitlement__OpenAccess__*`), what changes and how to go back to the paid plans | BL-01 |
-| [`global-search.md`](global-search.md) | global search of the command palette (`GET /api/search`, flag `GlobalSearch`): groups bound to the permissions and the scope of the caller, search keys and full-text indexes (and why not `pg_trgm`), rate limit, migration, rollback; the last area used (`PUT /api/me/last-context`) | UI-13a |
+| [`global-search.md`](global-search.md) | global search of the command palette (`GET /api/search`): groups bound to the permissions and the scope of the caller, search keys and full-text indexes (and why not `pg_trgm`), rate limit, migration, rollback; the last area used (`PUT /api/me/last-context`) | UI-13a |
 
 ## Fondamenta tecniche e CI
 
@@ -32,7 +32,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | [`health-checks.md`](health-checks.md) | health checks, startup validation and deploy verification | BK-17, FD-07, FD-11, FD-12, FD-13, PL-11, PL-13, PL-14 |
 | [`hangfire.md`](hangfire.md) | Hangfire (one schema per environment, no overlapping runs) | BK-02, BK-04, BK-06, BK-17, BK-21, CO-06, CO-09, CO-10 |
 | [`email.md`](email.md) | transactional email (Resend) | BK-03, BK-04, BK-06, BK-07, BK-08, BK-10, BK-12, CO-06 |
-| [`in-app-notifications.md`](in-app-notifications.md) | in-app notifications (the bell of the shell): one row per user next to every push, the four `api/me/notifications` endpoints, 90 days of retention, GDPR, flag `InAppNotifications` and rollback | UI-12a |
+| [`in-app-notifications.md`](in-app-notifications.md) | in-app notifications (the bell of the shell): one row per user next to every push, the four `api/me/notifications` endpoints, 90 days of retention, GDPR and rollback | UI-12a |
 | [`storage.md`](storage.md) | object storage (Supabase Storage) and Data Protection keys | BK-12, CO-02, CO-14, CO-15, CO-16, FD-07, FD-17, LT-01 |
 | [`encryption.md`](encryption.md) | encrypted database columns (guest documents, Questura credentials, secrets) | CO-09, CO-12, CO-13, CO-14, FD-07, FD-20, PC-11, TN-1 |
 | [`external-fetch.md`](external-fetch.md) | downloading user-chosen URLs (iCal import) without SSRF | FD-16, PC-10 |
@@ -53,7 +53,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | Runbook | Argomento | Task |
 |---|---|---|
 | [`property-address.md`](property-address.md) | property address uniqueness, unit and coordinates | PC-03, PC-05, PC-06 |
-| [`property-rental-mode.md`](property-rental-mode.md) | rental mode of a property (short or long): rules, backfill with its dry run, predicates that ignore long-term properties, the scheduled change between the two modes (preview, daily job, calendar block, e-mails, flag), rollback | PM-01, PM-02 |
+| [`property-rental-mode.md`](property-rental-mode.md) | rental mode of a property (short or long): rules, backfill with its dry run, predicates that ignore long-term properties, the scheduled change between the two modes (preview, hourly job, calendar block, e-mails), rollback | PM-01, PM-02 |
 | [`ical.md`](ical.md) | iCal import and export (property OTA calendars, supplier calendars) | BK-02, BK-04, BK-05, BK-06, BK-21, CO-04, CO-08, CO-09 |
 | [`seasonal-suggestions.md`](seasonal-suggestions.md) | Suggerimenti stagionali (seasonal price suggestions) | BK-03, BK-07, FD-20, PC-15 |
 | [`direct-booking.md`](direct-booking.md) | direct booking — "Paga in struttura" requests, checkout outcome page, payment options, quote breakdown, minimum stay, weekend surcharge, public host data and coordinates | BK-02, BK-03, BK-04, BK-06, BK-07, BK-08, BK-10, BK-11, DB-03 |

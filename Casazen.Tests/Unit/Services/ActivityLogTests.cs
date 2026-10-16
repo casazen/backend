@@ -136,24 +136,6 @@ public class ActivityLogTests
     }
 
     [Fact]
-    public async Task Record_WithTheFlagOff_CollectsNothing_ButStillRefusesAWrongEvent()
-    {
-        _kit.OrgTeamFlag = false;
-        var (org, _) = await _kit.SeedOwnerOrgAsync();
-        await using (var db = _kit.NewDb())
-        {
-            var activity = _kit.Activity(db);
-            activity.Record(Event(org.Id));
-            Assert.Throws<ArgumentException>(() =>
-                activity.Record(OrgActivity.Of(org.Id, OrgActivityType.MemberDeactivated, "auth0|a", "auth0|b", ("email", "anna@example.com"))));
-            Assert.Empty(db.ChangeTracker.Entries<OrgActivityEntry>());
-            await db.SaveChangesAsync();
-        }
-
-        Assert.Empty(await _kit.ReadActivityAsync(org.Id));
-    }
-
-    [Fact]
     public async Task Record_WhatTheCatalogRefuses_StagesNothing()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync();

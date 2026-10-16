@@ -362,12 +362,11 @@ public class OrgTeamControllersTests
     {
         var controller = typeof(OrgMembersController);
 
-        // The class carries the policy of the team (owner and administrators) and the flag: the new actions inherit both.
+        // The class carries the policy of the team (owner and administrators): the new actions inherit it.
         Assert.Equal(
             Casazen.Web.Authorization.CasazenPolicies.OrgMembersManage,
             controller.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), inherit: true)
                 .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().Single().Policy);
-        Assert.NotEmpty(controller.GetCustomAttributes(typeof(FeatureGateAttribute), inherit: true));
         Assert.Equal(
             "{id:guid}/properties",
             controller.GetMethod(nameof(OrgMembersController.GetProperties))!

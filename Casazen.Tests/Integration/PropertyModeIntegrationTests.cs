@@ -16,19 +16,18 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// PM-02 (D16) over the real pipeline, with <c>Features:PropertyModeChange</c> on: preview, programming and cancellation of
+/// PM-02 (D16) over the real pipeline: preview, programming and cancellation of
 /// the change of rental mode, in Italian and English; the property of another org is invisible; the calendar closes from the
 /// day (public availability, iCal export, the host's own bookings and blocks) when the change is to long-term; the hourly
-/// application runs from the real service graph. The same endpoints answer 404 with the flag off
-/// (<see cref="PropertyModeFlagOffIntegrationTests"/>).
+/// application runs from the real service graph.
 /// </summary>
-public class PropertyModeIntegrationTests : IClassFixture<PropertyModeIntegrationTests.EnabledFactory>
+public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string HostRole = "PropertyOwner";
 
-    private readonly EnabledFactory _factory;
+    private readonly CasazenWebApplicationFactory _factory;
 
-    public PropertyModeIntegrationTests(EnabledFactory factory) => _factory = factory;
+    public PropertyModeIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
     // ─── Access ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -514,16 +513,6 @@ public class PropertyModeIntegrationTests : IClassFixture<PropertyModeIntegratio
         Assert.Equal("property_mode_blocked_by_bookings", state.GetProperty("lastChange").GetProperty("failureReason").GetString());
     }
 
-    [Fact]
-    public async Task PublicFeatures_WithTheFlagOn_ExposesIt()
-    {
-        using var anonymous = _factory.CreateClient();
-
-        var features = await anonymous.GetFromJsonAsync<JsonElement>("/api/public/features");
-
-        Assert.True(features.GetProperty("propertyModeChange").GetBoolean());
-    }
-
     // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The given day counted from today in Rome (negative: the past).</summary>
@@ -696,61 +685,5 @@ public class PropertyModeIntegrationTests : IClassFixture<PropertyModeIntegratio
     {
         await using var scope = _factory.Services.CreateAsyncScope();
         await action(scope.ServiceProvider.GetRequiredService<AppDbContext>());
-    }
-
-    /// <summary>The integration host with <c>Features:PropertyModeChange</c> on.</summary>
-    public sealed class EnabledFactory : CasazenWebApplicationFactory
-    {
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            base.ConfigureWebHost(builder);
-            builder.ConfigureAppConfiguration((_, config) =>
-                config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:PropertyModeChange"] = "true" }));
-        }
-    }
-}
-
-/// <summary>
-/// PM-02 with the default configuration (<c>Features:PropertyModeChange</c> off): every endpoint of the change answers 404
-/// like a route that does not exist, before authentication, and nothing is written.
-/// </summary>
-public class PropertyModeFlagOffIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
-{
-    private readonly CasazenWebApplicationFactory _factory;
-
-    public PropertyModeFlagOffIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
-
-    [Fact]
-    public async Task Endpoints_FlagOff_Answer404ToTheOwnerAndToAnonymous()
-    {
-        var property = await _factory.SeedPropertyAsync($"auth0|pm02-off-{Guid.NewGuid():N}");
-        using var owner = _factory.CreateAuthenticatedClient(property.OwnerId, "PropertyOwner");
-        using var anonymous = _factory.CreateClient();
-        var day = TimeProvider.System.TodayInRome().AddDays(20).ToString("yyyy-MM-dd");
-
-        foreach (var client in new[] { owner, anonymous })
-        {
-            await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(await client.GetAsync($"/api/properties/{property.Id}/mode"));
-            await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(
-                await client.GetAsync($"/api/properties/{property.Id}/mode/preview?to=long"));
-            await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(
-                await client.PostAsJsonAsync($"/api/properties/{property.Id}/mode/change", new { to = "Long", effectiveDate = day }));
-            await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(
-                await client.DeleteAsync($"/api/properties/{property.Id}/mode/change/{Guid.NewGuid()}"));
-        }
-
-        await using var scope = _factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.False(await db.PropertyModeChanges.IgnoreQueryFilters().AnyAsync(c => c.PropertyId == property.Id));
-    }
-
-    [Fact]
-    public async Task PublicFeatures_Default_ReturnsPropertyModeChangeOff()
-    {
-        using var anonymous = _factory.CreateClient();
-
-        var features = await anonymous.GetFromJsonAsync<JsonElement>("/api/public/features");
-
-        Assert.False(features.GetProperty("propertyModeChange").GetBoolean());
     }
 }

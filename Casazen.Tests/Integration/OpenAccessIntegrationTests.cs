@@ -66,7 +66,7 @@ public sealed class OpenAccessInvalidTierFactory() : OpenAccessFactoryBase("true
 
 /// <summary>
 /// BL-01 over the real pipeline with the switch <b>off</b> (the default of a deployment): the org without a subscription is
-/// still Starter, the new field says the access is not open, and the new flag <c>UiRedesign</c> is exposed and off.
+/// still Starter and the new field says the access is not open.
 /// </summary>
 public class OpenAccessOffIntegrationTests(OpenAccessUnsetFactory factory) : IClassFixture<OpenAccessUnsetFactory>
 {
@@ -102,18 +102,6 @@ public class OpenAccessOffIntegrationTests(OpenAccessUnsetFactory factory) : ICl
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("plan_limit_reached", body.GetProperty("code").GetString());
-    }
-
-    [Fact]
-    public async Task PublicFeatures_DefaultConfiguration_ExposesUiRedesignOff()
-    {
-        using var client = factory.CreateClient();
-
-        var response = await client.GetAsync("/api/public/features");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.False(body.GetProperty("uiRedesign").GetBoolean());
     }
 }
 
@@ -257,17 +245,6 @@ public class OpenAccessOnIntegrationTests(OpenAccessOnFactory factory) : IClassF
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("subscription_required", body.GetProperty("code").GetString());
         Assert.Equal(PlanTier.Starter, (await OpenAccessHttp.GetOrgAsync(factory, property.OrgId)).PlanTier);
-    }
-
-    [Fact]
-    public async Task PublicFeatures_SwitchOn_StillExposesUiRedesignOff()
-    {
-        using var client = factory.CreateClient();
-
-        var body = await client.GetFromJsonAsync<JsonElement>("/api/public/features");
-
-        // The open access is not a feature flag: it does not turn the new interface on.
-        Assert.False(body.GetProperty("uiRedesign").GetBoolean());
     }
 }
 

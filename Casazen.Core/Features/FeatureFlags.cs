@@ -84,55 +84,6 @@ public static class FeatureFlags
     public const string SupplierRequestAutoCancel = "SupplierRequestAutoCancel";
 
     /// <summary>
-    /// BL-01 (redesign wave, decision 01-D8): gradual rollout of the new interface (UI v2: design tokens, single shell, navigation
-    /// by area, in-app guide). Off by default, the product owner turns it on. The backend only introduces and exposes it: no
-    /// endpoint, service or job reads it. The frontend reads <c>uiRedesign</c> from <c>GET /api/public/features</c> and switches
-    /// the new look on or off (<c>html[data-ui='v2']</c>, UI-01).
-    /// </summary>
-    public const string UiRedesign = "UiRedesign";
-
-    /// <summary>
-    /// AM-01 (wave decision "team members behind a flag"): the org team, i.e. several people in one org with a role each
-    /// (owner, administrator, property manager, collaborator, accountant). Off by default. The model, the roles, the
-    /// backfill and the authorization guards of AM-01 work whatever its value; what it controls is what the clients can
-    /// see and use of it: with it off <c>GET /api/me/contexts</c> does not list the <c>account</c> context (the web app of
-    /// today does not know it and its workspace switcher fails on an unknown context), and the invitation endpoints of
-    /// AM-02 are gated by it (404 while off). Turn it on only together with the account screens of AM-04.
-    /// </summary>
-    public const string OrgTeam = "OrgTeam";
-
-    /// <summary>
-    /// PM-02 / D16: the scheduled change of rental mode of a property (short stays to long-term leases and back). Off:
-    /// <c>GET api/properties/{id}/mode</c>, <c>GET …/mode/preview</c>, <c>POST …/mode/change</c> and
-    /// <c>DELETE …/mode/change/{changeId}</c> answer 404 before anything is read, and the hourly <c>property-mode-change</c>
-    /// job is not registered (removed with <c>RemoveIfExists</c>): a change already programmed waits, untouched, until the
-    /// flag is turned on again. The mode itself (PM-01) and everything that reads it are not behind this flag.
-    /// </summary>
-    public const string PropertyModeChange = "PropertyModeChange";
-
-    /// <summary>
-    /// UI-12a (redesign wave): the in-app notifications of the user (the bell of the shell). With the flag on, every push the
-    /// backend queues (<c>IPushNotificationService</c>) also queues a job that writes one <c>InAppNotification</c> per user of
-    /// the push's audience, and <c>GET api/me/notifications</c>, <c>GET …/unread-count</c>, <c>POST …/{id}/read</c> and
-    /// <c>POST …/read-all</c> answer. Off (the default): the decorator of the push service only forwards the push, nothing is
-    /// written, and the four endpoints answer 404 before authentication like a route that does not exist. Rows already written
-    /// are not read while it is off and are deleted by the daily retention job (<c>in-app-notification-retention</c>, 90 days),
-    /// which is registered whatever the flag says. The screens (bell and drawer) are UI-12b, which reads the key
-    /// <c>inAppNotifications</c> of <c>GET /api/public/features</c>. Runbook: <c>docs/runbooks/in-app-notifications.md</c>.
-    /// </summary>
-    public const string InAppNotifications = "InAppNotifications";
-
-    /// <summary>
-    /// UI-13a (redesign wave, task UI-13): the global search of the palette (Ctrl/Cmd+K), server side. Off: <c>GET api/search</c>
-    /// answers 404 before authentication, rate limiting and anything is read, like a route that does not exist. On, it searches the
-    /// objects of the caller (properties, bookings, guests, leases, service requests, suppliers) for the permissions and the
-    /// properties the caller has, in SQL. <c>PUT api/me/last-context</c> (the last area used, same task) is <b>not</b> behind it. The
-    /// stored search keys and their indexes (migration <c>AddGlobalSearchKeys</c>) exist whatever the flag says: they cost a few
-    /// bytes per row and nothing is read from them while it is off. Runbook: <c>docs/runbooks/global-search.md</c>.
-    /// </summary>
-    public const string GlobalSearch = "GlobalSearch";
-
-    /// <summary>
     /// SEO-INVITE (product owner, 2026-10-13): CasaZen is on private invitation, prices and the onboarding of new customers are
     /// not defined yet. Off (the default): the public SEO pages carry no call to action to sign up ("Pubblica la tua casa"):
     /// <c>cta</c> is <c>null</c> in <c>GET api/public/content/…</c> and the crawler page has no link to <c>/signup</c>. The
@@ -151,11 +102,6 @@ public static class FeatureFlags
         SupplierShowcaseBooking,
         SupplierOnlinePayments,
         SupplierRequestAutoCancel,
-        UiRedesign,
-        OrgTeam,
-        PropertyModeChange,
-        InAppNotifications,
-        GlobalSearch,
         SeoSignupCta,
     ];
 }

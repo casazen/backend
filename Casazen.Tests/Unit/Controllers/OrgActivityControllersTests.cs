@@ -22,7 +22,7 @@ namespace Casazen.Tests.Unit.Controllers;
 /// AM-02b: the endpoints of the activity log and of the requests for access. The org and the account are the caller's own (never
 /// from the request), a caller with no org gets 404, the filters of the query reach the service as the caller wrote them (and a
 /// wrong one is a 400 that says which), the language of the emails is the one of the request; and the wiring that the
-/// architecture needs: the flag, the policy, the rate limit.
+/// architecture needs: the policy, the rate limit.
 /// </summary>
 public class OrgActivityControllersTests
 {
@@ -261,17 +261,6 @@ public class OrgActivityControllersTests
     }
 
     // ─── The wiring ────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void BothControllers_AreBehindTheOrgTeamFlag()
-    {
-        foreach (var controller in new[] { typeof(OrgActivityController), typeof(OrgAccessRequestsController) })
-        {
-            var gate = controller.GetCustomAttribute<FeatureGateAttribute>();
-            Assert.NotNull(gate);
-            Assert.Equal(FeatureFlags.OrgTeam, gate.Flag);
-        }
-    }
 
     [Fact]
     public void TheActivityLog_NeedsTheActivityReadPermission_OfTheAccountContext()

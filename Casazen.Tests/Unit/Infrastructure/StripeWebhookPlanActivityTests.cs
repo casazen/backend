@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -21,8 +20,7 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// <summary>
 /// AM-02b: the plan changes that nobody asks for — a subscription that becomes active gives the tier of its price, a canceled
 /// one takes the plan back to Starter — are told to the activity log by the webhook, in the very save that writes the tier,
-/// with no actor and the source <c>subscription</c>. A repeated or ignored event says nothing; with the <c>OrgTeam</c> flag off
-/// nothing is collected and the plan changes exactly as before.
+/// with no actor and the source <c>subscription</c>. A repeated or ignored event says nothing.
 /// </summary>
 public class StripeWebhookPlanActivityTests
 {
@@ -41,8 +39,6 @@ public class StripeWebhookPlanActivityTests
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase($"stripe-plan-activity-{Guid.NewGuid()}")
         .Options);
-
-    private bool _orgTeamFlag = true;
 
     [Fact]
     public async Task SubscriptionBecomesActive_WritesThePlanChange_WithNoActor()
@@ -110,24 +106,7 @@ public class StripeWebhookPlanActivityTests
         Assert.Equal(PlanTier.Pro, (await ReloadAsync(org.Id)).PlanTier);
     }
 
-    [Fact]
-    public async Task WithTheFlagOff_ThePlanChangesAsBefore_AndNothingIsCollected()
-    {
-        _orgTeamFlag = false;
-        var org = await SeedOrgAsync(SubscriptionStatus.Incomplete, PlanTier.Starter, "sub_new");
-
-        await HandleAsync(Subscription("customer.subscription.updated", "sub_new", "active", org, ProPrice));
-
-        Assert.Empty(await LinesAsync(org.Id));
-        Assert.Equal(PlanTier.Pro, (await ReloadAsync(org.Id)).PlanTier);
-    }
-
-    private ActivityLog Activity()
-    {
-        var flags = new Mock<IFeatureFlags>();
-        flags.Setup(f => f.IsEnabled(FeatureFlags.OrgTeam)).Returns(_orgTeamFlag);
-        return new ActivityLog(_db, flags.Object);
-    }
+    private ActivityLog Activity() => new(_db);
 
     private async Task<List<OrgActivityEntry>> LinesAsync(Guid orgId)
     {

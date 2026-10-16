@@ -1,5 +1,4 @@
 using Casazen.Core.Authorization;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
@@ -14,12 +13,10 @@ namespace Casazen.Web.Controllers;
 /// invitations, the requests for access, the trusted suppliers, the Alloggiati credentials and the latest activity of people, in
 /// one answer, so the page does not compose six requests and repeat the permissions of each. For the owner and the
 /// administrators (policy <see cref="CasazenPolicies.OrgMembersManage"/>); a section whose own permission the caller lacks is
-/// left out. Behind the <c>OrgTeam</c> flag: 404 while it is off, before the authentication. Runbook
-/// <c>docs/runbooks/org-team.md</c> part 6.
+/// left out. Runbook <c>docs/runbooks/org-team.md</c> part 6.
 /// </summary>
 [ApiController]
 [Route("api/orgs/me/overview")]
-[FeatureGate(FeatureFlags.OrgTeam)]
 [Authorize(Policy = CasazenPolicies.OrgMembersManage)]
 public class OrgOverviewController(
     IOrgOverviewService overview,

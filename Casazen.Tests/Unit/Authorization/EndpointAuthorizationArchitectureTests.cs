@@ -31,7 +31,7 @@ public class EndpointAuthorizationArchitectureTests
         ["AuthController.GetProfile"] = "Profile of the caller, read from the token.",
         ["AuthController.Logout"] = "Ends the caller's own session.",
         ["MeController.GetContexts"] = "Lists the contexts the caller may enter (how the client picks host, landlord or supplier UI).",
-        ["MeNotificationsController.List"] = "UI-12a: the bell of the shell, in every context (host, landlord, supplier): the caller's own notifications, by the token's sub, in the orgs the caller belongs to (behind Features:InAppNotifications).",
+        ["MeNotificationsController.List"] = "UI-12a: the bell of the shell, in every context (host, landlord, supplier): the caller's own notifications, by the token's sub, in the orgs the caller belongs to.",
         ["MeNotificationsController.UnreadCount"] = "UI-12a: the number on the bell, the caller's own unread notifications (same reason as List).",
         ["MeNotificationsController.MarkRead"] = "UI-12a: the caller marks one of its own notifications as read; the id of another user's is a 404 (same reason as List).",
         ["MeNotificationsController.MarkAllRead"] = "UI-12a: the caller marks all of its own notifications as read (same reason as List).",

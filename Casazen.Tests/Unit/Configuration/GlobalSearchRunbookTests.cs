@@ -1,5 +1,4 @@
 using System.Reflection;
-using Casazen.Core.Features;
 using Casazen.Core.Search;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Search;
@@ -9,9 +8,9 @@ using Xunit;
 namespace Casazen.Tests.Unit.Configuration;
 
 /// <summary>
-/// UI-13a: the runbook of the global search must say what the code does: the flag, the endpoints, every error code, every kind of
+/// UI-13a: the runbook of the global search must say what the code does: the endpoints, every error code, every kind of
 /// result and destination key, the limits, the indexes of the migration, the variables of the rate limit. The pages that list the
-/// flags, the rate limits, the variables of a deploy and the runbooks carry the new ones.
+/// rate limits, the variables of a deploy and the runbooks carry the new ones.
 /// </summary>
 public class GlobalSearchRunbookTests
 {
@@ -29,7 +28,6 @@ public class GlobalSearchRunbookTests
         ProblemCodes.ValidationError,
         ProblemCodes.AccountInactive,
         "rate_limited",
-        "not_found",
     ];
 
     public static TheoryData<string> DestinationKeys()
@@ -61,12 +59,10 @@ public class GlobalSearchRunbookTests
     public void Runbook_EveryKindOfResult_IsDocumented(string type) => Assert.Contains($"`{type}`", Runbook);
 
     [Fact]
-    public void Runbook_NamesTheFlagTheEndpointsAndTheNumbersOfTheCode()
+    public void Runbook_NamesTheEndpointsAndTheNumbersOfTheCode()
     {
         var runbook = Runbook;
 
-        Assert.Contains($"`Features:{FeatureFlags.GlobalSearch}`", runbook);
-        Assert.Contains($"`Features__{FeatureFlags.GlobalSearch}`", runbook);
         Assert.Contains("`GET /api/search?q=&limit=`", runbook);
         Assert.Contains("`PUT /api/me/last-context`", runbook);
         Assert.Contains($"`SearchText.MinQueryLength` ({SearchText.MinQueryLength})", runbook);
@@ -101,18 +97,13 @@ public class GlobalSearchRunbookTests
     }
 
     [Fact]
-    public void OtherPages_ListTheFlagThePolicyTheVariablesTheMigrationAndTheRunbook()
+    public void OtherPages_ListThePolicyTheVariablesTheMigrationAndTheRunbook()
     {
-        var flags = Page("feature-flags.md");
-        Assert.Contains($"`{FeatureFlags.GlobalSearch}`", flags);
-        Assert.Contains($"`Features__{FeatureFlags.GlobalSearch}`", flags);
-
         var proxy = Page("proxy-ip.md");
         Assert.Contains($"`{RateLimitPolicies.GlobalSearch}`", proxy);
         Assert.Contains("RateLimiting__GlobalSearch__PermitLimit", proxy);
 
         var checklist = Page("deploy-checklist.md");
-        Assert.Contains($"`Features__{FeatureFlags.GlobalSearch}`", checklist);
         Assert.Contains("RateLimiting__GlobalSearch__*", checklist);
         Assert.Contains("`AddGlobalSearchKeys`", checklist);
 

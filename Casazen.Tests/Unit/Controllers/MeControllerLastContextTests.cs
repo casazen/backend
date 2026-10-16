@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Security.Claims;
 using Casazen.Core.Entities;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Auth;
@@ -29,16 +28,14 @@ public class MeControllerLastContextTests
     private readonly Mock<IUserService> _users = new();
     private readonly Mock<IContextAuthorizationService> _contexts = new();
 
-    private MeController NewController(bool orgTeam = false, bool active = true, string? lastUsed = null, params ContextAccess[] contexts)
+    private MeController NewController(bool active = true, string? lastUsed = null, params ContextAccess[] contexts)
     {
         var user = new User { Id = UserId, Email = "o@test.com", FirstName = "O", LastName = "Wner", IsActive = active, LastUsedContextKey = lastUsed };
         _users.Setup(u => u.GetCurrentUserAsync(UserId, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(user);
         _users.Setup(u => u.SetLastUsedContextAsync(UserId, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(user);
         _contexts.Setup(c => c.GetUserContextsAsync(UserId, It.IsAny<CancellationToken>())).ReturnsAsync(contexts.Length == 0 ? [ShortRent, LongRent] : contexts);
 
-        var flags = new Mock<IFeatureFlags>();
-        flags.Setup(f => f.IsEnabled(FeatureFlags.OrgTeam)).Returns(orgTeam);
-        var controller = new MeController(_users.Object, _contexts.Object, flags.Object);
+        var controller = new MeController(_users.Object, _contexts.Object);
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
@@ -95,21 +92,16 @@ public class MeControllerLastContextTests
         _users.Verify(u => u.SetLastUsedContextAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    [Theory]
-    [InlineData(false, StatusCodes.Status422UnprocessableEntity)]
-    [InlineData(true, StatusCodes.Status200OK)]
-    public async Task Put_TheAccountContext_IsAccessibleOnlyWhereTheListTellsIt(bool orgTeam, int expected)
+    [Fact]
+    public async Task Put_TheAccountContext_IsAccessibleWhereTheListTellsIt()
     {
-        // GET /api/me/contexts hides the account context while the flag is off: the same list decides here.
-        var controller = NewController(orgTeam, contexts: [ShortRent, Account]);
+        // GET /api/me/contexts lists the account context: the same list decides here.
+        var controller = NewController(contexts: [ShortRent, Account]);
 
         var result = await controller.PutLastContext(Body("account"), CancellationToken.None);
 
-        var status = result.Result is ObjectResult { StatusCode: { } code } ? code : StatusCodes.Status200OK;
-        Assert.Equal(expected, status);
-        _users.Verify(
-            u => u.SetLastUsedContextAsync(UserId, "account", It.IsAny<CancellationToken>()),
-            expected == StatusCodes.Status200OK ? Times.Once() : Times.Never());
+        Assert.Equal("account", Assert.IsType<LastContextResponse>(Assert.IsType<OkObjectResult>(result.Result).Value).LastUsedContextKey);
+        _users.Verify(u => u.SetLastUsedContextAsync(UserId, "account", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -136,13 +128,11 @@ public class MeControllerLastContextTests
     }
 
     [Fact]
-    public void Put_IsAnAuthenticatedEndpoint_NotBehindTheFeatureFlag_WithABoundedBody()
+    public void Put_IsAnAuthenticatedEndpoint_WithABoundedBody()
     {
         var action = typeof(MeController).GetMethod(nameof(MeController.PutLastContext))!;
 
         Assert.Equal("last-context", action.GetCustomAttribute<Microsoft.AspNetCore.Mvc.HttpPutAttribute>()!.Template);
-        Assert.Empty(action.GetCustomAttributes<FeatureGateAttribute>());
-        Assert.Empty(typeof(MeController).GetCustomAttributes<FeatureGateAttribute>());
 
         var key = typeof(SetLastContextRequest).GetProperty(nameof(SetLastContextRequest.ContextKey))!;
         Assert.NotNull(key.GetCustomAttribute<System.ComponentModel.DataAnnotations.RequiredAttribute>());
@@ -164,10 +154,9 @@ public class MeControllerLastContextTests
 
     [Theory]
     [InlineData("supplier")] // an access the caller no longer has
-    [InlineData("account")] // listed only with the flag on
     public async Task Get_AStoredContextTheCallerCannotEnterAnymore_IsNotGivenBack(string stored)
     {
-        var controller = NewController(orgTeam: false, lastUsed: stored, contexts: [ShortRent, Account]);
+        var controller = NewController(lastUsed: stored, contexts: [ShortRent, Account]);
 
         var result = await controller.GetContexts(CancellationToken.None);
 

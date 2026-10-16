@@ -303,19 +303,6 @@ public class InAppNotificationJobTests : IDisposable
             columns);
     }
 
-    // ─── The flag ───
-
-    [Fact]
-    public async Task CreateAsync_FlagTurnedOffBeforeTheRun_WritesNothing()
-    {
-        var world = await _kit.SeedWorldAsync();
-        _kit.FlagOn = false;
-
-        await _kit.Job().CreateAsync("booking:abc:new", Queued(PushAudience.BookingHosts(world.BookingId)), CancellationToken.None);
-
-        Assert.Empty(_kit.Db.InAppNotifications);
-    }
-
     // ─── Hangfire ───
 
     [Fact]
