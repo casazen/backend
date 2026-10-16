@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -174,20 +175,63 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
             .ToList();
     }
 
+    public async Task<IReadOnlyList<SupplierAgendaRequest>> ListForCalendarAsync(
+        Guid supplierOrgId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        // Same window as ListForAgendaAsync: a day more on each side from the database, the exact Europe/Rome days below.
+        var lowerUtc = from.AddDays(-1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var upperUtc = to.AddDays(2).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        var rows = await CalendarRowsOf(db, supplierOrgId, lowerUtc, upperUtc).ToListAsync(cancellationToken);
+
+        return rows
+            .Select(ToCalendarItem)
+            .Where(item => item.Date >= from && item.Date <= to)
+            .OrderBy(item => item.Date)
+            .ThenBy(item => item.StartUtc)
+            .ThenBy(item => item.Id)
+            .ToList();
+    }
+
     private static SupplierAgendaRequest ToAgendaItem(AgendaRow row) =>
         row is { StartUtc: { } start, EndUtc: { } end }
-            ? new SupplierAgendaRequest(row.Id, RomeCalendar.DateInRome(start), row.Status, row.Category, start, end)
-            : new SupplierAgendaRequest(row.Id, RomeCalendar.DateInRome(row.CheckOutDate!.Value), row.Status, row.Category);
+            ? new SupplierAgendaRequest(row.Id, RomeCalendar.DateInRome(start), row.Status, row.Category, start, end, row.ServiceListingId)
+            : new SupplierAgendaRequest(row.Id, RomeCalendar.DateInRome(row.CheckOutDate!.Value), row.Status, row.Category, ServiceListingId: row.ServiceListingId);
+
+    /// <summary>
+    /// A request of the calendar with its titles. The client is who asks as decision D9 lets the supplier know it before the take:
+    /// the host's org for a host's request, a private customer as "Nome C." until the request is taken, the full name after.
+    /// </summary>
+    private static SupplierAgendaRequest ToCalendarItem(CalendarRow row)
+    {
+        var showcase = row.RentalContext == ServiceRequestRentalContext.Showcase;
+        var client = showcase
+            ? NullIfBlank(SupplierJobDisclosure.CustomerName(row.Status, row.CustomerFullName))
+            : NullIfBlank(row.HostDisplayName) ?? NullIfBlank(row.HostName);
+        var service = NullIfBlank(row.ServiceNameSnapshot);
+        var comune = NullIfBlank(row.City);
+        var source = SupplierRequestSources.Of(row.Source);
+
+        return row is { StartUtc: { } start, EndUtc: { } end }
+            ? new SupplierAgendaRequest(
+                row.Id, RomeCalendar.DateInRome(start), row.Status, row.Category, start, end, row.ServiceListingId,
+                service, client, comune, source, row.HasPendingProposal)
+            : new SupplierAgendaRequest(
+                row.Id, RomeCalendar.DateInRome(row.CheckOutDate!.Value), row.Status, row.Category, null, null, row.ServiceListingId,
+                service, client, comune, source, row.HasPendingProposal);
+    }
 
     /// <summary>
     /// The requests of the supplier that fall in <c>[lowerUtc, upperUtc)</c>, rejected and cancelled ones left out: a request
-    /// with a time by that time, one without by the check-out date of its stay. Only the id, the status, the category, the
-    /// time and the check-out date, never the guest. ServiceRequest has two parties and no tenant filter (TN-2 allow-list):
-    /// the explicit SupplierOrgId predicate is the scope. IgnoreQueryFilters opens the stay of the host (another tenant)
-    /// through the request, as <see cref="Rows"/> does.
+    /// with a time by that time, one without by the check-out date of its stay. ServiceRequest has two parties and no tenant
+    /// filter (TN-2 allow-list): the explicit SupplierOrgId predicate is the scope. IgnoreQueryFilters opens the stay of the host
+    /// (another tenant) through the request, as <see cref="Rows"/> does. The base of <see cref="AgendaRowsOf"/> and
+    /// <see cref="CalendarRowsOf"/>: what they select is the only difference.
     /// </summary>
-    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
-    internal static IQueryable<AgendaRow> AgendaRowsOf(AppDbContext db, Guid supplierOrgId, DateTime lowerUtc, DateTime upperUtc) =>
+    internal static IQueryable<ServiceRequest> AgendaRequestsOf(AppDbContext db, Guid supplierOrgId, DateTime lowerUtc, DateTime upperUtc) =>
         db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -199,14 +243,48 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
                                 && r.RentalContext == ServiceRequestRentalContext.ShortRent
                                 && r.Booking != null
                                 && r.Booking.CheckOutDate >= lowerUtc
-                                && r.Booking.CheckOutDate < upperUtc)))
+                                && r.Booking.CheckOutDate < upperUtc)));
+
+    /// <summary>
+    /// The requests of the agenda as the slot planner needs them: only the id, the status, the category, the time, the check-out
+    /// date and the catalog service, never the guest. The light read (no join on the host, the property or the customer).
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<AgendaRow> AgendaRowsOf(AppDbContext db, Guid supplierOrgId, DateTime lowerUtc, DateTime upperUtc) =>
+        AgendaRequestsOf(db, supplierOrgId, lowerUtc, upperUtc)
             .Select(r => new AgendaRow(
                 r.Id,
                 r.Status,
                 r.Category,
                 r.ScheduledStartUtc,
                 r.ScheduledEndUtc,
-                r.Booking != null ? r.Booking.CheckOutDate : (DateTime?)null));
+                r.Booking != null ? r.Booking.CheckOutDate : (DateTime?)null,
+                r.ServiceListingId));
+
+    /// <summary>
+    /// The same requests with the titles of the calendar (SP-03b): the name of the service, the org of the host, the name of the
+    /// private customer (shortened to "Nome C." before the take by <see cref="ToCalendarItem"/>), the comune, the source and whether
+    /// a proposed time waits. Never the street address, the property's name, a contact, a note or the guest of the stay.
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<CalendarRow> CalendarRowsOf(AppDbContext db, Guid supplierOrgId, DateTime lowerUtc, DateTime upperUtc) =>
+        AgendaRequestsOf(db, supplierOrgId, lowerUtc, upperUtc)
+            .Select(r => new CalendarRow(
+                r.Id,
+                r.Status,
+                r.Category,
+                r.ScheduledStartUtc,
+                r.ScheduledEndUtc,
+                r.Booking != null ? r.Booking.CheckOutDate : (DateTime?)null,
+                r.ServiceListingId,
+                r.ServiceNameSnapshot,
+                r.Source,
+                r.RentalContext,
+                r.Org.DisplayName,
+                r.Org.Name,
+                r.Customer != null ? r.Customer.FullName : null,
+                r.Property != null ? r.Property.City : r.LocationCity ?? string.Empty,
+                r.ProposedStartUtc != null && r.ProposedEndUtc != null && r.ProposedAt != null));
 
     /// <summary>A request of the agenda as read from the database.</summary>
     internal sealed record AgendaRow(
@@ -215,7 +293,26 @@ public class SupplierServiceRequestReader(AppDbContext db, TimeProvider? timePro
         string Category,
         DateTime? StartUtc,
         DateTime? EndUtc,
-        DateTime? CheckOutDate);
+        DateTime? CheckOutDate,
+        Guid? ServiceListingId);
+
+    /// <summary>A request of the calendar as read from the database, with the columns its titles are made of.</summary>
+    internal sealed record CalendarRow(
+        Guid Id,
+        ServiceRequestStatus Status,
+        string Category,
+        DateTime? StartUtc,
+        DateTime? EndUtc,
+        DateTime? CheckOutDate,
+        Guid? ServiceListingId,
+        string? ServiceNameSnapshot,
+        ServiceRequestSource Source,
+        ServiceRequestRentalContext RentalContext,
+        string? HostDisplayName,
+        string? HostName,
+        string? CustomerFullName,
+        string City,
+        bool HasPendingProposal);
 
     /// <summary>The statuses in which a request has been taken by the supplier (<see cref="SupplierJobDisclosure.IsDisclosed"/>).</summary>
     private static readonly ServiceRequestStatus[] DisclosedStatuses =

@@ -286,7 +286,9 @@ public class SupplierAgendaService(
         var closedDays = await ClosedDaysOfAsync(supplierOrgId, from, to, cancellationToken);
         var timeOff = await TimeOffOverlappingAsync(supplierOrgId, from, to, cancellationToken);
         var windows = await WindowsOverlappingAsync(supplierOrgId, startUtc, endUtc, cancellationToken);
-        var agendaRequests = await requests.ListForAgendaAsync(supplierOrgId, from, to, cancellationToken);
+
+        // With the titles (SP-03b): who asks, the service, the comune. The planner reads the lighter ListForAgendaAsync below.
+        var agendaRequests = await requests.ListForCalendarAsync(supplierOrgId, from, to, cancellationToken);
 
         return new SupplierCalendar(
             from,
@@ -337,10 +339,10 @@ public class SupplierAgendaService(
                     extraOpenings.Add(new SupplierInterval(window.StartUtc, window.EndUtc));
                     break;
                 case SupplierBusyWindowKind.External:
-                    occupancies.Add(SupplierOccupancy.External(window.StartUtc, window.EndUtc));
+                    occupancies.Add(SupplierOccupancy.External(window.StartUtc, window.EndUtc, window.Id));
                     break;
                 default:
-                    occupancies.Add(SupplierOccupancy.Block(window.StartUtc, window.EndUtc));
+                    occupancies.Add(SupplierOccupancy.Block(window.StartUtc, window.EndUtc, window.Id));
                     break;
             }
         }
@@ -350,11 +352,12 @@ public class SupplierAgendaService(
         // takes no hour. A day more on each side, as for the windows. The request being moved is left out: it must not be in
         // its own way.
         var agendaRequests = await requests.ListForAgendaAsync(supplierOrgId, from.AddDays(-1), to.AddDays(1), cancellationToken);
+        // The id and whether the supplier took it are for the conflict detector (SP-03b); the planner never reads them.
         occupancies.AddRange(agendaRequests
             .Where(request => request.Id != exceptRequestId && JobStatuses.Contains(request.Status))
             .Select(request => request is { StartUtc: { } start, EndUtc: { } end }
-                ? SupplierOccupancy.TimedRequest(start, end)
-                : SupplierOccupancy.DatedRequest(request.Date)));
+                ? SupplierOccupancy.TimedRequest(start, end, request.Id, IsTaken(request.Status))
+                : SupplierOccupancy.DatedRequest(request.Date, request.Id, IsTaken(request.Status))));
 
         // The bookings from the public showcase that wait for the customer's e-mail check (SP-10) hold their slot like a request
         // that has hours: a hold has its hours, its place in the day's maximum, and ends at its expiry. A hold that was checked
@@ -375,7 +378,10 @@ public class SupplierAgendaService(
             timeOff.Select(entry => new SupplierDateRange(entry.FromDate, entry.ToDate)).ToList(),
             closedDays.Select(day => day.Date).ToHashSet(),
             extraOpenings,
-            occupancies);
+            occupancies,
+            // Which of the closed days the calendar feed closed (an all-day event): the planner closes them all alike, the conflict
+            // detector (SP-03b) calls that "another engagement" and not "a day off".
+            closedDays.Where(day => day.Source == SupplierAvailabilitySource.ICalFeed).Select(day => day.Date).ToHashSet());
     }
 
     public Task<IReadOnlyList<SupplierDayPlan>> PlanAsync(
@@ -496,6 +502,10 @@ public class SupplierAgendaService(
     private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
 
     private DateOnly Today() => _clock.TodayInRomeAsDateOnly();
+
+    /// <summary>True for a job the supplier took (SP-03b: what still waits for an answer never counts against it).</summary>
+    private static bool IsTaken(ServiceRequestStatus status) =>
+        status is ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso;
 
     private static void EnsureRange(DateOnly from, DateOnly to, int maxDays)
     {
