@@ -101,7 +101,8 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
     public static TheoryData<HostDashboardPeriodKind, string> PeriodsAndScopes()
     {
         var data = new TheoryData<HostDashboardPeriodKind, string>();
-        foreach (var kind in Enum.GetValues<HostDashboardPeriodKind>())
+        // A free period needs its days, which the KPIs do not take (400): HostOverviewPostgresTests proves it with them.
+        foreach (var kind in Enum.GetValues<HostDashboardPeriodKind>().Where(period => period != HostDashboardPeriodKind.Custom))
         {
             data.Add(kind, "whole-org");
             data.Add(kind, "collaborator");
@@ -409,7 +410,8 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
     {
         var before = await CommandsPerReadAsync();
         Assert.All(before, entry => Assert.True(entry.Value > 0, $"{entry.Key}: no command counted"));
-        Assert.True(before["bookings-search-page"] <= 2, $"search: {before["bookings-search-page"]} commands");
+        // The page, and for the rows (SR-03b) the payments and the reports of its bookings: three commands, and the total when it is full.
+        Assert.True(before["bookings-search-page"] <= 3, $"search: {before["bookings-search-page"]} commands");
         Assert.True(before["payments-list"] <= 1, $"payments: {before["payments-list"]} commands");
 
         // Thirty more properties of the org, each with its stays, payments and feeds.
@@ -429,7 +431,7 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
 
         // The search asks for the total only when its page is full, which it is not with six stays and is with thirty-six.
         Assert.Equal(before.Where(read => read.Key != "bookings-search-page"), after.Where(read => read.Key != "bookings-search-page"));
-        Assert.InRange(after["bookings-search-page"], 1, 2);
+        Assert.InRange(after["bookings-search-page"], 3, 4);
     }
 
     [PostgresFact]
