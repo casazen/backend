@@ -54,6 +54,20 @@ public class ShortRentReadNpgsqlTranslationTests
         Page: 1,
         PageSize: 20);
 
+    private static BookingSearchService Search(AppDbContext db) => new(db, new ConfigurationBuilder().Build(), Clock);
+
+    // SR-03b: every new filter at once, with a chip, an order and the paid amount.
+    private static readonly BookingSearchCriteria EveryNewCriterion = EveryCriterion with
+    {
+        ArrivalFrom = new DateOnly(2026, 10, 9),
+        ArrivalTo = new DateOnly(2026, 10, 16),
+        View = BookingListView.Upcoming,
+        Channels = [BookingChannel.Airbnb, BookingChannel.Other],
+        CheckInStates = [HostTodayCheckInState.NotSent, HostTodayCheckInState.Completed],
+        Sort = new BookingSort(BookingSortKey.Guest, true),
+        IncludePaidAmount = true,
+    };
+
     /// <summary>Every call, by the name the failure reports.</summary>
     private static readonly Dictionary<string, Func<AppDbContext, HostScope, Task>> Calls = new()
     {
@@ -79,6 +93,59 @@ public class ShortRentReadNpgsqlTranslationTests
             scope,
             new PaymentListCriteria(Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31))),
         ["payments-list-plain"] = (db, scope) => new PaymentListService(db).ListAsync(scope, new PaymentListCriteria()),
+        // SR-03b: the numbers of the Home. The properties are none here (the probe answers no rows), so the occupancy reads are skipped
+        // and the rest is reached: the property ids, the revenue and the cash of each period, the arrivals, the next arrivals.
+        ["overview-month"] = (db, scope) => Dashboard(db).GetOverviewAsync(
+            scope, new HostOverviewQuery(HostDashboardPeriodKind.Month, new DateOnly(2026, 10, 1), IncludeMoney: true)),
+        ["overview-without-money"] = (db, scope) => Dashboard(db).GetOverviewAsync(
+            scope, new HostOverviewQuery(HostDashboardPeriodKind.Next30Days)),
+        ["overview-custom-year"] = (db, scope) => Dashboard(db).GetOverviewAsync(
+            scope,
+            new HostOverviewQuery(HostDashboardPeriodKind.Custom, From: new DateOnly(2026, 1, 1), To: new DateOnly(2026, 12, 31), IncludeMoney: true)),
+        ["overview-one-property"] = (db, scope) => Dashboard(db).GetOverviewAsync(
+            scope, new HostOverviewQuery(HostDashboardPeriodKind.Last30Days, PropertyId: Guid.NewGuid(), IncludeMoney: true)),
+        // The reads of the day that need a stay to run: the check-in link and the Alloggiati report of the arrivals, the cleaning of the
+        // departures (the empty answer of the probe skips them in "today").
+        ["today-arriving-and-leaving"] = async (db, scope) =>
+        {
+            var service = HostTodayServiceTests.NewService(db);
+            var stay = new HostDashboardStay(
+                Guid.NewGuid(), Guid.NewGuid(), "Trullo", "Anna Verdi", new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc),
+                new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc), BookingStatus.Confirmed, 300m, new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc));
+            await service.GetArrivingAsync([stay], new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc), HostScopeScenario.Now.UtcDateTime, default);
+            await service.GetCleaningAsync(scope, [stay], default);
+        },
+        ["bookings-search-view-to-confirm"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(View: BookingListView.ToConfirm)),
+        ["bookings-search-view-upcoming"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(View: BookingListView.Upcoming)),
+        ["bookings-search-view-in-progress"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(View: BookingListView.InProgress)),
+        ["bookings-search-view-completed"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(View: BookingListView.Completed)),
+        ["bookings-search-view-cancelled"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(View: BookingListView.Cancelled)),
+        ["bookings-search-channels-arrivals-and-links"] = (db, scope) => Search(db).SearchAsync(scope, EveryNewCriterion),
+        ["bookings-search-link-sent"] = (db, scope) => Search(db).SearchAsync(
+            scope, new BookingSearchCriteria(CheckInStates: [HostTodayCheckInState.Sent])),
+        ["bookings-search-link-in-progress-or-completed"] = (db, scope) => Search(db).SearchAsync(
+            scope, new BookingSearchCriteria(CheckInStates: [HostTodayCheckInState.InProgress, HostTodayCheckInState.Completed])),
+        ["bookings-search-link-not-sent-or-expired"] = (db, scope) => Search(db).SearchAsync(
+            scope, new BookingSearchCriteria(CheckInStates: [HostTodayCheckInState.NotSent, HostTodayCheckInState.Expired])),
+        ["bookings-search-sorted-by-check-in"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(Sort: new BookingSort(BookingSortKey.CheckIn))),
+        ["bookings-search-sorted-by-created-at"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(Sort: new BookingSort(BookingSortKey.CreatedAt, true))),
+        ["bookings-search-sorted-by-total"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(Sort: new BookingSort(BookingSortKey.Total))),
+        ["bookings-search-sorted-by-status"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(Sort: new BookingSort(BookingSortKey.Status, true))),
+        ["bookings-search-sorted-by-guest"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(Sort: new BookingSort(BookingSortKey.Guest))),
+        ["bookings-search-sorted-by-guest-descending"] = (db, scope) => Search(db).SearchAsync(scope, new BookingSearchCriteria(Sort: new BookingSort(BookingSortKey.Guest, true))),
+        ["bookings-search-row-details"] = (db, scope) => Search(db).DetailsOfAsync(
+            scope,
+            [new Booking { Id = Guid.NewGuid(), Status = BookingStatus.Confirmed, CheckInDate = new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc) }],
+            true,
+            new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc),
+            default),
+        ["bookings-counts-everything"] = (db, scope) => Search(db).CountAsync(scope, EveryNewCriterion),
+        ["bookings-counts-plain"] = (db, scope) => Search(db).CountAsync(scope, new BookingSearchCriteria()),
+        ["payments-list-page-3"] = (db, scope) => new PaymentListService(db).ListPageAsync(
+            scope,
+            new PaymentListCriteria(Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31)),
+            3,
+            10),
     };
 
     /// <summary>How many statements each call sends at least (all of them are reached when nothing was swallowed early).</summary>
@@ -101,6 +168,36 @@ public class ShortRentReadNpgsqlTranslationTests
         ["bookings-search-page-3"] = 2,
         ["payments-list-everything"] = 1,
         ["payments-list-plain"] = 1,
+        // SR-03b: the property ids, the revenue and the cash of each period, the arrivals and the next arrivals; without money, no cash;
+        // one property that is not the caller's stops at the check.
+        ["overview-month"] = 7,
+        ["overview-without-money"] = 5,
+        ["overview-custom-year"] = 7,
+        ["overview-one-property"] = 1,
+        // The booking, the links, the reports; the cleaning.
+        ["today-arriving-and-leaving"] = 4,
+        ["bookings-search-view-to-confirm"] = 1,
+        ["bookings-search-view-upcoming"] = 1,
+        ["bookings-search-view-in-progress"] = 1,
+        ["bookings-search-view-completed"] = 1,
+        ["bookings-search-view-cancelled"] = 1,
+        ["bookings-search-channels-arrivals-and-links"] = 1,
+        ["bookings-search-link-sent"] = 1,
+        ["bookings-search-link-in-progress-or-completed"] = 1,
+        ["bookings-search-link-not-sent-or-expired"] = 1,
+        ["bookings-search-sorted-by-check-in"] = 1,
+        ["bookings-search-sorted-by-created-at"] = 1,
+        ["bookings-search-sorted-by-total"] = 1,
+        ["bookings-search-sorted-by-status"] = 1,
+        ["bookings-search-sorted-by-guest"] = 1,
+        ["bookings-search-sorted-by-guest-descending"] = 1,
+        // The payments and the Alloggiati reports of the page.
+        ["bookings-search-row-details"] = 2,
+        // One aggregate statement.
+        ["bookings-counts-everything"] = 1,
+        ["bookings-counts-plain"] = 1,
+        // A page past the end of nothing: the page is empty and the count is asked.
+        ["payments-list-page-3"] = 2,
     };
 
     public static TheoryData<string, string> EveryCallWithEveryScope()

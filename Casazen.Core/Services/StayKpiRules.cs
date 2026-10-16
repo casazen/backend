@@ -93,6 +93,37 @@ public static class StayKpiRules
         return nightsInPeriod == stayNights ? basePrice : basePrice * nightsInPeriod / stayNights;
     }
 
+    /// <summary>
+    /// The stays with at least one night from <paramref name="fromDate"/> (included) to <paramref name="toDate"/> (excluded): the
+    /// ones the revenue of that period counts (SR-03b: the KPI and the chart read the same rows).
+    /// </summary>
+    public static IEnumerable<HostRevenueStay> WithNightsIn(IEnumerable<HostRevenueStay> stays, DateTime fromDate, DateTime toDate) =>
+        stays.Where(stay => PropertyOccupancy.NightsIn(stay.CheckIn, stay.CheckOut, fromDate, toDate).Any());
+
+    /// <summary>
+    /// Revenue of the confirmed <paramref name="stays"/> from <paramref name="fromDate"/> (included) to <paramref name="toDate"/>
+    /// (excluded): the sum of <see cref="RevenueInPeriod"/> over the stays that have a night there, rounded to the cent on the
+    /// total.
+    /// </summary>
+    public static decimal RevenueOf(IEnumerable<HostRevenueStay> stays, DateTime fromDate, DateTime toDate) =>
+        Math.Round(
+            WithNightsIn(stays, fromDate, toDate)
+                .Sum(stay => RevenueInPeriod(stay.BasePrice, stay.CheckIn, stay.CheckOut, fromDate, toDate)),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    /// <summary>
+    /// A stay that arrives from <paramref name="firstDay"/> (included) to <paramref name="lastDayExcluded"/> (excluded), both
+    /// Europe/Rome calendar dates (SR-03b): the check-in date falls on one of those days. Not a filter on the status: combine it
+    /// with <see cref="IsConfirmedStay"/> or <see cref="OnSiteRequests.IsAwaitingHostApproval"/>.
+    /// </summary>
+    public static Expression<Func<Booking, bool>> ArrivesBetween(DateTime firstDay, DateTime lastDayExcluded)
+    {
+        var start = RomeCalendar.StartOfDayUtc(firstDay.Date);
+        var end = RomeCalendar.StartOfDayUtc(lastDayExcluded.Date);
+        return b => b.CheckInDate >= start && b.CheckInDate < end;
+    }
+
     /// <summary>The Rome calendar date of a stored stay date, as midnight UTC (date-only convention).</summary>
     public static DateTime RomeDateOf(DateTime value) =>
         RomeCalendar.DateInRome(value).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
