@@ -30,6 +30,8 @@ public class OrgTeamLocalizationTests
         { OrgInvitationErrors.NotPending, "OrgInvitationNotPending" },
         { OrgInvitationErrors.NotFound, "OrgInvitationNotFound" },
         { OrgInvitationErrors.MemberNotFound, "OrgMemberNotFound" },
+        { OrgInvitationErrors.DailyLimitReached, "InvitationDailyLimitReached" },
+        { OrgInvitationErrors.ResendTooSoon, "InvitationResendTooSoon" },
         { OrgSeatErrors.LimitReached, "OrgSeatLimitReached" },
         { OrgMembershipErrors.LastOwner, "OrgLastOwner" },
         { OrgMembershipErrors.OwnerNotAssignable, "OrgMemberOwnerNotAssignable" },

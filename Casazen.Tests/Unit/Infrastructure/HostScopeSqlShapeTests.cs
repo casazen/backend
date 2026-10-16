@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,7 @@ public class HostScopeSqlShapeTests
 
     private static readonly Guid OrgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");
     private static readonly HostScope Restricted = new(OrgId, GrantedToUserId: Collaborator);
+    private static readonly HostScope RestrictedToShort = new(OrgId, GrantedToUserId: Collaborator, GrantedMode: RentalMode.Short);
     private static readonly HostScope OrgWide = new(OrgId);
     private static readonly HostScope Legacy = new(OrgId, OwnerId: Holder);
 
@@ -116,6 +118,45 @@ public class HostScopeSqlShapeTests
         Assert.Matches("\"OwnerId\" = @", body);
         Assert.DoesNotContain("PropertyMemberAccesses", body, StringComparison.Ordinal);
         Assert.Equal(0, Count(body, "EXISTS ("));
+    }
+
+    [Theory]
+    [MemberData(nameof(Entities))]
+    public void InScope_ACollaboratorOfOneMode_AddsTheModeToTheSameStatement_WithNoQueryOfItsOwn(string entity)
+    {
+        using var db = NewDb();
+
+        var sql = Scoped(db, entity, RestrictedToShort).ToQueryString();
+        var body = Body(sql);
+
+        // AM-02c: the grants of the other mode stay in the table and the area decides which of them the person reaches, inside the
+        // one query: the same single EXISTS on the grants, and the mode of the property as a parameter next to it.
+        Assert.Equal(1, Count(body, "EXISTS ("));
+        Assert.Equal(1, Count(body, "\"PropertyMemberAccesses\""));
+        Assert.Matches("\"RentalMode\" = @", body);
+        Assert.DoesNotContain(" IN (", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(Collaborator, body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InScope_AnOrgWideScope_IsTheSameWhateverTheModeSays()
+    {
+        using var db = NewDb();
+
+        // The mode is the collaborator's rule: it is never applied without the grants (an org-wide scope has none to narrow).
+        Assert.Same(db.Properties, db.Properties.InScope(new HostScope(OrgId, GrantedMode: RentalMode.Long)));
+    }
+
+    [Fact]
+    public void InScope_AModeWithoutAGrantedUser_IsNotAPredicateEither()
+    {
+        using var db = NewDb();
+
+        var legacy = Body(db.Properties.InScope(new HostScope(OrgId, OwnerId: Holder, GrantedMode: RentalMode.Short)).ToQueryString());
+
+        // (the column is in the list of the select: it is the comparison that must not be there)
+        Assert.DoesNotMatch("\"RentalMode\" = ", legacy);
+        Assert.Matches("\"OwnerId\" = @", legacy);
     }
 
     [Fact]

@@ -67,7 +67,7 @@ internal sealed class OrgInvitationTestKit
 
     public AppDbContext NewDb() => _contextFactory?.Invoke() ?? OrgTeamTestData.NewDb(Database);
 
-    private IConfiguration Config() => new ConfigurationBuilder().AddInMemoryCollection(Settings).Build();
+    public IConfiguration Config() => new ConfigurationBuilder().AddInMemoryCollection(Settings).Build();
 
     private IEmailQueue Queue() => QueueAccepts ? Emails : new RefusingEmailQueue();
 
@@ -113,6 +113,8 @@ internal sealed class OrgInvitationTestKit
         Queue(),
         EmailTestHelpers.Links(PublicSiteBaseUrl),
         Activity(db),
+        PropertyAccess(db),
+        Config(),
         NullLogger<OrgInvitationService>.Instance,
         clock ?? Clock);
 
@@ -149,6 +151,10 @@ internal sealed class OrgInvitationTestKit
         new(db, Cache.Object, Activity(db), NullLogger<OrgPropertyAccessService>.Instance, Clock);
 
     public OrgActivityService ActivityReader(AppDbContext db) => new(db);
+
+    public OrgOverviewService Overview(AppDbContext db) => new(db, Entitlement(db), Seats(db), ActivityReader(db), Clock);
+
+    public OrgRoleMatrixService RoleMatrix(AppDbContext db) => new(db);
 
     public OrgActivityRetentionService Retention(AppDbContext db) =>
         new(db, Config(), NullLogger<OrgActivityRetentionService>.Instance, Clock);
@@ -303,6 +309,48 @@ internal sealed class OrgInvitationTestKit
         db.OrgInvitations.Add(invitation);
         await db.SaveChangesAsync();
         return (invitation, token);
+    }
+
+    /// <summary>A property of the org written directly (AM-02c: the tests of the areas, the invitation properties and the overview).</summary>
+    public async Task<Guid> SeedPropertyAsync(
+        Guid orgId,
+        string name,
+        RentalMode mode = RentalMode.Short,
+        bool deleted = false,
+        string ownerId = "auth0|owner",
+        PropertyComplianceStatus compliance = PropertyComplianceStatus.Pending)
+    {
+        await using var db = NewDb();
+        var property = HostScopeScenario.NewProperty(orgId, ownerId, name);
+        property.RentalMode = mode;
+        property.IsDeleted = deleted;
+        property.DeletedAt = deleted ? Now : null;
+        property.ComplianceStatus = compliance;
+        db.Properties.Add(property);
+        await db.SaveChangesAsync();
+        return property.Id;
+    }
+
+    /// <summary>The properties given to a person (the rows of «Solo alcuni»), sorted.</summary>
+    public async Task<List<Guid>> ReadGrantsAsync(string userId)
+    {
+        await using var db = NewDb();
+        return await db.PropertyMemberAccesses.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.UserId == userId)
+            .Select(a => a.PropertyId)
+            .OrderBy(id => id)
+            .ToListAsync();
+    }
+
+    /// <summary>The properties an invitation carries, sorted.</summary>
+    public async Task<List<Guid>> ReadInvitationPropertiesAsync(Guid invitationId)
+    {
+        await using var db = NewDb();
+        return await db.OrgInvitationProperties.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.InvitationId == invitationId)
+            .Select(p => p.PropertyId)
+            .OrderBy(id => id)
+            .ToListAsync();
     }
 
     private void AddConsents(AppDbContext db, string userId, Guid orgId)

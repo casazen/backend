@@ -52,9 +52,10 @@ public class OrgTeamControllersTests
     private OrgMembersController Members(string? sub = "auth0|owner") =>
         WithContext(new OrgMembersController(_team.Object, _propertyAccess.Object, _org.Object), sub is null ? [] : [new Claim("sub", sub)]);
 
-    private static OrgInvitationView View(OrgInvitationStatus status = OrgInvitationStatus.Pending) => new(
-        ItemId, "anna.leone@example.com", "Anna Leone", OrgRole.Collaborator, ["short-rent"], PropertyScope.All,
-        status, Now, Now.AddDays(7), null, "auth0|owner");
+    private static OrgInvitationView View(OrgInvitationStatus status = OrgInvitationStatus.Pending, params Guid[] propertyIds) => new(
+        ItemId, "anna.leone@example.com", "Anna Leone", OrgRole.Collaborator, ["short-rent"],
+        propertyIds.Length == 0 ? PropertyScope.All : PropertyScope.Selected,
+        status, Now, Now.AddDays(7), null, "auth0|owner", propertyIds, Now);
 
     private static OrgMemberView MemberView(OrgRole role = OrgRole.Collaborator) => new(
         ItemId, "auth0|anna", "anna.leone@example.com", "Anna", "Leone", role, OrgMemberStatus.Active,
@@ -66,9 +67,10 @@ public class OrgTeamControllersTests
     public async Task CreateInvitation_PassesTheRequestWithTheCallersOrgAndAccount_Answers201()
     {
         CreateOrgInvitation? received = null;
+        var propertyId = Guid.NewGuid();
         _invitations.Setup(i => i.CreateAsync(It.IsAny<CreateOrgInvitation>(), It.IsAny<CancellationToken>()))
             .Callback<CreateOrgInvitation, CancellationToken>((r, _) => received = r)
-            .ReturnsAsync(new OrgInvitationSent(View(), true));
+            .ReturnsAsync(new OrgInvitationSent(View(OrgInvitationStatus.Pending, propertyId), true));
 
         var result = await Invitations().Create(
             new CreateOrgInvitationRequest
@@ -78,6 +80,7 @@ public class OrgTeamControllersTests
                 Role = OrgRole.Collaborator,
                 Areas = ["short-rent"],
                 PropertyScope = PropertyScope.Selected,
+                PropertyIds = [propertyId],
                 Language = "en",
             },
             CancellationToken.None);
@@ -87,10 +90,14 @@ public class OrgTeamControllersTests
         var dto = Assert.IsType<OrgInvitationSentDto>(created.Value);
         Assert.True(dto.EmailQueued);
         Assert.Equal(ItemId, dto.Invitation.Id);
+        // AM-02c: the properties the invitation carries travel in, and out again as ids.
+        Assert.Equal([propertyId], dto.Invitation.PropertyIds);
+        Assert.Equal(Now, dto.Invitation.LastSentAt);
         Assert.NotNull(received);
         Assert.Equal((OrgId, "auth0|owner", "anna.leone@example.com", "Anna Leone", OrgRole.Collaborator, PropertyScope.Selected, "en"),
             (received.OrgId, received.ActorUserId, received.Email, received.Name, received.Role, received.PropertyScope, received.Language));
         Assert.Equal(["short-rent"], received.Areas);
+        Assert.Equal([propertyId], received.PropertyIds);
     }
 
     [Fact]
@@ -210,6 +217,48 @@ public class OrgTeamControllersTests
     }
 
     [Fact]
+    public async Task SetMemberAreas_PassesTheAreasAndTheCallersAccount_AndAnswersTheMember()
+    {
+        _team.Setup(t => t.SetAreasAsync(
+                OrgId, ItemId, It.Is<IReadOnlyCollection<string>>(a => a.SequenceEqual(new[] { "short-rent", "long-rent" })), "auth0|owner", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberView() with { Areas = ["long-rent", "short-rent"] });
+
+        var result = await Members().SetAreas(ItemId, new SetOrgMemberAreasRequest { Areas = ["short-rent", "long-rent"] }, CancellationToken.None);
+
+        var dto = Assert.IsType<OrgMemberDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(["long-rent", "short-rent"], dto.Areas);
+        _team.VerifyAll();
+    }
+
+    [Fact]
+    public async Task SetMemberAreas_NoAreasInTheBody_IsAnEmptyListForTheServiceToRefuse()
+    {
+        // The refusal (422 org_member_area_required) is the domain's: a missing list reaches it as an empty one, not as a null.
+        _team.Setup(t => t.SetAreasAsync(OrgId, ItemId, It.Is<IReadOnlyCollection<string>>(a => a.Count == 0), "auth0|owner", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberView());
+
+        await Members().SetAreas(ItemId, new SetOrgMemberAreasRequest(), CancellationToken.None);
+
+        _team.VerifyAll();
+    }
+
+    [Fact]
+    public void SetMemberAreas_IsRoutedUnderTheMemberAndBehindTheMembersPolicy()
+    {
+        var controller = typeof(OrgMembersController);
+
+        Assert.Equal(
+            Casazen.Web.Authorization.CasazenPolicies.OrgMembersManage,
+            controller.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), inherit: true)
+                .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().Single().Policy);
+        Assert.Equal(
+            "{id:guid}/areas",
+            controller.GetMethod(nameof(OrgMembersController.SetAreas))!
+                .GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPutAttribute), inherit: true)
+                .Cast<Microsoft.AspNetCore.Mvc.HttpPutAttribute>().Single().Template);
+    }
+
+    [Fact]
     public async Task DeactivateReactivateAndRemove_PassTheCallersOrgAndAccount()
     {
         _team.Setup(t => t.DeactivateAsync(OrgId, ItemId, "auth0|owner", It.IsAny<CancellationToken>())).ReturnsAsync(MemberView());
@@ -238,8 +287,9 @@ public class OrgTeamControllersTests
         var properties = await controller.GetProperties(ItemId, CancellationToken.None);
         var setProperties = await controller.SetProperties(
             ItemId, new SetOrgMemberPropertiesRequest { PropertyScope = PropertyScope.All }, CancellationToken.None);
+        var setAreas = await controller.SetAreas(ItemId, new SetOrgMemberAreasRequest { Areas = ["short-rent"] }, CancellationToken.None);
 
-        foreach (var result in new[] { list.Result, change.Result, deactivate.Result, reactivate.Result, remove, properties.Result, setProperties.Result })
+        foreach (var result in new[] { list.Result, change.Result, deactivate.Result, reactivate.Result, remove, properties.Result, setProperties.Result, setAreas.Result })
             Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>(result).StatusCode);
         _team.VerifyNoOtherCalls();
         _propertyAccess.VerifyNoOtherCalls();
