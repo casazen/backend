@@ -476,8 +476,8 @@ The guest online check-in (`/api/public/checkin/{token}`, web `/checkin/:token`)
 ### 10.2 `GET /api/supplier/dashboard/kpis?period=` (policy `RequireSupplier`)
 
 Counts the service requests whose `SupplierOrgId` is the caller's supplier org (never another supplier's, whatever the
-host org). `period`: `CurrentMonth` (default), `PreviousMonth`, `Last30Days`, `CurrentYear`; any other value is 400
-`validation_error`. Dates are Europe/Rome calendar days: "today" comes from `TimeProvider` (`RomeCalendar`), the period
+host org). `period`: `CurrentMonth` (default), `PreviousMonth`, `Last30Days`, `CurrentYear` and, since SP-04e, `Last3Months` (the
+last three calendar months, today included); any other value is 400 `validation_error`. Dates are Europe/Rome calendar days: "today" comes from `TimeProvider` (`RomeCalendar`), the period
 is `[00:00 Rome of from, 00:00 Rome of the day after to)`.
 
 | Field | Meaning |
@@ -1452,7 +1452,7 @@ the property or the street. `propertyName` of the inbox DTO is now nullable: the
 | `clientId` | the host org (the `clientId` of the items) |
 | `status`, `from`, `to`, `page`, `pageSize` | as in section 11.2 (`history` now includes `Annullato`) |
 
-Each item adds `price`, `scheduledStart`, `scheduledEnd`, `source` (`casazen`; `showcase` is reserved for SP-10), `respondBy` (only while `Richiesto`),
+Each item adds `price`, `scheduledStart`, `scheduledEnd`, `source` (`casazen`, or `showcase` for a request booked through the supplier's public showcase, SP-10), `respondBy` (only while `Richiesto`),
 `startedAt`, `clientId`/`clientName`, `serviceListingId`/`serviceName`, `proposal`, `cancelledAt`/`cancelledBy`/`cancellationReason`,
 `completionNotes` and `workPhotos`; the detail adds `history`.
 
@@ -2491,6 +2491,12 @@ September**: a part of a month is not compared with a whole one. The answer carr
 | `paidNetCents`, `paidGrossCents`, `commissionCents` | the payments with status **`Paid`** and `PaidAt` in the period (one recorded as received outside CasaZen included: no commission); `net = gross − commission`. **0 unless `onlinePayments`**. A payment that was paid and then refunded (`PartiallyRefunded`, `Refunded`) is **left out** until the earnings page (SP-16a) defines how a refund moves the figures |
 | `toCollectCents`, `toCollectJobs` | what is **still to be collected now**, only in `current` (`null` in `previous`: it is a state, not a flow). The jobs `Completato`: for a job paid outside CasaZen the **declared total** (gross, no commission exists), for one asked for inside it the **net** of its payment (while it is asked for, in progress, failed or under review). A job with no payment yet that waits for the host to confirm an amount above the quote (decision D7) counts at the declared total: the commission is computed when the payment is created. A job with no declared amount is a job to collect and adds nothing |
 
+**Two limits of the dates**, both shared with the KPIs of SU-11 and the average of `GET today` (a stored event date needs a migration: a follow-up):
+a refusal has no date of its own, so `rejected` counts a `Rifiutato` request on its last update (the retention job of the customers' data,
+`Gdpr:Retention:SupplierCustomers`, also updates it when it anonymizes the place of an old showcase request: from then on, an old refusal would be
+counted on the night of the job); and `TakenAt` is when the request became a job, which for a time the supplier proposed and the host accepted is the
+host's answer, so that wait lasts until then (the moment the supplier proposed is not kept) in `averageResponseMinutes` and in the day of `accepted`.
+
 `onlinePayments` is **true only when the flag `SupplierOnlinePayments` is on and the supplier has at least one payment** (not withdrawn). Otherwise
 it is `false` and the three money figures are **0**: the console then shows "Lavori completati" and never "Incassi" (SP-D13). A supplier that
 never had a payment, or whose flag was switched off, shows no money; one with payments shows them, zeros included.
@@ -2519,14 +2525,17 @@ requests with the **same statuses and the same "has a proposal" test as the tabs
   types "pulizie", not `cleaning`) or **comune** contains it, or whose **booking code** it is. It **never** searches the customer (a private
   customer's name is encrypted, and the host org's name is not a thing the supplier searches: SP-D23, the search by name stays on the rows the console
   loaded), nor what the take discloses (property name, the host's notes, address, floor, access notes), nor an e-mail or a phone. A `%` or an `_` is
-  the character it is (the provider escapes the pattern: `LIKE @p` with `\%` and `\_`). The booking code is the customer's credential (with its e-mail
-  it manages the booking, section 24) and the supplier never reads it from the console, so it matches **only as a whole** (dash and case ignored): a part
-  of a code finds nothing, and a supplier cannot find a code out character by character.
+  the character it is (the provider escapes the pattern: `LIKE @p` with `\%` and `\_`); a control character (a NUL included, which PostgreSQL cannot
+  store) is refused like a wrong length. The booking code is the customer's credential (with its e-mail it manages the booking, section 24) and the
+  supplier never reads it from the console, so in this filter it matches **only as a whole** (dash and case ignored): a part of a code finds nothing.
+  The global search of the console (`GET api/search`, `SearchKeyModel.ServiceRequestKeySql`) is older and already finds a request by the start of its
+  code; it is not changed here (a follow-up if that is judged too much for a credential).
 
 ### 27.5 `phase`
 
-Derived **once**, by `SupplierRequestPhases.Of(status, hasPendingProposal, hasPendingQuote)` (`Casazen.Core/Suppliers/SupplierRequestPhase.cs`, shared with the
-agenda of SP-03b), never stored, never a new value of `status`. **An open set**: a client shows a generic wording for a value it does not know.
+Derived **once**, by `SupplierRequestPhases.Of(status, hasPendingProposal, hasPendingQuote)` (`Casazen.Core/Suppliers/SupplierRequestPhase.cs`; the agenda
+of SP-03b will use the same type, so the file is the same in both), never stored, never a new value of `status`. Today it is on the items of `inbox`,
+`inbox/{id}` and `today`, **not** on the calendar. **An open set**: a client shows a generic wording for a value it does not know.
 
 | `phase` | When | `status` |
 |---|---|---|
@@ -2576,8 +2585,9 @@ because these two endpoints refuse for them too.
 ### 27.7 `GET api/supplier/today?days=`
 
 `days` from 1 to 7 (default 1; another value is 400 `SupplierTodayDaysInvalid`). The jobs (taken, in progress, completed or paid) go from today to today plus
-`days − 1` (Europe/Rome days, at most 50, the first in time first); the new requests, the earnings and the average are unchanged. The answer adds `days` and
-`dateTo`. A job with no day of its own (a long-rent one with no time, to agree with the host) is never listed; a short-rent job with no time is on the
+`days − 1` (Europe/Rome days, at most 50, the first in time first); the new requests, the earnings and the average are unchanged. The answer adds `days`,
+`dateTo` and `jobsTotal`: how many jobs fall on those days, which is more than the length of `jobs` when the 50 are not enough (the later ones are the
+ones left out: a day never reaches 50, a week can). A job with no day of its own (a long-rent one with no time, to agree with the host) is never listed; a short-rent job with no time is on the
 check-out day of its stay, as everywhere (section 21).
 
 ### 27.8 Tenancy, cost, no index
@@ -2596,8 +2606,9 @@ thousands of requests, `(SupplierOrgId, CreatedAt)` is the first candidate (with
 ### 27.9 For the tasks that use it or extend it
 
 - **SP-08a/b/c/d (frontend)**: `phase` replaces every client-side derivation; `counts` is the only source of the chips and the menu badge; `payment` gives
-  the split and the two buttons, `late` the "Da fare" row; `overview.onlinePayments` decides "Incassi" or "Lavori completati"; `previous.from/to` say what
-  the delta compares with. The Golden Journey keeps using `nuove`.
+  the split and the two buttons, `late` the "Da fare" row (`payment` is there for **every completed job**, with `id` and `status` null until a record exists:
+  test `payment.id` to know whether there is one, never `payment != null`); `overview.onlinePayments` decides "Incassi" or "Lavori completati"; `previous.from/to`
+  say what the delta compares with; `today.jobsTotal` says when the 50 jobs are not all of them. The Golden Journey keeps using `nuove`.
 - **SP-04b (quote)**: add `Quote` to `SupplierServiceRequestView` and pass `hasPendingQuote: Quote is not null` in `SupplierServiceRequestView.Phase`; add the
   same test to the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and to `TabCountsOf`. **SP-04d (auto-accept)**: exclude the
   requests accepted in automatic from `SupplierKpiService.AnswersBetween` (and from the average of `today`), as decided. **LR-08a (`tenantContact`)**: independent
@@ -2610,7 +2621,8 @@ thousands of requests, `(SupplierOrgId, CreatedAt)` is the first candidate (with
 SP-D13 (three numbers; acceptance = taken / (taken + refused); mean, not median; "Incassi" = net of the `Paid` payments by payment date); SP-D23 (no search by
 customer name in the server); the period before = the same number of days just before (not the calendar month); `onlinePayments` = flag on **and** a payment
 exists; `payment` also for a completed job with no record; `late` = flagged and still owed; refunded payments left out of the money of the home; the booking
-code matches only as a whole; `q` out of 2-60 characters, `source` and `days` out of range are 400 (not silently cut).
+code matches only as a whole; `q` out of 2-60 characters or with a control character, `source` and `days` out of range are 400 (not silently cut); `today` also
+carries `jobsTotal` (additive) so that the cap of 50 jobs, which a week can reach, is not silent.
 
 ### 27.11 After a deploy
 
@@ -2618,6 +2630,19 @@ code matches only as a whole; `q` out of 2-60 characters, `source` and `days` ou
       `false` and every `payment` of a completed job has `canRequest: false`.
 - [ ] A supplier token gets 200 from `GET /api/supplier/inbox/counts`, `GET /api/supplier/dashboard/overview` and `GET /api/supplier/today?days=7`; a
       host token gets 403 and no token 401.
+
+### 27.12 Known limits of this task (follow-ups, nothing is broken)
+
+- The rules of `canRequest` and `canRecordOffline` are written twice, in `ServicePaymentActions` and in `SupplierPaymentService`; the matrix test of 27
+  states keeps them equal, so whoever changes one changes both (the deeper fix is for the endpoints to call `ServicePaymentActions` too). The same goes for
+  "waiting for the customer": the filter, the counters and `phase` each test the proposed time, and SP-04b adds the quote to the three.
+- `IFeatureFlags` and `ISupplierPaymentReadModels` are optional constructor parameters of the KPI service and of the reader (so the tests that build them by hand
+  stay as they are); the container always gives both, and `SupplierReadModelsPaymentsIntegrationTests`, which goes through the real host, fails if the registration is lost.
+- Cost: what is to be collected is added up in memory over the supplier's completed jobs not paid yet, and the answers of the mean are read as pairs. That is
+  fine at the size of one supplier; a grouped query is the answer if one ever has thousands of jobs left unpaid.
+- The two limits of the dates of 27.2 (the date of a refusal, the moment a host-accepted proposal counts as taken) need a stored event date, that is a migration.
+- The demo showcase (`DemoShowcaseCatalog`) has no supplier or service-request data at all, so there is nothing to extend for these read-only screens: a
+  supplier in the demo is a task of its own (`.claude/rules/demo-seed.md`).
 
 ## Known limits (other tasks)
 
