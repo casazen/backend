@@ -754,6 +754,27 @@ public class SupplierProfileController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Unlinks the supplier's iCal calendar (SP-03b): the URL and the sync type are cleared, the days and the hours the feed closed
+    /// are open again, the events the calendar marks "Available" and the answers about them are deleted, and a sync that was queued
+    /// or running stops (the recurring job never tries the supplier again). The supplier's own blocks, extra openings and days
+    /// closed by hand are not touched. 204, also when there was no feed (idempotent). Linking the calendar again brings the days
+    /// and hours back at the first sync. 404 <c>not_found</c> when the caller has no linked supplier org (nothing is provisioned).
+    /// </summary>
+    [HttpDelete("calendar/ical")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DisconnectIcalFeed(CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        if (!await calendarSyncService.DisconnectIcalFeedAsync(orgId.Value, cancellationToken))
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        return NoContent();
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private void QueueSupplierSync(Guid orgId, IBackgroundJobClient backgroundJobClient)
