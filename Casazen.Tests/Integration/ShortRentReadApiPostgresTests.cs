@@ -356,7 +356,7 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
     // --- No command per row ---------------------------------------------------------------------------
 
     /// <summary>Counts the commands a context sends to the server.</summary>
-    private sealed class CommandCounter : DbCommandInterceptor
+    internal sealed class CommandCounter : DbCommandInterceptor
     {
         private int _count;
 
