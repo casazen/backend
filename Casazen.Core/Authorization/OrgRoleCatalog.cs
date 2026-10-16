@@ -26,7 +26,7 @@ public sealed record SeededRole(int Id, string ContextKey, string RoleKey, IRead
 /// <listheader><term>Org role</term><description>account / short-rent / long-rent</description></listheader>
 /// <item><term>Owner</term><description><c>org_owner</c> / <c>property_owner</c> / <c>long_term_landlord</c> (the owner's host rows come from the onboarding, see <c>IUserContextMembershipService</c>)</description></item>
 /// <item><term>Admin</term><description><c>org_admin</c> / <c>property_manager</c> / <c>property_manager</c></description></item>
-/// <item><term>PropertyManager</term><description>none / <c>property_manager</c> / <c>property_manager</c></description></item>
+/// <item><term>PropertyManager</term><description><c>org_manager</c> (AM-02c: the trusted suppliers only) / <c>property_manager</c> / <c>property_manager</c></description></item>
 /// <item><term>Collaborator</term><description>none / <c>staff</c> / <c>staff</c> (long-rent: <c>property.read</c> only)</description></item>
 /// <item><term>Accountant</term><description><c>org_accountant</c> / <c>accountant</c> / <c>accountant</c></description></item>
 /// </list>
@@ -63,6 +63,7 @@ public static class OrgRoleCatalog
     {
         OrgRole.Owner => AccountContext.RoleKeys.Owner,
         OrgRole.Admin => AccountContext.RoleKeys.Admin,
+        OrgRole.PropertyManager => AccountContext.RoleKeys.Manager,
         OrgRole.Accountant => AccountContext.RoleKeys.Accountant,
         _ => null,
     };
@@ -116,7 +117,8 @@ public static class OrgRoleCatalog
 
     /// <summary>
     /// The role rows added by the migration <c>AddOrgMembership</c> (ids 4 to 12; 1 to 3 are the owner's and the platform
-    /// admin's, seeded since the context authorization). Ids are explicit because the model seeds them.
+    /// admin's, seeded since the context authorization) and, since AM-02c, <c>account/org_manager</c> (13, migration
+    /// <c>AddOrgTeamCompletions</c>). Ids are explicit because the model seeds them.
     /// </summary>
     public static IReadOnlyList<SeededRole> SeededRoles { get; } =
     [
@@ -137,5 +139,9 @@ public static class OrgRoleCatalog
         // Accountant: reads, never writes. Its invoices are in the account context (org.billing.read).
         new(11, ShortRent, AccountantRoleKey, ["property.read", "booking.read", "payment.read"]),
         new(12, LongRent, AccountantRoleKey, ["property.read", "lease.read"]),
+
+        // Property manager in the account context (AM-02c, decision AM-D12): «Fornitori» and nothing else of the area. It holds
+        // neither org.members.manage nor org.billing.*, so it never passes OrgBillingAdmin or the team endpoints.
+        new(13, AccountContext.Key, AccountContext.RoleKeys.Manager, [AccountContext.Permissions.SuppliersManage]),
     ];
 }
