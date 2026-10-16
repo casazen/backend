@@ -137,6 +137,21 @@ public sealed partial class OrgInvitationService
                 throw new DomainConflictException(OrgInvitationErrors.UserHasOrganization, "InvitationUserHasOrganization");
             }
 
+            // The properties the invitation carried (AM-02c, AM-03-FU1): the member and its grants exist together or not at all,
+            // in the save below. One deleted since the invitation was written is skipped without an error.
+            if (propertyScope == PropertyScope.Selected)
+            {
+                var carried = await db.OrgInvitationProperties.IgnoreQueryFilters().AsNoTracking()
+                    .Where(p => p.OrgId == invitation.OrgId && p.InvitationId == invitation.Id)
+                    .Select(p => p.PropertyId)
+                    .ToListAsync(cancellationToken);
+                if (carried.Count > 0)
+                {
+                    await propertyAccess.GrantFromInvitationAsync(
+                        invitation.OrgId, user.Id, carried, invitation.InvitedByUserId, cancellationToken);
+                }
+            }
+
             invitation.Status = OrgInvitationStatus.Accepted;
             invitation.AcceptedAt = now;
             invitation.AcceptedByUserId = user.Id;

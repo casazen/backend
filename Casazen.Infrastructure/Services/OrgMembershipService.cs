@@ -173,6 +173,67 @@ public sealed partial class OrgMembershipService(
         return member;
     }
 
+    public async Task<OrgMemberAreasChange> SetAreasAsync(
+        string userId,
+        IReadOnlyCollection<string> rentalContexts,
+        CancellationToken cancellationToken = default)
+    {
+        var areas = NormalizeAreas(rentalContexts);
+        if (areas.Count == 0)
+            throw new DomainRuleException(OrgMembershipErrors.AreaRequired, "OrgMemberAreaRequired");
+
+        var (transaction, member) = await LockMemberAsync(userId, cancellationToken);
+        await using var memberLock = transaction;
+
+        // The owner's rental contexts are the onboarding's (the rental type it chose), not the team's to change.
+        if (member.Role == OrgRole.Owner)
+            throw new DomainConflictException(OrgMembershipErrors.LastOwner, "OrgLastOwner");
+
+        var before = (await RentalContextsOfAsync(userId, cancellationToken)).Order(StringComparer.Ordinal).ToList();
+
+        // Exactly the wanted rental rows, each with the role key of the member's role; the account row of the role is untouched.
+        // Run also when the areas are the same: it aligns a drifted role key and writes nothing otherwise.
+        await ProjectAsync(userId, OrgRoleCatalog.ProjectionOf(member.Role, areas), ManagedContexts, cancellationToken);
+        var released = await ReleaseUnreachedAsync(member, areas, cancellationToken);
+
+        await SaveAsync(transaction, userId, cancellationToken);
+
+        var change = new OrgMemberAreasChange(member, before, areas.Order(StringComparer.Ordinal).ToList(), released);
+        logger.LogInformation(
+            "Org member areas set: userId={UserId} orgId={OrgId} from=[{From}] to=[{To}] responsibilitiesReleased={Released}",
+            userId, member.OrgId, string.Join(", ", change.Before), string.Join(", ", change.After), released);
+        return change;
+    }
+
+    /// <summary>
+    /// A collaborator «Solo alcuni» that now works in one area only no longer reaches the given properties of the other mode: the
+    /// rows stay (the area can be given back), but it must not stay in charge of what it cannot open (AM-03b). Staged; the
+    /// caller saves. Everybody else, and a collaborator that works in both areas, releases nothing. Returns how many were released.
+    /// </summary>
+    private async Task<int> ReleaseUnreachedAsync(OrgMember member, IReadOnlyCollection<string> areas, CancellationToken cancellationToken)
+    {
+        if (member.Role != OrgRole.Collaborator || member.PropertyScope != PropertyScope.Selected)
+            return 0;
+        if (OrgRoleCatalog.SingleModeOf(areas) is not { } mode)
+            return 0;
+
+        var reached = await db.PropertyMemberAccesses.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.UserId == member.UserId && a.OrgId == member.OrgId && a.Property.RentalMode == mode)
+            .Select(a => a.PropertyId)
+            .ToListAsync(cancellationToken);
+        var released = await PropertyResponsibility.ReleaseAsync(
+            db, member.OrgId, member.UserId, reached, _clock.GetUtcNow().UtcDateTime, cancellationToken);
+        return released.Count;
+    }
+
+    /// <summary>The rental contexts among <paramref name="contexts"/>, lowercase and without repeats.</summary>
+    private static List<string> NormalizeAreas(IReadOnlyCollection<string>? contexts) =>
+        (contexts ?? [])
+            .Where(c => c is not null && OrgRoleCatalog.IsRentalContext(c.Trim()))
+            .Select(c => c.Trim().ToLowerInvariant())
+            .Distinct()
+            .ToList();
+
     public async Task<OrgMember> DeactivateAsync(string userId, CancellationToken cancellationToken = default)
     {
         var (transaction, member) = await LockMemberAsync(userId, cancellationToken);

@@ -299,6 +299,13 @@ public sealed class OrgInvitationMaintenanceService(
         if (old.Count == 0)
             return 0;
 
+        // The properties an invitation carried (AM-02c) go with it. The foreign key cascades on PostgreSQL; naming them here makes
+        // the same delete in every provider and keeps the intent in the code.
+        var oldIds = old.Select(i => i.Id).ToList();
+        var carried = await db.OrgInvitationProperties.IgnoreQueryFilters()
+            .Where(p => p.OrgId == orgId && oldIds.Contains(p.InvitationId))
+            .ToListAsync(cancellationToken);
+        db.OrgInvitationProperties.RemoveRange(carried);
         db.OrgInvitations.RemoveRange(old);
         await db.SaveChangesAsync(cancellationToken);
 

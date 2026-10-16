@@ -63,6 +63,24 @@ public interface IOrgPropertyAccessService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gives the properties an invitation carried to the person who has just accepted it (AM-02c, AM-03-FU1): one
+    /// <see cref="Casazen.Core.Entities.PropertyMemberAccess"/> row for each of <paramref name="propertyIds"/> that is still a live
+    /// property of the org (one deleted since the invitation was written, or unknown, is skipped without an error), and one line of
+    /// the activity log, as given by <paramref name="grantedByUserId"/> (the person who invited). <b>It joins the transaction of the
+    /// acceptance and does not save</b>: the member row, the memberships, the grants and the closing of the invitation are written
+    /// by the one <c>SaveChanges</c> of the acceptance, so a failure takes all of it away. It takes no lock of its own (the
+    /// acceptance holds the org's seats lock and the member was just added under the people lock) and does not decide who may give
+    /// access: the inviter was checked when the invitation was written.
+    /// </summary>
+    /// <returns>How many properties were given.</returns>
+    Task<int> GrantFromInvitationAsync(
+        Guid orgId,
+        string userId,
+        IReadOnlyCollection<Guid> propertyIds,
+        string grantedByUserId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Puts <paramref name="responsibleUserId"/> in charge of the property (or nobody, <c>null</c>): the person who is told, with
     /// the org's administrators, when something happens on it. It must be an active member of the org who reaches the property.
     /// It takes the org's people lock like the writes of the access (AM-03b), so a person cannot be put in charge in the middle of

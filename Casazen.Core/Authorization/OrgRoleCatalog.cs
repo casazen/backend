@@ -58,6 +58,23 @@ public static class OrgRoleCatalog
     public static bool IsRentalContext(string contextKey) =>
         RentalContexts.Contains(contextKey, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The rental context (area) a property of the mode belongs to: <c>short-rent</c> or <c>long-rent</c>.</summary>
+    public static string ContextOf(RentalMode mode) => mode == RentalMode.Long ? LongRent : ShortRent;
+
+    /// <summary>
+    /// The one rental mode a member works in, when it works in a single area; <c>null</c> when it works in both, or in none that
+    /// is known (AM-02c). A collaborator «Solo alcuni» reaches the properties it was given only while their mode is one of its
+    /// areas: with a single area the other mode is out, with both nothing narrows the grants, and with none known (a drift the
+    /// reconcile reports; the member holds no context permission then) the grants are not narrowed either.
+    /// </summary>
+    public static RentalMode? SingleModeOf(IEnumerable<string> rentalContexts)
+    {
+        ArgumentNullException.ThrowIfNull(rentalContexts);
+
+        var areas = rentalContexts.Where(IsRentalContext).Select(c => c.ToLowerInvariant()).Distinct().ToList();
+        return areas.Count == 1 ? (areas[0] == LongRent ? RentalMode.Long : RentalMode.Short) : null;
+    }
+
     /// <summary>The role key of <paramref name="role"/> in the account context; <c>null</c> when the role has no account membership.</summary>
     public static string? AccountRoleKey(OrgRole role) => role switch
     {

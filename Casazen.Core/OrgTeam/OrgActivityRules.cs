@@ -31,6 +31,13 @@ public static class OrgActivityDetails
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = false };
 
+    /// <summary>
+    /// The code of a set of areas (rental contexts) as a detail value: the keys sorted and joined with a dot
+    /// (<c>long-rent.short-rent</c>), which is a short code the log accepts. Not a sentence, never a name.
+    /// </summary>
+    public static string AreasCode(IEnumerable<string> areas) =>
+        string.Join('.', areas.Select(a => a.Trim().ToLowerInvariant()).Distinct().Order(StringComparer.Ordinal));
+
     /// <summary>The JSON of <paramref name="details"/>: keys in alphabetical order, so the same details always read the same; <c>{}</c> when there are none.</summary>
     public static string Serialize(IReadOnlyDictionary<string, string>? details)
     {

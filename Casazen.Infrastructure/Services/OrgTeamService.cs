@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -77,6 +78,57 @@ public sealed class OrgTeamService(
         logger.LogInformation(
             "Org member role changed by the team service: memberId={MemberId} orgId={OrgId} from={From} to={To} by={ActorUserId}",
             memberId, orgId, target.Role, role, actorUserId);
+
+        return await ViewAsync(orgId, memberId, cancellationToken);
+    }
+
+    public async Task<OrgMemberView> SetAreasAsync(
+        Guid orgId,
+        Guid memberId,
+        IReadOnlyCollection<string> areas,
+        string actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(areas);
+
+        OrgMember target;
+        await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                         db, cancellationToken, OrgMembershipService.OrgLock(orgId)))
+        {
+            OrgMember actor;
+            (actor, target) = await LoadAsync(orgId, memberId, actorUserId, cancellationToken);
+            EnsureCanAct(actor, target);
+
+            var change = await membership.SetAreasAsync(target.UserId, areas, cancellationToken);
+
+            // Same transaction as the change; nothing to say when the person already worked in exactly these areas.
+            if (change.Changed)
+            {
+                var details = new List<(string Key, string Value)>
+                {
+                    (OrgActivityDetailKeys.FromAreas, OrgActivityDetails.AreasCode(change.Before)),
+                    (OrgActivityDetailKeys.ToAreas, OrgActivityDetails.AreasCode(change.After)),
+                };
+                if (change.Released > 0)
+                    details.Add((OrgActivityDetailKeys.Released, change.Released.ToString(CultureInfo.InvariantCulture)));
+
+                await RecordAsync(
+                    OrgActivityType.MemberAreasChanged,
+                    orgId,
+                    actorUserId,
+                    target.UserId,
+                    cancellationToken,
+                    [.. details]);
+            }
+
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+        }
+
+        authorizationCache.Invalidate(target.UserId);
+        logger.LogInformation(
+            "Org member areas set by the team service: memberId={MemberId} orgId={OrgId} by={ActorUserId}",
+            memberId, orgId, actorUserId);
 
         return await ViewAsync(orgId, memberId, cancellationToken);
     }

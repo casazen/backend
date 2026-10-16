@@ -44,9 +44,19 @@ public static class OrgActivityDetailKeys
     /// <summary>The day (<c>yyyy-MM-dd</c>) a scheduled change takes effect.</summary>
     public const string EffectiveOn = "effectiveOn";
 
+    /// <summary>
+    /// The areas (rental contexts) a member worked in before a change of its areas, as <see cref="OrgActivityDetails.AreasCode"/>
+    /// writes them: <c>short-rent</c>, <c>long-rent</c> or <c>long-rent.short-rent</c> (AM-02c).
+    /// </summary>
+    public const string FromAreas = "fromAreas";
+
+    /// <summary>The areas the member works in after the change, written like <see cref="FromAreas"/> (AM-02c).</summary>
+    public const string ToAreas = "toAreas";
+
     public static IReadOnlyList<string> All { get; } =
     [
         Role, FromRole, ToRole, Scope, Granted, Revoked, Released, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
+        FromAreas, ToAreas,
     ];
 }
 
@@ -119,6 +129,8 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.MemberPropertyAccessChanged, OrgActivityArea.Account, OrgActivitySubjectType.Member,
             [OrgActivityDetailKeys.Scope, OrgActivityDetailKeys.Granted, OrgActivityDetailKeys.Revoked, OrgActivityDetailKeys.Released]),
         new(OrgActivityType.AccessRequested, OrgActivityArea.Account, OrgActivitySubjectType.Org, [OrgActivityDetailKeys.RequestedArea]),
+        new(OrgActivityType.MemberAreasChanged, OrgActivityArea.Account, OrgActivitySubjectType.Member,
+            [OrgActivityDetailKeys.FromAreas, OrgActivityDetailKeys.ToAreas, OrgActivityDetailKeys.Released]),
 
         // Plan and organization.
         new(OrgActivityType.PlanChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org,
@@ -126,13 +138,14 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.OrgNameChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
         new(OrgActivityType.OrgSlugChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
 
-        // Reserved: the area of a mode change is the one of the property, given by the task that writes it (PM-02).
+        // The mode change of a property (PM-02, written by PropertyModeService since AM-02c). The area is the one of the property,
+        // which the service passes (ShortRent is only the default of the catalog).
         new(OrgActivityType.PropertyModeChangeScheduled, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
-            [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode, OrgActivityDetailKeys.EffectiveOn], Reserved: true),
+            [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode, OrgActivityDetailKeys.EffectiveOn]),
         new(OrgActivityType.PropertyModeChangeCancelled, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
-            [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode], Reserved: true),
+            [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode]),
         new(OrgActivityType.PropertyModeChanged, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
-            [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode], Reserved: true),
+            [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode]),
 
         // Reserved: the trusted suppliers of the host.
         new(OrgActivityType.TrustedSupplierAdded, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: true),

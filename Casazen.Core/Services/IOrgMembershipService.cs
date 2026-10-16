@@ -71,6 +71,21 @@ public interface IOrgMembershipService
     Task<OrgMember> ChangeRoleAsync(string userId, OrgRole role, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sets the areas <paramref name="userId"/> works in (AM-02c): the rental memberships are rewritten to exactly
+    /// <paramref name="rentalContexts"/>, each with the role key of the member's org role, and the authorization cache of the
+    /// user is invalidated, so the change is seen on its next request. At least one area. Same transaction and same org lock as
+    /// <see cref="ChangeRoleAsync"/> (the two never interleave on the same person); the account membership of the role is
+    /// untouched. A collaborator «Solo alcuni» <b>keeps</b> its <see cref="PropertyMemberAccess"/> rows (giving the area back gives
+    /// the properties back): while it works in one area only it reaches the given properties of that mode, and the properties of
+    /// the other mode lose their person in charge if it was the person, like when the access is taken away (AM-03b). Idempotent:
+    /// the same areas change nothing.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">No valid area was given (<see cref="OrgMembershipErrors.AreaRequired"/>).</exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">The member is the owner (<see cref="OrgMembershipErrors.LastOwner"/>): its rental contexts are the onboarding's.</exception>
+    /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user is not a member of any org.</exception>
+    Task<OrgMemberAreasChange> SetAreasAsync(string userId, IReadOnlyCollection<string> rentalContexts, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deactivates the member: from the next request on every call of the user answers 403 <c>member_inactive</c>
     /// (the user's account, memberships and org stay as they are, the reactivation gives everything back). Not
     /// <c>IUserService.DeactivateUserAsync</c>: that blocks the Auth0 account and is the staff's. Idempotent.
@@ -117,6 +132,16 @@ public interface IOrgMembershipService
     /// guessed. With <paramref name="dryRun"/> nothing is saved: the report lists what a real run would do.
     /// </summary>
     Task<OrgMembershipReconcileReport> ReconcileAsync(bool dryRun, CancellationToken cancellationToken = default);
+}
+
+/// <summary>What <see cref="IOrgMembershipService.SetAreasAsync"/> did: the member and its areas before and after.</summary>
+/// <param name="Before">The rental contexts the member worked in, sorted.</param>
+/// <param name="After">The rental contexts it works in now, sorted.</param>
+/// <param name="Released">How many properties lost their person in charge because the member no longer reaches them (a collaborator «Solo alcuni» that gave up an area).</param>
+public sealed record OrgMemberAreasChange(OrgMember Member, IReadOnlyList<string> Before, IReadOnlyList<string> After, int Released)
+{
+    /// <summary>The areas are not the same as before.</summary>
+    public bool Changed => !Before.SequenceEqual(After, StringComparer.Ordinal);
 }
 
 /// <summary>Stable codes of the refusals of <see cref="IOrgMembershipService"/> (422 and 409), translated by the clients.</summary>

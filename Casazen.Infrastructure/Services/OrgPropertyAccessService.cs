@@ -1,4 +1,5 @@
 using System.Globalization;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -151,6 +152,62 @@ public sealed class OrgPropertyAccessService(
         return await BuildViewAsync(orgId, target, cancellationToken);
     }
 
+    public async Task<int> GrantFromInvitationAsync(
+        Guid orgId,
+        string userId,
+        IReadOnlyCollection<Guid> propertyIds,
+        string grantedByUserId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(propertyIds);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var wanted = propertyIds.Distinct().ToList();
+        if (wanted.Count == 0)
+            return 0;
+
+        // The acceptance is the invitee's request: its tenant is not necessarily the org joined, so the tenant filter is lifted
+        // and the org is explicit; the soft-delete filter stays on, so a property deleted since the invitation is skipped.
+        var live = await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(p => p.OrgId == orgId && wanted.Contains(p.Id))
+            .Select(p => p.Id)
+            .ToListAsync(cancellationToken);
+        var already = await db.PropertyMemberAccesses.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.OrgId == orgId && a.UserId == userId && live.Contains(a.PropertyId))
+            .Select(a => a.PropertyId)
+            .ToListAsync(cancellationToken);
+
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var given = live.Except(already).ToList();
+        foreach (var propertyId in given)
+        {
+            db.PropertyMemberAccesses.Add(new PropertyMemberAccess
+            {
+                OrgId = orgId,
+                UserId = userId,
+                PropertyId = propertyId,
+                CreatedAt = now,
+                CreatedByUserId = grantedByUserId,
+            });
+        }
+
+        if (given.Count > 0)
+        {
+            // Who gave what to whom (AM-02b): the inviter gave these properties, the line is written with the acceptance.
+            activityLog.Record(OrgActivity.Of(
+                orgId,
+                OrgActivityType.MemberPropertyAccessChanged,
+                grantedByUserId,
+                userId,
+                (OrgActivityDetailKeys.Scope, PropertyScope.Selected.ToString()),
+                (OrgActivityDetailKeys.Granted, given.Count.ToString(CultureInfo.InvariantCulture)),
+                (OrgActivityDetailKeys.Revoked, "0")));
+        }
+
+        return given.Count;
+    }
+
     public async Task SetResponsibleAsync(
         Guid orgId,
         Guid propertyId,
@@ -172,7 +229,7 @@ public sealed class OrgPropertyAccessService(
                 };
 
             if (!string.IsNullOrWhiteSpace(responsibleUserId))
-                await EnsureCanBeInChargeAsync(orgId, propertyId, responsibleUserId, cancellationToken);
+                await EnsureCanBeInChargeAsync(orgId, propertyId, property.RentalMode, responsibleUserId, cancellationToken);
 
             property.ResponsibleUserId = string.IsNullOrWhiteSpace(responsibleUserId) ? null : responsibleUserId;
             property.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
@@ -201,10 +258,14 @@ public sealed class OrgPropertyAccessService(
             throw new DomainRuleException(OrgMembershipErrors.PropertyUnknown, "OrgMemberPropertyUnknown");
     }
 
-    /// <summary>The person in charge is an active member of the org, with an active account, who reaches the property.</summary>
+    /// <summary>
+    /// The person in charge is an active member of the org, with an active account, who reaches the property: every property for a
+    /// member who is not a collaborator «Solo alcuni», the given ones of a mode it works in for one who is (AM-02c).
+    /// </summary>
     private async Task EnsureCanBeInChargeAsync(
         Guid orgId,
         Guid propertyId,
+        RentalMode propertyMode,
         string userId,
         CancellationToken cancellationToken)
     {
@@ -215,11 +276,19 @@ public sealed class OrgPropertyAccessService(
         var activeAccount = member is not null
                             && await db.Users.AsNoTracking()
                                 .AnyAsync(u => u.Id == userId && u.OrgId == orgId && u.IsActive, cancellationToken);
-        var reaches = activeAccount
-                      && (member!.Role != OrgRole.Collaborator
-                          || member.PropertyScope != PropertyScope.Selected
-                          || await db.PropertyMemberAccesses.IgnoreQueryFilters().AsNoTracking()
-                              .AnyAsync(a => a.UserId == userId && a.OrgId == orgId && a.PropertyId == propertyId, cancellationToken));
+
+        var reaches = activeAccount;
+        if (reaches && member!.Role == OrgRole.Collaborator && member.PropertyScope == PropertyScope.Selected)
+        {
+            var areas = await db.UserContextMemberships.AsNoTracking()
+                .Where(m => m.UserId == userId)
+                .Select(m => m.ContextKey)
+                .ToListAsync(cancellationToken);
+            var inItsAreas = OrgRoleCatalog.SingleModeOf(areas) is not { } worksIn || worksIn == propertyMode;
+            reaches = inItsAreas
+                      && await db.PropertyMemberAccesses.IgnoreQueryFilters().AsNoTracking()
+                          .AnyAsync(a => a.UserId == userId && a.OrgId == orgId && a.PropertyId == propertyId, cancellationToken);
+        }
 
         if (!reaches)
             throw new DomainRuleException(PropertyResponsibleErrors.Invalid, "PropertyResponsibleInvalid");
