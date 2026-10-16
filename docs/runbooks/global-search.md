@@ -2,8 +2,7 @@
 
 Task UI-13a of the redesign wave (F13 of the design-system guide): the server side of the command palette (Ctrl/Cmd+K) and the
 last area used, saved on the server. **Backend only**: the palette of the frontend (UI-06, version 1: menus, actions and lists
-already in the cache) is connected to this endpoint by a later task. Everything below is behind the flag `GlobalSearch`, off by
-default, except `PUT /api/me/last-context`.
+already in the cache) is connected to this endpoint by a later task.
 
 ## 1. What exists
 
@@ -11,24 +10,19 @@ default, except `PUT /api/me/last-context`.
 |---|---|---|
 | `GET /api/search?q=&limit=` | `SearchController`, `GlobalSearchService` (`Casazen.Infrastructure/Search`) | Groups of results by kind, only what the caller may read in its context, bound in SQL to its org and to the properties it reaches. |
 | `PUT /api/me/last-context` | `MeController.PutLastContext`, `UserService.SetLastUsedContextAsync` | Stores the area the caller entered last (`User.LastUsedContextKey`); `GET /api/me/contexts` gives it back as `lastUsedContextKey`. |
-| Flag `GlobalSearch` | `Casazen.Core/Features/FeatureFlags.cs`, `appsettings.json` | `Features:GlobalSearch` / `Features__GlobalSearch`, **off**. Off: `GET /api/search` answers 404 `not_found` like a route that does not exist. |
 | Rate limit | policy `GlobalSearch` (`RateLimitPolicies`) | 60 requests per minute **per user** (not per IP). |
 | Search keys | stored generated column `SearchKey` on five tables, a GIN index each | The words of the main texts of a row, folded (no case, no accents); see section 5. |
-| Migration | `AddGlobalSearchKeys` | Adds the five columns and six indexes. Applied with the other migrations whether the flag is on or off. |
+| Migration | `AddGlobalSearchKeys` | Adds the five columns and six indexes. Applied with the other migrations. |
 
-The migration and the columns are there with the flag off: shipping the backend does not change what anybody sees, and turning the
-flag on later needs no other deploy.
+## 2. Deploying it
 
-## 2. Turning it on
+1. Deploy the backend with the migration (section 6 says what it locks and for how long). The endpoint is always on: there is no
+   switch.
+2. On the **test** environment, try the searches of section 9 with a real account, then with a collaborator limited to some
+   properties (it must not find the others).
+3. Production: the same deploy.
 
-1. Deploy the backend with the migration (section 6 says what it locks and for how long).
-2. Set `Features__GlobalSearch=true` on the **test** environment first. The frontend reads the flag from `GET /api/public/features`
-   (key `globalSearch`); the palette will call the endpoint only when it is on (the task that connects it).
-3. Try the searches of section 9 with a real account, then with a collaborator limited to some properties (it must not find the others).
-4. Production: the same variable. Turning it off again is immediate (Railway redeploys with the new value) and loses nothing.
-
-`PUT /api/me/last-context` is **not** behind the flag: it writes one column of the caller's own row and nothing reads it but
-`GET /api/me/contexts`.
+`PUT /api/me/last-context` writes one column of the caller's own row and nothing reads it but `GET /api/me/contexts`.
 
 ## 3. The API
 
@@ -77,7 +71,6 @@ All in the shape of the other endpoints (ProblemDetails with a stable `code`; th
 |---|---|---|
 | 400 | `search_query_too_short` | Fewer than 2 characters after trimming (or no `q`). Nothing is read. |
 | 400 | `search_query_too_long` | More than 64 characters after trimming. |
-| 404 | `not_found` | The flag is off (before authentication). |
 | 401 | | No valid token. |
 | 429 | `rate_limited` | More than the limit of section 7; `Retry-After` is set. |
 
@@ -89,7 +82,7 @@ list spells it. Answer `200 { "lastUsedContextKey": "long-rent" }`. Saving the v
 
 | Status | `code` | When |
 |---|---|---|
-| 422 | `context_not_accessible` | The key does not exist, or the caller cannot enter that context (an access it does not have; `account` while `OrgTeam` is off). Nothing is stored. |
+| 422 | `context_not_accessible` | The key does not exist, or the caller cannot enter that context (an access it does not have). Nothing is stored. |
 | 400 | `validation_error` | No key, or longer than 64 characters. |
 | 403 | `account_inactive` | The account is deactivated. |
 
@@ -243,14 +236,14 @@ before `Retry-After`.
 * `GET /api/me/contexts` gives `lastUsedContextKey`: open that area after the login, if it is not null (it is null when nothing was
   saved or the caller can no longer enter it). At every change of area, `PUT /api/me/last-context` with the `contextKey` entered; a
   `422` means the list changed (reload it).
-* The palette (UI-06 and the task that connects it): `GET /api/search?q=` after a pause in typing, only with `globalSearch` on, `q` of at
+* The palette (UI-06 and the task that connects it): `GET /api/search?q=` after a pause in typing, `q` of at
   least two characters; one heading per group (`type` is stable, the label is the client's), the `destination` key mapped to its route
   with the `id`. The client must add the codes `search_query_too_short`, `search_query_too_long` and `context_not_accessible` to its
   table of API errors.
 
 ## 9. Checking and troubleshooting
 
-* **"A person I know is not found."** In this order: the flag is on; the caller holds the permission of the group (a collaborator
+* **"A person I know is not found."** In this order: the caller holds the permission of the group (a collaborator
   without `guest.read` never gets the `guest` group); the scope (a collaborator limited to some properties finds only the guests of
   their stays, a guest with no stay is found by the whole org only); the guest was erased or anonymized, or deleted by the host (never
   found); the word is typed in the middle of a word (only the beginning of a word is searched); the name is not in the Latin alphabet;
@@ -264,10 +257,11 @@ before `Retry-After`.
 
 ## 10. Rollback
 
-1. **Flag off** (`Features__GlobalSearch` unset or `false`): immediate, nothing is lost. `GET /api/search` answers 404; the migration and
-   the keys stay, and cost only the space of the indexes and the work of the database on every write of these tables.
-2. **Revert the migration** (only if the keys or the indexes themselves are the problem): turn the flag off **first** (with the
-   columns gone, the endpoint would fail with a 500), then `dotnet ef database update <migration before AddGlobalSearchKeys>`. `Down`
+1. **Redeploy the previous version of the application** (the one before the endpoint existed): nothing is lost. `GET /api/search`
+   no longer exists (404); the migration and the keys stay, and cost only the space of the indexes and the work of the database on
+   every write of these tables.
+2. **Revert the migration** (only if the keys or the indexes themselves are the problem): redeploy a version without the endpoint
+   **first** (with the columns gone, the endpoint would fail with a 500), then `dotnet ef database update <migration before AddGlobalSearchKeys>`. `Down`
    drops the six indexes and the five columns and keeps every row; applying the migration again computes the keys from the rows that
    are there (tested on PostgreSQL). Never drop the columns by hand: the model would no longer match the database.
 3. `PUT /api/me/last-context` has nothing to roll back: it writes `Users.LastUsedContextKey`, a column that already existed and that
@@ -299,7 +293,7 @@ before `Retry-After`.
 | `AddGlobalSearchKeysMigrationSqlTests` | local and CI | the script of the migration; the model equals the migration; the query expression equals the index expression |
 | `LegacyRowsSchemaTests` | local and CI | the SQL helpers that seed old schemas fit the schema at the point where tests use them |
 | `SearchControllerTests`, `SearchAccessResolverTests`, `MeControllerLastContextTests`, `UserServiceLastContextTests`, `GlobalSearchRateLimitTests` | local and CI | the endpoint (limits, errors, headers, attributes), who may search what, the last context, the policy of the rate limit |
-| `GlobalSearchHttpIntegrationTests` | CI on PostgreSQL (in memory locally) | the whole pipeline: flag off 404, 401, 400, 429, owner, collaborator, supplier, org boundary, nothing sensitive in the answer, `last-context` written and read back |
+| `GlobalSearchHttpIntegrationTests` | CI on PostgreSQL (in memory locally) | the whole pipeline: 401, 400, 429, owner, collaborator, supplier, org boundary, nothing sensitive in the answer, `last-context` written and read back |
 | `GlobalSearchPostgresTests` | CI only (needs PostgreSQL) | the cases on the real SQL; the key of every row equals the folding; the key cannot be written by hand and follows an update; the planner uses the indexes; 20,000 guests |
 | `AddGlobalSearchKeysMigrationPostgresTests` | CI only | the migration on rows that existed before, the indexes, the revert |
 | `GlobalSearchRunbookTests`, `SearchArchitectureTests` | local and CI | this page says what the code does; the term is never logged and the sensitive fields are never read |
