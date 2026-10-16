@@ -277,7 +277,9 @@ public class SupplierProfileController(
             PublicPath = path,
             // The public base URL is configuration (App__PublicSiteBaseUrl), never written here (decision D3).
             PublicUrl = path is null ? null : publicSiteLinks.TryPublicPage(path),
-            Indexable = false,
+            // The public page is indexed once it is published and has something to show (categories or text).
+            Indexable = profile.Status == SupplierStatus.Active && path is not null
+                && SupplierShowcaseMapper.HasPublicContent(profile),
         });
     }
 
