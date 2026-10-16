@@ -56,7 +56,7 @@ public interface IPublicSeoService
     Task<SeoPageResult> RenderSupplierAsync(string slug, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Sitemap of the supplier showcases (<c>/sitemap-fornitori.xml</c>): every active supplier with a slug and something to
+    /// Sitemap of the supplier showcases (<c>/sitemap-supplier.xml</c>): every active supplier with a slug and something to
     /// show. Throws when the public URL is not configured.
     /// </summary>
     Task<string> BuildSupplierSitemapAsync(CancellationToken cancellationToken = default);

@@ -681,7 +681,7 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         var pending = await PublicShowcaseTestData.SeedSupplierAsync(_factory, SupplierStatus.Pending);
         var suspended = await PublicShowcaseTestData.SeedSupplierAsync(_factory, SupplierStatus.Suspended);
 
-        var response = await GetAsync("/api/public/sitemap-suppliers.xml");
+        var response = await GetAsync("/api/public/sitemap-supplier.xml");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/xml", response.Content.Headers.ContentType?.MediaType);

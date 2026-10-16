@@ -23,8 +23,8 @@ public class PublicOrgSitemapController(IPublicSeoService seoService) : Controll
     public async Task<IActionResult> GetIndex(CancellationToken cancellationToken) =>
         Xml(await seoService.BuildOrgSitemapIndexAsync(cancellationToken));
 
-    /// <summary>Sitemap of the supplier showcases (<c>/sitemap-fornitori.xml</c> on the web app). Declared in <c>robots.txt</c>.</summary>
-    [HttpGet("api/public/sitemap-suppliers.xml")]
+    /// <summary>Sitemap of the supplier showcases (<c>/sitemap-supplier.xml</c> on the web app). Declared in <c>robots.txt</c>.</summary>
+    [HttpGet("api/public/sitemap-supplier.xml")]
     [Produces("application/xml")]
     public async Task<IActionResult> GetSupplierSitemap(CancellationToken cancellationToken) =>
         Xml(await seoService.BuildSupplierSitemapAsync(cancellationToken));

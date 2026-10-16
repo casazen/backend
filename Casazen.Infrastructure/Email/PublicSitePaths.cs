@@ -12,7 +12,7 @@ public static class PublicSitePaths
     public const string OrgSitemapIndex = "/sitemap-book.xml";
 
     /// <summary>Sitemap of the supplier showcases (one entry per active supplier with a slug).</summary>
-    public const string SupplierSitemap = "/sitemap-fornitori.xml";
+    public const string SupplierSitemap = "/sitemap-supplier.xml";
 
     /// <summary>
     /// Public showcase of a supplier (<c>/fornitori/{slug}</c>, SU-13): a page of the web app's own host, never of an org's
