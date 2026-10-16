@@ -291,6 +291,42 @@ Authorization (TN-3): `booking.write` on the booking; when the cancellation move
 `payment.write`, so only the owning host or an org member with payment write. `POST /api/payments/{id}/refund` needs
 `payment.write`.
 
+### Cancellation by the guest with the signed link (BK-02, BK-07, DB-08h)
+
+`POST /api/public/bookings/{id}/cancel?token=…` (anonymous, rate limited). The host sends the link with
+`POST /api/bookings/{id}/guest-cancel-link`; the token is 256 random bits, the database keeps its SHA-256 and an expiry
+(`GuestCancellation:TokenExpiryHours`, 7 days). It runs the same `BookingCancellationService.CancelAsync` as the host's
+cancellation, with `Initiator = Guest`:
+
+- **Refund**: `CancellationRefundPolicy.EvaluateGuestRefund` is the one calculation: the percent of the property's
+  cancellation policy (the host's overrides for stays under 28 nights, no `FreeRefundDeadline` floor) of
+  `Booking.BasePrice` (lodging and cleaning, **tourist tax excluded**), rounded to cents, never more than what is
+  refundable. A property without a policy refunds nothing. The host's cancellation, by contrast, owes the guest everything
+  refundable (PO 2026-10-08). The guest service decides the amount and the cancellation checks it again under its advisory
+  lock: the guest's minimum is that same refund, so an amount below it (a payment changed between the two) is refused with
+  422 rather than paid wrongly, and nothing is cancelled; a policy that refunds nothing needs no amount.
+- **The answer is 200** whatever the policy refunds (`bookingId`, `status`, `refundAmount`: the refund decided, with the
+  refunds as Stripe left them in the database). Before DB-08h a booking whose refund was less than the refundable amount
+  (tourist tax paid, or a policy under 100%) answered 422 and the link was already burned.
+- **The link is spent by the cancellation that succeeds**, in the same transaction: its expiry becomes the moment of the
+  cancellation and the hash stays. A 422 (rule), a 409 (`booking_payment_in_progress`) or a Stripe/network error before the
+  commit rolls everything back and leaves the link usable until it expires. The cancellation re-reads the booking and its
+  payments under its lock (`ChangeTracker.Clear()`): without that a second click that had already read the booking would
+  still see it open, and under a partial-refund policy would refund the rest of the payment again.
+- **A second click refunds nothing again, and answers the same**: a cancelled booking answers 200 with the outcome of its
+  cancellation, whoever cancelled it (this link, an earlier or simultaneous click, the host) and however many times the link
+  is used, even after it expired. The guest's retry after a lost response therefore sees the success page. If the booking
+  were confirmed again afterwards (a late payment, BK-04) the spent link is expired and cancels nothing.
+- **Known gaps until DB-08a**:
+  - the guest's confirmation is the host-cancellation email, worded "annullata dall'host", and the host is told nothing
+    (`BookingNotifier.BookingCancelledByHostAsync`);
+  - "Non rimborsabile" has `FullRefundHours = 0`, so until the check-in day starts the formula gives 100% of the base price
+    (DB-D2): do not send links for those bookings before it is decided;
+  - the refunds are submitted to Stripe after the commit with the request's cancellation token, so a client that drops in
+    that instant can leave a reserved refund pending without a retry (shared with the host's cancellation).
+- Not here: the preview of the refund, cancelling from the guest area and the `GuestSelfCancellation` flag (DB-08a), the open
+  decisions on the policies' semantics and the tourist tax in the refund (DB-D2, DB-D15).
+
 ### Stripe settings to check (product owner)
 
 1. **Connect webhook endpoint** (`/webhooks/stripe/connect`, "Connected accounts"): add `charge.refunded`,
@@ -318,7 +354,9 @@ and check each one in the Stripe Dashboard (Payments → search the `pi_…`) be
 1. Automated: `StripeServiceRefundTests` (mocked `IStripeClient`: `Stripe-Account`, idempotency key, amount, cancel paths),
    `PaymentRefundServiceTests`, `BookingCancellationServiceTests`, `CancellationRefundPolicyTests`,
    `StripeRefundPostgresTests` (Connect `charge.refunded` / `refund.*` on PostgreSQL, parallel double click),
-   `BookingRefundIntegrationTests` (HTTP pipeline).
+   `BookingRefundIntegrationTests` (HTTP pipeline); for the guest's link `GuestCancellationRefundTests` (the calculation
+   against the five catalog policies), `GuestBookingCancellationServiceTests`, `PublicGuestBookingCancellationControllerTests`,
+   `PublicGuestBookingCancellationIntegrationTests` (HTTP pipeline) and `GuestBookingCancellationPostgresTests`.
 2. Test mode, with a connected test account: book with card `4242 4242 4242 4242`, then "Rimborsa" 10 € from the payment
    page: the dialog shows "Rimborso confermato", Stripe Dashboard → connected account → Payments shows the partial refund.
 3. Test mode: refund part of a payment from the Stripe Dashboard: after the webhook the payment page lists it with origin

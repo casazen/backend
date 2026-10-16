@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
@@ -9,9 +10,18 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Supplier dashboard KPIs from <c>ServiceRequests</c> (SU-11, A4-15). The dashboard used to count the supplier jobs,
-/// which no real flow created, so a supplier with five completed requests read "0 completed".
+/// which no real flow created, so a supplier with five completed requests read "0 completed". The overview of the home (SP-04e)
+/// is in <c>SupplierKpiService.Overview.cs</c>; the payments it adds up come from <see cref="ISupplierPaymentReadModels"/>.
 /// </summary>
-public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : ISupplierKpiService
+/// <param name="db">The context.</param>
+/// <param name="timeProvider">The clock: "today" and the periods are Europe/Rome days.</param>
+/// <param name="features">The feature flags; without them the overview talks about no online payments.</param>
+/// <param name="payments">The reads of the payments; without them the overview talks about no online payments.</param>
+public partial class SupplierKpiService(
+    AppDbContext db,
+    TimeProvider timeProvider,
+    IFeatureFlags? features = null,
+    ISupplierPaymentReadModels? payments = null) : ISupplierKpiService
 {
     public async Task<SupplierServiceRequestKpis> GetKpisAsync(
         Guid supplierOrgId,
@@ -75,9 +85,7 @@ public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : IS
         // Read as pairs and averaged here, so the arithmetic on instants does not depend on the provider.
         var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-SupplierEarningsSummary.ResponseWindowDays);
         var answers = await AnswersOf(db, supplierOrgId, since).ToListAsync(cancellationToken);
-        int? averageMinutes = answers.Count == 0
-            ? null
-            : (int)Math.Round(answers.Average(answer => (answer.TakenAt - answer.CreatedAt).TotalMinutes));
+        var averageMinutes = SupplierResponseTimes.AverageMinutes(answers.Select(answer => answer.Minutes).ToList());
 
         return new SupplierEarningsSummary(
             from,
@@ -104,8 +112,7 @@ public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : IS
         var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-SupplierEarningsSummary.ResponseWindowDays);
         var answers = await RecentAnswersOf(db, supplierOrgId, since, PublicShowcaseLimits.ResponseTimeMaxSamples)
             .ToListAsync(cancellationToken);
-        return SupplierResponseTimes.PublicMedianMinutes(
-            answers.Select(answer => (answer.TakenAt - answer.CreatedAt).TotalMinutes).ToList());
+        return SupplierResponseTimes.PublicMedianMinutes(answers.Select(answer => answer.Minutes).ToList());
     }
 
     /// <summary>The jobs and the final amounts of the requests of the supplier completed (or paid) inside <c>[startUtc, endUtc)</c>.</summary>
@@ -153,5 +160,9 @@ public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : IS
     internal sealed record AmountGroup(int Jobs, long? Amount);
 
     /// <summary>The moment a request was received and the moment the supplier took it.</summary>
-    internal sealed record AnswerPair(DateTime CreatedAt, DateTime TakenAt);
+    internal sealed record AnswerPair(DateTime CreatedAt, DateTime TakenAt)
+    {
+        /// <summary>The minutes the request waited for the answer.</summary>
+        public double Minutes => (TakenAt - CreatedAt).TotalMinutes;
+    }
 }
