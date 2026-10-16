@@ -125,4 +125,16 @@ public static class SupplierAgendaLimits
     /// for an answer. Never beyond the supplier's own horizon (the planner closes the days past it).
     /// </summary>
     public const int ConflictSuggestionDays = 21;
+
+    /// <summary>
+    /// How many years back the range of <c>GET api/supplier/calendar/conflicts</c> may start: only jobs still to come are checked, so
+    /// the past is never a reason for a range.
+    /// </summary>
+    public const int ConflictsMaxYearsBack = 1;
+
+    /// <summary>
+    /// How many years ahead of today that range may end. It bounds the dates the planner is asked about, so a made-up date (the end of
+    /// the calendar) is a 400 and never an overflow.
+    /// </summary>
+    public const int ConflictsMaxYearsAhead = 10;
 }

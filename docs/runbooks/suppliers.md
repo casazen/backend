@@ -2468,8 +2468,9 @@ All four are under policy `RequireSupplier`, with the supplier org taken from th
 (`ISupplierOrgContextResolver.GetLinkedSupplierOrgIdAsync`): **a `Supplier` account with no link is 404 `not_found` and nothing is
 provisioned** (the other `calendar/*` routes of section 12 still use `GetOrProvision…`; the new ones never do). `from`/`to` are Europe/Rome
 days (`yyyy-MM-dd`, both included, at most **62 days**; left out: today and the next 30 days); a reversed or too long range is 400
-`validation_error` (the same keys as the calendar). The texts are the frontend's: these answers carry **codes, ids and instants, never a
-sentence**.
+`validation_error` (the same keys as the calendar); for the conflicts the dates must also fall **between one year ago and ten years from
+today** (400 `validation_error`, key `SupplierConflictsRangeOutOfBounds`): only jobs to come are checked, and no made-up date (`9999-12-31`)
+reaches the arithmetic on days. The texts are the frontend's: these answers carry **codes, ids and instants, never a sentence**.
 
 ### 27.2 The calendar with titles
 

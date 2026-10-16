@@ -258,6 +258,40 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
     }
 
+    [Theory]
+    [InlineData("from=9999-12-01&to=9999-12-31")]
+    [InlineData("from=9999-12-31")]
+    [InlineData("to=9999-12-31")]
+    [InlineData("from=0001-01-01&to=0001-01-31")]
+    [InlineData("from=0001-01-01")]
+    public async Task Conflicts_DatesThatAreNotNearToday_Are400WithTheBounds_NeverAnOverflow(string query)
+    {
+        var (userId, _) = await SupplierCatalogTestData.SeedSupplierAsync(factory);
+        using var client = SupplierClient(userId);
+
+        var response = await client.GetAsync($"/api/supplier/calendar/conflicts?{query}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await ReadAsync(response);
+        Assert.Equal("validation_error", problem.GetProperty("code").GetString());
+        Assert.Contains("10", problem.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task Conflicts_TheFarEdgesOfTheBounds_AreAccepted()
+    {
+        var (userId, _) = await SupplierCatalogTestData.SeedSupplierAsync(factory);
+        using var client = SupplierClient(userId);
+        var oldest = Today.AddYears(-1);
+        var latest = Today.AddYears(10);
+
+        var past = await client.GetAsync($"/api/supplier/calendar/conflicts?from={oldest:yyyy-MM-dd}&to={oldest.AddDays(10):yyyy-MM-dd}");
+        var future = await client.GetAsync($"/api/supplier/calendar/conflicts?from={latest.AddDays(-10):yyyy-MM-dd}&to={latest:yyyy-MM-dd}");
+
+        Assert.Equal(HttpStatusCode.OK, past.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, future.StatusCode);
+    }
+
     [Fact]
     public async Task Conflicts_TheAgendaOfAnotherSupplier_NeverShowsUp()
     {

@@ -2170,6 +2170,9 @@
   <data name="SupplierAvailabilityRangeTooLong" xml:space="preserve">
     <value>The maximum range is {0} days.</value>
   </data>
+  <data name="SupplierConflictsRangeOutOfBounds" xml:space="preserve">
+    <value>The dates must fall between {0} year ago and {1} years from today.</value>
+  </data>
   <data name="SupplierPhotoLimit" xml:space="preserve">
     <value>At most {0} photos are allowed: you already have {1} and are uploading {2}.</value>
   </data>

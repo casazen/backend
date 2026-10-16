@@ -241,8 +241,9 @@ public class SupplierAgendaController(
     /// <c>outside_hours</c>, <c>day_full</c> and <c>buffer</c> are warning. A read: nothing is refused or changed, the supplier decides
     /// (a request outside the published hours is still a request). Only codes, ids and instants: the texts are the frontend's. The
     /// jobs checked are the requests with hours that have not started, <c>Richiesto</c>, <c>PresoInCarico</c> or <c>InCorso</c>; the
-    /// ones with no conflict are not listed. 400 <c>validation_error</c> for a range that is reversed or longer than 62 days; 404
-    /// <c>not_found</c> when the caller has no linked supplier org (nothing is provisioned).
+    /// ones with no conflict are not listed. 400 <c>validation_error</c> for a range that is reversed, longer than 62 days, or starts
+    /// more than a year ago or ends more than ten years from today; 404 <c>not_found</c> when the caller has no linked supplier org
+    /// (nothing is provisioned).
     /// </summary>
     [HttpGet("calendar/conflicts")]
     [ProducesResponseType(typeof(SupplierConflictsResponse), StatusCodes.Status200OK)]
@@ -254,9 +255,23 @@ public class SupplierAgendaController(
         [FromServices] ISupplierConflictService conflicts,
         CancellationToken cancellationToken)
     {
-        var rangeFrom = from ?? _clock.TodayInRomeAsDateOnly();
-        var rangeTo = to ?? rangeFrom.AddDays(SupplierAgendaLimits.DefaultCalendarDays - 1);
+        // Only jobs to come are checked and the planner looks days ahead of the range: dates that are not near today are refused
+        // before any arithmetic on days, so that no made-up date (0001-01-01, 9999-12-31) can overflow it.
+        var today = _clock.TodayInRomeAsDateOnly();
+        var earliest = today.AddYears(-SupplierAgendaLimits.ConflictsMaxYearsBack);
+        var latest = today.AddYears(SupplierAgendaLimits.ConflictsMaxYearsAhead);
+        var rangeFrom = from ?? today;
+        if (rangeFrom < earliest || rangeFrom > latest || (to is { } last && (last < earliest || last > latest)))
+        {
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest,
+                ProblemCodes.ValidationError,
+                "SupplierConflictsRangeOutOfBounds",
+                SupplierAgendaLimits.ConflictsMaxYearsBack,
+                SupplierAgendaLimits.ConflictsMaxYearsAhead);
+        }
 
+        var rangeTo = to ?? rangeFrom.AddDays(SupplierAgendaLimits.DefaultCalendarDays - 1);
         if (RangeProblem(rangeFrom, rangeTo) is { } problem)
             return problem;
 
