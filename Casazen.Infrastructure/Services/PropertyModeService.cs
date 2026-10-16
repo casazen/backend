@@ -53,8 +53,7 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Activity log (AM-02c).</b> The programming, the cancellation and the application of a change each leave a line
 /// (<c>PropertyModeChangeScheduled</c>, <c>PropertyModeChangeCancelled</c>, <c>PropertyModeChanged</c>), staged in the very
 /// transaction of the change, so a change that is rolled back leaves none and a line is never written for a change that did not
-/// happen. The line says the area of the property at that moment; the daily job has no actor. A change that fails writes nothing.
-/// While the <c>OrgTeam</c> flag is off the log collects nothing, so this changes nothing before the flag is turned on.</item>
+/// happen. The line says the area of the property at that moment; the daily job has no actor. A change that fails writes nothing.</item>
 /// </list>
 /// </remarks>
 public sealed class PropertyModeService(

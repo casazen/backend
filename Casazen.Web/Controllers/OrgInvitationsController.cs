@@ -1,4 +1,3 @@
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
@@ -11,13 +10,11 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The invitations of the caller's org (AM-02): invite a person with a role, list the invitations still open, send one
 /// again, withdraw it, copy its link. For the owner and the administrators (policy <see cref="CasazenPolicies.OrgMembersManage"/>,
-/// the permission <c>org.members.manage</c> of the <c>account</c> context); only the owner invites an administrator. Behind
-/// the <c>OrgTeam</c> flag: 404 while it is off. The org is the caller's own, never taken from the request.
-/// Runbook <c>docs/runbooks/org-team.md</c>.
+/// the permission <c>org.members.manage</c> of the <c>account</c> context); only the owner invites an administrator. The org
+/// is the caller's own, never taken from the request. Runbook <c>docs/runbooks/org-team.md</c>.
 /// </summary>
 [ApiController]
 [Route("api/orgs/me/invitations")]
-[FeatureGate(FeatureFlags.OrgTeam)]
 [Authorize(Policy = CasazenPolicies.OrgMembersManage)]
 public class OrgInvitationsController(
     IOrgInvitationService invitations,
