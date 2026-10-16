@@ -446,6 +446,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgActivityService, OrgActivityService>();
         services.AddScoped<IOrgAccessRequestService, OrgAccessRequestService>();
         services.AddScoped<IOrgActivityRetentionService, OrgActivityRetentionService>();
+        // AM-02c: the matrix of the roles for the team screens, and the overview of the org for the account home.
+        services.AddScoped<IOrgRoleMatrixService, OrgRoleMatrixService>();
         services.AddScoped<IAccountEmailResolver, AccountEmailResolver>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         // SE-04: events of the SEO funnel (no personal data) and the featured properties of a comune.
