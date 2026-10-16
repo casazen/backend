@@ -439,6 +439,19 @@ public class SupplierConflictDetectorTests
     }
 
     [Fact]
+    public void SuggestedSlot_TheRequestIsOutOfItsOwnWay_ItsOwnPauseDoesNotHideTheFirstSlotOfTheDay()
+    {
+        // 07:00-08:00 is before the hours (08:00), so the request is outside them. Left in the input, its own pause (until 08:30)
+        // would hide the 08:00 slot and the suggestion would be 09:00; as PlanAsync(exceptRequestId) does, it is left out: 08:00.
+        var job = Job(Request(Wed, "07:00", 60));
+
+        var item = Assert.Single(SupplierConflictDetector.Detect(Input([job]), [job.Request]));
+
+        Assert.Equal([SupplierConflictCodes.OutsideHours], item.Conflicts.Select(conflict => conflict.Code));
+        Assert.Equal(At(Wed, "08:00"), item.SuggestedSlot!.Value.StartUtc);
+    }
+
+    [Fact]
     public void SuggestedSlot_FollowsTheWeekdaysOfTheServiceOfTheRequest()
     {
         // Two requests on a Sunday (a day off): one for a service offered on Fridays only, one for any day.
