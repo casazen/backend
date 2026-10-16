@@ -233,8 +233,9 @@ Property record choices (PC-02):
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/bookings` | List bookings a page at a time (PC-14: `?propertyId&guestId&page&pageSize`, `Bookings:DefaultPageSize` = 10 when `pageSize` is missing, at most 100), answered as `{ items, totalCount, page, pageSize }` |
-| `GET` | `/api/bookings/search` | The same list with days, status and text (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, same order, same answer, same default page size |
+| `GET` | `/api/bookings` | List bookings a page at a time (PC-14: `?propertyId&guestId&page&pageSize`, `Bookings:DefaultPageSize` = 10 when `pageSize` is missing, at most 100), answered as `{ items, totalCount, page, pageSize }`; since SR-03b the search below without a filter but these two, rows included |
+| `GET` | `/api/bookings/search` | The same list with days, status and text (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, same order, same answer, same default page size. SR-03b adds `&arrivalFrom&arrivalTo&view&channel&checkInStatus&sort` and, on each row, `channel`, `paymentState`, `paidAmount`, `alloggiatiStatus`, `respondBy` |
+| `GET` | `/api/bookings/counts` | SR-03b: how many bookings are in each chip of the list (`{ all, toConfirm, upcoming, inProgress, completed, cancelled }`), for the filters of the search but the chip, the page and the order |
 | `GET` | `/api/bookings/{id}` | Get a single booking |
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
 | `PUT` | `/api/bookings/{id}` | Update a booking |
@@ -263,12 +264,46 @@ like the plain list (`propertyId` of another org: 404, without `booking.read` on
   booking is never on two pages nor on none. One query for the page, and a second for `totalCount` only when the page is full
   or past the end.
 
+**The booking list, completed (SR-03b).** `GET /api/bookings` and `GET /api/bookings/search` now read the same service
+(`IBookingSearchService`): the plain list is the search with `propertyId` and `guestId` only, so the order, the scope and the
+rows are the same (the paged members `GetPagedByScopeAsync` and `GetPagedBookingsAsync` of the booking service and repository
+are gone). Everything below is optional and additive; nothing of the SR-03 answer changed shape.
+- `arrivalFrom`, `arrivalTo` (`yyyy-MM-dd`, both included): the stays that **arrive** in the range (the check-in date), where
+  `from` and `to` keep the stays that have a day in it. `arrivalFrom` after `arrivalTo` is 400 `booking_list_invalid_range`.
+- `view`, the chip: `all` (default); `toConfirm`, a "pay at the property" request waiting for the host; `upcoming`, Confirmed,
+  or Pending and waiting for its payment (not an expired hold), with check-in after today; `inProgress`, CheckedIn, or Confirmed
+  with check-in today; `completed`, CheckedOut; `cancelled`, Cancelled (`BookingListRules.InView`, days are Europe/Rome). A
+  booking is in one chip at most; a Confirmed stay of the past that nobody registered is in none yet (it is in `all`). 400
+  `booking_list_invalid_view`.
+- `channel`, repeated or separated by commas: `Direct` (the booking site), `Manual` (entered by the host), `Airbnb`,
+  `BookingCom`, `Other` (every other source); 400 `booking_list_invalid_channel`.
+- `checkInStatus`, repeated or separated by commas: the state of the online check-in link as `GET /api/dashboard/today`
+  reads it (`NotSent`, `Sent`, `InProgress`, `Completed`, `Expired`), from the link alone, not from whether the guests' data are
+  complete; filtered in SQL. 400 `booking_list_invalid_check_in_status`.
+- `sort`: `checkIn`, `createdAt`, `total`, `status` or `guest` (last then first name), then `:asc` (the default) or `:desc`;
+  without `sort` the latest check-in comes first, as it always did. The booking id always closes the order. 400
+  `booking_list_invalid_sort`.
+
+Each row (`BookingListItemDto`: the booking as everywhere, plus) carries `channel`; `paymentState` (`None`, `Partial`, `Paid`
+or `Refunded`: how much of `totalPrice` came in, a failed or open payment being nothing); `paidAmount` (euros: the payments
+collected minus what was refunded, before any OTA withholding; `null` for a caller without `payment.read`, who still gets the
+state: SR-D7); `alloggiatiStatus` (where the Alloggiati communication stands, as the Alloggiati page reads it, for a Confirmed,
+CheckedIn or CheckedOut stay, else `null`); `respondBy` (until when a request waiting for the host may be answered, else
+`null`). A page costs one query for the bookings, one for the total only when it is full or past the end, and one each for the
+payments and the reports of its bookings: none per row.
+
+`GET /api/bookings/counts` answers `{ all, toConfirm, upcoming, inProgress, completed, cancelled }` for the bookings that
+satisfy the filters of the search but the chip, the page and the order (`status`, `q`, `from`, `to`, `arrivalFrom`, `arrivalTo`,
+`channel`, `checkInStatus`, `propertyId`, `guestId`), in one aggregate query: a `COUNT(*) FILTER` per chip built from the very
+predicates of the lists, so a counter is the total of its chip. Same scope, same 400s, same 404 and 403 as the search.
+
 #### Host dashboard (PC-16)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/dashboard/kpis?period=Month&month=yyyy-MM` \| `?period=Last30Days` \| `?period=Next30Days` | short-rent booking.read | KPIs of the period computed on the server (default: current Europe/Rome month); 400 `dashboard_invalid_period`. SR-03, all optional: `&propertyId=` (one property of the caller's reach, else 404), `&compare=true` (adds `previous`) |
-| `GET` | `/api/dashboard/today` | short-rent booking.read | SR-03: the host's day in one read (below): arrivals and departures of today with their online check-in, the check-ins to come, the requests waiting, the things to do in order of priority |
+| `GET` | `/api/dashboard/overview?period=Month&month=yyyy-MM` \| `?period=Last30Days` \| `?period=Next30Days` \| `?period=Custom&from=yyyy-MM-dd&to=yyyy-MM-dd` | short-rent booking.read | SR-03b: the numbers of the Home in one read (below): the figures of `kpis` compared with the period before, the next arrivals and the revenue by week or month; money only with `payment.read`; 400 `dashboard_invalid_period`; `&propertyId=` as in `kpis` |
+| `GET` | `/api/dashboard/today` | short-rent booking.read | SR-03: the host's day in one read (below): arrivals and departures of today with their online check-in, the check-ins to come, the requests waiting, the things to do in order of priority. SR-03b adds the interventions of the day, the Alloggiati status of each arrival, the cleaning of each departure and the things to do about an intervention |
 | `GET` | `/api/dashboard/ical-feeds` | short-rent booking.read + property.read | iCal import feeds of the caller's properties: last sync, status, error code and localized message, feeds with an error first; never the URL |
 
 All are limited to the caller's `HostScope` (org, and the properties the caller reaches unless the role is org-wide: AM-03),
@@ -306,32 +341,85 @@ Definitions (`IHostDashboardService`, `StayKpiRules`; days are Europe/Rome calen
   30 days before `Last30Days` or `Next30Days`, and for a month the days just before it, not the previous calendar month,
   which may be a day shorter or longer. The dates are in `previous.period`.
 
+**The overview of the Home (`GET /api/dashboard/overview`, SR-03b; `IHostDashboardService.GetOverviewAsync`).** The numbers of
+the Home in one read: the figures of `kpis` (the same code, run for the period and for the one before, so the two never differ in
+a rule) and what the Home draws on top of them. `period` is `Month` (default, with an optional `month=yyyy-MM`), `Last30Days`,
+`Next30Days` or `Custom` with `from` and `to` (`yyyy-MM-dd`, both included, at most 366 days, years 2000 to 2100); anything else
+(`from`/`to` without `Custom`, `month` with another period, a number) is 400 `dashboard_invalid_period`. `kpis` does not know
+`Custom`. `propertyId` narrows everything to one property of the caller's reach (404 for any other).
+`{ period, today, propertyCount, occupancy, revenue, collected, directShare, upcoming, nextArrivals, previous, series }`:
+- `occupancy`: as in `kpis`, plus `deltaPoints`, the rate minus the one of the period before in percentage points to one
+  decimal (`null` when either period has nothing available).
+- `revenue { amount, amountCents, currency, stayCount, basis, deltaPercent }`: the revenue defined above (`basis` is
+  `accrual`), with `deltaPercent` the change from the period before in percent to one decimal (`null` when that had none).
+  `collected { amount, amountCents, currency, paymentCount, basis }` is the cash (`basis` is `cash`), gross (SR-D44): it is not the
+  same number as the revenue and each says which one it is. Both are worked out on the server; a client never subtracts rounded
+  numbers.
+- `upcoming { count, previousCount, pendingApproval }`: the stays that arrive in the period (confirmed, a stay already
+  registered included) plus the "pay at the property" requests the host has still to answer; `previousCount` the same over the
+  period before; `pendingApproval` how many of `count` are such requests.
+- `nextArrivals`: the next three arrivals from today whatever the period, soonest first (Confirmed, or a request waiting for the
+  host), `{ bookingId, bookingCode, propertyId, propertyName, guestName, numberOfGuests, checkInDate, checkOutDate, status, source,
+  awaitingApproval }`. No money.
+- `previous { period, occupancy, revenue, collected, directShare }`: the period with the same number of nights that ends where
+  this one starts (SR-D43); nothing is compared again there (`deltaPercent` and `deltaPoints` are `null`).
+- `series { unit, buckets }`: the revenue by ISO week (from Monday) for a period of up to 62 nights, by calendar month beyond.
+  Each bucket is `{ label, from, to, amount, amountCents, previousAmount, previousAmountCents, isFuture }`: `label` is a stable
+  key (`2026-W42`, `2026-10`), never text to show; `from` and `to` the first and last night of the bar (the first and the last
+  bar are cut at the edges of the period); `previousAmount` the same bar moved back by the length of the period; `isFuture` when
+  the bar starts after today (a forecast of the stays already confirmed). The bars add up to `revenue.amount` to the cent, and
+  the previous ones to `previous.revenue.amount`: the rounding is carried from bar to bar and the last takes the total.
+- **Money is payment data (SR-D7).** For a caller without `payment.read` (the collaborator) `revenue`, `collected` and `series`
+  are not in the answer at all (not `null`), nor are `revenue` and `collected` inside `previous`. Occupancy, `upcoming`,
+  `nextArrivals` and `directShare` are.
+Reads in a fixed number of steps whatever the number of properties: the properties in scope, the figures of the period and of
+the previous one, the stays that arrive in both, the next three arrivals; the chart is made of the stays the revenue already read.
+
 **The host's day (`GET /api/dashboard/today`, SR-03; `IHostTodayService`).** One read, no rule of its own: the lists of
 the day come from `IHostDashboardService.GetTodayStaysAsync` (`StayKpiRules`), the requests from
 `IOnSiteBookingRequestService.GetAwaitingHostApprovalAsync`, the duties from the compliance cockpit described by
 `IComplianceMissingService`.
-`{ today, arrivals, departures, upcoming, approvals, todo }`, each list `{ count, items }` (the count covers all of them;
-`items` carries the first 10, 10, 5, 10 and 20). `arrivals` and `upcoming` rows carry `checkIn { state, dataComplete }`:
+`{ today, arrivals, departures, upcoming, approvals, todo, services }`, each list `{ count, items }` (the count covers all
+of them; `items` carries the first 10, 10, 5, 10, 20 and 20). `arrivals` and `upcoming` rows carry `checkIn { state, dataComplete }`:
 `state` is `NotSent` (no usable link, or its email failed), `Sent`, `InProgress`, `Completed` or `Expired`; `dataComplete`
 says every guest has every field of the Alloggiati record, whoever entered them. No money in the rows. `approvals` are the
 "pay at the property" requests waiting for the host with `respondBy` (UTC): then they are cancelled.
+
+SR-03b adds fields to this answer and changes none of the rest. `services { count, items }` lists the interventions (service
+requests) of today in Europe/Rome, by time, the first 20: the ones scheduled for today and, for those with no time, the ones of
+a stay that leaves today (the day such a request has always had); never the refused or the cancelled. Each is `{ id, category,
+serviceName, scheduledStart, scheduledEnd, status, supplierOrgId, supplierName, propertyId, propertyName, bookingId }` (UTC
+instants; `scheduledStart` is `null` for a request with no time). Every `arrivals` and `upcoming` row also carries
+`alloggiati { status, deadlineAt }`: where the communication stands as the Alloggiati page reads it (`DaInviare` before the
+arrival day, `DaInviareManualmente` from then on, `Inviato`, `InviatoManualmente`, `Errore`, `Rifiutato`:
+`AlloggiatiStatusRules`) and, until it is sent, its legal term in UTC (`AlloggiatiTerms`). Every `departures` row carries
+`cleaning { serviceRequestId, status }`, the latest cleaning request tied to the stay whoever made it (`null` when there is none).
+`checkIn`, `alloggiati` and `cleaning` are `null` where they make no sense: a departure has no check-in nor Alloggiati, an arrival
+no cleaning. Three reads more, whatever the number of rows: the links, the reports and the guests of all the arrivals listed
+together, the cleaning of all the departures listed together, and one page for the interventions.
 
 `todo` is in order of priority (`HostTodoPriority`; inside the same priority the nearest `dueAt` first, then the label):
 
 | `priority` | `action` | What | `dueAt` |
 |---|---|---|---|
 | 1 | `RespondToRequest` | a request to accept or decline | `respondBy` |
+| 1 | `RespondToServiceRequest` | SR-03b: a new intervention on which the supplier proposed another time, to accept or decline | the time asked for, if it has one |
 | 2 | `ResolveAlloggiatiFailure` | communication in error or rejected | 24 h (6 h for a stay of one night or less) from the arrival |
 | 3 | `SendAlloggiati` | communication to send on the portal | same |
 | 4 | `CompleteGuestCheckIn` | data of the guests incomplete (cockpit: arrivals up to tomorrow) | start of the arrival day |
 | 5 | `ReviewFailedPayment` | confirmed stay whose payment failed and nothing else paid it; only for a caller with `payment.read` | — |
+| 5 | `ConfirmFinalAmount` | SR-03b: a finished intervention whose final amount is above the quote by more than the tolerance, for the host to confirm | — |
 | 6 | `CheckOut` | departure to close | start of the departure day |
+| 6 | `PayServiceRequest` | SR-03b: a finished intervention with nothing left to confirm, waiting to be paid | — |
 | 7 | `ConfirmPropertyReady` | property not declared ready after the check-out | — |
 | 8 | `ActivateProperty` | property to activate | — |
 
-Each item is `{ action, priority, dueAt, label, propertyId, propertyName, bookingId, paymentId, missing }`: `action` is the
+Each item is `{ action, priority, dueAt, label, propertyId, propertyName, bookingId, paymentId, serviceRequestId, missing }`: `action` is the
 destination as a key (the first six repeat `ComplianceCockpitAction` by name; never a path: each client builds the route from
-its own table, as for the cockpit links below) with the ids of its target, `missing` what it still lacks.
+its own table, as for the cockpit links below) with the ids of its target, `missing` what it still lacks. The three about an
+intervention (SR-03b) have the supplier as `label` and its `serviceRequestId` as target; they take the priority of what they are
+like (answer 1, amount 5, payment 6), so no priority of SR-03 moved and the range stays 1 to 8. They are those of the
+properties the caller reaches, in SQL.
 
 **What an item lacks (`missing`, SR-03).** Every item of the cockpit (`GET /api/compliance/summary`) and of `todo` carries
 `missing`, a list of `{ code, field, count }` with stable snake_case codes the client translates (`IComplianceMissingService`;
@@ -341,7 +429,8 @@ the first 10 properties of the cockpit (the others: `activation_incomplete`) and
 confirmation is left; for the guests of a stay, one `guest_field_missing` per field of the Alloggiati record the guests lack
 (`field` camelCase as `AlloggiatiRecordRules` names it, `count` the guests that lack it) and `guest_composition_invalid` when
 the order of the guests is not accepted; for the others, the single thing left (`checkout_not_closed`, `alloggiati_not_sent`,
-`alloggiati_failed`, `property_ready_not_confirmed`, `approval_not_answered`, `payment_failed`).
+`alloggiati_failed`, `property_ready_not_confirmed`, `approval_not_answered`, `payment_failed`, and, about an intervention
+(SR-03b), `proposal_not_answered` (`field` `response`), `final_amount_not_confirmed` (`amount`) and `service_not_paid` (`payment`)).
 
 The bookings summary of `GET /api/properties/{id}/detail` (A2-36) uses the same rules: `totalBookings` = confirmed
 stays, `upcomingBookings` = upcoming check-ins, `activeBookings` = stays in progress today (checked in, or confirmed
@@ -388,7 +477,7 @@ property is not found; any other failure is a 500.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/payments` | short-rent payment.read | List the payments of the caller's scope, newest first, as list rows (SR-03, below): `?propertyId&bookingId&from&to` |
+| `GET` | `/api/payments` | short-rent payment.read | List the payments of the caller's scope, newest first, as list rows (SR-03, below): `?propertyId&bookingId&from&to`; SR-03b: with `&page` or `&pageSize` a page, `{ items, totalCount, page, pageSize }`, instead of the array |
 | `GET` | `/api/payments/{id}` | JWT | Get a single payment |
 | `POST` | `/api/payments` | JWT | Create a payment record |
 | `POST` | `/api/payments/{id}/process` | JWT | Charge the guest via Stripe |
@@ -411,6 +500,12 @@ both included, 400 `payment_list_invalid_range` when `from` is after `to`) keep 
 `ProcessedAt`, else of `CreatedAt`. The list is limited to the caller's `HostScope` in SQL whatever the criteria say, and the
 payments of a property deleted since are still listed (the fiscal reports' rule). `GET /api/payments/{id}` still answers the
 entity.
+
+**Pages of payments (SR-03b).** Without `page` and `pageSize` the answer is the array above, all the payments, as it always was.
+With either of them it is one page of the same list in the same order, `{ items, totalCount, page, pageSize }` like the bookings:
+`page` from 1 (1 when missing), `pageSize` 20 when missing and at most 100 (out of range is brought within it), and a second
+query for `totalCount` only when the page is full or past the end. The scope, the criteria and the 404s are the list's; the
+collaborator, who has no `payment.read`, is still refused.
 
 #### SaaS billing
 
