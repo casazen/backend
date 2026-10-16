@@ -83,15 +83,17 @@ it as it was, so a client that sends one field never wipes the others.
 | Step | Keys of `values` |
 |---|---|
 | 1 · Immobile | `propertyId` (a property of the org the caller may handle; chosen, never un-chosen) |
-| 2 · Parti | `landlords`, `tenants`: lists of `{ id?, firstName, lastName, fiscalCode, citizenship, residence, contactEmail }` (an entry nobody typed in is dropped; an `id` the draft does not know is a new entry; at most 10 per role) |
+| 2 · Parti | `landlords`, `tenants`: lists of `{ id?, firstName, lastName, fiscalCode, citizenship, residence, contactEmail }` (an entry nobody typed in is dropped; an entry keeps the `id` of an entry of **the same role**: any other `id` — unknown, of the other role, repeated — is a new entry, so an id is never in two entries; at most 10 per role) |
 | 3 · Condizioni | `contractType` (`Libero`, `Concordato`; `Transitorio` is kept and reported as not available, LR-D12), `taxRegime` (`CedolareSecca`, `Ordinario`), `monthlyRent`, `securityDeposit`, `concordato` (`sqm`, `typeAElementCount`…`qualifyingTypeDElementCount`, `isFurnished`, `stoveHeating`, `airConditioning`, `garageSqm`, `balconySqm`, `otherAppurtenanceSqm`, `privateGreenSqm`, `zoneName`, `cadastralSheet`) |
 | 4 · Durata e date | `startDate` (`yyyy-MM-dd`); the end of the first period is computed (`computed.endDate`) from the type: 48 months for the libero, 36 for the concordato |
 | 5 · Modello e allegati | `parties`: `[{ id, documentsVerifiedOn }]`, the day a document of each party was checked (`yyyy-MM-dd`, not after today) |
 
-**A wrong or incomplete value is not an error**: it is saved and reported in the `flow`. The only errors are the request that is not shaped
-like the step (a key of another step, a number sent as text, an `id` that is not one of the draft, a text over 500 characters, values
-that are not an object: **400**), more than 10 parties of a role (**422**), an old `version` (**409**) and a lease that is not a draft
-(**409**). The messages name the field, never what was sent.
+**A wrong or incomplete value is not an error**: it is saved and reported in the `flow`. That includes a number too big to hold (`1e30` as
+a rent, `3000000000` as a count): it is kept as the largest (or smallest) value the type has, which no rule accepts, so the flow says
+`rent_invalid` and the autosave goes on. The only errors are the request that is not shaped like the step (a key of another step, a number
+sent as text or a fraction where a whole number goes, an `id` that is not one of the draft, a text over 500 characters, values that are not
+an object: **400**), more than 10 parties of a role (**422**), an old `version` or a draft that is busy (**409**) and a lease that is not a
+draft (**409**). The messages name the field, never what was sent.
 
 The **flow** is computed on the server by a pure function (`LeaseDraftProgress`) from the values and the facts about the property (APE,
 cadastral data): `{ steps: [{ step, state, needs: [{ code, params }] }] }` for the eight steps of the wizard. `state` is `Done`, `Todo`,
@@ -136,6 +138,12 @@ values bump it too. `GET draft` returns the same `version` to every tab; the scr
 confirmation of the review and a save racing each other can never leave a confirmed review of values that changed: the confirmation
 fingerprints the values it reads under the lock (`LeaseDraftPostgresTests`).
 
+**A draft that is busy is a 409 too, never a timeout.** The wait for the row lock is limited to 5 seconds (`SET LOCAL lock_timeout`,
+`LeaseDraftLocking`): somebody confirming the draft (which reads the energy certificate from the storage while it holds the lock) or a job
+deleting it makes a second change wait that long at most, and then answer 409 `lease_draft_conflict` with nothing written; the same answer
+for a transaction the database stopped in a race (serialization failure, deadlock) or a command that timed out while it waited. The client
+reloads and tries again. The log says `Lease draft busy` with the id of the lease.
+
 ## 5. The review and its confirmation
 
 `GET …/review` lists the checks `{ code, severity, step, params }`, worst first (`Block`, `Warn`, `Info`, `Ok`; inside a severity in the
@@ -150,10 +158,15 @@ order of the steps), with `counts { block, warn, info, ok }`. No personal data i
 
 `POST …/review/confirm` is refused (422 `lease_review_blocked`) while a check blocks. It saves `ReviewConfirmedAt` and the **fingerprint**
 (`LeaseDraftFingerprint`): a SHA-256 of the values of the five data steps read in a fixed order and form (ids and noise ignored: the same
-fiscal code in lower case, a space more, the same number written another way, are not a change), event `ReviewConfirmed`. Confirming again
-changes nothing. A later save that changes a value the review covers recomputes the fingerprint and, if it differs, **withdraws the
-confirmation** (`ReviewConfirmedAt = null`, event `ReviewReopened` payload `changed`) and, with it, "downloaded for signature". `DELETE`
-withdraws it by hand (payload `withdrawn`).
+fiscal code in lower case, a space more, the same number written another way, are not a change; the characteristics of the unit count only
+for a canone concordato and are kept to the cents of their columns, so a form that goes on sending them after the landlord chose the libero
+does not withdraw the review at every save), event `ReviewConfirmed`. Confirming again changes nothing. A later save that changes a value the
+review covers recomputes the fingerprint and, if it differs, **withdraws the confirmation** (`ReviewConfirmedAt = null`, event
+`ReviewReopened` payload `changed`) and, with it, "downloaded for signature". `DELETE` withdraws it by hand (payload `withdrawn`).
+
+The confirmation also does what a save would when **the data became complete without one** (the agreement data of the comune were loaded,
+a date typed ahead of today has come): the draft still keeps its typed state, so the columns and the rows of the parties are written now and the
+typed state is dropped, and what is confirmed is what every other reader of the lease sees. It is one change: one version up.
 
 ## 6. "Downloaded for signature"
 
@@ -187,7 +200,12 @@ off does not clean them** — they wait, untouched, until it is turned on again 
   of § 4 after the conditions are checked again, so a draft saved or signed since the list was read is left alone (a draft idle for exactly
   the retention is kept; one second more is deleted).
 - **Batches**: 100 drafts per batch, oldest first, at most 50 batches per run (5,000 drafts a night; the first run after a long stop takes
-  the backlog over several nights). A batch that deleted nothing ends the run.
+  the backlog over several nights).
+- **One draft never stops the run.** A draft that is busy (its row lock is taken for more than 5 seconds, § 4), that was saved or signed
+  since the list was read, that a record added after this code refers to, or that fails for any other reason (a value that cannot be
+  decrypted, a failure of the database) is left, **not read again by this run**, so the ones behind it are still deleted and a draft that
+  refuses to go at the head of the list does not stall the job night after night. The run logs how many it deleted and how many it left;
+  a failure is logged as a warning with the id of the lease (not personal data) and the error.
 - **A session advisory lock** (`PostgresAdvisoryLocks.Scope.LeaseDraftRetentionRun`, key `lease-draft-retention`) keeps two runs apart even
   outside Hangfire's own lock; a run that finds it held returns `Skipped` and does nothing.
 - **No tenant**: the job reads every org (`IgnoreQueryFilters` on the tenant filter only). It logs **counts** and the cutoff, never an id of a
@@ -218,7 +236,10 @@ that verification a condition for turning the area on. Changing a figure is a ch
   The fiscal code and the e-mail stay masked; **the clear data are only in `GET …/draft` and `landlord-defaults`**, for who may create the lease.
 - **No identity document** is stored (LR-D3): only the day it was checked.
 - **Erasure of the parties' data** (`LeasePartyPrivacyService.AnonymizeParty`, LT-12) also clears `Residence`, `DocumentsVerifiedOn` and
-  the lease's `DraftData`.
+  the lease's `DraftData` (when a party is anonymized, and when the lease is marked as anonymized even if it had no party row: a draft whose
+  entries are all incomplete lives in `DraftData` alone).
+- **A lease that leaves the draft drops its typed state**: the offline signature and the start of a signature with the provider
+  (`LeaseSigningService`) set `DraftData` to null; the rows of the parties are the data of the contract.
 - **Logs and errors** carry ids, steps, versions and counts: never a name, a fiscal code, a residence or a value sent
   (`LeaseDraftServiceTests.TheLogs_OfAWholeLifeOfADraft_HoldNoPersonalData_OnlyIdsStepsAndCounts`).
 
@@ -226,9 +247,10 @@ that verification a condition for turning the area on. Changing a figure is a ch
 
 - `GET /api/leases` and the views of LR-01 list it like every draft; while it is incomplete its dates are the starting values
   (`3000-01-01`) and its rent 0 (the interface should show a draft by its stage, not by these: follow-up of LR-01b/LR-02).
-- The **RLI and Questura reminders** (`rli-deadline-reminder`) and the **agenda** (`LongRentAgendaService`) skip a draft whose `DraftData` is
-  not null: a draft whose start date was typed in the past would otherwise start a registration deadline. It is still counted among the
-  leases to sign.
+- The **RLI and Questura reminders** (`rli-deadline-reminder`) and the **agenda** (`LongRentAgendaService`) skip a lease that is a draft
+  **and** whose `DraftData` is not null: a draft whose start date was typed in the past would otherwise start a registration deadline. A
+  lease that is not a draft is never skipped, whatever it kept in `DraftData`. A draft still being typed is counted among the leases to sign
+  but has neither date nor lease in the checklist.
 - PM-02 sees the draft as it always saw one (`property_mode_blocked_by_draft_lease`) and § 7 is the way out.
 - The new events appear in the timeline of the masked detail (`events[].eventType`): the interface must know `ReviewConfirmed`,
   `ReviewReopened`, `SentForSignature` and `SentRevoked` **before the flag is turned on**.
@@ -244,7 +266,11 @@ null), `ReviewFingerprint` (varchar(64), null), `Origin` (int, default 0 = `Crea
 **Backfill**: the drafts that exist now were all created complete by one call, so each is set to `WizardMaxStep = 5`
 (`AddGuidedLeaseDraft.BackfillSql`: only the rows in status `Draft` still at 0, which makes a rerun harmless); nothing else is invented, no
 other status and no `UpdatedAt` changes. Such a draft opens in the guided draft with the steps whose data are complete done; the residence of
-its parties and the tax regime, which the old form never asked, are to do.
+its parties and the tax regime, which the old form never asked, are to do. **The wizard owns the term**: the end of the first period is the
+one the type gives (48 months for the libero, 36 for the concordato), which `computed.endDate` already shows before any save, so a draft made
+by the old form with another term gets the term of its type at its first save. A draft made with the **transitory** type, which the old form
+accepted and the wizard cannot offer (`lease_type_not_available`), keeps its type and its end until the landlord chooses another type or
+changes the start date; the first save of a step never turns it into a libero on its own.
 
 **Rollback**: flag off first (the endpoints answer 404, the job is removed). `Down` drops the columns: the typed state of the drafts still
 incomplete, the residences, the day documents were checked and the wizard progress are **lost** (the contracts themselves are untouched).
@@ -291,3 +317,7 @@ the figures of § 9 are confirmed. Then:
 
 Open: the starting dates of an incomplete draft show in the lease list until the interface shows drafts by stage; the rules specific to an
 imported contract (the transitory type allowed, relaxed APE and dates) arrive with LR-13; the renewal periods are in `LongRentRules` for LR-14.
+Known limits, not in this task: nothing caps the number of drafts an org can create (only the retention bounds them: a limit per org or a rate
+limit on `POST /api/leases/drafts` is a decision of the product owner); the fiscal reports count any lease that overlaps the tax year as
+"leased", an abandoned draft with a typed start date included, as every draft always did; every read of a concordato draft asks the
+calculator of the range, which loads the property (a cache is a follow-up if the screens read it often).
