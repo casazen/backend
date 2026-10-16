@@ -109,6 +109,8 @@ public class DashboardControllerOverviewTests
     [InlineData("Month", "2026-13", null, null, false, HostDashboardPeriodKind.Month)]
     [InlineData("Next60Days", null, null, null, false, HostDashboardPeriodKind.Month)]
     [InlineData("3", null, null, null, false, HostDashboardPeriodKind.Month)] // a number is no name
+    [InlineData("Last30Days,Next30Days", null, "2026-10-01", "2026-10-31", false, HostDashboardPeriodKind.Custom)] // 1 | 2 is 3: a list is no name
+    [InlineData("Month,Last30Days", null, null, null, false, HostDashboardPeriodKind.Month)] // 0 | 1 is 1: a list is no name
     public void TryParseOverviewPeriod_TheKindsOfKpisAndAFreePeriodWithItsDays(
         string? period, string? month, string? from, string? to, bool accepted, HostDashboardPeriodKind kind)
     {

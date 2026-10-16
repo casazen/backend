@@ -70,6 +70,21 @@ public class PaymentListPagingTests
     }
 
     [Fact]
+    public async Task TheLastDayTheCalendarHas_IsNoUpperBound_NotAnError()
+    {
+        var (db, world, _) = await SeedAsync();
+        await using var _ = db;
+        var service = new PaymentListService(db);
+
+        var everything = await service.ListAsync(world.OrgWide, new PaymentListCriteria());
+        var untilTheEnd = await service.ListAsync(world.OrgWide, new PaymentListCriteria(To: DateOnly.MaxValue));
+        var page = await service.ListPageAsync(world.OrgWide, new PaymentListCriteria(From: new DateOnly(2000, 1, 1), To: DateOnly.MaxValue), 1, 10);
+
+        Assert.Equal(everything.Select(p => p.Id), untilTheEnd.Select(p => p.Id));
+        Assert.Equal(everything.Count, page.TotalCount);
+    }
+
+    [Fact]
     public async Task Pages_PaymentsCreatedAtTheSameInstant_AreTiedByTheirId_TheSameOnEveryPage()
     {
         var (db, world, _) = await SeedAsync();

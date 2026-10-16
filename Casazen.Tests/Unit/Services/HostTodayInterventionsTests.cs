@@ -421,7 +421,7 @@ public class HostTodayInterventionsTests
     }
 
     [Fact]
-    public async Task Todo_OnlyTheFirstTwentyAreListed_TheCountCoversEveryIntervention()
+    public async Task Todo_OnlyTheFirstTenInterventionsAreListed_TheCountCoversAllOfThem()
     {
         var world = await SeedAsync();
         await using var _ = world.Db;
@@ -437,8 +437,27 @@ public class HostTodayInterventionsTests
         var today = await Service(world.Db).GetTodayAsync(new HostScope(world.OrgId), new HostTodayOptions());
 
         Assert.Equal(25, today.Todo.Count);
-        Assert.Equal(HostTodayService.TodoListSize, today.Todo.Items.Count);
+        Assert.Equal(HostTodayService.ServiceTodoListSize, today.Todo.Items.Count);
         Assert.All(today.Todo.Items, item => Assert.Equal(HostTodoAction.PayServiceRequest, item.Action));
+    }
+
+    [Fact]
+    public async Task Todo_ABacklogOfFinishedJobsNobodyMarkedPaid_NeverPushesTheOtherThingsToDoOutOfTheList()
+    {
+        var world = await SeedAsync();
+        await using var _ = world.Db;
+        // A property still to activate (the lowest priority), and a backlog of jobs to pay (the sixth) longer than the list.
+        var toActivate = HostScopeScenario.NewProperty(world.OrgId, "auth0|titolare-sr03b", "Masseria");
+        world.Db.Properties.Add(toActivate);
+        world.Db.ServiceRequests.AddRange(
+            Enumerable.Range(0, 25).Select(i => Request(world, world.Trullo, ServiceRequestStatus.Completato)));
+        await world.Db.SaveChangesAsync();
+
+        var today = await Service(world.Db).GetTodayAsync(new HostScope(world.OrgId), new HostTodayOptions());
+
+        Assert.Equal(26, today.Todo.Count);
+        Assert.Equal(HostTodayService.ServiceTodoListSize, today.Todo.Items.Count(i => i.Action == HostTodoAction.PayServiceRequest));
+        Assert.Contains(today.Todo.Items, i => i.Action == HostTodoAction.ActivateProperty && i.PropertyId == toActivate.Id);
     }
 
     // --- The rule that says which request asks something of the host ---------------------------------------------

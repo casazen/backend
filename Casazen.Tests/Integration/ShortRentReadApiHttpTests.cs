@@ -497,8 +497,7 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var today = TimeProvider.System.TodayInRome();
         var guestId = await db.Guests.IgnoreQueryFilters().Where(g => g.OrgId == world.OrgId).Select(g => g.Id).FirstAsync();
-        var supplierOrgId = await db.ServiceRequests.IgnoreQueryFilters()
-            .Where(r => r.OrgId == world.OrgId).Select(r => r.SupplierOrgId).FirstAsync();
+        var supplierOrgId = await SupplierOrgIdAsync(world);
 
         Booking Stay(Guid propertyId, BookingStatus status, BookingSource source, int checkInDay, int nights, decimal total)
         {
@@ -543,9 +542,18 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             upcoming.Id, upcomingHidden.Id, arrivesToday.Id, inHouse.Id, completed.Id, cancelled.Id, request.Id, leavesToday.Id, supplierOrgId);
     }
 
+    /// <summary>The supplier org the interventions of the scenario were requested from.</summary>
+    private async Task<Guid> SupplierOrgIdAsync(World world)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.ServiceRequests.IgnoreQueryFilters()
+            .Where(r => r.OrgId == world.OrgId).Select(r => r.SupplierOrgId).FirstAsync();
+    }
+
     private async Task<Guid> AddServiceRequestAsync(
         World world,
-        Around around,
+        Guid supplierOrgId,
         Guid propertyId,
         ServiceRequestStatus status,
         DateTime? start = null,
@@ -560,7 +568,7 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             OrgId = world.OrgId,
             PropertyId = propertyId,
             BookingId = bookingId,
-            SupplierOrgId = around.SupplierOrgId,
+            SupplierOrgId = supplierOrgId,
             RentalContext = ServiceRequestRentalContext.ShortRent,
             Category = "cleaning",
             Status = status,
@@ -710,6 +718,8 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
                      "period=Month&from=2026-10-01&to=2026-10-31",
                      "period=Next60Days",
                      "period=3",
+                     "period=Last30Days,Next30Days&from=2026-10-01&to=2026-10-31",
+                     "period=Month,Last30Days",
                  })
         {
             await AssertProblemAsync(await owner.GetAsync($"/api/dashboard/overview?{query}"), HttpStatusCode.BadRequest, "dashboard_invalid_period");
@@ -757,10 +767,10 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var world = await NewWorldAsync();
         var around = await AddStaysAroundTodayAsync(world);
         var morning = RomeCalendar.ToUtc(TimeProvider.System.TodayInRomeAsDateOnly(), new TimeOnly(10, 0));
-        var today = await AddServiceRequestAsync(world, around, world.GrantedId, ServiceRequestStatus.PresoInCarico, morning);
-        var hiddenToday = await AddServiceRequestAsync(world, around, world.HiddenId, ServiceRequestStatus.PresoInCarico, morning);
+        var today = await AddServiceRequestAsync(world, around.SupplierOrgId, world.GrantedId, ServiceRequestStatus.PresoInCarico, morning);
+        var hiddenToday = await AddServiceRequestAsync(world, around.SupplierOrgId, world.HiddenId, ServiceRequestStatus.PresoInCarico, morning);
         var cleaning = await AddServiceRequestAsync(
-            world, around, world.GrantedId, ServiceRequestStatus.Richiesto, bookingId: around.LeavesToday);
+            world, around.SupplierOrgId, world.GrantedId, ServiceRequestStatus.Richiesto, bookingId: around.LeavesToday);
         using var owner = Owner(world);
         using var collaborator = Collaborator(world);
 
@@ -805,11 +815,12 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
     [Fact]
     public async Task Today_TheThingsToDoAboutAnIntervention_EachWithItsRequest_ForWhoReachesTheProperty()
     {
+        // No stays around today here: the list of things to do is cut at twenty, and this test is about the three about interventions.
         var world = await NewWorldAsync();
-        var around = await AddStaysAroundTodayAsync(world);
-        var proposal = await AddServiceRequestAsync(world, around, world.GrantedId, ServiceRequestStatus.Richiesto, proposal: true);
-        var amount = await AddServiceRequestAsync(world, around, world.GrantedId, ServiceRequestStatus.Completato, amountToConfirm: true);
-        var toPay = await AddServiceRequestAsync(world, around, world.HiddenId, ServiceRequestStatus.Completato);
+        var supplierOrgId = await SupplierOrgIdAsync(world);
+        var proposal = await AddServiceRequestAsync(world, supplierOrgId, world.GrantedId, ServiceRequestStatus.Richiesto, proposal: true);
+        var amount = await AddServiceRequestAsync(world, supplierOrgId, world.GrantedId, ServiceRequestStatus.Completato, amountToConfirm: true);
+        var toPay = await AddServiceRequestAsync(world, supplierOrgId, world.HiddenId, ServiceRequestStatus.Completato);
         using var owner = Owner(world);
         using var collaborator = Collaborator(world);
 
@@ -1002,6 +1013,26 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         await AssertProblemAsync(await owner.GetAsync("/api/bookings/counts?status=Done"), HttpStatusCode.BadRequest, "booking_list_invalid_status");
         // The counters take no chip, order or page: what they do not take the binder ignores.
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/bookings/counts?view=upcoming&sort=total&page=3")).StatusCode);
+    }
+
+    [Fact]
+    public async Task TheLastDayTheCalendarHas_IsNoUpperBound_OnTheBookingListAndOnThePayments()
+    {
+        var world = await NewWorldAsync(limited: false);
+        using var owner = Owner(world);
+
+        foreach (var url in new[]
+                 {
+                     "/api/bookings/search?arrivalTo=9999-12-31",
+                     "/api/bookings/search?to=9999-12-31",
+                     "/api/bookings/counts?arrivalTo=9999-12-31",
+                     "/api/payments?to=9999-12-31",
+                     "/api/payments?to=9999-12-31&page=1",
+                 })
+        {
+            var response = await owner.GetAsync(url);
+            Assert.True(response.StatusCode == HttpStatusCode.OK, $"{url}: {(int)response.StatusCode}");
+        }
     }
 
     [Fact]

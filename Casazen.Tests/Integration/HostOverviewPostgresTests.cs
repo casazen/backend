@@ -19,7 +19,8 @@ namespace Casazen.Tests.Integration;
 /// and must say the same, for the collaborator limited to one property and for the whole org (the other org's property has stays,
 /// links and interventions too: none may appear). The Home overview with its comparison and its chart, the host's day with its
 /// interventions, Alloggiati and cleaning, the booking list with its chips, channels, check-in states and orders, the counters of the
-/// chips, the pages of payments, and, for all of them, no command per row.
+/// chips, the pages of payments, and, in what SR-03b reads, no command per row. (The day's cockpit also checks the guests' data of
+/// each candidate stay with one call per stay, SR-03-FU4; the service this test builds mocks that check, so it is not measured.)
 /// </summary>
 public class HostOverviewPostgresTests : IAsyncLifetime
 {
@@ -474,6 +475,7 @@ public class HostOverviewPostgresTests : IAsyncLifetime
                 _pg.OrgWide, new HostOverviewQuery(HostDashboardPeriodKind.Next30Days, IncludeMoney: true)),
             ["overview-months"] = db => Dashboard(db).GetOverviewAsync(
                 _pg.Restricted, new HostOverviewQuery(HostDashboardPeriodKind.Custom, From: new DateOnly(2026, 1, 1), To: new DateOnly(2026, 12, 31), IncludeMoney: true)),
+            // The check of the guests' data of the cockpit is mocked by NewService (SR-03-FU4): what is measured is the rest.
             ["today"] = db => HostTodayServiceTests.NewService(db).GetTodayAsync(_pg.OrgWide, new HostTodayOptions(IncludePayments: true)),
             ["counts"] = db => Search(db).CountAsync(_pg.OrgWide, new BookingSearchCriteria()),
             ["counts-restricted"] = db => Search(db).CountAsync(_pg.Restricted, new BookingSearchCriteria(Channels: [BookingChannel.Airbnb])),

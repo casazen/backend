@@ -1,6 +1,7 @@
 using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Services;
+using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
@@ -215,9 +216,7 @@ public class DashboardController(
         if (string.IsNullOrWhiteSpace(period))
             return true;
 
-        return Enum.TryParse(period.Trim(), ignoreCase: true, out kind)
-            && Enum.IsDefined(kind)
-            && !period.Trim().All(char.IsAsciiDigit);
+        return EnumNames.TryParseDefined(period, out kind);
     }
 
     private static bool TryParseMonth(HostDashboardPeriodKind kind, string? month, out DateOnly? monthStart)

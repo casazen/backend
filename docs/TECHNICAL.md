@@ -419,7 +419,8 @@ destination as a key (the first six repeat `ComplianceCockpitAction` by name; ne
 its own table, as for the cockpit links below) with the ids of its target, `missing` what it still lacks. The three about an
 intervention (SR-03b) have the supplier as `label` and its `serviceRequestId` as target; they take the priority of what they are
 like (answer 1, amount 5, payment 6), so no priority of SR-03 moved and the range stays 1 to 8. They are those of the
-properties the caller reaches, in SQL.
+properties the caller reaches, in SQL, and at most 10 of them are listed (answers first, then amounts, then payments; the count
+covers all of them): a backlog of finished jobs nobody marked paid never pushes the other things to do out of the 20.
 
 **What an item lacks (`missing`, SR-03).** Every item of the cockpit (`GET /api/compliance/summary`) and of `todo` carries
 `missing`, a list of `{ code, field, count }` with stable snake_case codes the client translates (`IComplianceMissingService`;

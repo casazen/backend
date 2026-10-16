@@ -31,6 +31,8 @@ public class HostOverviewScenarioTests
     {
         var (db, world) = await SeedAsync();
         await using var _ = db;
+        // What PostgreSQL would refuse: a key that points at nothing, a unique index that holds the same key twice.
+        await HostScopeScenario.AssertReferentialIntegrityAsync(db);
 
         var wholeOrg = await Search(db).CountAsync(world.OrgWide, new BookingSearchCriteria());
         var restricted = await Search(db).CountAsync(world.Restricted, new BookingSearchCriteria());

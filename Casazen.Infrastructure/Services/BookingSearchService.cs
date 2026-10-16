@@ -163,7 +163,8 @@ public sealed class BookingSearchService(
             query = query.Where(b => b.CheckOutDate >= firstDay);
         }
 
-        if (criteria.To is { } to)
+        // The last day the calendar has is no upper bound: the day after it cannot be written.
+        if (criteria.To is { } to && to != DateOnly.MaxValue)
         {
             var dayAfter = StayDate(to).AddDays(1);
             query = query.Where(b => b.CheckInDate < dayAfter);
@@ -176,7 +177,7 @@ public sealed class BookingSearchService(
             query = query.Where(b => b.CheckInDate >= firstArrival);
         }
 
-        if (criteria.ArrivalTo is { } arrivalTo)
+        if (criteria.ArrivalTo is { } arrivalTo && arrivalTo != DateOnly.MaxValue)
         {
             var dayAfterArrival = StayDate(arrivalTo).AddDays(1);
             query = query.Where(b => b.CheckInDate < dayAfterArrival);

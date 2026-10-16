@@ -78,7 +78,8 @@ public sealed class PaymentListService(AppDbContext db) : IPaymentListService
             query = query.Where(p => (p.ProcessedAt ?? p.CreatedAt) >= start);
         }
 
-        if (criteria.To is { } to)
+        // The last day the calendar has is no upper bound: the day after it cannot be written.
+        if (criteria.To is { } to && to != DateOnly.MaxValue)
         {
             var end = RomeCalendar.StartOfDayUtc(to.AddDays(1));
             query = query.Where(p => (p.ProcessedAt ?? p.CreatedAt) < end);

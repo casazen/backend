@@ -16,6 +16,9 @@ namespace Casazen.Infrastructure.Services;
 /// the bookings, the guests of the stays and the links), the requests, the cockpit and what it lacks (one read of the stays of
 /// the incomplete check-ins, a few reads for each of the first properties to activate), the stays of the cockpit (one read), and,
 /// for a caller who may read payments, the confirmed stays whose payment failed (one page, and a count only when the page is full).
+/// What SR-03b adds (the interventions of the day, the Alloggiati and the cleaning of the stays listed, the things to do about an
+/// intervention) is read the same way, a few reads for all the rows. The cockpit's own check of the guests' data still asks once
+/// per candidate stay (SR-03-FU4).
 /// </remarks>
 public sealed class HostTodayService(
     AppDbContext db,
@@ -34,6 +37,12 @@ public sealed class HostTodayService(
 
     /// <summary>Interventions of the day listed (the count covers all of them; SR-03b).</summary>
     public const int ServiceListSize = 20;
+
+    /// <summary>
+    /// Things to do about an intervention listed (the count covers all of them; SR-03b): a backlog of finished jobs that nobody
+    /// marked paid must not push every other thing to do out of the list, so they never take more than half of it.
+    /// </summary>
+    public const int ServiceTodoListSize = 10;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -227,7 +236,7 @@ public sealed class HostTodayService(
         .InScope(scope);
 
     // The requests that wait for the host (HostServiceRequestTodoRules): a proposed time to answer, an amount to confirm, a job to
-    // pay. The first ones, in the order of the things to do among the requests, and the count of them all.
+    // pay. The first ones (ServiceTodoListSize), in the order of the things to do among the requests, and the count of them all.
     private async Task<ServiceRequestTodos> GetServiceRequestsToAnswerAsync(HostScope scope, CancellationToken cancellationToken)
     {
         var waiting = HostServiceRequestsInScope(scope).Where(HostServiceRequestTodoRules.NeedTheHost());
@@ -237,7 +246,7 @@ public sealed class HostTodayService(
             .ThenBy(r => r.ScheduledStartUtc == null)
             .ThenBy(r => r.ScheduledStartUtc)
             .ThenBy(r => r.Id)
-            .Take(TodoListSize)
+            .Take(ServiceTodoListSize)
             .Select(r => new ServiceRequestToAnswer(
                 r.Id,
                 r.Status,
@@ -250,7 +259,7 @@ public sealed class HostTodayService(
                 r.SupplierOrg.DisplayName != "" ? r.SupplierOrg.DisplayName : r.SupplierOrg.Name))
             .ToListAsync(cancellationToken);
 
-        var count = items.Count < TodoListSize ? items.Count : await waiting.CountAsync(cancellationToken);
+        var count = items.Count < ServiceTodoListSize ? items.Count : await waiting.CountAsync(cancellationToken);
         return new ServiceRequestTodos(count, items);
     }
 

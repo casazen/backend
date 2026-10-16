@@ -163,6 +163,19 @@ public class BookingListSearchTests
     }
 
     [Fact]
+    public async Task Arrival_TheLastDayTheCalendarHas_IsNoUpperBound_NotAnError()
+    {
+        var world = await SeedAsync();
+
+        var everything = await NamesAsync(world, new BookingSearchCriteria());
+
+        Assert.Equal(everything, await NamesAsync(world, new BookingSearchCriteria(ArrivalTo: DateOnly.MaxValue)));
+        Assert.Equal(everything, await NamesAsync(world, new BookingSearchCriteria(To: DateOnly.MaxValue)));
+        var counts = await Search(world.Db).CountAsync(world.OrgWide, new BookingSearchCriteria(ArrivalTo: DateOnly.MaxValue));
+        Assert.Equal(everything.Count, counts.All);
+    }
+
+    [Fact]
     public async Task Arrival_IsNotTheOverlapOfFromAndTo_WhichKeepsTheStaysThatHaveADayInTheRange()
     {
         var world = await SeedAsync();
