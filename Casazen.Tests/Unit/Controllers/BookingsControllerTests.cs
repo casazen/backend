@@ -29,6 +29,7 @@ namespace Casazen.Tests.Unit.Controllers;
 public class BookingsControllerTests
 {
     private readonly Mock<IBookingService> _mockBookingService;
+    private readonly Mock<IBookingSearchService> _mockSearch = new();
     private readonly Mock<IAlloggiatiWebService> _mockAlloggiatiService;
     private readonly Mock<IPropertyService> _mockPropertyService;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
@@ -166,15 +167,18 @@ public class BookingsControllerTests
             Source = BookingSource.Direct,
         };
 
-        _mockBookingService
-            .Setup(b => b.GetPagedBookingsAsync(
-                It.Is<HostScope>(s => s.OrgId == OrgId && s.OwnerId == OwnerId), 1, 10, null, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(([booking], 1));
+        // SR-03b: the plain list is the search without a filter (SR-03-FU7), so it asks the search service, once.
+        _mockSearch
+            .Setup(s => s.SearchAsync(
+                It.Is<HostScope>(scope => scope.OrgId == OrgId && scope.OwnerId == OwnerId),
+                It.Is<BookingSearchCriteria>(c => c.Page == 1 && c.PageSize == 10 && c.PropertyId == null && c.GuestId == null),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingSearchPage([booking], 1, 1, 10));
 
-        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver());
+        var result = await _controller.GetAll(_mockSearch.Object, OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver());
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var paged = Assert.IsType<PagedResultDto<BookingResponseDto>>(ok.Value);
+        var paged = Assert.IsType<PagedResultDto<BookingListItemDto>>(ok.Value);
         var dto = Assert.Single(paged.Items);
         Assert.Equal(booking.Id, dto.Id);
         Assert.Equal("Test Villa", dto.PropertyName);
@@ -184,8 +188,8 @@ public class BookingsControllerTests
         Assert.Equal(10, paged.PageSize);
         // No per-booking authorization lookup any more (A2-17): the scope is applied by the single query.
         _mockAuthz.VerifyNoOtherCalls();
-        _mockBookingService.Verify(
-            b => b.GetPagedBookingsAsync(It.IsAny<HostScope>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+        _mockSearch.Verify(
+            s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -195,12 +199,13 @@ public class BookingsControllerTests
         SetUser(OwnerId);
         _mockPropertyService.Setup(s => s.GetPropertyRecordAsync(PropertyId)).ReturnsAsync((Property?)null);
 
-        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), PropertyId);
+        var result = await _controller.GetAll(
+            _mockSearch.Object, OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), PropertyId);
 
         var problem = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
-        _mockBookingService.Verify(
-            b => b.GetPagedBookingsAsync(It.IsAny<HostScope>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+        _mockSearch.Verify(
+            s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -212,11 +217,12 @@ public class BookingsControllerTests
         property.OwnerId = "auth0|other_member";
         _mockPropertyService.Setup(s => s.GetPropertyRecordAsync(PropertyId)).ReturnsAsync(property);
 
-        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), PropertyId);
+        var result = await _controller.GetAll(
+            _mockSearch.Object, OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), PropertyId);
 
         Assert.IsType<ForbidResult>(result.Result);
-        _mockBookingService.Verify(
-            b => b.GetPagedBookingsAsync(It.IsAny<HostScope>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+        _mockSearch.Verify(
+            s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -225,19 +231,59 @@ public class BookingsControllerTests
     {
         SetUser(OwnerId);
         var guestId = Guid.NewGuid();
-        _mockBookingService
-            .Setup(b => b.GetPagedBookingsAsync(It.IsAny<HostScope>(), 1, 10, null, guestId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(([], 0));
+        _mockSearch
+            .Setup(s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingSearchPage([], 0, 1, 10));
 
-        var result = await _controller.GetAll(OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), null, guestId);
+        var result = await _controller.GetAll(
+            _mockSearch.Object, OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), null, guestId);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        Assert.Empty(Assert.IsType<PagedResultDto<BookingResponseDto>>(ok.Value).Items);
-        _mockBookingService.Verify(
-            b => b.GetPagedBookingsAsync(
-                It.Is<HostScope>(s => s.OrgId == OrgId && s.OwnerId == OwnerId), 1, 10, null, guestId, It.IsAny<CancellationToken>()),
+        Assert.Empty(Assert.IsType<PagedResultDto<BookingListItemDto>>(ok.Value).Items);
+        _mockSearch.Verify(
+            s => s.SearchAsync(
+                It.Is<HostScope>(scope => scope.OrgId == OrgId && scope.OwnerId == OwnerId),
+                It.Is<BookingSearchCriteria>(c => c.Page == 1 && c.PageSize == 10 && c.PropertyId == null && c.GuestId == guestId),
+                It.IsAny<CancellationToken>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task GetAll_AsksOnlyForTheTwoFiltersItHas_AndNothingElse()
+    {
+        // The plain list narrows by the property and the guest, and no more: no chip, no channel, no order. It must not turn into a
+        // search that filters (SR-03-FU7: the same rule, the same answer).
+        SetUser(OwnerId);
+        var property = MakeProperty();
+        _mockPropertyService.Setup(s => s.GetPropertyRecordAsync(PropertyId)).ReturnsAsync(property);
+        _mockSearch
+            .Setup(s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingSearchPage([], 0, 2, 7));
+
+        await _controller.GetAll(
+            _mockSearch.Object, OrgResolver(), HostAuthorization(), HostAuthorizationTestHarness.ScopeResolver(), PropertyId, null, 2, 7);
+
+        _mockSearch.Verify(
+            s => s.SearchAsync(
+                It.IsAny<HostScope>(),
+                It.Is<BookingSearchCriteria>(c =>
+                    c.PropertyId == PropertyId
+                    && c.Page == 2
+                    && c.PageSize == 7
+                    && c.From == null
+                    && c.To == null
+                    && c.Statuses == null
+                    && c.Query == null
+                    && c.ArrivalFrom == null
+                    && c.ArrivalTo == null
+                    && c.View == BookingListView.All
+                    && c.Channels == null
+                    && c.CheckInStates == null
+                    && c.Sort == null),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
 
     private static IOrgContextResolver OrgResolver()
     {
