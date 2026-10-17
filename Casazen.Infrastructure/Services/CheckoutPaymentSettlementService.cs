@@ -166,6 +166,10 @@ public sealed class CheckoutPaymentSettlementService(
         {
             var previousStatus = booking.Status;
             booking.Status = BookingStatus.Confirmed;
+            // The payment is what confirms it: the same instant, so the timeline reads "paid" and then "confirmed".
+            booking.ConfirmedAt = payment.ProcessedAt ?? now;
+            // A hold that had expired and is confirmed again is no longer a cancelled booking.
+            booking.CancelledAt = null;
             booking.CancellationReason = null;
             booking.UpdatedAt = now;
             await db.SaveChangesAsync(cancellationToken);
@@ -184,6 +188,7 @@ public sealed class CheckoutPaymentSettlementService(
         if (booking.Status == BookingStatus.Pending)
         {
             booking.Status = BookingStatus.Cancelled;
+            booking.CancelledAt = now;
             booking.CancellationReason = BookingCancellationReason.DatesUnavailableAtPayment;
             booking.UpdatedAt = now;
         }

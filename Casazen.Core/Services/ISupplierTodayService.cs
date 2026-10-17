@@ -55,8 +55,14 @@ public static class SupplierTodayLimits
 /// <param name="ShowcasePublished">The public showcase is online: an active supplier with a showcase address.</param>
 /// <param name="FirstRequestAnswered">The supplier answered a request at least once: it took one or rejected one.</param>
 /// <param name="PaymentsActive">
-/// Whether the supplier receives payments through CasaZen. <b>Always <c>null</c> for now</b>: the payments arrive with SP-14 and
-/// SP-15, so the answer "not available yet" is not a "no" and the console does not count the step.
+/// Whether the supplier receives payments through CasaZen (SP-16a): <c>true</c> when its Stripe account takes charges and payouts
+/// (<see cref="SupplierVerification.CanReceivePayments"/>) and <c>false</c> when it does not, <b>only while the flag
+/// <c>SupplierOnlinePayments</c> is on</b>; <c>null</c> with the flag off, because "not available" is not a "no" and the console does
+/// not count the step.
+/// </param>
+/// <param name="Verification">
+/// The "Verificato" badge (decision D11, SP-16a): read from <see cref="SupplierVerification"/> whatever the flag says. <c>null</c> only in a
+/// service built without the payments account (a test); the application always fills it.
 /// </param>
 public sealed record SupplierChecklist(
     int ProfileCompletionPercent,
@@ -66,7 +72,14 @@ public sealed record SupplierChecklist(
     DateTime? HoursConfiguredAt,
     bool ShowcasePublished,
     bool FirstRequestAnswered,
-    bool? PaymentsActive);
+    bool? PaymentsActive,
+    SupplierChecklistVerification? Verification = null);
+
+/// <summary>
+/// Whether the supplier is "Verificato" and, when it is not, what is still missing (SP-16a): the stable codes of
+/// <see cref="SupplierVerification"/> (<c>profile_not_active</c>, <c>payments_not_enabled</c>, <c>vat_number_missing</c>), in that order.
+/// </summary>
+public sealed record SupplierChecklistVerification(bool Verified, IReadOnlyList<string> Missing);
 
 /// <summary>
 /// The two reads of the supplier's console home (SP-04), composed from the service requests, the profile, the catalog and the

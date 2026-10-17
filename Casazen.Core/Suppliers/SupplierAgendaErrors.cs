@@ -34,6 +34,9 @@ public static class SupplierAgendaErrors
     /// <summary>422: a rule is missing or outside its limits (buffer, jobs a day, notice, horizon, slot step).</summary>
     public const string RulesInvalid = "supplier_rules_invalid";
 
+    /// <summary>422: a setting of <c>PUT api/supplier/settings</c> is missing or outside its limits (SP-16a: the switches and the time to answer).</summary>
+    public const string SettingsInvalid = "supplier_settings_invalid";
+
     /// <summary>
     /// Every <c>SharedResources</c> key the agenda uses (a test checks that each one exists in Italian and English). The
     /// range of <c>GET api/supplier/calendar</c> reuses <c>SupplierAvailabilityRangeInvalid</c> and
@@ -49,6 +52,7 @@ public static class SupplierAgendaErrors
         "SupplierBlockLimitReached",
         "SupplierBlockNotFound",
         "SupplierRulesInvalid",
+        "SupplierSettingsInvalid",
     ];
 
     /// <summary>The 422 of weekly hours that are not valid; <paramref name="fields"/> are the JSON names of what is wrong.</summary>
@@ -66,6 +70,10 @@ public static class SupplierAgendaErrors
     /// <summary>The 422 of rules that are not valid.</summary>
     public static SupplierAgendaRuleException InvalidRules(IReadOnlyList<string> fields) =>
         new(RulesInvalid, "SupplierRulesInvalid", fields);
+
+    /// <summary>The 422 of settings that are not valid (SP-16a).</summary>
+    public static SupplierAgendaRuleException InvalidSettings(IReadOnlyList<string> fields) =>
+        new(SettingsInvalid, "SupplierSettingsInvalid", fields);
 
     /// <summary>The 422 of too many time off entries.</summary>
     public static DomainRuleException TimeOffLimit() =>

@@ -37,6 +37,26 @@ public class Booking : ITenantOwned
     /// </summary>
     public DateTime? ArrivedAt { get; set; }
 
+    /// <summary>
+    /// When the booking became confirmed (UTC): a payment that settled, the host's confirmation or acceptance, or a booking
+    /// that is confirmed from the start (entered by the host, an OTA stay). Cleared when a cancelled hold is confirmed again.
+    /// Null for a booking that was never confirmed, and for every booking confirmed before SR-05a, which was never backfilled
+    /// (SR-D17): its confirmation is on the timeline without a time.
+    /// </summary>
+    public DateTime? ConfirmedAt { get; set; }
+
+    /// <summary>
+    /// When the booking was cancelled (UTC), by the host, the guest or the system. Null while it is not cancelled, and for every
+    /// booking cancelled before SR-05a (no backfill, SR-D17: the timeline shows the cancellation without a time).
+    /// </summary>
+    public DateTime? CancelledAt { get; set; }
+
+    /// <summary>
+    /// When the host checked the stay out (UTC). Null until then, and for every stay checked out before SR-05a (no backfill,
+    /// SR-D17: the timeline shows the check-out without a time).
+    /// </summary>
+    public DateTime? CheckedOutAt { get; set; }
+
     public int NumberOfGuests { get; set; }
 
     [Required]

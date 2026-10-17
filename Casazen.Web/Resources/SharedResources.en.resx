@@ -426,6 +426,30 @@
   <data name="LeaseNotFound" xml:space="preserve">
     <value>Lease not found</value>
   </data>
+  <data name="LeaseDraftConflict" xml:space="preserve">
+    <value>The draft was changed in another tab or on another device. Reload it to see the changes before saving again: this save was not applied.</value>
+  </data>
+  <data name="LeaseNotDraft" xml:space="preserve">
+    <value>The contract is no longer a draft.</value>
+  </data>
+  <data name="LeaseReviewBlocked" xml:space="preserve">
+    <value>The review still has problems to fix: it cannot be confirmed while they are there.</value>
+  </data>
+  <data name="LeaseReviewNotConfirmed" xml:space="preserve">
+    <value>Confirm the review of the contract first.</value>
+  </data>
+  <data name="LeaseReviewNotApplicable" xml:space="preserve">
+    <value>A contract that is already signed has no review to confirm.</value>
+  </data>
+  <data name="LeaseSentNotApplicable" xml:space="preserve">
+    <value>A contract that is already signed is not downloaded for signature.</value>
+  </data>
+  <data name="LeaseNotDeletable" xml:space="preserve">
+    <value>Only a draft with no signed copy and no rent plan can be deleted.</value>
+  </data>
+  <data name="LeaseDraftValuesInvalid" xml:space="preserve">
+    <value>The values sent do not have the shape this step of the draft expects.</value>
+  </data>
   <data name="RliChecklist_contract_signed" xml:space="preserve">
     <value>Contract signed by all parties</value>
   </data>
@@ -2271,6 +2295,9 @@
   </data>
   <data name="SupplierRulesInvalid" xml:space="preserve">
     <value>The rules are not valid (fields: {0}). All five are required: break between jobs (0 to 240 minutes, in steps of 5), jobs per day (1 to 50), notice (0 to 720 hours), horizon (1 to 365 days) and slot step (15 to 240 minutes, in steps of 5).</value>
+  </data>
+  <data name="SupplierSettingsInvalid" xml:space="preserve">
+    <value>The settings are not valid (fields: {0}). All five are required: automatic acceptance of regular customers, alert for new requests, reminder of the day before, alert for payments and time to answer (15 to 10080 minutes).</value>
   </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Provide the municipality or the property to search for suppliers.</value>

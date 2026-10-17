@@ -269,6 +269,40 @@ public class SupplierAgendaService(
             .FirstOrDefaultAsync(cancellationToken)
         ?? SupplierBookingSettings.Default;
 
+    public async Task<SupplierSettingsView> GetSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
+    {
+        var settings = await SettingsOf(supplierOrgId).AsNoTracking().FirstOrDefaultAsync(cancellationToken);
+        return settings is null ? SupplierSettingsView.Default : ToView(settings);
+    }
+
+    public async Task<SupplierSettingsView> ReplaceSettingsAsync(
+        Guid supplierOrgId,
+        SupplierSettingsInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var content = SupplierSettingsRules.Normalize(input);
+
+        // The row is shared with the agenda rules and the working hours: the same lock, so two saves never write it at once.
+        await using var transaction = await LockAgendaAsync(supplierOrgId, cancellationToken);
+
+        var now = Now();
+        var settings = await EnsureSettingsAsync(supplierOrgId, now, cancellationToken);
+
+        // OnlineBookingEnabled is not touched: the console cannot open the showcase to bookings (decision SP-D29).
+        settings.AutoAcceptRegulars = content.AutoAcceptRegulars;
+        settings.NotifyNewRequests = content.NotifyNewRequests;
+        settings.NotifyDayBeforeReminder = content.NotifyDayBeforeReminder;
+        settings.NotifyPaymentMarked = content.NotifyPayments;
+        settings.RespondWithinMinutes = content.RespondWithinMinutes;
+        settings.UpdatedAt = now;
+
+        await db.SaveChangesAsync(cancellationToken);
+        await CommitAsync(transaction, cancellationToken);
+
+        logger.LogInformation("Supplier {OrgId}: settings replaced", supplierOrgId);
+        return ToView(settings);
+    }
+
     // ─── Calendar and planner ────────────────────────────────────────────────────
 
     public async Task<SupplierCalendar> GetCalendarAsync(
@@ -512,6 +546,15 @@ public class SupplierAgendaService(
             .ThenBy(row => row.StartMinute)
             .Select(row => new SupplierWeeklyBand(row.Weekday, row.StartMinute, row.EndMinute))
             .ToList();
+
+    private static SupplierSettingsView ToView(SupplierSettings settings) =>
+        new(
+            settings.OnlineBookingEnabled,
+            settings.AutoAcceptRegulars,
+            settings.NotifyNewRequests,
+            settings.NotifyDayBeforeReminder,
+            settings.NotifyPaymentMarked,
+            settings.RespondWithinMinutes);
 
     private static SupplierPlanningRules ToRules(SupplierSettings settings) =>
         new(

@@ -88,6 +88,8 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
         stored = await LoadLeaseAsync(lease.LeaseId);
         Assert.NotNull(stored.PartiesAnonymizedAt);
         Assert.All(stored.Parties, AssertNoPersonalData);
+        // LR-12: what the landlord typed in the wizard repeats the data of the parties and goes with them.
+        Assert.Null(stored.DraftData);
         Assert.Equal([PartyRole.Landlord, PartyRole.Tenant], stored.Parties.Select(p => p.Role).Order());
         Assert.Contains(stored.Parties, p => p.IsExtraEU);
 
@@ -263,6 +265,9 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
             FiscalCode = landlordCf,
             Citizenship = "IT",
             ContactEmail = "mario.rossi@example.com",
+            // LR-12: the residence and the day the documents were checked are personal data too.
+            Residence = "Bari, via Sparano 1",
+            DocumentsVerifiedOn = new DateOnly(2026, 1, 5),
         };
         var tenant = new Party
         {
@@ -272,6 +277,8 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
             FiscalCode = tenantCf,
             Citizenship = "US",
             ContactEmail = "giulia.verdi@example.com",
+            Residence = "New York, 5th Avenue 10",
+            DocumentsVerifiedOn = new DateOnly(2026, 1, 5),
             IsExtraEU = true,
         };
         var lease = new LeaseContract
@@ -286,6 +293,8 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
             EndDate = end,
             MonthlyRent = 900m,
             Parties = [landlord, tenant],
+            // LR-12: the values typed in the wizard repeat the data of the parties and go with them.
+            DraftData = """{"landlords":[{"firstName":"Mario"}]}""",
         };
         db.LeaseContracts.Add(lease);
         if (withSigners)

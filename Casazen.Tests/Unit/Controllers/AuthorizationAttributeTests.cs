@@ -63,6 +63,8 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(LongRentServiceRequestsController), CasazenPolicies.LongRentPropertyRead)]
     [InlineData(typeof(LongRentRentsController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(LongRentAgendaController), CasazenPolicies.LeaseRead)]
+    // LR-12: the guided draft carries the parties in clear, so even its reads need the permission to create a lease.
+    [InlineData(typeof(LeaseDraftsController), CasazenPolicies.LeaseCreate)]
     public void HostController_ClassPolicyIsAContextReadPermission(Type controllerType, string expectedPolicy)
     {
         var classPolicies = controllerType
@@ -107,6 +109,8 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(LongRentServiceRequestsController), nameof(LongRentServiceRequestsController.MarkPaid), "RequireContext:long-rent:property.write")]
     [InlineData(typeof(LongRentRentsController), nameof(LongRentRentsController.SendReminder), "RequireContext:long-rent:lease.create")]
     [InlineData(typeof(LongRentRentsController), nameof(LongRentRentsController.SendReminders), "RequireContext:long-rent:lease.create")]
+    [InlineData(typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetRules), "RequireContext:long-rent:lease.read")]
+    [InlineData(typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetLandlordDefaults), "RequireContext:long-rent:lease.create")]
     [InlineData(typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), "RequireContext:short-rent:ota.write")]
     [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Preview), "RequireContext:short-rent|long-rent:property.write")]
     [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Schedule), "RequireContext:short-rent|long-rent:property.write")]
