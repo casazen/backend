@@ -32,15 +32,12 @@ public class PaymentsControllerTests
     private readonly Mock<IBookingService> _bookingService = new();
     private readonly Mock<IHostResourceLookup> _hostResources = new();
     private readonly Mock<IOrgContextResolver> _orgResolver = new();
-    private readonly Mock<IFiscalRegimeService> _fiscal = new();
+    private readonly Mock<IManualPaymentService> _manualPayments = new();
     private readonly Mock<IPaymentRefundService> _refundService = new();
     private Func<string, string, bool>? _permissions;
 
     public PaymentsControllerTests()
     {
-        _fiscal.Setup(f => f.ApplyWithholdingOnCreateAsync(
-                It.IsAny<Payment>(), It.IsAny<Booking>(), It.IsAny<bool?>(), It.IsAny<decimal?>()))
-            .Returns(Task.CompletedTask);
         _orgResolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgId);
         _hostResources.Setup(h => h.ForPropertyAsync(PropertyId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HostResource(OrgId, OwnerId));
@@ -249,19 +246,24 @@ public class PaymentsControllerTests
     }
 
     [Fact]
-    public async Task Create_WhenAuthorized_DerivesOrgIdFromBooking()
+    public async Task Create_WhenAuthorized_RecordsThroughTheManualPaymentServiceWithTheClientKey()
     {
         var booking = MakeBooking(PropertyId);
         _bookingService.Setup(b => b.GetBookingAsync(booking.Id)).ReturnsAsync(booking);
-        _paymentService.Setup(p => p.CreatePaymentAsync(It.IsAny<Payment>()))
-            .ReturnsAsync((Payment p) => p);
+        var recorded = MakePayment(PropertyId);
+        _manualPayments
+            .Setup(m => m.RecordAsync(It.IsAny<ManualPaymentCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManualPaymentResult(recorded, true));
 
-        var result = await CreateController().Create(new CreatePaymentRequest(
-            booking.Id, 100m, PaymentMethod.CreditCard, null, null, null));
+        var result = await CreateController().Create(
+            new CreatePaymentRequest(booking.Id, 100m, PaymentMethod.CashOnArrival, null, null, null), "key-1");
 
-        var created = Assert.IsType<CreatedAtActionResult>(result.Result);
-        var createdPayment = Assert.IsType<Payment>(created.Value);
-        Assert.Equal(OrgId, createdPayment.OrgId);
+        Assert.Same(recorded, Assert.IsType<CreatedAtActionResult>(result.Result).Value);
+        _manualPayments.Verify(
+            m => m.RecordAsync(
+                It.Is<ManualPaymentCommand>(c => c.BookingId == booking.Id && c.Amount == 100m && c.IdempotencyKey == "key-1"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     private PaymentsController CreateController(string userId = OwnerId, params string[] roles)
@@ -274,7 +276,7 @@ public class PaymentsControllerTests
             HostAuthorizationTestHarness.Create(OrgId, (c, p) => _permissions?.Invoke(c, p) ?? true),
             _orgResolver.Object,
             HostAuthorizationTestHarness.ScopeResolver(),
-            _fiscal.Object,
+            _manualPayments.Object,
             _refundService.Object,
             Mock.Of<ILogger<PaymentsController>>());
 
