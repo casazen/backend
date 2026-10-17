@@ -2648,6 +2648,29 @@ carries `jobsTotal` (additive) so that the cap of 50 jobs, which a week can reac
 - The demo showcase (`DemoShowcaseCatalog`) has no supplier or service-request data at all, so there is nothing to extend for these read-only screens: a
   supplier in the demo is a task of its own (`.claude/rules/demo-seed.md`).
 
+## 28. The supplier picker of the marketplace: services, "from" price, response time and "Verificato" — SR-09a
+
+`GET /api/suppliers?propertyId=` (or `?comune=`, `&category=`) is what a host chooses a supplier from. Besides the fields of section 2 each supplier now carries, **additively**
+(no existing field changed), what a host weighs. Nothing here is behind a flag and none of it depends on `Features:SupplierShowcaseBooking`.
+
+| Field | What it is |
+|---|---|
+| `services[]` | Up to 3 (`SupplierPickerLimits.MaxServices`) **published** services of the supplier, in its own order: `id`, `name`, `category`, `durationMinutes`, `priceFromCents` (null = on quote), `priceUnit` (`PerJob`, `PerHour`, `PerSet`, `PerSquareMeter`), `requiresQuote`. Drafts, paused and deleted services never appear; the `id` is the catalog row (a request can keep it). |
+| `priceFromCents`, `priceFromUnit` | The lowest "from" price among **all** the published services (not only the 3 listed) and its unit; both null when no service has a price. |
+| `medianResponseMinutes` | The rule of the public showcase (`SupplierResponseTimes.PublicMedianMinutes`): the median of `TakenAt − CreatedAt` over the latest requests taken in the last 90 days, null until there are 5. Never written by hand. |
+| `verified` | The "Verificato" badge: the supplier is `Active` **and** has a VAT number (`SupplierVerification.IsProfileVerified`). It does **not** look at Stripe (`IsVerified`, the badge of the payments account of section 25, still needs the Connect account). Only the boolean leaves the server, never the VAT number. |
+| `showcaseSlug` | The address of the public showcase (`/fornitori/{slug}`); null when the supplier has none. |
+
+Parameters: `q` keeps the suppliers whose legal name or category code contains **every** word (any case; blank = all); `sort` is `name` (default), `price` (lowest first, no price last) or
+`response` (fastest first, not measured last); ties by name. Another `sort` is 400 `validation_error` (`SupplierSortInvalid`). `totalCount` and `pageSize` are the size of the filtered list (one page, as before).
+
+**Cost.** Two reads for the whole list whatever its size, never one per supplier: `ISupplierServiceCatalogService.ListPickerServicesAsync` (one statement on the published services of all the
+orgs asked for; the explicit org predicate is `PublicListingsOfMany`, allowed by `SupplierServiceListingTenancyTests`) and `ISupplierKpiService.GetMedianResponseMinutesBatchAsync` (the pairs of the
+window of all of them, grouped in memory). The long-rent search (`GET api/long-rent/service-requests/suppliers`) keeps its old answer: it carries `verified` and `showcaseSlug` (they come from the
+profile) but not the services, the price or the response time.
+
+`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account).
+
 ## Known limits (other tasks)
 
 - Booking from the showcase (SP-10, SP-11): the customer finds, cancels, moves and answers a proposed time of its request (section 24).
