@@ -60,6 +60,22 @@ public class ServiceRequestStateMachineTests
     }
 
     [Fact]
+    public void IsOpenJob_IsExactlyWhatCanStillBeCancelled_AndIsTakenJob_WhatTheSupplierTookAndHasNotFinished()
+    {
+        var all = Enum.GetValues<ServiceRequestStatus>();
+
+        // SP-03b: what the agenda counts and the conflicts check is "still a job": the statuses from which a request can still be
+        // cancelled. A new status makes this fail until it is placed.
+        Assert.Equal(
+            all.Where(status => ServiceRequestStateMachine.CanTransition(status, ServiceRequestStatus.Annullato)),
+            all.Where(ServiceRequestStateMachine.IsOpenJob));
+        Assert.Equal(
+            [ServiceRequestStatus.PresoInCarico, ServiceRequestStatus.InCorso],
+            all.Where(ServiceRequestStateMachine.IsTakenJob));
+        Assert.All(all.Where(ServiceRequestStateMachine.IsTakenJob), status => Assert.True(ServiceRequestStateMachine.IsOpenJob(status)));
+    }
+
+    [Fact]
     public void Status_ValuesAreStoredAsIntegers_SoTheyNeverMove()
     {
         // ServiceRequests.Status is an integer column and the mobile app reads names: never reorder, only append (SP-04).

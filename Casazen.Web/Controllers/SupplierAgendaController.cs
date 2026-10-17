@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
@@ -14,13 +15,13 @@ namespace Casazen.Web.Controllers;
 /// notice, horizon, slot step) and the calendar that puts them together with the requests. Every route is scoped to the
 /// caller's own supplier org (its supplier link, never a value of the request): a time off or a block of another supplier is
 /// 404. Not behind a feature flag. The per-day override (<c>GET/PUT api/supplier/availability</c>) and the calendar sync
-/// (<c>api/supplier/calendar/status|ical|sync</c>) are in <see cref="SupplierProfileController"/> and do not change.
-/// Runbook <c>docs/runbooks/suppliers.md</c> section 20.
+/// (<c>api/supplier/calendar/status|ical|sync</c>, and the unlink <c>DELETE api/supplier/calendar/ical</c> of SP-03b) are in
+/// <see cref="SupplierProfileController"/>. Runbook <c>docs/runbooks/suppliers.md</c> section 20 (the reads SP-03b added: section 27).
 /// </summary>
 /// <remarks>
 /// Errors: 404 <c>not_found</c> when the caller has no linked supplier org, <c>supplier_time_off_not_found</c> and
 /// <c>supplier_block_not_found</c>; 400 <c>validation_error</c> for a malformed body and for a calendar range that is
-/// reversed or longer than 62 days; 422 <c>supplier_hours_invalid</c>, <c>supplier_time_off_invalid</c>,
+/// reversed, longer than 62 days or at an end of the calendar; 422 <c>supplier_hours_invalid</c>, <c>supplier_time_off_invalid</c>,
 /// <c>supplier_block_invalid</c> and <c>supplier_rules_invalid</c> (with <c>fields</c>: the names of the fields at fault),
 /// <c>supplier_time_off_limit_reached</c> and <c>supplier_block_limit_reached</c>.
 /// </remarks>
@@ -208,7 +209,8 @@ public class SupplierAgendaController(
     /// hand or by the calendar feed), the time off, the blocks, extra openings and engagements that touch the range, and the
     /// requests of the supplier (SP-04): one with a time carries its <c>startUtc</c> and <c>endUtc</c> and falls on the
     /// Europe/Rome day of its start, one without is a whole-day item on the check-out day of its stay; a rejected or cancelled
-    /// request is not listed. 400 <c>validation_error</c> for a range that is reversed or longer than 62 days.
+    /// request is not listed. 400 <c>validation_error</c> for a range that is reversed, longer than 62 days or at an end of the
+    /// calendar (<c>0001-01-01</c>, <c>9999-12-31</c>).
     /// </summary>
     [HttpGet("calendar")]
     [ProducesResponseType(typeof(SupplierCalendarDto), StatusCodes.Status200OK)]
@@ -219,21 +221,133 @@ public class SupplierAgendaController(
         [FromQuery] DateOnly? to,
         CancellationToken cancellationToken)
     {
-        var rangeFrom = from ?? _clock.TodayInRomeAsDateOnly();
-        var rangeTo = to ?? rangeFrom.AddDays(SupplierAgendaLimits.DefaultCalendarDays - 1);
-
-        if (rangeTo < rangeFrom)
-            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierAvailabilityRangeInvalid");
-        if (rangeTo.DayNumber - rangeFrom.DayNumber + 1 > SupplierAgendaLimits.MaxCalendarDays)
-            return this.ApiProblem(
-                StatusCodes.Status400BadRequest,
-                ProblemCodes.ValidationError,
-                "SupplierAvailabilityRangeTooLong",
-                SupplierAgendaLimits.MaxCalendarDays);
+        var (rangeFrom, rangeTo, problem) = ResolveRange(from, to);
+        if (problem is not null)
+            return problem;
 
         return await RunAsync(
             async orgId => Ok(SupplierAgendaMapper.ToDto(await agenda.GetCalendarAsync(orgId, rangeFrom, rangeTo, cancellationToken))),
             cancellationToken);
+    }
+
+    // ─── Conflicts and preview (SP-03b) ──────────────────────────────────────────
+
+    /// <summary>
+    /// The jobs to come that have something wrong, from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both
+    /// included; today and the next 30 days when left out; at most 62 days), each with its conflicts and, for a request still
+    /// waiting for an answer, a time to propose instead (SP-03b). The rules are the slot planner's own, so a conflict is a time the
+    /// planner would not offer: <c>time_off</c>, <c>overlap</c>, <c>external</c> and <c>block</c> are danger, <c>day_off</c>,
+    /// <c>outside_hours</c>, <c>day_full</c> and <c>buffer</c> are warning. A read: nothing is refused or changed, the supplier decides
+    /// (a request outside the published hours is still a request). Only codes, ids and instants: the texts are the frontend's. The
+    /// jobs checked are the requests with hours that have not started, <c>Richiesto</c>, <c>PresoInCarico</c> or <c>InCorso</c>; the
+    /// ones with no conflict are not listed. 400 <c>validation_error</c> for a range that is reversed, longer than 62 days, or starts
+    /// more than a year ago or ends more than ten years from today; 404 <c>not_found</c> when the caller has no linked supplier org
+    /// (nothing is provisioned).
+    /// </summary>
+    [HttpGet("calendar/conflicts")]
+    [ProducesResponseType(typeof(SupplierConflictsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierConflictsResponse>> GetConflicts(
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        [FromServices] ISupplierConflictService conflicts,
+        CancellationToken cancellationToken)
+    {
+        // Only jobs to come are checked and the planner looks days ahead of the range: dates that are not near today are refused
+        // before any arithmetic on days, so that no made-up date (0001-01-01, 9999-12-31) can overflow it.
+        var today = _clock.TodayInRomeAsDateOnly();
+        var earliest = today.AddYears(-SupplierAgendaLimits.ConflictsMaxYearsBack);
+        var latest = today.AddYears(SupplierAgendaLimits.ConflictsMaxYearsAhead);
+        var asked = from ?? today;
+        if (asked < earliest || asked > latest || (to is { } last && (last < earliest || last > latest)))
+        {
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest,
+                ProblemCodes.ValidationError,
+                "SupplierConflictsRangeOutOfBounds",
+                SupplierAgendaLimits.ConflictsMaxYearsBack,
+                SupplierAgendaLimits.ConflictsMaxYearsAhead);
+        }
+
+        var (rangeFrom, rangeTo, problem) = ResolveRange(from, to);
+        if (problem is not null)
+            return problem;
+
+        return await RunAsync(
+            async orgId => Ok(SupplierAgendaReadsMapper.ToDto(
+                await conflicts.GetConflictsAsync(orgId, rangeFrom, rangeTo, cancellationToken))),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The preview "how customers see you" (SP-03b): the free slots of one of the supplier's own services, in the shape of the
+    /// public page (<c>days</c> with their slots in UTC and Rome time, <c>bookableUntil</c>, 1 to 62 <c>days</c>, 14 when left out),
+    /// computed by the same planner and cut the same way, <b>but</b> for the supplier alone: never cached
+    /// (<c>Cache-Control: private, no-store</c>), a draft or paused service and a supplier that is not active are previewed too, and
+    /// the public feature flag <c>SupplierShowcaseBooking</c> does not apply (it answers with every flag off). With <c>comune</c>
+    /// (an ISTAT code or a name) it also says whether it is one of the supplier's zones (<c>coverage.outcome</c> <c>inside</c> or
+    /// <c>outside</c>, decision D10: the postal code does not decide). <c>urgent</c> is accepted and ignored until urgent slots exist
+    /// (SP-04c). 400 <c>validation_error</c> for a missing service or <c>days</c> outside 1 to 62; 404 <c>supplier_service_not_found</c>
+    /// for a service that is not this supplier's (another's and deleted answer the same).
+    /// </summary>
+    [HttpGet("preview/slots")]
+    [ProducesResponseType(typeof(SupplierSlotPreviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierSlotPreviewResponse>> GetPreviewSlots(
+        [FromQuery] Guid? service,
+        [FromQuery] DateOnly? from,
+        [FromQuery] int? days,
+        [FromQuery, MaxLength(PublicShowcaseLimits.QuoteComuneMaxLength)] string? comune,
+        [FromServices] ISupplierSlotPreviewService preview,
+        CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "private, no-store";
+
+        if (service is null || service == Guid.Empty)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierSlotsServiceRequired");
+        if (days is < 1 or > PublicShowcaseLimits.SlotsMaxDays)
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest,
+                ProblemCodes.ValidationError,
+                "SupplierSlotsDaysInvalid",
+                PublicShowcaseLimits.SlotsMaxDays);
+
+        return await RunAsync(
+            async orgId => Ok(SupplierAgendaReadsMapper.ToDto(
+                await preview.GetAsync(orgId, service.Value, from, days, comune, cancellationToken))),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The days a calendar or conflicts read is about: <paramref name="from"/> (today when left out) to <paramref name="to"/> (the
+    /// default length after the first day when left out), and the 400 for a range the agenda does not answer
+    /// (<see cref="SupplierAgendaRange"/>: reversed, longer than the calendar answers, or at an end of the calendar), <c>null</c> when
+    /// it is fine. Checked before any arithmetic on the days: a made-up date is a 400, never an overflow.
+    /// </summary>
+    private (DateOnly From, DateOnly To, ActionResult? Problem) ResolveRange(DateOnly? from, DateOnly? to)
+    {
+        var rangeFrom = from ?? _clock.TodayInRomeAsDateOnly();
+        var rangeTo = to ?? (SupplierAgendaRange.IsRepresentable(rangeFrom)
+            ? rangeFrom.AddDays(SupplierAgendaLimits.DefaultCalendarDays - 1)
+            : rangeFrom);
+
+        ActionResult? problem = SupplierAgendaRange.Check(rangeFrom, rangeTo, SupplierAgendaLimits.MaxCalendarDays) switch
+        {
+            SupplierRangeProblem.OutOfBounds => this.ApiProblem(
+                StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierAvailabilityRangeOutOfBounds"),
+            SupplierRangeProblem.Reversed => this.ApiProblem(
+                StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierAvailabilityRangeInvalid"),
+            SupplierRangeProblem.TooLong => this.ApiProblem(
+                StatusCodes.Status400BadRequest,
+                ProblemCodes.ValidationError,
+                "SupplierAvailabilityRangeTooLong",
+                SupplierAgendaLimits.MaxCalendarDays),
+            _ => null,
+        };
+
+        return (rangeFrom, rangeTo, problem);
     }
 
     /// <summary>
