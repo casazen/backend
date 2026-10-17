@@ -2959,4 +2959,40 @@
   <data name="SeoSupplierCategory_electrical" xml:space="preserve">
     <value>Elettricista</value>
   </data>
+  <data name="ReviewLinkInvalid" xml:space="preserve">
+    <value>Il link per la recensione non è valido o è scaduto.</value>
+  </data>
+  <data name="ReviewNotAvailable" xml:space="preserve">
+    <value>Questo soggiorno non si può più recensire.</value>
+  </data>
+  <data name="ReviewAlreadySubmitted" xml:space="preserve">
+    <value>La recensione di questo soggiorno è già stata scritta.</value>
+  </data>
+  <data name="ReviewRatingInvalid" xml:space="preserve">
+    <value>Scegli un voto da 1 a 5 stelle.</value>
+  </data>
+  <data name="ReviewTextTooLong" xml:space="preserve">
+    <value>Il testo è troppo lungo.</value>
+  </data>
+  <data name="ReviewReplyInvalid" xml:space="preserve">
+    <value>Scrivi una risposta: non può essere vuota né troppo lunga.</value>
+  </data>
+  <data name="ReviewReplyAlreadySent" xml:space="preserve">
+    <value>Hai già risposto a questa recensione.</value>
+  </data>
+  <data name="ReviewAlreadyReported" xml:space="preserve">
+    <value>Hai già segnalato questa recensione a CasaZen.</value>
+  </data>
+  <data name="ReviewInviteNotAllowed" xml:space="preserve">
+    <value>Puoi chiedere una recensione solo per una prenotazione fatta dal sito, non annullata, con il soggiorno terminato da non più di 14 giorni e con l'indirizzo email dell'ospite.</value>
+  </data>
+  <data name="ReviewInviteAlreadySent" xml:space="preserve">
+    <value>Hai già chiesto la recensione per questa prenotazione.</value>
+  </data>
+  <data name="ReviewInviteNotSent" xml:space="preserve">
+    <value>Non è stato possibile inviare l'email all'ospite. Riprova tra poco.</value>
+  </data>
+  <data name="ReviewReasonRequired" xml:space="preserve">
+    <value>Scegli il motivo della segnalazione.</value>
+  </data>
 </root>

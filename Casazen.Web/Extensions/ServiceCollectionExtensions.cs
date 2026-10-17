@@ -585,6 +585,11 @@ public static class ServiceCollectionExtensions
         // Outcome page of the public checkout, read with the checkout token (BK-07, A3-15).
         services.AddScoped<ICheckoutOutcomeService, CheckoutOutcomeService>();
         services.AddScoped<IGuestBookingLookupService, GuestBookingLookupService>();
+        // Verified reviews of the stays (DB-12a): the public reads and the guest's review, the host's answers, reports and invitations.
+        // The signed link is made by Data Protection, nothing is stored for it.
+        services.AddSingleton<ReviewLinkTokens>();
+        services.AddScoped<IPublicReviewService, PublicReviewService>();
+        services.AddScoped<IHostReviewService, HostReviewService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();

@@ -193,6 +193,11 @@ public class AppDbContext(
     // Who did what in an org, as ids and codes (AM-02b)
     public DbSet<OrgActivityEntry> OrgActivityEntries { get; set; } = null!;
 
+    // The verified reviews of the stays, the reports of the hosts about them and the mark that a guest was asked to write one (DB-12a)
+    public DbSet<Review> Reviews { get; set; } = null!;
+    public DbSet<ReviewReport> ReviewReports { get; set; } = null!;
+    public DbSet<ReviewInvite> ReviewInvites { get; set; } = null!;
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -1934,6 +1939,56 @@ public class AppDbContext(
             // The daily retention deletes by age, whoever the user is.
             entity.HasIndex(n => n.CreatedAt)
                 .HasDatabaseName("IX_InAppNotifications_CreatedAt");
+        });
+
+        // ─── Verified reviews (DB-12a) ──────────────────────────────────────────
+        // A review goes with its booking and its property (a property is soft-deleted, so in practice it stays for good): the host has no
+        // way to delete one, and no foreign key stops the platform's own cleanups (the reset of the demo deletes bookings in bulk).
+        modelBuilder.Entity<Review>(entity =>
+        {
+            entity.HasOne(r => r.Property)
+                .WithMany()
+                .HasForeignKey(r => r.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(r => r.Booking)
+                .WithMany()
+                .HasForeignKey(r => r.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(r => r.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Two parallel submissions for one booking (the link opened twice): the loser gets 23505 on UIX_Reviews_BookingId and 409.
+            entity.ToTable(t => t.HasCheckConstraint("CK_Reviews_Rating", "\"Rating\" BETWEEN 1 AND 5"));
+        });
+
+        // The report goes with its review. One per review: the second one loses the race on UIX_ReviewReports_ReviewId (23505, 409).
+        // Two staff users deciding the same report at once: the state is the concurrency token, the second decision is a 409.
+        modelBuilder.Entity<ReviewReport>(entity =>
+        {
+            entity.Property(r => r.Status).IsConcurrencyToken();
+            entity.HasOne(r => r.Review)
+                .WithMany()
+                .HasForeignKey(r => r.ReviewId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(r => r.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // The mark of the email asked by the host, once per booking: it goes with the booking.
+        modelBuilder.Entity<ReviewInvite>(entity =>
+        {
+            entity.HasOne(i => i.Booking)
+                .WithMany()
+                .HasForeignKey(i => i.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(i => i.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the

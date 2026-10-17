@@ -26,6 +26,7 @@ public class PublicOrgControllerTests
     private readonly Mock<IPropertyService> _propertyService = new();
     private readonly Mock<IEntitlementService> _entitlementService = new();
     private readonly Mock<IOrgSiteDocumentService> _siteDocumentService = new();
+    private readonly Mock<IPublicReviewService> _reviews = new();
     private readonly GdprOptions _gdpr = new();
     private readonly PublicOrgController _controller;
 
@@ -43,7 +44,8 @@ public class PublicOrgControllerTests
                 Options.Create(new PublicHostOptions { BaseDomain = "sites.example.test" }),
                 _entitlementService.Object),
             _siteDocumentService.Object,
-            Options.Create(_gdpr));
+            Options.Create(_gdpr),
+            _reviews.Object);
     }
 
     // ── GetOrg ──────────────────────────────────────────────────────────────────
