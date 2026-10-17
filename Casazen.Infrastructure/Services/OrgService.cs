@@ -1,4 +1,5 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Branding;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.OrgTeam;
@@ -271,8 +272,15 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         string contactEmail,
         bool contactEmailPublic,
         string? actorUserId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        FieldUpdate<string> legalName = default,
+        FieldUpdate<string> registeredOffice = default)
     {
+        // DB-03b-a: the operator data is validated only when the caller sends it, before anything is loaded or written: an
+        // invalid value changes nothing.
+        var normalizedLegalName = legalName.IsSent ? OrgOperatorRules.NormalizeLegalName(legalName.Value) : null;
+        var normalizedRegisteredOffice = registeredOffice.IsSent ? OrgOperatorRules.NormalizeRegisteredOffice(registeredOffice.Value) : null;
+
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         if (org is null)
             return null;
@@ -330,6 +338,10 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         org.DisplayName = trimmedName;
         org.ContactEmail = normalizedEmail;
         org.ContactEmailPublic = contactEmailPublic;
+        if (legalName.IsSent)
+            org.LegalName = normalizedLegalName;
+        if (registeredOffice.IsSent)
+            org.RegisteredOffice = normalizedRegisteredOffice;
         org.UpdatedAt = DateTime.UtcNow;
 
         try

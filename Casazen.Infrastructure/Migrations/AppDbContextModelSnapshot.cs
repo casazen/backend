@@ -2027,6 +2027,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("LegalName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
@@ -2059,6 +2063,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("PublicThemeId")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<string>("RegisteredOffice")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
 
                     b.Property<string>("Slug")
                         .IsRequired()
