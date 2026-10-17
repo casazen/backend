@@ -35,6 +35,15 @@ public sealed class GuestBookingLookupService(
         CancellationToken cancellationToken = default)
     {
         var booking = await LoadAsync(credentials, cancellationToken);
+        return await ViewOfAsync(booking, cancellationToken);
+    }
+
+    /// <summary>
+    /// <paramref name="booking"/> as its guest sees it. The caller has already proved that the guest is the one of the booking
+    /// (code + email, or a guest session): nothing is checked here.
+    /// </summary>
+    internal async Task<GuestBookingView> ViewOfAsync(Booking booking, CancellationToken cancellationToken)
+    {
         var ttlMinutes = CheckoutHolds.GetTtlMinutes(configuration);
         var cutoff = CheckoutHolds.CutoffAt(_clock.GetUtcNow().UtcDateTime, ttlMinutes);
         var outcomeState = CheckoutOutcomes.StateOf(booking, cutoff);
@@ -107,7 +116,8 @@ public sealed class GuestBookingLookupService(
         logger.LogInformation("Check-in link sent again at the request of the guest of booking {BookingId}", booking.Id);
     }
 
-    private async Task<Booking> LoadAsync(GuestBookingCredentials credentials, CancellationToken cancellationToken)
+    /// <summary>The booking of the site that matches <paramref name="credentials"/>; the same <see cref="NotFoundException"/> whatever does not match.</summary>
+    internal async Task<Booking> LoadAsync(GuestBookingCredentials credentials, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(credentials);
         var slug = credentials.OrgSlug?.Trim() ?? string.Empty;
@@ -135,6 +145,36 @@ public sealed class GuestBookingLookupService(
             .SingleOrDefaultAsync(cancellationToken);
 
         return booking ?? throw NotFound();
+    }
+
+    /// <summary>
+    /// The direct booking <paramref name="bookingCode"/> of the guest of a session (DB-06a): of the org of the session, with the code in
+    /// the stored form, and whose guest has the email the session was opened with. A code that is not a code, a code that does not
+    /// exist, a booking of another site and a booking of another guest all end in the same <see cref="NotFoundException"/>. The org is
+    /// in the query, not only in the tenant filter of the request: the filter is a second wall.
+    /// </summary>
+    internal async Task<Booking> LoadAsync(GuestSessionTicket ticket, string? bookingCode, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(ticket);
+        if (!BookingCodes.TryNormalize(bookingCode, out var code))
+            throw NotFound();
+
+        // (OrgId, BookingCode) is unique, so the query finds at most one booking; the email decides whether it is this guest's.
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(b => b.Property)
+            .Include(b => b.Org)
+            .Include(b => b.Guest)
+            .Include(b => b.Payments)
+            .Where(b =>
+                b.BookingCode == code &&
+                b.Source == BookingSource.Direct &&
+                b.OrgId == ticket.OrgId &&
+                b.Org.IsActive)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return booking is not null && ticket.IsForEmail(booking.Guest.Email) ? booking : throw NotFound();
     }
 
     /// <summary>

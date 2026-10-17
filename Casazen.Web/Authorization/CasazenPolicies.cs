@@ -42,6 +42,14 @@ public static class CasazenPolicies
     /// </summary>
     public const string OrgBillingAdmin = "RequireOrgBillingAdmin";
 
+    /// <summary>
+    /// The guest of a booking site, with no account (DB-06a): a valid, unexpired guest-session token (<c>Authorization: Bearer gs1.…</c>,
+    /// <c>IGuestSessionService</c>). It is not a sign-in of the hosts and carries no role: it opens only the actions of the guest area
+    /// (<c>api/public/guest/*</c>), which read the ticket with <c>User.GetGuestSessionTicket()</c> and find the guest's own bookings with
+    /// <c>IGuestSessionService.FindBookingAsync</c>. The request is scoped to the org of the session.
+    /// </summary>
+    public const string GuestSession = "GuestSession";
+
     private const string ShortRent = "RequireContext:short-rent:";
     private const string LongRent = "RequireContext:long-rent:";
 

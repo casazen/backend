@@ -24,6 +24,14 @@ public static class RateLimitPolicies
     /// </summary>
     public const string PublicGuestBookingLookup = "PublicGuestBookingLookup";
 
+    /// <summary>
+    /// Opening a guest session (<c>POST api/public/guest/session</c>, DB-06a): the same proof as <see cref="PublicGuestBookingLookup"/>
+    /// (booking code + email), so the same default (10 per 5 minutes per client IP), with a budget of its own. Paired with the per-email
+    /// limit of "Le mie prenotazioni" (<see cref="GuestBookingEmailRateLimiter"/>, shared with the lookup) and a per-code limit
+    /// (<see cref="GuestSessionCodeRateLimiter"/>). Reading the booking with the token uses <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string PublicGuestSession = "PublicGuestSession";
+
     /// <summary>Guest check-in form reads (partitioned by IP and token hash).</summary>
     public const string GuestCheckIn = "GuestCheckIn";
 
