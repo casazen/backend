@@ -31,6 +31,8 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
 {
     private const string LookupPath = "/api/public/bookings/lookup";
     private const string CheckInLinkPath = "/api/public/bookings/lookup/check-in-link";
+    private const string SessionPath = "/api/public/guest/session";
+    private const string GuestBookingsPath = "/api/public/guest/bookings";
 
     private static int _nextPeer;
 
@@ -281,6 +283,73 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
     }
 
     [PostgresFact]
+    public async Task GuestSession_AGuestNeverReadsTheBookingOfAnotherGuestOrSite_AndEveryRefusalLooksAlike()
+    {
+        // DB-06a: two sites, and on each a guest with THE SAME email and THE SAME booking code (codes are unique per org only), plus
+        // another guest of the first site.
+        var orgA = await SeedOrgAsync();
+        var orgB = await SeedOrgAsync();
+        var own = await SeedBookingAsync(orgA, BookingStatus.Confirmed, checkInInDays: 30);
+        var otherGuestOfTheSite = await SeedBookingAsync(orgA, BookingStatus.Confirmed, checkInInDays: 40);
+        var sameEmailOtherSite = await SeedBookingAsync(orgB, BookingStatus.Confirmed, checkInInDays: 50, code: own.Code, email: own.Email);
+
+        var opened = await PostAsync(SessionPath, new
+        {
+            orgSlug = orgA.Slug,
+            bookingCode = BookingCodes.Format(own.Code).ToLowerInvariant().Replace('-', ' '),
+            email = $"  {own.Email.ToUpperInvariant()} ",
+        });
+        Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
+        var openedBody = await opened.Content.ReadAsStringAsync();
+        var session = JsonDocument.Parse(openedBody).RootElement;
+        var token = session.GetProperty("accessToken").GetString()!;
+        Assert.Equal(BookingCodes.Format(own.Code), session.GetProperty("bookingCode").GetString());
+        Assert.InRange(session.GetProperty("expiresAt").GetDateTime(), DateTime.UtcNow, DateTime.UtcNow.AddHours(24));
+        Assert.DoesNotContain(own.Email, openedBody + token, StringComparison.OrdinalIgnoreCase);
+
+        // The guest reads their own booking; the same code on the other site (same email) is not reachable with this token.
+        Assert.Equal(orgA.PropertyName, await PropertyNameAsync(await GetAsync($"{GuestBookingsPath}/{BookingCodes.Format(own.Code)}", token)));
+        var otherSiteSession = await PostAsync(SessionPath, new { orgSlug = orgB.Slug, bookingCode = sameEmailOtherSite.Code, email = own.Email });
+        var otherSiteToken = JsonDocument.Parse(await otherSiteSession.Content.ReadAsStringAsync()).RootElement.GetProperty("accessToken").GetString()!;
+        Assert.Equal(orgB.PropertyName, await PropertyNameAsync(await GetAsync($"{GuestBookingsPath}/{sameEmailOtherSite.Code}", otherSiteToken)));
+
+        // Another guest of the site, a code that does not exist, not a code, a wrong email at the door: the same 404, nothing leaked.
+        var refusals = new[]
+        {
+            await GetAsync($"{GuestBookingsPath}/{otherGuestOfTheSite.Code}", token),
+            await GetAsync($"{GuestBookingsPath}/{UnusedCode(own.Code)}", token),
+            await GetAsync($"{GuestBookingsPath}/not-a-code", token),
+            await PostAsync(SessionPath, new { orgSlug = orgA.Slug, bookingCode = own.Code, email = $"other.{Guid.NewGuid():N}@example.com" }),
+        };
+        var bodies = new List<string>();
+        foreach (var refusal in refusals)
+        {
+            Assert.Equal(HttpStatusCode.NotFound, refusal.StatusCode);
+            var text = await refusal.Content.ReadAsStringAsync();
+            var problem = JsonDocument.Parse(text).RootElement;
+            Assert.Equal(GuestBookingLookupErrorCodes.NotFound, problem.GetProperty("code").GetString());
+            Assert.DoesNotContain(orgA.PropertyName, text, StringComparison.Ordinal);
+            Assert.DoesNotContain(orgB.PropertyName, text, StringComparison.Ordinal);
+            bodies.Add(JsonSerializer.Serialize(new
+            {
+                status = problem.GetProperty("status").GetInt32(),
+                code = problem.GetProperty("code").GetString(),
+                title = problem.GetProperty("title").GetString(),
+                detail = problem.GetProperty("detail").GetString(),
+            }));
+        }
+
+        Assert.Single(bodies.Distinct(StringComparer.Ordinal));
+
+        // No token, an altered token and a token of nothing: 401, never a booking.
+        var path = $"{GuestBookingsPath}/{BookingCodes.Format(own.Code)}";
+        var altered = token[..20] + (token[20] == 'A' ? 'B' : 'A') + token[21..];
+        Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync(path, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync(path, altered)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync(path, "gs1.not-a-real-token")).StatusCode);
+    }
+
+    [PostgresFact]
     public async Task BackfillBookingCodesSql_BookingsWithoutCode_GetUniqueReadableCodesAndOthersKeepTheirs()
     {
         var orgA = await SeedOrgAsync();
@@ -323,6 +392,17 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         using var client = _factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
         request.Headers.Add(TestPeerIpStartupFilter.HeaderName, peer ?? NextPeer());
+        return await client.SendAsync(request);
+    }
+
+    /// <summary>GET from a client IP of its own, with the guest-session token (if any) as the bearer.</summary>
+    private async Task<HttpResponseMessage> GetAsync(string path, string? bearerToken)
+    {
+        using var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Add(TestPeerIpStartupFilter.HeaderName, NextPeer());
+        if (bearerToken is not null)
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
         return await client.SendAsync(request);
     }
 
@@ -386,7 +466,8 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         bool refunded = false,
         int createdMinutesAgo = 60,
         string? code = null,
-        bool unpaidIntent = false)
+        bool unpaidIntent = false,
+        string? email = null)
     {
         var createdAt = DateTime.UtcNow.AddMinutes(-createdMinutesAgo);
         var checkIn = TimeProvider.System.TodayInRome().AddDays(checkInInDays);
@@ -395,7 +476,7 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
             OrgId = org.OrgId,
             FirstName = "Giulia",
             LastName = "Bianchi",
-            Email = $"giulia.{Guid.NewGuid():N}@example.com",
+            Email = email ?? $"giulia.{Guid.NewGuid():N}@example.com",
             PhoneNumber = "+393331112222",
             DataProcessingPurpose = "Direct Booking Checkout",
         };
