@@ -425,6 +425,82 @@ public class LongRentAgendaIntegrationTests(LongRentAggregatesFactory factory) :
         Assert.Equal(HttpStatusCode.Forbidden, (await wrongRole.GetAsync("/api/long-rent/overview")).StatusCode);
     }
 
+    // --- a draft the landlord is still typing (LR-12) -----------------------------------------------------
+
+    [Fact]
+    public async Task Deadlines_ADraftStillBeingTyped_HasNoDeadline_EvenWithAStartDatePassed()
+    {
+        // The wizard keeps what the landlord typed in DraftData while a value is missing, and the dates of such a draft may be starting
+        // values or half typed: this draft "starting" on 1 September would have its registration overdue since 1 October, which is
+        // true of a contract and not of a form still open. The same draft with every value in its columns is listed.
+        var typed = await AddDraftAsync("2026-09-01", draftData: "{}");
+        var complete = await AddDraftAsync("2026-09-01", draftData: null);
+        using var client = _world.OwnerClient(factory);
+
+        var registrations = Items(await GetAsync(client, "/api/long-rent/deadlines?type=RliRegistration")).ToList();
+
+        Assert.Contains(registrations, i => i.GetProperty("leaseId").GetGuid() == complete);
+        Assert.DoesNotContain(registrations, i => i.GetProperty("leaseId").GetGuid() == typed);
+    }
+
+    [Fact]
+    public async Task Deadlines_ASignedLeaseWithATypedStateLeftBehind_IsStillOnTheAgenda()
+    {
+        // The guard is about drafts: once a lease is signed, whatever DraftData it kept (a copy of the typed state) hides nothing.
+        await MarkAsBeingTypedAsync(_world.Signed);
+        using var client = _world.OwnerClient(factory);
+
+        var registrations = Items(await GetAsync(client, "/api/long-rent/deadlines?type=RliRegistration")).ToList();
+
+        Assert.Contains(registrations, i => i.GetProperty("leaseId").GetGuid() == _world.Signed);
+    }
+
+    [Fact]
+    public async Task Overview_ADraftStillBeingTyped_IsStillCountedAmongTheLeasesToSign_ButHasNeitherDateNorLeaseInTheChecklist()
+    {
+        // The only draft of the world is being typed: the counters say what the list says (one lease to sign), the checklist
+        // does not guess a date from starting values and does not point at it.
+        await MarkAsBeingTypedAsync(_world.Draft);
+        using var client = _world.OwnerClient(factory);
+
+        var overview = await GetAsync(client, "/api/long-rent/overview");
+
+        Assert.Equal(1, overview.GetProperty("leases").GetProperty("toSign").GetInt32());
+        var toSign = overview.GetProperty("checklist").EnumerateArray().Single(i => i.GetProperty("kind").GetString() == "LeaseToSign");
+        Assert.Equal(1, toSign.GetProperty("count").GetInt32());
+        Assert.Equal(JsonValueKind.Null, toSign.GetProperty("date").ValueKind);
+        Assert.Equal(JsonValueKind.Null, toSign.GetProperty("leaseId").ValueKind);
+        var list = Parse(await (await client.GetAsync("/api/leases?view=InPreparation")).Content.ReadAsStringAsync());
+        Assert.Contains(list.EnumerateArray(), l => l.GetProperty("id").GetGuid() == _world.Draft);
+    }
+
+    private async Task<Guid> AddDraftAsync(string start, string? draftData)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var lease = new LeaseContract
+        {
+            OrgId = _world.OrgId,
+            PropertyId = _world.P1,
+            Status = LeaseStatus.Draft,
+            StartDate = LongRentWorld.Day(start),
+            EndDate = LongRentWorld.Day(start).AddYears(4).AddDays(-1),
+            MonthlyRent = 900m,
+            DraftData = draftData,
+        };
+        db.LeaseContracts.Add(lease);
+        await db.SaveChangesAsync();
+        return lease.Id;
+    }
+
+    private async Task MarkAsBeingTypedAsync(Guid leaseId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        (await db.LeaseContracts.IgnoreQueryFilters().SingleAsync(l => l.Id == leaseId)).DraftData = "{}";
+        await db.SaveChangesAsync();
+    }
+
     // --- helpers ----------------------------------------------------------------------------------------
 
     private static JsonElement Parse(string json) => JsonSerializer.Deserialize<JsonElement>(json, JsonOptions);

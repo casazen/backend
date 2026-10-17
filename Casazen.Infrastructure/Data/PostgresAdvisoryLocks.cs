@@ -245,6 +245,12 @@ internal static class PostgresAdvisoryLocks
         /// change is then applied under the dates lock of its property, so it also serializes with the bookings.
         /// </summary>
         PropertyModeChangeRun = 1_501,
+
+        /// <summary>
+        /// One run of the retention of the abandoned lease drafts (single key, session lock held for the whole run): two runs never
+        /// delete the same drafts and their files at once, even outside Hangfire's own lock (LR-12, decision LR-D33).
+        /// </summary>
+        LeaseDraftRetentionRun = 1_207,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

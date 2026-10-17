@@ -30,6 +30,7 @@ public class RecurringJobsConcurrencyTests
         "service-payment-sync",
         "service-payment-reminders",
         "property-mode-change",
+        "lease-draft-retention",
     ];
 
     [Fact]

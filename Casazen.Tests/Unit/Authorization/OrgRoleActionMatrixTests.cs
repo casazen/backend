@@ -85,6 +85,9 @@ public class OrgRoleActionMatrixTests
         { typeof(PaymentsController), nameof(PaymentsController.GetAll), WithMoney },
         { typeof(FiscalController), nameof(FiscalController.AnnualReport), WithMoney },
         { typeof(FiscalController), nameof(FiscalController.WithholdingReport), WithMoney },
+        { typeof(ReportsController), nameof(ReportsController.RevenueByProperty), WithMoney },
+        { typeof(ReportsController), nameof(ReportsController.OccupancyByProperty), WithMoney },
+        { typeof(ReportsController), nameof(ReportsController.BookingsByChannel), WithMoney },
         { typeof(PaymentsController), nameof(PaymentsController.Create), Operators },
         { typeof(PaymentsController), nameof(PaymentsController.Refund), Operators },
 
@@ -125,6 +128,18 @@ public class OrgRoleActionMatrixTests
         { typeof(LeasesController), nameof(LeasesController.GetAll), WithMoney },
         { typeof(LeasesController), nameof(LeasesController.Create), Operators },
         { typeof(LeasesController), nameof(LeasesController.TriggerRegistration), Operators },
+
+        // LR-12: the guided draft of a lease is written, and read (it carries the parties in clear), by who may create a lease; the
+        // rules of the area, which are figures and nothing personal, by who may read the leases.
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Create), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Get), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Save), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.GetReview), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.ConfirmReview), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.MarkSent), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Delete), Operators },
+        { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetRules), WithMoney },
+        { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetLandlordDefaults), Operators },
 
         // The people of the org, and the properties each of them reaches.
         { typeof(OrgMembersController), nameof(OrgMembersController.List), Team },

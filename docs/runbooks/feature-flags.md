@@ -23,7 +23,8 @@ tells `verification` whatever the flag says and `paymentsActive` only while `Sup
 
 The functions of the redesign wave that had a flag of their own (the new interface, the org team and its activity log, the scheduled
 change of the rental mode, the in-app notifications, the global search) are always on: they have no flag any more, and a
-`Features__*` variable left in Railway for one of them is ignored. The "accesso aperto" switch (`docs/runbooks/open-access.md`) is
+`Features__*` variable left in Railway for one of them is ignored. The guided lease draft of the long-term area (LR-12) never had one:
+its endpoints and its retention job are always on. The "accesso aperto" switch (`docs/runbooks/open-access.md`) is
 **not** a feature flag.
 
 ## How it works
@@ -107,5 +108,6 @@ it is on, `service-request-auto-cancel` appears in the recurring jobs.
 
 What the functions without a flag ask of an operator is in their runbooks: [org-team.md](org-team.md) (§ 42: the authorization cache with
 several instances; § 35: the privacy notice), [property-rental-mode.md](property-rental-mode.md) § 8 (the calendar block, the draft leases
-that cannot be deleted yet, rollback), [in-app-notifications.md](in-app-notifications.md) § 6 (checks and rollback) and
-[global-search.md](global-search.md) (what the migration `AddGlobalSearchKeys` locks while it runs, the rate limit, the rollback).
+that cannot be deleted yet, rollback), [in-app-notifications.md](in-app-notifications.md) § 6 (checks and rollback),
+[global-search.md](global-search.md) (what the migration `AddGlobalSearchKeys` locks while it runs, the rate limit, the rollback) and
+[long-rent-lease-draft.md](long-rent-lease-draft.md) § 14 (the interface must know the four new event types).
