@@ -930,12 +930,14 @@ public partial class ServiceRequestService(
             .Select(r => new { Start = r.ScheduledStartUtc!.Value, End = r.ScheduledEndUtc!.Value })
             .ToListAsync(cancellationToken);
 
+        // The one definition of "overlap" of the agenda (the console's `overlap` conflict, SP-03b, calls the same method).
+        var mine = new SupplierInterval(start, end);
         foreach (var other in others)
         {
             if (other.End <= other.Start)
                 continue;
 
-            if (!(start < other.End && other.Start < end))
+            if (!mine.Overlaps(new SupplierInterval(other.Start, other.End)))
                 continue;
 
             logger.LogInformation(

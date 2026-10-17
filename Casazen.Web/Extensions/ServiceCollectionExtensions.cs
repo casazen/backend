@@ -468,6 +468,10 @@ public static class ServiceCollectionExtensions
         // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
         services.AddSingleton<PublicSupplierSlotCache>();
         services.AddScoped<IPublicSupplierShowcaseService, PublicSupplierShowcaseService>();
+        // What the Portal's agenda reads on top of the planner (SP-03b): the conflicts of the jobs to come with a time to propose
+        // instead, and the supplier's own preview of the slots of a service (no cache, no flag, draft and paused services too).
+        services.AddScoped<ISupplierConflictService, SupplierConflictService>();
+        services.AddScoped<ISupplierSlotPreviewService, SupplierSlotPreviewService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
         // Invitation of new independent hosts by admins and hosts: limits are configuration (HostInvites), validated at startup.
