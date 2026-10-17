@@ -2950,4 +2950,40 @@
   <data name="SeoSupplierCategory_electrical" xml:space="preserve">
     <value>Electrician</value>
   </data>
+  <data name="ReviewLinkInvalid" xml:space="preserve">
+    <value>The review link is not valid or has expired.</value>
+  </data>
+  <data name="ReviewNotAvailable" xml:space="preserve">
+    <value>This stay can no longer be reviewed.</value>
+  </data>
+  <data name="ReviewAlreadySubmitted" xml:space="preserve">
+    <value>This stay has already been reviewed.</value>
+  </data>
+  <data name="ReviewRatingInvalid" xml:space="preserve">
+    <value>Choose a rating from 1 to 5 stars.</value>
+  </data>
+  <data name="ReviewTextTooLong" xml:space="preserve">
+    <value>The text is too long.</value>
+  </data>
+  <data name="ReviewReplyInvalid" xml:space="preserve">
+    <value>Write a reply: it cannot be empty or too long.</value>
+  </data>
+  <data name="ReviewReplyAlreadySent" xml:space="preserve">
+    <value>You have already replied to this review.</value>
+  </data>
+  <data name="ReviewAlreadyReported" xml:space="preserve">
+    <value>You have already reported this review to CasaZen.</value>
+  </data>
+  <data name="ReviewInviteNotAllowed" xml:space="preserve">
+    <value>You can ask for a review only for a booking made through the site, not cancelled, whose stay ended no more than 14 days ago and with the guest's email address.</value>
+  </data>
+  <data name="ReviewInviteAlreadySent" xml:space="preserve">
+    <value>You have already asked for the review of this booking.</value>
+  </data>
+  <data name="ReviewInviteNotSent" xml:space="preserve">
+    <value>The email to the guest could not be sent. Try again shortly.</value>
+  </data>
+  <data name="ReviewReasonRequired" xml:space="preserve">
+    <value>Choose the reason for the report.</value>
+  </data>
 </root>

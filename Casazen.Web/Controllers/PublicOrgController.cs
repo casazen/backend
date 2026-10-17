@@ -23,7 +23,8 @@ public class PublicOrgController(
     IEntitlementService entitlementService,
     PublicOrgSiteUrls siteUrls,
     IOrgSiteDocumentService siteDocumentService,
-    IOptions<GdprOptions> gdprOptions) : ControllerBase
+    IOptions<GdprOptions> gdprOptions,
+    IPublicReviewService reviews) : ControllerBase
 {
     [HttpGet("{slug}")]
     [ProducesResponseType(typeof(PublicOrgDto), StatusCodes.Status200OK)]
@@ -76,6 +77,9 @@ public class PublicOrgController(
 
         property.CanonicalUrl = siteUrls.TryPropertyUrl(
             org, string.IsNullOrWhiteSpace(property.Slug) ? property.Id.ToString() : property.Slug);
+        // DB-12a: the count and the average of the public reviews; absent (not zero) while the property has none.
+        var summary = await reviews.GetSummaryAsync(org.Id, property.Id, cancellationToken);
+        property.RatingSummary = summary is null ? null : new PublicRatingSummaryDto { Count = summary.Count, Average = summary.Average };
         return Ok(property);
     }
 

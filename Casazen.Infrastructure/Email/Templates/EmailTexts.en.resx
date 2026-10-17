@@ -1536,4 +1536,28 @@
   <data name="HostInvite_Expires" xml:space="preserve">
     <value>The invitation expires on &lt;strong&gt;{0}&lt;/strong&gt; (Italian time). If you were not expecting it, you can ignore this email.</value>
   </data>
+  <data name="ReviewInvite_Subject" xml:space="preserve">
+    <value>How was your stay? - {0}</value>
+  </data>
+  <data name="ReviewInvite_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="ReviewInvite_Body" xml:space="preserve">
+    <value>thank you for staying at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;. The host asks for a minute of your time to leave a review: it helps people choosing where to stay and tells how it went.</value>
+  </data>
+  <data name="ReviewInvite_How" xml:space="preserve">
+    <value>Pick a rating from 1 to 5 stars and, if you like, write a few lines. The review is published at once on the property's booking site with your first name; you can choose not to show it.</value>
+  </data>
+  <data name="ReviewInvite_Cta" xml:space="preserve">
+    <value>Write the review</value>
+  </data>
+  <data name="ReviewInvite_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="ReviewInvite_Validity" xml:space="preserve">
+    <value>The link is personal and valid until {0} (Italian time).</value>
+  </data>
+  <data name="ReviewInvite_Once" xml:space="preserve">
+    <value>You receive this email only once, because the host asked for a review of this stay. If you do not want to write anything, you can ignore it.</value>
+  </data>
 </root>

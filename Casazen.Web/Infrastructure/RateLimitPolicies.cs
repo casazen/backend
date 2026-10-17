@@ -69,6 +69,12 @@ public static class RateLimitPolicies
     public const string PublicSupplierBookingCreate = "PublicSupplierBookingCreate";
 
     /// <summary>
+    /// The guest's review of a stay (<c>POST api/public/bookings/{id}/review</c>, DB-12a): the only anonymous call that publishes text
+    /// on a public page, so it is tight (10 per 10 minutes per client IP). Opening the review link uses <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string PublicReviewSubmit = "PublicReviewSubmit";
+
+    /// <summary>
     /// What an org invitation link is for (<c>POST api/org-invitations/lookup</c>, AM-02): anonymous, a token in the body.
     /// Tighter than <see cref="PublicRead"/>: a page asks once, and the token is 256 random bits, so nobody has a reason
     /// to ask often.
