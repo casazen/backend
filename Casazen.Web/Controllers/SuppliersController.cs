@@ -264,7 +264,11 @@ public class SuppliersController(
     /// Returns <c>Active</c> suppliers for a comune or property. Hosts only (<c>property.read</c>, TN-3); with
     /// <c>propertyId</c> the property is authorized as a <see cref="HostResource"/>. <c>category</c> is a code of
     /// <c>GET /api/service-categories</c>: only suppliers that declared it are returned, an unknown code is a 422
-    /// <c>invalid_service_category</c> (SU-03).
+    /// <c>invalid_service_category</c> (SU-03). Since SR-09a each supplier also carries what a host weighs: up to three published
+    /// <c>services</c>, the lowest <c>priceFromCents</c>, the measured <c>medianResponseMinutes</c>, the <c>verified</c> badge (an
+    /// active profile with a VAT number, never the number itself) and the <c>showcaseSlug</c>; <c>q</c> keeps the suppliers whose
+    /// name or category matches and <c>sort</c> (<c>name</c>, <c>price</c>, <c>response</c>) orders them. The enrichment is two
+    /// reads for the whole list, whatever its size, and does not depend on the showcase flag.
     /// </summary>
     [HttpGet]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
@@ -276,8 +280,13 @@ public class SuppliersController(
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<PagedResultDto<SupplierPickerDto>>> GetSuppliers(
         [FromQuery] GetSuppliersQuery query,
+        [FromServices] ISupplierServiceCatalogService catalog,
+        [FromServices] ISupplierKpiService kpis,
         CancellationToken cancellationToken)
     {
+        if (!SupplierPickerSearch.TryParseSort(query.Sort, out var sort))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierSortInvalid");
+
         var target = ComuneTarget.FromInput(query.Comune);
 
         if (query.PropertyId is Guid pid)
@@ -308,14 +317,27 @@ public class SuppliersController(
         // The comuni chosen from the official list are shown by name (SU-04).
         var listed = await comuneDirectory.GetByIstatCodesAsync(
             suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);
-        var items = suppliers.Select(sp => SupplierPickerDto.From(sp, listed)).ToList();
+
+        // SR-09a: the services and the response times of all the suppliers, one read each (never one per supplier).
+        var orgIds = suppliers.Select(sp => sp.OrgId).ToList();
+        var services = await catalog.ListPickerServicesAsync(orgIds, cancellationToken);
+        var medians = await kpis.GetMedianResponseMinutesBatchAsync(orgIds, cancellationToken);
+
+        var items = SupplierPickerSearch.Apply(
+            suppliers.Select(sp => SupplierPickerDto.From(
+                sp,
+                listed,
+                services.TryGetValue(sp.OrgId, out var published) ? published : [],
+                medians.GetValueOrDefault(sp.OrgId))),
+            query.Q,
+            sort);
 
         return Ok(new PagedResultDto<SupplierPickerDto>
         {
             Items = items,
-            TotalCount = suppliers.Count,
+            TotalCount = items.Count,
             Page = 1,
-            PageSize = suppliers.Count,
+            PageSize = items.Count,
         });
     }
 }

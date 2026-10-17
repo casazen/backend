@@ -27,10 +27,12 @@ public class SupplierServiceListingTenancyTests
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles moves the services of the duplicate org.",
     };
 
-    // The statements that are allowed after "db.SupplierServiceListings" (whitespace removed): the org predicate, or an insert.
+    // The statements that are allowed after "db.SupplierServiceListings" (whitespace removed): the org predicate (of one supplier,
+    // or of the list of suppliers the host's picker asks about, SR-09a), or an insert.
     private static readonly string[] AllowedContinuations =
     [
         ".Where(l=>l.OrgId==",
+        ".Where(l=>orgIds.Contains(l.OrgId)",
         ".AsNoTracking().Where(l=>l.OrgId==",
         ".Add(",
     ];
