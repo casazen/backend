@@ -22,6 +22,8 @@ value through EF; the database only ever holds the encrypted payload.
 | `PropertyQuesturaCredentials.Username`, `Password`, `WsKey` | `Casazen.PropertyQuesturaCredentials` | CO-14 |
 | `ServiceCustomers.FullName`, `Email`, `Phone` and `ShowcaseBookingHolds.PayloadEncrypted` (property `Payload`: the same data before the e-mail check) | `Casazen.ServiceCustomer` | SP-10 |
 | `ServiceRequests.LocationAddress`, `LocationFloor`, `LocationAccessNotes` (requests from a supplier's showcase only) | `Casazen.ServiceRequest.Location` | SP-10 |
+| `LeaseContracts.DraftData` (the whole typed state of a lease draft, as JSON, while some value is missing; no length: the payload is longer than the text) | `Casazen.LeaseContract.Draft` | LR-12 |
+| `Parties.Residence` (the residence or registered office of a party of a lease, no length) | `Casazen.LeaseParty` | LR-12 |
 
 `Guests` and `StayGuests` share one purpose on purpose: a payload copied from one table to the other by SQL (for example
 the CO-12 backfill) stays readable.

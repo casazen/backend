@@ -126,6 +126,7 @@ public sealed class OnSiteBookingRequestService(
 
             var now = UtcNow();
             booking.Status = BookingStatus.Confirmed;
+            booking.ConfirmedAt = now;
             booking.RequestExpiresAt = null;
             booking.UpdatedAt = now;
             await db.SaveChangesAsync(cancellationToken);
@@ -148,6 +149,7 @@ public sealed class OnSiteBookingRequestService(
 
             var now = UtcNow();
             booking.Status = BookingStatus.Cancelled;
+            booking.CancelledAt = now;
             booking.CancellationReason = BookingCancellationReason.OnSiteRequestDeclined;
             booking.RequestExpiresAt = null;
             booking.UpdatedAt = now;

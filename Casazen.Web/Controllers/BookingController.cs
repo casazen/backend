@@ -356,8 +356,17 @@ public class BookingsController(
         return true;
     }
 
+    /// <summary>
+    /// One booking, with the state of what is tied to it (SR-05a): <c>paymentState</c> (<c>None</c>, <c>Partial</c>, <c>Paid</c>,
+    /// <c>Refunded</c>), <c>paidAmount</c> (euros; <c>null</c> for a caller without <c>payment.read</c>, who still gets the state),
+    /// <c>guestDataComplete</c> (<c>null</c> for a booking with no Alloggiati communication), and, as on every booking, the times it kept
+    /// (<c>confirmedAt</c>, <c>arrivedAt</c>, <c>checkedOutAt</c>, <c>cancelledAt</c>) and <c>canEdit</c>. Its history is
+    /// <c>GET /api/bookings/{id}/timeline</c>.
+    /// </summary>
     [HttpGet("{id}")]
-    public async Task<ActionResult<BookingResponseDto>> GetById(Guid id)
+    [ProducesResponseType(typeof(BookingDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BookingDetailDto>> GetById(Guid id, [FromServices] IAuthorizationService hostAuthorization)
     {
         var booking = await bookingService.GetBookingAsync(id);
         if (booking == null)
@@ -370,7 +379,16 @@ public class BookingsController(
         if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
             return NotFound();
 
-        var response = BookingMapper.ToResponse(booking);
+        var response = BookingMapper.Fill(new BookingDetailDto(), booking, DateTime.UtcNow);
+
+        // What came in: the state for everyone, the money only for a caller who may read payments (SR-D7). The payments came with the booking.
+        var payments = booking.Payments.Select(p => new BookingPaymentFact(p.Status, p.Amount, p.RefundedAmount)).ToList();
+        response.PaymentState = BookingListRules.PaymentStateOf(booking.TotalPrice, payments).ToString();
+        response.PaidAmount = await CanReadPaymentsAsync(hostAuthorization) ? BookingListRules.PaidAmount(payments) : null;
+        // A communication exists for a stay that is confirmed or later: a request, a hold or a cancelled booking has none.
+        response.GuestDataComplete = booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut
+            ? await alloggiatiWebService.IsStayDataCompleteAsync(id)
+            : null;
         // OTA stay from iCal (CO-21): the dates its block has now on the channel, for the "da verificare" notice.
         if (booking.ICalFeedId is not null)
         {

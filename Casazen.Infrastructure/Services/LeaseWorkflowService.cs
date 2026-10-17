@@ -26,6 +26,7 @@ public class LeaseWorkflowService(
     TimeProvider? timeProvider = null) : ILeaseWorkflowService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    private readonly LeaseConcordatoAssessor _concordato = new(canoneConcordatoEligibility, timeProvider ?? TimeProvider.System);
 
     public async Task<LeaseContract> CreateDraftAsync(Guid propertyId, CreateLeaseRequest request)
     {
@@ -59,6 +60,8 @@ public class LeaseWorkflowService(
             MonthlyRent = request.MonthlyRent,
             SecurityDeposit = request.SecurityDeposit,
             ConcordatoAssessment = concordato,
+            // Created complete in one call: every data step has its values (LR-12), as if the landlord had been through them.
+            WizardMaxStep = LeaseDraftDefaults.LastDataStep,
             // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04). No retention date
             // either: it is computed from the end date and Gdpr:Retention:LeaseParties (LT-12, LeasePartyPrivacyService).
             Parties = parties.Select((p, index) => new Party
@@ -151,7 +154,8 @@ public class LeaseWorkflowService(
     /// <summary>
     /// Canone concordato range recomputed on the server from the declared characteristics and the real term (A7-12).
     /// Verified agreement data (Complete): a rent outside the range is refused (422). Unconfirmed data (Partial): the
-    /// range is indicative, the lease is created and the assessment records that the rent is outside it (A7-23).
+    /// range is indicative, the lease is created and the assessment records that the rent is outside it (A7-23). The
+    /// calculation is <see cref="LeaseConcordatoAssessor"/>, shared with the guided draft (LR-12).
     /// </summary>
     private async Task<LeaseConcordatoAssessment> AssessConcordatoRentAsync(
         Guid propertyId, CreateLeaseRequest request, LeaseTerm term)
@@ -159,61 +163,22 @@ public class LeaseWorkflowService(
         if (request.CanoneConcordatoCharacteristics is not { } characteristics)
             throw new DomainRuleException(ConcordatoErrorCodes.CharacteristicsRequired, "ConcordatoCharacteristicsRequired");
 
-        var range = await canoneConcordatoEligibility.CalculateAsync(propertyId, characteristics, term)
-            ?? throw new NotFoundException($"Property {propertyId} not found.") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
-
-        if (range is not
-            {
-                Available: true,
-                SubFascia: int subFascia,
-                CanoneMinAnnuo: decimal minAnnual,
-                CanoneMaxAnnuo: decimal maxAnnual,
-                CanoneMinMensile: decimal minMonthly,
-                CanoneMaxMensile: decimal maxMonthly,
-            })
+        var result = await _concordato.AssessAsync(propertyId, characteristics, term, request.MonthlyRent);
+        switch (result.Kind)
         {
-            var (code, key) = ConcordatoErrorCodes.ForReason(range.ReasonCode);
-            throw new DomainRuleException(code, key);
+            case ConcordatoAssessmentKind.PropertyNotFound:
+                throw new NotFoundException($"Property {propertyId} not found.") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
+            case ConcordatoAssessmentKind.Unavailable:
+                var (code, key) = ConcordatoErrorCodes.ForReason(result.Reason);
+                throw new DomainRuleException(code, key);
         }
 
-        var annualRent = request.MonthlyRent * 12m;
-        var withinRange = annualRent >= minAnnual && annualRent <= maxAnnual;
-        if (!withinRange && !range.Indicative)
+        if (!result.RentWithinRange && !result.Indicative)
         {
             throw new DomainRuleException(
-                ConcordatoErrorCodes.RentOutOfRange, "ConcordatoRentOutOfRange", minMonthly, maxMonthly);
+                ConcordatoErrorCodes.RentOutOfRange, "ConcordatoRentOutOfRange", result.MinMonthly!.Value, result.MaxMonthly!.Value);
         }
 
-        return new LeaseConcordatoAssessment
-        {
-            Sqm = characteristics.Sqm,
-            GarageSqm = characteristics.GarageSqm,
-            BalconySqm = characteristics.BalconySqm,
-            OtherAppurtenanceSqm = characteristics.OtherAppurtenanceSqm,
-            PrivateGreenSqm = characteristics.PrivateGreenSqm,
-            TypeAElementCount = characteristics.TypeAElementCount,
-            TypeBElementCount = characteristics.TypeBElementCount,
-            TypeCElementCount = characteristics.TypeCElementCount,
-            TypeDElementCount = characteristics.TypeDElementCount,
-            QualifyingTypeDElementCount = characteristics.QualifyingTypeDElementCount,
-            StoveHeating = characteristics.StoveHeating,
-            IsFurnished = characteristics.IsFurnished,
-            AirConditioning = characteristics.AirConditioning,
-            ZoneName = NullIfBlank(characteristics.ZoneName),
-            CadastralSheet = NullIfBlank(characteristics.CadastralSheet),
-            ContractYears = range.ContractYears ?? term.Months / 12,
-            UsableSqm = range.UsableSqm ?? characteristics.Sqm,
-            Zone = range.Zone ?? string.Empty,
-            SubFascia = subFascia,
-            CanoneMinAnnuo = minAnnual,
-            CanoneMaxAnnuo = maxAnnual,
-            CanoneMinMensile = minMonthly,
-            CanoneMaxMensile = maxMonthly,
-            DataCompleteness = range.DataCompleteness ?? DataCompleteness.Missing,
-            RentWithinRange = withinRange,
-            CalculatedAt = _clock.GetUtcNow().UtcDateTime,
-        };
+        return result.Assessment!;
     }
-
-    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

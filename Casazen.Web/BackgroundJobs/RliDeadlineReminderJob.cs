@@ -48,8 +48,11 @@ public class RliDeadlineReminderJob(
             .Include(l => l.Property)
             .Include(l => l.Parties)
             .Include(l => l.Events)
-            // Anonymized parties (LT-12) have no address left to remind.
-            .Where(l => l.Status != LeaseStatus.Registered && l.Status != LeaseStatus.Rejected && l.PartiesAnonymizedAt == null)
+            // Anonymized parties (LT-12) have no address left to remind. A draft the landlord is still typing (the wizard keeps its
+            // values in DraftData, LR-12) is not a contract yet: its dates may be starting values, and nobody is reminded of it. Only a
+            // lease that is still a draft: whatever DraftData a lease has left behind, a lease that is signed is reminded.
+            .Where(l => l.Status != LeaseStatus.Registered && l.Status != LeaseStatus.Rejected && l.PartiesAnonymizedAt == null
+                && (l.DraftData == null || l.Status != LeaseStatus.Draft))
             .ToListAsync();
 
         foreach (var lease in leases)
@@ -80,6 +83,7 @@ public class RliDeadlineReminderJob(
             .Where(l => l.Status != LeaseStatus.Rejected
                 && l.QuesturaCommunicationDate == null
                 && l.EndDate >= today
+                && (l.DraftData == null || l.Status != LeaseStatus.Draft)
                 && l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU))
             .ToListAsync();
 
