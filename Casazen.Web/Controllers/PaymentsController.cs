@@ -15,7 +15,8 @@ namespace Casazen.Web.Controllers;
 /// Payments of the caller's org (TN-3, A3-38). Reads need <c>payment.read</c>, every change <c>payment.write</c>; each
 /// payment is then authorized as a <see cref="HostResource"/> of its booking's property (org, permission, ownership).
 /// A payment the caller may not see answers 404, like a missing one. There is no "process payment": a payment is
-/// collected only by Stripe (checkout and webhooks), and refunds go to Stripe (BK-02, A9-15).
+/// collected by Stripe (checkout and webhooks) or recorded by the host as received outside CasaZen (<see cref="Create"/>,
+/// SR-06b), and refunds go to Stripe (BK-02, A9-15).
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -28,12 +29,18 @@ public class PaymentsController(
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
-    IFiscalRegimeService fiscalRegimeService,
+    IManualPaymentService manualPayments,
     IPaymentRefundService refundService,
     ILogger<PaymentsController> logger) : ControllerBase
 {
     /// <summary>Code of a <c>from</c> after <c>to</c>.</summary>
     public const string InvalidRangeCode = "payment_list_invalid_range";
+
+    /// <summary>Header of the key that makes a recorded payment happen once, however many times the request is sent (SR-06b).</summary>
+    public const string IdempotencyKeyHeader = "Idempotency-Key";
+
+    /// <summary>Code of a record sent without the <see cref="IdempotencyKeyHeader"/>.</summary>
+    public const string IdempotencyKeyRequiredCode = "idempotency_key_required";
 
     /// <summary>
     /// The payments the caller sees, newest first, as list rows (SR-03): with the guest and the property of the booking, the
@@ -112,10 +119,28 @@ public class PaymentsController(
         return Ok(payment);
     }
 
+    /// <summary>
+    /// Records a payment the host received outside CasaZen (SR-06b): cash or a bank transfer, on a booking of the caller's scope
+    /// that is not cancelled and does not come from a portal. It is born <c>Completed</c>, settled on <c>receivedOn</c> (Europe/Rome,
+    /// today when missing), and never takes the booking past its total (422 <c>payment_exceeds_balance</c>). The
+    /// <c>Idempotency-Key</c> header is required: the same key again answers 200 with the payment already written and writes
+    /// nothing. Nothing is sent to the guest or to anyone else. 400 <c>idempotency_key_required</c>.
+    /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
-    public async Task<ActionResult<Payment>> Create([FromBody] CreatePaymentRequest request)
+    [ProducesResponseType(typeof(Payment), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(Payment), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<Payment>> Create(
+        [FromBody] CreatePaymentRequest request,
+        [FromHeader(Name = IdempotencyKeyHeader)] string? idempotencyKey = null)
     {
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, IdempotencyKeyRequiredCode, "PaymentIdempotencyKeyRequired");
+
         var booking = await bookingService.GetBookingAsync(request.BookingId);
         if (booking == null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "BookingNotFound");
@@ -123,18 +148,21 @@ public class PaymentsController(
         if (!await CanOnPropertyAsync(booking.PropertyId, PaymentOperations.Write, booking.OrgId))
             return NotFound();
 
-        var payment = new Payment
-        {
-            BookingId = request.BookingId,
-            Amount = request.Amount,
-            Method = request.Method,
-            Description = request.Description ?? string.Empty,
-            OrgId = booking.OrgId,
-        };
-        await fiscalRegimeService.ApplyWithholdingOnCreateAsync(
-            payment, booking, request.ApplyOtaWithholding, request.ManualWithholdingTax);
-        var created = await paymentService.CreatePaymentAsync(payment);
-        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+        var result = await manualPayments.RecordAsync(
+            new ManualPaymentCommand(
+                request.BookingId,
+                request.Amount,
+                request.Method,
+                request.ReceivedOn,
+                request.Description,
+                idempotencyKey,
+                request.ApplyOtaWithholding,
+                request.ManualWithholdingTax),
+            HttpContext.RequestAborted);
+
+        return result.Created
+            ? CreatedAtAction(nameof(GetById), new { id = result.Payment.Id }, result.Payment)
+            : Ok(result.Payment);
     }
 
     /// <summary>
@@ -205,11 +233,20 @@ public class PaymentsController(
     }
 }
 
+/// <summary>A payment the host received outside CasaZen, to record on a booking (SR-06b).</summary>
+/// <param name="BookingId">The booking the money is for.</param>
+/// <param name="Amount">In euros, more than zero, two decimals at most, not more than the booking still has to collect.</param>
+/// <param name="Method"><c>CashOnArrival</c> or <c>BankTransfer</c>.</param>
+/// <param name="Description">A note of the host; optional.</param>
+/// <param name="ApplyOtaWithholding">As before; portal stays are refused, so it never applies.</param>
+/// <param name="ManualWithholdingTax">A withholding the host states by hand, as before.</param>
+/// <param name="ReceivedOn">The day the money came in (<c>yyyy-MM-dd</c>, Europe/Rome), today or before; today when missing.</param>
 public record CreatePaymentRequest(
     Guid BookingId,
     decimal Amount,
     PaymentMethod Method,
     string? Description,
     bool? ApplyOtaWithholding,
-    decimal? ManualWithholdingTax);
+    decimal? ManualWithholdingTax,
+    DateOnly? ReceivedOn = null);
 

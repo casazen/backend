@@ -871,6 +871,33 @@
   <data name="PaymentRefundOffline" xml:space="preserve">
     <value>This payment did not go through Stripe (cash, bank transfer or manual record): refund it outside CasaZen.</value>
   </data>
+  <data name="PaymentIdempotencyKeyRequired" xml:space="preserve">
+    <value>The operation key is missing (Idempotency-Key header): it keeps the same receipt from being recorded twice.</value>
+  </data>
+  <data name="PaymentIdempotencyKeyInvalid" xml:space="preserve">
+    <value>The operation key is not valid: use 1 to 100 characters.</value>
+  </data>
+  <data name="PaymentIdempotencyKeyReused" xml:space="preserve">
+    <value>This key was already used for a different receipt. Start again.</value>
+  </data>
+  <data name="PaymentMethodNotAllowed" xml:space="preserve">
+    <value>Only cash or bank transfer receipts can be recorded by hand. Cards go through Stripe.</value>
+  </data>
+  <data name="PaymentAmountInvalid" xml:space="preserve">
+    <value>The amount must be more than zero, with at most two decimals.</value>
+  </data>
+  <data name="PaymentReceivedOnFuture" xml:space="preserve">
+    <value>The date of the receipt cannot be in the future.</value>
+  </data>
+  <data name="PaymentBookingCancelled" xml:space="preserve">
+    <value>The booking is cancelled: a receipt cannot be recorded.</value>
+  </data>
+  <data name="PaymentBookingFromPortal" xml:space="preserve">
+    <value>This booking comes from a portal, which collects the money for you: receipts are not recorded here.</value>
+  </data>
+  <data name="PaymentExceedsBalance" xml:space="preserve">
+    <value>The amount is more than what is still to be collected ({0} €).</value>
+  </data>
   <data name="PaymentRefundAccountMissing" xml:space="preserve">
     <value>The host's Stripe account is not available: complete or reconnect Stripe in the payment settings and try again.</value>
   </data>

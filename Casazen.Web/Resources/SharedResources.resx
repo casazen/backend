@@ -871,6 +871,33 @@
   <data name="PaymentRefundOffline" xml:space="preserve">
     <value>Questo pagamento non è passato da Stripe (contanti, bonifico o registrazione manuale): il rimborso va fatto fuori da CasaZen.</value>
   </data>
+  <data name="PaymentIdempotencyKeyRequired" xml:space="preserve">
+    <value>Manca la chiave dell'operazione (intestazione Idempotency-Key): serve per non registrare due volte lo stesso incasso.</value>
+  </data>
+  <data name="PaymentIdempotencyKeyInvalid" xml:space="preserve">
+    <value>La chiave dell'operazione non è valida: usa da 1 a 100 caratteri.</value>
+  </data>
+  <data name="PaymentIdempotencyKeyReused" xml:space="preserve">
+    <value>Questa chiave è già stata usata per un altro incasso. Riprova dall'inizio.</value>
+  </data>
+  <data name="PaymentMethodNotAllowed" xml:space="preserve">
+    <value>Si possono registrare a mano solo incassi in contanti o con bonifico. Le carte passano da Stripe.</value>
+  </data>
+  <data name="PaymentAmountInvalid" xml:space="preserve">
+    <value>L'importo deve essere maggiore di zero, con al massimo due decimali.</value>
+  </data>
+  <data name="PaymentReceivedOnFuture" xml:space="preserve">
+    <value>La data dell'incasso non può essere nel futuro.</value>
+  </data>
+  <data name="PaymentBookingCancelled" xml:space="preserve">
+    <value>La prenotazione è annullata: non si può registrare un incasso.</value>
+  </data>
+  <data name="PaymentBookingFromPortal" xml:space="preserve">
+    <value>Questa prenotazione arriva da un portale, che incassa per conto tuo: qui non si registrano incassi.</value>
+  </data>
+  <data name="PaymentExceedsBalance" xml:space="preserve">
+    <value>L'importo supera quello che resta da incassare ({0} €).</value>
+  </data>
   <data name="PaymentRefundAccountMissing" xml:space="preserve">
     <value>L'account Stripe dell'host non è disponibile: completa o ricollega Stripe nelle impostazioni dei pagamenti e riprova.</value>
   </data>
