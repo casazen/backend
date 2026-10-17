@@ -347,6 +347,11 @@ public class DemoEnvironmentService(
 
         var checkIn = today.AddDays(template.CheckInOffsetDays).ToDateTime(TimeOnly.MinValue);
         var nights = property.NightlyRate * template.Nights;
+        // SR-05a: the history of a demo stay reads in order, as the timeline of the booking shows it: made a month before the
+        // arrival and confirmed at once, so a stay already over was not "made today"; checked out at the end of its last night.
+        var madeAt = DateTime.SpecifyKind(checkIn.AddDays(-30), DateTimeKind.Utc);
+        if (madeAt > UtcNow())
+            madeAt = UtcNow();
         var booking = new Booking
         {
             OrgId = orgId,
@@ -363,6 +368,13 @@ public class DemoEnvironmentService(
             CleaningFee = property.CleaningFee,
             TotalPrice = nights + property.CleaningFee,
             SpecialRequests = "Prenotazione di dimostrazione con un ospite inventato.",
+            CreatedAt = madeAt,
+            UpdatedAt = madeAt,
+            ConfirmedAt = template.Status == BookingStatus.Pending ? null : madeAt,
+            CancelledAt = template.Status == BookingStatus.Cancelled ? madeAt : null,
+            CheckedOutAt = template.Status == BookingStatus.CheckedOut
+                ? DateTime.SpecifyKind(checkIn.AddDays(template.Nights).AddHours(9), DateTimeKind.Utc)
+                : null,
         };
         db.Bookings.Add(booking);
         await db.SaveChangesAsync(cancellationToken);

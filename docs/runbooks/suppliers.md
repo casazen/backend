@@ -22,6 +22,7 @@ Section 24: the customer's own area of that booking, to find it again with its c
 time the supplier proposed (SP-11, redesign wave).
 Section 25: the supplier's Stripe Connect account (SP-14). Section 26: paying the supplier inside CasaZen with the CasaZen commission (payment mode of a
 request, the payer's link, the host's confirmation of an amount above the quote, the supplier's payment request and offline record; SP-15a, redesign wave; the webhook, the jobs, the refunds and the admin tools, 26.7, SP-15b).
+Section 29: the console's settings, earnings and clients (SP-16a, redesign wave).
 
 ## 1. How a supplier joins
 
@@ -2648,11 +2649,56 @@ carries `jobsTotal` (additive) so that the cap of 50 jobs, which a week can reac
 - The demo showcase (`DemoShowcaseCatalog`) has no supplier or service-request data at all, so there is nothing to extend for these read-only screens: a
   supplier in the demo is a task of its own (`.claude/rules/demo-seed.md`).
 
+## 29. The supplier console: settings, earnings and clients — SP-16a
+
+Redesign wave task SP-16a, backend only: **no flag, no migration** (the columns were there since SP-03). It gives the pages Impostazioni, Incassi and
+Clienti of the console (SP-16c and SP-16b) the endpoints they were missing, in three pull requests: **29.1** the settings and **29.2** the "Verificato"
+badge of the checklist (this part), then the earnings and their export (29.3) and the clients (29.4). Every endpoint is `RequireSupplier`, scoped by the
+supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read of the console never provisions or links a supplier), not behind a flag.
+
+### 29.1 `GET` and `PUT api/supplier/settings`
+
+| Field | Column of `SupplierSettings` | Default | What reads it |
+|---|---|---|---|
+| `onlineBookingEnabled` | `OnlineBookingEnabled` | `false` | the booking from the showcase (SP-10): off is 422 `supplier_booking_offline`. **Read-only here** (below) |
+| `autoAcceptRegulars` | `AutoAcceptRegulars` | `false` | SP-04d (a regular customer is one with at least three jobs taken); until it is deployed the switch is saved and changes nothing |
+| `notifyNewRequests` | `NotifyNewRequests` | `true` | SP-16d; until it is deployed no code reads it |
+| `notifyDayBeforeReminder` | `NotifyDayBeforeReminder` | `true` | SP-16d, same |
+| `notifyPayments` | `NotifyPaymentMarked` | `true` | SP-16d, same |
+| `respondWithinMinutes` | `RespondWithinMinutes` | `180` (3 h, D8) | the deadline of a booking from the showcase (`ResponseDueAt`); a request of a CasaZen host has its own (`Suppliers:ServiceRequests:HostResponseMinutes`, 2 h) and shows it as `respondBy` |
+
+- **`GET`** answers the defaults while the supplier never saved a setting: a read **never creates the row**. **`PUT`** replaces the five settings the console
+  edits (`autoAcceptRegulars`, `notifyNewRequests`, `notifyDayBeforeReminder`, `notifyPayments`, `respondWithinMinutes`), **all of them are needed**: one that is
+  left out, or a time to answer outside **15 to 10080 minutes** (the database check `CK_SupplierSettings_RespondWithinMinutes`), is 422
+  `supplier_settings_invalid` with `fields` naming every setting at fault (as `PUT availability/rules`), and nothing is written. The answer of the `PUT` has the
+  shape of the `GET`.
+- **`onlineBookingEnabled` is not a field of the `PUT`** (decision SP-D29): a value sent for it is ignored, so a settings call can never open the showcase to
+  bookings. The only writer will be the showcase editor (SP-13a, publish and pause). Until it is deployed **nothing writes the column**, so the public booking stays
+  closed for every supplier whatever the flag `SupplierShowcaseBooking` says (`deploy-checklist.md`).
+- The row is shared with the rules and the hours of the agenda (section 20): the first write creates it, and **every write takes the same advisory lock**
+  (`SupplierCalendarSync` of the supplier org) and reads the row after taking it, so two saves never overwrite each other's columns. A save leaves the other
+  columns (the five rules, `HoursConfiguredAt`, `ParallelJobs`) exactly as they were. The code is in `SupplierAgendaService` (the only reader and writer of the
+  table, `SupplierAgendaTenancyTests`).
+
+### 29.2 The checklist: `verification` and `paymentsActive`
+
+`GET api/supplier/checklist` (section 21) gains, additively:
+
+- **`verification { verified, missing[] }`**: the "Verificato" badge of decision D11, read from `SupplierVerification` through the cached state of the Stripe account
+  (`ISupplierPaymentsAccountService.GetAccountAsync(…, refreshFromStripe: false)`, no call to Stripe) **whatever the flag `SupplierOnlinePayments` says** (the
+  endpoint `GET api/supplier/payments/account` that told it is behind the flag). `missing` holds, in this order, `profile_not_active`, `payments_not_enabled`,
+  `vat_number_missing`; it is empty when `verified` is true. An open set: show a generic wording for a code you do not know. With the flag off every supplier
+  lacks `payments_not_enabled` (no Stripe account yet).
+- **`paymentsActive`**: `true` when the supplier's Stripe account takes charges **and** payouts, `false` when it does not, **only while the flag is on**; `null` with the
+  flag off ("not available" is not a "no": the console does not count the step). The three consumers of the old `null` keep working with the flag off.
+- `SupplierTodayService` takes the payments account and the flags as optional trailing constructor parameters (the tests that build it by hand stay as they are); the
+  container always gives both, and the checklist tests of `SupplierInboxIntegrationTests`, which go through the real host, fail if the registration is lost.
+
 ## Known limits (other tasks)
 
 - Booking from the showcase (SP-10, SP-11): the customer finds, cancels, moves and answers a proposed time of its request (section 24).
   A showcase request is not paid inside CasaZen (section 26.2, SP-15c): the supplier records the payment it received outside it.
-  `SupplierSettings.OnlineBookingEnabled` has no endpoint that writes it yet (SP-13 / SP-16).
+  `SupplierSettings.OnlineBookingEnabled` is read by `GET api/supplier/settings` (section 29.1) but no endpoint writes it yet (SP-13a, the showcase editor).
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.

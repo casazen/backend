@@ -466,6 +466,7 @@ public sealed class DeferredChargeService(
         }
 
         booking.Status = BookingStatus.Cancelled;
+        booking.CancelledAt = now;
         booking.CancellationReason = BookingCancellationReason.DeferredPaymentNotCompleted;
         booking.UpdatedAt = now;
         logger.LogInformation(

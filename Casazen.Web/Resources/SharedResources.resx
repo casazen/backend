@@ -2269,6 +2269,9 @@
   <data name="SupplierRulesInvalid" xml:space="preserve">
     <value>Le regole non sono valide (campi: {0}). Servono tutte e cinque: pausa tra i lavori (da 0 a 240 minuti, a passi di 5), massimo lavori al giorno (da 1 a 50), preavviso (da 0 a 720 ore), orizzonte (da 1 a 365 giorni) e passo degli orari (da 15 a 240 minuti, a passi di 5).</value>
   </data>
+  <data name="SupplierSettingsInvalid" xml:space="preserve">
+    <value>Le impostazioni non sono valide (campi: {0}). Servono tutte e cinque: accettazione automatica dei clienti abituali, avviso per le nuove richieste, promemoria del giorno prima, avviso per i pagamenti e tempo per rispondere (da 15 a 10080 minuti).</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Indica il comune oppure l'immobile per cercare i fornitori.</value>
   </data>

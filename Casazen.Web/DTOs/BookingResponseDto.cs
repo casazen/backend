@@ -1,3 +1,5 @@
+using Casazen.Core.Services;
+
 namespace Casazen.Web.DTOs;
 
 public class BookingResponseDto
@@ -76,6 +78,70 @@ public class BookingResponseDto
     public BookingGuestDto Guest { get; set; } = new();
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    /// <summary>
+    /// When the booking became confirmed (UTC, SR-05a). <c>null</c> while it is not confirmed and for a booking confirmed before the
+    /// time was kept (nothing is backfilled: its timeline shows the confirmation without a time).
+    /// </summary>
+    public DateTime? ConfirmedAt { get; set; }
+
+    /// <summary>When the booking was cancelled (UTC); <c>null</c> while it is not, and for one cancelled before the time was kept.</summary>
+    public DateTime? CancelledAt { get; set; }
+
+    /// <summary>When the host registered the arrival (UTC); <c>null</c> before, and when it was registered after the check-in day.</summary>
+    public DateTime? ArrivedAt { get; set; }
+
+    /// <summary>When the host checked the stay out (UTC); <c>null</c> before, and for a stay checked out before the time was kept.</summary>
+    public DateTime? CheckedOutAt { get; set; }
+
+    /// <summary>
+    /// Whether the host may change the dates and the guests of the booking, and if not why: the rule of <c>PUT /api/bookings/{id}</c>
+    /// (<see cref="BookingEditRules"/>), so the client shows "Modifica" or the explanation without a rule of its own. The notes of a
+    /// booking that is not cancelled can always be changed.
+    /// </summary>
+    public BookingEditabilityDto CanEdit { get; set; } = new();
+}
+
+/// <summary>Whether the dates and guests of a booking may be changed (SR-05a), and why not.</summary>
+public sealed class BookingEditabilityDto
+{
+    /// <summary>True when the dates and the guests may be changed.</summary>
+    public bool Allowed { get; init; }
+
+    /// <summary>
+    /// Why not: <c>Cancelled</c> (the booking is cancelled), <c>Started</c> (the guest has arrived or left) or <c>SourceLocked</c> (it comes
+    /// from the booking site or a channel, with price and payment settled there: it is cancelled or made again, not edited). <c>null</c>
+    /// when <see cref="Allowed"/>.
+    /// </summary>
+    public BookingEditLock? Reason { get; init; }
+
+    public static BookingEditabilityDto From(BookingEditability editability) => new()
+    {
+        Allowed = editability.Allowed,
+        Reason = editability.Reason,
+    };
+}
+
+/// <summary>
+/// The booking of <c>GET /api/bookings/{id}</c> (SR-05a): the booking, as everywhere, and the state of what is tied to it. Only the detail
+/// reads these (they cost a query), so they are not on the booking of the other endpoints; the lists have their own (<see cref="BookingListItemDto"/>).
+/// </summary>
+public class BookingDetailDto : BookingResponseDto
+{
+    /// <summary>How much of the total came in: <c>None</c>, <c>Partial</c>, <c>Paid</c> or <c>Refunded</c> (a failed or open payment is nothing).</summary>
+    public string PaymentState { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The money that came in, in euros: the payments collected minus what was refunded. <c>null</c> for a caller who may not read
+    /// payments (the collaborator): the state is still there.
+    /// </summary>
+    public decimal? PaidAmount { get; set; }
+
+    /// <summary>
+    /// Every guest of the stay has every field of the Alloggiati record, whoever entered them; <c>null</c> for a booking that has no
+    /// communication (a request, a hold, a cancelled booking).
+    /// </summary>
+    public bool? GuestDataComplete { get; set; }
 }
 
 /// <summary>
