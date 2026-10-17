@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
@@ -24,7 +25,7 @@ public class GdprServiceNotFoundTests
     {
         var guestRepository = new Mock<IGuestRepository>();
         guestRepository
-            .Setup(r => r.GetByIdInOrgAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdInScopeAsync(It.IsAny<HostScope>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guest?)null);
         await using var db = NewDb();
         var service = NewService(db, guestRepository.Object);

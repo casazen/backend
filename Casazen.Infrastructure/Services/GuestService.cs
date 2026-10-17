@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
@@ -15,20 +16,20 @@ public class GuestService(
 {
     public const string HostDeletionReason = "Deleted by the host from the guest list";
 
-    public async Task<Guest?> GetGuestAsync(Guid orgId, Guid id, CancellationToken cancellationToken = default)
+    public async Task<Guest?> GetGuestAsync(HostScope scope, Guid id, CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Retrieving guest: {GuestId}", id);
-        return await repository.GetByIdInOrgAsync(orgId, id, cancellationToken);
+        return await repository.GetByIdInScopeAsync(scope, id, cancellationToken);
     }
 
-    public async Task<Guest?> GetGuestByEmailAsync(Guid orgId, string email, CancellationToken cancellationToken = default)
+    public async Task<Guest?> GetGuestByEmailAsync(HostScope scope, string email, CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Retrieving guest by email lookup");
-        return await repository.GetByEmailAsync(orgId, email, cancellationToken);
+        return await repository.GetByEmailAsync(scope, email, cancellationToken);
     }
 
     public async Task<(IReadOnlyList<Guest> Items, int TotalCount)> GetGuestsPageAsync(
-        Guid orgId,
+        HostScope scope,
         string? searchTerm,
         int page,
         int pageSize,
@@ -36,8 +37,8 @@ public class GuestService(
     {
         logger.LogInformation(
             "Listing guests of org {OrgId}: page {Page}, size {PageSize}, search {HasSearch}",
-            orgId, page, pageSize, !string.IsNullOrWhiteSpace(searchTerm));
-        return await repository.GetPageAsync(orgId, searchTerm, page, pageSize, cancellationToken);
+            scope.OrgId, page, pageSize, !string.IsNullOrWhiteSpace(searchTerm));
+        return await repository.GetPageAsync(scope, searchTerm, page, pageSize, cancellationToken);
     }
 
     public async Task<Guest> CreateGuestAsync(Guid orgId, Guest guest, CancellationToken cancellationToken = default)
@@ -85,14 +86,16 @@ public class GuestService(
     }
 
     public async Task<GuestDeletionResult> DeleteGuestAsync(
-        Guid orgId,
+        HostScope scope,
         Guid id,
         string? actorUserId = null,
         CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Deleting guest: {GuestId}", id);
 
-        var guest = await repository.GetByIdInOrgAsync(orgId, id, cancellationToken);
+        // The guest is read inside the caller's scope: one of another org, or of a property the caller does not reach, is not found.
+        var orgId = scope.OrgId;
+        var guest = await repository.GetByIdInScopeAsync(scope, id, cancellationToken);
         if (guest is null)
         {
             logger.LogWarning("Guest not found: {GuestId}", id);
