@@ -10,9 +10,9 @@ security review of AM-03, the limit of the authorization cache with more than on
 scope with the payments of the suppliers; backend only) is described in sections 40 to 44. Task AM-02c (the completions the screens
 of the account area need: the matrix of the roles, the areas of a member, the properties inside an invitation, the overview of the home, the
 cap on the emails of the invitations, the restricted membership of the property manager and the events of the mode of a property; one
-migration, `AddOrgTeamCompletions`; backend only) is described in sections 45 to 55. The screens come with AM-04:
-**nothing here changes what a user sees today, but for a collaborator limited to "Solo alcuni" (section 20), which nobody is
-yet**. The flag `OrgTeam` is off by default and gates every endpoint of the team (sections 18, 26 and 37).
+migration, `AddOrgTeamCompletions`; backend only) is described in sections 45 to 55. The screens come with AM-04. The endpoints
+of the team, the `account` context and the activity log are always on (no feature flag): the web app leaves out the contexts it has
+no area for (`WorkspaceProvider`), so `account` stays out of its area selector until AM-04.
 
 ## 1. What exists after AM-01
 
@@ -25,7 +25,7 @@ yet**. The flag `OrgTeam` is off by default and gates every endpoint of the team
 | `account` context | `AppContexts` row, `AccountContext` | "Amministrazione" of the customer: people, billing, settings, suppliers. The platform console is still `admin` (staff only, D1). |
 | Reconcile | `POST /api/admin/org-members/reconcile` | Idempotent command that re-aligns the projection, with a dry run (section 6). |
 | `member_inactive` | `InactiveAccountMiddleware` | A deactivated member gets **403 `member_inactive`** from the very next request (section 5). |
-| Flag `OrgTeam` | `Features__OrgTeam` | Off. With it off, `GET /api/me/contexts` does not list `account` (section 7). |
+| Context list | `GET /api/me/contexts` | Lists `account` for every member, first (the list is sorted by key): a client without an area for it leaves it out (section 7). |
 
 ### The table
 
@@ -193,21 +193,18 @@ and counts only (no names, no emails):
 The reconcile never gives or takes rental rows from an owner (they come from the onboarding). Run it with `dryRun=true`
 first, read the report, then `dryRun=false`; the applied run lists the same fixes.
 
-## 7. The `OrgTeam` flag
+## 7. The `account` context in the list of contexts
 
-`Features__OrgTeam` (default off; `docs/runbooks/feature-flags.md`). Exposed to the SPA as `orgTeam` by
-`GET /api/public/features`. In AM-01 it does one thing: **with it off `GET /api/me/contexts` filters `account` out**,
-because the web app of today does not know the context (its workspace switcher has no icon for the key and the first
-context of the list becomes the active one, so listing it would break the app of every owner). The authorization does not
-depend on the list: memberships, policies and `member_inactive` work with the flag off. AM-02 gates every endpoint of the
-invitations and the members on it (404 for everybody, before the authentication, while it is off; section 18);
-**turn it on together with the account screens (AM-04)**, never before. Rollback: unset the variable.
+`GET /api/me/contexts` lists `account` for every member of an org, together with the rental contexts. The list is sorted by
+key, so `account` comes **first**: a client that has no area for a context must leave it out, or the first one of the list
+becomes the active context. The web app does so in `WorkspaceProvider` (it keeps the contexts of an area of the app, so `account`
+stays out of its area selector until the screens of AM-04 give it one). The authorization does not depend on the list:
+memberships, policies and `member_inactive` decide. The mobile app does not read the list.
 
 ## 8. Rollback
 
 | Level | How | Effect |
 |---|---|---|
-| Hide the context | `Features__OrgTeam` unset | `account` leaves `GET /api/me/contexts` (it is already off by default) |
 | Re-align | `POST /api/admin/org-members/reconcile?dryRun=false` | repairs the projection, never deletes a member |
 | Redeploy the previous build | the schema stays (additive): the old code ignores `OrgMembers` and the `account` rows | the veto, `member_inactive` and the account context disappear; the owners keep their rental memberships |
 | Undo the migration | `dotnet ef database update <previous migration>` with the code of the previous build deployed | drops `OrgMembers`, the account memberships, the roles 4 to 12 and the context. Do it only if nothing wrote members you need (AM-02 onwards; the `AddOrgInvitations` migration is undone first, section 18) |
@@ -241,7 +238,6 @@ concurrent writes), `OrgTeamPostgresIntegrationTests` (HTTP: onboarding, billing
 
 ### Endpoints
 
-All of them answer **404 to everybody, before the authentication, while `Features__OrgTeam` is off** (`FeatureGate`).
 The org is always the caller's own (`IOrgContextResolver`), never a value of the request. Errors are the usual problem
 details with a stable `code` and a message in the language of `Accept-Language`.
 
@@ -441,9 +437,6 @@ it again, and one failing invitation does not stop the others (200 per step per 
 3. **Purge**: closed invitations (accepted, revoked, expired) are **deleted with the name and the email of the invitee**
    `OrgTeam__InvitationRetentionDays` days after they were closed (default 30, minimum 1).
 
-The job is registered whatever the flag says, because the retention of personal data does not depend on a feature being on.
-With `Features__OrgTeam` off it only purges (steps 1 and 2 would write to people who cannot see the screens).
-
 **What Hangfire keeps.** The queued job of the invitation email carries the recipient, the subject and the **HTML with the
 live link**, so the token is readable in the Hangfire job arguments until Hangfire removes the succeeded job (24 hours;
 `docs/runbooks/email.md`, "Data kept in Hangfire"). The retention of the job arguments is not configured further, and the
@@ -465,7 +458,7 @@ nowhere: the database has only its hash.
 - **Logs** never carry the token, and carry the email only masked (`m***@example.com`).
 - **Privacy notice (legal text).** It must say that the name and the email of the invitee are processed to send the
   invitation and kept until 30 days after it closed, and that the people of an org are visible to its owner and
-  administrators. The wording belongs to the legal owner (`docs/runbooks/legal-documents.md`): **not changed by AM-02**, to do before the flag is turned on.
+  administrators. The wording belongs to the legal owner (`docs/runbooks/legal-documents.md`): **not changed by AM-02**, to do before the next release to production.
 - Erasing the account of a member is not part of AM-02 (`docs/runbooks/gdpr.md`): the member row is deleted with the user (cascade).
 
 ## 17. Operating it
@@ -493,7 +486,7 @@ SELECT
      WHERE "OrgId" = '<org id>' AND "Status" = 1 AND "ExpiresAt" > now()) AS pending_invitations;
 ```
 
-## 18. Deploy, flag and rollback of AM-02
+## 18. Deploy and rollback of AM-02
 
 **Configuration.** Nothing is required: every variable has a default. `App__PublicSiteBaseUrl` and the email provider must be
 set for the links and the emails (they already are in every environment that sends mail). Optional:
@@ -503,16 +496,13 @@ set for the links and the emails (they already are in every environment that sen
 **The migration** `20261008205127_AddOrgInvitations` is additive: one table and four indexes, no data is touched, the previous
 build ignores the table. It is applied at startup like the others.
 
-**Order.** (1) Deploy with `Features__OrgTeam` unset: every endpoint of this part answers 404, `GET /api/me/contexts` is
-unchanged, the entitlement answer gains `limits.maxSeats`, `usage.seats` and `canInviteMember` (additive), the org export gains
-`members`, and the maintenance job runs (it only deletes closed invitations, of which there are none). Nothing changes for a
-user. (2) AM-03 (per-property scope and fine permissions) and AM-04 (the screens, which must take the token out of the
-address bar and learn `org_owner` / `org_admin` for the billing screens). (3) **Only then** set `Features__OrgTeam=true`:
-turning it on earlier shows the `account` context to a web app that does not know it.
+**What the deploy does.** The endpoints of this part are live from the first request, `GET /api/me/contexts` lists the `account`
+context (section 7), the entitlement answer gains `limits.maxSeats`, `usage.seats` and `canInviteMember` (additive), the org
+export gains `members`, and the maintenance job runs (reminders, expiry, deletion of the closed invitations). The screens
+(AM-04) must take the token out of the address bar and learn `org_owner` / `org_admin` for the billing screens.
 
 | Level | How | Effect |
 |---|---|---|
-| Stop the feature | unset `Features__OrgTeam` | the endpoints answer 404; the people already invited can no longer accept; open invitations keep expiring and closed ones keep being purged (the job runs anyway); members keep their access |
 | Stop one person | deactivate the member (`.../deactivate`) or revoke the invitation | immediate; the seat is free (revoke) or kept (deactivate does not count) |
 | Redeploy the previous build | nothing to undo: the table is ignored | members keep working through the `AM-01` rows; an invitation link no longer works |
 | Undo the migration | `dotnet ef database update 20261008192122_AddOrgMembership`, with the previous build deployed | drops `OrgInvitations` (open invitations are lost, no member or consent is touched). The people who already joined stay members |
@@ -529,8 +519,7 @@ tenant table is read), `OrgTeamServiceTests`, `OrgSeatServiceTests`, `OrgInvitat
 `TenantQueryFilterArchitectureTests` and `EndpointAuthorizationArchitectureTests` (the policy is used, the acceptance is
 the only authenticated-only action and says why), `ErrorHandlingMiddlewareTests` (403 and 410).
 HTTP (in-memory locally, PostgreSQL in CI): `OrgInvitationsHttpIntegrationTests` (the journey, who may do what, validation,
-seats, every refusal, an owner leaving an empty org, an org in use) and `OrgInvitationsFlagOffIntegrationTests` (404 of every
-endpoint).
+seats, every refusal, an owner leaving an empty org, an org in use).
 `[PostgresFact]` (CI only): `OrgInvitationsSchemaPostgresTests` (the indexes), `OrgInvitationsPostgresTests` (concurrency
 of the seats and of the acceptance, atomicity of leaving an empty org, the maintenance job and its lock, the tenant filter).
 
@@ -603,8 +592,8 @@ Alloggiati list but not register or declare.
 
 ## 22. Endpoints
 
-All of them need the policy `RequireContext:account:org.members.manage` (owner and administrators) except the last one, and the
-first two answer **404 to everybody, before the authentication, while `Features__OrgTeam` is off**. The org is always the one of the caller.
+All of them need the policy `RequireContext:account:org.members.manage` (owner and administrators) except the last one. The org is
+always the one of the caller.
 
 | Endpoint | Answer |
 |---|---|
@@ -661,7 +650,7 @@ the holder only for an account in **no** org team, as it always was. `RliRegistr
 `UnauthorizedAccessException` (403) otherwise; `ComuneImuNotificationService.MarkSentAsync` answers as for a lease that is not the caller (null, 404 at `POST .../canone-concordato/imu-notification/mark-sent`). Tests: `OrgHolderServiceTests`,
 `RliRegistrationHolderTests`, `ComuneImuNotificationServiceTests`.
 
-## 26. Deploy, flag and rollback of AM-03
+## 26. Deploy and rollback of AM-03
 
 **Configuration.** Nothing is required. `Authorization__UserCacheSeconds` (60) is the freshness of the scope on the other
 instances (section 23); lower it only if narrowing an access must propagate faster, at the price of one more query per instance and
@@ -671,20 +660,17 @@ user every that many seconds.
 rows of `RolePermissions`. No existing row is changed; the previous build ignores the table and the column. It is applied at
 startup like the others.
 
-**What the flag does and does not do.** `Features__OrgTeam` gates the endpoints that *write* the team (AM-02 and the two
-`.../properties` endpoints of this part). The **enforcement** of the scope is not behind a flag, and does not need one: it changes
-what a user sees only for a collaborator "Solo alcuni", and that state can be created only through the gated endpoints (the
-invitation or the `PUT`). With the flag off nobody is limited, so nothing changes for any user. The notification audience (section 24)
-and the S5 rule (section 25) apply from the deploy.
+**What it changes.** The endpoints that *write* the team (AM-02 and the two `.../properties` endpoints of this part) are live, and the
+**enforcement** of the scope changes what a user sees only for a collaborator "Solo alcuni", a state that can be created only through
+the invitation or the `PUT`. The notification audience (section 24) and the S5 rule (section 25) apply from the deploy.
 
-**Order.** (1) Deploy (flag off). (2) Check with the queries of section 27 that no member has `PropertyScope = 2` (there should be none).
-(3) With more than one API instance, apply the advice of section 42 (one instance, or `Authorization__UserCacheSeconds` 0 to 5).
-(4) AM-04 (the screens) and then `Features__OrgTeam=true`, as in section 18.
+**Before the team is used in production.** With more than one API instance, apply the advice of section 42 (one instance, or
+`Authorization__UserCacheSeconds` 0 to 5). The queries of section 27 show who is limited and who is not.
 
 | Level | How | Effect |
 |---|---|---|
 | Stop one person | deactivate the member, or give it `All` | immediate on this instance, within 60 s on the others (`All` only); the deactivation is read from the database on every request |
-| Stop the feature | unset `Features__OrgTeam` | the endpoints answer 404. A collaborator already limited **stays limited** (the rows and the scope are in the database): to widen it, set it to `All` first, or change its role |
+| Widen a limited collaborator | set it to `All`, or change its role | a collaborator already limited **stays limited** (the rows and the scope are in the database) until it is widened |
 | Redeploy the previous build | nothing to undo: the table, the column and the permission rows are ignored | the old code reads the roles of the token again, which a collaborator has none of in the host roles: it sees only the properties it created, i.e. none, until the build is replaced or the member is made another role. The finer permissions are unused |
 | Undo the migration | `dotnet ef database update 20261008224500_PreferAlloggiatiReceiptDuplicates` (the migration before), with the previous build deployed | drops `PropertyMemberAccesses`, `Properties.ResponsibleUserId` and the seven permission rows; nothing else. The people limited to some properties lose the limit |
 
@@ -769,7 +755,7 @@ number of commands does not grow with the number of properties, cascade and set 
 ## 29. What AM-02b adds
 
 The people who administer the org see **who did what** in a short list with no personal data, and a member who cannot do
-something **asks the administrators for access**. Backend only; the screens are AM-04's. Behind the flag `OrgTeam`.
+something **asks the administrators for access**. Backend only; the screens are AM-04's.
 
 | Piece | Where | What it does |
 |---|---|---|
@@ -814,7 +800,7 @@ The area is one of `account`, `short-rent`, `long-rent`, `supplier` (the keys of
 **not written by anything yet**: its code and its details are fixed now so that the integers do not change when the task that builds
 the feature arrives (today the two of the trusted suppliers only). The events of the mode of a property carry the area of the property
 (`short-rent` or `long-rent`), so the screens of each area can filter their own; `PropertyModeService` writes them only when an `IActivityLog` is
-registered (every deploy) and, like all the others, **nothing is collected while `Features__OrgTeam` is off**.
+registered (every deploy).
 
 **Not instrumented on purpose** (the task says: nothing else): sending an invitation again or copying its link, the person in
 charge of a property, the contact email and the publication of the org, the billing profile, prices and bookings (other areas and
@@ -855,16 +841,14 @@ Hence a change that is rolled back leaves no line, and a line is never written f
 422) writes nothing, and **an idempotent repeat writes nothing** (the same role, an already deactivated member, the same set of
 properties, the same tier). The line is staged **after** the checks and only when something really changes.
 
-**While `Features__OrgTeam` is off `Record` collects nothing** (it still checks the event against the catalog): a deploy with the
-flag off starts no new processing of personal data and the plan, the name and the slug of an org change exactly as before. The
-retention job runs anyway. `OrgActivityPostgresTests` proves the transaction on PostgreSQL (an outer transaction rolled back takes the
-change and the line away; a line for an org that does not exist makes the save fail and the change is undone, for the team, the
-invitation, its acceptance, the plan and the property access).
+`Record` checks the event against the catalog before it stages the line. `OrgActivityPostgresTests` proves the transaction on
+PostgreSQL (an outer transaction rolled back takes the change and the line away; a line for an org that does not exist makes the
+save fail and the change is undone, for the team, the invitation, its acceptance, the plan and the property access).
 
 ## 33. Endpoints
 
-Both need the permission `org.activity.read` of the `account` context (the owner and the administrators) and answer **404 to
-everybody, before the authentication, while `Features__OrgTeam` is off**. The org is always the caller's own.
+Both need the permission `org.activity.read` of the `account` context (the owner and the administrators). The org is always the
+caller's own.
 
 | Endpoint | Answer |
 |---|---|
@@ -884,19 +868,19 @@ applies, so a typo never empties the log nor keeps it for ever). A line exactly 
 
 It deletes in batches of 500, oldest first, each batch in a transaction, at most 100 batches a run (a backlog is taken in several
 nights). **Idempotent**: a second run finds nothing. One run at a time: a session advisory lock (`OrgActivityRetention`, 1405) on top of
-the lock of Hangfire; a run that finds it taken logs `Org activity retention skipped` and does nothing. It runs with the `OrgTeam`
-flag off too. Only this service deletes; nobody updates a line (`OrgActivityArchitectureTests`).
+the lock of Hangfire; a run that finds it taken logs `Org activity retention skipped` and does nothing. Only this service deletes;
+nobody updates a line (`OrgActivityArchitectureTests`).
 
 ## 35. GDPR
 
 - **Export of the org** (`GET /api/gdpr/org/export`): the answer gains `activity`, the same lines as the endpoint of the log, **only
   for who holds `org.activity.read`**. The export is the holder's since AM-03b (section 40: `OrgBillingAdmin`, the owner and the
   administrators; a collaborator gets 403), and the log keeps its own permission on top, so nobody reads through the export what it
-  cannot read in the log. The export is of what is stored, whatever the flag says.
+  cannot read in the log. The export is of what is stored.
 - **Erasure of an account**: the log keeps only ids, with no foreign key; what is left of the person is an id that nobody can resolve,
   for at most 12 months. No name, no email, nothing to anonymize.
 - **Privacy notice (legal text)**: it must mention the activity log (the ids of the people who act, 12 months, visible to the owner and the
-  administrators) and the requests for access. **Not changed by AM-02b**: to do, with AM-02-FU3, before `Features__OrgTeam` is turned on.
+  administrators) and the requests for access. **Not changed by AM-02b**: to do, with AM-02-FU3, before the next release to production.
 - [`gdpr.md`](gdpr.md) has the same rows.
 
 ## 36. Access requests
@@ -923,7 +907,7 @@ the member row; a deactivated member is already refused by `member_inactive`, a 
   across API instances and when requests arrive together: the next is 409 `access_request_limit_reached`. A refused request writes nothing and tells
   nobody.
 
-## 37. Deploy, flag and rollback of AM-02b
+## 37. Deploy and rollback of AM-02b
 
 **Configuration.** Nothing is required. Optional: `OrgTeam__ActivityRetentionMonths` (12), `OrgTeam__AccessRequestDailyLimit` (3),
 `RateLimiting__OrgAccessRequest__PermitLimit` / `__WindowSeconds` (5 / 600). `App__PublicSiteBaseUrl` and the email provider are the
@@ -934,13 +918,12 @@ touched and the previous build ignores the table. It is applied at startup like 
 chain: whoever merges after it regenerates its own migration on the updated snapshot (delete its migration files, take the snapshot of the updated base, then `dotnet ef migrations add` again; `migrations remove` only takes off the last migration by id), never a merge
 by hand of the snapshot.
 
-**Order.** (1) Deploy with `Features__OrgTeam` unset: the three endpoints answer 404, the log collects nothing, the retention job runs and finds
-nothing. (2) The privacy notice (section 35) and the confirmation of the 12 months with the legal advisor. (3) AM-04 (the screens) and then
-`Features__OrgTeam=true` as in sections 18 and 26.
+**What the deploy does.** The three endpoints are live and the log collects the events of section 30 from the first request, the retention
+job runs every night. **Before the next release to production:** the privacy notice (section 35) and the confirmation of the 12 months
+with the legal advisor.
 
 | Level | How | Effect |
 |---|---|---|
-| Stop the feature | unset `Features__OrgTeam` | the endpoints answer 404 and nothing more is collected; **what is already there stays** until the retention deletes it |
 | Keep less | lower `OrgTeam__ActivityRetentionMonths` | the next nightly run deletes the older lines |
 | Delete the log now | `DELETE FROM "OrgActivityEntries" WHERE "OrgId" = '<org id>'` (an operator, with a record of why) | the org's log is empty; nothing else changes |
 | Redeploy the previous build | nothing to undo: the table is ignored | no endpoint, no line; the table keeps its lines until it is dropped |
@@ -950,7 +933,7 @@ nothing. (2) The privacy notice (section 35) and the confirmation of the 12 mont
 
 | Situation | What to do |
 |---|---|
-| "The log is empty" | `Features__OrgTeam` was off (nothing is collected while it is off), or the event is one of the reserved ones, or the changes were made before the first deploy with the flag on. |
+| "The log is empty" | The event is one of the reserved ones, or the changes were made before the first deploy that collects the log. |
 | A change is not in the log | Check the event is one of the twelve of section 30 and that the change really changed something (the same role, plan or properties write nothing). A refused change writes nothing. |
 | 409 `access_request_limit_reached` | The person already sent three requests in 24 hours; the administrators were told. The limit frees up 24 hours after the first of them. Raise `OrgTeam__AccessRequestDailyLimit` only if the product decides so. |
 | 429 on `access-requests` | Five requests in ten minutes for that person (`RateLimiting__OrgAccessRequest__PermitLimit`); `Retry-After` says when. |
@@ -977,8 +960,8 @@ WHERE "OrgId" = '<org id>' AND "Type" = 9 AND "ActorUserId" = '<user id>' AND "W
 
 Unit and in-memory (they run everywhere): `OrgActivityCatalogTests` (the integers pinned, the closed list of details, the shape of the row,
 `Validate`, the runbook lists every event), `OrgAccessRequestRulesTests`, `ActivityLogTests` (staged and not saved, the instant, the
-flag, the catalog), `OrgActivityEventsTests` (every event with its line, ids and codes, a refusal or a repeat writes nothing, a whole
-journey with no name, email or slug in any column, the flag off), `StripeWebhookPlanActivityTests`, `OrgActivityServiceTests` (filters,
+catalog), `OrgActivityEventsTests` (every event with its line, ids and codes, a refusal or a repeat writes nothing, a whole
+journey with no name, email or slug in any column), `StripeWebhookPlanActivityTests`, `OrgActivityServiceTests` (filters,
 paging, order, other orgs, the tenant filter), `OrgActivityCsvTests` (header, escaping, formulas, the download), `OrgActivityRetentionServiceTests`
 (12 months, the limit, idempotent, batches, configuration), `OrgAccessRequestServiceTests` (who is told, language, the note, the line, the daily
 limit, every refusal), `OrgAccessRequestEmailTemplatesTests`, `OrgActivityControllersTests`, `GdprControllerTests` (the export carries the log only for who may
@@ -986,7 +969,7 @@ read it), `OrgActivityArchitectureTests` (one way in, append-only, no controller
 `OrgTeamLocalizationTests` (every code and message in both languages), `EndpointAuthorizationArchitectureTests` (the one authenticated-only action says why).
 HTTP (in-memory locally, PostgreSQL in CI): `OrgActivityHttpIntegrationTests` (the whole journey and the CSV, plan and org, filters and paging,
 400s, who reads it, tenant isolation, the export of the org, the access requests) and `OrgAccessRequestRateLimitIntegrationTests` (429 per
-person), plus the three new endpoints in `OrgInvitationsFlagOffIntegrationTests` (404 with the flag off).
+person).
 `[PostgresFact]` (CI only): `OrgActivityPostgresTests` (indexes, jsonb, cascade, no key to the account, the instant to the microsecond, tenant
 filter, **a rollback takes the change and its line away and a line that cannot be written takes the change with it**, filters and paging on
 real SQL, retention in batches and its run lock, **six access requests at once from one person: three work**),
@@ -994,8 +977,8 @@ real SQL, retention in batches and its run lock, **six access requests at once f
 
 ## Decisions and follow-ups of AM-02b
 
-- **The log is dormant while `OrgTeam` is off** (section 32): a deploy starts no new processing of personal data. The price: the changes made while
-  the flag is off are not in the log.
+- **The log is always on** (section 32): it collects from the first deploy that contains it, so the privacy notice and the 12 months (section 35)
+  have to be settled before the next release to production.
 - **The CSV is streamed with the connection open** until the last line is written; fine for a log of 12 months of administrative events. If a
   log ever grows large, page it by instant.
 - **Daily limit of the access requests (3)** counted from the log: a decision of this task (the spec asked for a rate limit), configurable.
@@ -1062,7 +1045,7 @@ stale name never tells anybody:
 
 **The activity log (AM-02b, section 30).** The line of the change of the access (`MemberPropertyAccessChanged`: scope, `granted`,
 `revoked`) gets one more detail, `released`, the number of properties that lost their person in charge with it; it is written only when there
-were some, so every other line is as it was, and (like the rest of the log) only with the `OrgTeam` flag on. A removal is already the line
+were some, so every other line is as it was. A removal is already the line
 `MemberRemoved`, which says the rest; the release is also logged (`Property responsibility released with the access`, counts only, no personal data).
 
 Tests: `PropertyResponsibilityReleaseTests`, `HostNotificationAudienceReachTests` (the query, the emails and the push, and the whole journey),
@@ -1087,11 +1070,11 @@ it expires. The architecture is not changed by AM-03b; this is the limit to know
 | More properties, or back to "Tutti" | next request | up to 60 s (the single resources and the decision "limited or not"; until then the person may see less, never more) |
 
 So with several replicas a person whose role or scope was just narrowed can still do, for up to a minute, what it could before.
-**Before `Features__OrgTeam` is turned on in production**, either run **one** API instance, or set `Authorization__UserCacheSeconds` to
-**0 to 5** (0 disables the cache: one more read of the person per request; 5 keeps most of the saving). Nothing is needed while the flag is
-off, because nobody can be limited or changed. A small, trusted team may accept the minute: record the decision with the product owner.
+**Before the team is used in production**, either run **one** API instance, or set `Authorization__UserCacheSeconds` to
+**0 to 5** (0 disables the cache: one more read of the person per request; 5 keeps most of the saving). A small, trusted team may accept
+the minute: record the decision with the product owner.
 The proper cure is a channel between the instances that invalidates the copies (a version counter read from the database with each request,
-or a pub/sub): a task of its own (AM-03b-FU2). The row of `Features__OrgTeam` in [`deploy-checklist.md`](deploy-checklist.md) says the same.
+or a pub/sub): a task of its own (AM-03b-FU2). The row of `Authorization__UserCacheSeconds` in [`deploy-checklist.md`](deploy-checklist.md) says the same.
 
 ## 43. The payments of the interventions and the scope (AM-03b)
 
@@ -1146,8 +1129,7 @@ and the existing `ServicePaymentsIntegrationTests` for the rest of the payment.
 ## 45. What AM-02c adds
 
 The account area (AM-04) reads the team from the backend of AM-02 and AM-03. This task closes what its screens still lacked and gives the
-activity log the events of the mode of a property. Backend only, behind the flag `OrgTeam` (no new flag), **one migration**
-(`AddOrgTeamCompletions`, section 53): nothing here changes what a user sees today.
+activity log the events of the mode of a property. Backend only, **one migration** (`AddOrgTeamCompletions`, section 53).
 
 | Piece | Where | What it does |
 |---|---|---|
@@ -1165,21 +1147,20 @@ The `PropertyManager` gets a **restricted membership of the account context**: `
 `org.suppliers.manage` (the page «Fornitori»: the trusted suppliers of the org, AM-10). It is the daily work of a manager and needs neither the team nor
 the billing. Until now the role had no `account` row at all.
 
-- With the flag on, `GET /api/me/contexts` lists `account` for a property manager, with that one permission; the screens of the account show it
+- `GET /api/me/contexts` lists `account` for a property manager, with that one permission; the screens of the account show it
   «Fornitori» and nothing else.
 - **Nothing else of the account opens to it**: `org.members.manage`, `org.billing.*`, `org.settings.manage` and `org.activity.read` stay with `org_owner` and
   `org_admin`. `OrgRoleActionMatrixTests` finds every action of the account by reflection and fails if a property manager passes one that is not the
   suppliers'. `OrgBillingAdmin` and `OrgOwnerRoles.All` do not change: `org_manager` holds no `org.billing.manage`.
 - The projection is written wherever the others are: `AddMemberAsync` (an invitation accepted as property manager), `ChangeRoleAsync` (to the role it adds the
-  row, from it removes it) and `ReconcileAsync`. A property manager that exists **before** this deploy (invited in a test environment with the flag on) has no
+  row, from it removes it) and `ReconcileAsync`. A property manager that exists **before** this deploy (invited in a test environment) has no
   `org_manager` row until the reconcile runs: `POST /api/admin/org-members/reconcile?dryRun=true` lists it as `account_membership_added`, then `dryRun=false`
   (section 54). The migration only seeds the role: it writes no membership.
 
 ## 47. The matrix of the roles (`GET /api/orgs/me/roles`)
 
 Any active member of the org may read it (policy `Authenticated`: the people of a team may know what their role can do; the endpoint reads no personal
-data). 404 while the flag is off, before the authentication, like every endpoint of the team. The answer is `{ roles: [...] }`, the five roles with the
-owner first, and each one carries:
+data). The answer is `{ roles: [...] }`, the five roles with the owner first, and each one carries:
 
 | Field | Meaning |
 |---|---|
@@ -1217,7 +1198,7 @@ held», not as «the page opens».
 
 ## 48. The areas of a member (`PUT /api/orgs/me/members/{id}/areas`)
 
-Body `{ "areas": ["short-rent", "long-rent"] }`; 200 the member. Policy `org.members.manage`, flag `OrgTeam`; the org is the caller's own.
+Body `{ "areas": ["short-rent", "long-rent"] }`; 200 the member. Policy `org.members.manage`; the org is the caller's own.
 
 - **Same rules as every action on a member** (`OrgTeamService.EnsureCanAct`, section 14): 403 `org_owner_required` (an administrator does not touch another
   administrator), 404 `org_member_not_found`, 409 `org_last_owner` (the rental contexts of the owner are the onboarding's), 422 `org_member_area_required`
@@ -1261,7 +1242,7 @@ owner can invite a collaborator who already sees the right properties.
 
 ## 50. The overview of the home (`GET /api/orgs/me/overview`)
 
-One request for the home of the account instead of six. Policy `org.members.manage` (owner and administrators), flag `OrgTeam`. Every section is behind its **own**
+One request for the home of the account instead of six. Policy `org.members.manage` (owner and administrators). Every section is behind its **own**
 permission of the account context and is **left out** (`null`) when the caller lacks it:
 
 | Section | Permission | Content |
@@ -1293,7 +1274,7 @@ Two limits, both in configuration (`docs/runbooks/deploy-checklist.md`), a value
 - **Where**: `OrgInvitationService`, inside the transaction that holds the seats lock (`OrgSeats`, 1403), so the check and the write of the send cannot be
   interleaved: two requests at the last place cannot both pass.
 - **Stored on the invitation**, not in the activity log: `LastSentAt` and `SendLog` (the instants of the last 24 hours, pruned at each send). The log is a
-  closed catalog that on purpose does not record a «reinvia» (section 30), is dormant with the flag off and is kept 12 months; the cap needs none of that.
+  closed catalog that on purpose does not record a «reinvia» (section 30) and is kept 12 months; the cap needs none of that.
 - **A send that never left is given back**: when the email cannot be queued (`emailQueued: false`) the allowance returns (best effort, after the commit), so
   «reinvia» can be tried again at once and the cap does not count an email nobody received.
 
@@ -1304,7 +1285,7 @@ very save of the change: `PropertyModeChangeScheduled` (who programmed it), `Pro
 job: no actor). The area of the line is the mode the property is in at that moment (`short-rent` or `long-rent`); the details are `fromMode`, `toMode` and, for the
 programming, `effectiveOn`, and for the application `released` when the person in charge no longer reaches the property in its new mode (section 48). A change that
 fails, a refused one and a second cancellation write nothing. The table is in section 30; the log is a required dependency of the service (a host without it would
-drop the lines in silence), and with the flag off it collects nothing.
+drop the lines in silence).
 
 ## 53. The migration (`AddOrgTeamCompletions`)
 
@@ -1322,18 +1303,16 @@ One migration, generated with `dotnet ef` after `AddSupplierFreeCalendarEvents`:
 may), the line has to be put back**; `AddOrgTeamCompletionsMigrationSqlTests` fails if it is missing. The tests on historical rows written with SQL
 (`AddOrgTeamCompletionsMigrationPostgresTests`) run in CI.
 
-## 54. Deploy, flag and rollback of AM-02c
+## 54. Deploy and rollback of AM-02c
 
 1. **Variables** (optional, in `deploy-checklist.md`): `OrgTeam__InvitationDailyLimit` (10) and `OrgTeam__ResendMinutes` (60).
 2. **The migration** runs at the startup like the others and is additive.
-3. **The flag stays off** (`Features__OrgTeam`): no new flag, nothing is visible, the new endpoints answer 404 with the rest of the team. Turn it on together with
-   the account screens (AM-04), never before.
-4. **Before turning the flag on**: run the reconcile (`POST /api/admin/org-members/reconcile?dryRun=true`, read it, then `dryRun=false`) so that every property
+3. **The new endpoints** (the matrix of the roles, the areas of a member, the overview) are live with the rest of the team.
+4. **Before the next release to production**: run the reconcile (`POST /api/admin/org-members/reconcile?dryRun=true`, read it, then `dryRun=false`) so that every property
    manager gets `account/org_manager` (section 46).
 
 | Level | How | Effect |
 |---|---|---|
-| Hide | `Features__OrgTeam` unset | the endpoints and the `account` context disappear |
 | Loosen the cap | raise `OrgTeam__InvitationDailyLimit` or lower `OrgTeam__ResendMinutes` and restart | nothing to migrate: the cap reads the configuration at each call |
 | Previous build | the schema stays (additive) | the old code ignores the columns, the table and role 13; its reconcile would remove the `org_manager` rows (it did not know them) |
 | Undo the migration | `dotnet ef database update 20261013223355_AddSupplierFreeCalendarEvents` with the previous build deployed | drops `OrgInvitationProperties`, the two columns and role 13 with its memberships; the invitations keep working without properties |
@@ -1347,7 +1326,7 @@ audience), `OrgRolesAndOverviewControllersTests`, `AddOrgTeamCompletionsMigratio
 `OrgPropertyAccessSqlShapeTests` and `HostScopeSqlShapeTests` for the mode of the collaborator), and the updated `OrgActivityCatalogTests`, `OrgRoleCatalogTests`,
 `OrgMembershipReconcileTests`, `EndpointAuthorizationArchitectureTests`, `LegacyRowsSchemaTests` (the rows the migration test writes fit the schema before it). HTTP over
 the real pipeline, on the in-memory fallback too (`OrgInvitationsHttpIntegrationTests`: the matrix, the property manager, the areas, the overview, the invitation with its
-properties, the two 429, and the three new endpoints answering 404 with the flag off).
+properties, the two 429).
 `[PostgresFact]` (CI only, `OrgTeamCompletionsPostgresTests`): the cap against requests that arrive together, one «reinvia» out of three at once, the acceptance with
 properties five times at once and inside a transaction that is rolled back, the purge of an invitation with its carried properties by the cascade, the change of areas
 against the change of role and the deactivation (eight rounds), the reach of a collaborator of one mode and the audience on the real SQL, the overview command count at

@@ -1,6 +1,5 @@
 using System.Reflection;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.Leases;
 using Casazen.Core.Options;
 using Casazen.Web.BackgroundJobs;
@@ -10,8 +9,8 @@ namespace Casazen.Tests.Unit.Configuration;
 
 /// <summary>
 /// LR-12: the runbook of the guided lease draft must say what the code does: every error code of the API, every code of what a
-/// step lacks and of the checks of the review (the interface turns each one into a sentence from this page), the flag, the job, the
-/// option, the endpoints and the figures. The pages that list jobs, flags, variables and encrypted columns carry the new ones.
+/// step lacks and of the checks of the review (the interface turns each one into a sentence from this page), the job, the option,
+/// the endpoints and the figures. The pages that list jobs, variables and encrypted columns carry the new ones.
 /// </summary>
 public class LeaseDraftRunbookTests
 {
@@ -56,12 +55,10 @@ public class LeaseDraftRunbookTests
     }
 
     [Fact]
-    public void Runbook_NamesTheFlagTheJobTheOptionTheEndpointsAndTheMigration()
+    public void Runbook_NamesTheJobTheOptionTheEndpointsAndTheMigration()
     {
         var runbook = Runbook;
 
-        Assert.Contains($"`Features:{FeatureFlags.LongRentArea}`", runbook);
-        Assert.Contains($"`Features__{FeatureFlags.LongRentArea}`", runbook);
         Assert.Contains($"`{LeaseDraftRetentionJob.RecurringJobId}`", runbook);
         Assert.Contains($"`{LongRentLeaseOptions.SectionName}:DraftRetentionDays`", runbook);
         Assert.Contains($"`{LongRentLeaseOptions.SectionName}__DraftRetentionDays`", runbook);
@@ -113,16 +110,11 @@ public class LeaseDraftRunbookTests
     }
 
     [Fact]
-    public void OtherRunbooks_ListTheJobTheFlagTheVariableAndTheEncryptedColumns()
+    public void OtherRunbooks_ListTheJobTheVariableAndTheEncryptedColumns()
     {
         Assert.Contains(LeaseDraftRetentionJob.RecurringJobId, File.ReadAllText(Path.Combine(Runbooks, "hangfire.md")));
 
-        var flags = File.ReadAllText(Path.Combine(Runbooks, "feature-flags.md"));
-        Assert.Contains($"`{FeatureFlags.LongRentArea}`", flags);
-        Assert.Contains($"`Features__{FeatureFlags.LongRentArea}`", flags);
-
         var checklist = File.ReadAllText(Path.Combine(Runbooks, "deploy-checklist.md"));
-        Assert.Contains($"`Features__{FeatureFlags.LongRentArea}`", checklist);
         Assert.Contains($"`{LongRentLeaseOptions.SectionName}__DraftRetentionDays`", checklist);
 
         var encryption = File.ReadAllText(Path.Combine(Runbooks, "encryption.md"));

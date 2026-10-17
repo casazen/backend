@@ -2,7 +2,6 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.Leases;
 using Casazen.Core.Services;
 using Casazen.Core.Validation;
@@ -15,11 +14,10 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The guided draft of a lease (LR-12): a draft that exists from the first step of the wizard, saved step by step, confirmed after a
-/// review, marked as downloaded for the signature on paper, and deleted. Every endpoint is behind <c>Features:LongRentArea</c> (404
-/// while it is off, before authentication) and needs <c>lease.create</c>; each is authorized as a <see cref="HostResource"/> of the
-/// property of the lease (TN-3, AM-03): another org's lease or property is 404, one the caller may not handle is 403, so a member
-/// limited to some properties neither creates nor reads the drafts of the others. The complete creation <c>POST api/leases</c> and the
-/// masked reads of <see cref="LeasesController"/> are not changed by this.
+/// review, marked as downloaded for the signature on paper, and deleted. Every endpoint needs <c>lease.create</c>; each is
+/// authorized as a <see cref="HostResource"/> of the property of the lease (TN-3, AM-03): another org's lease or property is 404, one
+/// the caller may not handle is 403, so a member limited to some properties neither creates nor reads the drafts of the others. The
+/// complete creation <c>POST api/leases</c> and the masked reads of <see cref="LeasesController"/> are not changed by this.
 /// </summary>
 /// <remarks>
 /// The answers of the draft carry personal data in clear (<c>GET draft</c>: names, fiscal codes, residences): <c>Cache-Control:
@@ -29,7 +27,6 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/leases")]
 [Authorize(Policy = CasazenPolicies.LeaseCreate)]
-[FeatureGate(FeatureFlags.LongRentArea)]
 public class LeaseDraftsController(
     ILeaseDraftService drafts,
     IHostResourceLookup hostResources,

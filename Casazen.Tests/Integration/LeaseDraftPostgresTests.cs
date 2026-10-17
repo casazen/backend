@@ -19,10 +19,10 @@ namespace Casazen.Tests.Integration;
 /// LR-12 on real PostgreSQL, what memory cannot show: two tabs saving the same version at the same moment (the row lock and the
 /// version let exactly one through), a confirmation of the review racing a save (a confirmed review is never of values that
 /// changed), the personal data of a draft stored encrypted in the table, the foreign keys of the deletion, the retention job over
-/// every org with its session lock. The same host as <see cref="LeaseDraftApiIntegrationTests"/>: <c>Features:LongRentArea</c> on,
-/// "today" 2026-10-09. Few parallel requests on purpose (each holds a connection while it waits for the row lock).
+/// every org with its session lock. The same host as <see cref="LeaseDraftApiIntegrationTests"/>, "today"
+/// 2026-10-09. Few parallel requests on purpose (each holds a connection while it waits for the row lock).
 /// </summary>
-public class LeaseDraftPostgresTests(LongRentAreaFactory factory) : IClassFixture<LongRentAreaFactory>, IAsyncLifetime
+public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<LeaseDraftFactory>, IAsyncLifetime
 {
     private LongRentWorld _world = null!;
 
@@ -280,7 +280,7 @@ public class LeaseDraftPostgresTests(LongRentAreaFactory factory) : IClassFixtur
     /// <summary>Makes the last change of a draft <paramref name="idleDays"/> days before "now" (written by SQL: a save would stamp it).</summary>
     private Task IdleAsync(Guid id, int idleDays) => WithDbAsync(async db =>
     {
-        var at = LongRentAreaFactory.Now.UtcDateTime.AddDays(-idleDays);
+        var at = LeaseDraftFactory.Now.UtcDateTime.AddDays(-idleDays);
         await db.Database.ExecuteSqlAsync($"""UPDATE "LeaseContracts" SET "UpdatedAt" = {at} WHERE "Id" = {id}""");
         return 0;
     });

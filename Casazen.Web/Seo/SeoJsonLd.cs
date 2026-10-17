@@ -37,6 +37,28 @@ public static class SeoJsonLd
             ("logo", Text(logoUrl)),
             ("description", Text(description)));
 
+    /// <summary>
+    /// A supplier's public showcase: a <c>ProfessionalService</c> with name, URL, description, photos and the comuni it works in
+    /// (<c>areaServed</c>). Only what the showcase publishes: never a phone, an email, a VAT number or an address.
+    /// </summary>
+    public static JsonObject Supplier(
+        string name, string? url, string? description, IReadOnlyList<string> imageUrls, IReadOnlyList<string> areaServed)
+    {
+        JsonNode? images = imageUrls.Count > 0
+            ? new JsonArray(imageUrls.Select(i => (JsonNode?)JsonValue.Create(i)).ToArray())
+            : null;
+        JsonNode? areas = areaServed.Count > 0
+            ? new JsonArray(areaServed.Select(a => (JsonNode?)Node("AdministrativeArea", ("name", Text(a)))).ToArray())
+            : null;
+        return Root("ProfessionalService",
+            ("@id", Text(url)),
+            ("name", Text(name)),
+            ("url", Text(url)),
+            ("description", Text(description)),
+            ("image", images),
+            ("areaServed", areas));
+    }
+
     /// <summary>A list of pages (the properties of an org): position, name and URL of each.</summary>
     public static JsonObject ItemList(IEnumerable<(string Name, string? Url)> items) =>
         Root("ItemList", ("itemListElement", ListItems(items, "url")));

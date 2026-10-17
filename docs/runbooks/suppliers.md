@@ -953,14 +953,18 @@ Audit A4-16, issue #303 (minimum). Before SU-13 the page `/s/:slug` called the A
 | Preview | `GET /api/supplier/showcase` (supplier policy): the same content from the caller's own profile whatever its status, plus `status`, `published`, `slug`, `publicPath`, `publicUrl`, `indexable: false`. A pending supplier previews a page nobody else can open (no slug, no URL) with the way to the activation; a suspended one is told it is not visible |
 | Web | Sidebar *Vetrina* and the *Anteprima vetrina* button on the profile page (`/app/supplier/showcase`): the preview, the public URL (copy, open in a new tab). Public page: loading skeleton; **404 → "Fornitore non trovato"**; any other failure → an error with a retry (never "not found"); translated categories, only absolute photo URLs |
 
-### SEO: `noindex` in v0, consistent with BK-15
+### SEO: indexed, like the booking sites (BK-15)
 
-BK-15 makes the booking sites and the guides indexable (crawler HTML from the Vercel Function, sitemaps) and keeps the
-private pages out. The supplier showcase is **not** indexable in v0: the page sets `<meta name="robots"
-content="noindex,nofollow">` in every state, `/fornitori/` is in `DISALLOWED_PATHS` of `robots.txt` (production), the API
-answer carries `X-Robots-Tag: noindex`, the page is not in any sitemap and no crawler rewrite serves it. Making it
-indexable is a product decision (it publishes the business name and description of every active supplier): it needs the
-crawler page and the sitemap entry of BK-15's pattern and the removal of these three signals.
+The supplier showcase is **indexable**. Crawlers (user-agent rewrite in `vercel.json`) get its HTML from the Vercel Function
+`api/seo.ts` (`kind=supplier`), which returns `GET /api/public/seo/suppliers/{slug}` of the backend: `title`, description,
+canonical on `App__PublicSiteBaseUrl`, `ProfessionalService` JSON-LD, and **only** what the public page shows (business name,
+categories, comuni, bio, photos): never phone, email, VAT number or status. Only an **Active** supplier answers 200; pending,
+suspended and unknown are one 404; an uppercase slug is a 301 to the lowercase one. A showcase with no category and no text
+is `noindex` and left out of the sitemap.
+
+The sitemap is `/sitemap-supplier.xml` (function `api/sitemap.ts`, `name=supplier`, backend `GET /api/public/sitemap-supplier.xml`),
+declared in `robots.txt`; submit it in Search Console and Bing. `/fornitori/` is no longer in `DISALLOWED_PATHS`. The JSON
+API `GET /api/public/suppliers/{slug}` keeps `X-Robots-Tag: noindex`: it is data for the page, not a page.
 
 ### After a deploy
 

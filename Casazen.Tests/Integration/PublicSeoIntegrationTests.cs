@@ -638,6 +638,60 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.All(locations, loc => Assert.StartsWith(PublicSite + "/book/", loc));
     }
 
+    // ── Supplier showcases ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetSupplier_ActiveSupplier_ServesIndexableHtmlWithoutAnyPrivateData()
+    {
+        var supplier = await PublicShowcaseTestData.SeedSupplierAsync(_factory);
+
+        var response = await GetAsync($"/api/public/seo/suppliers/{supplier.Slug}");
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("content=\"index,follow", html);
+        Assert.Contains($"<link rel=\"canonical\" href=\"{PublicSite}/fornitori/{supplier.Slug}\">", html);
+        Assert.Contains("Pulizie professionali per case vacanza.", html);
+        Assert.Contains("<li>Pulizie</li>", html);
+        var block = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "ProfessionalService");
+        Assert.Equal($"{PublicSite}/fornitori/{supplier.Slug}", block.GetProperty("url").GetString());
+        // Phone, email and VAT number never reach a crawler.
+        Assert.All(supplier.Secrets, secret => Assert.DoesNotContain(secret, html));
+    }
+
+    [Fact]
+    public async Task GetSupplier_PendingSuspendedUnknownOrUppercaseSlug_Is404Or301()
+    {
+        var pending = await PublicShowcaseTestData.SeedSupplierAsync(_factory, SupplierStatus.Pending);
+        var suspended = await PublicShowcaseTestData.SeedSupplierAsync(_factory, SupplierStatus.Suspended);
+        var active = await PublicShowcaseTestData.SeedSupplierAsync(_factory);
+
+        foreach (var slug in new[] { pending.Slug, suspended.Slug, $"unknown-{Guid.NewGuid():N}" })
+            Assert.Equal(HttpStatusCode.NotFound, (await GetAsync($"/api/public/seo/suppliers/{slug}")).StatusCode);
+
+        var upper = await GetAsync($"/api/public/seo/suppliers/{active.Slug.ToUpperInvariant()}");
+        Assert.Equal(HttpStatusCode.MovedPermanently, upper.StatusCode);
+        Assert.Equal($"/fornitori/{active.Slug}", upper.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task SupplierSitemap_ListsOnlyActiveSuppliersOnThePublicSite()
+    {
+        var active = await PublicShowcaseTestData.SeedSupplierAsync(_factory);
+        var pending = await PublicShowcaseTestData.SeedSupplierAsync(_factory, SupplierStatus.Pending);
+        var suspended = await PublicShowcaseTestData.SeedSupplierAsync(_factory, SupplierStatus.Suspended);
+
+        var response = await GetAsync("/api/public/sitemap-supplier.xml");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/xml", response.Content.Headers.ContentType?.MediaType);
+        var locations = Locations(await response.Content.ReadAsStringAsync(), "url");
+        Assert.Contains($"{PublicSite}/fornitori/{active.Slug}", locations);
+        Assert.DoesNotContain($"{PublicSite}/fornitori/{pending.Slug}", locations);
+        Assert.DoesNotContain($"{PublicSite}/fornitori/{suspended.Slug}", locations);
+        Assert.All(locations, loc => Assert.StartsWith(PublicSite + "/fornitori/", loc));
+    }
+
     // ── Guides and hub ──────────────────────────────────────────────────────────────
 
     [Fact]

@@ -10,8 +10,8 @@ using Xunit;
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
 /// <summary>
-/// UI-12a: the in-app notifications older than 90 days are deleted every night, whatever the state of the flag (the deletion
-/// itself, on PostgreSQL, is proved in <c>InAppNotificationsPostgresTests</c>).
+/// UI-12a: the in-app notifications older than 90 days are deleted every night, whatever the state of the other flags (the
+/// deletion itself, on PostgreSQL, is proved in <c>InAppNotificationsPostgresTests</c>).
 /// </summary>
 public class InAppNotificationRetentionJobTests
 {
@@ -31,8 +31,7 @@ public class InAppNotificationRetentionJobTests
                 rliProvider: anyFlagOn,
                 eSignProvider: anyFlagOn,
                 supplierRequestAutoCancel: anyFlagOn,
-                supplierOnlinePayments: anyFlagOn,
-                propertyModeChange: anyFlagOn));
+                supplierOnlinePayments: anyFlagOn));
         return (manager, scheduled);
     }
 

@@ -21,7 +21,7 @@ namespace Casazen.Tests.Unit.Controllers;
 /// <summary>
 /// UI-13a: <c>GET /api/search</c> as the controller handles it: the term is validated before anything is read, the groups the
 /// caller may read come from the access resolver, the answer is mapped without a field that was not meant to leave, it is never
-/// cached; and the endpoint is behind the flag, rate limited per user and listed as authenticated-only with its reason.
+/// cached; and the endpoint is rate limited per user and listed as authenticated-only with its reason.
 /// </summary>
 public class SearchControllerTests
 {
@@ -217,11 +217,10 @@ public class SearchControllerTests
     // ─── The endpoint ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void TheEndpoint_IsBehindTheFlag_RateLimitedPerUser_AndRequiresASignedInUser()
+    public void TheEndpoint_IsRateLimitedPerUser_AndRequiresASignedInUser()
     {
         var controller = typeof(SearchController);
 
-        Assert.Equal(FeatureFlags.GlobalSearch, Assert.Single(controller.GetCustomAttributes<FeatureGateAttribute>()).Flag);
         Assert.Equal(RateLimitPolicies.GlobalSearch, Assert.Single(controller.GetCustomAttributes<EnableRateLimitingAttribute>()).PolicyName);
         Assert.Equal(CasazenPolicies.Authenticated, Assert.Single(controller.GetCustomAttributes<AuthorizeAttribute>()).Policy);
         Assert.Empty(controller.GetCustomAttributes<AllowAnonymousAttribute>());

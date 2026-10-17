@@ -7,8 +7,7 @@ namespace Casazen.Web.BackgroundJobs;
 /// Daily deletion of the abandoned lease drafts (LR-12, decision LR-D33): a draft nobody changed for
 /// <c>LongRentLease:DraftRetentionDays</c> days (180 by default) is deleted with its parties, events and files; one with a signed
 /// copy never is. All the decisions and the lock are in <see cref="ILeaseDraftRetentionService"/>; this only runs it, and it logs only
-/// a count. Idempotent. Registered only with <c>Features:LongRentArea</c> on. Runbooks: <c>docs/runbooks/long-rent-lease-draft.md</c>,
-/// <c>docs/runbooks/hangfire.md</c>.
+/// a count. Idempotent. Always registered. Runbooks: <c>docs/runbooks/long-rent-lease-draft.md</c>, <c>docs/runbooks/hangfire.md</c>.
 /// </summary>
 public class LeaseDraftRetentionJob(ILeaseDraftRetentionService retention)
 {

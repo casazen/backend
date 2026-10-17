@@ -112,7 +112,7 @@ public class RecurringJobsConcurrencyTests
         // Every flag on: the jobs behind a feature flag must be lock-protected too (FD-20).
         RecurringJobsRegistration.Configure(
             manager.Object,
-            RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true, supplierRequestAutoCancel: true, propertyModeChange: true, longRentArea: true));
+            RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true, supplierRequestAutoCancel: true));
 
         return jobs;
     }

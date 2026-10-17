@@ -44,7 +44,7 @@ Rules worth remembering:
   canceled or never started is served as the open tier, like any other. Stripe keeps tracking its state and the webhooks keep
   updating the stored plan; when the switch goes off the org is served again as what its subscription says.
 - Only orgs that exist are raised. A request for an unknown org id keeps the Starter fallback.
-- It is not a feature flag: `GET /api/public/features` does not list it and it does not depend on `UiRedesign`.
+- It is not a feature flag: `GET /api/public/features` does not list it.
 
 ## 3. Turning it on
 
@@ -129,9 +129,3 @@ the redeploy has finished, the org already has that tier or a higher one (`openA
 | Plan change rules (paid tier) | `OrgsController.UpdateMyPlan`, `AdminController.UpdateOrgPlan` → `PlanChangePolicy` |
 | `openAccess` | `EntitlementResult.OpenAccess` → `EntitlementDto.OpenAccess` |
 | Tests | `OpenAccessTests`, `EntitlementServiceOpenAccessTests`, `OpenAccessConfigurationTests`, `OpenAccessIntegrationTests` (`Casazen.Tests`) |
-
-## 8. The `UiRedesign` flag (same task)
-
-BL-01 also introduces the feature flag `UiRedesign` (`Features__UiRedesign`, off), for the gradual rollout of the new interface
-(decision 01-D8). The backend only exposes it in `GET /api/public/features` (`uiRedesign`); the frontend reads it to switch the
-new look on or off. See [`feature-flags.md`](feature-flags.md).

@@ -7,19 +7,17 @@ using Casazen.Tests.Unit;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// The host of the long-term area (LR-12): <c>Features:LongRentArea</c> on (and <c>Features:PropertyModeChange</c>, to show the mode of a
-/// property is free again once its only draft is deleted), a clock the tests control (10:00 in Rome on 9 October 2026), over the usual
-/// integration host (PostgreSQL in CI, EF InMemory in a local run). The contract templates are the real ones, which are not approved
+/// The host of the long-term area (LR-12): a clock the tests control (10:00 in Rome on 9 October 2026), over the usual integration
+/// host (PostgreSQL in CI, EF InMemory in a local run). The contract templates are the real ones, which are not approved
 /// (decision LR-D28): <c>sent</c> answers 422 as it does in production today.
 /// </summary>
-public class LongRentAreaFactory : CasazenWebApplicationFactory
+public class LeaseDraftFactory : CasazenWebApplicationFactory
 {
     /// <summary>10:00 in Rome on 9 October 2026 (daylight saving time): "today" of every test is 2026-10-09.</summary>
     public static readonly DateTimeOffset Now = new(2026, 10, 9, 8, 0, 0, TimeSpan.Zero);
@@ -32,12 +30,6 @@ public class LongRentAreaFactory : CasazenWebApplicationFactory
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
-        builder.ConfigureAppConfiguration((_, config) =>
-            config.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Features:LongRentArea"] = "true",
-                ["Features:PropertyModeChange"] = "true",
-            }));
         builder.ConfigureTestServices(services =>
         {
             RemoveAllOf<TimeProvider>(services);
@@ -87,7 +79,7 @@ public class LongRentAreaFactory : CasazenWebApplicationFactory
 }
 
 /// <summary>The same host with every contract template approved: the download for signature can succeed.</summary>
-public sealed class LongRentAreaApprovedTemplatesFactory : LongRentAreaFactory
+public sealed class LeaseDraftApprovedTemplatesFactory : LeaseDraftFactory
 {
     protected override bool ApprovedTemplates => true;
 }

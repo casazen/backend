@@ -31,7 +31,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
     private static readonly DateTime Now = new(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc);
 
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(Now));
-    private readonly Mock<IFeatureFlags> _flags = new();
     private PostgresTestDatabase? _database;
     private OrgInvitationTestKit _kit = null!;
 
@@ -42,7 +41,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
             await db.Database.MigrateAsync();
 
         _kit = new OrgInvitationTestKit(() => _database.CreateContext());
-        _flags.Setup(f => f.IsEnabled(FeatureFlags.InAppNotifications)).Returns(true);
     }
 
     public async Task DisposeAsync()
@@ -57,7 +55,7 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         new(db, _clock, NullLogger<InAppNotificationService>.Instance);
 
     private InAppNotificationJob Job(AppDbContext db) =>
-        new(db, _flags.Object, _clock, NullLogger<InAppNotificationJob>.Instance);
+        new(db, _clock, NullLogger<InAppNotificationJob>.Instance);
 
     /// <summary>One run of the job on a context of its own, the way a Hangfire worker takes it.</summary>
     private async Task RunJobAsync(string deliveryKey, QueuedInAppNotification queued)

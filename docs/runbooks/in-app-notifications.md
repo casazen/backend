@@ -1,8 +1,8 @@
 # Runbook: in-app notifications (the bell of the shell)
 
 Task UI-12a (redesign wave, `gap/01` §4 and F12). Backend only: the entity, the job that writes it next to every push, the four
-endpoints, the retention and the flag `InAppNotifications`. The bell and the drawer are UI-12b (frontend), which starts after this
-is merged. The flag is **off by default**.
+endpoints and the retention. The bell and the drawer are UI-12b (frontend), which starts after this is merged. There is no
+switch: everything below is always on.
 
 ## 1. What it is
 
@@ -13,12 +13,12 @@ Until UI-12a the host and the supplier were told about an event by e-mail and by
 service (BookingNotifier, ServiceRequestNotifier, ShowcaseBookingNotifier, NotificationService)
   └─ IPushNotificationService.Enqueue(deliveryKey, audience, payload)          ← the callers do not change
        └─ InAppNotificationPushDecorator
-            ├─ HangfirePushQueue → PushDeliveryJob          (devices of the audience → Expo)      [always]
-            └─ InAppNotificationJob.CreateAsync(key, …)     (users of the audience → InAppNotifications) [flag on]
+            ├─ HangfirePushQueue → PushDeliveryJob          (devices of the audience → Expo)
+            └─ InAppNotificationJob.CreateAsync(key, …)     (users of the audience → InAppNotifications)
 ```
 
 * **No call site changes.** `AddCasazenPush` registers `IPushNotificationService` as the decorator over `HangfirePushQueue`
-  (`Casazen.Web/Extensions/PushServiceCollectionExtensions.cs`). With the flag off the decorator only forwards: no job, no read.
+  (`Casazen.Web/Extensions/PushServiceCollectionExtensions.cs`).
 * **The user is not known where the push is decided.** The audience of a push is a booking, a property or a supplier org
   (`PushAudience`); `PushDeliveryJob` turns it into devices and `InAppNotificationJob` turns it into **users**, when it runs, never
   inside the request. A user with no registered device still gets the notification: the bell does not depend on a phone.
@@ -67,9 +67,8 @@ A new value of `PushTypes` gives a notification with no change here; the client 
 
 ## 3. The API
 
-All four are behind `[FeatureGate(InAppNotifications)]` (404 `not_found` **before authentication** with the flag off) and
-`[Authorize(Policy = Authenticated)]` (every context has a bell; the user is always the token's `sub`, never a parameter or a body
-field). Answers are `Cache-Control: private, no-store`.
+All four are behind `[Authorize(Policy = Authenticated)]` (every context has a bell; the user is always the token's `sub`, never a
+parameter or a body field). Answers are `Cache-Control: private, no-store`.
 
 | Method | Path | Answer |
 |---|---|---|
@@ -96,8 +95,8 @@ behind one address would share it.
 
 | Job | When | What |
 |---|---|---|
-| `InAppNotificationJob.CreateAsync(key, notification)` | Queued by the decorator next to every push, with the flag on | Resolves the users of the audience and writes one row per user for the key. `[AutomaticRetry(Attempts = 5)]`, deleted after the last attempt; the arguments hold the audience, the type, the entity id and the instant, never the push text. Skips quietly (and says so in the log) if the flag was turned off meanwhile |
-| `in-app-notification-retention` (`InAppNotificationRetentionJob`) | Every day at 03:45 UTC | Deletes the notifications **older than 90 days, read or not** (one `ExecuteDelete`). **Registered whatever the flag says**: rows written while it was on are purged after it is turned off; with it off the run finds nothing. See [hangfire.md §15](hangfire.md#15-in-app-notifications-ui-12a) |
+| `InAppNotificationJob.CreateAsync(key, notification)` | Queued by the decorator next to every push | Resolves the users of the audience and writes one row per user for the key. `[AutomaticRetry(Attempts = 5)]`, deleted after the last attempt; the arguments hold the audience, the type, the entity id and the instant, never the push text |
+| `in-app-notification-retention` (`InAppNotificationRetentionJob`) | Every day at 03:45 UTC | Deletes the notifications **older than 90 days, read or not** (one `ExecuteDelete`). See [hangfire.md §15](hangfire.md#15-in-app-notifications-ui-12a) |
 
 Logs carry the key, the type, the audience and counts: `In-app notification <type> queued for <audience> <id> (key …)`, then
 `… written for N users of …` or `… the N users were told already` or `… nobody to tell for …`; `… written concurrently or a user is gone:
@@ -121,10 +120,8 @@ person, so:
 * The empty-org check of the invitations (`OrgEmptinessChecker`) reads every tenant table of the model: an org with a notification in
   it is "in use", like one with a booking. A person who never did anything has none.
 
-## 6. Turning it on, checking, rolling back
+## 6. Checking, rolling back
 
-* **On** (test first): `Features__InAppNotifications=true` on the API. Needs nothing else. The frontend reads `inAppNotifications` from
-  `GET /api/public/features`; until UI-12b ships the bell, turning it on only starts filling the table.
 * **Check** (SQL editor, replace the schema):
 
 ```sql
@@ -146,15 +143,15 @@ WHERE invocationdata ->> 'Type' LIKE 'Casazen.Infrastructure.Push.InAppNotificat
   AND statename IN ('Failed', 'Scheduled', 'Enqueued') ORDER BY createdat DESC LIMIT 20;
 ```
 
-* **Roll back**: set `Features__InAppNotifications=false` (or delete the variable) and redeploy. From then on the decorator only
-  forwards the push, the endpoints answer 404 and the jobs already queued skip. Rows already written are harmless (user id, kind of
-  event, id) and the retention removes them within 90 days; to remove them now, after the flag is off:
-  `DELETE FROM casazen_test."InAppNotifications";`. The migration needs no rollback (an empty table nobody reads).
+* **Roll back**: redeploy the previous version of the application. From then on the push goes out alone, the endpoints no longer
+  exist and a job already queued for the bell may show as failed in the Hangfire dashboard (delete it there). Rows already written
+  are harmless (user id, kind of event, id) and the retention removes them within 90 days while this version runs; to remove them
+  now: `DELETE FROM casazen_test."InAppNotifications";`. The migration needs no rollback (a table nobody reads).
   Nothing else was changed in the existing tables or in the call sites.
 
 ## 7. For UI-12b (the bell and the drawer)
 
-* Show the bell only with `flags.inAppNotifications` (and `enabled:` on the queries so nothing is requested while it is off).
+* Show the bell in every context (there is no flag to read).
 * Poll `GET …/unread-count` with `refetchInterval` (the answer is small and cheap); fetch the list when the drawer opens; after
   `POST …/read` or `…/read-all` invalidate both. A `404` on `read` means the retention or another tab got there first: refetch.
 * The text comes from `type` (i18n keys per type, plus a generic one for a type the client does not know), the link from `type` and
@@ -169,8 +166,8 @@ WHERE invocationdata ->> 'Type' LIKE 'Casazen.Infrastructure.Push.InAppNotificat
 `Casazen.Infrastructure/Services/InAppNotificationService.cs`, `Casazen.Web/Controllers/MeNotificationsController.cs`,
 `Casazen.Web/BackgroundJobs/InAppNotificationRetentionJob.cs`, migration `AddInAppNotifications`.
 Tests: `InAppNotificationPushDecoratorTests`, `InAppNotificationJobTests`, `InAppNotificationServiceTests`,
-`MeNotificationsControllerTests`, `InAppNotificationRetentionJobTests`, `InAppNotificationsFlagTests`,
-`InAppNotificationSqlShapeTests`, `InAppNotificationsIntegrationTests` (HTTP, flag on and off, the chain from a push to the
+`MeNotificationsControllerTests`, `InAppNotificationRetentionJobTests`,
+`InAppNotificationSqlShapeTests`, `InAppNotificationsIntegrationTests` (HTTP, the chain from a push to the
 notification), and on PostgreSQL `InAppNotificationsPostgresTests` (schema, the race on the unique index, the single-statement
 updates and the retention, whose rows a user reaches, the cascades). The architecture tests list the entity
 (`TenantQueryFilterArchitectureTests`) and the four actions (`EndpointAuthorizationArchitectureTests`).

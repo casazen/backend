@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -13,12 +12,12 @@ using static Casazen.Tests.Integration.LeaseDraftHttp;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// LR-12 over the real pipeline (PostgreSQL in CI, EF InMemory in a local run), with <c>Features:LongRentArea</c> on: the guided draft of a
-/// lease through its endpoints — create with only the property, save any value, take it up again identical, the version that refuses a
-/// stale save, the review, "downloaded for signature" and its template gate, the deletion, and who may do what to which property. The
-/// world is <see cref="LongRentWorld"/> (owner A with P1 and P2, colleague B with P3, one org), "today" is 2026-10-09.
+/// LR-12 over the real pipeline (PostgreSQL in CI, EF InMemory in a local run): the guided draft of a lease through its endpoints —
+/// create with only the property, save any value, take it up again identical, the version that refuses a stale save, the review,
+/// "downloaded for signature" and its template gate, the deletion, and who may do what to which property. The world is
+/// <see cref="LongRentWorld"/> (owner A with P1 and P2, colleague B with P3, one org), "today" is 2026-10-09.
 /// </summary>
-public class LeaseDraftApiIntegrationTests(LongRentAreaFactory factory) : IClassFixture<LongRentAreaFactory>, IAsyncLifetime
+public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFixture<LeaseDraftFactory>, IAsyncLifetime
 {
     private LongRentWorld _world = null!;
 
@@ -70,16 +69,6 @@ public class LeaseDraftApiIntegrationTests(LongRentAreaFactory factory) : IClass
         WithDbAsync(db => db.LeaseContracts.IgnoreQueryFilters().AsNoTracking().Include(l => l.Parties).Include(l => l.Events).SingleAsync(l => l.Id == id));
 
     // ---- access --------------------------------------------------------------------------------------------------
-
-    [Fact]
-    public async Task Features_ExposeTheFlagOfTheArea_AsALongRentAreaKey()
-    {
-        using var anonymous = factory.CreateClient();
-
-        var features = await JsonAsync(await anonymous.GetAsync("/api/public/features"));
-
-        Assert.True(features.GetProperty("longRentArea").GetBoolean());
-    }
 
     [Fact]
     public async Task TheHost_EncryptsTheDraftAndTheResidence_TheWayItDoesInProduction()
@@ -762,7 +751,7 @@ public class LeaseDraftApiIntegrationTests(LongRentAreaFactory factory) : IClass
 }
 
 /// <summary>LR-12 with the contract templates approved: the download for signature can be marked and taken back.</summary>
-public class LeaseDraftSentIntegrationTests(LongRentAreaApprovedTemplatesFactory factory) : IClassFixture<LongRentAreaApprovedTemplatesFactory>, IAsyncLifetime
+public class LeaseDraftSentIntegrationTests(LeaseDraftApprovedTemplatesFactory factory) : IClassFixture<LeaseDraftApprovedTemplatesFactory>, IAsyncLifetime
 {
     private LongRentWorld _world = null!;
 
@@ -821,56 +810,5 @@ public class LeaseDraftSentIntegrationTests(LongRentAreaApprovedTemplatesFactory
         Assert.Equal(JsonValueKind.Null, draft.GetProperty("reviewConfirmedAt").ValueKind);
         Assert.Equal(JsonValueKind.Null, draft.GetProperty("sentForSignatureAt").ValueKind);
         await ExpectProblemAsync(await client.PostAsync($"/api/leases/{id}/sent", Body("{}")), HttpStatusCode.UnprocessableEntity, "lease_review_not_confirmed");
-    }
-}
-
-/// <summary>LR-12 with the flag off (the default): every new endpoint answers 404 like a route that does not exist, before authentication.</summary>
-public class LeaseDraftFlagOffIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
-{
-    [Fact]
-    public async Task Endpoints_FlagOff_Answer404ToTheOwnerAndToAnonymous_AndNothingIsWritten()
-    {
-        var property = await factory.SeedPropertyAsync($"auth0|lr12-off-{Guid.NewGuid():N}");
-        using var owner = factory.CreateAuthenticatedClient(property.OwnerId, "LongTermLandlord");
-        using var anonymous = factory.CreateClient();
-        var id = Guid.NewGuid();
-
-        foreach (var client in new[] { owner, anonymous })
-        {
-            foreach (var response in new[]
-                     {
-                         await client.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{property.Id}}"}""")),
-                         await client.GetAsync($"/api/leases/{id}/draft"),
-                         await client.PatchAsync($"/api/leases/{id}/draft", Body("""{"version":1,"step":2,"values":{}}""")),
-                         await client.GetAsync($"/api/leases/{id}/review"),
-                         await client.PostAsync($"/api/leases/{id}/review/confirm", Body("{}")),
-                         await client.DeleteAsync($"/api/leases/{id}/review/confirm"),
-                         await client.PostAsync($"/api/leases/{id}/sent", Body("{}")),
-                         await client.DeleteAsync($"/api/leases/{id}/sent"),
-                         await client.DeleteAsync($"/api/leases/{id}"),
-                         await client.GetAsync("/api/long-rent/landlord-defaults"),
-                         await client.GetAsync("/api/long-rent/rules"),
-                     })
-            {
-                await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(response);
-            }
-        }
-
-        await using var scope = factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.False(await db.LeaseContracts.IgnoreQueryFilters().AnyAsync(l => l.PropertyId == property.Id));
-    }
-
-    [Fact]
-    public async Task Features_FlagOff_TheKeyIsThereAndFalse_AndTheCompleteCreationIsNotBehindIt()
-    {
-        using var anonymous = factory.CreateClient();
-
-        var features = await anonymous.GetFromJsonAsync<JsonElement>("/api/public/features");
-
-        Assert.False(features.GetProperty("longRentArea").GetBoolean());
-        // POST /api/leases (the complete creation) and GET /api/leases are not behind the flag: an unauthenticated call is 401, not 404.
-        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsync("/api/leases", Body("{}"))).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/leases")).StatusCode);
     }
 }

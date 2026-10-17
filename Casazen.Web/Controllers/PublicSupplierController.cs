@@ -13,7 +13,7 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Public showcase of an active supplier, behind <c>/fornitori/{slug}</c> of the web app (SU-13, A4-16), and, since SP-09, its
-/// published services, free slots and price estimate. Anonymous, rate limited, never indexable, no cookie, and nothing about a
+/// published services, free slots and price estimate. Anonymous, rate limited, JSON never indexed (the showcase page is), no cookie, and nothing about a
 /// person or about the supplier's private calendar: only what the supplier published. Runbook
 /// <c>docs/runbooks/suppliers.md</c> sections 18 and 22.
 /// </summary>
@@ -37,7 +37,7 @@ public class PublicSupplierController(
     /// <summary>
     /// The showcase of the active supplier with this slug (looked up lowercase). 404 <c>not_found</c> for an unknown slug and
     /// for a supplier that is not active (pending or suspended): the page says "does not exist" for both. The answer carries
-    /// <c>X-Robots-Tag: noindex</c>: the showcase is not indexable in v0 (as the page, see the runbook). With the flag
+    /// <c>X-Robots-Tag: noindex</c>: this JSON answer is never a page to index; the page is <c>/fornitori/{slug}</c> (crawler HTML from <c>GET api/public/seo/suppliers/{slug}</c>). With the flag
     /// <c>SupplierShowcaseBooking</c> on it also carries <c>services</c> (the published ones, with price and unit) and, once
     /// measured, <c>medianResponseMinutes</c>; with it off those two are left out and the answer is the one of SU-13.
     /// </summary>
@@ -194,7 +194,7 @@ public class PublicSupplierController(
         }
     }
 
-    /// <summary>The showcase is not indexable in v0 (D11): every answer says so, errors included.</summary>
+    /// <summary>This API is data for the page, not a page: every answer says so, errors included.</summary>
     private void MarkNotIndexable() => Response.Headers["X-Robots-Tag"] = "noindex";
 
     /// <summary>The 404 of an unknown, pending or suspended supplier: one answer for the three.</summary>

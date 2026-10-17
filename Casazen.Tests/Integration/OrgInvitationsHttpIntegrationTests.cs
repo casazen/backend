@@ -21,8 +21,8 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// The web host with the org team flag on and the invitation emails recorded instead of queued, so a test can read the link
-/// the invited person would receive.
+/// The web host with the invitation emails recorded instead of queued, so a test can read the link the invited person would
+/// receive.
 /// </summary>
 public sealed class OrgInvitationsFactory : CasazenWebApplicationFactory
 {
@@ -38,8 +38,6 @@ public sealed class OrgInvitationsFactory : CasazenWebApplicationFactory
     {
         base.ConfigureWebHost(builder);
         var inMemoryStore = $"org-invitations-{Guid.NewGuid():N}";
-        builder.ConfigureAppConfiguration((_, config) =>
-            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:OrgTeam"] = "true" }));
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IEmailQueue>();
@@ -817,59 +815,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
 }
 
 /// <summary>
-/// With the <c>OrgTeam</c> flag off (the default) the endpoints of the team do not exist: 404 for anyone, before the
-/// authentication, so nothing leaks about a feature that is not on.
-/// </summary>
-public class OrgInvitationsFlagOffIntegrationTests(OrgInvitationsFlagOffIntegrationTests.Factory factory)
-    : IClassFixture<OrgInvitationsFlagOffIntegrationTests.Factory>
-{
-    /// <summary>The default host (flag off), without the comuni sample: see <see cref="OrgInvitationsFactory"/>.</summary>
-    public sealed class Factory : CasazenWebApplicationFactory
-    {
-        protected override bool SeedComuneSample => false;
-    }
-
-    private const string SomeId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
-
-    [Theory]
-    [InlineData("GET", "/api/orgs/me/invitations")]
-    [InlineData("POST", "/api/orgs/me/invitations")]
-    [InlineData("POST", $"/api/orgs/me/invitations/{SomeId}/resend")]
-    [InlineData("POST", $"/api/orgs/me/invitations/{SomeId}/revoke")]
-    [InlineData("POST", $"/api/orgs/me/invitations/{SomeId}/link")]
-    [InlineData("GET", "/api/orgs/me/members")]
-    [InlineData("PUT", $"/api/orgs/me/members/{SomeId}")]
-    [InlineData("PUT", $"/api/orgs/me/members/{SomeId}/areas")]
-    [InlineData("GET", "/api/orgs/me/roles")]
-    [InlineData("GET", "/api/orgs/me/overview")]
-    [InlineData("POST", $"/api/orgs/me/members/{SomeId}/deactivate")]
-    [InlineData("POST", $"/api/orgs/me/members/{SomeId}/reactivate")]
-    [InlineData("DELETE", $"/api/orgs/me/members/{SomeId}")]
-    [InlineData("POST", "/api/org-invitations/lookup")]
-    [InlineData("POST", "/api/org-invitations/accept")]
-    [InlineData("GET", "/api/orgs/me/activity")]
-    [InlineData("GET", "/api/orgs/me/activity.csv")]
-    [InlineData("POST", "/api/orgs/me/access-requests")]
-    public async Task EveryEndpointOfTheTeam_WithTheFlagOff_AnswersNotFound_ToAnyone(string method, string path)
-    {
-        using var anonymous = factory.CreateClient();
-        using var owner = factory.CreateAuthenticatedClient("auth0|am02-flag-off-owner", roles: "PropertyOwner");
-
-        foreach (var client in new[] { anonymous, owner })
-        {
-            using var request = new HttpRequestMessage(new HttpMethod(method), path)
-            {
-                Content = method is "GET" or "DELETE" ? null : JsonContent.Create(new { }),
-            };
-
-            var response = await client.SendAsync(request);
-
-            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        }
-    }
-}
-
-/// <summary>
 /// The lookup of an invitation is anonymous and answers every link that does not work the same way, so it is limited per
 /// client: three calls here, the fourth is refused with 429 (the default is 20 a minute, <c>RateLimiting__PublicInvitationLookup__PermitLimit</c>).
 /// </summary>
@@ -886,7 +831,6 @@ public class OrgInvitationsLookupRateLimitIntegrationTests(OrgInvitationsLookupR
             builder.ConfigureAppConfiguration((_, config) =>
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Features:OrgTeam"] = "true",
                     ["RateLimiting:PublicInvitationLookup:PermitLimit"] = "3",
                 }));
         }

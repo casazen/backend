@@ -1,4 +1,3 @@
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
@@ -12,12 +11,11 @@ namespace Casazen.Web.Controllers;
 /// The matrix «chi può fare cosa» of the org roles (AM-02c): for each of the five roles what it holds in each context and how
 /// much of each of the twelve capabilities that is, so the team screens draw the roles, the comparison between them and the
 /// «Cosa vede questo utente» preview from the same permissions the API enforces (a reading of the seeded roles, not a second
-/// table). Any active member of the org may read it (it describes roles, not people); behind the <c>OrgTeam</c> flag: 404 while
-/// it is off, before the authentication. Runbook <c>docs/runbooks/org-team.md</c> part 6.
+/// table). Any active member of the org may read it (it describes roles, not people). Runbook
+/// <c>docs/runbooks/org-team.md</c> part 6.
 /// </summary>
 [ApiController]
 [Route("api/orgs/me/roles")]
-[FeatureGate(FeatureFlags.OrgTeam)]
 [Authorize(Policy = CasazenPolicies.Authenticated)]
 public class OrgRolesController(
     IOrgRoleMatrixService matrix,

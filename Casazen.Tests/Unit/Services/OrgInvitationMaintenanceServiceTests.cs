@@ -180,20 +180,6 @@ public class OrgInvitationMaintenanceServiceTests
     }
 
     [Fact]
-    public async Task Run_OrgTeamFlagOff_NoReminderIsSent()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync();
-        var (invitation, token) = await SentAsync(org.Id, "anna.leone@example.com", daysAgo: 3.5);
-        _kit.OrgTeamFlag = false;
-
-        var result = await RunAsync();
-
-        Assert.Equal(0, result.Reminded);
-        Assert.Empty(_kit.Emails.Snapshot());
-        Assert.Equal(OrgInvitationTokens.Hash(token), (await _kit.ReadInvitationAsync(invitation.Id)).TokenHash);
-    }
-
-    [Fact]
     public async Task Run_AnInvitationOfADeactivatedOrg_GetsNoReminder()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync();
@@ -273,20 +259,6 @@ public class OrgInvitationMaintenanceServiceTests
         var sent = await _kit.Invitations(db).CreateAsync(new CreateOrgInvitation(org.Id, "auth0|owner", "bruno@example.com", "Bruno", OrgRole.Collaborator, ["short-rent"]));
 
         Assert.Equal(OrgInvitationStatus.Pending, sent.Invitation.Status);
-    }
-
-    [Fact]
-    public async Task Run_OrgTeamFlagOff_StillExpiresButTellsNobody()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync();
-        var (invitation, _) = await SentAsync(org.Id, "anna.leone@example.com", daysAgo: 8);
-        _kit.OrgTeamFlag = false;
-
-        var result = await RunAsync();
-
-        Assert.Equal(1, result.Expired);
-        Assert.Equal(OrgInvitationStatus.Expired, (await _kit.ReadInvitationAsync(invitation.Id)).Status);
-        Assert.Empty(_kit.Emails.Snapshot());
     }
 
     [Fact]

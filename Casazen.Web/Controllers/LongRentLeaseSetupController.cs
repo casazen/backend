@@ -1,5 +1,4 @@
 using Casazen.Core.Authorization;
-using Casazen.Core.Features;
 using Casazen.Core.Leases;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -11,12 +10,10 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// What the wizard of a lease needs besides the draft itself (LR-12): the rules of the area, so no figure of law is written in the
-/// interface (decision LR-D29), and the data of the landlord, so the person who creates a lease does not type their own again. Behind
-/// <c>Features:LongRentArea</c> (404 while it is off).
+/// interface (decision LR-D29), and the data of the landlord, so the person who creates a lease does not type their own again.
 /// </summary>
 [ApiController]
 [Route("api/long-rent")]
-[FeatureGate(FeatureFlags.LongRentArea)]
 public class LongRentLeaseSetupController(
     ILongRentLandlordDefaultsService landlordDefaults,
     IOrgContextResolver orgContextResolver,

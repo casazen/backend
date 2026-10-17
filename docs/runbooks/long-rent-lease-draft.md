@@ -1,7 +1,7 @@
 # Long-term lease: the guided draft (LR-12)
 
 Task LR-12 of the redesign wave (analysis `redesign/docs/wave/analysis/LR/`, brief `tasks/LR-12.md`; decisions LR-D3, LR-D8, LR-D10,
-LR-D11, LR-D12, LR-D14, LR-D15, LR-D28, LR-D29, LR-D33, § 15). **Backend only, one migration, behind `Features:LongRentArea` (off).** The wizard
+LR-D11, LR-D12, LR-D14, LR-D15, LR-D28, LR-D29, LR-D33, § 15). **Backend only, one migration, no feature flag (always on).** The wizard
 of a lease is saved on the server from its first step: the landlord creates a draft with only the property, saves each step with
 whatever is valid and whatever is not, comes back from another device and finds the same draft, reviews it, marks that the contract was
 downloaded for signature, or deletes it. The complete creation `POST /api/leases` and every endpoint that existed are **unchanged**.
@@ -13,8 +13,7 @@ Code: `LeaseDraftsController`, `LongRentLeaseSetupController`; service `LeaseDra
 
 ## 1. Endpoints
 
-All of them answer **404 `not_found` while `Features:LongRentArea` is off, before authentication** (`[FeatureGate]`), and need
-`lease.create` unless stated. Each one authorizes the lease (or the property) as a `HostResource` of its property
+All of them are always on (no feature flag) and need `lease.create` unless stated. Each one authorizes the lease (or the property) as a `HostResource` of its property
 (`LeaseOperations.Create`, TN-3, AM-03): another org's lease or property is **404** (`lease_not_found`, `property_not_found`), a property
 the caller may not handle (a collaborator limited to some properties) is **403**. The answers that carry personal data
 (`GET/PATCH …/draft`, `POST …/drafts`, `landlord-defaults`) are `Cache-Control: private, no-store`.
@@ -192,9 +191,8 @@ change mode again. The files are deleted after the commit; one that cannot be de
 A draft holds the names, fiscal codes and residences of people and is not kept for ever. The job deletes, with their parties, events and
 files, the drafts **nobody changed for `LongRentLease:DraftRetentionDays` days** (default **180**, whole number from 1 to 3650: another value
 makes the **startup fail**, `LongRentLeaseOptionsValidator`). A draft with a signed copy, a rent plan, or that is not a draft any more is never
-deleted. Every day at 03:50 UTC (`LeaseDraftRetentionJob.Cron`), after the GDPR retention (03:00) and the other retention jobs; registered
-**only with `Features:LongRentArea` on** (removed with `RemoveIfExists` otherwise): drafts exist only where the flag was on, and **turning it
-off does not clean them** — they wait, untouched, until it is turned on again or someone deletes them.
+deleted. Every day at 03:50 UTC (`LeaseDraftRetentionJob.Cron`), after the GDPR retention (03:00) and the other retention jobs; **always
+registered** (the retention of personal data does not depend on a switch).
 
 - **Idempotent**: it deletes what matches, a second run finds nothing. Each draft is deleted in a transaction of its own under the row lock
   of § 4 after the conditions are checked again, so a draft saved or signed since the list was read is left alone (a draft idle for exactly
@@ -223,7 +221,7 @@ interface** (LR-D29): `termMonths { Libero: 48, Concordato: 36 }`, `renewalMonth
 `registrationDays: 30`, `depositMaxRents: 3`, `availableTypes: [Libero, Concordato]`. The terms, the notice and the registration deadline are the
 constants the rest of the backend already uses (`LeaseContractTerms`, `LongRentDeadlineRules`, `RliRegistrationDeadline`); the deposit limit
 (3 rents) and the renewal periods are product values taken from the demo and the interview and **not verified by a lawyer**: LR-D29 makes
-that verification a condition for turning the area on. Changing a figure is a change in `LongRentRules` and nowhere else.
+that verification a condition for the production release of the area. Changing a figure is a change in `LongRentRules` and nowhere else.
 
 ## 10. Personal data
 
@@ -253,7 +251,8 @@ that verification a condition for turning the area on. Changing a figure is a ch
   but has neither date nor lease in the checklist.
 - PM-02 sees the draft as it always saw one (`property_mode_blocked_by_draft_lease`) and § 7 is the way out.
 - The new events appear in the timeline of the masked detail (`events[].eventType`): the interface must know `ReviewConfirmed`,
-  `ReviewReopened`, `SentForSignature` and `SentRevoked` **before the flag is turned on**.
+  `ReviewReopened`, `SentForSignature` and `SentRevoked` (LR-03 and LR-10 add their labels): the events are written as soon as a draft is
+  confirmed or marked as sent.
 
 ## 12. Database
 
@@ -272,7 +271,7 @@ by the old form with another term gets the term of its type at its first save. A
 accepted and the wizard cannot offer (`lease_type_not_available`), keeps its type and its end until the landlord chooses another type or
 changes the start date; the first save of a step never turns it into a libero on its own.
 
-**Rollback**: flag off first (the endpoints answer 404, the job is removed). `Down` drops the columns: the typed state of the drafts still
+**Rollback**: there is no flag to turn off: roll the code back (the endpoints and the job go with it), then `Down`. `Down` drops the columns: the typed state of the drafts still
 incomplete, the residences, the day documents were checked and the wizard progress are **lost** (the contracts themselves are untouched).
 The events of the four new types stay in `LeaseEvents` (`Down` does not touch them): if the code is rolled back too, delete them first,
 `DELETE FROM "LeaseEvents" WHERE "EventType" IN (16, 17, 18, 19)` (the numbers of `LeaseEventType` at the merge; check the enum), because the
@@ -283,15 +282,13 @@ Proved on PostgreSQL with historical rows written by SQL, revert and reapply by 
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `Features__LongRentArea` | `false` | The whole area (`appsettings.json`: `Features:LongRentArea`; key `longRentArea` in `GET /api/public/features`). Off: the endpoints of § 1 answer 404 and the job is not registered |
 | `LongRentLease__DraftRetentionDays` | `180` | § 8; whole number from 1 to 3650, anything else makes the startup fail |
 
-## 14. Turning it on, and what to check in operation
+## 14. After the deploy: what to check in operation
 
-Turn the flag on **on the test environment first**, after the frontend that calls it is deployed (it must know the four new event types) and
-the figures of § 9 are confirmed. Then:
+Deploy **on the test environment first**; the figures of § 9 are to be confirmed before the production release. Then:
 
-- `lease-draft-retention` is in the recurring jobs (30 with every flag on, 23 with the defaults); the first run logs how many drafts it deleted.
+- `lease-draft-retention` is in the recurring jobs (34 with every flag on, 29 with the defaults); the first run logs how many drafts it deleted.
 - A save that answers **409** is the normal answer to two tabs; one that answers **500** is not (look for `Lease draft` in the logs, which
   carry the id of the lease and no data).
 - A draft that cannot be deleted by the landlord (409 `lease_not_deletable`) has a signed copy or a rent plan: it is a contract now.
@@ -312,7 +309,7 @@ the figures of § 9 are confirmed. Then:
 | LR-D14 (a) | Overlap with another contract of the property: a warning of the review, not a block |
 | LR-D15 (a) | A property let for short stays: a warning of the review, not a block |
 | LR-D28 | A template that is not approved: `sent` answers 422 `contract_template_not_approved`, the review says it as to know |
-| LR-D29 (a) | Figures of law only on the server (`GET /api/long-rent/rules`); to be confirmed by a lawyer before the area is turned on |
+| LR-D29 (a) | Figures of law only on the server (`GET /api/long-rent/rules`); to be confirmed by a lawyer before the production release |
 | LR-D33 (a) | Drafts idle for 180 days are deleted, never one with a signed copy |
 
 Open: the starting dates of an incomplete draft show in the lease list until the interface shows drafts by stage; the rules specific to an

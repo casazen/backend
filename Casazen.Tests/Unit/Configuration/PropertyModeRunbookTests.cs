@@ -1,5 +1,4 @@
 using System.Reflection;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
 using Xunit;
@@ -7,8 +6,8 @@ using Xunit;
 namespace Casazen.Tests.Unit.Configuration;
 
 /// <summary>
-/// PM-02: the runbook of the scheduled change of mode must say what the code does: every error code of the API, the flag, the
-/// job, the endpoints, the reason of the calendar block. The pages that list jobs, flags and e-mails carry the new ones.
+/// PM-02: the runbook of the scheduled change of mode must say what the code does: every error code of the API, the job, the
+/// endpoints, the reason of the calendar block. The pages that list jobs and e-mails carry the new ones.
 /// </summary>
 public class PropertyModeRunbookTests
 {
@@ -38,12 +37,10 @@ public class PropertyModeRunbookTests
     }
 
     [Fact]
-    public void Runbook_NamesTheFlagTheJobTheEndpointsAndTheBlockReason()
+    public void Runbook_NamesTheJobTheEndpointsAndTheBlockReason()
     {
         var runbook = RentalModeRunbook;
 
-        Assert.Contains($"`Features:{FeatureFlags.PropertyModeChange}`", runbook);
-        Assert.Contains($"`Features__{FeatureFlags.PropertyModeChange}`", runbook);
         Assert.Contains($"`{PropertyModeChangeJob.RecurringJobId}`", runbook);
         Assert.Contains("GET /api/properties/{id}/mode`", runbook);
         Assert.Contains("GET /api/properties/{id}/mode/preview", runbook);
@@ -67,12 +64,9 @@ public class PropertyModeRunbookTests
     }
 
     [Fact]
-    public void OtherRunbooks_ListTheJobTheFlagAndTheEmails()
+    public void OtherRunbooks_ListTheJobAndTheEmails()
     {
         Assert.Contains("property-mode-change", File.ReadAllText(Path.Combine(Runbooks, "hangfire.md")));
-        var flags = File.ReadAllText(Path.Combine(Runbooks, "feature-flags.md"));
-        Assert.Contains($"`{FeatureFlags.PropertyModeChange}`", flags);
-        Assert.Contains($"`Features__{FeatureFlags.PropertyModeChange}`", flags);
         var emails = File.ReadAllText(Path.Combine(Runbooks, "email.md"));
         foreach (var template in new[]
                  {

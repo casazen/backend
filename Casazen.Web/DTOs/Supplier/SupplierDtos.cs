@@ -626,6 +626,6 @@ public class SupplierShowcasePreviewDto
     /// <summary>Absolute URL on <c>App:PublicSiteBaseUrl</c>; null when the slug or the public URL is not configured.</summary>
     public string? PublicUrl { get; set; }
 
-    /// <summary>Always false in v0: the public page is <c>noindex</c> and in <c>robots.txt</c>.</summary>
+    /// <summary>True when the public page is published and indexed (it has a category or a text).</summary>
     public bool Indexable { get; set; }
 }
