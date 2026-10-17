@@ -219,7 +219,7 @@ public class SupplierConflictServiceTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var first = DateOnly.MinValue.AddDays(SupplierAgendaLimits.RangeEdgeDays);
-        var last = DateOnly.MaxValue.AddDays(-SupplierAgendaLimits.RangeEdgeDays);
+        var last = DateOnly.MaxValue.AddDays(-SupplierAgendaLimits.RangeEdgeDays - SupplierAgendaLimits.ConflictSuggestionDays);
 
         // The rule is the service's own too (the controller answers 400 before): no caller makes a made-up date reach the arithmetic.
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
