@@ -270,7 +270,8 @@ public sealed class HostTodoItemDto
     /// <summary>
     /// <c>RespondToRequest</c>, <c>ResolveAlloggiatiFailure</c>, <c>SendAlloggiati</c>, <c>CompleteGuestCheckIn</c>,
     /// <c>ReviewFailedPayment</c>, <c>CheckOut</c>, <c>ConfirmPropertyReady</c>, <c>ActivateProperty</c> and, about an intervention
-    /// (SR-03b), <c>RespondToServiceRequest</c>, <c>ConfirmFinalAmount</c> or <c>PayServiceRequest</c>.
+    /// (SR-03b), <c>RespondToServiceRequest</c>, <c>ConfirmFinalAmount</c> or <c>PayServiceRequest</c>, and, about the calendar (SR-02a),
+    /// <c>ResolveCalendarConflict</c> (two stays or blocks of a property take the same night).
     /// </summary>
     public HostTodoAction Action { get; init; }
 
