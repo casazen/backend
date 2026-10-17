@@ -72,6 +72,43 @@ public sealed class ServiceRequestNotifier(
             EmailTemplates.ServiceRequestCreatedPush(EmailTemplates.DefaultCulture, request.Category, comune));
     }
 
+    /// <summary>
+    /// A new request that was accepted automatically for a regular host (SP-04d): email and push to the supplier, <b>instead of</b> the
+    /// ones of a new request (<see cref="QueueCreated"/>), since there is nothing left to answer. Like the other notifications of
+    /// the supplier it names the comune, the time and the amount, never the property or the host; the address and the host's contact
+    /// are in the console, as after any take. Called with the request as it is stored (with its property), after the save.
+    /// </summary>
+    public async Task NotifySupplierAutoAcceptedAsync(ServiceRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var supplier = await FindSupplierAsync(request, cancellationToken);
+            var comune = ComuneOf(request);
+            if (supplier is not null)
+            {
+                var email = EmailTemplates.ServiceRequestAutoAccepted(
+                    EmailTemplates.DefaultCulture,
+                    supplier.LegalName,
+                    request.Category,
+                    comune,
+                    publicSiteLinks.SupplierInbox(),
+                    request.ScheduledStartUtc,
+                    request.EstimatedAmountCents);
+                emailQueue.Enqueue(supplier.Email, email, EmailTemplates.Names.ServiceRequestAutoAccepted);
+            }
+
+            QueueSupplierPush(
+                request,
+                PushDeliveryKeys.ServiceRequestAutoAccepted(request.Id),
+                PushTypes.ServiceRequestAutoAccepted,
+                EmailTemplates.ServiceRequestAutoAcceptedPush(EmailTemplates.DefaultCulture, request.Category, comune));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Supplier notification for auto-accepted service request {Id} could not be queued", request.Id);
+        }
+    }
+
     // ─── What the supplier did: the host ─────────────────────────────────────────────────────────────────────────────
 
     /// <summary>

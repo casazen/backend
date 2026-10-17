@@ -543,6 +543,12 @@
   <data name="Push_ServiceRequestCreated_Body" xml:space="preserve">
     <value>{0} in {1}: accept or decline the request from your supplier area.</value>
   </data>
+  <data name="Push_ServiceRequestAutoAccepted_Title" xml:space="preserve">
+    <value>Request accepted automatically</value>
+  </data>
+  <data name="Push_ServiceRequestAutoAccepted_Body" xml:space="preserve">
+    <value>{0} in {1}: the host is one of your regular customers, so we accepted it for you. You can cancel it before the work starts.</value>
+  </data>
   <data name="Push_ServiceRequestTaken_Title" xml:space="preserve">
     <value>Request taken</value>
   </data>
@@ -821,6 +827,15 @@
   </data>
   <data name="ServiceRequestCreated_Hint" xml:space="preserve">
     <value>The address, the property name and the host's notes are shown once you take the request.</value>
+  </data>
+  <data name="ServiceRequestAutoAccepted_Subject" xml:space="preserve">
+    <value>Request accepted automatically — {0}</value>
+  </data>
+  <data name="ServiceRequestAutoAccepted_Body" xml:space="preserve">
+    <value>The &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt; was &lt;strong&gt;accepted automatically&lt;/strong&gt;: the host is one of your regular customers and the time was free.</value>
+  </data>
+  <data name="ServiceRequestAutoAccepted_Hint" xml:space="preserve">
+    <value>The address and the host's contact are in the console. If you cannot do the job, cancel the request from the console before it starts.</value>
   </data>
   <data name="ServiceRequestTaken_When" xml:space="preserve">
     <value>When: &lt;strong&gt;{0}&lt;/strong&gt;.</value>

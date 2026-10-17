@@ -17,6 +17,7 @@ public static partial class EmailTemplates
     public static partial class Names
     {
         public const string ServiceRequestCreated = "service-request-created";
+        public const string ServiceRequestAutoAccepted = "service-request-auto-accepted";
         public const string ServiceRequestStatusChanged = "service-request-status-changed";
         public const string ServiceRequestPaid = "service-request-paid";
         public const string ServiceRequestCancelledToSupplier = "service-request-cancelled-to-supplier";
@@ -84,6 +85,35 @@ public static partial class EmailTemplates
             .Muted("ServiceRequestCreated_Hint")
             .Button("ServiceRequestCreated_Cta", inboxUrl)
             .Build("ServiceRequestCreated_Subject", comune);
+    }
+
+    /// <summary>
+    /// A new service request that was accepted automatically for a regular host (SP-04d), to the supplier: it takes the place of
+    /// <see cref="ServiceRequestCreated"/>. The supplier is told the request is already its job and can still be cancelled, with the
+    /// same data as that email (the comune, the time, the amount): the address and the host's contact are in the console, as after any
+    /// take, and are <b>not</b> written here.
+    /// </summary>
+    public static EmailContent ServiceRequestAutoAccepted(
+        CultureInfo culture,
+        string supplierName,
+        string category,
+        string comune,
+        string inboxUrl,
+        DateTime? scheduledStartUtc = null,
+        int? amountCents = null)
+    {
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("ServiceRequestCreated_Greeting", supplierName)
+            .Paragraph("ServiceRequestAutoAccepted_Body", ServiceCategoryLabel(culture, category), comune);
+        if (scheduledStartUtc is { } scheduledStart)
+            builder.Paragraph("ServiceRequestCreated_When", builder.FormatInstant(scheduledStart));
+        if (amountCents is { } amount)
+            builder.Paragraph("ServiceRequestCreated_Price", FormatEuro(amount, culture));
+
+        return builder
+            .Muted("ServiceRequestAutoAccepted_Hint")
+            .Button("ServiceRequestCreated_Cta", inboxUrl)
+            .Build("ServiceRequestAutoAccepted_Subject", comune);
     }
 
     /// <summary>The final amount and the notes the supplier left when it completed a request, for the email to the host.</summary>

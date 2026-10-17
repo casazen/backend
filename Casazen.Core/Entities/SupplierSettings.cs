@@ -59,7 +59,11 @@ public class SupplierSettings
     /// </summary>
     public DateTime? HoursConfiguredAt { get; set; }
 
-    /// <summary>The supplier accepts the requests of its regular customers by itself (default off, a later task).</summary>
+    /// <summary>
+    /// The supplier accepts the requests of its regular hosts by itself (default off). Read when a host's request is created
+    /// (SP-04d, <see cref="ServiceRequestAutoAccept"/>); written by <c>PUT api/supplier/settings</c> (SP-16a-1), under the same
+    /// agenda lock that creation takes, so a request is judged on the value as it is saved.
+    /// </summary>
     public bool AutoAcceptRegulars { get; set; }
 
     /// <summary>The supplier wants a notification for every new request (default on, a later task).</summary>

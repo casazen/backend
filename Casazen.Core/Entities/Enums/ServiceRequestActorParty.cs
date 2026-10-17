@@ -12,7 +12,10 @@ public enum ServiceRequestActorParty
     /// <summary>The supplier org (take, start, completion, rejection, cancellation before the start).</summary>
     Supplier = 1,
 
-    /// <summary>CasaZen itself: the automatic cancellation of a request nobody answered in time (decision D8).</summary>
+    /// <summary>
+    /// CasaZen itself: the automatic cancellation of a request nobody answered in time (decision D8) and, in the history, the take
+    /// of a request accepted automatically for a regular host (SP-04d, <see cref="ServiceRequest.AutoAccepted"/>).
+    /// </summary>
     System = 2,
 
     /// <summary>
