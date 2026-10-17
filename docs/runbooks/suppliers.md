@@ -2978,7 +2978,7 @@ supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read
 |---|---|
 | `services[]` | Up to 3 (`SupplierPickerLimits.MaxServices`) **published** services of the supplier, in its own order: `id`, `name`, `category`, `durationMinutes`, `priceFromCents` (null = on quote), `priceUnit` (`PerJob`, `PerHour`, `PerSet`, `PerSquareMeter`), `requiresQuote`. Drafts, paused and deleted services never appear; the `id` is the catalog row (a request can keep it). |
 | `priceFromCents`, `priceFromUnit` | The lowest "from" price among **all** the published services (not only the 3 listed) and its unit; both null when no service has a price. |
-| `medianResponseMinutes` | The rule of the public showcase (`SupplierResponseTimes.PublicMedianMinutes`): the median of `TakenAt − CreatedAt` over the latest requests taken in the last 90 days, null until there are 5. Never written by hand. |
+| `medianResponseMinutes` | The rule of the public showcase (`SupplierResponseTimes.PublicMedianMinutes`): the median of `TakenAt − CreatedAt` over the latest requests taken in the last 90 days (the ones accepted automatically, SP-04d, are left out), null until there are 5. Never written by hand. |
 | `verified` | The "Verificato" badge: the supplier is `Active` **and** has a VAT number (`SupplierVerification.IsProfileVerified`). It does **not** look at Stripe (`IsVerified`, the badge of the payments account of section 25, still needs the Connect account). Only the boolean leaves the server, never the VAT number. |
 | `showcaseSlug` | The address of the public showcase (`/fornitori/{slug}`); null when the supplier has none. |
 

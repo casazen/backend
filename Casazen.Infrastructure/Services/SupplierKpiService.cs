@@ -190,13 +190,14 @@ public partial class SupplierKpiService(
 
     /// <summary>
     /// When each request taken since <paramref name="sinceUtc"/> was received and taken, for every supplier in
-    /// <paramref name="supplierOrgIds"/> at once: the sample of the response time of the supplier picker (SR-09a).
+    /// <paramref name="supplierOrgIds"/> at once: the sample of the response time of the supplier picker (SR-09a). The requests
+    /// accepted automatically (SP-04d) are left out, as in <see cref="RecentAnswersOf"/>: nobody answered them.
     /// </summary>
     internal static IQueryable<SupplierAnswerPair> AnswersOfMany(AppDbContext db, IReadOnlyCollection<Guid> supplierOrgIds, DateTime sinceUtc) =>
         // ServiceRequest has no tenant filter (two parties, TN-2 allow-list): scoped by the supplier orgs explicitly.
         db.ServiceRequests
             .AsNoTracking()
-            .Where(r => supplierOrgIds.Contains(r.SupplierOrgId) && r.TakenAt != null && r.TakenAt >= sinceUtc)
+            .Where(r => supplierOrgIds.Contains(r.SupplierOrgId) && !r.AutoAccepted && r.TakenAt != null && r.TakenAt >= sinceUtc)
             .Select(r => new SupplierAnswerPair(r.SupplierOrgId, r.CreatedAt, r.TakenAt!.Value));
 
     /// <summary>A number of requests and the sum of their final amounts (<c>null</c> when none has one).</summary>

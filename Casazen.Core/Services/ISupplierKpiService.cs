@@ -43,8 +43,9 @@ public interface ISupplierKpiService
 
     /// <summary>
     /// <see cref="GetMedianResponseMinutesAsync"/> for several suppliers in one read (the supplier picker of the marketplace, SR-09a):
-    /// the same window of 90 days, the same sample (the latest <see cref="PublicShowcaseLimits.ResponseTimeMaxSamples"/> requests
-    /// taken by each supplier) and the same minimum of <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/> requests. Every id
+    /// the same window of 90 days, the same requests (the ones accepted automatically, SP-04d, are left out), the same sample (the
+    /// latest <see cref="PublicShowcaseLimits.ResponseTimeMaxSamples"/> taken by each supplier) and the same minimum of
+    /// <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/> requests. Every id
     /// asked about is in the result; a supplier whose response time is not measured has <c>null</c>. Read-only; independent of the
     /// <c>SupplierShowcaseBooking</c> flag.
     /// </summary>
