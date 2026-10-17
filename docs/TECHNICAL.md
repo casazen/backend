@@ -831,7 +831,7 @@ never a link to the dashboard.
 | `GET` | `/api/public/content/affitti-brevi/{regionSlug}/{comuneSlug}` | Anonymous | SEO content page (short-term rentals) |
 | `GET` | `/api/public/content/tassa-soggiorno/{comuneSlug}` | Anonymous | SEO content page (tourist tax) |
 | `POST` | `/api/public/tourist-tax/calculate` | Anonymous | Public tourist-tax calculator |
-| `GET` | `/api/public/orgs/{slug}` | Anonymous | Public org landing by slug |
+| `GET` | `/api/public/orgs/{slug}` | Anonymous | Public org landing by slug; `operator { legalName, vatNumber, registeredOffice }` (or `null`) for the footer, written by `PUT /api/orgs/me/settings` (DB-03b-a, [direct-booking.md](runbooks/direct-booking.md) § 12) |
 | `GET` | `/api/public/orgs/{slug}/properties` | Anonymous | Public property list for org |
 | `GET` | `/api/public/orgs/{slug}/properties/{propertySlugOrId}` | Anonymous | Public property detail |
 | `GET` | `/api/public/suppliers/{slug}` | Anonymous | Public supplier profile (with the published services and the measured response time when `SupplierShowcaseBooking` is on) |
