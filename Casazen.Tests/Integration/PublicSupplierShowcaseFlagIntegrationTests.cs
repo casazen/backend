@@ -143,6 +143,12 @@ public sealed class PublicShowcaseWithHoldsFactory : PublicShowcaseFactory
         public Task<SupplierBookingSettings> GetBookingSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
             inner.GetBookingSettingsAsync(supplierOrgId, cancellationToken);
 
+        public Task<SupplierSettingsView> GetSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
+            inner.GetSettingsAsync(supplierOrgId, cancellationToken);
+
+        public Task<SupplierSettingsView> ReplaceSettingsAsync(Guid supplierOrgId, SupplierSettingsInput input, CancellationToken cancellationToken = default) =>
+            inner.ReplaceSettingsAsync(supplierOrgId, input, cancellationToken);
+
         public Task<SupplierPlanningInput> BuildPlanningInputAsync(Guid supplierOrgId, DateOnly from, DateOnly to, CancellationToken cancellationToken = default) =>
             inner.BuildPlanningInputAsync(supplierOrgId, from, to, cancellationToken);
 

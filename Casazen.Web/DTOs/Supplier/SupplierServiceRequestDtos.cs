@@ -318,10 +318,29 @@ public class SupplierChecklistDto
     public bool FirstRequestAnswered { get; set; }
 
     /// <summary>
-    /// Whether the supplier receives payments through CasaZen. <b>Always <c>null</c> for now</b>: payments are not available yet
-    /// (SP-14, SP-15). <c>null</c> means "not available", not "no": the console does not count the step.
+    /// Whether the supplier receives payments through CasaZen (SP-16a): <c>true</c> when its Stripe account takes charges and payouts,
+    /// <c>false</c> when it does not, <b>only while the flag <c>SupplierOnlinePayments</c> is on</b>. <c>null</c> (flag off) means
+    /// "not available", not "no": the console does not count the step.
     /// </summary>
     public bool? PaymentsActive { get; set; }
+
+    /// <summary>The "Verificato" badge and what is missing for it (SP-16a): told whatever the flag <c>SupplierOnlinePayments</c> says.</summary>
+    public SupplierVerificationDto? Verification { get; set; }
+}
+
+/// <summary>
+/// The "Verificato" badge of the supplier (decision D11, SP-16a): an active profile, a Stripe account that takes charges <b>and</b> payouts,
+/// and a VAT number. No documents (SP-D2).
+/// </summary>
+public class SupplierVerificationDto
+{
+    public bool Verified { get; set; }
+
+    /// <summary>
+    /// What is missing, in this order: <c>profile_not_active</c>, <c>payments_not_enabled</c>, <c>vat_number_missing</c>. Empty when
+    /// verified. <b>An open set</b>: show a generic wording for a code you do not know.
+    /// </summary>
+    public IReadOnlyList<string> Missing { get; set; } = [];
 }
 
 /// <summary>Body of <c>POST api/supplier/inbox/accept</c> (SP-04): the new requests to take as they are, at most 20.</summary>
@@ -411,6 +430,9 @@ public static class SupplierServiceRequestMapper
         ShowcasePublished = checklist.ShowcasePublished,
         FirstRequestAnswered = checklist.FirstRequestAnswered,
         PaymentsActive = checklist.PaymentsActive,
+        Verification = checklist.Verification is null
+            ? null
+            : new SupplierVerificationDto { Verified = checklist.Verification.Verified, Missing = checklist.Verification.Missing },
     };
 
     private static T Fill<T>(T dto, SupplierServiceRequestView view)
