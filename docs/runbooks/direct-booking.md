@@ -46,6 +46,9 @@ panel "Richieste da approvare" and badges in the bookings list.
 | `RateLimiting__PublicBookingLookup__PermitLimit` | Includes `confirm-email` | 30 | |
 | `RateLimiting__PublicGuestBookingLookup__PermitLimit` / `__WindowSeconds` | "Le mie prenotazioni": lookups and check-in link requests per client IP (§ 8) | 10 per 300 s | BK-11 |
 | `RateLimiting__GuestBookingLookupPerEmail__PermitLimit` / `__WindowSeconds` | Same, per email address, whatever the IP (§ 8) | 5 per 900 s | BK-11 |
+| `RateLimiting__PublicGuestSession__PermitLimit` / `__WindowSeconds` | Opening a guest session, per client IP (§ 8.4) | 10 per 300 s | DB-06a |
+| `RateLimiting__GuestSessionPerCode__PermitLimit` / `__WindowSeconds` | Opening a guest session, per booking code, whatever the IP and the address (§ 8.4) | 10 per 900 s | DB-06a |
+| `GuestArea__SessionMinutes` | How long a guest session lasts, in minutes; no refresh, never above 1440 (24 hours), never below 5 (§ 8.4) | **120** | DB-06a, decision DB-D21 |
 | `App__PublicSiteBaseUrl`, `Email__*` | Links and delivery of the emails | — | required, see [email.md](email.md) |
 
 A changed value applies to new requests and new confirmations: a request already waiting keeps the deadline stored in
@@ -329,6 +332,56 @@ Code: `Casazen.Core/Services/BookingCodes.cs`, `IGuestBookingLookupService.cs`,
 (`BookingReference`). Tests: `GuestBookingLookupPostgresTests`, `BookingCodesTests`, `DirectCheckoutIntegrationTests`,
 `BookingEmailsPostgresTests`, `BookingNotifierTests`, `PublicSiteLinksTests`; vitest `guest-bookings-page.test.tsx`,
 `booking-code.test.ts`, `checkout-outcome-page.test.tsx`.
+
+### 8.4 The guest's session, with no account (DB-06a)
+
+The foundation of the guest area (messages with the host, reviews… build on it). The guest proves **one booking** with its code and
+email, once, and gets a signed token with a short life instead of sending code and email at every call. No account, no password,
+no cookie, no table, no flag, no migration. The old lookup (§ 8.2) and its check-in link stay as they are.
+
+| Endpoint | Auth | Answers |
+|---|---|---|
+| `POST /api/public/guest/session` `{ orgSlug, bookingCode, email }` (the body of the lookup) | anonymous; 10 per 5 min per IP (`PublicGuestSession`), per email (shared with § 8.2) and per code | 200 `{ accessToken, expiresAt, bookingCode }`; 400 `validation_error`; **404 `guest_booking_not_found`** (the same for every reason); 429 `rate_limited` |
+| `GET /api/public/guest/bookings/{code}` | `Authorization: Bearer {accessToken}` (policy `GuestSession`); 30 per min per IP (`PublicBookingLookup`) | 200: the same body as the lookup; 401 (no, altered or expired token); **404 `guest_booking_not_found`**; 429 |
+
+- **The token.** Starts with `gs1.`; the rest is the payload `{ version, orgId, hash of the guest's email, end of the session }` sealed with
+  ASP.NET Data Protection (authenticated encryption; the key ring of the application, kept in the database and shared by every replica,
+  see [encryption.md](encryption.md)). **Stateless**: nothing is stored; the address is never in the token in clear and never in a log.
+  The prefix lets the host sign-in (JWT bearer of Auth0) leave the token alone. A token opens the guest area only: it carries no role,
+  no `sub`, and the host endpoints do not read it; a host's token opens no guest action.
+- **Length** (decision DB-D21): `GuestArea__SessionMinutes`, **120** (two hours) by default, never more than **1440** (24 hours, the
+  ceiling) and never less than 5. There is **no refresh and no revocation**: when it ends the guest proves the booking again, and
+  "Esci" only forgets the token on the device (a copy keeps working until it expires). Changing the length applies to new sessions.
+  Rotating the key ring (Data Protection) does not end the sessions; losing it does (every guest signs in again).
+- **What a session proves.** The org of the site and the guest's email: every direct booking of that site and that email is the
+  guest's (today the endpoint reads one by code; a list would use the same check). `GET …/bookings/{code}` finds the booking by
+  `(OrgId, BookingCode)` (unique), `Source = Direct`, an active org, and compares the hash of the booking's guest email with the token's
+  in constant time. **The booking of another guest, of another site, a code that does not exist and a string that is not a code get the
+  same 404**, same body except the trace id. The request is also scoped to the org of the session (the tenant of the request, so the EF
+  tenant filter is a second wall for any tenant entity the guest area reads).
+- **Rate limits.** Three, all in memory per replica, every attempt counts, found or not: per client IP `PublicGuestSession` (10 per
+  5 min, `RateLimiting__PublicGuestSession__*`), per email address `GuestBookingLookupPerEmail` (5 per 15 min, **the same counter as the
+  lookup**: both endpoints together) and per booking code `GuestSessionPerCode` (10 per 15 min, `RateLimiting__GuestSessionPerCode__*`, a
+  hash of the code, whatever the IP and the address: it bounds trying the addresses of one booking, as the email limit bounds trying
+  the codes of one address). The same 429 for all, with `Retry-After`. The old lookup has no per-code limit (it stays unchanged).
+- **For the features that live in the guest area.** An action under `api/public/guest/*` carries `[Authorize(Policy = CasazenPolicies.GuestSession)]`,
+  reads `User.GetGuestSessionTicket()` (org, email hash, end) and gets the guest's booking with
+  `IGuestSessionService.FindBookingAsync(ticket, code)` (the uniform 404 comes with it). Never take the org or the email from the body.
+  Answers are `[PrivateAnswer]` (no-store, noindex). The booking code is in the path of the read (it is not a credential on its own); the
+  token is in the header and the email in no URL.
+- **XSS and shared devices.** The frontend keeps the token in `sessionStorage` of the tab, per site, and the email in memory only. A
+  script on the page could read the token: the site loads no third-party HTML. Short life, "Esci" and no sensitive data (exact address,
+  Wi-Fi) before the check-in window are the other defences.
+
+Logs: `Rate limit exceeded: policy PublicGuestSession | GuestBookingLookupPerEmail | GuestSessionPerCode on POST …` (no email, no code, no
+IP). Nothing is logged when a session opens.
+
+Code: `Casazen.Core/Services/IGuestSessionService.cs`, `Casazen.Infrastructure/Services/GuestSessionService.cs`, `GuestSessionTokens.cs`,
+`GuestBookingLookupService.cs` (`LoadAsync`, `ViewOfAsync`), `Casazen.Web/Authorization/GuestSessionAuthentication.cs` (scheme, claims,
+`GetGuestSessionTicket`), `CasazenPolicies.GuestSession`, `Casazen.Web/Controllers/GuestAreaController.cs`,
+`Casazen.Web/Infrastructure/GuestSessionCodeRateLimiter.cs`. Frontend: `src/features/public-booking/guest-bookings-page.tsx` (the form,
+"Esci" and `guest-area-slot.tsx`, where the messages of the guest hook in), `src/api/guest-session.api.ts`, `src/lib/guest-session.ts`,
+`src/queries/use-guest-session.ts`. Test: `GuestBookingLookupPostgresTests.GuestSession_…` (tenancy, uniform 404).
 
 ## 9. Deferred charge of "Paga più tardi" (BK-08)
 
