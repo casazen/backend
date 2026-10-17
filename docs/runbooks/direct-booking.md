@@ -379,8 +379,9 @@ IP). Nothing is logged when a session opens.
 Code: `Casazen.Core/Services/IGuestSessionService.cs`, `Casazen.Infrastructure/Services/GuestSessionService.cs`, `GuestSessionTokens.cs`,
 `GuestBookingLookupService.cs` (`LoadAsync`, `ViewOfAsync`), `Casazen.Web/Authorization/GuestSessionAuthentication.cs` (scheme, claims,
 `GetGuestSessionTicket`), `CasazenPolicies.GuestSession`, `Casazen.Web/Controllers/GuestAreaController.cs`,
-`Casazen.Web/Infrastructure/GuestSessionCodeRateLimiter.cs`. Frontend: `src/features/public-booking/guest-bookings-page.tsx`,
-`src/features/public-booking/guest-session/`. Test: `GuestBookingLookupPostgresTests.GuestSession_…` (tenancy, uniform 404).
+`Casazen.Web/Infrastructure/GuestSessionCodeRateLimiter.cs`. Frontend: `src/features/public-booking/guest-bookings-page.tsx` (the form,
+"Esci" and `guest-area-slot.tsx`, where the messages of the guest hook in), `src/api/guest-session.api.ts`, `src/lib/guest-session.ts`,
+`src/queries/use-guest-session.ts`. Test: `GuestBookingLookupPostgresTests.GuestSession_…` (tenancy, uniform 404).
 
 ## 9. Deferred charge of "Paga più tardi" (BK-08)
 
