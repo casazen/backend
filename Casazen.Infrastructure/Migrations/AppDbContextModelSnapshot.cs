@@ -1338,6 +1338,52 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("GuestConsentRecords");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.GuestMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AuthorUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Sender")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("ThreadId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex(new[] { "OrgId" }, "IX_GuestMessages_OrgId");
+
+                    b.HasIndex(new[] { "ThreadId", "CreatedAt" }, "IX_GuestMessages_ThreadId_CreatedAt");
+
+                    b.HasIndex(new[] { "ThreadId", "IdempotencyKey" }, "UIX_GuestMessages_ThreadId_IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("GuestMessages", t =>
+                        {
+                            t.HasCheckConstraint("CK_GuestMessages_Sender", "\"Sender\" IN (0, 1)");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.GuestPrivacyAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1376,6 +1422,54 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("GuestId", "OccurredAt");
 
                     b.ToTable("GuestPrivacyAuditEntries");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.GuestThread", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("GuestNotifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("HostNotifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("HostReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastGuestMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastHostMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex(new[] { "OrgId", "LastMessageAt" }, "IX_GuestThreads_OrgId_LastMessageAt");
+
+                    b.HasIndex(new[] { "BookingId" }, "UIX_GuestThreads_BookingId")
+                        .IsUnique();
+
+                    b.ToTable("GuestThreads");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.HighTensionAreaComune", b =>
@@ -7068,6 +7162,23 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Guest");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.GuestMessage", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.GuestThread", "Thread")
+                        .WithMany()
+                        .HasForeignKey("ThreadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Thread");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.GuestPrivacyAuditEntry", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
@@ -7075,6 +7186,31 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.GuestThread", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("Property");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.InAppNotification", b =>

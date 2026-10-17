@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -347,6 +348,110 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync(path, null)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync(path, altered)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync(path, "gs1.not-a-real-token")).StatusCode);
+    }
+
+    [PostgresFact]
+    public async Task GuestMessages_AGuestNeverReachesTheThreadOfAnotherGuestOrSite_AndAHostNeverListsTheThreadOfAnotherOrg()
+    {
+        // DB-14a: two sites with a guest each on THE SAME booking code and THE SAME email (codes are unique per org only), plus another
+        // guest of the first site. The free text of a message is personal data: it stays in its own thread and never goes in the email.
+        var orgA = await SeedOrgAsync();
+        var orgB = await SeedOrgAsync();
+        var own = await SeedBookingAsync(orgA, BookingStatus.Confirmed, checkInInDays: 30);
+        var otherGuestOfTheSite = await SeedBookingAsync(orgA, BookingStatus.Confirmed, checkInInDays: 40);
+        var sameCodeOtherSite = await SeedBookingAsync(orgB, BookingStatus.Confirmed, checkInInDays: 50, code: own.Code, email: own.Email);
+        var token = await OpenGuestSessionAsync(orgA, own);
+        var otherGuestToken = await OpenGuestSessionAsync(orgA, otherGuestOfTheSite);
+        var otherSiteToken = await OpenGuestSessionAsync(orgB, sameCodeOtherSite);
+
+        var path = $"{GuestBookingsPath}/{BookingCodes.Format(own.Code)}/messages";
+        var marker = $"segreto-{Guid.NewGuid():N}";
+        var sent = await PostMessageAsync(path, token, $"{marker} IBAN IT60X0542811101000000123456 grazie", Guid.NewGuid().ToString());
+        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+        var sentBody = JsonDocument.Parse(await sent.Content.ReadAsStringAsync()).RootElement;
+        Assert.True(sentBody.GetProperty("redacted").GetBoolean());
+        var stored = sentBody.GetProperty("message").GetProperty("text").GetString()!;
+        Assert.Contains(marker, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain("IT60X0542811101000000123456", stored, StringComparison.Ordinal);
+
+        // The host is told by email that the guest wrote, and the email does not hold the text.
+        var queued = _factory.Emails.Queued.Where(e => e.To == orgA.ContactEmail).ToList();
+        var email = Assert.Single(queued);
+        Assert.DoesNotContain(marker, email.Content.HtmlBody + email.Content.Subject, StringComparison.Ordinal);
+
+        // The guest reads their thread; the other guest of the site and the guest of the other site (same code, same email) do not see it.
+        var own1 = JsonDocument.Parse(await (await GetAsync(path, token)).Content.ReadAsStringAsync()).RootElement;
+        Assert.Contains(marker, own1.GetProperty("messages")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
+        var otherSiteView = await GetAsync(path, otherSiteToken);
+        Assert.Equal(HttpStatusCode.OK, otherSiteView.StatusCode);
+        Assert.Equal(0, JsonDocument.Parse(await otherSiteView.Content.ReadAsStringAsync()).RootElement.GetProperty("messages").GetArrayLength());
+
+        // Another guest of the site, a code that does not exist, not a code: neither read nor write, and every refusal looks alike.
+        var refusals = new[]
+        {
+            await GetAsync(path, otherGuestToken),
+            await PostMessageAsync(path, otherGuestToken, "ciao", Guid.NewGuid().ToString()),
+            await GetAsync($"{GuestBookingsPath}/{UnusedCode(own.Code)}/messages", token),
+            await GetAsync($"{GuestBookingsPath}/not-a-code/messages", token),
+        };
+        var bodies = new List<string>();
+        foreach (var refusal in refusals)
+        {
+            Assert.Equal(HttpStatusCode.NotFound, refusal.StatusCode);
+            var text = await refusal.Content.ReadAsStringAsync();
+            Assert.DoesNotContain(marker, text, StringComparison.Ordinal);
+            var problem = JsonDocument.Parse(text).RootElement;
+            Assert.Equal(GuestBookingLookupErrorCodes.NotFound, problem.GetProperty("code").GetString());
+            bodies.Add(JsonSerializer.Serialize(new
+            {
+                status = problem.GetProperty("status").GetInt32(),
+                code = problem.GetProperty("code").GetString(),
+                detail = problem.GetProperty("detail").GetString(),
+            }));
+        }
+
+        Assert.Single(bodies.Distinct(StringComparer.Ordinal));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync(path, null)).StatusCode);
+
+        // The host's side: the guest of the other site writes too; each org lists only its own thread, and a collaborator who reaches
+        // another property lists none.
+        var otherSitePath = $"{GuestBookingsPath}/{BookingCodes.Format(sameCodeOtherSite.Code)}/messages";
+        var otherMarker = $"altro-{Guid.NewGuid():N}";
+        Assert.Equal(HttpStatusCode.OK, (await PostMessageAsync(otherSitePath, otherSiteToken, otherMarker, Guid.NewGuid().ToString())).StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var messages = scope.ServiceProvider.GetRequiredService<IGuestMessageService>();
+        var listA = await messages.ListForHostAsync(new HostScope(orgA.OrgId), needsReply: true, propertyId: null, page: 1, pageSize: 20);
+        var rowA = Assert.Single(listA.Items);
+        Assert.Equal(own.BookingId, rowA.BookingId);
+        Assert.True(rowA.NeedsReply);
+        Assert.Equal(1, rowA.UnreadCount);
+        Assert.DoesNotContain(otherMarker, rowA.LastGuestMessagePreview, StringComparison.Ordinal);
+        var listB = await messages.ListForHostAsync(new HostScope(orgB.OrgId), needsReply: null, propertyId: null, page: 1, pageSize: 20);
+        var rowB = Assert.Single(listB.Items);
+        Assert.Equal(sameCodeOtherSite.BookingId, rowB.BookingId);
+        Assert.DoesNotContain(marker, rowB.LastGuestMessagePreview, StringComparison.Ordinal);
+        var restricted = await messages.ListForHostAsync(
+            new HostScope(orgA.OrgId, GrantedToUserId: $"auth0|nobody-{Guid.NewGuid():N}"),
+            needsReply: null, propertyId: null, page: 1, pageSize: 20);
+        Assert.Empty(restricted.Items);
+    }
+
+    private async Task<string> OpenGuestSessionAsync(OrgSeed org, BookingSeed booking)
+    {
+        var opened = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = booking.Code, email = booking.Email });
+        Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
+        return JsonDocument.Parse(await opened.Content.ReadAsStringAsync()).RootElement.GetProperty("accessToken").GetString()!;
+    }
+
+    /// <summary>POST of a message from a client IP of its own, with the guest-session token as the bearer and the key of the send.</summary>
+    private async Task<HttpResponseMessage> PostMessageAsync(string path, string bearerToken, string text, string idempotencyKey)
+    {
+        using var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(new { text }) };
+        request.Headers.Add(TestPeerIpStartupFilter.HeaderName, NextPeer());
+        request.Headers.Add("Idempotency-Key", idempotencyKey);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
+        return await client.SendAsync(request);
     }
 
     [PostgresFact]

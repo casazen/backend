@@ -3043,4 +3043,13 @@
   <data name="ReviewDecisionInvalid" xml:space="preserve">
     <value>Scegli se tenere o togliere la recensione.</value>
   </data>
+  <data name="GuestThreadClosed" xml:space="preserve">
+    <value>Questa conversazione è chiusa: non si possono più scrivere messaggi.</value>
+  </data>
+  <data name="GuestMessageTextInvalid" xml:space="preserve">
+    <value>Scrivi un messaggio: non può essere vuoto né più lungo di 2000 caratteri.</value>
+  </data>
+  <data name="IdempotencyKeyInvalid" xml:space="preserve">
+    <value>La richiesta non ha una chiave di invio valida (intestazione Idempotency-Key, da 8 a 64 lettere, numeri, trattini).</value>
+  </data>
 </root>

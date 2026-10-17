@@ -1560,4 +1560,43 @@
   <data name="ReviewInvite_Once" xml:space="preserve">
     <value>Ricevi questa email una sola volta, perché l'host ha chiesto una recensione per questo soggiorno. Se non vuoi scrivere nulla, puoi ignorarla.</value>
   </data>
+  <data name="GuestMessageToHost_Subject" xml:space="preserve">
+    <value>Nuovo messaggio da {0} - {1}</value>
+  </data>
+  <data name="GuestMessageToHost_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha scritto un messaggio per il soggiorno a &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestMessageToHost_How" xml:space="preserve">
+    <value>Per leggerlo e rispondere apri la prenotazione in CasaZen. Per proteggere i dati dell'ospite, il testo del messaggio non è in questa email.</value>
+  </data>
+  <data name="GuestMessageToHost_Cta" xml:space="preserve">
+    <value>Leggi e rispondi</value>
+  </data>
+  <data name="GuestMessageToHost_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="GuestMessageToHost_Why" xml:space="preserve">
+    <value>Ricevi questa email perché l'ospite ha scritto dall'area della sua prenotazione. Per non riempirti la posta, ne inviamo al massimo una ogni 10 minuti per conversazione.</value>
+  </data>
+  <data name="HostReplyToGuest_Subject" xml:space="preserve">
+    <value>{0} ti ha risposto</value>
+  </data>
+  <data name="HostReplyToGuest_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="HostReplyToGuest_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha risposto al tuo messaggio per il soggiorno a &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostReplyToGuest_How" xml:space="preserve">
+    <value>Per leggere la risposta apri la tua prenotazione (ti servono il codice e l'email della prenotazione) e vai alla sezione Messaggi. Il testo della risposta non è in questa email.</value>
+  </data>
+  <data name="HostReplyToGuest_Cta" xml:space="preserve">
+    <value>Apri la mia prenotazione</value>
+  </data>
+  <data name="HostReplyToGuest_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="HostReplyToGuest_Why" xml:space="preserve">
+    <value>Ricevi questa email perché l'host ti ha risposto. Ne inviamo al massimo una ogni 10 minuti per conversazione.</value>
+  </data>
 </root>

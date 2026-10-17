@@ -50,12 +50,16 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
         new(RateLimitPolicies.PublicReviewSubmit, 10, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.GuestMessageSend, 30, TimeSpan.FromMinutes(10)),
 
         // A policy of a signed-in endpoint: partitioned by person, since the request emails other people (AM-02b).
         new(RateLimitPolicies.OrgAccessRequest, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
         // The global search of the palette (UI-13a): per signed-in person as well, since the palette asks at every pause in typing.
         new(RateLimitPolicies.GlobalSearch, 60, OneMinute, PartitionByUser: true),
+
+        // The host answering a guest (DB-14a): per signed-in person as well, since the answer is an email to somebody else.
+        new(RateLimitPolicies.HostMessageSend, 60, TimeSpan.FromMinutes(10), PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)
@@ -70,6 +74,9 @@ public static class RateLimitingServiceCollectionExtensions
 
         // Per booking code limit of the guest session ([GuestSessionCodeRateLimit], DB-06a), next to its per-IP policy and the per-email limit.
         services.AddSingleton<GuestSessionCodeRateLimiter>();
+
+        // Per guest session and booking limit of the messages ([GuestMessageSessionRateLimit], DB-14a), next to its per-IP policy.
+        services.AddSingleton<GuestMessageSessionRateLimiter>();
 
         // Per email and supplier limit of the booking from a supplier's showcase ([SupplierBookingEmailRateLimit], SP-10), next to
         // its per-IP policy.

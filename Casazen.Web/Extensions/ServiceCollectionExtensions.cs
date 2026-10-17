@@ -621,6 +621,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicReviewService, PublicReviewService>();
         services.AddScoped<IHostReviewService, HostReviewService>();
         services.AddScoped<IAdminReviewService, AdminReviewService>();
+        // Messages between the guest of a direct booking and the host (DB-14a): the thread, its two sides and the two emails
+        // that are the consequence of a message (docs/runbooks/guest-messages.md).
+        services.AddScoped<IGuestMessageService, GuestMessageService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();

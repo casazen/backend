@@ -3043,4 +3043,13 @@
   <data name="ReviewDecisionInvalid" xml:space="preserve">
     <value>Choose whether to keep or remove the review.</value>
   </data>
+  <data name="GuestThreadClosed" xml:space="preserve">
+    <value>This conversation is closed: no more messages can be written.</value>
+  </data>
+  <data name="GuestMessageTextInvalid" xml:space="preserve">
+    <value>Write a message: it cannot be empty or longer than 2000 characters.</value>
+  </data>
+  <data name="IdempotencyKeyInvalid" xml:space="preserve">
+    <value>The request has no valid send key (Idempotency-Key header, 8 to 64 letters, digits or dashes).</value>
+  </data>
 </root>
