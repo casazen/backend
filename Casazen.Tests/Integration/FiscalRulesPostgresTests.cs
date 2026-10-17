@@ -129,27 +129,23 @@ public class FiscalRulesPostgresTests : IClassFixture<CasazenWebApplicationFacto
     }
 
     [PostgresFact]
-    public async Task CreatePayment_OtaStay_WithholdsOnlyOutsideImpresaRegime()
+    public async Task CreatePayment_OtaStay_IsRefusedBecauseThePortalCollects()
     {
+        // SR-06b: a receipt is recorded by hand only on a stay the host collects; the withholding rules of an OTA stay stay
+        // covered by FiscalRegimeServiceTests (ApplyWithholding_*).
         var host = $"auth0|co18-pay-{Guid.NewGuid():N}";
         using var client = _factory.CreateAuthenticatedClient(host, "PropertyOwner");
         var property = await _factory.SeedPropertyAsync(host);
-        var profile = await client.PutAsJsonAsync("/api/fiscal/tax-profile", new { hasPartitaIva = true, partitaIvaNumber = "12345678901" });
-        Assert.Equal(HttpStatusCode.OK, profile.StatusCode);
         var booking = await SeedStayAsync(property, new DateTime(TaxYear, 5, 10, 0, 0, 0, DateTimeKind.Utc), nights: 3, BookingSource.Airbnb);
 
-        // Partita IVA but cedolare: still a short-term rental, the OTA withholds (fiscale.md C10).
-        Assert.Equal(HttpStatusCode.OK, (await AssignAsync(client, property.Id, "CedolareSecca21")).StatusCode);
-        var withheld = await CreatePaymentAsync(client, booking.Id, 300m);
-        Assert.Equal(63m, withheld.GetProperty("otaWithholdingTax").GetDecimal());
-        Assert.Equal("AutoOta", withheld.GetProperty("withholdingSource").GetString());
+        var response = await PostPaymentAsync(client, booking.Id, 300m);
 
-        // Impresa regime: not a short-term rental, no withholding.
-        Assert.Equal(HttpStatusCode.OK, (await AssignAsync(client, property.Id, "RegimeOrdinario")).StatusCode);
-        var notWithheld = await CreatePaymentAsync(client, booking.Id, 300m);
-        Assert.Equal(0m, notWithheld.GetProperty("otaWithholdingTax").GetDecimal());
-        Assert.False(notWithheld.GetProperty("withholdingTaxApplied").GetBoolean());
-        Assert.Equal(300m, notWithheld.GetProperty("netAmountAfterWithholding").GetDecimal());
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("payment_booking_from_portal", problem.GetProperty("code").GetString());
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.Payments.AsNoTracking().AnyAsync(p => p.BookingId == booking.Id));
     }
 
     [PostgresFact]
@@ -210,11 +206,14 @@ public class FiscalRulesPostgresTests : IClassFixture<CasazenWebApplicationFacto
     private static Task<HttpResponseMessage> AssignAsync(HttpClient client, Guid propertyId, string regime) =>
         client.PutAsJsonAsync($"/api/fiscal/properties/{propertyId}/regime", new { taxYear = TaxYear, regime });
 
-    private static async Task<JsonElement> CreatePaymentAsync(HttpClient client, Guid bookingId, decimal amount)
+    private static async Task<HttpResponseMessage> PostPaymentAsync(HttpClient client, Guid bookingId, decimal amount)
     {
-        var response = await client.PostAsJsonAsync("/api/payments", new { bookingId, amount, method = "BankTransfer" });
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/payments")
+        {
+            Content = JsonContent.Create(new { bookingId, amount, method = "BankTransfer" }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        return await client.SendAsync(request);
     }
 
     private async Task<Booking> SeedStayAsync(Property property, DateTime checkIn, int nights, BookingSource source = BookingSource.Direct)

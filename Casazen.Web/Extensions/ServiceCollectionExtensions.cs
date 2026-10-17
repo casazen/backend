@@ -315,6 +315,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPaymentListService, PaymentListService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
+        // A payment the host received outside CasaZen (cash, bank transfer): born Completed, capped to the balance, once per key (SR-06b).
+        services.AddScoped<IManualPaymentService, ManualPaymentService>();
         // Refunds and cancellations on Stripe Connect (BK-02, docs/runbooks/stripe.md "Refunds").
         services.AddScoped<PaymentRefundService>();
         services.AddScoped<IPaymentRefundService>(sp => sp.GetRequiredService<PaymentRefundService>());

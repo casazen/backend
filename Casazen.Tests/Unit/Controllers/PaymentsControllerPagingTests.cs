@@ -44,7 +44,7 @@ public class PaymentsControllerPagingTests
         HostAuthorizationTestHarness.Create(OrgId),
         _orgResolver.Object,
         HostAuthorizationTestHarness.ScopeResolver(),
-        Mock.Of<IFiscalRegimeService>(),
+        Mock.Of<IManualPaymentService>(),
         Mock.Of<IPaymentRefundService>(),
         Mock.Of<ILogger<PaymentsController>>())
     {
