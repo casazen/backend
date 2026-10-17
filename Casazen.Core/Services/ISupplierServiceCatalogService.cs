@@ -49,6 +49,17 @@ public interface ISupplierServiceCatalogService
     Task<IReadOnlyList<SupplierPublicService>> ListPublicAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The published services of several suppliers at once, for the supplier picker of the marketplace (SR-09a): the same ones
+    /// as <see cref="ListPublicAsync"/> (<c>Active</c>, not deleted, of a supplier that is itself <c>Active</c>), read in one
+    /// statement for all the orgs (never one read per supplier), by position then creation date, as
+    /// <see cref="SupplierPickerService"/>. A supplier without any published service has no entry. Read-only; independent of the
+    /// <c>SupplierShowcaseBooking</c> flag.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<SupplierPickerService>>> ListPickerServicesAsync(
+        IReadOnlyCollection<Guid> supplierOrgIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// One service the public may see (<see cref="ListPublicAsync"/> rules) by its slug (lowercase, as stored); <c>null</c> for
     /// an unknown slug, a draft, a paused, a deleted service, a service of another supplier and a supplier that is not active.
     /// Read-only.

@@ -93,6 +93,44 @@ public class SupplierServiceCatalogService(
         .Select(ToPublic)
         .ToList();
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<SupplierPickerService>>> ListPickerServicesAsync(
+        IReadOnlyCollection<Guid> supplierOrgIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(supplierOrgIds);
+        if (supplierOrgIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<SupplierPickerService>>();
+
+        // One statement for every supplier asked about (a supplier has at most MaxServicesPerSupplier services); the rows are
+        // grouped here, in the order of the catalog.
+        var rows = await PublicListingsOfMany(db, supplierOrgIds.ToList())
+            .AsNoTracking()
+            .OrderBy(l => l.SortOrder)
+            .ThenBy(l => l.CreatedAt)
+            .ThenBy(l => l.Id)
+            .Select(l => new
+            {
+                l.OrgId,
+                l.Id,
+                l.Name,
+                l.Category,
+                l.DurationMinutes,
+                l.PriceFromCents,
+                l.PriceUnit,
+                l.RequiresQuote,
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(r => r.OrgId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<SupplierPickerService>)g
+                    .Select(r => new SupplierPickerService(
+                        r.Id, r.Name, r.Category, r.DurationMinutes, r.PriceFromCents, r.PriceUnit, r.RequiresQuote))
+                    .ToList());
+    }
+
     public async Task<SupplierPublicService?> FindPublicAsync(
         Guid supplierOrgId,
         string serviceSlug,
@@ -381,6 +419,18 @@ public class SupplierServiceCatalogService(
     internal static IQueryable<SupplierServiceListing> PublicListingsOf(AppDbContext db, Guid orgId) =>
         ListingsOf(db, orgId).Where(l =>
             l.Status == SupplierServiceListingStatus.Active && l.SupplierProfile.Status == SupplierStatus.Active);
+
+    /// <summary>
+    /// <see cref="PublicListingsOf"/> for several suppliers in one statement (the supplier picker of the marketplace, SR-09a):
+    /// the services of the orgs in <paramref name="orgIds"/>, not deleted, <c>Active</c>, of a supplier whose profile is itself
+    /// <c>Active</c>. The org predicate is explicit here too: nothing is read for an org that was not asked about.
+    /// </summary>
+    internal static IQueryable<SupplierServiceListing> PublicListingsOfMany(AppDbContext db, IReadOnlyCollection<Guid> orgIds) =>
+        db.SupplierServiceListings.Where(l =>
+            orgIds.Contains(l.OrgId)
+            && l.DeletedAt == null
+            && l.Status == SupplierServiceListingStatus.Active
+            && l.SupplierProfile.Status == SupplierStatus.Active);
 
     /// <summary>The public form of a service: the only type that leaves the catalog toward an anonymous read.</summary>
     internal static SupplierPublicService ToPublic(SupplierServiceListing listing) =>
