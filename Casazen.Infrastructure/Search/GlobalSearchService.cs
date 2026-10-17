@@ -205,16 +205,12 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
             return null;
 
         var scope = host.Scope;
-        var guests = db.Guests.AsNoTracking()
-            .Where(g => g.OrgId == scope.OrgId && !g.IsDeleted && g.DataAnonymizedDate == null);
 
-        // A guest belongs to the org, not to a property: whoever reaches only some properties finds the guests of their stays.
-        // The stays are a query of their own, so that the lambda below holds a subquery EF can translate (InScope is not a LINQ operator).
-        if (!scope.IsOrgWide)
-        {
-            var stays = db.Bookings.Where(b => b.OrgId == scope.OrgId).InScope(scope);
-            guests = guests.Where(g => stays.Any(b => b.GuestId == g.Id));
-        }
+        // A guest belongs to the org, not to a property: whoever reaches only some properties finds the guests of their stays
+        // (the rule of InScope for guests, the same as the guest list and the guest card, SR-04b).
+        var guests = db.Guests.AsNoTracking()
+            .Where(g => g.OrgId == scope.OrgId && !g.IsDeleted && g.DataAnonymizedDate == null)
+            .InScope(scope, db.Bookings);
 
         var (rows, hasMore) = await TakeAsync(
             guests

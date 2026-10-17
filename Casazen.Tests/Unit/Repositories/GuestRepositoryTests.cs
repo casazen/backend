@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
@@ -10,6 +11,10 @@ public class GuestRepositoryTests
 {
     private static readonly Guid OrgA = Guid.NewGuid();
     private static readonly Guid OrgB = Guid.NewGuid();
+
+    // The whole org of each: these tests are about the org boundary; the reach per property is HostScopePoints.GuestsAsync.
+    private static readonly HostScope ScopeA = new(OrgA);
+    private static readonly HostScope ScopeB = new(OrgB);
     private static readonly DateTime Today = new(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc);
 
     private readonly AppDbContext _context;
@@ -89,7 +94,7 @@ public class GuestRepositoryTests
         var guest = await _repository.AddAsync(NewGuest("Jane", "Smith", "jane.smith@example.com", OrgA));
 
         // Act
-        var result = await _repository.GetByIdInOrgAsync(OrgA, guest.Id);
+        var result = await _repository.GetByIdInScopeAsync(ScopeA, guest.Id);
 
         // Assert
         Assert.NotNull(result);
@@ -103,7 +108,7 @@ public class GuestRepositoryTests
         var guest = await _repository.AddAsync(NewGuest("Jane", "Smith", "jane.smith@example.com", OrgA));
 
         // Act
-        var result = await _repository.GetByIdInOrgAsync(OrgB, guest.Id);
+        var result = await _repository.GetByIdInScopeAsync(ScopeB, guest.Id);
 
         // Assert
         Assert.Null(result);
@@ -116,7 +121,7 @@ public class GuestRepositoryTests
         await _repository.AddAsync(NewGuest("Alice", "Johnson", "alice.johnson@example.com", OrgA));
 
         // Act
-        var result = await _repository.GetByEmailAsync(OrgA, "alice.johnson@example.com");
+        var result = await _repository.GetByEmailAsync(ScopeA, "alice.johnson@example.com");
 
         // Assert
         Assert.NotNull(result);
@@ -128,7 +133,7 @@ public class GuestRepositoryTests
     public async Task GetByEmailAsync_WithNonExistentEmail_ReturnsNull()
     {
         // Act
-        var result = await _repository.GetByEmailAsync(OrgA, "nonexistent@example.com");
+        var result = await _repository.GetByEmailAsync(ScopeA, "nonexistent@example.com");
 
         // Assert
         Assert.Null(result);
@@ -141,7 +146,7 @@ public class GuestRepositoryTests
         await _repository.AddAsync(NewGuest("Bob", "Wilson", "Bob.Wilson@Example.COM", OrgA));
 
         // Act
-        var result = await _repository.GetByEmailAsync(OrgA, "bob.wilson@example.com");
+        var result = await _repository.GetByEmailAsync(ScopeA, "bob.wilson@example.com");
 
         // Assert
         Assert.NotNull(result);
@@ -155,7 +160,7 @@ public class GuestRepositoryTests
         await _repository.AddAsync(NewGuest("Mario", "Rossi", "mario@example.com", OrgA));
 
         // Act
-        var result = await _repository.GetByEmailAsync(OrgB, "mario@example.com");
+        var result = await _repository.GetByEmailAsync(ScopeB, "mario@example.com");
 
         // Assert
         Assert.Null(result);
@@ -170,7 +175,7 @@ public class GuestRepositoryTests
         await AddBooker("Other", "Test", "guest1@example.com", OrgB);
 
         // Act
-        var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
+        var (items, total) = await _repository.GetPageAsync(ScopeA, null, 1, 20);
 
         // Assert
         Assert.Equal(2, total);
@@ -181,7 +186,7 @@ public class GuestRepositoryTests
     public async Task GetPageAsync_WithNoGuests_ReturnsEmpty()
     {
         // Act
-        var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
+        var (items, total) = await _repository.GetPageAsync(ScopeA, null, 1, 20);
 
         // Assert
         Assert.Empty(items);
@@ -199,7 +204,7 @@ public class GuestRepositoryTests
         await AttachBooking(deleted);
 
         // Act
-        var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
+        var (items, total) = await _repository.GetPageAsync(ScopeA, null, 1, 20);
 
         // Assert
         Assert.Equal(1, total);
@@ -220,7 +225,7 @@ public class GuestRepositoryTests
         }
 
         // Act
-        var (items, total) = await _repository.GetPageAsync(OrgA, null, 2, 2);
+        var (items, total) = await _repository.GetPageAsync(ScopeA, null, 2, 2);
 
         // Assert
         Assert.Equal(5, total);
@@ -246,7 +251,7 @@ public class GuestRepositoryTests
         await AttachBooking(otherOrgJohn);
 
         // Act
-        var (items, total) = await _repository.GetPageAsync(OrgA, searchTerm, 1, 20);
+        var (items, total) = await _repository.GetPageAsync(ScopeA, searchTerm, 1, 20);
 
         // Assert
         Assert.Equal(1, total);
@@ -464,7 +469,7 @@ public class GuestRepositoryTests
         await _repository.AddAsync(NewGuest("Companion", "Only", "companion@example.com", OrgA));
         await AddBooker("Booker", "Test", "booker@example.com", OrgA);
 
-        var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
+        var (items, total) = await _repository.GetPageAsync(ScopeA, null, 1, 20);
 
         Assert.Equal(1, total);
         Assert.Equal("Booker", Assert.Single(items).FirstName);

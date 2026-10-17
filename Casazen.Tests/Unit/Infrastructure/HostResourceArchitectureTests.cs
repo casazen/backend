@@ -16,7 +16,8 @@ public class HostResourceArchitectureTests
 
     /// <summary>
     /// The files that may use the org-level resource: the rows are the guests of the org (GDPR rights, the guest card), which have no
-    /// property. Guests are not narrowed by the scope yet (AM-03-FU2 in the follow-ups of the team); a property-bound row never belongs here.
+    /// property. The resource only carries the permission check: the reach of the caller on a guest (its stays at the properties it
+    /// reaches, SR-04b, which closed AM-03-FU2) is applied where the guest is looked up. A property-bound row never belongs here.
     /// </summary>
     private static readonly string[] OrgLevelRows =
     [

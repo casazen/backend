@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
@@ -12,6 +13,9 @@ namespace Casazen.Tests.Unit.Services;
 public class GuestServiceTests
 {
     private static readonly Guid OrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
+
+    // The whole org: the reads below are about the org boundary; the reach per property is the repository's (HostScopePoints).
+    private static readonly HostScope Scope = new(OrgId);
 
     // 2026-09-23 22:30 UTC is already 2026-09-24 in Rome (CEST).
     private static readonly DateTimeOffset Now = new(2026, 9, 23, 22, 30, 0, TimeSpan.Zero);
@@ -38,10 +42,10 @@ public class GuestServiceTests
         // Arrange
         var guestId = Guid.NewGuid();
         var guest = new Guest { Id = guestId, OrgId = OrgId, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" };
-        _mockRepository.Setup(x => x.GetByIdInOrgAsync(OrgId, guestId, It.IsAny<CancellationToken>())).ReturnsAsync(guest);
+        _mockRepository.Setup(x => x.GetByIdInScopeAsync(Scope, guestId, It.IsAny<CancellationToken>())).ReturnsAsync(guest);
 
         // Act
-        var result = await _service.GetGuestAsync(OrgId, guestId);
+        var result = await _service.GetGuestAsync(Scope, guestId);
 
         // Assert
         Assert.NotNull(result);
@@ -54,10 +58,10 @@ public class GuestServiceTests
     {
         // Arrange
         var guestId = Guid.NewGuid();
-        _mockRepository.Setup(x => x.GetByIdInOrgAsync(OrgId, guestId, It.IsAny<CancellationToken>())).ReturnsAsync((Guest?)null);
+        _mockRepository.Setup(x => x.GetByIdInScopeAsync(Scope, guestId, It.IsAny<CancellationToken>())).ReturnsAsync((Guest?)null);
 
         // Act
-        var result = await _service.GetGuestAsync(OrgId, guestId);
+        var result = await _service.GetGuestAsync(Scope, guestId);
 
         // Assert
         Assert.Null(result);
@@ -69,14 +73,14 @@ public class GuestServiceTests
         // Arrange
         var email = "john.doe@example.com";
         var guest = new Guest { Id = Guid.NewGuid(), OrgId = OrgId, Email = email };
-        _mockRepository.Setup(x => x.GetByEmailAsync(OrgId, email, It.IsAny<CancellationToken>())).ReturnsAsync(guest);
+        _mockRepository.Setup(x => x.GetByEmailAsync(Scope, email, It.IsAny<CancellationToken>())).ReturnsAsync(guest);
 
         // Act
-        var result = await _service.GetGuestByEmailAsync(OrgId, email);
+        var result = await _service.GetGuestByEmailAsync(Scope, email);
 
         // Assert
         Assert.Same(guest, result);
-        _mockRepository.Verify(x => x.GetByEmailAsync(OrgId, email, It.IsAny<CancellationToken>()), Times.Once);
+        _mockRepository.Verify(x => x.GetByEmailAsync(Scope, email, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -85,11 +89,11 @@ public class GuestServiceTests
         // Arrange
         IReadOnlyList<Guest> guests = [new Guest { Id = Guid.NewGuid(), OrgId = OrgId, FirstName = "John" }];
         _mockRepository
-            .Setup(x => x.GetPageAsync(OrgId, "John", 2, 10, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetPageAsync(Scope, "John", 2, 10, It.IsAny<CancellationToken>()))
             .ReturnsAsync((guests, 11));
 
         // Act
-        var (items, total) = await _service.GetGuestsPageAsync(OrgId, "John", 2, 10);
+        var (items, total) = await _service.GetGuestsPageAsync(Scope, "John", 2, 10);
 
         // Assert
         Assert.Single(items);
@@ -194,7 +198,7 @@ public class GuestServiceTests
             .ReturnsAsync(new GuestUsage(HasReferences: false, HasOpenBookings: false));
 
         // Act
-        var result = await _service.DeleteGuestAsync(OrgId, guestId);
+        var result = await _service.DeleteGuestAsync(Scope, guestId);
 
         // Assert
         Assert.Equal(GuestDeletionResult.Deleted, result);
@@ -216,7 +220,7 @@ public class GuestServiceTests
             .ReturnsAsync(new GuestUsage(HasReferences: true, HasOpenBookings: false));
 
         // Act
-        var result = await _service.DeleteGuestAsync(OrgId, guestId);
+        var result = await _service.DeleteGuestAsync(Scope, guestId);
 
         // Assert
         Assert.Equal(GuestDeletionResult.Anonymized, result);
@@ -235,7 +239,7 @@ public class GuestServiceTests
             .ReturnsAsync(new GuestUsage(HasReferences: true, HasOpenBookings: true));
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<DomainConflictException>(() => _service.DeleteGuestAsync(OrgId, guestId));
+        var exception = await Assert.ThrowsAsync<DomainConflictException>(() => _service.DeleteGuestAsync(Scope, guestId));
 
         Assert.Equal("guest_has_open_bookings", exception.Code);
         _mockRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
@@ -249,10 +253,10 @@ public class GuestServiceTests
     {
         // Arrange
         var guestId = Guid.NewGuid();
-        _mockRepository.Setup(x => x.GetByIdInOrgAsync(OrgId, guestId, It.IsAny<CancellationToken>())).ReturnsAsync((Guest?)null);
+        _mockRepository.Setup(x => x.GetByIdInScopeAsync(Scope, guestId, It.IsAny<CancellationToken>())).ReturnsAsync((Guest?)null);
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<NotFoundException>(() => _service.DeleteGuestAsync(OrgId, guestId));
+        var exception = await Assert.ThrowsAsync<NotFoundException>(() => _service.DeleteGuestAsync(Scope, guestId));
 
         Assert.Equal("guest_not_found", exception.Code);
         _mockRepository.Verify(x => x.GetUsageAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -263,7 +267,7 @@ public class GuestServiceTests
     {
         var guestId = Guid.NewGuid();
         _mockRepository
-            .Setup(x => x.GetByIdInOrgAsync(OrgId, guestId, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetByIdInScopeAsync(Scope, guestId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Guest { Id = guestId, OrgId = OrgId, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" });
         return guestId;
     }

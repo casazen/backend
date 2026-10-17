@@ -52,6 +52,28 @@ public static class HostScopeQueryExtensions
         source.InScope(scope, review => review.Property);
 
     /// <summary>
+    /// The guests of the scope (SR-04b). A guest belongs to the org and to no property, so it is reached through its stays: in a
+    /// restricted scope it is one with a booking at a property the scope reaches (the rule of the bookings above, whatever the status
+    /// of the booking). An org-wide scope returns the query as it is, so it also keeps the guests that have no stay yet (registered
+    /// from the guest list); a restricted scope never reaches those. <paramref name="bookings"/> is where the stays are read from
+    /// (the <c>Bookings</c> of the caller's context): they are a query of their own, so that the lambda holds a subquery EF can
+    /// translate (<c>InScope</c> is not a LINQ operator), and the SQL is still one <c>EXISTS</c>.
+    /// </summary>
+    public static IQueryable<Guest> InScope(this IQueryable<Guest> source, HostScope scope, IQueryable<Booking> bookings)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(bookings);
+
+        if (scope.IsOrgWide)
+            return source;
+
+        var orgId = scope.OrgId;
+        var stays = bookings.Where(booking => booking.OrgId == orgId).InScope(scope);
+        return source.Where(guest => stays.Any(stay => stay.GuestId == guest.Id));
+    }
+
+    /// <summary>
     /// The rows of <paramref name="source"/> bound to a property the scope reaches, the property being what
     /// <paramref name="property"/> selects. For an org-wide scope the query is returned as it is.
     /// </summary>

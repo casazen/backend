@@ -11,7 +11,10 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Guests of the caller's org (TN-1). Every action is scoped to the caller's org: a guest of another
-/// org answers 404, exactly like a missing one. Responses are DTOs, never the entity.
+/// org answers 404, exactly like a missing one. Since SR-04b it is also scoped to the properties the caller reaches (AM-03): a
+/// caller limited to some properties reaches only the guests that have a stay at one of them, with their document number and
+/// scan, and any other guest answers 404 too; a guest with no stay at all is reached only by who reaches the whole org.
+/// Responses are DTOs, never the entity.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -19,6 +22,7 @@ namespace Casazen.Web.Controllers;
 public class GuestsController(
     IGuestService guestService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     IFileStorage fileStorage,
     IAuthorizationService authorizationService,
     ILogger<GuestsController> logger) : ControllerBase
@@ -43,15 +47,16 @@ public class GuestsController(
     {
         logger.LogInformation("Retrieving guests with search term: {HasSearch}", !string.IsNullOrWhiteSpace(search));
 
-        var orgId = await ResolveOrgIdAsync();
-        if (orgId is null)
+        // No org yet, or no reach on it: nothing is listed and nothing is widened to the whole org.
+        var scope = await ResolveScopeAsync();
+        if (scope is null)
             return Forbid();
 
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
 
         var (guests, total) = await guestService.GetGuestsPageAsync(
-            orgId.Value, search, page, pageSize, HttpContext.RequestAborted);
+            scope, search, page, pageSize, HttpContext.RequestAborted);
 
         return Ok(new PagedResultDto<GuestSummaryDto>
         {
@@ -67,7 +72,7 @@ public class GuestsController(
     {
         logger.LogInformation("Retrieving guest: {GuestId}", id);
 
-        var guest = await FindGuestInOrgAsync(id);
+        var guest = await FindGuestAsync(id);
         if (guest is null)
             return GuestNotFound();
 
@@ -76,9 +81,10 @@ public class GuestsController(
 
     /// <summary>
     /// Full document number of a guest (CO-14): every other answer shows it masked (<c>*****</c> plus the last 3
-    /// characters). Explicit action like the stay guests' one (CO-09): guest of the caller's org (another org's guest
-    /// answers 404), <c>guest.read</c> on it (TN-3, otherwise 403), never cached; every request is logged with the user
-    /// and the guest (audit), never with the number. 404 <c>guest_document_number_missing</c> when there is none.
+    /// characters). Explicit action like the stay guests' one (CO-09): guest of the caller's org that the caller reaches (another
+    /// org's guest, or one with no stay at a property the caller reaches, answers 404), <c>guest.read</c> on it (TN-3, otherwise
+    /// 403), never cached; every request is logged with the user and the guest (audit), never with the number. 404
+    /// <c>guest_document_number_missing</c> when there is none.
     /// </summary>
     [HttpGet("{id:guid}/document-number")]
     [ProducesResponseType(typeof(GuestDocumentNumberDto), StatusCodes.Status200OK)]
@@ -86,7 +92,7 @@ public class GuestsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GuestDocumentNumberDto>> GetDocumentNumber(Guid id)
     {
-        var guest = await FindGuestInOrgAsync(id);
+        var guest = await FindGuestAsync(id);
         if (guest is null)
             return GuestNotFound();
 
@@ -106,15 +112,16 @@ public class GuestsController(
 
     /// <summary>
     /// Downloads the identity document scan the guest uploaded (FD-07 open point, CO-09). The scan lives in the private
-    /// bucket and is read only here: guest of the caller's org (another org's guest answers 404), <c>guest.read</c> on it
-    /// (TN-3, otherwise 403), never cached; every download is logged with the user and the guest (audit).
+    /// bucket and is read only here: guest of the caller's org that the caller reaches (another org's guest, or one with no stay
+    /// at a property the caller reaches, answers 404), <c>guest.read</c> on it (TN-3, otherwise 403), never cached; every download
+    /// is logged with the user and the guest (audit).
     /// </summary>
     [HttpGet("{id:guid}/document-scan")]
     [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DownloadDocumentScan(Guid id)
     {
-        var guest = await FindGuestInOrgAsync(id);
+        var guest = await FindGuestAsync(id);
         if (guest is null)
             return GuestNotFound();
 
@@ -147,11 +154,11 @@ public class GuestsController(
     {
         logger.LogInformation("Retrieving guest by email lookup");
 
-        var orgId = await ResolveOrgIdAsync();
-        if (orgId is null)
+        var scope = await ResolveScopeAsync();
+        if (scope is null)
             return GuestNotFound();
 
-        var guest = await guestService.GetGuestByEmailAsync(orgId.Value, email, HttpContext.RequestAborted);
+        var guest = await guestService.GetGuestByEmailAsync(scope, email, HttpContext.RequestAborted);
         if (guest is null)
         {
             logger.LogWarning("Guest not found for email lookup");
@@ -205,7 +212,7 @@ public class GuestsController(
 
         logger.LogInformation("Updating guest: {GuestId}", id);
 
-        var existing = await FindGuestInOrgAsync(id);
+        var existing = await FindGuestAsync(id);
         if (existing is null)
         {
             logger.LogWarning("Guest not found: {GuestId}", id);
@@ -231,7 +238,8 @@ public class GuestsController(
     /// Deletes a guest of the caller's org. Without bookings the row is removed; with past bookings it is
     /// kept (Restrict FK) but marked deleted and anonymized; with an open booking the answer is
     /// 409 <c>guest_has_open_bookings</c>. Never a 500 for the foreign key (A9-11). It needs <c>guest.manage</c> (AM-03), not
-    /// <c>guest.write</c>: a collaborator registers and corrects guests but does not delete them.
+    /// <c>guest.write</c>: a collaborator registers and corrects guests but does not delete them. A guest outside the caller's
+    /// reach (SR-04b) answers 404.
     /// </summary>
     [HttpDelete("{id}")]
     [Authorize(Policy = CasazenPolicies.GuestManage)]
@@ -239,11 +247,11 @@ public class GuestsController(
     {
         logger.LogInformation("Deleting guest: {GuestId}", id);
 
-        var orgId = await ResolveOrgIdAsync();
-        if (orgId is null)
+        var scope = await ResolveScopeAsync();
+        if (scope is null)
             return GuestNotFound();
 
-        var result = await guestService.DeleteGuestAsync(orgId.Value, id, User.GetUserId(), HttpContext.RequestAborted);
+        var result = await guestService.DeleteGuestAsync(scope, id, User.GetUserId(), HttpContext.RequestAborted);
         logger.LogInformation("Guest {GuestId} deletion completed: {Result}", id, result);
         return NoContent();
     }
@@ -251,13 +259,26 @@ public class GuestsController(
     private Task<Guid?> ResolveOrgIdAsync() =>
         orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
 
-    private async Task<Guest?> FindGuestInOrgAsync(Guid guestId)
+    /// <summary>
+    /// What the caller reaches in its org (AM-03): the whole org, or the properties it was given. <c>null</c> when it has no org yet
+    /// or no reach on it; that is never widened to the whole org, so the guest is then not found.
+    /// </summary>
+    private async Task<HostScope?> ResolveScopeAsync()
     {
         var orgId = await ResolveOrgIdAsync();
-        if (orgId is null)
+        return orgId is null
+            ? null
+            : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted);
+    }
+
+    /// <summary>The guest of the caller's org that the caller reaches (SR-04b); <c>null</c> for any other, answered as 404.</summary>
+    private async Task<Guest?> FindGuestAsync(Guid guestId)
+    {
+        var scope = await ResolveScopeAsync();
+        if (scope is null)
             return null;
 
-        return await guestService.GetGuestAsync(orgId.Value, guestId, HttpContext.RequestAborted);
+        return await guestService.GetGuestAsync(scope, guestId, HttpContext.RequestAborted);
     }
 
     private ObjectResult GuestNotFound() =>
