@@ -290,6 +290,29 @@ property page sends `POST /api/long-rent/service-requests` with the property onl
 - [ ] Long-rent: from `/app/long-rent/properties/{id}`, *Richiedi fornitore* → the request is listed there and not in
       the short-rent property overview; the supplier sees it in the inbox.
 
+### 7.5 The supplier picker of the marketplace: services, "from" price, response time and "Verificato" — SR-09a
+
+`GET /api/suppliers?propertyId=` (or `?comune=`, `&category=`) is what a host chooses a supplier from. Besides the fields of section 2 each supplier now carries,
+**additively** (no existing field changed), what a host weighs. Nothing here is behind a flag and none of it depends on `Features:SupplierShowcaseBooking`.
+
+| Field | What it is |
+|---|---|
+| `services[]` | Up to 3 (`SupplierPickerLimits.MaxServices`) **published** services of the supplier, in its own order: `id`, `name`, `category`, `durationMinutes`, `priceFromCents` (null = on quote), `priceUnit` (`PerJob`, `PerHour`, `PerSet`, `PerSquareMeter`), `requiresQuote`. Drafts, paused and deleted services never appear; the `id` is the catalog row (a request can keep it). |
+| `priceFromCents`, `priceFromUnit` | The lowest "from" price among **all** the published services (not only the 3 listed) and its unit; both null when no service has a price. |
+| `medianResponseMinutes` | The rule of the public showcase (`SupplierResponseTimes.PublicMedianMinutes`): the median of `TakenAt − CreatedAt` over the latest requests taken in the last 90 days (the ones accepted automatically, SP-04d, are left out), null until there are 5. Never written by hand. |
+| `verified` | The "Verificato" badge: the supplier is `Active` **and** has a VAT number (`SupplierVerification.IsProfileVerified`). It does **not** look at Stripe (`IsVerified`, the badge of the payments account of section 25, still needs the Connect account). Only the boolean leaves the server, never the VAT number. |
+| `showcaseSlug` | The address of the public showcase (`/fornitori/{slug}`); null when the supplier has none. |
+
+Parameters: `q` keeps the suppliers whose legal name or category code contains **every** word (any case; blank = all); `sort` is `name` (default), `price` (lowest first, no price last) or
+`response` (fastest first, not measured last); ties by name. Another `sort` is 400 `validation_error` (`SupplierSortInvalid`). `totalCount` and `pageSize` are the size of the filtered list (one page, as before).
+
+**Cost.** Two reads for the whole list whatever its size, never one per supplier: `ISupplierServiceCatalogService.ListPickerServicesAsync` (one statement on the published services of all the
+orgs asked for; the explicit org predicate is `PublicListingsOfMany`, allowed by `SupplierServiceListingTenancyTests`) and `ISupplierKpiService.GetMedianResponseMinutesBatchAsync` (the pairs of the
+window of all of them, grouped in memory). The long-rent search (`GET api/long-rent/service-requests/suppliers`) keeps its old answer: it carries `verified` and `showcaseSlug` (they come from the
+profile) but not the services, the price or the response time.
+
+`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account).
+
 ## 8. Service requests: validation, errors and concurrent transitions — SU-10
 
 Audit A4-17 / A4-18 / A4-19. Every error of `api/service-requests` and `api/long-rent/service-requests` has the FD-05
@@ -3045,6 +3068,50 @@ not exist yet is an empty cell. More than **20000 rows** is 422 `supplier_earnin
 - One grouped read for what is to be collected, one read of the payments paid in the last 8 months (rows of when, commission and net, added up in memory: fine for one supplier, a grouped
   read is the answer if one ever has tens of thousands of payments a month), one count of the late ones and the commission reading: five small statements and the page.
 - Limits: a refund does not move the figures of the month (the list shows it); there is no filter by service or by payer kind; `serviceName` is the copy kept on the request.
+- Demo seed: not applicable (the demo showcase has no supplier or service-request data, SP-04e-F5).
+
+## 31. The supplier's customers, the page "Clienti" — SP-16a (part 3)
+
+Part 3 of SP-16a (the settings and the checklist are section 29, the earnings section 30), backend only: **no flag, no migration, no new table**. `GET api/supplier/clients` and
+`GET api/supplier/clients/{id}`, policy `RequireSupplier`, supplier org from the caller's **own link** (never provisioned by a read of the customers), not behind a flag,
+`Cache-Control: private, no-store` (the answers carry personal data). **There is no export** (decision SP-D25: the contacts of the supplier's private customers are never exported).
+
+### 31.1 What a customer is
+
+There is no table of customers for the hosts, and the private customers of the showcase (`ServiceCustomers`, keyed by the supplier) are only some of them: a **customer is made by
+grouping the supplier's requests by the id they carry**, `CustomerId` for a private customer of the showcase, else the `OrgId` of the host that asked, the same id as `clientId` of
+`GET api/supplier/inbox` (so "its requests" is `inbox?clientId=…` for a host and for a private customer alike). Only the requests that are **open or taken** count (`Richiesto`,
+`PresoInCarico`, `InCorso`, `Completato`, `Pagato`): a request that was refused or cancelled makes nobody a customer, and a customer whose requests are all gone is not listed.
+
+| Field | Definition |
+|---|---|
+| `id`, `kind` (`host` or `private`), `source` (`casazen` or `showcase`) | the customer id above and where it comes from |
+| `label` | the host org's name; for a private customer **"Nome C." until a job of theirs is taken, then the full name** (decision D9, `ShowcaseBookingRules.AbbreviateName`); null for a removed customer |
+| `anonymized` | the retention job removed the private customer (its name is the placeholder `ANONYMIZED`, never sent): no `label`, no `contact`; the console says "Cliente rimosso" |
+| `jobsAccepted` | requests the supplier **took** and that are still jobs: `PresoInCarico`, `InCorso`, `Completato`, `Pagato` (the statuses of `SupplierJobDisclosure.IsDisclosed`; a job cancelled afterwards does not count, as for SP-04d) |
+| `jobsCompleted` | of those, `Completato` or `Pagato` |
+| `lastJobAt` | the latest job already begun (`InCorso`, `Completato`, `Pagato`), by the time of its work (else its completion, take or arrival); null when none |
+| `nextJobAt` | the first request still ahead of now (`Richiesto`, or `PresoInCarico`), by the time of its work; null when none |
+| `grossPaidCents` | the sum of the total declared on the jobs `Pagato`, which is what the payer paid; a refund does not reduce it (the earnings page shows refunds) |
+| `regular` | `jobsAccepted` of at least **3** (`SupplierRegulars.MinJobs`, decision SP-D6): the one threshold SP-04d reads too |
+| `contact` | `{ name, email, phone }`: **only once a job of the customer was taken** (`jobsAccepted` above 0): the private customer's name, e-mail and phone, or the host org's name and contact address (no phone: the owner's phone belongs to a property, see the request). Null before, and for a removed customer |
+
+The list is ordered by the latest activity (the time of the latest work among the customer's requests), the newest first. `filter`: `tutti` (default), `host`, `privati`, `abituali`
+(`regular`) and `nuovi` (`jobsAccepted` = 0: a request waits for the answer). Another value is 400 `validation_error` (`SupplierClientsFilterInvalid`). `pageSize` up to **200**: the
+console searches the name on the rows it loaded (decision SP-D23), so no search by name exists in the database. The detail adds `recentJobs`, the latest **six** requests of the
+customer (open or taken), the latest work first: `requestId`, `serviceName`, `category`, `status`, `phase` (an open set), `scheduledStart`, `completedAt`, `amountCents`; a customer that
+is not the caller's, or is nobody's, is 404 `supplier_client_not_found` (the same answer: the existence of another supplier's customer is not told).
+
+### 31.2 Privacy, tenancy and cost
+
+- **One line with the inbox (decision D9):** before a job is taken the supplier knows the host's name (as in the inbox) and "Nome C." of a private customer; the full name, the e-mail and
+  the phone come with the take, never before. The personal columns of a private customer are **encrypted at rest** and are read **only for the page returned**; the e-mail and the phone
+  are selected **only for the customers whose job was taken** (a `CASE` in the statement: for the others the database returns nothing, so nothing is decrypted).
+- `ServiceRequests` has two parties and no tenant filter, so the supplier org is an explicit predicate of the aggregation and of the detail; the private customers are read through
+  `IServiceCustomerReader.ListCardsAsync`, whose statement carries the same predicate (`ShowcaseBookingTenancyTests` allow-lists that file); the host orgs are read by the ids of the page
+  (an org is the tenant itself). A customer of another supplier has no request of this one, so it is not found.
+- Cost: one grouped read of the supplier's open or taken requests (count, sum, max, min per customer: the database does the arithmetic), then one read of the private customers of the page and
+  one of the host orgs of the page. Limits: no counters of the chips (the console counts what it loaded), no search by name in the database, no filter by source other than the chips.
 - Demo seed: not applicable (the demo showcase has no supplier or service-request data, SP-04e-F5).
 
 ## Known limits (other tasks)

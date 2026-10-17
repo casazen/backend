@@ -2326,8 +2326,17 @@
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Indica il comune oppure l'immobile per cercare i fornitori.</value>
   </data>
+  <data name="SupplierClientNotFound" xml:space="preserve">
+    <value>Cliente non trovato: non ha richieste aperte o prese in carico con te.</value>
+  </data>
+  <data name="SupplierClientsFilterInvalid" xml:space="preserve">
+    <value>Filtro dei clienti non valido: usa tutti, host, privati, abituali oppure nuovi.</value>
+  </data>
   <data name="SupplierShowcaseNotFound" xml:space="preserve">
     <value>Questa vetrina fornitore non esiste o non è più disponibile.</value>
+  </data>
+  <data name="SupplierSortInvalid" xml:space="preserve">
+    <value>Ordinamento non valido: usa name, price o response.</value>
   </data>
   <data name="FirstNameRequired" xml:space="preserve">
     <value>Il nome è obbligatorio.</value>
