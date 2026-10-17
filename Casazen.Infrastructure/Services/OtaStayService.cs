@@ -124,6 +124,7 @@ public sealed class OtaStayService(
             NumberOfAdults = guests,
             NumberOfChildren = 0,
             Status = BookingStatus.Confirmed,
+            ConfirmedAt = now,
             Source = source.Value,
             ExternalId = block.ExternalUid ?? string.Empty,
             ICalFeedId = feedId,

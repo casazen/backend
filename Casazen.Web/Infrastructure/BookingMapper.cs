@@ -77,6 +77,12 @@ public static class BookingMapper
             };
         response.CreatedAt = booking.CreatedAt;
         response.UpdatedAt = booking.UpdatedAt;
+        response.ConfirmedAt = booking.ConfirmedAt;
+        response.CancelledAt = booking.CancelledAt;
+        response.ArrivedAt = booking.ArrivedAt;
+        response.CheckedOutAt = booking.CheckedOutAt;
+        // The rule of PUT /api/bookings/{id}: the booking sheet and the calendar do not guess it (SR-05a).
+        response.CanEdit = BookingEditabilityDto.From(BookingEditRules.Of(booking));
         return response;
     }
 }

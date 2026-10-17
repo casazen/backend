@@ -242,6 +242,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("CancellationReason")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ChannelLabel")
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
@@ -250,6 +253,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("CheckOutDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CheckedOutAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("CheckoutTokenHash")
@@ -262,6 +268,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal>("CleaningFee")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");

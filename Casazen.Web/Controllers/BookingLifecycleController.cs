@@ -201,6 +201,33 @@ public class BookingLifecycleController(
     }
 
     /// <summary>
+    /// The history of a booking (SR-05a, SR-D17): what happened, in order, and what is waiting right now, for the booking sheet and its
+    /// drawer. There is no event log: the entries are derived from the timestamps the booking keeps (<c>createdAt</c>,
+    /// <c>confirmedAt</c>, <c>arrivedAt</c>, <c>checkedOutAt</c>, <c>cancelledAt</c>) and the rows tied to it (payments and refunds, the
+    /// check-in link, the Alloggiati communication); one confirmed, cancelled or checked out before the time was kept is there with
+    /// <c>at: null</c>, never with an invented time. The steps still to come are not entries. Each entry is
+    /// <c>{ kind, at, state, data }</c>: the title is the kind, the words are the client's. The amounts of payments and refunds only for a
+    /// caller with <c>payment.read</c> (the entry is there without the figure); no name and no email of the guest anywhere. 404 for a
+    /// booking the caller cannot reach (another org, or a property outside its scope).
+    /// </summary>
+    [HttpGet("{id:guid}/timeline")]
+    [ProducesResponseType(typeof(BookingTimelineDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BookingTimelineDto>> GetTimeline(
+        Guid id,
+        [FromServices] IBookingTimelineService timeline,
+        CancellationToken cancellationToken)
+    {
+        var resource = await hostResources.ForBookingAsync(id, cancellationToken);
+        if (resource is null || !await authorizationService.IsAuthorizedAsync(User, resource, BookingOperations.Read))
+            return BookingNotFound();
+
+        var includeAmounts = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
+        var events = await timeline.GetAsync(id, includeAmounts, cancellationToken);
+        return events is null ? BookingNotFound() : Ok(BookingTimelineDto.From(id, events));
+    }
+
+    /// <summary>
     /// Saves the progress of the check-out wizard (CO-17): the step the host is on and the answers given so far. Nothing
     /// is created or declared until <c>/complete</c>. 409 <c>checkout_wizard_not_started</c> before the start,
     /// <c>booking_already_checked_out</c> after the completion; 422 <c>checkout_step_invalid</c> for an unknown step.
