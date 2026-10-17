@@ -56,7 +56,10 @@ public sealed record LeaseSummaryDto(
 
 /// <summary>
 /// A party of the lease as the host sees it: the name (needed to recognise the signer), the role and whether the
-/// tenant is extra-EU (Questura notice). Fiscal code and email are masked; citizenship is not returned.
+/// tenant is extra-EU (Questura notice). Fiscal code and email are masked; citizenship is not returned. Since LR-12
+/// <c>DocumentsVerifiedOn</c> says on which day the landlord checked the identity document (a date is not a sensitive
+/// datum) and <c>HasResidence</c> that the residence is on record: the residence itself is never returned, like the fiscal code
+/// and the email (decision D29). Both are at the end and optional: a client that does not know them reads the DTO as before.
 /// </summary>
 public sealed record LeasePartyDto(
     Guid Id,
@@ -65,7 +68,9 @@ public sealed record LeasePartyDto(
     string LastName,
     string FiscalCodeMasked,
     string ContactEmailMasked,
-    bool IsExtraEU);
+    bool IsExtraEU,
+    DateOnly? DocumentsVerifiedOn = null,
+    bool HasResidence = false);
 
 /// <summary>
 /// RLI registration state (LT-01). The provider id, the receipt storage path and the declaring user stay on the server:
@@ -121,7 +126,10 @@ public sealed record LeaseEventDto(LeaseEventType EventType, DateTime OccurredAt
 /// <summary>
 /// Lease detail page. <c>StipulaDate</c>: the day every party had signed; <c>RegistrationDeadline</c>:
 /// <c>min(stipula, start) + 30</c> days, null while it is to be determined (LT-04). <c>HasSignedPdf</c>: the contract
-/// signed by every party can be downloaded (<c>GET /api/leases/{id}/signed-document</c>, LT-02).
+/// signed by every party can be downloaded (<c>GET /api/leases/{id}/signed-document</c>, LT-02). Since LR-12 the four last
+/// fields (all optional, at the end) tell how the lease came to be (<c>Origin</c>), how far the wizard got
+/// (<c>WizardMaxStep</c>), whether the review of the draft is confirmed (<c>ReviewConfirmedAt</c>) and whether the contract was
+/// downloaded for the signature on paper (<c>SentForSignatureAt</c>); no field that was there changed.
 /// </summary>
 public sealed record LeaseDetailDto(
     Guid Id,
@@ -144,7 +152,11 @@ public sealed record LeaseDetailDto(
     LeaseRegistrationDto? Registration,
     IReadOnlyList<LeaseEventDto> Events,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    LeaseOrigin Origin = LeaseOrigin.Created,
+    int WizardMaxStep = 0,
+    DateTime? ReviewConfirmedAt = null,
+    DateTime? SentForSignatureAt = null);
 
 /// <summary>
 /// Canone concordato data of a lease (LT-10, A7-12, A7-23): the characteristics declared at creation and the range the
@@ -211,7 +223,11 @@ public static class LeaseDtoMapper
             lease.Registration is null ? null : ToRegistration(lease.Registration),
             lease.Events.OrderBy(e => e.OccurredAt).Select(e => new LeaseEventDto(e.EventType, e.OccurredAt)).ToList(),
             lease.CreatedAt,
-            lease.UpdatedAt);
+            lease.UpdatedAt,
+            lease.Origin,
+            lease.WizardMaxStep,
+            lease.ReviewConfirmedAt,
+            lease.SentForSignatureAt);
     }
 
     public static LeaseConcordatoAssessmentDto ToConcordatoAssessment(LeaseConcordatoAssessment a)
@@ -259,7 +275,9 @@ public static class LeaseDtoMapper
             party.LastName,
             PersonalDataMasking.MaskFiscalCode(party.FiscalCode),
             PersonalDataMasking.MaskEmail(party.ContactEmail),
-            party.IsExtraEU);
+            party.IsExtraEU,
+            party.DocumentsVerifiedOn,
+            !string.IsNullOrWhiteSpace(party.Residence));
     }
 
     public static LeaseRegistrationDto ToRegistration(LeaseRegistration registration)

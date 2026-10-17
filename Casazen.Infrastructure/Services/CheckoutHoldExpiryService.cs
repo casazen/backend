@@ -406,6 +406,7 @@ public sealed class CheckoutHoldExpiryService(
     {
         var now = UtcNow();
         booking.Status = BookingStatus.Cancelled;
+        booking.CancelledAt = now;
         booking.CancellationReason = reason;
         booking.UpdatedAt = now;
 

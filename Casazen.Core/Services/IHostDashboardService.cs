@@ -37,6 +37,9 @@ namespace Casazen.Core.Services;
 /// here and not by the client (<see cref="HostOverviewRules"/>), the stays that arrive in the period (a request still waiting for
 /// the host counts here, as it does not in <see cref="StayKpiRules"/>) and the revenue by week or month
 /// (<see cref="HostOverviewSeries"/>), which adds up to the revenue of the period.</item>
+/// <item><b>Reports</b> (SR-10): the revenue, the occupancy and the stays of a period of up to <see cref="HostReportRules.MaxMonths"/>
+/// months cut by property or by channel, read through the code of the KPIs (the same stays, the same nights, the same rule), so
+/// the total of a report is the number of the Home for the same days.</item>
 /// </list>
 /// </remarks>
 public interface IHostDashboardService
@@ -81,6 +84,28 @@ public interface IHostDashboardService
     /// </exception>
     /// <exception cref="ArgumentException">A <see cref="HostDashboardPeriodKind.Custom"/> query whose days are missing or not accepted by <see cref="HostDashboardPeriod.TryCustom"/>.</exception>
     Task<HostOverview> GetOverviewAsync(HostScope scope, HostOverviewQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The revenue of the Home cut by property (SR-10, <c>GET /api/reports/revenue-by-property</c>): the same confirmed stays and the
+    /// same rule (<see cref="StayKpiRules"/>), so the total is the revenue the Home gives for the same days and each row the one the
+    /// Home gives for that property. The days are checked by <see cref="HostReportRules.CheckPeriod"/> before this is called.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="HostReportQuery.PropertyId"/> is not a property of the scope: the same 404 as <c>kpis</c>.</exception>
+    Task<HostRevenueByProperty> GetRevenueByPropertyAsync(HostScope scope, HostReportQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The occupancy of the Home cut by property (SR-10, <c>GET /api/reports/occupancy-by-property</c>): the same nights, per active
+    /// short-rent property, and the total the Home gives.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">As <see cref="GetRevenueByPropertyAsync"/>.</exception>
+    Task<HostOccupancyByProperty> GetOccupancyByPropertyAsync(HostScope scope, HostReportQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The confirmed stays of the Home cut by channel, <see cref="Booking.Source"/> (SR-10, <c>GET /api/reports/bookings-by-channel</c>):
+    /// the stays, nights and revenue of each, over the same stays as the revenue.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">As <see cref="GetRevenueByPropertyAsync"/>.</exception>
+    Task<HostBookingsByChannel> GetBookingsByChannelAsync(HostScope scope, HostReportQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>The iCal import feeds of the properties of <paramref name="scope"/>, by property name then creation.</summary>
     Task<IReadOnlyList<HostDashboardIcalFeed>> GetIcalFeedsAsync(HostScope scope, CancellationToken cancellationToken = default);

@@ -426,6 +426,30 @@
   <data name="LeaseNotFound" xml:space="preserve">
     <value>Contratto di locazione non trovato</value>
   </data>
+  <data name="LeaseDraftConflict" xml:space="preserve">
+    <value>La bozza è stata modificata da un'altra scheda o da un altro dispositivo. Ricaricala per vedere le modifiche prima di salvare di nuovo: questo salvataggio non è stato applicato.</value>
+  </data>
+  <data name="LeaseNotDraft" xml:space="preserve">
+    <value>Il contratto non è più una bozza.</value>
+  </data>
+  <data name="LeaseReviewBlocked" xml:space="preserve">
+    <value>La revisione ha ancora problemi da sistemare: finché ci sono non si può confermare.</value>
+  </data>
+  <data name="LeaseReviewNotConfirmed" xml:space="preserve">
+    <value>Conferma prima la revisione del contratto.</value>
+  </data>
+  <data name="LeaseReviewNotApplicable" xml:space="preserve">
+    <value>Un contratto già firmato non ha una revisione da confermare.</value>
+  </data>
+  <data name="LeaseSentNotApplicable" xml:space="preserve">
+    <value>Un contratto già firmato non si scarica per la firma.</value>
+  </data>
+  <data name="LeaseNotDeletable" xml:space="preserve">
+    <value>Si può eliminare solo una bozza senza copia firmata e senza piano dei canoni.</value>
+  </data>
+  <data name="LeaseDraftValuesInvalid" xml:space="preserve">
+    <value>I valori inviati non hanno la forma prevista per questo passo della bozza.</value>
+  </data>
   <data name="RliChecklist_contract_signed" xml:space="preserve">
     <value>Contratto firmato da tutte le parti</value>
   </data>
@@ -524,6 +548,15 @@
   </data>
   <data name="BookingCalendarRangeInvalid" xml:space="preserve">
     <value>La data di fine del calendario non può essere precedente alla data di inizio.</value>
+  </data>
+  <data name="CalendarWindowTooLarge" xml:space="preserve">
+    <value>Il calendario mostra al massimo {0} giorni alla volta: scegli un periodo più breve.</value>
+  </data>
+  <data name="CalendarTooManyProperties" xml:space="preserve">
+    <value>Puoi chiedere al massimo {0} immobili alla volta.</value>
+  </data>
+  <data name="CalendarInvalidRequest" xml:space="preserve">
+    <value>Le date o gli immobili richiesti non sono validi: controlla le date (da 2000 a 2100) e gli identificativi degli immobili.</value>
   </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
@@ -1621,6 +1654,18 @@
   <data name="DashboardInvalidOverviewPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, period=Last30Days, period=Next30Days oppure period=Custom con from e to nel formato AAAA-MM-GG (da 1 a 366 giorni).</value>
   </data>
+  <data name="ReportInvalidPeriod" xml:space="preserve">
+    <value>Periodo non valido: indica from e to nel formato AAAA-MM-GG, con from non dopo to.</value>
+  </data>
+  <data name="ReportPeriodTooLong" xml:space="preserve">
+    <value>Il periodo è troppo lungo: un report copre al massimo {0} mesi.</value>
+  </data>
+  <data name="ReportInvalidFormat" xml:space="preserve">
+    <value>Formato non valido: usa format=json oppure format=csv.</value>
+  </data>
+  <data name="CsvTooManyRows" xml:space="preserve">
+    <value>Il file avrebbe più di {0} righe: restringi il periodo o scegli un solo immobile.</value>
+  </data>
   <data name="BookingListInvalidArrivalRange" xml:space="preserve">
     <value>Intervallo non valido: la data di inizio degli arrivi (arrivalFrom) non può essere dopo quella di fine (arrivalTo).</value>
   </data>
@@ -2193,6 +2238,12 @@
   </data>
   <data name="SupplierAvailabilityRangeTooLong" xml:space="preserve">
     <value>L'intervallo massimo è di {0} giorni.</value>
+  </data>
+  <data name="SupplierAvailabilityRangeOutOfBounds" xml:space="preserve">
+    <value>Le date indicate non sono valide.</value>
+  </data>
+  <data name="SupplierConflictsRangeOutOfBounds" xml:space="preserve">
+    <value>Le date devono cadere tra {0} anno fa e {1} anni da oggi.</value>
   </data>
   <data name="SupplierPhotoLimit" xml:space="preserve">
     <value>Massimo {0} foto consentite: ne hai già {1} e ne stai caricando {2}.</value>

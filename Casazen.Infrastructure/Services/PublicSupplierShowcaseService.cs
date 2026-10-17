@@ -104,16 +104,10 @@ public sealed class PublicSupplierShowcaseService(
         var plan = await GetPlanAsync(supplier.OrgId, service, today, cancellationToken);
 
         // The window asked for, never before today; the plan itself ends at the supplier's horizon, so the window does too. A
-        // first day beyond the horizon is an empty window, not an error (and is checked before adding days to it: a made-up
-        // date must not overflow).
-        var count = Math.Clamp(days ?? PublicShowcaseLimits.SlotsDefaultDays, 1, PublicShowcaseLimits.SlotsMaxDays);
-        var first = from is { } requested && requested > today ? requested : today;
+        // first day beyond the horizon is an empty window, not an error. The supplier's own preview (SP-03b) cuts the same way.
         IReadOnlyList<PublicSlotDay> window = [];
-        if (first <= plan.BookableUntil)
-        {
-            var last = first.AddDays(count - 1);
-            window = plan.Days.Where(day => day.Date >= first && day.Date <= last).ToList();
-        }
+        if (PublicSlotWindow.RangeOf(today, plan.BookableUntil, from, days) is { } range)
+            window = plan.Days.Where(day => day.Date >= range.First && day.Date <= range.Last).ToList();
 
         return new PublicSlots(service.Slug, service.DurationMinutes ?? 0, plan.BookableUntil, window);
     }

@@ -53,6 +53,19 @@ public static class EncryptedColumns
     public const string PlatformAiSettingsPurpose = "Casazen.PlatformAiSettings";
 
     /// <summary>
+    /// Purpose of the typed state of a lease draft (LR-12): <see cref="LeaseContract.DraftData"/>, the JSON with the names, fiscal codes and
+    /// residences the landlord typed in the wizard, kept until the data of the draft is complete. Nothing is searched in it. Never change it.
+    /// </summary>
+    public const string LeaseDraftPurpose = "Casazen.LeaseContract.Draft";
+
+    /// <summary>
+    /// Purpose of the personal data of a party of a lease that is not already masked and hashed elsewhere (LR-12): the residence of
+    /// <see cref="Party"/>. The name, the fiscal code and the e-mail of a party stay as they have always been (clear in the table, masked in every
+    /// DTO); the residence is new, and is never returned. Never change it.
+    /// </summary>
+    public const string LeasePartyPurpose = "Casazen.LeaseParty";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -106,6 +119,13 @@ public static class EncryptedColumns
         new EncryptedEntity<PlatformAiSettings>(
             PlatformAiSettingsPurpose,
             nameof(PlatformAiSettings.ApiKey)),
+        // LR-12: the typed state of a lease draft and the residence of a party.
+        new EncryptedEntity<LeaseContract>(
+            LeaseDraftPurpose,
+            nameof(LeaseContract.DraftData)),
+        new EncryptedEntity<Party>(
+            LeasePartyPurpose,
+            nameof(Party.Residence)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>
