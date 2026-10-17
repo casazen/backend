@@ -2308,6 +2308,15 @@
   <data name="SupplierBlockNotFound" xml:space="preserve">
     <value>Block not found: it may have been deleted already, or it comes from your connected calendar and is removed there.</value>
   </data>
+  <data name="SupplierEarningsTabInvalid" xml:space="preserve">
+    <value>The earnings tab is not valid: use tutti, da-incassare, pagati, in-ritardo or da-verificare.</value>
+  </data>
+  <data name="SupplierEarningsPeriodInvalid" xml:space="preserve">
+    <value>The earnings period is not valid: the first day cannot be after the last one.</value>
+  </data>
+  <data name="SupplierEarningsExportTooLarge" xml:space="preserve">
+    <value>There are too many jobs for one file (more than {0}): narrow the period and try again.</value>
+  </data>
   <data name="SupplierRulesInvalid" xml:space="preserve">
     <value>The rules are not valid (fields: {0}). All five are required: break between jobs (0 to 240 minutes, in steps of 5), jobs per day (1 to 50), notice (0 to 720 hours), horizon (1 to 365 days) and slot step (15 to 240 minutes, in steps of 5).</value>
   </data>

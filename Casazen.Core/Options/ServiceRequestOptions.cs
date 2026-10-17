@@ -36,6 +36,13 @@ public class ServiceRequestOptions
     /// </summary>
     public int RemindIntervalHours { get; set; } = 6;
 
+    /// <summary>
+    /// SP-04d (decision SP-D6): how many jobs a host's org must already have taken with a supplier (<c>PresoInCarico</c>, <c>InCorso</c>,
+    /// <c>Completato</c> or <c>Pagato</c>) to be one of its regulars, whose requests the supplier accepts automatically when it turned
+    /// that on (3). Env var <c>Suppliers__ServiceRequests__RegularHostMinJobs</c>.
+    /// </summary>
+    public int RegularHostMinJobs { get; set; } = 3;
+
     /// <summary>Configuration errors, empty when the section is valid.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -50,6 +57,8 @@ public class ServiceRequestOptions
             failures.Add("Suppliers__ServiceRequests__FinalAmountTolerancePercent must be a percentage between 0 and 100.");
         if (RemindIntervalHours is < 1 or > 72)
             failures.Add("Suppliers__ServiceRequests__RemindIntervalHours must be between 1 and 72 hours.");
+        if (RegularHostMinJobs is < 1 or > 100)
+            failures.Add("Suppliers__ServiceRequests__RegularHostMinJobs must be between 1 and 100 jobs.");
         return failures;
     }
 }

@@ -558,6 +558,9 @@ public static class ServiceCollectionExtensions
         // The reads of the payments of a request for the supplier console: the summary of a job, the counters and the figures of the
         // home (SP-04e). The only reader of the payment table outside the payments service.
         services.AddScoped<ISupplierPaymentReadModels, SupplierPaymentReadModels>();
+        // The supplier's earnings, the page "Incassi": its completed and paid jobs with gross, commission and net, the figures above them and
+        // the CSV for its accountant (SP-16a).
+        services.AddScoped<ISupplierEarningsService, SupplierEarningsService>();
         // Supplier dashboard KPIs from the service requests (SU-11, A4-15), the money of the console home (SP-04) and its overview (SP-04e).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
         // The home ("Oggi") and the activation checklist of the supplier console (SP-04).

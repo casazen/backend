@@ -1516,6 +1516,7 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 | Event | To | Email | Push `type` |
 |---|---|---|---|
 | New request | the supplier | comune, time, amount, link to the inbox | `service-request-created` |
+| New request accepted automatically (SP-04d, section 21.14), **instead of** the line above | the supplier | comune, time, amount, link to the inbox; no address, no contact | `service-request-auto-accepted` |
 | Taken, started, completed (with final amount, the over-quote note and the supplier's notes), rejected | the host | status email | `service-request-taken`, `-started`, `-completed`, `-rejected` |
 | Cancelled by the supplier / by CasaZen (no answer) | the host | status email | `service-request-cancelled` |
 | Cancelled by the host / by CasaZen (no answer) | the supplier | comune, reason | `service-request-cancelled` |
@@ -1539,8 +1540,8 @@ Statuses travel **by name**. **`Annullato` is new** and a client that does not k
 ### 21.12 Configuration
 
 Section `Suppliers:ServiceRequests` (validated at startup, `appsettings.json` has the defaults): `Suppliers__ServiceRequests__HostResponseMinutes` (120,
-10 to 4320), `…__FinalAmountTolerancePercent` (20, 0 to 100), `…__RemindIntervalHours` (6, 1 to 72). Flag: `Features__SupplierRequestAutoCancel`
-(`feature-flags.md`, `deploy-checklist.md` § 2.11). Hangfire: `hangfire.md`.
+10 to 4320), `…__FinalAmountTolerancePercent` (20, 0 to 100), `…__RemindIntervalHours` (6, 1 to 72), `…__RegularHostMinJobs` (3, 1 to 100,
+section 21.14). Flag: `Features__SupplierRequestAutoCancel` (`feature-flags.md`, `deploy-checklist.md` § 2.11). Hangfire: `hangfire.md`.
 
 ### 21.13 After a deploy
 
@@ -1554,6 +1555,62 @@ Section `Suppliers:ServiceRequests` (validated at startup, `appsettings.json` ha
 - [ ] As the host: `cancel` with a reason → 200; `remind` twice → the second is 422 `service_request_remind_too_soon`.
 - [ ] `GET /api/supplier/today` and `GET /api/supplier/checklist` answer for a supplier with and without requests (`paymentsActive: null`).
 - [ ] An old request (created before the deploy) still opens everywhere with no time and no price.
+
+### 21.14 Automatic acceptance of a regular host's request — SP-04d
+
+Redesign wave task SP-04d (branch `feature/rd-supplier-auto-accept`, backend only: the switch is saved by `PUT api/supplier/settings`, SP-16a-1, section 29.1, and
+its screen is SP-16c). Decision SP-D6 of the Portale fornitori analysis. **No feature flag**: the function is off for every supplier
+(`SupplierSettings.AutoAcceptRegulars` is `false` by default), so nothing changes for anybody until a supplier turns it on with that call (the console screen for it is
+SP-16c, not built yet).
+
+**The rule** (`Casazen.Core/Suppliers/ServiceRequestAutoAccept.cs`, applied by `ServiceRequestService.CreateAsync`). A host's request is saved already
+`PresoInCarico`, instead of `Richiesto`, when **all** of this holds; otherwise nothing changes:
+
+| # | Condition | Why |
+|---|---|---|
+| 1 | The supplier turned the option on, is `Active`, and has no new version of the Terms of Service to accept | the same gate as a take by hand (`take` is refused with 422 `supplier_tos_reacceptance_required`) |
+| 2 | The request is for a **service of the catalog** that is priced (not `RequiresQuote`) | a request by category only, or on quote, has no price the supplier agreed to |
+| 3 | The host did **not type a duration** (`durationMinutes` is empty): the time was checked by the planner | a typed duration skips the check of the published hours (section 21.3), so the time was never verified |
+| 4 | It is a **host's** request (short-rent or long-rent) | the private customers of the supplier's showcase (SP-10) are never accepted this way: their requests are not created by this path at all |
+| 5 | The host's **org** has at least `Suppliers__ServiceRequests__RegularHostMinJobs` (3) **other** requests to this supplier in the status `PresoInCarico`, `InCorso`, `Completato` or `Pagato` | "regular" = three jobs taken with the same supplier, any date, short-rent and long-rent together; counted by org, not by user |
+
+With the default of 3, the **fourth** request of a host (after three jobs taken) is the first one accepted automatically; with two jobs taken it is not. A job the
+supplier **cancelled after the take does not count** (decision SP-D6, default of the brief); neither do rejected requests, requests cancelled by the
+host or by CasaZen, and the supplier's showcase requests. The slot and the overlap with the jobs already accepted are checked as for any request, **before**
+the take is written and in the same transaction, under the supplier's calendar lock: an automatic acceptance can never make two jobs overlap, and if the time is
+not free the request is refused with 409 `supplier_slot_unavailable` / `supplier_commitment_conflict` as it always was.
+
+**What the request looks like.** `Status = PresoInCarico`, `AutoAccepted = true` (new column), `TakenAt = CreatedAt`, no `TakenByUserId`, no `ResponseDueAt`,
+`PaymentMode` decided as for a take (`Online` only with `SupplierOnlinePayments` on and a payment-enabled Stripe account, otherwise `Manual`), no
+`QuotedAmountCents` (the estimate is the reference, as for a take without a quote). `autoAccepted` is in the DTOs of the host and of the supplier. The history is
+`Richiesto` (the host) then `PresoInCarico` with the actor **`System`** and no name: that is "Accettata in automatico" for the screens. Everything after is the normal life
+of a request: the supplier can cancel it (with a reason) until the work starts, the host can cancel it, `start` and `complete` as usual, and the supplier sees the address
+and the contact of the host as after any take (decision D9).
+
+**Messages.** Only the ones the flow already sends, and no other to anybody: the **host** gets the usual "taken" email and push (`service-request-taken`); the
+**supplier** gets, **instead of** the "new request" email and push, the email and push `service-request-auto-accepted` ("accettata in automatico"; comune, time and amount,
+never the address or the contact of the host, and an invitation to cancel from the console if it cannot do the job). Nothing is sent to the guest or to a third party.
+The setting `NotifyNewRequests` is not read by any code yet (SP-16d connects it, and will gate this message with the one of a new request).
+
+**Response time.** A request accepted automatically is born taken, so its wait would be 0: it is **left out of the average** (`GET api/supplier/today`, the overview of
+section 27) and of the public median, and it counts as **accepted** in the acceptance rate.
+
+**Data.** Migration `AddServiceRequestAutoAccepted`: one column `ServiceRequests.AutoAccepted boolean NOT NULL DEFAULT false`, no backfill (every request that exists is
+`false`); it goes down by dropping the column.
+
+**Limits (not done on purpose).** The threshold is one server value, not a setting of the supplier; no time windows, no pause after a cancellation, no message to the host
+about the reason; the count is read just before saving (a take or a cancellation of the supplier at the same instant may change the result by one job: the supplier can
+always cancel); the demo showcase has no supplier with the option on (it has no supplier or request data at all, section 27.12).
+
+**For the tasks stacked on this one.** `PUT api/supplier/settings` writes `AutoAcceptRegulars` under the same agenda lock that creating a request takes, so a request is
+judged on the value as it is saved; SP-16c shows the switch and the explanation; SP-08c shows `autoAccepted` and the "Accettata in automatico" step; SP-16d gates this
+message by `NotifyNewRequests`.
+
+**After a deploy.**
+- [ ] Migration `AddServiceRequestAutoAccepted` applied; every row has `AutoAccepted = false`.
+- [ ] Test environment, with `UPDATE "SupplierSettings" SET "AutoAcceptRegulars" = true` for a test supplier that has three jobs taken with a test host: a request of that host for a
+      priced service in a free slot answers 201 with `status: PresoInCarico` and `autoAccepted: true`, the host gets the "taken" email, the supplier the "accettata in
+      automatico" one; the same request for a service on quote, with a typed duration, or from another host stays `Richiesto`; switch the column back to `false`.
 
 ## 22. The public read side of the showcase: services, free slots and price estimate — SP-09
 
@@ -2497,7 +2554,7 @@ September**: a part of a month is not compared with a whole one. The answer carr
 | `accepted` | requests the supplier **took** (`TakenAt`), counted on the day of the take, not of the arrival; a request cancelled **after** the take is still accepted |
 | `rejected` | requests the supplier **refused**, on the day of the refusal (`Rifiutato`: its last update, like the KPIs of SU-11) |
 | `acceptanceRate` | `accepted / (accepted + rejected)`, from 0 to 1, four decimals; **`null` when the supplier answered none**. A request nobody answered (new, or cancelled by CasaZen for no answer) is no answer; a cancellation after the take does not change the rate |
-| `averageResponseMinutes` | the **mean** of `TakenAt − CreatedAt` of the requests taken in the period, in whole minutes; `null` when none was. The same pairs as `GET today` (which looks at the last 90 days). A request accepted by itself (SP-04d, not merged yet) will not count |
+| `averageResponseMinutes` | the **mean** of `TakenAt − CreatedAt` of the requests taken in the period, in whole minutes; `null` when none was. The same pairs as `GET today` (which looks at the last 90 days). A request accepted automatically (SP-04d, section 21.14) does not count |
 | `completedJobs` | jobs completed in the period (`Completato`, or `Pagato` afterwards), by `CompletedAt` |
 | `paidNetCents`, `paidGrossCents`, `commissionCents` | the payments with status **`Paid`** and `PaidAt` in the period (one recorded as received outside CasaZen included: no commission); `net = gross − commission`. **0 unless `onlinePayments`**. A payment that was paid and then refunded (`PartiallyRefunded`, `Refunded`) is **left out** until the earnings page (SP-16a) defines how a refund moves the figures |
 | `toCollectCents`, `toCollectJobs` | what is **still to be collected now**, only in `current` (`null` in `previous`: it is a state, not a flow). The jobs `Completato`: for a job paid outside CasaZen the **declared total** (gross, no commission exists), for one asked for inside it the **net** of its payment (while it is asked for, in progress, failed or under review). A job with no payment yet that waits for the host to confirm an amount above the quote (decision D7) counts at the declared total: the commission is computed when the payment is created. A job with no declared amount is a job to collect and adds nothing |
@@ -2621,8 +2678,8 @@ thousands of requests, `(SupplierOrgId, CreatedAt)` is the first candidate (with
   test `payment.id` to know whether there is one, never `payment != null`); `overview.onlinePayments` decides "Incassi" or "Lavori completati"; `previous.from/to`
   say what the delta compares with; `today.jobsTotal` says when the 50 jobs are not all of them. The Golden Journey keeps using `nuove`.
 - **SP-04b (quote)**: add `Quote` to `SupplierServiceRequestView` and pass `hasPendingQuote: Quote is not null` in `SupplierServiceRequestView.Phase`; add the
-  same test to the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and to `TabCountsOf`. **SP-04d (auto-accept)**: exclude the
-  requests accepted in automatic from `SupplierKpiService.AnswersBetween` (and from the average of `today`), as decided. **LR-08a (`tenantContact`)**: independent
+  same test to the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and to `TabCountsOf`. **SP-04d (auto-accept)**: done (section 21.14): the
+  requests accepted automatically are excluded from `SupplierKpiService.AnswersBetween` (and from the average of `today` and the public median). **LR-08a (`tenantContact`)**: independent
   fields of the same DTO.
 - **SP-16a (earnings)**: the definitions of "collected" (`Paid` by `PaidAt`) and "late" (flagged and still owed) are here (`ServicePaymentSchedule.IsOwed`,
   `SupplierPaymentReadModels`); reuse them, and decide how a refund moves the figures. **SP-15c (held payments)**: `payment.status` is an open set.
@@ -2879,7 +2936,7 @@ supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read
 | Field | Column of `SupplierSettings` | Default | What reads it |
 |---|---|---|---|
 | `onlineBookingEnabled` | `OnlineBookingEnabled` | `false` | the booking from the showcase (SP-10): off is 422 `supplier_booking_offline`. **Read-only here** (below) |
-| `autoAcceptRegulars` | `AutoAcceptRegulars` | `false` | SP-04d (a regular customer is one with at least three jobs taken); until it is deployed the switch is saved and changes nothing |
+| `autoAcceptRegulars` | `AutoAcceptRegulars` | `false` | SP-04d, section 21.14 (a regular host is one with at least three jobs taken with the supplier): on, the requests of its regular hosts are accepted automatically |
 | `notifyNewRequests` | `NotifyNewRequests` | `true` | SP-16d; until it is deployed no code reads it |
 | `notifyDayBeforeReminder` | `NotifyDayBeforeReminder` | `true` | SP-16d, same |
 | `notifyPayments` | `NotifyPaymentMarked` | `true` | SP-16d, same |
@@ -2911,6 +2968,84 @@ supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read
   flag off ("not available" is not a "no": the console does not count the step). The three consumers of the old `null` keep working with the flag off.
 - `SupplierTodayService` takes the payments account and the flags as optional trailing constructor parameters (the tests that build it by hand stay as they are); the
   container always gives both, and the checklist tests of `SupplierInboxIntegrationTests`, which go through the real host, fail if the registration is lost.
+
+## 30. The supplier's earnings, the page "Incassi" — SP-16a (part 2)
+
+Part 2 of SP-16a (the settings and the checklist are section 29, the clients section 31), backend only: **no flag, no migration, no new table**. `GET api/supplier/earnings`
+and `GET api/supplier/earnings/export`, policy `RequireSupplier`, supplier org from the caller's **own link** (a read of the money never provisions a supplier), **not behind
+`SupplierOnlinePayments`** (with the flag off the list holds only jobs paid outside CasaZen; the console hides the page), `Cache-Control: private, no-store`. Every amount is in
+**integer cents**, every sum is made **by the server** (a screen never recomputes a commission or a net) and the days are Europe/Rome days.
+
+### 30.1 The list
+
+`GET api/supplier/earnings?tab=&from=&to=&clientId=&page=&pageSize=` answers `{ items, total, page, pageSize, timeZone, summary }`. The rows are the supplier's jobs
+`Completato` or `Pagato`, the newest first, each joined with its **live payment** (the one that is not canceled: at most one per request, a unique index).
+
+| Tab (`tab`) | Rows | Notes |
+|---|---|---|
+| `tutti` (default) | every completed or paid job | |
+| `da-incassare` | `to_collect`, `late` and `in_review` | the same set as the tab `da-incassare` of the inbox |
+| `pagati` | `paid`, and the ones refunded afterwards (`refunded`, `partially_refunded`) | |
+| `in-ritardo` | `late` | also in `da-incassare` |
+| `da-verificare` | `in_review` | also in `da-incassare`; the console shows the chip only when there is one |
+
+Another `tab`, or a `from` after `to`, is 400 `validation_error` (`SupplierEarningsTabInvalid`, `SupplierEarningsPeriodInvalid`). `from`/`to` are Europe/Rome days, both
+included, on the **date of the row**: the day it was paid for a paid job (`PaidAt` of the payment, else of the request), otherwise the day it was completed. `clientId` is the
+customer id the inbox uses (the host org, or the private customer of the showcase). `pageSize` up to 100.
+
+**`state`** (an **open set**: the held payments of SP-15c will add blocked, held, released, in dispute; show a generic wording for a value you do not know) is
+`SupplierEarningStates.Of`: **the payment record says where the money is; the job says it only when there is no record**.
+
+| Payment record | `state` |
+|---|---|
+| none, job `Pagato` (the host marked it paid by hand) | `paid` (`paidVia` = `Offline`) |
+| none, job `Completato` | `to_collect` |
+| `Requested` or `Failed` | `late` when `LateAt` is set, else `to_collect` |
+| `Processing` | `to_collect` (in flight) |
+| `Paid` | `paid` |
+| `PartiallyRefunded` / `Refunded` | `partially_refunded` / `refunded` |
+| `NeedsReview` | `in_review` (Stripe reported something that does not match; an admin decides) |
+
+**The money of a row.** With a payment: `grossCents` = its amount, `commissionPercent`/`commissionCents`/`netCents` = the snapshot it was created with. Without one:
+a `Manual` job has **no commission at all** (`commissionPercent` 0, `commissionCents` 0, net = gross = the total the supplier declared), an `Online` job has **none computed
+yet** (the commission is computed when the payment is created), so its commission and net are **empty, never 0**; a job with no declared total has an empty gross.
+`refundedCents` is what was given back; **it does not rewrite the net**. `lateSince` is when the payment was flagged late (only on a `late` row). The customer
+(`clientLabel`) is the full name of a private customer once the job is taken (decision D9: every job here is) or the host org's name; a customer removed by the retention
+job has no label and `clientAnonymized: true` (the console says "Cliente rimosso"). A request by category only has no `serviceName` (the console shows `category`).
+
+### 30.2 The summary (independent of the filters of the list)
+
+| Field | Definition |
+|---|---|
+| `toCollectNetCents`, `toCollectJobs` | still to be collected now: for each job that is owed (`to_collect`, `late`, `in_review`) the **net of its payment** when it has one, else the total the supplier declared; a job with no total adds nothing and counts as a job. The same definition as `toCollectCents` of `GET api/supplier/dashboard/overview` (section 27.2) |
+| `paidThisMonthNetCents`, `commissionThisMonthCents` | the payments with status `Paid` and `PaidAt` in the current Europe/Rome month: their net and the commission CasaZen kept. A payment recorded as received outside CasaZen is `Paid` (no commission). The same figure as the home |
+| `lateCount` | payments asked for that are late and still owed (the same as `paymentsLate` of `inbox/counts`) |
+| `series` | the net paid in each of the last **8** Europe/Rome months (`{ month: "2026-10", netCents }`), the current one last; read together with the figure of the month, so `paidThisMonthNetCents` **is** the last month of the series |
+| `commission { percent, freeUntil }` | what a payment created now is charged: the supplier's own override while it is in force, else `SupplierPayments:CommissionPercent` (the same reading as `GET api/admin/suppliers/{orgId}/commission`); `freeUntil` is when a free period (an own commission of 0 %) ends, null otherwise. **No screen writes the number** (decision SP-D27) |
+| `onlinePayments` | the flag `SupplierOnlinePayments` is on **and** the supplier has at least one payment (not withdrawn) |
+
+**What "incassato" means** is in `stripe.md`: the `Paid` payments by payment date. So a payment refunded afterwards is no longer in the figures of the month and the series (it stays in
+the list with its state), and a job the host marked paid by hand, having no payment record, is listed as paid but is not in them. **Which "earnings" to use**: `GET api/supplier/today`
+(`earnings.estimated`, the totals the supplier declared) is the old estimate of the home; the page Incassi and the overview of the home use the figures above.
+
+### 30.3 The export
+
+`GET api/supplier/earnings/export?tab=&from=&to=&clientId=` is the same rows with the same filters (the page is ignored) as a CSV for the supplier's accountant: UTF-8 with a byte order
+mark, comma, CRLF, `Content-Type: text/csv; charset=utf-8`, `Content-Disposition` `incassi-YYYY-MM-DD.csv`, `Cache-Control: private, no-store`. Columns: `completed_on`, `paid_on`
+(Rome days), `service_request_id`, `service`, `client`, `state`, `payment_mode`, `paid_via`, `currency` (`EUR`), `gross_cents`, `commission_percent`, `commission_cents`, `net_cents`,
+`refunded_cents`. **No contact** is exported (no e-mail, no phone: decision SP-D25) and **no VAT** is computed (decision D4, `[CONSULENTE FISCALE]`, as the staff export). A text
+a spreadsheet would read as a formula (`=`, `+`, `-`, `@`, tab, carriage return) gets a leading apostrophe, with the same code as the staff export (`CommissionExportCsv`). An amount that does
+not exist yet is an empty cell. More than **20000 rows** is 422 `supplier_earnings_export_too_large`: the supplier narrows the period.
+
+### 30.4 Tenancy, cost and limits
+
+- `ServiceRequests` and `ServiceRequestPayments` have two parties and no tenant filter, so the supplier org is an **explicit predicate on both** statements of the list (the payment side
+  starts with `SupplierOrgId == …`, as `ServiceRequestPaymentTenancyTests` demands); all the reads are in `SupplierPaymentReadModels`, the only reader of the payment table for the console. Only the
+  columns the page needs are read (never the payment link, the PaymentIntent or the line items); the private customer's name is an encrypted column and is read **only for the page** returned.
+- One grouped read for what is to be collected, one read of the payments paid in the last 8 months (rows of when, commission and net, added up in memory: fine for one supplier, a grouped
+  read is the answer if one ever has tens of thousands of payments a month), one count of the late ones and the commission reading: five small statements and the page.
+- Limits: a refund does not move the figures of the month (the list shows it); there is no filter by service or by payer kind; `serviceName` is the copy kept on the request.
+- Demo seed: not applicable (the demo showcase has no supplier or service-request data, SP-04e-F5).
 
 ## 31. The supplier's customers, the page "Clienti" — SP-16a (part 3)
 

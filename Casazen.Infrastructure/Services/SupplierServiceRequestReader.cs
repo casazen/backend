@@ -222,7 +222,8 @@ public partial class SupplierServiceRequestReader(
                 row.CancellationReason,
                 row.CancelledBy,
                 PaidBy: row.PaidBy,
-                Requester: row.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host),
+                Requester: row.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host,
+                AutoAccepted: row.AutoAccepted),
             takenByName);
 
         return ToView(row, ownerPhones, summaries.GetValueOrDefault(row.Id), history);
@@ -449,6 +450,7 @@ public partial class SupplierServiceRequestReader(
                 UpdatedAt = r.UpdatedAt,
                 TakenAt = r.TakenAt,
                 TakenByUserId = r.TakenByUserId,
+                AutoAccepted = r.AutoAccepted,
                 CompletedAt = r.CompletedAt,
                 PaidAt = r.PaidAt,
                 // Activity date of the inbox period and order (SupplierInboxStatusFilter): completion for completed and
@@ -660,7 +662,8 @@ public partial class SupplierServiceRequestReader(
             NullIfBlank(row.CompletionNotes),
             ServiceRequestJson.ReadPhotos(row.WorkPhotosJson),
             row.PaymentMode,
-            payment);
+            payment,
+            row.AutoAccepted);
     }
 
     /// <summary>
@@ -698,6 +701,7 @@ public partial class SupplierServiceRequestReader(
         public DateTime UpdatedAt { get; init; }
         public DateTime? TakenAt { get; init; }
         public string? TakenByUserId { get; init; }
+        public bool AutoAccepted { get; init; }
         public DateTime? CompletedAt { get; init; }
         public DateTime? PaidAt { get; init; }
         public DateTime ActivityAt { get; init; }
