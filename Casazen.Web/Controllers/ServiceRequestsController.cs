@@ -727,7 +727,8 @@ public class ServiceRequestsController(
                         r.CancellationReason,
                         r.CancelledBy,
                         PaidBy: r.PaidBy,
-                        Requester: r.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host),
+                        Requester: r.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host,
+                        AutoAccepted: r.AutoAccepted),
                     takenByName: null)
                 .Select(h => ServiceRequestHistoryEntryDto.From(h))
                 .ToList(),
@@ -752,6 +753,7 @@ public class ServiceRequestsController(
             Proposal = ServiceRequestDtoParts.ToProposalDto(r.ProposedStartUtc, r.ProposedEndUtc, r.ProposedAt, r.ProposalMessage),
             LastRemindedAt = r.LastRemindedAt,
             PaymentMode = r.PaymentMode.ToString(),
+            AutoAccepted = r.AutoAccepted,
         };
     }
 

@@ -126,11 +126,15 @@ public partial class SupplierKpiService
                 g.Count(r => (r.Status == ServiceRequestStatus.Completato || r.Status == ServiceRequestStatus.Pagato)
                              && r.CompletedAt >= previousStart && r.CompletedAt < currentStart)));
 
-    /// <summary>When each request taken inside <c>[fromUtc, toUtc)</c> was received and taken, for the average response time.</summary>
+    /// <summary>
+    /// When each request taken inside <c>[fromUtc, toUtc)</c> was received and taken, for the average response time. The requests accepted
+    /// automatically (SP-04d) are left out: they are born taken, so their wait is zero; they still count as accepted in
+    /// <see cref="OverviewCountsOf"/>.
+    /// </summary>
     internal static IQueryable<AnswerPair> AnswersBetween(AppDbContext db, Guid supplierOrgId, DateTime fromUtc, DateTime toUtc) =>
         db.ServiceRequests
             .AsNoTracking()
-            .Where(r => r.SupplierOrgId == supplierOrgId && r.TakenAt != null && r.TakenAt >= fromUtc && r.TakenAt < toUtc)
+            .Where(r => r.SupplierOrgId == supplierOrgId && !r.AutoAccepted && r.TakenAt != null && r.TakenAt >= fromUtc && r.TakenAt < toUtc)
             .Select(r => new AnswerPair(r.CreatedAt, r.TakenAt!.Value));
 
     /// <summary>The jobs of the supplier completed and not paid yet, with the total each declared.</summary>

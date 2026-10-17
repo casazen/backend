@@ -19,6 +19,13 @@ public static partial class EmailTemplates
         Push(culture, "Push_ServiceRequestCreated", ServiceCategoryLabel(culture, category), comune);
 
     /// <summary>
+    /// A new service request that was accepted automatically for a regular host (SP-04d), to the supplier: it takes the place of
+    /// <see cref="ServiceRequestCreatedPush"/>. It names the comune, never the property or the host.
+    /// </summary>
+    public static PushText ServiceRequestAutoAcceptedPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ServiceRequestAutoAccepted", ServiceCategoryLabel(culture, category), comune);
+
+    /// <summary>
     /// What happened to a service request, to the host: taken, started, completed, rejected by the supplier, or cancelled by the
     /// supplier or by CasaZen (no answer in time). <c>null</c> for a status that has no push to the host (the caller then sends
     /// nothing): see <see cref="ServiceRequestStatusChanged"/>.

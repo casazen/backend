@@ -4,7 +4,8 @@ namespace Casazen.Core.Suppliers;
 /// The typical time a supplier takes to answer, as the public showcase may show it (SP-09). <b>Measured, never written</b>: it
 /// comes from the requests the supplier really took (<c>TakenAt − CreatedAt</c>, the same pairs as the average of
 /// <c>GET api/supplier/today</c>, SP-04), over the last <see cref="Services.SupplierEarningsSummary.ResponseWindowDays"/> days,
-/// and only once there are enough of them to mean something.
+/// and only once there are enough of them to mean something. A request accepted automatically (SP-04d) is born taken and nobody
+/// answered it: it is not one of the pairs.
 /// </summary>
 public static class SupplierResponseTimes
 {

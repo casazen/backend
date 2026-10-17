@@ -137,6 +137,13 @@ public class SupplierServiceRequestDto
     /// </summary>
     public string PaymentMode { get; set; } = nameof(Casazen.Core.Entities.Enums.ServiceRequestPaymentMode.Manual);
 
+    /// <summary>
+    /// The request was <b>accepted automatically</b> (SP-04d): the supplier turned on the acceptance of its regular hosts, so the request was
+    /// born <c>PresoInCarico</c> with <see cref="TakenAt"/> equal to <see cref="CreatedAt"/>, and no member of the supplier took it. The
+    /// supplier can still cancel it, with a reason, until the work starts. <c>false</c> for every other request.
+    /// </summary>
+    public bool AutoAccepted { get; set; }
+
     // ─── Phase and payment summary (SP-04e) ───
 
     /// <summary>
@@ -199,7 +206,11 @@ public class ServiceRequestHistoryEntryDto
     /// <summary>UTC instant of the transition.</summary>
     public DateTime At { get; set; }
 
-    /// <summary><c>Host</c>, <c>Supplier</c>, <c>System</c> (the automatic cancellation) or <c>Customer</c> (a private customer of the public showcase, SP-10).</summary>
+    /// <summary>
+    /// <c>Host</c>, <c>Supplier</c>, <c>System</c> (the automatic cancellation, or the take of a request accepted automatically, SP-04d:
+    /// <c>status</c> <c>PresoInCarico</c> with this actor is "Accettata in automatico") or <c>Customer</c> (a private customer of the
+    /// public showcase, SP-10).
+    /// </summary>
     public string Actor { get; set; } = string.Empty;
 
     /// <summary>The supplier member who took the request, when known; host members are never named.</summary>
@@ -249,7 +260,7 @@ public class SupplierTodayDto
 
     /// <summary>
     /// Average minutes from the arrival of a request to its take (<c>takenAt − createdAt</c>) over the requests taken in the
-    /// last 90 days; <c>null</c> when there are none.
+    /// last 90 days; <c>null</c> when there are none. The requests accepted automatically (<c>autoAccepted</c>, SP-04d) are left out.
     /// </summary>
     public int? AverageResponseMinutes { get; set; }
 
@@ -502,6 +513,7 @@ public static class SupplierServiceRequestMapper
         // The supplier reads the photos of its own requests through the shared endpoint, the same whatever the context.
         dto.WorkPhotos = ServiceRequestDtoParts.ToPhotoDtos(view.Id, view.WorkPhotos, ServiceRequestDtoParts.ShortRentBasePath);
         dto.PaymentMode = view.PaymentMode.ToString();
+        dto.AutoAccepted = view.AutoAccepted;
         dto.Phase = view.Phase;
         dto.Payment = view.Payment is null ? null : SupplierRequestPaymentDto.From(view.Payment);
         return dto;
@@ -641,7 +653,8 @@ public class SupplierOverviewPeriodDto
 
     /// <summary>
     /// Average minutes from the arrival of a request to its take (<c>takenAt − createdAt</c>) over the requests taken in the period; null when
-    /// none was. The same figure as <c>GET api/supplier/today</c>, for the period; the public showcase shows the median instead.
+    /// none was. The same figure as <c>GET api/supplier/today</c>, for the period; the public showcase shows the median instead. The
+    /// requests accepted automatically (<c>autoAccepted</c>, SP-04d) are left out of it, and count in <see cref="Accepted"/>.
     /// </summary>
     public int? AverageResponseMinutes { get; set; }
 
