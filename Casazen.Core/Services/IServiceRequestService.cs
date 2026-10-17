@@ -277,6 +277,12 @@ public static class ServiceRequestErrorCodes
 /// </remarks>
 public interface IServiceRequestService
 {
+    /// <summary>
+    /// A host's request to a supplier: <c>Richiesto</c>, waiting for the supplier's answer. <b>Unless</b> the supplier turned on the
+    /// automatic acceptance of its regular hosts and the request qualifies (SP-04d, <see cref="Casazen.Core.Suppliers.ServiceRequestAutoAccept"/>):
+    /// then it is saved already <c>PresoInCarico</c> with <see cref="ServiceRequest.AutoAccepted"/>, in the same transaction that
+    /// checked the slot, and the host and the supplier are told of the take.
+    /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>invalid_service_category</c>: the category is not a <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// Codes of <see cref="ServiceRequestErrorCodes"/>: the booking rules of the command's rental context (D2), a supplier

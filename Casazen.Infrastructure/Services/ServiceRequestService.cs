@@ -167,17 +167,92 @@ public partial class ServiceRequestService(
             await EnsureNoOverlappingCommitmentAsync(
                 command.SupplierOrgId, request.Id, schedule.Start, schedule.End, cancellationToken);
 
+            // SP-04d: with the slot checked, the request of a regular host is saved already taken, in this same transaction.
+            await AcceptAutomaticallyIfRegularAsync(request, command, supplier, service, cancellationToken);
+
             await repository.AddAsync(request, cancellationToken);
             await CommitAsync(transaction, cancellationToken);
         }
 
-        notifier.QueueCreated(request, supplier.Email, supplierEmail, comune);
+        if (!request.AutoAccepted)
+            notifier.QueueCreated(request, supplier.Email, supplierEmail, comune);
 
         logger.LogInformation(
             "ServiceRequest {Id} ({RentalContext}) created by {UserId} for property {PropertyId} booking {BookingId} supplier {SupplierOrgId}",
             request.Id, request.RentalContext, command.UserId, request.PropertyId, request.BookingId, request.SupplierOrgId);
 
-        return (await repository.GetByIdAsync(request.Id, cancellationToken))!;
+        var created = (await repository.GetByIdAsync(request.Id, cancellationToken))!;
+
+        // The request accepted automatically is told like a take, from the request as it is stored (with its property): the host
+        // learns it was accepted, the supplier that it was accepted for it. The supplier is not sent the email of a new request.
+        if (created.AutoAccepted)
+        {
+            await notifier.NotifyHostAsync(created, cancellationToken);
+            await notifier.NotifySupplierAutoAcceptedAsync(created, cancellationToken);
+        }
+
+        return created;
+    }
+
+    /// <summary>
+    /// SP-04d (decision SP-D6): turns the new <paramref name="request"/> into a job already taken when the supplier asked for its
+    /// regular hosts to be accepted automatically and the request qualifies (<see cref="ServiceRequestAutoAccept"/>). Called with the
+    /// supplier's calendar lock held and the slot and the overlap already checked, so the take is saved by the very transaction that
+    /// verified the time: an automatic acceptance never makes two jobs overlap. Does nothing, and the request stays <c>Richiesto</c> as
+    /// ever, unless every condition holds; the cheap ones are tried first, so nothing is read for a request that cannot qualify.
+    /// </summary>
+    private async Task AcceptAutomaticallyIfRegularAsync(
+        ServiceRequest request,
+        CreateServiceRequestCommand command,
+        SupplierProfile supplier,
+        SupplierServiceForRequest? service,
+        CancellationToken cancellationToken)
+    {
+        // A priced service of the catalog whose time the planner checked: a duration the host typed skips that check (see CreateAsync).
+        if (!ServiceRequestAutoAccept.IsEligibleRequest(service, command.DurationMinutes))
+            return;
+
+        // SupplierSettings is keyed by the supplier org and not tenant-filtered (same guard as the agenda): scoped by the supplier org.
+        // No row means the defaults, so off.
+        var enabled = await db.SupplierSettings
+            .AsNoTracking()
+            .Where(s => s.OrgId == supplier.OrgId)
+            .Select(s => s.AutoAcceptRegulars)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (!enabled)
+            return;
+
+        // The gate of a take by hand (SU-05): a supplier with a new version of the Terms to accept performs no action.
+        if (SupplierActivationRules.TosState(supplier, legalDocuments.GetTos().Version).BlocksActions)
+            return;
+
+        // The jobs this host's org has taken with this supplier. ServiceRequest has two parties and no tenant filter (TN-2 allow-list):
+        // scoped by both org ids, and a showcase request (whose OrgId is the supplier's own) is never a host's job.
+        var jobsTaken = await db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .CountAsync(
+                r => r.OrgId == request.OrgId
+                    && r.SupplierOrgId == request.SupplierOrgId
+                    && r.RentalContext != ServiceRequestRentalContext.Showcase
+                    && ServiceRequestAutoAccept.JobStatuses.Contains(r.Status),
+                cancellationToken);
+        if (!ServiceRequestAutoAccept.IsRegular(jobsTaken, options.Value.RegularHostMinJobs))
+            return;
+
+        // Like a take (SP-15a), the way it is paid is decided now; unlike a take, no member of the supplier does it.
+        request.PaymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
+        request.Status = ServiceRequestStatus.PresoInCarico;
+        request.AutoAccepted = true;
+        request.TakenAt = request.CreatedAt;
+        request.TakenByUserId = null;
+
+        // Answered at once: there is no deadline to meet.
+        request.ResponseDueAt = null;
+
+        logger.LogInformation(
+            "ServiceRequest {Id}: accepted automatically for a regular host of supplier {SupplierOrgId} ({JobsTaken} jobs taken with it)",
+            request.Id, request.SupplierOrgId, jobsTaken);
     }
 
     /// <summary>

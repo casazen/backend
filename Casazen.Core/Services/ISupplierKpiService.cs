@@ -36,7 +36,8 @@ public interface ISupplierKpiService
     /// <c>TakenAt − CreatedAt</c> over the requests taken in the last <see cref="SupplierEarningsSummary.ResponseWindowDays"/>
     /// days (the same pairs the average of <see cref="GetEarningsSummaryAsync"/> is made of), in whole minutes. <c>null</c> until
     /// there are <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/> of them: a response time is shown only when it is
-    /// measured, never written by hand. Read-only.
+    /// measured, never written by hand. The requests accepted automatically (SP-04d) are not among them: nobody answered them.
+    /// Read-only.
     /// </summary>
     Task<int?> GetMedianResponseMinutesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
@@ -81,7 +82,8 @@ public sealed record SupplierOverview(
 /// <param name="AcceptanceRate">Accepted over accepted plus rejected, from 0 to 1 with four decimals; null when the supplier answered none.</param>
 /// <param name="AverageResponseMinutes">
 /// Average of <c>TakenAt − CreatedAt</c> of the requests taken in the period, in whole minutes (the same pairs as
-/// <c>GET api/supplier/today</c>); null when it took none. A request accepted by itself (SP-04d) will not count.
+/// <c>GET api/supplier/today</c>); null when it took none. A request accepted automatically (SP-04d) does not count: it is born taken,
+/// so its wait would be zero (it counts as accepted in <paramref name="Accepted"/>).
 /// </param>
 /// <param name="CompletedJobs">Jobs completed (<c>Completato</c>, or <c>Pagato</c> afterwards), by completion date.</param>
 /// <param name="PaidNetCents">The net of the payments paid in the period (by <c>PaidAt</c>); 0 unless <see cref="SupplierOverview.OnlinePayments"/>.</param>
@@ -139,7 +141,8 @@ public record SupplierServiceRequestKpis(
 /// <param name="ToCollectJobs">Completed jobs not marked as paid yet.</param>
 /// <param name="AverageResponseMinutes">
 /// Average time from the arrival of a request to its take (<c>TakenAt − CreatedAt</c>) over the requests taken in the last
-/// <see cref="ResponseWindowDays"/> days, in whole minutes; <c>null</c> when there are none.
+/// <see cref="ResponseWindowDays"/> days, in whole minutes; <c>null</c> when there are none. The requests accepted automatically (SP-04d)
+/// are left out: nobody answered them.
 /// </param>
 /// <param name="IsEstimate">True while the amounts are declarations and not payments (always, until SP-15).</param>
 public sealed record SupplierEarningsSummary(

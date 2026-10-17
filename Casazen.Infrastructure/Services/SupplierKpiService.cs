@@ -136,22 +136,26 @@ public partial class SupplierKpiService(
             .GroupBy(_ => 1)
             .Select(g => new AmountGroup(g.Count(), g.Sum(r => (long?)r.FinalAmountCents)));
 
-    /// <summary>When each request taken since <paramref name="sinceUtc"/> was received and taken, for the average response time.</summary>
+    /// <summary>
+    /// When each request taken since <paramref name="sinceUtc"/> was received and taken, for the average response time. A request
+    /// accepted automatically (SP-04d) is born taken, so its wait would be zero and would falsify the average: it is left out.
+    /// </summary>
     internal static IQueryable<AnswerPair> AnswersOf(AppDbContext db, Guid supplierOrgId, DateTime sinceUtc) =>
         db.ServiceRequests
             .AsNoTracking()
-            .Where(r => r.SupplierOrgId == supplierOrgId && r.TakenAt != null && r.TakenAt >= sinceUtc)
+            .Where(r => r.SupplierOrgId == supplierOrgId && !r.AutoAccepted && r.TakenAt != null && r.TakenAt >= sinceUtc)
             .Select(r => new AnswerPair(r.CreatedAt, r.TakenAt!.Value));
 
     /// <summary>
     /// The latest <paramref name="limit"/> requests of the supplier taken since <paramref name="sinceUtc"/>, when each was
-    /// received and taken: the sample of the public response time (a median needs the pairs, not a sum).
+    /// received and taken: the sample of the public response time (a median needs the pairs, not a sum). The requests accepted
+    /// automatically (SP-04d) are left out, as in <see cref="AnswersOf"/>.
     /// </summary>
     internal static IQueryable<AnswerPair> RecentAnswersOf(AppDbContext db, Guid supplierOrgId, DateTime sinceUtc, int limit) =>
         // ServiceRequest has no tenant filter (two parties, TN-2 allow-list): scoped by the supplier org explicitly.
         db.ServiceRequests
             .AsNoTracking()
-            .Where(r => r.SupplierOrgId == supplierOrgId && r.TakenAt != null && r.TakenAt >= sinceUtc)
+            .Where(r => r.SupplierOrgId == supplierOrgId && !r.AutoAccepted && r.TakenAt != null && r.TakenAt >= sinceUtc)
             .OrderByDescending(r => r.TakenAt)
             .Take(limit)
             .Select(r => new AnswerPair(r.CreatedAt, r.TakenAt!.Value));

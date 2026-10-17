@@ -50,6 +50,7 @@ namespace Casazen.Core.Suppliers;
 /// Where the payment of a completed job stands and what the supplier may do about it (SP-04e): <b>null</b> unless the request has a payment
 /// record or is <c>Completato</c>. Filled by the reader (<see cref="SupplierJobPayment"/>); null in a view built without it.
 /// </param>
+/// <param name="AutoAccepted">The request was born taken: accepted automatically for a regular host (SP-04d); its take is a step of CasaZen itself in <paramref name="History"/>.</param>
 public sealed record SupplierServiceRequestView(
     Guid Id,
     ServiceRequestRentalContext RentalContext,
@@ -80,7 +81,8 @@ public sealed record SupplierServiceRequestView(
     string? CompletionNotes,
     IReadOnlyList<ServiceRequestPhoto> WorkPhotos,
     ServiceRequestPaymentMode PaymentMode = ServiceRequestPaymentMode.Manual,
-    SupplierJobPayment? Payment = null)
+    SupplierJobPayment? Payment = null,
+    bool AutoAccepted = false)
 {
     /// <summary>
     /// The phase of the request (SP-04e): <see cref="SupplierRequestPhases"/>, derived from the status and the proposed time in one

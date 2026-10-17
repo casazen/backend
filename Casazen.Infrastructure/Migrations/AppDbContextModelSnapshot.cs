@@ -4813,6 +4813,9 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AutoAccepted")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
 
