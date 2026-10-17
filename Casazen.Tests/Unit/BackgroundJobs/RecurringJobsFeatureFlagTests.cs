@@ -150,6 +150,26 @@ public class RecurringJobsFeatureFlagTests
         Assert.DoesNotContain(ServiceRequestAutoCancelJob.RecurringJobId, registered);
     }
 
+    // ─── LR-12: the retention of the abandoned lease drafts is always registered ───
+
+    [Fact]
+    public void Configure_TheDraftRetention_IsAlwaysScheduledDailyAt0350Utc_AndNeverRemoved()
+    {
+        var manager = new Mock<IRecurringJobManager>();
+        var scheduled = new Dictionary<string, (string Cron, RecurringJobOptions Options)>();
+        manager
+            .Setup(m => m.AddOrUpdate(It.IsAny<string>(), It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<RecurringJobOptions>()))
+            .Callback<string, Job, string, RecurringJobOptions>((id, _, cron, options) => scheduled[id] = (cron, options));
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false));
+
+        Assert.Equal("lease-draft-retention", LeaseDraftRetentionJob.RecurringJobId);
+        var job = scheduled[LeaseDraftRetentionJob.RecurringJobId];
+        Assert.Equal("50 3 * * *", job.Cron);
+        Assert.Equal(TimeZoneInfo.Utc, job.Options.TimeZone);
+        manager.Verify(m => m.RemoveIfExists(LeaseDraftRetentionJob.RecurringJobId), Times.Never);
+    }
+
     // ─── SP-10: the upkeep of the bookings from the suppliers' public showcases is always on ───
 
     [Fact]

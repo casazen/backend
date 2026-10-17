@@ -157,6 +157,39 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task ExecuteAsync_DraftStillBeingTyped_WithAStartDatePassed_GetsNoReminder()
+    {
+        // LR-12: the lease above (start 1/8, 15 days to the deadline) when the wizard still keeps its values in DraftData. It is not a
+        // contract yet, its dates may be starting values, and the landlord who is still typing is not reminded of it.
+        var typed = await SeedLeaseAsync(
+            LeaseStatus.Draft, new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), signedAt: null, draftData: "{}");
+        var complete = await SeedLeaseAsync(LeaseStatus.Draft, new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), signedAt: null);
+        // The guard is about drafts: a lease that is signed is reminded whatever typed state it has left behind.
+        var signed = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, draftData: "{}");
+
+        await RunAsync("2026-08-20T08:00:00Z");
+
+        Assert.Empty(await PayloadsAsync(typed));
+        Assert.Equal([$"t-15:{Deadline}"], await PayloadsAsync(complete));
+        Assert.Equal([$"t-15:{Deadline}"], await PayloadsAsync(signed));
+        Assert.Equal(2, _sent.Count);
+    }
+
+    [PostgresFact]
+    public async Task ExecuteAsync_DraftStillBeingTyped_WithAnExtraEuTenant_GetsNoQuesturaReminder()
+    {
+        var typed = await SeedLeaseAsync(LeaseStatus.Draft, StartOctober, signedAt: null, extraEu: true, draftData: "{}");
+        var complete = await SeedLeaseAsync(LeaseStatus.Draft, StartOctober, signedAt: null, extraEu: true);
+        var signed = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, extraEu: true, draftData: "{}");
+
+        await RunAsync("2026-10-01T08:00:00Z"); // the delivery day
+
+        Assert.Empty(await QuesturaPayloadsAsync(typed));
+        Assert.Equal([$"{Questura.Delivery}:{QuesturaDeadline}"], await QuesturaPayloadsAsync(complete));
+        Assert.Equal([$"{Questura.Delivery}:{QuesturaDeadline}"], await QuesturaPayloadsAsync(signed));
+    }
+
+    [PostgresFact]
     public async Task ExecuteAsync_DraftLeaseWithStartDateAhead_NoReminder()
     {
         var lease = await SeedLeaseAsync(LeaseStatus.AwaitingSignature, StartOctober, signedAt: null);
@@ -410,6 +443,7 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
         DateTime? deliveryDate = null,
         DateTime? questuraCommunicationDate = null,
         DateTime? endDate = null,
+        string? draftData = null,
         params string[] coLandlordEmails)
     {
         var org = new OrgEntity { Name = "Org LT-04", Slug = $"lt04-{Guid.NewGuid():N}", DisplayName = "Org LT-04", IsActive = true };
@@ -436,6 +470,7 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
             MonthlyRent = 800m,
             PropertyDeliveryDate = deliveryDate,
             QuesturaCommunicationDate = questuraCommunicationDate,
+            DraftData = draftData,
             Parties =
             [
                 new Party

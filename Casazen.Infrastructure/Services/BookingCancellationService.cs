@@ -84,6 +84,7 @@ public sealed class BookingCancellationService(
 
             var now = _clock.GetUtcNow().UtcDateTime;
             booking.Status = BookingStatus.Cancelled;
+            booking.CancelledAt = now;
             booking.CancellationNote = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
             booking.UpdatedAt = now;
 
