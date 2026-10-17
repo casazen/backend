@@ -198,6 +198,10 @@ public class AppDbContext(
     public DbSet<ReviewReport> ReviewReports { get; set; } = null!;
     public DbSet<ReviewInvite> ReviewInvites { get; set; } = null!;
 
+    // The messages between the guest of a direct booking and the host: one thread per booking (DB-14a)
+    public DbSet<GuestThread> GuestThreads { get; set; } = null!;
+    public DbSet<GuestMessage> GuestMessages { get; set; } = null!;
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -1989,6 +1993,40 @@ public class AppDbContext(
                 .WithMany()
                 .HasForeignKey(i => i.OrgId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ─── Messages between the guest and the host (DB-14a) ───────────────────
+        // A thread goes with its booking (and its property, which is soft-deleted, so in practice it stays): the reset of the demo deletes
+        // bookings in bulk and the erasure of a guest deletes its threads, so no foreign key may stop either. The messages go with the thread.
+        // Two first messages at the same moment: the loser gets 23505 on UIX_GuestThreads_BookingId and reads the thread the winner made.
+        modelBuilder.Entity<GuestThread>(entity =>
+        {
+            entity.HasOne(t => t.Property)
+                .WithMany()
+                .HasForeignKey(t => t.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(t => t.Booking)
+                .WithMany()
+                .HasForeignKey(t => t.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(t => t.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // A retried send with the same key loses the race on UIX_GuestMessages_ThreadId_IdempotencyKey (23505) and reads the first message.
+        modelBuilder.Entity<GuestMessage>(entity =>
+        {
+            entity.HasOne(m => m.Thread)
+                .WithMany()
+                .HasForeignKey(m => m.ThreadId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(m => m.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable(t => t.HasCheckConstraint("CK_GuestMessages_Sender", "\"Sender\" IN (0, 1)"));
         });
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the

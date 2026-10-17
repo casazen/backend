@@ -252,6 +252,9 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
 
+    /// <summary>Host console: the booking opened on its Messaggi tab (DB-14a), where the host reads the message of the guest and answers.</summary>
+    public string HostBookingMessages(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}?tab=messages");
+
     /// <summary>
     /// Host console: the page of one property in the area of its rental mode (routes <c>/app/short-rent/properties/:id</c> for
     /// <see cref="Core.Entities.Enums.RentalMode.Short"/>, <c>/app/long-rent/properties/:id</c> for

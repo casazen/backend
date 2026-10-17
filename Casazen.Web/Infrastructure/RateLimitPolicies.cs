@@ -83,6 +83,19 @@ public static class RateLimitPolicies
     public const string PublicReviewSubmit = "PublicReviewSubmit";
 
     /// <summary>
+    /// The guest writing to the host (<c>POST api/public/guest/bookings/{code}/messages</c>, DB-14a): free text that ends in an email to
+    /// the host, so it is bounded per client IP (30 per 10 minutes) and, with <see cref="GuestMessageSessionRateLimiter"/>, per guest
+    /// session and booking (20 per hour). Reading the thread uses <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string GuestMessageSend = "GuestMessageSend";
+
+    /// <summary>
+    /// The host answering a guest (<c>POST api/bookings/{id}/messages</c>, DB-14a): partitioned by <b>person</b> (the signed-in account),
+    /// since the answer ends in an email to the guest.
+    /// </summary>
+    public const string HostMessageSend = "HostMessageSend";
+
+    /// <summary>
     /// What an org invitation link is for (<c>POST api/org-invitations/lookup</c>, AM-02): anonymous, a token in the body.
     /// Tighter than <see cref="PublicRead"/>: a page asks once, and the token is 256 random bits, so nobody has a reason
     /// to ask often.
