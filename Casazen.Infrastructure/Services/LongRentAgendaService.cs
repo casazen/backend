@@ -289,8 +289,10 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
 
     /// <summary>
     /// The leases of the scope that can still carry a deadline: not rejected, not ended (a lease that ended with its registration
-    /// or its Questura communication never done is a closed matter, not an agenda item). Scalars only, nothing of the parties but
-    /// the first tenant's name and whether a tenant is extra-EU.
+    /// or its Questura communication never done is a closed matter, not an agenda item), and not a draft the landlord is still typing
+    /// (the wizard keeps its values in <c>DraftData</c> while some are missing, LR-12: its dates may be starting values, and it has no
+    /// deadline yet; it is still counted among the leases to sign). Scalars only, nothing of the parties but the first tenant's name
+    /// and whether a tenant is extra-EU.
     /// </summary>
     private async Task<List<LeaseRow>> LoadLeasesAsync(HostScope scope, CancellationToken cancellationToken)
     {
@@ -298,7 +300,7 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
         var rows = await db.LeaseContracts
             .AsNoTracking()
             .WithinScope(scope)
-            .Where(l => l.Status != LeaseStatus.Rejected && l.EndDate >= todayStored)
+            .Where(l => l.Status != LeaseStatus.Rejected && l.EndDate >= todayStored && (l.DraftData == null || l.Status != LeaseStatus.Draft))
             .Select(l => new
             {
                 l.Id,

@@ -1579,6 +1579,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DraftData")
+                        .HasColumnType("text");
+
+                    b.Property<int>("DraftVersion")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -1601,6 +1607,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("PartiesAnonymizedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1625,8 +1634,18 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("RegistrationDeadline")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("ReviewConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReviewFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<decimal?>("SecurityDeposit")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("SentForSignatureAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("SignedPdfStoragePath")
                         .HasMaxLength(1000)
@@ -1650,6 +1669,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("WizardMaxStep")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -2525,6 +2547,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<DateOnly?>("DocumentsVerifiedOn")
+                        .HasColumnType("date");
+
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -2548,6 +2573,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Position")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Residence")
+                        .HasColumnType("text");
 
                     b.Property<int>("Role")
                         .HasColumnType("integer");
