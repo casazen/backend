@@ -99,8 +99,10 @@ public class SupplierRequestsController(
 
     /// <summary>
     /// The activation checklist (SP-04), each step from what the supplier really did: profile complete, published services, working
-    /// hours saved (<c>hoursConfiguredAt</c>), showcase online, first request answered. <c>paymentsActive</c> is <b>always
-    /// <c>null</c> for now</b>: payments through CasaZen are not available yet (SP-14, SP-15), which is not a "no".
+    /// hours saved (<c>hoursConfiguredAt</c>), showcase online, first request answered. Since SP-16a it also carries
+    /// <c>verification</c> (<c>verified</c> and <c>missing</c>: the "Verificato" badge of decision D11, told whatever the flag
+    /// <c>SupplierOnlinePayments</c> says) and <c>paymentsActive</c> (<c>true</c> or <c>false</c> while that flag is on, <c>null</c> with
+    /// it off: "not available" is not a "no").
     /// </summary>
     [HttpGet("checklist")]
     [ProducesResponseType(typeof(SupplierChecklistDto), StatusCodes.Status200OK)]

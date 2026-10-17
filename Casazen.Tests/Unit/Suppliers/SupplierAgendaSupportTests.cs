@@ -31,12 +31,13 @@ public class SupplierAgendaSupportTests
     public void MessageKeys_AreUnique_AndTheFourErrorsOfTheSpecAreAmongThem()
     {
         Assert.Equal(SupplierAgendaErrors.MessageKeys.Count, SupplierAgendaErrors.MessageKeys.Distinct().Count());
-        Assert.Equal(8, SupplierAgendaErrors.MessageKeys.Count);
-        // The four of the task: hours, time off, block, rules.
+        Assert.Equal(9, SupplierAgendaErrors.MessageKeys.Count);
+        // The four of the task: hours, time off, block, rules; and the settings of the console (SP-16a).
         Assert.Contains("SupplierHoursInvalid", SupplierAgendaErrors.MessageKeys);
         Assert.Contains("SupplierTimeOffInvalid", SupplierAgendaErrors.MessageKeys);
         Assert.Contains("SupplierBlockInvalid", SupplierAgendaErrors.MessageKeys);
         Assert.Contains("SupplierRulesInvalid", SupplierAgendaErrors.MessageKeys);
+        Assert.Contains("SupplierSettingsInvalid", SupplierAgendaErrors.MessageKeys);
     }
 
     [Fact]
@@ -48,7 +49,7 @@ public class SupplierAgendaSupportTests
         foreach (var key in new[]
                  {
                      "SupplierHoursInvalid", "SupplierTimeOffInvalid", "SupplierBlockInvalid", "SupplierRulesInvalid",
-                     "SupplierTimeOffLimitReached", "SupplierBlockLimitReached",
+                     "SupplierSettingsInvalid", "SupplierTimeOffLimitReached", "SupplierBlockLimitReached",
                  })
         {
             Assert.Contains("{0}", italian[key]);

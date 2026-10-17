@@ -286,6 +286,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IComplianceMissingService, ComplianceMissingService>();
         // Lists that hold up with many rows: bookings by days, status and text, a page at a time; payments by booking and period (SR-03).
         services.AddScoped<IBookingSearchService, BookingSearchService>();
+        // The history of one booking, derived from its timestamps and the rows tied to it (SR-05a, SR-D17).
+        services.AddScoped<IBookingTimelineService, BookingTimelineService>();
         services.AddScoped<IPaymentListService, PaymentListService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();

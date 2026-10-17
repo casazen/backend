@@ -16,6 +16,10 @@ Task SP-14 (redesign wave) puts the supplier's Stripe Connect account behind `Su
 Task SP-15a (redesign wave) puts the **creation** of the payments of the supplier's work behind `SupplierOnlinePayments`
 (`docs/runbooks/stripe.md` § "Services of the suppliers (SP-15)", `docs/runbooks/suppliers.md` section 26); SP-15b adds the
 requests and reminders the daily job sends (and nothing else: the webhook, the sync and the refunds are not behind it).
+Task SP-16a (redesign wave) adds no flag. Two things to know when switching the two supplier flags on (`docs/runbooks/suppliers.md` section 29): the
+showcase takes bookings only for a supplier whose `SupplierSettings.OnlineBookingEnabled` is true, a column that **only the showcase editor writes**
+(`PUT api/supplier/settings` neither takes nor changes it, decision SP-D29), so `SupplierShowcaseBooking` alone opens nothing; and `GET api/supplier/checklist`
+tells `verification` whatever the flag says and `paymentsActive` only while `SupplierOnlinePayments` is on (`null` otherwise).
 
 The functions of the redesign wave that had a flag of their own (the new interface, the org team and its activity log, the scheduled
 change of the rental mode, the in-app notifications, the global search) are always on: they have no flag any more, and a
