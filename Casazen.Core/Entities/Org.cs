@@ -77,6 +77,25 @@ public class Org
     [MaxLength(20)]
     public string? PublicPhone { get; set; }
 
+    /// <summary>
+    /// Legal name of the operator of the booking site (DB-03b-a): the company name, or the name of the person who carries on the
+    /// activity, as the site shows it in its footer (the transparency duty of the provider of an information-society service,
+    /// of norm art. 7 D.Lgs. 70/2003 — to be confirmed by the lawyer before the production release). Plain text, at most
+    /// <c>OrgOperatorRules.LegalNameMaxLength</c> characters once the whitespace is collapsed. Null = the host has not entered
+    /// it: the site shows nothing, never an empty line. Written by <c>PUT api/orgs/me/settings</c>, read anonymously through
+    /// <c>PublicOrgDto.Operator</c>. Distinct from <see cref="Name"/>, the name of the account.
+    /// </summary>
+    [MaxLength(200)]
+    public string? LegalName { get; set; }
+
+    /// <summary>
+    /// Registered office ("sede legale") of the operator of the booking site (DB-03b-a), one free-text line such as
+    /// <c>Via Roma 1, 70121 Bari (BA)</c>: plain text, at most <c>OrgOperatorRules.RegisteredOfficeMaxLength</c> characters once
+    /// the whitespace is collapsed. Null = not entered. Written and read like <see cref="LegalName"/>.
+    /// </summary>
+    [MaxLength(300)]
+    public string? RegisteredOffice { get; set; }
+
     [MaxLength(255)]
     public string ContactEmail { get; set; } = string.Empty;
 

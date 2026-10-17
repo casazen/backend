@@ -719,3 +719,28 @@ FROM casazen_prod."Orgs";
   `OrgBrandingIntegrationTests`. PostgreSQL (CI): `AddDirectBookingPublicDataMigrationPostgresTests` (rows written by SQL at
   the schema before the migration, defaults, CHECKs, old writer, Down/Up) and `DirectCheckoutMarketingConsentPostgresTests`
   (two checkouts at once, payment not started, cascade, GDPR tab).
+
+## 12. Who runs the site: operator data in the footer (DB-03b-a)
+
+Task DB-03b-a of the redesign wave (reduced DB-03b, decision DB-D14 (a)). The booking site of a host shows, in its footer, the
+legal name, the registered office and the VAT number of the operator: the transparency duty of the provider of an
+information-society service (norm art. 7 D.Lgs. 70/2003). **The exact wording and the cases it applies to (an occasional host
+who is not a business) are to be confirmed by the lawyer: it is a precondition of the production release**, and the help text
+of the settings page is marked as a draft until then. Publication is never blocked when the data is missing (DB-D14 (a)).
+
+- **Fields.** `Orgs.LegalName` (varchar 200) and `Orgs.RegisteredOffice` (varchar 300, one free-text line such as
+  `Via Roma 1, 70121 Bari (BA)`), both `NULL`. The VAT number is not a new field: it is `Orgs.PartitaIvaNumber` of the fiscal
+  profile, and it is published only while `HasPartitaIva` is true.
+- **Written by** `PUT /api/orgs/me/settings` (policy `OrgBillingAdmin`, like the rest of the body, so the same people as today).
+  `legalName` and `registeredOffice` change only when the body carries them (`null` or blank clears them): a client that does
+  not know them, like the settings form before this change, never erases them. Text is trimmed and its whitespace collapsed.
+  400 for an input over the limit (annotations), 422 `org_operator_legal_name_too_long` / `org_operator_registered_office_too_long`
+  from the rules (`OrgOperatorRules`, same message in IT and EN). `GET /api/orgs/me/settings` returns both.
+- **Read by** the anonymous `GET /api/public/orgs/{slug}`: `operator { legalName, vatNumber, registeredOffice }`. A member is
+  `null` when empty (never an empty string) and `operator` itself is `null` when none of the three is there. Nothing else of the
+  fiscal profile (codice fiscale, retention date) is read into it.
+- **Deploy.** Migration `AddOrgOperatorData` (EF, additive, no data written): two nullable columns. No flag: nothing shows until a
+  host enters a legal name or a registered office; a host with a VAT number in the fiscal profile shows it from the deploy on.
+  Rollback: deploy the previous release (it ignores the columns); `Down` drops them and the values entered are lost.
+- **Not done here** (proposed IDs in `results/DB-03b-a.md`): a structured registered office (street, town, province, postal
+  code), the registry number (REA), a warning in a publication checklist, the same data in the JSON-LD of the site.
