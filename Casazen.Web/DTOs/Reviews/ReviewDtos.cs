@@ -173,3 +173,68 @@ public sealed class ReviewInviteStatusDto
         };
     }
 }
+
+/// <summary>A report of a host with the review it is about, for the staff.</summary>
+public sealed class AdminReviewReportDto
+{
+    public Guid Id { get; init; }
+    public Guid ReviewId { get; init; }
+    public Guid OrgId { get; init; }
+    public string OrgName { get; init; } = string.Empty;
+    public string PropertyName { get; init; } = string.Empty;
+    public ReviewReportReason Reason { get; init; }
+    public string? Note { get; init; }
+    public DateTime ReportedAt { get; init; }
+    public ReviewReportStatus Status { get; init; }
+    public DateTime? DecidedAt { get; init; }
+    public string? DecisionReason { get; init; }
+    public AdminReportedReviewDto Review { get; init; } = new();
+
+    public static AdminReviewReportDto From(AdminReviewReport report) => new()
+    {
+        Id = report.Id,
+        ReviewId = report.ReviewId,
+        OrgId = report.OrgId,
+        OrgName = report.OrgName,
+        PropertyName = report.PropertyName,
+        Reason = report.Reason,
+        Note = report.Note,
+        ReportedAt = report.ReportedAt,
+        Status = report.Status,
+        DecidedAt = report.DecidedAt,
+        DecisionReason = report.DecisionReason,
+        Review = new AdminReportedReviewDto
+        {
+            Rating = report.Rating,
+            Text = report.ReviewText,
+            AuthorName = report.AuthorName,
+            StayMonth = report.StayMonth,
+            PublishedAt = report.PublishedAt,
+            HostReply = report.HostReply,
+            Status = report.ReviewStatus,
+        },
+    };
+}
+
+/// <summary>The review of a report.</summary>
+public sealed class AdminReportedReviewDto
+{
+    public int Rating { get; init; }
+    public string? Text { get; init; }
+    public string AuthorName { get; init; } = string.Empty;
+    public string StayMonth { get; init; } = string.Empty;
+    public DateTime PublishedAt { get; init; }
+    public string? HostReply { get; init; }
+    public ReviewStatus Status { get; init; }
+}
+
+/// <summary>The decision of the staff: the review stays or is taken down, with the reason written down.</summary>
+public sealed class DecideReviewReportRequest
+{
+    [Required(ErrorMessage = "ReviewDecisionInvalid")]
+    public ReviewReportDecision? Decision { get; set; }
+
+    [Required(ErrorMessage = "ReviewDecisionReasonInvalid")]
+    [MaxLength(ReviewRules.DecisionReasonMaxLength, ErrorMessage = "ReviewDecisionReasonInvalid")]
+    public string Reason { get; set; } = string.Empty;
+}

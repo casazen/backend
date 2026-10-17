@@ -37,6 +37,7 @@ public static class ReviewRules
     public const int TextMaxLength = 1500;
     public const int ReplyMaxLength = 800;
     public const int ReportNoteMaxLength = 500;
+    public const int DecisionReasonMaxLength = 500;
 
     /// <summary>What the public reads in place of a name the guest did not agree to show, or that was erased.</summary>
     public const string AnonymousAuthorName = "Ospite";

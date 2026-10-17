@@ -2995,4 +2995,13 @@
   <data name="ReviewReasonRequired" xml:space="preserve">
     <value>Choose the reason for the report.</value>
   </data>
+  <data name="ReviewDecisionReasonInvalid" xml:space="preserve">
+    <value>Write the reason for the decision: it cannot be empty or too long.</value>
+  </data>
+  <data name="ReviewReportAlreadyDecided" xml:space="preserve">
+    <value>This report has already been decided.</value>
+  </data>
+  <data name="ReviewDecisionInvalid" xml:space="preserve">
+    <value>Choose whether to keep or remove the review.</value>
+  </data>
 </root>

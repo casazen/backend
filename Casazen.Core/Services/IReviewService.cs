@@ -119,3 +119,50 @@ public sealed record HostReviewPage(IReadOnlyList<HostReview> Items, int TotalCo
 /// <paramref name="Reviewed"/> whether the guest already reviewed.
 /// </summary>
 public sealed record ReviewInviteStatus(ReviewEligibility Eligibility, bool HasGuestEmail, DateTime? InviteSentAt, bool Reviewed);
+
+/// <summary>The decision of the staff about a reported review.</summary>
+public enum ReviewReportDecision
+{
+    /// <summary>The review stays public.</summary>
+    Keep = 0,
+
+    /// <summary>The review is taken down.</summary>
+    Remove = 1,
+}
+
+/// <summary>The reports of the hosts and the decision of the staff (DB-12a): API only, the screen is the staff console's (AM-09).</summary>
+public interface IAdminReviewService
+{
+    /// <summary>The reports of every org, oldest first (the queue), optionally only those in one state.</summary>
+    Task<AdminReviewReportPage> ListReportsAsync(ReviewReportStatus? status, int page, int pageSize, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Decides an open report: the review stays (<see cref="ReviewStatus.Published"/> again) or is taken down. The reason is required.
+    /// <see cref="Exceptions.NotFoundException"/> for an unknown report, <see cref="Exceptions.DomainConflictException"/>
+    /// <c>review_report_already_decided</c> (409) for one that was decided.
+    /// </summary>
+    Task<AdminReviewReport> DecideAsync(Guid reportId, ReviewReportDecision decision, string reason, string? adminUserId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>A report with the review it is about, for the staff. Personal data: the name is the first name shown to the public, nothing more.</summary>
+public sealed record AdminReviewReport(
+    Guid Id,
+    Guid ReviewId,
+    Guid OrgId,
+    string OrgName,
+    string PropertyName,
+    ReviewReportReason Reason,
+    string? Note,
+    DateTime ReportedAt,
+    ReviewReportStatus Status,
+    DateTime? DecidedAt,
+    string? DecisionReason,
+    int Rating,
+    string? ReviewText,
+    string AuthorName,
+    string StayMonth,
+    DateTime PublishedAt,
+    string? HostReply,
+    ReviewStatus ReviewStatus);
+
+public sealed record AdminReviewReportPage(IReadOnlyList<AdminReviewReport> Items, int TotalCount, int Page, int PageSize);
