@@ -1,6 +1,4 @@
 using System.Security.Claims;
-using Casazen.Core.Authorization;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Auth;
 using Casazen.Web.Infrastructure;
@@ -14,15 +12,13 @@ namespace Casazen.Web.Controllers;
 [Authorize]
 public class MeController(
     IUserService userService,
-    IContextAuthorizationService contextAuthorizationService,
-    IFeatureFlags featureFlags) : ControllerBase
+    IContextAuthorizationService contextAuthorizationService) : ControllerBase
 {
     /// <summary>
-    /// The contexts the caller may enter. The <c>account</c> context (AM-01) is listed only with the
-    /// <see cref="FeatureFlags.OrgTeam"/> flag on: the web app of today does not know it (its workspace switcher fails on a
-    /// context key it has no icon for, and the first one in the list becomes the active context), so listing it would
-    /// break the app of every owner. The authorization does not depend on this list: the memberships and the policies
-    /// work with the flag off. Turn the flag on together with the account screens (AM-04).
+    /// The contexts the caller may enter, the <c>account</c> context of the org team (AM-01) included. The list is sorted by
+    /// key, so <c>account</c> comes first: a client that has no area for a context must leave it out (the web app does, in
+    /// <c>WorkspaceProvider</c>) or it becomes the active one. The authorization does not depend on this list: the
+    /// memberships and the policies decide.
     /// </summary>
     [HttpGet("contexts")]
     public async Task<ActionResult<UserContextsResponse>> GetContexts(CancellationToken cancellationToken)
@@ -36,14 +32,14 @@ public class MeController(
         var user = await GetCurrentUserAsync(sub);
         if (!user.IsActive)
         {
-            // Normally refused earlier by InactiveAccountMiddleware (PL-03); same answer if the flag changed meanwhile.
+            // Normally refused earlier by InactiveAccountMiddleware (PL-03); same answer if the account was deactivated meanwhile.
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.AccountInactive, "AccountInactive");
         }
 
-        var contexts = await GetEnterableContextsAsync(sub, cancellationToken);
+        var contexts = await contextAuthorizationService.GetUserContextsAsync(sub, cancellationToken);
 
-        // UI-13a: the last used context is told only while the caller can still enter it (an access taken away, the
-        // account context while its flag is off): a stale key would make the client open an area that refuses it.
+        // UI-13a: the last used context is told only while the caller can still enter it (an access taken away): a stale key
+        // would make the client open an area that refuses it.
         var lastUsed = contexts.FirstOrDefault(c => string.Equals(c.ContextKey, user.LastUsedContextKey, StringComparison.OrdinalIgnoreCase));
 
         var response = new UserContextsResponse(
@@ -64,8 +60,7 @@ public class MeController(
     /// <c>lastUsedContextKey</c>, so the client opens the same area on any device (before, only the browser remembered it).
     /// It must be one of the contexts the caller can enter right now, as that list tells them: anything else, a key that does
     /// not exist or an access the caller does not have, is a 422 <c>context_not_accessible</c> and nothing is stored. The key
-    /// is stored as the list spells it (the match ignores case). Not behind a feature flag; it writes one column of the caller's
-    /// own row.
+    /// is stored as the list spells it (the match ignores case). It writes one column of the caller's own row.
     /// </summary>
     /// <response code="200">Stored (or already the stored value): the key as stored.</response>
     /// <response code="400"><c>validation_error</c>: no key, or longer than the column.</response>
@@ -91,7 +86,7 @@ public class MeController(
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.AccountInactive, "AccountInactive");
 
         var wanted = request.ContextKey!.Trim();
-        var context = (await GetEnterableContextsAsync(sub, cancellationToken))
+        var context = (await contextAuthorizationService.GetUserContextsAsync(sub, cancellationToken))
             .FirstOrDefault(c => string.Equals(c.ContextKey, wanted, StringComparison.OrdinalIgnoreCase));
         if (context is null)
         {
@@ -111,16 +106,6 @@ public class MeController(
         var (email, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
 
         return userService.GetCurrentUserAsync(sub, email, firstName, lastName);
-    }
-
-    /// <summary>The contexts <c>GET /api/me/contexts</c> lists: the ones the caller has, without <c>account</c> while its flag is off.</summary>
-    private async Task<IReadOnlyList<ContextAccess>> GetEnterableContextsAsync(string sub, CancellationToken cancellationToken)
-    {
-        var contexts = await contextAuthorizationService.GetUserContextsAsync(sub, cancellationToken);
-        if (!featureFlags.IsEnabled(FeatureFlags.OrgTeam))
-            contexts = contexts.Where(c => !AccountContext.IsAccountContext(c.ContextKey)).ToList();
-
-        return contexts;
     }
 
     private string? GetSub() =>

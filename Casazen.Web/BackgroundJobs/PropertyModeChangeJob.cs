@@ -9,8 +9,7 @@ namespace Casazen.Web.BackgroundJobs;
 /// or failed with the reason and the host told (<see cref="IPropertyModeService.ApplyDueAsync"/>). Hourly, not once a day,
 /// so a change is applied within the hour after midnight of Rome whatever the offset from UTC, and a run lost to a restart is
 /// made up at the next one. Idempotent: a change is applied once, whatever the number of runs, retries or manual triggers.
-/// Registered only with <c>Features:PropertyModeChange</c> on. Runbook: <c>docs/runbooks/property-rental-mode.md</c>,
-/// <c>docs/runbooks/hangfire.md</c>.
+/// Runbook: <c>docs/runbooks/property-rental-mode.md</c>, <c>docs/runbooks/hangfire.md</c>.
 /// </summary>
 public class PropertyModeChangeJob(IPropertyModeService propertyModeService)
 {

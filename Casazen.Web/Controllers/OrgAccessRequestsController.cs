@@ -1,5 +1,4 @@
 using System.Globalization;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
@@ -13,11 +12,10 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// A member who cannot do something asks the administrators of its org for access (AM-02b). Any active member may ask, whatever
 /// its role, so the endpoint needs only a signed-in account; the service checks that the account is an active member of the
-/// org. Behind the <c>OrgTeam</c> flag: 404 while it is off. Runbook <c>docs/runbooks/org-team.md</c>.
+/// org. Runbook <c>docs/runbooks/org-team.md</c>.
 /// </summary>
 [ApiController]
 [Route("api/orgs/me/access-requests")]
-[FeatureGate(FeatureFlags.OrgTeam)]
 public class OrgAccessRequestsController(
     IOrgAccessRequestService requests,
     IOrgContextResolver orgContextResolver) : ControllerBase

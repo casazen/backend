@@ -1,4 +1,3 @@
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
@@ -11,13 +10,12 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The people of the caller's org (AM-02): list them with the seats, change a role, deactivate, reactivate and remove. For
 /// the owner and the administrators (policy <see cref="CasazenPolicies.OrgMembersManage"/>); an administrator is in the
-/// hands of the owner only, the owner is never touched (<c>org_last_owner</c>) and nobody becomes owner. Behind the
-/// <c>OrgTeam</c> flag: 404 while it is off. <c>{id}</c> is the member row (<c>OrgMemberDto.Id</c>), not the account id.
-/// Since AM-03 also the properties a member reaches (<c>{id}/properties</c>). Runbook <c>docs/runbooks/org-team.md</c>.
+/// hands of the owner only, the owner is never touched (<c>org_last_owner</c>) and nobody becomes owner. <c>{id}</c> is the
+/// member row (<c>OrgMemberDto.Id</c>), not the account id. Since AM-03 also the properties a member reaches
+/// (<c>{id}/properties</c>). Runbook <c>docs/runbooks/org-team.md</c>.
 /// </summary>
 [ApiController]
 [Route("api/orgs/me/members")]
-[FeatureGate(FeatureFlags.OrgTeam)]
 [Authorize(Policy = CasazenPolicies.OrgMembersManage)]
 public class OrgMembersController(
     IOrgTeamService team,

@@ -1,13 +1,12 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Features;
 using Casazen.Web.BackgroundJobs;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Configuration;
 
 /// <summary>
-/// UI-12a: the runbook of the in-app notifications must say what the code does (the flag, the job, the four endpoints, the
-/// indexes, the retention), and the pages that list flags, jobs, variables and runbooks carry the new ones.
+/// UI-12a: the runbook of the in-app notifications must say what the code does (the job, the four endpoints, the indexes, the
+/// retention), and the pages that list jobs, variables and runbooks carry the new ones.
 /// </summary>
 public class InAppNotificationsRunbookTests
 {
@@ -16,11 +15,10 @@ public class InAppNotificationsRunbookTests
     private static string Runbook(string name) => File.ReadAllText(Path.Combine(Docs, "runbooks", name));
 
     [Fact]
-    public void Runbook_NamesTheFlagTheJobsTheEndpointsTheIndexesAndTheRetention()
+    public void Runbook_NamesTheJobsTheEndpointsTheIndexesAndTheRetention()
     {
         var runbook = Runbook("in-app-notifications.md");
 
-        Assert.Contains($"Features__{FeatureFlags.InAppNotifications}", runbook);
         Assert.Contains($"`{InAppNotificationRetentionJob.RecurringJobId}`", runbook);
         Assert.Contains("`/api/me/notifications?", runbook);
         Assert.Contains("/api/me/notifications/unread-count", runbook);
@@ -34,10 +32,8 @@ public class InAppNotificationsRunbookTests
     }
 
     [Fact]
-    public void TheListsOfFlagsJobsVariablesAndRunbooks_CarryTheNewOnes()
+    public void TheListsOfJobsVariablesAndRunbooks_CarryTheNewOnes()
     {
-        Assert.Contains($"`Features__{FeatureFlags.InAppNotifications}`", Runbook("feature-flags.md"));
-        Assert.Contains($"`Features__{FeatureFlags.InAppNotifications}`", Runbook("deploy-checklist.md"));
         Assert.Contains($"`{InAppNotificationRetentionJob.RecurringJobId}`", Runbook("hangfire.md"));
         Assert.Contains("`in-app-notifications.md`", Runbook("index.md"));
         Assert.Contains("InAppNotifications", Runbook("gdpr.md"));

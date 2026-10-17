@@ -9,12 +9,11 @@ namespace Casazen.Tests.Unit.BackgroundJobs;
 
 /// <summary>
 /// AM-02: the hourly job of the org invitations only runs the maintenance service (which decides, locks and deduplicates).
-/// It is registered whatever the <c>OrgTeam</c> flag says, because the retention of the personal data of an invitation must
-/// not depend on a feature being on, and it never overlaps another run.
+/// It is always registered and it never overlaps another run.
 /// </summary>
 public class OrgInvitationMaintenanceJobTests
 {
-    private static (IReadOnlyDictionary<string, (Job Job, string Cron)> Registered, Mock<IRecurringJobManager> Manager) Register(bool orgTeam)
+    private static (IReadOnlyDictionary<string, (Job Job, string Cron)> Registered, Mock<IRecurringJobManager> Manager) Register()
     {
         var registered = new Dictionary<string, (Job Job, string Cron)>();
         var manager = new Mock<IRecurringJobManager>();
@@ -22,18 +21,14 @@ public class OrgInvitationMaintenanceJobTests
             .Setup(m => m.AddOrUpdate(It.IsAny<string>(), It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<RecurringJobOptions>()))
             .Callback<string, Job, string, RecurringJobOptions>((id, job, cron, _) => registered[id] = (job, cron));
 
-        var flags = new Mock<Casazen.Core.Features.IFeatureFlags>();
-        flags.Setup(f => f.IsEnabled(Casazen.Core.Features.FeatureFlags.OrgTeam)).Returns(orgTeam);
-        RecurringJobsRegistration.Configure(manager.Object, flags.Object);
+        RecurringJobsRegistration.Configure(manager.Object, RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: false));
         return (registered, manager);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Configure_RegistersTheJobHourly_WhateverTheOrgTeamFlag(bool orgTeam)
+    [Fact]
+    public void Configure_RegistersTheJobHourly()
     {
-        var (registered, manager) = Register(orgTeam);
+        var (registered, manager) = Register();
 
         var job = registered["org-invitation-maintenance"];
         Assert.Equal(typeof(OrgInvitationMaintenanceJob), job.Job.Type);

@@ -5,9 +5,9 @@ marker of a property kept for long-term leases was **implicit**, no guests and n
 `NightlyRate = 0`, audit A7-06), and every predicate that must ignore such a property (the public site, the bookings, the
 compliance, the CIN alerts) forgot it: for instance `CinDeadlineAlertService` wrote also to the hosts who only have leases.
 PM-01 adds the mode, migrates the existing rows and makes those predicates look at it. **Backend only**: no screen, no
-wizard (PM-03). The mode itself is not behind a flag: a `Long` property exists only after the backfill below, when a client
-asks for it or after a scheduled change, and nothing changes for a property in `Short` mode. Task PM-02 adds, behind the flag
-`PropertyModeChange` (off by default), the **scheduled change of mode** between the two modes: section 8.
+wizard (PM-03). A `Long` property exists only after the backfill below, when a client asks for it or after a scheduled change,
+and nothing changes for a property in `Short` mode. Task PM-02 adds the **scheduled change of mode** between the two modes:
+section 8.
 
 ## 1. The mode
 
@@ -31,7 +31,7 @@ body of `POST /api/properties` (the created property). Index `IX_Properties_OrgI
 | **Creation** (`POST /api/properties`) | the `rentalMode` of the body, when it is there. **Compatibility rule** (`PropertyRentalModeRules.ResolveForCreation`): without it, a request with `maxGuests = 0` **and** `nightlyRate = 0` (what the long-rent form has always sent) creates a `Long` property; any other request creates a `Short` one. A short-rent client that creates a property without guests and rate and wants it short must say `"rentalMode": "Short"` |
 | **Update** (`PUT /api/properties/{id}`) | `rentalMode` is accepted so that a form can send the whole record back, but it must be **the stored one**: a different value is refused, `422 property_rental_mode_change_not_allowed`, and nothing is saved. `PropertyRepository.UpdateAsync` never writes the column (as for the photo list), so a stale copy of the row cannot put an old mode back |
 | **Migration** (existing rows) | section 3 (D19) |
-| **Change of mode** | the scheduled change of PM-02 (section 8, behind the flag `PropertyModeChange`): programmed for a day, checked against the stays, the imported calendar blocks and the leases, applied at midnight of Rome by the hourly job. It is the only code that changes the mode after the creation |
+| **Change of mode** | the scheduled change of PM-02 (section 8): programmed for a day, checked against the stays, the imported calendar blocks and the leases, applied at midnight of Rome by the hourly job. It is the only code that changes the mode after the creation |
 
 ## 2. What `Long` changes
 
@@ -158,8 +158,8 @@ SELECT "OrgId", "RentalMode", count(*) FROM "Properties" WHERE "IsDeleted" = fal
 * The hosts of those properties get no more `cin-deadline-alert` email and no suspension email.
 * `GET /api/properties?mode=long` lists them, `?mode=short` the others, without the parameter all of them.
 
-A property wrongly classified (rare, the marker is restrictive) is put back with the scheduled change of PM-02 once the flag
-`PropertyModeChange` is on (section 8: tomorrow at the earliest, and only when no lease stands in the way). Until then, or when
+A property wrongly classified (rare, the marker is restrictive) is put back with the scheduled change of PM-02
+(section 8: tomorrow at the earliest, and only when no lease stands in the way). Until then, or when
 the owner of the data cannot wait, **by hand**: `UPDATE "Properties" SET "RentalMode" = 0 WHERE "Id" = '<id>';` (the generic
 API cannot change the mode, section 1; section 8.7 says what else to check if the property had a scheduled change or
 the block of a change). Its compliance status was not touched by PM-01 and the next re-evaluation of the nightly check takes
@@ -217,9 +217,8 @@ tests of the scheduled change (PM-02) are in section 8.10.
 
 ## 8. The scheduled change of mode (PM-02, decision D16)
 
-Task PM-02 of the redesign wave (report `gap/06` §4.4 and §7 P6, `gap/04` §4.2). **Backend only** (the screens are PM-03),
-behind the flag `Features:PropertyModeChange` (`Features__PropertyModeChange`, **off by default**, section 8.8). The owner
-programs the passage of a property from short stays to long-term leases, or back, for a day; the property changes mode by
+Task PM-02 of the redesign wave (report `gap/06` §4.4 and §7 P6, `gap/04` §4.2). The screens are PM-03's (a wizard, an entry in the
+menu of the property and a row of status). The owner programs the passage of a property from short stays to long-term leases, or back, for a day; the property changes mode by
 itself at midnight of Rome, never over a stay or a lease. Code: `Core/Services/IPropertyModeService.cs` (contract, error
 codes), `Core/Services/PropertyModeRules.cs` (the rules, without a database), `Core/Entities/PropertyModeChange.cs`,
 `Infrastructure/Services/PropertyModeService.cs`, `Web/Controllers/PropertyModeController.cs`,
@@ -259,7 +258,7 @@ EffectiveDate)` for the job, `(PropertyId, CreatedAt)` for the history.
 
 ### 8.3 API
 
-Behind the flag: off, every request answers `404 not_found` before authentication. Policies (TN-3): the property core is
+Policies (TN-3): the property core is
 shared by short-rent hosts and long-term landlords (A7-06), so `SharedPropertyRead` for the state and `SharedPropertyWrite`
 for the preview (it lists stays and leases), the creation and the cancellation, plus the check on the property row
 (`SharedPropertyOperations`: its owner or an org-wide role, in the caller's org; another org's property is `404
@@ -329,8 +328,8 @@ by the single occupancy rule (`PropertyOccupancy`) like any block.
 
 ### 8.5 The job `property-mode-change`
 
-Hourly, minute 0 UTC (`PropertyModeChangeJob`, registered in `RecurringJobsRegistration` **only with the flag on**, removed
-with `RemoveIfExists` otherwise, `[DisableConcurrentExecution]` 300 s). Hourly and not daily so that a change is applied in
+Hourly, minute 0 UTC (`PropertyModeChangeJob`, always registered in `RecurringJobsRegistration`,
+`[DisableConcurrentExecution]` 300 s). Hourly and not daily so that a change is applied in
 the hour after midnight of Rome (22:00 UTC in summer, 23:00 in winter) and a run lost to a restart is made up at the next one.
 `PropertyModeService.ApplyDueAsync`:
 
@@ -385,26 +384,24 @@ JOIN "Properties" AS p ON p."Id" = b."PropertyId"
 WHERE b."ManualReason" = 3 AND p."RentalMode" = 1 AND b."EndUtc" < now() + interval '6 months' ORDER BY b."EndUtc";
 ```
 
-* **A change that must not run** (flag turned off with changes waiting, a wrong day): while the flag is off the endpoints answer
-  404 and the job is not registered, so a waiting change waits, untouched, until the flag is on again (then the job applies it
-  if its day has come, after checking it). To withdraw one without the API:
+* **A change that must not run** (a wrong day): the host withdraws it with the API (section 8.1) before its day. To withdraw one
+  without the API:
   `UPDATE "PropertyModeChanges" SET "Status" = 2, "CancelledAt" = now() WHERE "Id" = '<id>' AND "Status" = 0;` and, for a
   change to long-term, delete its closure: `DELETE FROM "CalendarBlocks" WHERE "PropertyId" = '<id>' AND "ManualReason" = 3;`.
 * **A property put back by hand** (`UPDATE "Properties" SET "RentalMode" = …`, section 4): if it had a waiting change, cancel it
   as above (otherwise the job fails it with `property_mode_changed`); put back to `Short` also delete the block of reason `3`
   (the closure of a long-term property: it is not removed by the update); put to `Long` the property gets no block (create the
   change instead).
-* **Checks after the deploy with the flag on** (test environment): `GET /api/public/features` has `propertyModeChange: true`;
+* **Checks after the deploy** (test environment):
   `GET /api/properties/{id}/mode/preview?to=long` on a property with a stay answers its `earliestDate`; programme a change
   for tomorrow, see `UID:block-{id}` in the iCal export and the nights taken in
   `GET /api/public/bookings/property/{id}/availability`; cancel it, both go away; programme it again, wait for the job at
   midnight of Rome (or trigger `property-mode-change` from the Hangfire dashboard once tomorrow has come) and see
   `rentalMode: "Long"`, the property gone from the public site, the "applied" e-mail.
 
-### 8.8 Flag and rollback
+### 8.8 Rollback
 
-`Features__PropertyModeChange` (default `false`; `docs/runbooks/feature-flags.md`). Off: nothing of this section is reachable,
-the job is not registered, and everything else works as after PM-01. The data is additive: the table is new, the new enum value
+There is no switch: the endpoints and the job are always on. The data is additive: the table is new, the new enum value
 is written only by this service. Rollback of the application to a version without PM-02 leaves the table and the blocks in
 place: a change waiting is never applied by the old code, and the closure it wrote stays in the calendar and the export (the old
 code does not know the reason `3`: the screens show it as "Other", and the host can delete it, which reopens the dates; for a
@@ -420,7 +417,7 @@ written with the existing endpoints (`PUT /api/properties/{id}`, `PUT …/cin`) 
 calendar" is not an option here: a change to long-term always closes it (section 8.4). A long-term landlord has no short-rent
 context: the pages after the return to short stays need that area (outside this task). The `apiErrors.codes.*` of the web
 client need the codes of section 8.1 and `calendar_block_held_by_mode_change`; the block reason `ModeChange` needs its label in
-the calendar and in the list of blocks; `GET /api/public/features` carries `propertyModeChange`.
+the calendar and in the list of blocks.
 
 ### 8.10 Tests
 
@@ -433,6 +430,6 @@ the calendar and in the list of blocks; `GET /api/public/features` carries `prop
 | `PropertyModeCalendarBlockTests` | the export event, the single occupancy rule, the host cannot create nor delete the block |
 | `PropertyModeNotificationTests`, `PropertyModeResourcesTests` | the three e-mails (IT/EN, links, encoding), the messages with a day in both languages |
 | `PropertyModeControllerTests`, `AuthorizationAttributeTests` | the routes, the policies, 404/403 before the service, the parsing of the target and of the day, the JSON shape |
-| `PropertyModeChangeJobTests`, `RecurringJobsConcurrencyTests`, `RecurringJobsFeatureFlagTests` | registered hourly only with the flag, removed otherwise, never overlaps |
-| `PropertyModeIntegrationTests`, `PropertyModeFlagOffIntegrationTests` | the real HTTP pipeline, with the flag on and off: access, preview, programming and cancellation in IT/EN, the closed calendar (site, export, host), the job from the service graph |
+| `PropertyModeChangeJobTests`, `RecurringJobsConcurrencyTests` | registered hourly, never overlaps |
+| `PropertyModeIntegrationTests` | the real HTTP pipeline: access, preview, programming and cancellation in IT/EN, the closed calendar (site, export, host), the job from the service graph |
 | `PropertyModeChangePostgresTests` (PostgreSQL) | the partial unique index, change against booking (and against cancel) at the same time under the lock, concurrent runs apply once, the run lock, the migration's indexes |

@@ -66,25 +66,21 @@ public static class RecurringJobsRegistration
             CinDeadlineAlertJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // AM-02: reminder of the third day, expiry and deletion of the closed org invitations. Always registered: the
-        // retention of the personal data of an invitation does not depend on the OrgTeam flag; the service itself sends
-        // no email while the flag is off.
+        // AM-02: reminder of the third day, expiry and deletion of the closed org invitations.
         recurringJobManager.AddOrUpdate<OrgInvitationMaintenanceJob>(
             OrgInvitationMaintenanceJob.RecurringJobId,
             job => job.ExecuteAsync(),
             OrgInvitationMaintenanceJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // Host invites: the email of a closed invite is erased after HostInvites:RetentionDays. Always registered, like the org
-        // invitations: the retention of personal data does not depend on a feature being on.
+        // Host invites: the email of a closed invite is erased after HostInvites:RetentionDays.
         recurringJobManager.AddOrUpdate<HostInviteRetentionJob>(
             HostInviteRetentionJob.RecurringJobId,
             job => job.ExecuteAsync(),
             HostInviteRetentionJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // AM-02b: the activity log keeps 12 months. Always registered, like the invitations: the retention of what the log holds
-        // does not depend on the OrgTeam flag (with the flag off nothing writes to it, and a flag turned off later leaves lines).
+        // AM-02b: the activity log keeps 12 months.
         recurringJobManager.AddOrUpdate<OrgActivityRetentionJob>(
             OrgActivityRetentionJob.RecurringJobId,
             job => job.ExecuteAsync(),
@@ -95,7 +91,12 @@ public static class RecurringJobsRegistration
 
         ConfigureRliProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.RliProvider));
 
-        ConfigurePropertyModeJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.PropertyModeChange));
+        // PM-02: application of the scheduled changes of rental mode, every hour.
+        recurringJobManager.AddOrUpdate<PropertyModeChangeJob>(
+            PropertyModeChangeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            PropertyModeChangeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
@@ -167,8 +168,7 @@ public static class RecurringJobsRegistration
             PushReceiptsJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // UI-12a: the in-app notifications older than 90 days are deleted every night. Always registered: rows written while
-        // Features:InAppNotifications was on are purged after it is turned off; with the flag off the run finds nothing.
+        // UI-12a: the in-app notifications older than 90 days are deleted every night.
         recurringJobManager.AddOrUpdate<InAppNotificationRetentionJob>(
             InAppNotificationRetentionJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
@@ -242,26 +242,6 @@ public static class RecurringJobsRegistration
             ServicePaymentRemindersJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ServicePaymentRemindersJob.Cron,
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-    }
-
-    /// <summary>
-    /// Application of the scheduled changes of rental mode (PM-02): only with <see cref="FeatureFlags.PropertyModeChange"/> on.
-    /// With the flag off nothing can be scheduled and the endpoints answer 404, so there is nothing to apply: the schedule of
-    /// an earlier deploy is removed, and a change already programmed waits until the flag is turned on again.
-    /// </summary>
-    private static void ConfigurePropertyModeJobs(IRecurringJobManager recurringJobManager, bool enabled)
-    {
-        if (!enabled)
-        {
-            recurringJobManager.RemoveIfExists(PropertyModeChangeJob.RecurringJobId);
-            return;
-        }
-
-        recurringJobManager.AddOrUpdate<PropertyModeChangeJob>(
-            PropertyModeChangeJob.RecurringJobId,
-            job => job.ExecuteAsync(CancellationToken.None),
-            PropertyModeChangeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

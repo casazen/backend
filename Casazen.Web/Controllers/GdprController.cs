@@ -142,7 +142,7 @@ public class GdprController(
         // The org's activity log (AM-02b) rides in the export, ids and codes as the endpoint of the log gives it, but only for who
         // may read it (org.activity.read: the owner and the administrators). The export is the holder's since AM-03b
         // (OrgBillingAdmin), and the log keeps its own permission on top, so nobody reads through this export what it cannot
-        // read in the log. Whatever the OrgTeam flag says: the export is of what is stored.
+        // read in the log.
         if ((await authorizationService.AuthorizeAsync(User, CasazenPolicies.OrgActivityRead)).Succeeded)
         {
             var lines = new List<OrgActivityEntryDto>();

@@ -21,8 +21,8 @@ namespace Casazen.Tests.Unit.Controllers;
 /// <summary>
 /// AM-02c: the two read endpoints of the home and the matrix of the account. The org and the account are the caller's own (never
 /// from the request); a caller with no org gets 404 and one with no account 401; the roles endpoint is for any member (the service
-/// checks), the overview for the owner and the administrators; both behind the <c>OrgTeam</c> flag; what the overview does not
-/// show is left out of the JSON, not sent as a null.
+/// checks), the overview for the owner and the administrators; what the overview does not show is left out of the JSON, not
+/// sent as a null.
 /// </summary>
 public class OrgRolesAndOverviewControllersTests
 {
@@ -126,11 +126,10 @@ public class OrgRolesAndOverviewControllersTests
     }
 
     [Fact]
-    public void RolesController_IsBehindTheFlag_AndOnlyAskedToBeSignedIn()
+    public void RolesController_IsOnlyAskedToBeSignedIn()
     {
         var controller = typeof(OrgRolesController);
 
-        Assert.NotEmpty(controller.GetCustomAttributes(typeof(FeatureGateAttribute), inherit: true));
         // Any active member may read it; the service checks that the caller is one (the policy of the others would shut them out).
         Assert.Equal(
             CasazenPolicies.Authenticated,
@@ -240,11 +239,10 @@ public class OrgRolesAndOverviewControllersTests
     }
 
     [Fact]
-    public void OverviewController_IsBehindTheFlag_AndThePolicyOfTheTeam()
+    public void OverviewController_HasThePolicyOfTheTeam()
     {
         var controller = typeof(OrgOverviewController);
 
-        Assert.NotEmpty(controller.GetCustomAttributes(typeof(FeatureGateAttribute), inherit: true));
         Assert.Equal(
             CasazenPolicies.OrgMembersManage,
             controller.GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true).Cast<AuthorizeAttribute>().Single().Policy);

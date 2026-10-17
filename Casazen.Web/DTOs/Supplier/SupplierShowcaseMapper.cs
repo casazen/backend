@@ -8,6 +8,11 @@ public static class SupplierShowcaseMapper
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
+    /// <summary>True when the showcase has a category or a text: the rule under which it is in the sitemap and indexable.</summary>
+    public static bool HasPublicContent(SupplierProfile profile) =>
+        (JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? []).Length > 0
+        || !string.IsNullOrWhiteSpace(profile.Bio);
+
     /// <param name="profile">The supplier profile; only the fields the showcase shows are copied.</param>
     /// <param name="listed">The comuni of the profile found in the official list (<see cref="SupplierComuniView.IstatCodes"/>).</param>
     /// <param name="availability">The days to show, already limited to the window and ordered.</param>

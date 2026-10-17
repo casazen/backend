@@ -18,8 +18,8 @@ using Xunit;
 namespace Casazen.Tests.Unit.Controllers;
 
 /// <summary>
-/// UI-12a: <c>api/me/notifications</c> acts for the caller only (the token's <c>sub</c>), behind the flag, with the routes the
-/// frontend will call; the rules about whose rows are in <see cref="IInAppNotificationService"/> and are tested there.
+/// UI-12a: <c>api/me/notifications</c> acts for the caller only (the token's <c>sub</c>), with the routes the frontend will
+/// call; the rules about whose rows are in <see cref="IInAppNotificationService"/> and are tested there.
 /// </summary>
 public class MeNotificationsControllerTests
 {
@@ -42,12 +42,11 @@ public class MeNotificationsControllerTests
     // ─── The contract ───
 
     [Fact]
-    public void Controller_IsBehindTheFlag_ForSignedInUsersOnly_UnderApiMeNotifications()
+    public void Controller_IsForSignedInUsersOnly_UnderApiMeNotifications()
     {
         var type = typeof(MeNotificationsController);
 
         Assert.Equal("api/me/notifications", type.GetCustomAttribute<RouteAttribute>()!.Template);
-        Assert.Equal(FeatureFlags.InAppNotifications, Assert.Single(type.GetCustomAttributes<FeatureGateAttribute>()).Flag);
         Assert.Equal(CasazenPolicies.Authenticated, Assert.Single(type.GetCustomAttributes<AuthorizeAttribute>()).Policy);
         Assert.Empty(type.GetCustomAttributes<AllowAnonymousAttribute>());
     }

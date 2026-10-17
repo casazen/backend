@@ -51,8 +51,7 @@ internal sealed class PropertyModeHarness : IDisposable
 
     /// <summary>
     /// A service on another context over the same database, as a second request or a second job run would have. The activity log is
-    /// required (every host has it); the default is the one of <paramref name="db"/> with the <c>OrgTeam</c> flag off, which collects
-    /// nothing, so a test that does not look at the log is as it was before AM-02c.
+    /// required (every host has it); the default is the one of <paramref name="db"/>.
     /// </summary>
     public PropertyModeService NewService(AppDbContext db, IActivityLog? activityLog = null) =>
         new(
@@ -60,17 +59,12 @@ internal sealed class PropertyModeHarness : IDisposable
             new ConfigurationBuilder().Build(),
             Compliance.Object,
             Notifications.Object,
-            activityLog ?? ActivityLogFor(db, orgTeamOn: false),
+            activityLog ?? ActivityLogFor(db),
             NullLogger<PropertyModeService>.Instance,
             Clock);
 
-    /// <summary>The activity log writer of AM-02c on <paramref name="db"/>, with the <c>OrgTeam</c> flag on or off.</summary>
-    public ActivityLog ActivityLogFor(AppDbContext db, bool orgTeamOn = true)
-    {
-        var flags = new Mock<IFeatureFlags>();
-        flags.Setup(f => f.IsEnabled(FeatureFlags.OrgTeam)).Returns(orgTeamOn);
-        return new ActivityLog(db, flags.Object, Clock);
-    }
+    /// <summary>The activity log writer of AM-02c on <paramref name="db"/>.</summary>
+    public ActivityLog ActivityLogFor(AppDbContext db) => new(db, Clock);
 
     public AppDbContext SecondContext() => new(DbOptions);
 

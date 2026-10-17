@@ -18,7 +18,7 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// AM-02b over the real pipeline (routes, policies, flag, model binding, error contract, JSON, CSV): what the team does
+/// AM-02b over the real pipeline (routes, policies, model binding, error contract, JSON, CSV): what the team does
 /// (invites, accepts, changes a role, deactivates, reactivates, gives properties, removes) and what the org does (plan, name,
 /// slug) is in the activity log with ids and codes only, in the order it happened; the owner and the administrators read it, page
 /// it, filter it and download it as a CSV, nobody else does, and an org reads only its own; a member asks the administrators for
@@ -561,7 +561,6 @@ public class OrgAccessRequestRateLimitIntegrationTests(OrgAccessRequestRateLimit
             builder.ConfigureAppConfiguration((_, config) =>
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Features:OrgTeam"] = "true",
                     ["RateLimiting:OrgAccessRequest:PermitLimit"] = "2",
                 }));
             builder.ConfigureTestServices(services =>

@@ -6,24 +6,11 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
-
-/// <summary>The web host with the org team flag on (<c>Features:OrgTeam</c>), as it runs once the account screens exist (AM-04).</summary>
-public sealed class OrgTeamEnabledFactory : CasazenWebApplicationFactory
-{
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        base.ConfigureWebHost(builder);
-        builder.ConfigureAppConfiguration((_, config) =>
-            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:OrgTeam"] = "true" }));
-    }
-}
 
 /// <summary>Data and calls shared by the org team integration tests.</summary>
 internal static class OrgTeamHttp
@@ -244,23 +231,11 @@ public class OrgMemberInactiveIntegrationTests(CasazenWebApplicationFactory fact
 
         await OrgTeamHttp.AssertProblemAsync(await client.GetAsync("/api/users/me"), HttpStatusCode.Forbidden, "account_inactive");
     }
-
-    [Fact]
-    public async Task PublicFeatures_Default_ReturnsOrgTeamOff()
-    {
-        using var client = factory.CreateClient();
-
-        var response = await client.GetAsync("/api/public/features");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.False(body.RootElement.GetProperty("orgTeam").GetBoolean());
-    }
 }
 
 /// <summary>
 /// AM-01 over the real pipeline on PostgreSQL (the roles and contexts it needs come from the migration seed): the
-/// onboarding makes its caller the owner of its org, <c>GET /api/me/contexts</c> keeps its answer while the flag is off,
+/// onboarding makes its caller the owner of its org, <c>GET /api/me/contexts</c> lists its account context,
 /// the org billing policy follows the account roles, the token no longer completes the host contexts of an org member,
 /// and the reconcile command is the platform admin's.
 /// </summary>
@@ -268,7 +243,7 @@ public class OrgTeamPostgresIntegrationTests(CasazenWebApplicationFactory factor
     : IClassFixture<CasazenWebApplicationFactory>
 {
     [PostgresFact]
-    public async Task Onboarding_NewOwner_GetsItsOrgMemberAndAccountMembership_AndItsContextsStayTheSame()
+    public async Task Onboarding_NewOwner_GetsItsOrgMemberAndAccountMembership_AndItsContextsListTheAccountOne()
     {
         var userId = $"auth0|am01-new-{Guid.NewGuid():N}";
         using var client = factory.CreateAuthenticatedClient(userId, roles: "PropertyOwner");
@@ -287,8 +262,8 @@ public class OrgTeamPostgresIntegrationTests(CasazenWebApplicationFactory factor
             Assert.Equal(["account/org_owner", "short-rent/property_owner"], memberships.Order());
         }
 
-        // The flag is off: the clients of today see exactly the contexts they saw before AM-01.
-        Assert.Equal(["short-rent"], await OrgTeamHttp.ContextKeysAsync(client));
+        // The account context is listed first (the list is sorted by key), then the rental one.
+        Assert.Equal(["account", "short-rent"], await OrgTeamHttp.ContextKeysAsync(client));
 
         // Repeating the onboarding (or its retry) changes nothing.
         Assert.Equal(HttpStatusCode.OK, (await OrgTeamHttp.PutOnboardingAsync(client, "ShortTerm")).StatusCode);
@@ -371,7 +346,7 @@ public class OrgTeamPostgresIntegrationTests(CasazenWebApplicationFactory factor
         Assert.Equal(HttpStatusCode.Forbidden, (await asMember.GetAsync("/api/leases")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await asMember.GetAsync("/api/properties")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await asLegacy.GetAsync("/api/leases")).StatusCode);
-        Assert.Equal(["short-rent"], await OrgTeamHttp.ContextKeysAsync(asMember));
+        Assert.Equal(["account", "short-rent"], await OrgTeamHttp.ContextKeysAsync(asMember));
         Assert.Equal(["long-rent", "short-rent"], await OrgTeamHttp.ContextKeysAsync(asLegacy));
     }
 
@@ -416,23 +391,11 @@ public class OrgTeamPostgresIntegrationTests(CasazenWebApplicationFactory factor
     }
 }
 
-/// <summary>AM-01 with the org team flag on: the account context is listed to its owners and administrators, never to the staff.</summary>
-public class OrgTeamFlagOnIntegrationTests(OrgTeamEnabledFactory factory) : IClassFixture<OrgTeamEnabledFactory>
+/// <summary>AM-01: the account context is listed to its owners and administrators, never to the staff.</summary>
+public class OrgTeamContextsIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
-    [Fact]
-    public async Task PublicFeatures_FlagOn_ReturnsOrgTeamOn()
-    {
-        using var client = factory.CreateClient();
-
-        var response = await client.GetAsync("/api/public/features");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.True(body.RootElement.GetProperty("orgTeam").GetBoolean());
-    }
-
     [PostgresFact]
-    public async Task MeContexts_FlagOn_ListsTheAccountContextOfTheOwnerAndTheAdministrator()
+    public async Task MeContexts_ListsTheAccountContextOfTheOwnerAndTheAdministrator()
     {
         var (ownerId, orgId) = await OrgTeamHttp.SeedOwnerWithTeamRowsAsync(factory);
         var adminId = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Admin, ["short-rent"]);
@@ -454,7 +417,7 @@ public class OrgTeamFlagOnIntegrationTests(OrgTeamEnabledFactory factory) : ICla
     }
 
     [PostgresFact]
-    public async Task MeContexts_FlagOn_StaffContextsAreUnchanged()
+    public async Task MeContexts_StaffContextsAreUnchanged()
     {
         var staffId = $"auth0|am01-staff-{Guid.NewGuid():N}";
         using (var scope = factory.Services.CreateScope())

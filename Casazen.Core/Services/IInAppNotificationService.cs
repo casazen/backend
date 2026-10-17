@@ -4,8 +4,8 @@ using Casazen.Core.Exceptions;
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// The in-app notifications of a user, read and cleared by the user itself (UI-12a, behind <c>Features:InAppNotifications</c>;
-/// runbook <c>docs/runbooks/in-app-notifications.md</c>). Every operation acts on the rows of <c>userId</c> in the orgs the user
+/// The in-app notifications of a user, read and cleared by the user itself (UI-12a; runbook
+/// <c>docs/runbooks/in-app-notifications.md</c>). Every operation acts on the rows of <c>userId</c> in the orgs the user
 /// belongs to, and on no others: the id of a notification of another user, or of an org the user has left, is a
 /// <see cref="NotFoundException"/> (404, never 403), exactly like an id that does not exist.
 /// </summary>

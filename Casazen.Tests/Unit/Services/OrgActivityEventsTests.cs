@@ -526,25 +526,4 @@ public class OrgActivityEventsTests
 
         Assert.Contains(lines, l => l.SubjectId == sent.Invitation.Id.ToString());
     }
-
-    [Fact]
-    public async Task WithTheFlagOff_TheChangesHappenAsBefore_AndNothingIsCollected()
-    {
-        _kit.OrgTeamFlag = false;
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Pro, status: SubscriptionStatus.None);
-        var (_, member) = await _kit.SeedMemberAsync(org.Id, AnnaId, OrgRole.Collaborator);
-
-        await using (var db = _kit.NewDb())
-            await _kit.Team(db).ChangeRoleAsync(org.Id, member.Id, OrgRole.Accountant, OwnerId);
-        await using (var db = _kit.NewDb())
-            await Orgs(db).UpdatePlanTierAsync(org.Id, PlanTier.Starter, OwnerId);
-        await using (var db = _kit.NewDb())
-            await Orgs(db).UpdateSettingsAsync(org.Id, "Casa Bianca", "casa-bianca", "host@example.com", false, OwnerId);
-
-        Assert.Empty(await LinesAsync(org.Id));
-        Assert.Equal(OrgRole.Accountant, (await _kit.ReadMemberAsync(AnnaId))!.Role);
-        await using var verify = _kit.NewDb();
-        var stored = await verify.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
-        Assert.Equal((PlanTier.Starter, "Casa Bianca", "casa-bianca"), (stored.PlanTier, stored.Name, stored.Slug));
-    }
 }

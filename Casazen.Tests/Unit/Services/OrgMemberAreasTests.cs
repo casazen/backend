@@ -243,19 +243,6 @@ public class OrgMemberAreasTests
         Assert.False(details.ContainsKey("released"));
     }
 
-    [Fact]
-    public async Task SetAreasAsync_WithTheOrgTeamFlagOff_WritesNoLine()
-    {
-        _kit.OrgTeamFlag = false;
-        var orgId = await SeedOrgAsync();
-        var memberId = await AddMemberAsync(orgId, "auth0|anna", OrgRole.Collaborator, ["short-rent"]);
-
-        await SetAreasAsync(orgId, memberId, OwnerId, "long-rent");
-
-        Assert.Equal(["long-rent/staff"], await _kit.MembershipsAsync("auth0|anna"));
-        Assert.Empty(await _kit.ReadActivityAsync(orgId));
-    }
-
     // ─── «Solo alcuni»: the grants stay, the reach follows the areas ────────────────────────────────────
 
     private async Task<(Guid MemberId, Guid ShortProperty, Guid LongProperty)> LimitedCollaboratorAsync(Guid orgId)

@@ -20,8 +20,8 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// The web host with the global search on (<c>Features:GlobalSearch</c>) and the org team on, in an in-memory store of its own
-/// when there is no PostgreSQL (the shared store of the process is written by other suites).
+/// The web host of the global search, in an in-memory store of its own when there is no PostgreSQL (the shared store of the
+/// process is written by other suites).
 /// </summary>
 public class GlobalSearchEnabledFactory : CasazenWebApplicationFactory
 {
@@ -30,23 +30,16 @@ public class GlobalSearchEnabledFactory : CasazenWebApplicationFactory
     /// <summary>The limit of the search per user and window: large, so that a test is never limited by the suites around it.</summary>
     protected virtual string SearchPermitLimit => "1000";
 
-    /// <summary>The value of <c>Features:GlobalSearch</c>; null leaves the configuration as the application ships it (off).</summary>
-    protected virtual string? SearchFlag => "true";
-
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         var inMemoryStore = $"global-search-{Guid.NewGuid():N}";
         builder.ConfigureAppConfiguration((_, config) =>
         {
-            var settings = new Dictionary<string, string?>
+            config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Features:OrgTeam"] = "true",
                 ["RateLimiting:GlobalSearch:PermitLimit"] = SearchPermitLimit,
-            };
-            if (SearchFlag is not null)
-                settings["Features:GlobalSearch"] = SearchFlag;
-            config.AddInMemoryCollection(settings);
+            });
         });
         builder.ConfigureTestServices(services =>
         {
@@ -64,12 +57,6 @@ public class GlobalSearchEnabledFactory : CasazenWebApplicationFactory
     }
 }
 
-/// <summary>The same host with the configuration as the application ships it: the search flag is not set, so it is off.</summary>
-public sealed class GlobalSearchDefaultFactory : GlobalSearchEnabledFactory
-{
-    protected override string? SearchFlag => null;
-}
-
 /// <summary>The same host with a limit of three searches per user and window, to see the limiter answer 429.</summary>
 public sealed class GlobalSearchLimitedFactory : GlobalSearchEnabledFactory
 {
@@ -79,7 +66,7 @@ public sealed class GlobalSearchLimitedFactory : GlobalSearchEnabledFactory
 /// <summary>
 /// UI-13a over the real pipeline (routes, policies, model binding, error contract, JSON): <c>GET /api/search</c> for an owner, for a
 /// collaborator limited to one property and for a supplier, with the permissions of their roles; the org boundary; what the answer
-/// never carries; the 404 of the flag, the 401, the 400 and the 429; and <c>PUT /api/me/last-context</c> written and read back. On
+/// never carries; the 401, the 400 and the 429; and <c>PUT /api/me/last-context</c> written and read back. On
 /// PostgreSQL in CI (the keys are computed by the database); on the in-memory fallback locally (the seeded roles are written first
 /// and so are the keys).
 /// </summary>
@@ -528,49 +515,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync("/api/me/last-context", new { })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync("/api/me/last-context", new { contextKey = new string('x', 65) })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PutAsJsonAsync("/api/me/last-context", new { contextKey = "short-rent" })).StatusCode);
-    }
-}
-
-/// <summary>UI-13a with the default configuration (<c>Features:GlobalSearch</c> off): the search does not exist, the last area still works.</summary>
-public class GlobalSearchFlagOffIntegrationTests(GlobalSearchDefaultFactory factory) : IClassFixture<GlobalSearchDefaultFactory>
-{
-    [Fact]
-    public async Task Search_WithTheFlagOff_IsA404_LikeARouteThatDoesNotExist_BeforeAuthentication()
-    {
-        using var anonymous = factory.CreateClient();
-        using var signedIn = factory.CreateAuthenticatedClient($"auth0|chiunque-{Guid.NewGuid():N}", roles: "PropertyOwner");
-
-        foreach (var client in new[] { anonymous, signedIn })
-        {
-            var response = await client.GetAsync("/api/search?q=rossi");
-            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-            var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal("not_found", problem.GetProperty("code").GetString());
-        }
-
-        // Not even a bad term is looked at.
-        Assert.Equal(HttpStatusCode.NotFound, (await signedIn.GetAsync("/api/search")).StatusCode);
-    }
-
-    [Fact]
-    public async Task PublicFeatures_TellsTheSearchIsOff()
-    {
-        using var anonymous = factory.CreateClient();
-
-        var features = await (await anonymous.GetAsync("/api/public/features")).Content.ReadFromJsonAsync<JsonElement>();
-
-        Assert.False(features.GetProperty("globalSearch").GetBoolean());
-    }
-
-    [Fact]
-    public async Task LastContext_IsNotBehindTheFlag()
-    {
-        using var signedIn = factory.CreateAuthenticatedClient($"auth0|chiunque-{Guid.NewGuid():N}");
-
-        // The route exists with the flag off: 422 (this account holds no context), not 404.
-        var response = await signedIn.PutAsJsonAsync("/api/me/last-context", new { contextKey = "short-rent" });
-
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 }
 
