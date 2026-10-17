@@ -548,8 +548,8 @@ with the period before, nothing about a guest.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/guests` | JWT | List guests |
-| `GET` | `/api/guests/{id}` | JWT | Get a single guest |
+| `GET` | `/api/guests` | JWT | List guests: the org's guests that have a stay, narrowed to the ones with a stay at a property the caller reaches (SR-04b, `docs/runbooks/org-team.md` follow-ups of AM-03) |
+| `GET` | `/api/guests/{id}` | JWT | Get a single guest; with `/document-number`, `/document-scan`, `/email/{email}`, `PUT` and `DELETE` the same reach: a guest out of it answers 404 `guest_not_found` (SR-04b) |
 | `POST` | `/api/guests` | JWT | Create a guest record |
 | `PUT` | `/api/guests/{id}` | JWT | Update guest details |
 | `DELETE` | `/api/guests/{id}` | guest.manage (AM-03; was guest.write) | Delete a guest |
@@ -673,7 +673,7 @@ collaborator, who has no `payment.read`, is still refused.
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
 | `GET` | `/api/legal/privacy` | Anonymous | Privacy policy |
-| `GET` | `/api/gdpr/guests/{id}/export` | JWT | Export guest personal data |
+| `GET` | `/api/gdpr/guests/{id}/export` | JWT | Export guest personal data (this and the three guest actions below: a guest of the caller's org with a stay at a property the caller reaches, otherwise 404, SR-04b) |
 | `GET` | `/api/gdpr/org/export` | OrgBillingAdmin (AM-03b; was property.read) | Fiscal data of the org (Partita IVA, codice fiscale, fiscal years and taxpayers of the properties) and the people with access (ids, role, status, scope): the owner and the administrators only; the property sections hold only the properties the caller's scope reaches (`docs/runbooks/org-team.md` § 40) |
 | `DELETE` | `/api/gdpr/guests/{id}` | guest.manage (AM-03; was guest.write) | Erasure request (Art. 17) |
 | `POST` | `/api/gdpr/guests/{id}/anonymize` | guest.manage (AM-03; was guest.write) | Anonymize guest record |
