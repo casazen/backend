@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -22,7 +23,7 @@ public class GuestAccessServiceTests
         db.Guests.Add(guest);
         await db.SaveChangesAsync();
 
-        var result = await new GuestAccessService(db).IsGuestAccessibleAsync(guest.Id, orgId);
+        var result = await new GuestAccessService(db).IsGuestAccessibleAsync(guest.Id, new HostScope(orgId));
 
         Assert.True(result);
     }
@@ -47,7 +48,7 @@ public class GuestAccessServiceTests
         });
         await db.SaveChangesAsync();
 
-        var result = await new GuestAccessService(db).IsGuestAccessibleAsync(guest.Id, callerOrg);
+        var result = await new GuestAccessService(db).IsGuestAccessibleAsync(guest.Id, new HostScope(callerOrg));
 
         Assert.False(result);
     }
@@ -57,7 +58,7 @@ public class GuestAccessServiceTests
     {
         await using var db = NewDb();
 
-        var result = await new GuestAccessService(db).IsGuestAccessibleAsync(Guid.NewGuid(), Guid.NewGuid());
+        var result = await new GuestAccessService(db).IsGuestAccessibleAsync(Guid.NewGuid(), new HostScope(Guid.NewGuid()));
 
         Assert.False(result);
     }

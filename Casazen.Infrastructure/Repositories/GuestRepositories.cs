@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
@@ -17,34 +18,40 @@ public class GuestRepository(AppDbContext context) : IGuestRepository
             .FirstOrDefaultAsync(g => g.Id == id);
     }
 
-    public async Task<Guest?> GetByIdInOrgAsync(Guid orgId, Guid id, CancellationToken cancellationToken = default)
+    public async Task<Guest?> GetByIdInScopeAsync(HostScope scope, Guid id, CancellationToken cancellationToken = default)
     {
-        return await context.Guests
+        ArgumentNullException.ThrowIfNull(scope);
+
+        return await GuestsInScope(scope)
             .Include(g => g.Bookings)
-            .FirstOrDefaultAsync(g => g.Id == id && g.OrgId == orgId, cancellationToken);
+            .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
     }
 
-    public async Task<Guest?> GetByEmailAsync(Guid orgId, string email, CancellationToken cancellationToken = default)
+    public async Task<Guest?> GetByEmailAsync(HostScope scope, string email, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         var normalized = email.Trim().ToLower();
-        return await context.Guests
-            .Where(g => g.OrgId == orgId && g.Email.ToLower() == normalized)
+        return await GuestsInScope(scope)
+            .Where(g => g.Email.ToLower() == normalized)
             .OrderByDescending(g => g.CreatedAt)
             .ThenBy(g => g.Id)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
     public async Task<(IReadOnlyList<Guest> Items, int TotalCount)> GetPageAsync(
-        Guid orgId,
+        HostScope scope,
         string? searchTerm,
         int page,
         int pageSize,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         // PO 2026-10-08: the host list is bookers only. Companions live on StayGuest rows and are not guest cards.
-        var query = context.Guests
+        var query = GuestsInScope(scope)
             .AsNoTracking()
-            .Where(g => g.OrgId == orgId && !g.IsDeleted && g.Bookings.Any());
+            .Where(g => !g.IsDeleted && g.Bookings.Any());
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -120,4 +127,14 @@ public class GuestRepository(AppDbContext context) : IGuestRepository
 
         return new GuestUsage(hasReferences, hasOpenBookings);
     }
+
+    /// <summary>
+    /// The guests of the org of <paramref name="scope"/> that the scope reaches (SR-04b): the whole org for an org-wide scope,
+    /// otherwise the guests with a stay at one of the properties it reaches. Every read of a guest for the host starts here, so
+    /// the document number and the scan of a guest follow the same rule as the guest.
+    /// </summary>
+    private IQueryable<Guest> GuestsInScope(HostScope scope) =>
+        context.Guests
+            .Where(g => g.OrgId == scope.OrgId)
+            .InScope(scope, context.Bookings);
 }

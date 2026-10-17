@@ -49,6 +49,8 @@ public class GdprControllerTests
             .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(OrgId);
         Authorize(true);
+        // SR-04b: a guest is looked up inside the caller's scope, so the caller has one (the whole org here).
+        TheCallerIsTheHolder();
     }
 
     [Fact]
@@ -203,7 +205,7 @@ public class GdprControllerTests
     {
         var guestId = Guid.NewGuid();
         _mockGuestAccessService
-            .Setup(x => x.IsGuestAccessibleAsync(guestId, OrgId, It.IsAny<CancellationToken>()))
+            .Setup(x => x.IsGuestAccessibleAsync(guestId, new HostScope(OrgId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(accessible);
         return guestId;
     }

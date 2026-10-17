@@ -288,7 +288,9 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         var owner = NewOwner();
         var property = await _factory.SeedPropertyAsync(owner);
         var guestId = await AddGuestAsync(property.OrgId, $"lonely.{Guid.NewGuid():N}@example.com");
-        using var client = _factory.CreateAuthenticatedClient(owner, OwnerRole);
+        // SR-04b: a guest with no stay belongs to no property, so only who reaches the whole org reaches it. The account of this
+        // factory is in no org team (it reaches the properties it created), hence the org-wide role of the token.
+        using var client = _factory.CreateAuthenticatedClient(owner, $"{OwnerRole},PropertyManager");
 
         var response = await client.DeleteAsync($"/api/guests/{guestId}");
 

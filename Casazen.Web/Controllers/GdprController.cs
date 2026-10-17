@@ -11,7 +11,8 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Rights of the guests on their data, exercised by the host for them (CO-15, docs/runbooks/gdpr.md), and the org's
-/// fiscal data. Guest actions: guest of the caller's org only (another org's guest answers 404, TN-1), then the
+/// fiscal data. Guest actions: guest of the caller's org only (another org's guest answers 404, TN-1) and, for a caller limited to
+/// some properties, only a guest that has a stay at one of them (any other answers 404 too, SR-04b), then the
 /// <c>guest.read</c> permission on that org to read, <c>guest.manage</c> (AM-03) to erase, anonymize or change the consents of
 /// a guest (TN-3, otherwise 403): the collaborator who registers and corrects guests (<c>guest.write</c>) cannot erase them.
 /// The export of the org's fiscal data is an act of the holder of the org (AM-03b): only the owner and the administrators
@@ -166,14 +167,21 @@ public class GdprController(
         return NoContent();
     }
 
-    /// <summary>The caller's org when the guest belongs to it (TN-1); null otherwise (answered as 404).</summary>
+    /// <summary>
+    /// The caller's org when the guest belongs to it (TN-1) and the caller reaches the guest (SR-04b: a caller limited to some
+    /// properties reaches only the guests that have a stay at one of them); null otherwise (answered as 404). No scope (no org,
+    /// no reach on it) is never widened to the whole org.
+    /// </summary>
     private async Task<Guid?> ResolveGuestOrgAsync(Guid guestId)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null)
             return null;
 
-        return await guestAccessService.IsGuestAccessibleAsync(guestId, orgId.Value, HttpContext.RequestAborted)
+        if (await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
+            return null;
+
+        return await guestAccessService.IsGuestAccessibleAsync(guestId, scope, HttpContext.RequestAborted)
             ? orgId
             : null;
     }
