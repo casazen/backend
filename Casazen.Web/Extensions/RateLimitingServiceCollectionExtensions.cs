@@ -36,6 +36,7 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicBookingCreate, 10, OneMinute, "DirectBooking:RateLimitPermitLimit"),
         new(RateLimitPolicies.PublicBookingLookup, 30, OneMinute),
         new(RateLimitPolicies.PublicGuestBookingLookup, 10, TimeSpan.FromMinutes(5)),
+        new(RateLimitPolicies.PublicGuestSession, 10, TimeSpan.FromMinutes(5)),
         new(RateLimitPolicies.GuestCheckIn, 10, OneMinute, "CheckIn:RateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.GuestCheckInSubmit, 3, OneMinute, "CheckIn:SubmitRateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.PublicTouristTaxCalc, 30, OneMinute, "SeoTouristTax:RateLimitPermitLimit"),
@@ -65,6 +66,9 @@ public static class RateLimitingServiceCollectionExtensions
 
         // Per email limit of "Le mie prenotazioni" ([GuestBookingEmailRateLimit], BK-11), next to its per-IP policy.
         services.AddSingleton<GuestBookingEmailRateLimiter>();
+
+        // Per booking code limit of the guest session ([GuestSessionCodeRateLimit], DB-06a), next to its per-IP policy and the per-email limit.
+        services.AddSingleton<GuestSessionCodeRateLimiter>();
 
         // Per email and supplier limit of the booking from a supplier's showcase ([SupplierBookingEmailRateLimit], SP-10), next to
         // its per-IP policy.

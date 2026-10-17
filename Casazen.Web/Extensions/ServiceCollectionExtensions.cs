@@ -27,6 +27,7 @@ using Microsoft.AspNetCore.Authorization;
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -100,6 +101,18 @@ public static class ServiceCollectionExtensions
 
                 options.Events = new JwtBearerEvents
                 {
+                    OnMessageReceived = context =>
+                    {
+                        // The token of a guest session (DB-06a) is not a JWT: only the GuestSession scheme reads it. The sign-in
+                        // of the hosts leaves it alone, so it neither tries to validate it nor logs a failure at every call.
+                        if (context.Request.Headers.Authorization.ToString()
+                            .StartsWith("Bearer " + GuestSessionTokens.Prefix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            context.NoResult();
+                        }
+
+                        return Task.CompletedTask;
+                    },
                     OnAuthenticationFailed = context =>
                     {
                         var logger = context.HttpContext.RequestServices
@@ -180,7 +193,11 @@ public static class ServiceCollectionExtensions
                 {
                     options.RequireHttpsMetadata = false;
                 }
-            });
+            })
+            // The guest of a booking site with no account (DB-06a): its own scheme, used only by the policy GuestSession.
+            .AddScheme<AuthenticationSchemeOptions, GuestSessionAuthenticationHandler>(
+                GuestSessionDefaults.AuthenticationScheme,
+                _ => { });
 
         return services;
     }
@@ -214,7 +231,12 @@ public static class ServiceCollectionExtensions
             .AddPolicy(CasazenPolicies.AdminOnly, policy => policy.RequireRole("Admin"))
             .AddPolicy(CasazenPolicies.Supplier, policy => policy.RequireRole("Supplier"))
             .AddPolicy(CasazenPolicies.OrgBillingAdmin, policy =>
-                policy.Requirements.Add(new OrgBillingAdminRequirement()));
+                policy.Requirements.Add(new OrgBillingAdminRequirement()))
+            // The guest of a booking site with no account (DB-06a): its own authentication scheme, no role, no host context.
+            .AddPolicy(CasazenPolicies.GuestSession, policy => policy
+                .AddAuthenticationSchemes(GuestSessionDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .RequireClaim(GuestSessionDefaults.OrgIdClaim));
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
@@ -584,7 +606,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOnSiteBookingRequestService, OnSiteBookingRequestService>();
         // Outcome page of the public checkout, read with the checkout token (BK-07, A3-15).
         services.AddScoped<ICheckoutOutcomeService, CheckoutOutcomeService>();
-        services.AddScoped<IGuestBookingLookupService, GuestBookingLookupService>();
+        // One instance per request for both: the session service reuses the proof and the view of "Le mie prenotazioni" (DB-06a).
+        services.AddScoped<GuestBookingLookupService>();
+        services.AddScoped<IGuestBookingLookupService>(sp => sp.GetRequiredService<GuestBookingLookupService>());
+        // The guest's session with no account: code + email once, then a signed token (DB-06a, docs/runbooks/direct-booking.md § 8.4).
+        // The tokens are sealed with Data Protection (the key ring in the database), so every replica reads them.
+        services.AddSingleton<GuestSessionTokens>();
+        services.AddScoped<IGuestSessionService, GuestSessionService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
