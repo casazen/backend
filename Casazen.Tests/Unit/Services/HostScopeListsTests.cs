@@ -69,10 +69,13 @@ public class HostScopeListsTests : IAsyncLifetime
     public Task AlloggiatiList_TheCollaboratorSeesOnlyTheStaysOfItsProperties() => HostScopePoints.AlloggiatiListAsync(_db, _world);
 
     [Fact]
+    public Task Guests_TheCollaboratorSeesOnlyTheGuestsOfItsPropertiesAndTheirDocuments() => HostScopePoints.GuestsAsync(_db, _world);
+
+    [Fact]
     public async Task EveryPoint_IsRunByTheCommonList()
     {
         // The list the PostgreSQL run walks must not lose a point: one fact above for each of its entries.
-        Assert.Equal(16, HostScopePoints.All.Count);
+        Assert.Equal(17, HostScopePoints.All.Count);
         foreach (var (name, run) in HostScopePoints.All)
         {
             await using var db = HostScopeScenario.NewInMemoryDb();

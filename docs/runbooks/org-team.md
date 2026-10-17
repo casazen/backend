@@ -740,9 +740,16 @@ number of commands does not grow with the number of properties, cascade and set 
 - **The fiscal area needs `payment.read`** as well as `property.read`.
 - **FU1.** An invitation carries only the scope, not the properties: a limited collaborator joins seeing nothing until the owner gives
   it properties. The AM-04 screen can do it in the same step with the member id of the acceptance.
-- **FU2.** The guests of the org are listed to every member with `guest.read`: a limited collaborator still lists the guests of the
-  properties it does not reach (the guest list has no property). Narrowing it needs a rule on the guest (guests of a stay of a reachable
-  property).
+- **FU2 (closed by SR-04b).** The guests of the org were listed to every member with `guest.read`, and their card, full document number and
+  scan read, whatever the property: a limited collaborator saw the guests of the properties it did not reach. A guest belongs to the org, not to
+  a property, so it is now reached through its stays (`InScope` for guests, `HostScopeQueryExtensions`): a scope limited to some properties
+  reaches the guests that have a booking (any status) at one of them, the whole org also the guests that have no stay. The rule is applied where
+  the guest is looked up, so one lookup serves the list, the card, `document-number`, `document-scan`, the lookup by e-mail, the correction and the
+  deletion (`GuestsController`) and the five GDPR actions on a guest (`GdprController`: privacy summary, export with the document in clear,
+  erasure, anonymization, consent); a guest out of the reach answers 404 `guest_not_found`, like one of another org. The global search had the same
+  rule already. Proof: `HostScopePoints.GuestsAsync` (InMemory and PostgreSQL). Left as it was: the GDPR export of a guest lists all the stays of
+  that guest, and a guest row shared by stays of different properties only exists in old data (SR-04b-FU1); creating a guest (`POST /api/guests`)
+  is not narrowed, and a guest created that way has no stay, so a limited collaborator cannot read it back.
 - **FU3.** The contact shown to a supplier is still the creator of the property and the host email of the service request is still
   the contact of the org (section 24 covers the push and the booking emails).
 - **FU4.** The activity log of the grants (who gave what to whom) is AM-02b's (done: the event `MemberPropertyAccessChanged`, section 30);
@@ -1119,8 +1126,8 @@ and the existing `ServicePaymentsIntegrationTests` for the rest of the payment.
   one line in `GdprController`; the draft PR #461 ("restrict org fiscal GDPR actions", 2026-10-05) predates AM-03, uses `HasOrgWideHostAccess` (removed) and can be closed.
 - **AM-03b-FU2 - the cache of the authorization between instances** (section 42): a version counter or a channel to invalidate the copies on every instance.
 - **AM-03b-FU3 - a collaborator and the payment**: the product owner decides whether a collaborator may confirm a final amount and pay online (section 43).
-- **Other recipients, not changed**: the email of a service request to the host still goes to the contact of the org (AM-03-FU3); the guests of the org
-  are still listed to every member with `guest.read` (AM-03-FU2).
+- **Other recipients, not changed**: the email of a service request to the host still goes to the contact of the org (AM-03-FU3). The guests of the org
+  are no longer listed to every member with `guest.read` (AM-03-FU2, closed by SR-04b: see the follow-ups of AM-03).
 
 ---
 
