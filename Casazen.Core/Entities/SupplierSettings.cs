@@ -61,8 +61,8 @@ public class SupplierSettings
 
     /// <summary>
     /// The supplier accepts the requests of its regular hosts by itself (default off). Read when a host's request is created
-    /// (SP-04d, <see cref="ServiceRequestAutoAccept"/>); the endpoint that writes it is <c>PUT api/supplier/settings</c> (SP-16a), so
-    /// until that exists the option is off for every supplier and nothing is accepted automatically.
+    /// (SP-04d, <see cref="ServiceRequestAutoAccept"/>); written by <c>PUT api/supplier/settings</c> (SP-16a-1), under the same
+    /// agenda lock that creation takes, so a request is judged on the value as it is saved.
     /// </summary>
     public bool AutoAcceptRegulars { get; set; }
 
