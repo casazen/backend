@@ -603,6 +603,18 @@
   <data name="OrgContactEmailTooLong" xml:space="preserve">
     <value>L'email di contatto non può superare i 255 caratteri.</value>
   </data>
+  <data name="OrgOperatorLegalNameTooLong" xml:space="preserve">
+    <value>La ragione sociale non può superare i {0} caratteri.</value>
+  </data>
+  <data name="OrgOperatorLegalNameTooLongInput" xml:space="preserve">
+    <value>La ragione sociale è troppo lunga.</value>
+  </data>
+  <data name="OrgOperatorRegisteredOfficeTooLong" xml:space="preserve">
+    <value>La sede legale non può superare i {0} caratteri.</value>
+  </data>
+  <data name="OrgOperatorRegisteredOfficeTooLongInput" xml:space="preserve">
+    <value>La sede legale è troppo lunga.</value>
+  </data>
   <data name="OrgSlugInvalid" xml:space="preserve">
     <value>Questo indirizzo web (slug) non è valido: usa da {0} a {1} caratteri tra lettere, numeri e trattini.</value>
   </data>

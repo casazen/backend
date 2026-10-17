@@ -85,7 +85,9 @@ public class OrgsController(
     /// Updates the caller org's name, public slug and contact email, including whether the contact email is
     /// published on the public booking site (A1-22, A1-23). 422 <c>org_slug_invalid</c> / <c>org_slug_reserved</c>
     /// for an unusable slug, 409 <c>org_slug_taken</c> when another org uses it. The previous slug keeps resolving
-    /// to the org (shared links), see <c>IOrgService.UpdateSettingsAsync</c>.
+    /// to the org (shared links), see <c>IOrgService.UpdateSettingsAsync</c>. Since DB-03b-a it also writes the operator data
+    /// that the footer of the booking site shows (<c>legalName</c>, <c>registeredOffice</c>; left out = unchanged, blank = cleared,
+    /// 422 <c>org_operator_*_too_long</c> above the limit), under the same policy as the rest of the body.
     /// </summary>
     [HttpPut("me/settings")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -111,7 +113,12 @@ public class OrgsController(
             dto.ContactEmail,
             dto.ContactEmailPublic,
             actorUserId: User.GetUserId(),
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            // DB-03b-a: the operator data of the booking-site footer changes only when the body carries it.
+            legalName: dto.LegalNameSent ? FieldUpdate<string>.Set(dto.LegalName) : FieldUpdate<string>.Unchanged,
+            registeredOffice: dto.RegisteredOfficeSent
+                ? FieldUpdate<string>.Set(dto.RegisteredOffice)
+                : FieldUpdate<string>.Unchanged);
         if (updated is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 

@@ -42,6 +42,12 @@ public class PublicOrgDto
     public string? PublicPhone { get; set; }
 
     /// <summary>
+    /// Who runs the site (DB-03b-a): legal name, registered office and VAT number for the footer, or null while the org has
+    /// entered none of them (<see cref="PublicOperatorDto"/>).
+    /// </summary>
+    public PublicOperatorDto? Operator { get; set; }
+
+    /// <summary>
     /// A guest can book on this site now (DB-03): the org can take a payment (<c>Org.CanTakeDirectPayments</c>, a connected
     /// Stripe account that is allowed to charge). It is the rule of the checkout itself: without it every booking, "pay at the
     /// property" requests included, is refused with 409 <c>direct_booking_payments_not_ready</c>, so a site that says
@@ -86,6 +92,7 @@ public class PublicOrgDto
         Subtitle = org.Subtitle,
         HostName = org.HostName,
         PublicPhone = org.PublicPhone,
+        Operator = PublicOperatorDto.FromOrg(org),
         AcceptsBookings = org.CanTakeDirectPayments,
         PublicThemeId = PublicSiteThemes.Resolve(org.PublicThemeId),
         ShowPoweredBy = effectiveTier == PlanTier.Starter,

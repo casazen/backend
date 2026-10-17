@@ -78,7 +78,11 @@ public interface IOrgService
     /// off by default — GDPR). Returns <c>null</c> when the org does not exist. Throws <c>DomainRuleException</c>
     /// for an unusable slug and <c>DomainConflictException</c> when another org uses it. When the name or the slug really
     /// changes the activity log gets a line for each (<c>OrgNameChanged</c>, <c>OrgSlugChanged</c>: no value, only the fact),
-    /// in the same save (AM-02b); <paramref name="actorUserId"/> is who asked.
+    /// in the same save (AM-02b); <paramref name="actorUserId"/> is who asked. The operator data of the booking-site footer
+    /// (DB-03b-a) changes only for the fields the call carries (<see cref="FieldUpdate{T}"/>): <paramref name="legalName"/>
+    /// and <paramref name="registeredOffice"/> that are not sent keep their value, so a caller that does not know them never erases
+    /// them; a blank clears the field. They are validated before anything is written (<c>DomainRuleException</c>, codes in
+    /// <c>OrgOperatorRules</c>).
     /// </summary>
     Task<Org?> UpdateSettingsAsync(
         Guid orgId,
@@ -87,7 +91,9 @@ public interface IOrgService
         string contactEmail,
         bool contactEmailPublic,
         string? actorUserId = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        FieldUpdate<string> legalName = default,
+        FieldUpdate<string> registeredOffice = default);
 
     /// <summary>
     /// Whether <paramref name="slug"/> can become the org's public slug (A1-23): its normalized form and, when it
