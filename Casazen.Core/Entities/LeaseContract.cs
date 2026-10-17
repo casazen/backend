@@ -128,6 +128,61 @@ public class LeaseContract : ITenantOwned
     /// </summary>
     public DateTime? PartiesAnonymizedAt { get; set; }
 
+    // ─── The guided draft (LR-12) ────────────────────────────────────────────────────────────────────────────────────
+    // A draft is saved step by step with values that may be incomplete or wrong, but the columns above stay NOT NULL and every
+    // reader of the lease (views, occupancy, privacy, RLI) keeps reading them. So a draft starts with the starting values of
+    // LeaseDraftDefaults, a value is written into its column only when it is valid, and what the columns cannot hold lives in
+    // DraftData until the data of the draft is complete.
+
+    /// <summary>
+    /// The values the landlord typed in the wizard, as a JSON document (<c>LeaseDraftValues</c>), <b>encrypted at rest</b>
+    /// (<c>EncryptedColumns</c>, purpose <c>Casazen.LeaseContract.Draft</c>): names, fiscal codes and residences of the parties
+    /// included. It is the whole typed state while the data of the draft is not complete (some value is missing or not valid,
+    /// so the columns hold starting values); <c>null</c> once it is complete, and for every lease that was not saved through the
+    /// wizard (then the columns and the parties are the truth). Never read by anything but the draft service, never in a
+    /// log or in a masked DTO.
+    /// </summary>
+    public string? DraftData { get; set; }
+
+    /// <summary>
+    /// Optimistic version of the draft: every change of the guided draft (a step saved, the review confirmed or withdrawn, the
+    /// contract marked as downloaded for signature) increases it, and a save made with an older number is refused with 409
+    /// <c>lease_draft_conflict</c>, so two browser tabs never overwrite each other without notice. Not a column of the
+    /// concurrency of the other writers of the lease (signature, registration).
+    /// </summary>
+    public int DraftVersion { get; set; }
+
+    /// <summary>
+    /// The furthest step (0 to 8) the landlord reached in the wizard. A data step is "done" only if nothing is missing and the
+    /// landlord has been there (<c>LeaseDraftProgress</c>). 1 for a draft created with only the property; 5 for a lease created
+    /// complete in one call (<c>POST api/leases</c>) and for the drafts that existed before LR-12.
+    /// </summary>
+    public int WizardMaxStep { get; set; }
+
+    /// <summary>
+    /// When the landlord confirmed the review (the five data steps checked, nothing blocking). <c>null</c> until then and again
+    /// as soon as a value of the first five steps changes or the confirmation is withdrawn.
+    /// </summary>
+    public DateTime? ReviewConfirmedAt { get; set; }
+
+    /// <summary>
+    /// SHA-256 (hex) of the values of the first five steps at the moment the review was confirmed (<c>LeaseDraftFingerprint</c>):
+    /// a later save changes the confirmation only if it changes a value, not when the autosave repeats the same ones. <c>null</c>
+    /// without a confirmation. No personal data can be read back from it.
+    /// </summary>
+    [MaxLength(64)]
+    public string? ReviewFingerprint { get; set; }
+
+    /// <summary>
+    /// When the landlord downloaded the contract to have it signed on paper (the "scaricato per la firma" of the wizard). It does
+    /// not change <see cref="Status"/>: an offline lease is a draft until the signed copy is uploaded. <c>null</c> until then, and
+    /// again when it is withdrawn or the review is reopened.
+    /// </summary>
+    public DateTime? SentForSignatureAt { get; set; }
+
+    /// <summary>How the lease came to be in CasaZen (<see cref="LeaseOrigin"/>); fixed at creation.</summary>
+    public LeaseOrigin Origin { get; set; } = LeaseOrigin.Created;
+
     public virtual ICollection<Party> Parties { get; set; } = [];
     public virtual ICollection<LeaseSigner> Signers { get; set; } = [];
     public virtual LeaseRegistration? Registration { get; set; }

@@ -98,6 +98,13 @@ public static class RecurringJobsRegistration
             PropertyModeChangeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // LR-12: the abandoned lease drafts (no change for LongRentLease:DraftRetentionDays) are deleted every night.
+        recurringJobManager.AddOrUpdate<LeaseDraftRetentionJob>(
+            LeaseDraftRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            LeaseDraftRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
             job => job.ExecuteAsync(),

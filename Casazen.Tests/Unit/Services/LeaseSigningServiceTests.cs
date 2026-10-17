@@ -262,6 +262,24 @@ public class LeaseSigningServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task DeclareOfflineSignatureAsync_ADraftStillKeepingTheTypedStateOfTheWizard_DropsItWithTheDraft()
+    {
+        // LR-12: the typed state of the wizard repeats the data of the parties and is only for a draft; a lease that is signed keeps none.
+        var lease = await SeedLeaseAsync(LeaseStatus.Draft);
+        var tracked = await _db.LeaseContracts.SingleAsync(l => l.Id == lease.Id);
+        tracked.DraftData = """{"landlords":[{"firstName":"Mario"}]}""";
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await CreateSut().DeclareOfflineSignatureAsync(
+            lease.Id, "auth0|owner", new OfflineSignatureDeclaration(new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Utc), new MemoryStream(Pdf), Pdf.Length));
+
+        var stored = await ReloadAsync(lease.Id);
+        Assert.Equal(LeaseStatus.Signed, stored.Status);
+        Assert.Null(stored.DraftData);
+    }
+
+    [Fact]
     public async Task GetSignersAsync_OfflineBeforeUpload_EveryPartyPendingOnPaperOrPdf()
     {
         var lease = await SeedLeaseAsync(LeaseStatus.Draft);
