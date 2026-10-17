@@ -24,16 +24,46 @@ public sealed record SupplierClosedDay(DateOnly Date, SupplierAvailabilitySource
 /// </param>
 /// <param name="StartUtc">First instant of the work (UTC); <c>null</c> for a request that only has a day.</param>
 /// <param name="EndUtc">Instant the work ends (UTC); <c>null</c> for a request that only has a day.</param>
+/// <param name="ServiceListingId">The catalog service the request is for, when it is for one (the conflict check reads its notice and weekdays).</param>
+/// <param name="ServiceName">
+/// The name of the service at the time of the request (SP-03b, a snapshot), <c>null</c> when the request is for a category only:
+/// the calendar then shows <see cref="Category"/>. Filled only by <see cref="Services.ISupplierServiceRequestReader.ListForCalendarAsync"/>.
+/// </param>
+/// <param name="ClientLabel">
+/// Who asks, as the supplier may know it (SP-03b, decision D9): the name of the host's org for a host's request; for a private
+/// customer of the public showcase "Nome C." until the supplier takes the request, the full name after
+/// (<see cref="SupplierJobDisclosure.CustomerName"/>). Never an address, a contact or a note. Filled only by
+/// <see cref="Services.ISupplierServiceRequestReader.ListForCalendarAsync"/>.
+/// </param>
+/// <param name="Comune">The comune of the work as written (a property's city, or the place the customer wrote); the postal code and the street are not here. Filled only by <see cref="Services.ISupplierServiceRequestReader.ListForCalendarAsync"/>.</param>
+/// <param name="Source">
+/// Where the request comes from: <see cref="SupplierRequestSources.CasaZen"/> or <see cref="SupplierRequestSources.Showcase"/>. A
+/// column of the request itself: both reads fill it, so it is right wherever the record comes from (the three titles above are the only
+/// ones that need the join of the calendar).
+/// </param>
+/// <param name="HasPendingProposal">
+/// True while a time the supplier proposed has no answer (the <see cref="Phase"/> is then <c>proposal_pending</c>). Filled by both
+/// reads, like <paramref name="Source"/>.
+/// </param>
 public sealed record SupplierAgendaRequest(
     Guid Id,
     DateOnly Date,
     ServiceRequestStatus Status,
     string Category,
     DateTime? StartUtc = null,
-    DateTime? EndUtc = null)
+    DateTime? EndUtc = null,
+    Guid? ServiceListingId = null,
+    string? ServiceName = null,
+    string? ClientLabel = null,
+    string? Comune = null,
+    string Source = SupplierRequestSources.CasaZen,
+    bool HasPendingProposal = false)
 {
     /// <summary>True when the request has hours of its own (<see cref="StartUtc"/> and <see cref="EndUtc"/>).</summary>
     public bool HasHours => StartUtc is not null && EndUtc is not null;
+
+    /// <summary>The phase of the request (<see cref="SupplierRequestPhases"/>): derived in one place, never stored.</summary>
+    public string Phase => SupplierRequestPhases.Of(Status, HasPendingProposal);
 }
 
 /// <summary>
@@ -181,6 +211,10 @@ public interface ISupplierAgendaService
     /// included, at most <see cref="SupplierAgendaLimits.MaxCalendarDays"/>): hours, closed days, time off, windows and the
     /// requests that have a day. Read-only.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The range is reversed, too long or too close to an end of the calendar (<see cref="SupplierAgendaRange"/>; the controller
+    /// answers 400 before).
+    /// </exception>
     Task<SupplierCalendar> GetCalendarAsync(
         Guid supplierOrgId,
         DateOnly from,

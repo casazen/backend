@@ -235,6 +235,32 @@ public class SupplierCalendarRequestDto
 
     /// <summary>A code of <c>GET /api/service-categories</c>.</summary>
     public string Category { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The name of the catalog service the request is for, as it was when the request was made; <c>null</c> when the request is for a
+    /// category only (show <see cref="Category"/> then).
+    /// </summary>
+    public string? ServiceName { get; set; }
+
+    /// <summary>
+    /// Who asks, as the supplier may know it before taking the request (decision D9): the name of the host's org for a host's
+    /// request; for a private customer of the public showcase <c>Nome C.</c> until the request is taken, the full name after.
+    /// Never an address, a contact or a note.
+    /// </summary>
+    public string? ClientLabel { get; set; }
+
+    /// <summary>The comune of the work as written (never the street, the postal code or the name of the property).</summary>
+    public string? Comune { get; set; }
+
+    /// <summary><c>casazen</c> (a host asked) or <c>showcase</c> (a customer booked from the supplier's public page).</summary>
+    public string Source { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Where the request is in its life, derived by the server (one place for every read of the console):
+    /// <c>to_answer</c>, <c>proposal_pending</c>, <c>quote_pending</c>, <c>scheduled</c>, <c>in_progress</c>, <c>completed</c>,
+    /// <c>paid</c>. An open set: a client shows a value it does not know with a neutral label.
+    /// </summary>
+    public string Phase { get; set; } = string.Empty;
 }
 
 /// <summary>Body of <c>GET api/supplier/calendar</c>: what the supplier's calendar shows for the days asked.</summary>
@@ -370,6 +396,11 @@ public static class SupplierAgendaMapper
                     EndUtc = request.EndUtc,
                     Status = request.Status,
                     Category = request.Category,
+                    ServiceName = request.ServiceName,
+                    ClientLabel = request.ClientLabel,
+                    Comune = request.Comune,
+                    Source = request.Source,
+                    Phase = request.Phase,
                 })
                 .ToList(),
         };

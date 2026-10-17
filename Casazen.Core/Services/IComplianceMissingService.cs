@@ -60,6 +60,9 @@ public static class ComplianceMissingCodes
 
     /// <summary>A finished job has not been paid (SR-03b, <c>GET /api/dashboard/today</c>).</summary>
     public const string ServiceNotPaid = "service_not_paid";
+
+    /// <summary>Two stays or blocks of a property take the same night (SR-02a, <c>GET /api/dashboard/today</c>).</summary>
+    public const string CalendarConflict = "calendar_conflict";
 }
 
 /// <summary>

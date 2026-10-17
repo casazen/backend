@@ -22,6 +22,8 @@ Section 24: the customer's own area of that booking, to find it again with its c
 time the supplier proposed (SP-11, redesign wave).
 Section 25: the supplier's Stripe Connect account (SP-14). Section 26: paying the supplier inside CasaZen with the CasaZen commission (payment mode of a
 request, the payer's link, the host's confirmation of an amount above the quote, the supplier's payment request and offline record; SP-15a, redesign wave; the webhook, the jobs, the refunds and the admin tools, 26.7, SP-15b).
+Section 27: the read models of the console screens "Oggi" and "Richieste" (SP-04e). Section 28: what the Portal's agenda reads, the titles, the
+conflicts with a fix, "how customers see you" and the unlinking of the calendar (SP-03b, redesign wave).
 Section 29: the console's settings, earnings and clients (SP-16a, redesign wave).
 
 ## 1. How a supplier joins
@@ -1191,8 +1193,10 @@ days**; left out: from today, and 30 days after `from`) answers, for the supplie
 - `requests[]`: the supplier's service requests that have a day, as **whole-day items**: `{ id, date, status, category }`.
   The day of a request is, today, the check-out day of the stay of a short-rent request (what the inbox calls `scheduledFor`);
   a long-rent request, or an old one not tied to a stay, has no day and is not here until it gets a time (SP-04). Every status
-  except `Rifiutato`. Nothing else of the request: **no property, address, host or guest** (those are the request's detail, and the
-  supplier sees them only after taking it, section 11).
+  except `Rifiutato` and `Annullato` (a rejected or cancelled request holds no time). Nothing else of the request: **no property,
+  address, host or guest** (those are the request's detail, and the supplier sees them only after taking it, section 11). Since SP-03b
+  every item also has the hours (`startUtc`, `endUtc`, SP-04) and `serviceName`, `clientLabel`, `comune`, `source` and `phase`
+  (section 28.2).
 - `timeZone`: `Europe/Rome`.
 
 ### 20.4 The slot planner
@@ -1306,6 +1310,8 @@ follows; its **settings row moves only when the keeper has none** (the keeper's 
 - **SP-09** (public slots) — **done, see section 22**: `PlanAsync(orgId, from, to, new SupplierSlotQuery(durationMinutes, service.MinNoticeHours, service.WeekdaysMask))`
   for a published service of an `Active` supplier; only the slot instants leave (never a label, a kind or a reason of closure).
 - **SP-10** (holds): add `SupplierOccupancy.Hold(startUtc, endUtc, expiresAtUtc)` and recompute under the lock before creating the hold.
+- **SP-03b** (what the Portal's agenda reads) — **done, see section 28**: titles and phase in the calendar, the conflicts with a fix, the
+  supplier's preview of the slots and the unlinking of the calendar; all asked of this planner, which did not change.
 
 ### 20.10 After a deploy
 
@@ -1510,6 +1516,7 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 | Event | To | Email | Push `type` |
 |---|---|---|---|
 | New request | the supplier | comune, time, amount, link to the inbox | `service-request-created` |
+| New request accepted automatically (SP-04d, section 21.14), **instead of** the line above | the supplier | comune, time, amount, link to the inbox; no address, no contact | `service-request-auto-accepted` |
 | Taken, started, completed (with final amount, the over-quote note and the supplier's notes), rejected | the host | status email | `service-request-taken`, `-started`, `-completed`, `-rejected` |
 | Cancelled by the supplier / by CasaZen (no answer) | the host | status email | `service-request-cancelled` |
 | Cancelled by the host / by CasaZen (no answer) | the supplier | comune, reason | `service-request-cancelled` |
@@ -1533,8 +1540,8 @@ Statuses travel **by name**. **`Annullato` is new** and a client that does not k
 ### 21.12 Configuration
 
 Section `Suppliers:ServiceRequests` (validated at startup, `appsettings.json` has the defaults): `Suppliers__ServiceRequests__HostResponseMinutes` (120,
-10 to 4320), `…__FinalAmountTolerancePercent` (20, 0 to 100), `…__RemindIntervalHours` (6, 1 to 72). Flag: `Features__SupplierRequestAutoCancel`
-(`feature-flags.md`, `deploy-checklist.md` § 2.11). Hangfire: `hangfire.md`.
+10 to 4320), `…__FinalAmountTolerancePercent` (20, 0 to 100), `…__RemindIntervalHours` (6, 1 to 72), `…__RegularHostMinJobs` (3, 1 to 100,
+section 21.14). Flag: `Features__SupplierRequestAutoCancel` (`feature-flags.md`, `deploy-checklist.md` § 2.11). Hangfire: `hangfire.md`.
 
 ### 21.13 After a deploy
 
@@ -1548,6 +1555,62 @@ Section `Suppliers:ServiceRequests` (validated at startup, `appsettings.json` ha
 - [ ] As the host: `cancel` with a reason → 200; `remind` twice → the second is 422 `service_request_remind_too_soon`.
 - [ ] `GET /api/supplier/today` and `GET /api/supplier/checklist` answer for a supplier with and without requests (`paymentsActive: null`).
 - [ ] An old request (created before the deploy) still opens everywhere with no time and no price.
+
+### 21.14 Automatic acceptance of a regular host's request — SP-04d
+
+Redesign wave task SP-04d (branch `feature/rd-supplier-auto-accept`, backend only: the switch is saved by `PUT api/supplier/settings`, SP-16a-1, section 29.1, and
+its screen is SP-16c). Decision SP-D6 of the Portale fornitori analysis. **No feature flag**: the function is off for every supplier
+(`SupplierSettings.AutoAcceptRegulars` is `false` by default), so nothing changes for anybody until a supplier turns it on with that call (the console screen for it is
+SP-16c, not built yet).
+
+**The rule** (`Casazen.Core/Suppliers/ServiceRequestAutoAccept.cs`, applied by `ServiceRequestService.CreateAsync`). A host's request is saved already
+`PresoInCarico`, instead of `Richiesto`, when **all** of this holds; otherwise nothing changes:
+
+| # | Condition | Why |
+|---|---|---|
+| 1 | The supplier turned the option on, is `Active`, and has no new version of the Terms of Service to accept | the same gate as a take by hand (`take` is refused with 422 `supplier_tos_reacceptance_required`) |
+| 2 | The request is for a **service of the catalog** that is priced (not `RequiresQuote`) | a request by category only, or on quote, has no price the supplier agreed to |
+| 3 | The host did **not type a duration** (`durationMinutes` is empty): the time was checked by the planner | a typed duration skips the check of the published hours (section 21.3), so the time was never verified |
+| 4 | It is a **host's** request (short-rent or long-rent) | the private customers of the supplier's showcase (SP-10) are never accepted this way: their requests are not created by this path at all |
+| 5 | The host's **org** has at least `Suppliers__ServiceRequests__RegularHostMinJobs` (3) **other** requests to this supplier in the status `PresoInCarico`, `InCorso`, `Completato` or `Pagato` | "regular" = three jobs taken with the same supplier, any date, short-rent and long-rent together; counted by org, not by user |
+
+With the default of 3, the **fourth** request of a host (after three jobs taken) is the first one accepted automatically; with two jobs taken it is not. A job the
+supplier **cancelled after the take does not count** (decision SP-D6, default of the brief); neither do rejected requests, requests cancelled by the
+host or by CasaZen, and the supplier's showcase requests. The slot and the overlap with the jobs already accepted are checked as for any request, **before**
+the take is written and in the same transaction, under the supplier's calendar lock: an automatic acceptance can never make two jobs overlap, and if the time is
+not free the request is refused with 409 `supplier_slot_unavailable` / `supplier_commitment_conflict` as it always was.
+
+**What the request looks like.** `Status = PresoInCarico`, `AutoAccepted = true` (new column), `TakenAt = CreatedAt`, no `TakenByUserId`, no `ResponseDueAt`,
+`PaymentMode` decided as for a take (`Online` only with `SupplierOnlinePayments` on and a payment-enabled Stripe account, otherwise `Manual`), no
+`QuotedAmountCents` (the estimate is the reference, as for a take without a quote). `autoAccepted` is in the DTOs of the host and of the supplier. The history is
+`Richiesto` (the host) then `PresoInCarico` with the actor **`System`** and no name: that is "Accettata in automatico" for the screens. Everything after is the normal life
+of a request: the supplier can cancel it (with a reason) until the work starts, the host can cancel it, `start` and `complete` as usual, and the supplier sees the address
+and the contact of the host as after any take (decision D9).
+
+**Messages.** Only the ones the flow already sends, and no other to anybody: the **host** gets the usual "taken" email and push (`service-request-taken`); the
+**supplier** gets, **instead of** the "new request" email and push, the email and push `service-request-auto-accepted` ("accettata in automatico"; comune, time and amount,
+never the address or the contact of the host, and an invitation to cancel from the console if it cannot do the job). Nothing is sent to the guest or to a third party.
+The setting `NotifyNewRequests` is not read by any code yet (SP-16d connects it, and will gate this message with the one of a new request).
+
+**Response time.** A request accepted automatically is born taken, so its wait would be 0: it is **left out of the average** (`GET api/supplier/today`, the overview of
+section 27) and of the public median, and it counts as **accepted** in the acceptance rate.
+
+**Data.** Migration `AddServiceRequestAutoAccepted`: one column `ServiceRequests.AutoAccepted boolean NOT NULL DEFAULT false`, no backfill (every request that exists is
+`false`); it goes down by dropping the column.
+
+**Limits (not done on purpose).** The threshold is one server value, not a setting of the supplier; no time windows, no pause after a cancellation, no message to the host
+about the reason; the count is read just before saving (a take or a cancellation of the supplier at the same instant may change the result by one job: the supplier can
+always cancel); the demo showcase has no supplier with the option on (it has no supplier or request data at all, section 27.12).
+
+**For the tasks stacked on this one.** `PUT api/supplier/settings` writes `AutoAcceptRegulars` under the same agenda lock that creating a request takes, so a request is
+judged on the value as it is saved; SP-16c shows the switch and the explanation; SP-08c shows `autoAccepted` and the "Accettata in automatico" step; SP-16d gates this
+message by `NotifyNewRequests`.
+
+**After a deploy.**
+- [ ] Migration `AddServiceRequestAutoAccepted` applied; every row has `AutoAccepted = false`.
+- [ ] Test environment, with `UPDATE "SupplierSettings" SET "AutoAcceptRegulars" = true` for a test supplier that has three jobs taken with a test host: a request of that host for a
+      priced service in a free slot answers 201 with `status: PresoInCarico` and `autoAccepted: true`, the host gets the "taken" email, the supplier the "accettata in
+      automatico" one; the same request for a service on quote, with a typed duration, or from another host stays `Richiesto`; switch the column back to `false`.
 
 ## 22. The public read side of the showcase: services, free slots and price estimate — SP-09
 
@@ -2491,7 +2554,7 @@ September**: a part of a month is not compared with a whole one. The answer carr
 | `accepted` | requests the supplier **took** (`TakenAt`), counted on the day of the take, not of the arrival; a request cancelled **after** the take is still accepted |
 | `rejected` | requests the supplier **refused**, on the day of the refusal (`Rifiutato`: its last update, like the KPIs of SU-11) |
 | `acceptanceRate` | `accepted / (accepted + rejected)`, from 0 to 1, four decimals; **`null` when the supplier answered none**. A request nobody answered (new, or cancelled by CasaZen for no answer) is no answer; a cancellation after the take does not change the rate |
-| `averageResponseMinutes` | the **mean** of `TakenAt − CreatedAt` of the requests taken in the period, in whole minutes; `null` when none was. The same pairs as `GET today` (which looks at the last 90 days). A request accepted by itself (SP-04d, not merged yet) will not count |
+| `averageResponseMinutes` | the **mean** of `TakenAt − CreatedAt` of the requests taken in the period, in whole minutes; `null` when none was. The same pairs as `GET today` (which looks at the last 90 days). A request accepted automatically (SP-04d, section 21.14) does not count |
 | `completedJobs` | jobs completed in the period (`Completato`, or `Pagato` afterwards), by `CompletedAt` |
 | `paidNetCents`, `paidGrossCents`, `commissionCents` | the payments with status **`Paid`** and `PaidAt` in the period (one recorded as received outside CasaZen included: no commission); `net = gross − commission`. **0 unless `onlinePayments`**. A payment that was paid and then refunded (`PartiallyRefunded`, `Refunded`) is **left out** until the earnings page (SP-16a) defines how a refund moves the figures |
 | `toCollectCents`, `toCollectJobs` | what is **still to be collected now**, only in `current` (`null` in `previous`: it is a state, not a flow). The jobs `Completato`: for a job paid outside CasaZen the **declared total** (gross, no commission exists), for one asked for inside it the **net** of its payment (while it is asked for, in progress, failed or under review). A job with no payment yet that waits for the host to confirm an amount above the quote (decision D7) counts at the declared total: the commission is computed when the payment is created. A job with no declared amount is a job to collect and adds nothing |
@@ -2539,8 +2602,8 @@ requests with the **same statuses and the same "has a proposal" test as the tabs
 ### 27.5 `phase`
 
 Derived **once**, by `SupplierRequestPhases.Of(status, hasPendingProposal, hasPendingQuote)` (`Casazen.Core/Suppliers/SupplierRequestPhase.cs`; the agenda
-of SP-03b will use the same type, so the file is the same in both), never stored, never a new value of `status`. Today it is on the items of `inbox`,
-`inbox/{id}` and `today`, **not** on the calendar. **An open set**: a client shows a generic wording for a value it does not know.
+of SP-03b uses the same type, so the file is the same in both), never stored, never a new value of `status`. Today it is on the items of `inbox`,
+`inbox/{id}` and `today`, and on `requests[]` of `GET api/supplier/calendar` (SP-03b, section 28.2). **An open set**: a client shows a generic wording for a value it does not know.
 
 | `phase` | When | `status` |
 |---|---|---|
@@ -2615,8 +2678,8 @@ thousands of requests, `(SupplierOrgId, CreatedAt)` is the first candidate (with
   test `payment.id` to know whether there is one, never `payment != null`); `overview.onlinePayments` decides "Incassi" or "Lavori completati"; `previous.from/to`
   say what the delta compares with; `today.jobsTotal` says when the 50 jobs are not all of them. The Golden Journey keeps using `nuove`.
 - **SP-04b (quote)**: add `Quote` to `SupplierServiceRequestView` and pass `hasPendingQuote: Quote is not null` in `SupplierServiceRequestView.Phase`; add the
-  same test to the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and to `TabCountsOf`. **SP-04d (auto-accept)**: exclude the
-  requests accepted in automatic from `SupplierKpiService.AnswersBetween` (and from the average of `today`), as decided. **LR-08a (`tenantContact`)**: independent
+  same test to the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and to `TabCountsOf`. **SP-04d (auto-accept)**: done (section 21.14): the
+  requests accepted automatically are excluded from `SupplierKpiService.AnswersBetween` (and from the average of `today` and the public median). **LR-08a (`tenantContact`)**: independent
   fields of the same DTO.
 - **SP-16a (earnings)**: the definitions of "collected" (`Paid` by `PaidAt`) and "late" (flagged and still owed) are here (`ServicePaymentSchedule.IsOwed`,
   `SupplierPaymentReadModels`); reuse them, and decide how a refund moves the figures. **SP-15c (held payments)**: `payment.status` is an open set.
@@ -2649,6 +2712,218 @@ carries `jobsTotal` (additive) so that the cap of 50 jobs, which a week can reac
 - The demo showcase (`DemoShowcaseCatalog`) has no supplier or service-request data at all, so there is nothing to extend for these read-only screens: a
   supplier in the demo is a task of its own (`.claude/rules/demo-seed.md`).
 
+## 28. What the Portal's agenda reads: titles, conflicts with a fix, "how customers see you", and unlinking the calendar — SP-03b
+
+Redesign wave task SP-03b (branch `feature/rd-supplier-agenda-reads`, backend only: the screens are SP-07a (agenda), SP-08a (home)
+and SP-08c (the request); base `develop`, nothing stacked). Gap report 05 §4.1, `PORTALE-FORNITORI.md` §3, §5 (Disponibilità) and
+§9.4. **Reads, plus one action of the authenticated supplier (unlink the calendar). No feature flag, no migration, no new table, nothing
+in the configuration**: the console works with every flag off. The principle is the one of section 20: **the slot planner stays the only
+source of truth**; the conflicts and the preview ask the planner, they do not copy its rules.
+
+### 28.1 At a glance
+
+| Method and path | New or changed | Answer |
+|---|---|---|
+| `GET api/supplier/calendar?from&to` | **extended** (fields added, none removed) | `requests[]` gets `serviceName`, `clientLabel`, `comune`, `source`, `phase` (28.2) |
+| `GET api/supplier/calendar/conflicts?from&to` | new | the jobs to come with something wrong, each with its conflicts (codes only) and, when it makes sense, a time to propose instead (28.3) |
+| `GET api/supplier/preview/slots?service&from&days&comune` | new | the free slots of one of the supplier's services as customers see them, `Cache-Control: private, no-store` (28.4) |
+| `DELETE api/supplier/calendar/ical` | new | unlinks the iCal calendar and frees what the feed closed: 204, idempotent (28.5) |
+
+All four are under policy `RequireSupplier`, with the supplier org taken from the caller's own link
+(`ISupplierOrgContextResolver.GetLinkedSupplierOrgIdAsync`): **a `Supplier` account with no link is 404 `not_found` and nothing is
+provisioned** (the other `calendar/*` routes of section 12 still use `GetOrProvision…`; the new ones never do). `from`/`to` are Europe/Rome
+days (`yyyy-MM-dd`, both included, at most **62 days**; left out: today and the next 30 days); a reversed or too long range is 400
+`validation_error` (the same keys as the calendar), and so is a date at an end of the calendar (`0001-01-01`, `9999-12-31`; key
+`SupplierAvailabilityRangeOutOfBounds`: one rule, `SupplierAgendaRange`, for the calendar and the conflicts, enforced by the controller
+and again by the services, so a made-up date never reaches the arithmetic on days and is never a 500); for the conflicts the dates must
+also fall **between one year ago and ten years from today** (400 `validation_error`, key `SupplierConflictsRangeOutOfBounds`): only
+jobs to come are checked. The texts are the frontend's: these answers carry **codes, ids and instants, never a sentence**.
+
+### 28.2 The calendar with titles
+
+`requests[]` of `GET api/supplier/calendar` keeps `id`, `date`, `startUtc`, `endUtc`, `status`, `category` exactly as they were and adds:
+
+| Field | What it is |
+|---|---|
+| `serviceName` | the name of the catalog service **at the time of the request** (a snapshot); `null` when the request is for a category only: show `category` then. (The brief said "service or category": the answer keeps the category in its own field, so the client never has to guess whether a string is a name or a code) |
+| `clientLabel` | who asks, as decision D9 lets the supplier know it **before** taking the request: the name of the host's org for a host's request; for a private customer of the public showcase **`Nome C.`** until the request is taken, the full name after (`SupplierJobDisclosure.CustomerName`, the same function as the inbox) |
+| `comune` | the comune of the work as written (the property's city, or the place the customer wrote). Never the street, the postal code or the property's name |
+| `source` | `casazen` (a host asked) or `showcase` (a customer booked from the public page) |
+| `phase` | `to_answer`, `proposal_pending`, `quote_pending`, `scheduled`, `in_progress`, `completed`, `paid`: **derived by the server** from the status and from a proposal that waits for an answer, in `SupplierRequestPhases.Of` (one place for every read of the console, SP-04e's inbox included). It is an **open set**: a client shows a value it does not know with a neutral label; a status the code does not know is `unknown`, never an error. `ServiceRequestStatus` does not change (the mobile app reads it by name) |
+
+**Which requests are listed** is unchanged: every status except `Rifiutato` and `Annullato`. The task asked to decide whether a cancelled
+request appears: **it does not** (it holds no time, and it is a cancellation the supplier can read in the inbox's archive); a test pins it.
+
+**Privacy.** The rows are projected column by column by `SupplierServiceRequestReader.CalendarRowsOf` (a join on the host's org, the
+property's city and the customer's name; **never** the property's name, the street address, a contact, the notes or the guest of the stay).
+`SupplierCalendarTitlesTests` searches the answer for the address, the notes, the e-mail, the phone and the property's name of a request
+before and after the take. The planner keeps reading the lighter `ListForAgendaAsync` (no join), so the public slots cost what they did.
+
+### 28.3 Conflicts with a fix
+
+`GET api/supplier/calendar/conflicts?from&to` answers, for the supplier's own agenda:
+
+```json
+{
+  "from": "2026-10-20", "to": "2026-11-19", "timeZone": "Europe/Rome",
+  "items": [
+    {
+      "requestId": "…", "status": "Richiesto", "date": "2026-10-22",
+      "startUtc": "2026-10-22T08:00:00Z", "endUtc": "2026-10-22T10:00:00Z",
+      "conflicts": [
+        { "code": "overlap", "severity": "danger", "otherRequestId": "…" },
+        { "code": "buffer", "severity": "warning", "windowId": "…" }
+      ],
+      "suggestedSlot": { "startUtc": "…", "endUtc": "…", "startLocal": "2026-10-22T14:00:00+02:00", "endLocal": "…" }
+    }
+  ],
+  "total": 1, "truncated": false, "limit": 300
+}
+```
+
+**Which jobs are looked at.** A request **with hours** that has not started (`startUtc` at or after now), in status `Richiesto`,
+`PresoInCarico` or `InCorso`. A job with no conflict is not listed. The items come by start, then id; the conflicts of an item come
+**most serious first** (danger, then warning, then the order of the table), **at most one per code**.
+
+| Code | Severity | A job has it when | Names |
+|---|---|---|---|
+| `time_off` | danger | the supplier is on leave that day | |
+| `overlap` | danger | it overlaps another request or a booking waiting for its e-mail check (half-open `[start, end)`) | `otherRequestId` |
+| `external` | danger | it overlaps an engagement of the supplier's own calendar, **or the calendar feed closed that day** (an all-day event) | `windowId` (not for a closed day) |
+| `block` | danger | it overlaps hours the supplier blocked | `windowId` |
+| `day_off` | warning | the day is closed by hand, or the supplier does not work that weekday (no hours and no extra opening) | |
+| `outside_hours` | warning | the day has hours and the job is not inside one of them (extra openings are hours; bands that touch are one) | |
+| `day_full` | warning | the day already holds, without this job, as many jobs as `MaxJobsPerDay` (requests and live holds count) | |
+| `buffer` | warning | it does not overlap, but it is closer than `BufferMinutes` to something (a job, a block, an engagement) | `otherRequestId` or `windowId` |
+
+Of the codes about the day only the first that applies is reported, in this order: `time_off`, then `external` (feed) or `day_off`, then
+`outside_hours`. A closed day with the feed as the source is `external`; the days the supplier closed by hand are `day_off`
+(`SupplierPlanningInput.CalendarClosedDays` tells them apart; the planner closes both alike). The codes **never change**: the frontend
+branches on them and writes the sentences (the Italian and English texts are i18n keys of the console, nothing here is a message).
+
+**`otherRequestId` and `windowId`** name the other thing by its id, the id of its entry in the calendar (`requests[]`, `blocks[]`). The
+calendar of a range lists a request on the Europe/Rome day it starts and the windows that overlap the range, so a thing that only reaches
+over the edge (a `buffer` next to an engagement of the evening before, a job over midnight) is in the calendar of the day before or after:
+**read the calendar one day more on each side of the range** to find its title.
+
+**The planner is the reference.** `SupplierConflictDetector` (Casazen.Core, a pure function) builds the planner's own
+`SupplierSlotPlanner.PlanningContext` for the job and asks it the same questions (time off, closed day, hours of the day, jobs of the day,
+what is in the way with the pause and the lapsed holds, the capacity). A test walks **every half hour of many agendas** (blocks,
+engagements, jobs waiting and taken, time off, extra openings, the maximum of the day, holds, two days off, a capacity of two, 29 March
+and 25 October) and checks that, for a request still waiting for an answer, **the detector flags a time exactly when the planner would not
+offer it**. What the planner decides when it *offers* a slot and a job already in the agenda does not violate — the notice, the horizon,
+the weekdays of a service, the grid of the slots (10:07, or a duration typed by hand) — is **not a conflict** (decision SP-D28: the
+supplier decides about a time outside the published hours; the detector only says why it is outside).
+
+**What counts against a job.** Everything that takes the supplier's time except the job itself — **except** that what still waits for an
+answer (a request `Richiesto`, a live booking waiting for its e-mail check) **never counts against a job the supplier has already
+taken**: it is the waiting one that has to give way. Between two jobs that wait, each counts against the other. So a request overlapping a
+job taken is flagged and the job taken is not. `overlap` calls `SupplierInterval.Overlaps`, **the same function** as the 409
+`supplier_commitment_conflict` of taking a job (BE #506), so the half-open comparison is the same. The 409 compares only the jobs the
+supplier took, while the conflict also counts what still waits for an answer: the conflict is the wider of the two and anticipates that 409
+for a request still `Richiesto`.
+
+**The suggestion.** `suggestedSlot` is the **first free slot as long as the job from its day on** (up to 21 days after it, and never beyond
+the supplier's horizon), computed as `PlanAsync(exceptRequestId)` computes it — the planner's own `PlanRange` over the same input without
+the request, with the notice and the weekdays of the request's catalog service — so it is a time `POST …/propose-time` accepts. It is only
+for a request still `Richiesto` (the only status a time can be proposed on; for a job taken the answer is `null`, "annulla e riproponi" is
+the supplier's action) and `null` when nothing is free soon. A job with several conflicts has one suggestion.
+
+**Cost and limits.** One read of the jobs of the range, one planning input for the range and the days after it (which reads the requests
+again with the days around the range), and at most one read of the catalog (only when a request waiting is for a service); the rest is in
+memory. The jobs are read **before** the planning input and nothing is in a transaction: a booking confirmed in between is checked by the next
+call, never against the hold it replaced. At most **300 jobs** are checked (`SupplierAgendaLimits.MaxConflictRequests`, counted on the jobs
+that `SupplierConflictDetector.IsChecked` accepts), the nearest first: `truncated: true` when there were more. No new table and no new file
+reads the tables of the agenda or of the catalog (the guards of `SupplierAgendaTenancyTests` and `SupplierServiceListingTenancyTests` need no
+change).
+
+### 28.4 "How customers see you": the preview of the slots
+
+`GET api/supplier/preview/slots?service={id}&from=&days=&comune=` answers with the shape of the public page (`PublicSlotsResponse`:
+`service` (the service's slug), `durationMinutes`, `timeZone`, `bookableUntil`, `days[{ date, available, slots[{ startUtc, endUtc,
+startLocal, endLocal }] }]`) plus `serviceId`, `serviceStatus` (`Draft`, `Active` or `Paused`) and, with `comune`, `coverage { outcome, comune }`.
+
+- **The same planner and the same window as the public page** (`ISupplierAgendaService.PlanAsync` with the service's own duration, notice
+  and weekdays; `PublicSlotWindow`: from the day asked for and never before today, `days` 1 to 62, 14 when left out, cut at
+  `today + HorizonDays` = `bookableUntil`). A test compares it with the public answer for the same service.
+- **For the supplier alone**: **no cache** (the public plan is kept 30 seconds per replica; the supplier changes its hours and looks again),
+  **no condition on the service being published** (a draft and a paused service are previewed; a draft with no duration has no day to
+  compute: `durationMinutes` 0 and `days: []`), **no condition on the supplier being `Active`**, and **not behind `SupplierShowcaseBooking`**
+  (it answers with the flag off). `Cache-Control: private, no-store`.
+- `service` is the **id** of one of the caller's services (`GET api/supplier/services`): another supplier's service and a deleted one are
+  the same 404 `supplier_service_not_found`; a missing one is 400 `validation_error`; `days` outside 1 to 62 is 400 (the keys of the
+  public slots).
+- `comune` (an ISTAT code or a name, at most 100 characters) adds `coverage.outcome`: `inside` when the supplier covers it, `outside`
+  otherwise (a place that cannot be recognized is outside). The zones are comuni (decision D10): the postal code does not decide.
+- `urgent` is **accepted and ignored** until the urgent slots of SP-04c exist.
+
+### 28.5 Unlinking the calendar
+
+`DELETE api/supplier/calendar/ical` — **204**, also when the supplier had no feed (idempotent). In one transaction under the supplier's
+advisory lock `SupplierCalendarSync` (the lock of the sync and of every write of the agenda, so an unlink and a sync never write the same
+rows at once):
+
+- **removed**: the URL and the sync type (`ICalFeed` becomes `None`), the sync state (**`Syncing` included**), the last sync and its error;
+  the days the feed closed (`SupplierAvailability.Source = ICalFeed`); the windows of hours of the feed
+  (`SupplierBusyWindows.Source = ICalFeed`); and the events the calendar marks "Available" with **the answers the supplier gave** about
+  them (`SupplierFreeCalendarEvents`: the titles are personal data of the supplier's own calendar);
+- **never touched**: the days the supplier closed by hand, its blocks and extra openings (`Source = Manual`), its time off and hours,
+  the rows of any other supplier.
+
+The rows go with one set-based `DELETE` per table, in the transaction and in a fixed order (days, windows, "Available" events, then the
+profile): nothing is loaded or tracked, and a row that `PUT calendar/ical` (which takes no lock and also removes the "Available" events when
+the URL changes) removed in the meantime is not an error. The recurring job `ical-supplier-sync` picks only suppliers with an iCal feed, so it never tries this one again; a job already queued finds
+no feed and leaves; a download that was running finds, under the lock, that its URL is gone and writes nothing. The public slots can show
+the freed hours for at most 30 seconds (the cache of section 22.5). **Not undone by itself**: linking the calendar again brings the days and
+hours back at the first sync, and the answers about "Available" events are asked again. Logs name the supplier org id, never the URL.
+`CalendarSyncService.DisconnectIcalFeedAsync` is in the allow-lists of the two tenancy guards already (every statement carries the `OrgId`).
+Runbook and rollback: [ical.md](ical.md#unlinking-the-calendar-sp-03b).
+
+### 28.6 One definition each
+
+Small things used to exist twice or nowhere; each is now one piece of code that the others call:
+
+- **overlap** — `SupplierInterval.Overlaps` (half-open): what is in the way of a slot (the planner), the 409 of taking a job and the
+  `overlap` conflict;
+- **which requests are jobs** — `ServiceRequestStateMachine.IsOpenJob` (`Richiesto`, `PresoInCarico`, `InCorso`: what the agenda counts and the
+  conflicts check; a test pins it to "can still be cancelled") and `IsTakenJob` (`PresoInCarico`, `InCorso`); the query of the 409 spells the
+  second one inline, as it is an SQL expression;
+- **phase** — `SupplierRequestPhases.Of` (`Casazen.Core/Suppliers/SupplierRequestPhase.cs`, the file of SP-04e: one derivation for the inbox,
+  `today` and the calendar);
+- **the window of days of a slots read** — `PublicSlotWindow.RangeOf`: the public page and the preview;
+- **the range of days of a read of the agenda** — `SupplierAgendaRange` (section 28.1): the calendar, the conflicts and the planning input;
+- **what an occupancy is** — `SupplierOccupancy` carries the id of what is behind it (a request, a window), whether the supplier took it
+  (`Committed`), `IsWaiting`, `IsLive` and `Widened`: the planner never reads the id or the flag, the detector does; the planner's context
+  also exposes `Buffer`, `Capacity` and `IsDayFull`, which the detector asks instead of repeating them;
+- **who asked** (decision D9) — one function in the reader, `ClientName`, for the inbox and the calendar.
+
+`SupplierSlotPlanner`'s behavior did not change (its context, `BandsOf` and `HasRoom` are internal now; the planner tests are unchanged and
+green).
+
+### 28.7 For the tasks stacked on this one
+
+- **SP-07a / SP-08a / SP-08c** (frontend) — read these answers; the texts for the eight codes and the phases are theirs (i18n); the fix
+  button of a conflict is `POST api/service-requests/{id}/propose-time` (section 21) with the `startUtc` of `suggestedSlot`; `blocks[]` of
+  the calendar has the title of `windowId`, `requests[]` the title of `otherRequestId` (read the calendar one day more on each side of the
+  range, section 28.3).
+- **SP-04e** (inbox/today read models, merged) — uses the same `SupplierRequestPhases` for `phase` in its DTOs (section 27.5): one file.
+- **SP-04c** (urgent slots) — `GET preview/slots` ignores `urgent` today; when the planner learns urgent slots, `urgent=true` returns them.
+- **SP-04b** (quotes) — `quote_pending` is a phase that nothing produces yet (`SupplierRequestPhases.Of(…, hasPendingQuote)`).
+
+### 28.8 After a deploy
+
+- [ ] As a supplier: `GET /api/supplier/calendar` → every item of `requests[]` still has `id`, `date`, `startUtc`, `endUtc`, `status`,
+      `category`, and now `serviceName`, `clientLabel`, `comune`, `source`, `phase`; a showcase request before the take shows `Nome C.`.
+- [ ] `GET /api/supplier/calendar/conflicts` → 200 `{ items, total, truncated }`; with a range of 63 days → 400; as a `Supplier` account
+      with no linked org → 404 and no organization is created. `GET /api/supplier/calendar?from=9999-12-31` and
+      `GET /api/supplier/calendar/conflicts?from=9999-12-31` → 400 `validation_error` (never a 500).
+- [ ] `GET /api/supplier/preview/slots?service=<id of a draft service>` → 200 with `Cache-Control: private, no-store`, and the same days as
+      the public page for a published service (with `SupplierShowcaseBooking` off as well).
+- [ ] `DELETE /api/supplier/calendar/ical` → 204 twice; `GET /api/supplier/calendar/status` → `calendarSyncType: None`,
+      `pendingFreeEventsCount: 0`; the blocks set by hand are still in `GET /api/supplier/calendar`.
+- [ ] Rollback: revert the PR (no migration, no flag, no data to restore); a calendar unlinked in the meantime is linked again with
+      `PUT /api/supplier/calendar/ical`.
+
 ## 29. The supplier console: settings, earnings and clients — SP-16a
 
 Redesign wave task SP-16a, backend only: **no flag, no migration** (the columns were there since SP-03). It gives the pages Impostazioni, Incassi and
@@ -2661,7 +2936,7 @@ supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read
 | Field | Column of `SupplierSettings` | Default | What reads it |
 |---|---|---|---|
 | `onlineBookingEnabled` | `OnlineBookingEnabled` | `false` | the booking from the showcase (SP-10): off is 422 `supplier_booking_offline`. **Read-only here** (below) |
-| `autoAcceptRegulars` | `AutoAcceptRegulars` | `false` | SP-04d (a regular customer is one with at least three jobs taken); until it is deployed the switch is saved and changes nothing |
+| `autoAcceptRegulars` | `AutoAcceptRegulars` | `false` | SP-04d, section 21.14 (a regular host is one with at least three jobs taken with the supplier): on, the requests of its regular hosts are accepted automatically |
 | `notifyNewRequests` | `NotifyNewRequests` | `true` | SP-16d; until it is deployed no code reads it |
 | `notifyDayBeforeReminder` | `NotifyDayBeforeReminder` | `true` | SP-16d, same |
 | `notifyPayments` | `NotifyPaymentMarked` | `true` | SP-16d, same |

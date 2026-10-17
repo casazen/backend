@@ -62,6 +62,9 @@ public static class PushDeliveryKeys
     /// <summary>A new service request, to the supplier.</summary>
     public static string ServiceRequestCreated(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:created";
 
+    /// <summary>A new service request accepted automatically for a regular host (SP-04d), to the supplier: it replaces the push of the new request.</summary>
+    public static string ServiceRequestAutoAccepted(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:auto-accepted";
+
     /// <summary>
     /// A service request reached <paramref name="status"/>, to the host (or, for a cancellation, to the other party). The
     /// state machine reaches every status at most once (SU-10), so the key identifies the transition.
@@ -113,6 +116,9 @@ public static class PushDeliveryKeys
 public static class PushTypes
 {
     public const string ServiceRequestCreated = "service-request-created";
+
+    /// <summary>A new request was accepted automatically for a regular host (SP-04d): pushed to the supplier org instead of <see cref="ServiceRequestCreated"/>.</summary>
+    public const string ServiceRequestAutoAccepted = "service-request-auto-accepted";
     public const string ServiceRequestTaken = "service-request-taken";
     public const string ServiceRequestCompleted = "service-request-completed";
     public const string ServiceRequestRejected = "service-request-rejected";

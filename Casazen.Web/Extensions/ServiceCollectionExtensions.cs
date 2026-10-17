@@ -284,6 +284,8 @@ public static class ServiceCollectionExtensions
         // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
         services.AddScoped<IHostTodayService, HostTodayService>();
         services.AddScoped<IComplianceMissingService, ComplianceMissingService>();
+        // The calendar of all the host's properties in one read, and the nights taken twice the Home puts among the things to do (SR-02a).
+        services.AddScoped<IHostCalendarService, HostCalendarService>();
         // Lists that hold up with many rows: bookings by days, status and text, a page at a time; payments by booking and period (SR-03).
         services.AddScoped<IBookingSearchService, BookingSearchService>();
         // The history of one booking, derived from its timestamps and the rows tied to it (SR-05a, SR-D17).
@@ -466,6 +468,10 @@ public static class ServiceCollectionExtensions
         // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
         services.AddSingleton<PublicSupplierSlotCache>();
         services.AddScoped<IPublicSupplierShowcaseService, PublicSupplierShowcaseService>();
+        // What the Portal's agenda reads on top of the planner (SP-03b): the conflicts of the jobs to come with a time to propose
+        // instead, and the supplier's own preview of the slots of a service (no cache, no flag, draft and paused services too).
+        services.AddScoped<ISupplierConflictService, SupplierConflictService>();
+        services.AddScoped<ISupplierSlotPreviewService, SupplierSlotPreviewService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
         // Invitation of new independent hosts by admins and hosts: limits are configuration (HostInvites), validated at startup.

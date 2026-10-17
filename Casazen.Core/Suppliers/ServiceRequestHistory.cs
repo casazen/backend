@@ -21,6 +21,10 @@ namespace Casazen.Core.Suppliers;
 /// Who asked for the work: the host for a host's request (the default), the customer for a request from the supplier's public
 /// showcase (SP-10). It is the party of the first step and, unless <paramref name="PaidBy"/> says otherwise, of the payment.
 /// </param>
+/// <param name="AutoAccepted">
+/// The request was born taken, accepted automatically for a regular host (SP-04d): the take is a step of CasaZen itself
+/// (<see cref="ServiceRequestActorParty.System"/>), with no member of the supplier to name.
+/// </param>
 public sealed record ServiceRequestMilestones(
     ServiceRequestStatus Status,
     DateTime CreatedAt,
@@ -34,12 +38,14 @@ public sealed record ServiceRequestMilestones(
     string? CancellationReason = null,
     ServiceRequestActorParty? CancelledBy = null,
     ServiceRequestActorParty? PaidBy = null,
-    ServiceRequestActorParty Requester = ServiceRequestActorParty.Host);
+    ServiceRequestActorParty Requester = ServiceRequestActorParty.Host,
+    bool AutoAccepted = false);
 
 /// <summary>
 /// The history of a service request (SU-08): one step per transition of <see cref="ServiceRequestStateMachine"/>, with
 /// its date and the party that made it, rebuilt from the dates the request keeps. Requested (host), taken (supplier,
-/// with the member who took it), started (supplier), completed (supplier), paid (the party that asked, or the supplier that
+/// with the member who took it; CasaZen itself, with no member, for a request accepted automatically, SP-04d), started
+/// (supplier), completed (supplier), paid (the party that asked, or the supplier that
 /// recorded a payment received outside CasaZen: <see cref="ServiceRequestMilestones.PaidBy"/>), rejected (supplier, with the
 /// reason) or cancelled (the host, the supplier or CasaZen, with the reason). For a request from the supplier's public showcase
 /// (SP-10) the party that asked, and would pay, is the customer (<see cref="ServiceRequestMilestones.Requester"/>).
@@ -62,8 +68,8 @@ public static class ServiceRequestHistory
             steps.Add(new ServiceRequestHistoryEntry(
                 ServiceRequestStatus.PresoInCarico,
                 takenAt,
-                ServiceRequestActorParty.Supplier,
-                string.IsNullOrWhiteSpace(takenByName) ? null : takenByName.Trim(),
+                request.AutoAccepted ? ServiceRequestActorParty.System : ServiceRequestActorParty.Supplier,
+                request.AutoAccepted || string.IsNullOrWhiteSpace(takenByName) ? null : takenByName.Trim(),
                 null));
         }
 

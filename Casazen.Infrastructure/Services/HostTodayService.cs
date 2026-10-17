@@ -18,7 +18,8 @@ namespace Casazen.Infrastructure.Services;
 /// for a caller who may read payments, the confirmed stays whose payment failed (one page, and a count only when the page is full).
 /// What SR-03b adds (the interventions of the day, the Alloggiati and the cleaning of the stays listed, the things to do about an
 /// intervention) is read the same way, a few reads for all the rows. The cockpit's own check of the guests' data still asks once
-/// per candidate stay (SR-03-FU4).
+/// per candidate stay (SR-03-FU4). What the calendar finds (SR-02a: a night taken twice) is the alerts of
+/// <see cref="IHostCalendarService"/>, three reads for all the properties; without that service the things to do are what they were.
 /// </remarks>
 public sealed class HostTodayService(
     AppDbContext db,
@@ -27,7 +28,8 @@ public sealed class HostTodayService(
     IComplianceMissingService complianceMissing,
     IOnSiteBookingRequestService onSiteRequests,
     IStayGuestService stayGuests,
-    TimeProvider? timeProvider = null) : IHostTodayService
+    TimeProvider? timeProvider = null,
+    IHostCalendarService? calendar = null) : IHostTodayService
 {
     /// <summary>Requests listed (the count covers all of them).</summary>
     public const int ApprovalListSize = 10;
@@ -43,6 +45,9 @@ public sealed class HostTodayService(
     /// marked paid must not push every other thing to do out of the list, so they never take more than half of it.
     /// </summary>
     public const int ServiceTodoListSize = 10;
+
+    /// <summary>Things to do the calendar finds listed (the count covers all of them; SR-02a), by the same rule as the interventions.</summary>
+    public const int CalendarTodoListSize = 10;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -66,8 +71,9 @@ public sealed class HostTodayService(
             ? await GetFailedPaymentsAsync(scope, cancellationToken)
             : new FailedPayments(0, []);
         var serviceRequests = await GetServiceRequestsToAnswerAsync(scope, cancellationToken);
+        var calendarAlerts = await GetCalendarAlertsAsync(scope, stays.TodayInRome, cancellationToken);
 
-        var todo = await BuildTodoAsync(cockpit, approvals, failedPayments, serviceRequests, cancellationToken);
+        var todo = await BuildTodoAsync(cockpit, approvals, failedPayments, serviceRequests, calendarAlerts, cancellationToken);
 
         return new HostToday(
             stays.TodayInRome,
@@ -321,11 +327,26 @@ public sealed class HostTodayService(
         return new FailedPayments(count, items);
     }
 
+    // What the calendar finds that waits for the host (SR-02a): the nights taken twice, from the same calculation as the alerts of
+    // the calendar, for today and the 29 days after it. The first CalendarTodoListSize, and the count of them all. Nothing without
+    // the calendar service.
+    private async Task<CalendarTodos> GetCalendarAlertsAsync(HostScope scope, DateTime todayInRome, CancellationToken cancellationToken)
+    {
+        if (calendar is null)
+            return new CalendarTodos(0, []);
+
+        var today = DateOnly.FromDateTime(todayInRome);
+        var found = await calendar.GetAlertsAsync(
+            scope, new HostCalendarAlertsQuery(today, today.AddDays(HostCalendarLimits.TodoAlertDays - 1)), cancellationToken);
+        return new CalendarTodos(found.Alerts.Count, found.Alerts.Take(CalendarTodoListSize).ToList());
+    }
+
     private async Task<HostTodayList<HostTodoItem>> BuildTodoAsync(
         ComplianceSummaryResult cockpit,
         IReadOnlyList<Booking> approvals,
         FailedPayments failedPayments,
         ServiceRequestTodos serviceRequests,
+        CalendarTodos calendarAlerts,
         CancellationToken cancellationToken)
     {
         var items = new List<HostTodoItem>();
@@ -408,8 +429,25 @@ public sealed class HostTodayService(
                 request.Id));
         }
 
+        // A night taken twice (SR-02a): the label is the property, the target the first stay of the two (if one is a stay) and the
+        // property; it is due from the first night they share.
+        foreach (var alert in calendarAlerts.Items)
+        {
+            items.Add(new HostTodoItem(
+                HostTodoAction.ResolveCalendarConflict,
+                HostTodoPriority.Of(HostTodoAction.ResolveCalendarConflict),
+                RomeCalendar.StartOfDayUtc(alert.From),
+                alert.PropertyName,
+                alert.PropertyId,
+                alert.PropertyName,
+                alert.Refs.FirstOrDefault(r => r.Type == CalendarItemType.Booking)?.Id,
+                null,
+                [new ComplianceMissing(ComplianceMissingCodes.CalendarConflict, "dates")]));
+        }
+
         // The count covers every thing to do, the cockpit's sections that list only their latest items included.
-        var total = approvals.Count + sections.Sum(section => section.Count) + failedPayments.Count + serviceRequests.Count;
+        var total = approvals.Count + sections.Sum(section => section.Count) + failedPayments.Count + serviceRequests.Count
+            + calendarAlerts.Count;
 
         var ordered = items
             .OrderBy(item => item.Priority)
@@ -482,4 +520,6 @@ public sealed class HostTodayService(
         string SupplierName);
 
     private sealed record ServiceRequestTodos(int Count, IReadOnlyList<ServiceRequestToAnswer> Items);
+
+    private sealed record CalendarTodos(int Count, IReadOnlyList<CalendarAlert> Items);
 }

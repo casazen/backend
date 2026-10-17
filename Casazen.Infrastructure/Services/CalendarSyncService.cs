@@ -513,4 +513,82 @@ public class CalendarSyncService
         _logger.LogInformation(
             "Batch supplier iCal sync completed for {Count} suppliers ({Failed} failed unexpectedly)", orgIds.Count, failed);
     }
+
+    /// <summary>
+    /// "Unlink the calendar" (SP-03b, <c>DELETE api/supplier/calendar/ical</c>): the supplier no longer has an iCal feed, and what
+    /// the feed put into the agenda goes with it, in one transaction under the supplier's advisory lock (<see cref="AvailabilityLock"/>,
+    /// the one of the sync and of every write of the agenda, so an unlink and a sync never write the same rows at once).
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><b>Removed:</b> the URL and the sync type (an iCal feed becomes <see cref="CalendarSyncType.None"/>), the state
+    /// (<c>Syncing</c> included: a job already queued finds no feed and leaves), the last sync and its error; the days closed by the feed
+    /// (<see cref="SupplierAvailabilitySource.ICalFeed"/>); the windows of hours of the feed
+    /// (<see cref="SupplierBusyWindowSource.ICalFeed"/>); and the events the calendar marks "Available" with the answers the supplier
+    /// gave about them (their titles are personal data of the supplier's own calendar).</item>
+    /// <item><b>Not touched:</b> the days the supplier closed by hand (<see cref="SupplierAvailabilitySource.Manual"/>), its blocks and
+    /// extra openings (<see cref="SupplierBusyWindowSource.Manual"/>), its time off and hours, and the rows of any other supplier.</item>
+    /// <item><b>The recurring job</b> (<see cref="SyncAllIcalFeedsAsync"/>) picks only suppliers with an iCal feed, so it never tries
+    /// this one again; a download that was running when the supplier unlinked finds, under the lock, that its URL is gone and writes
+    /// nothing (<c>ApplyAsync</c>).</item>
+    /// <item><b>Idempotent:</b> a supplier with no feed gets the same answer and nothing changes. Not undone by itself: linking the
+    /// feed again brings the days and hours back at the first sync (the answers about "Available" events are asked again).</item>
+    /// </list>
+    /// Logs name the supplier org id, never the URL.
+    /// </remarks>
+    /// <returns>False when the org has no supplier profile (nothing is written), true otherwise (also when there was no feed).</returns>
+    public async Task<bool> DisconnectIcalFeedAsync(Guid orgId, CancellationToken ct = default)
+    {
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(_db, ct, AvailabilityLock(orgId));
+
+        // Read under the lock: a sync that held it has committed what it wrote, and this removes it.
+        var profile = await _db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, ct);
+        if (profile is null)
+            return false;
+
+        var days = await DeleteRowsAsync(
+            _db.SupplierAvailability.Where(sa => sa.OrgId == orgId && sa.Source == SupplierAvailabilitySource.ICalFeed), ct);
+        var windows = await DeleteRowsAsync(FeedWindowsOf(_db, orgId), ct);
+        var freeEvents = await DeleteRowsAsync(_db.SupplierFreeCalendarEvents.Where(e => e.OrgId == orgId), ct);
+
+        var hadFeed = profile.CalendarSyncType == CalendarSyncType.ICalFeed || !string.IsNullOrWhiteSpace(profile.IcalFeedUrl);
+        if (hadFeed)
+        {
+            // Only the iCal feed: another kind of calendar link (never written today) is not the one being unlinked.
+            if (profile.CalendarSyncType == CalendarSyncType.ICalFeed)
+                profile.CalendarSyncType = CalendarSyncType.None;
+
+            profile.IcalFeedUrl = null;
+            profile.CalendarSyncStatus = SupplierCalendarSyncStatus.None;
+            profile.CalendarSyncError = null;
+            profile.CalendarLastSyncAt = null;
+            profile.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        _logger.LogInformation(
+            "iCal feed of supplier {OrgId} unlinked: {Days} days, {Windows} windows of hours and {FreeEvents} \"Available\" events removed (had a feed: {HadFeed})",
+            orgId, days, windows, freeEvents, hadFeed);
+        return true;
+    }
+
+    /// <summary>
+    /// Deletes the rows of <paramref name="rows"/> and says how many went. On PostgreSQL it is one statement in the current
+    /// transaction (no row is loaded or tracked, and a row that another writer removed meanwhile is not an error: the unlink and
+    /// <c>PUT calendar/ical</c>, which does not take the lock, both delete the "Available" events); on the in-memory provider, which
+    /// has no set-based delete, the rows are loaded and removed one by one.
+    /// </summary>
+    private async Task<int> DeleteRowsAsync<T>(IQueryable<T> rows, CancellationToken ct)
+        where T : class
+    {
+        if (_db.Database.IsRelational())
+            return await rows.ExecuteDeleteAsync(ct);
+
+        var loaded = await rows.ToListAsync(ct);
+        _db.RemoveRange(loaded);
+        return loaded.Count;
+    }
 }
