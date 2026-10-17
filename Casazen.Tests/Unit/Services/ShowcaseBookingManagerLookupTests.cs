@@ -560,5 +560,12 @@ public class ShowcaseBookingManagerLookupTests
             Calls++;
             return inner.FindContactAsync(supplierOrgId, customerId, cancellationToken);
         }
+
+        public Task<IReadOnlyList<ServiceCustomerCard>> ListCardsAsync(
+            Guid supplierOrgId,
+            IReadOnlyCollection<Guid> customerIds,
+            IReadOnlyCollection<Guid> withContact,
+            CancellationToken cancellationToken = default) =>
+            inner.ListCardsAsync(supplierOrgId, customerIds, withContact, cancellationToken);
     }
 }
