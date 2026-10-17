@@ -212,14 +212,9 @@ public partial class ServiceRequestService(
         if (!ServiceRequestAutoAccept.IsEligibleRequest(service, command.DurationMinutes))
             return;
 
-        // SupplierSettings is keyed by the supplier org and not tenant-filtered (same guard as the agenda): scoped by the supplier org.
-        // No row means the defaults, so off.
-        var enabled = await db.SupplierSettings
-            .AsNoTracking()
-            .Where(s => s.OrgId == supplier.OrgId)
-            .Select(s => s.AutoAcceptRegulars)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (!enabled)
+        // The supplier's settings are the agenda service's to read (the table is keyed by the supplier org and not tenant-filtered); a
+        // supplier that never saved one has the defaults, so the option is off.
+        if (!(await agenda.GetSettingsAsync(supplier.OrgId, cancellationToken)).AutoAcceptRegulars)
             return;
 
         // The gate of a take by hand (SU-05): a supplier with a new version of the Terms to accept performs no action.
