@@ -50,6 +50,7 @@ public sealed class CasazenCorsPolicyProvider(
         new CorsPolicyBuilder()
             .SetIsOriginAllowed(isOriginAllowed)
             .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-            .WithHeaders("Authorization", "Content-Type", "Accept", "X-Requested-With")
+            // Idempotency-Key: the key of a payment the host records (SR-06b); without it the browser's preflight refuses the call.
+            .WithHeaders("Authorization", "Content-Type", "Accept", "X-Requested-With", "Idempotency-Key")
             .Build();
 }
