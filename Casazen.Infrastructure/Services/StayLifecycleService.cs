@@ -119,6 +119,7 @@ public sealed class StayLifecycleService(
 
             // Checked out: the stay-alerts job no longer reminds it (CO-10).
             booking.Status = BookingStatus.CheckedOut;
+            booking.CheckedOutAt = UtcNow();
             booking.UpdatedAt = UtcNow();
             // CO-15: retention is now computed nightly from the stay's check-out date, no eager extension here.
             var record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
