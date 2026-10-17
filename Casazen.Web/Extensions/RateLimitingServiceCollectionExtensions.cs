@@ -49,6 +49,7 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicSupplierQuote, 30, OneMinute),
         new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
+        new(RateLimitPolicies.PublicReviewSubmit, 10, TimeSpan.FromMinutes(10)),
 
         // A policy of a signed-in endpoint: partitioned by person, since the request emails other people (AM-02b).
         new(RateLimitPolicies.OrgAccessRequest, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),

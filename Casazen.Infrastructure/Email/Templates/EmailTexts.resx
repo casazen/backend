@@ -1536,4 +1536,28 @@
   <data name="HostInvite_Expires" xml:space="preserve">
     <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana). Se non te l'aspettavi, puoi ignorare questa email.</value>
   </data>
+  <data name="ReviewInvite_Subject" xml:space="preserve">
+    <value>Com'è andato il tuo soggiorno? - {0}</value>
+  </data>
+  <data name="ReviewInvite_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="ReviewInvite_Body" xml:space="preserve">
+    <value>grazie per aver soggiornato presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;. L'host ti chiede un minuto per lasciare una recensione: aiuta chi sta scegliendo dove dormire e racconta com'è andata.</value>
+  </data>
+  <data name="ReviewInvite_How" xml:space="preserve">
+    <value>Scegli un voto da 1 a 5 stelle e, se vuoi, scrivi qualche riga. La recensione si pubblica subito sul sito di prenotazione della struttura con il tuo nome di battesimo; puoi scegliere di non mostrarlo.</value>
+  </data>
+  <data name="ReviewInvite_Cta" xml:space="preserve">
+    <value>Scrivi la recensione</value>
+  </data>
+  <data name="ReviewInvite_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="ReviewInvite_Validity" xml:space="preserve">
+    <value>Il link è personale e vale fino al {0} (ora italiana).</value>
+  </data>
+  <data name="ReviewInvite_Once" xml:space="preserve">
+    <value>Ricevi questa email una sola volta, perché l'host ha chiesto una recensione per questo soggiorno. Se non vuoi scrivere nulla, puoi ignorarla.</value>
+  </data>
 </root>

@@ -36,4 +36,18 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     /// the endpoint, never built in the browser.
     /// </summary>
     public string? CanonicalUrl { get; set; }
+
+    /// <summary>
+    /// The number and the average mark of the public reviews of the property (DB-12a), set by the endpoint. <b>Absent</b> from the JSON
+    /// (not <c>null</c>, not zero) while the property has no review: a page never shows stars or «0 recensioni».
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public PublicRatingSummaryDto? RatingSummary { get; set; }
+}
+
+/// <summary>The count and the average (one decimal, 1 to 5) of the public reviews of a property.</summary>
+public class PublicRatingSummaryDto
+{
+    public int Count { get; set; }
+    public decimal Average { get; set; }
 }
