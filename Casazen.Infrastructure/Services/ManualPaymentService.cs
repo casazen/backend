@@ -96,23 +96,32 @@ public sealed class ManualPaymentService(
                 balance.ToString("N2", CultureInfo.CurrentCulture));
         }
 
-        var note = (command.Description ?? string.Empty).Trim();
-        var payment = new Payment
+        // A row that waits for the host to collect it by hand (the "pay at the property" row of an on-site booking, or a record the old
+        // form left Pending for good) has no Stripe side. The receipt closes it: the oldest one becomes the receipt, any other is
+        // cancelled, so nothing is left "to collect" next to the money that came in. Rows with a Stripe intent are never touched.
+        var openByHand = payments.Where(IsWaitingForTheHost).OrderBy(p => p.CreatedAt).ToList();
+        var payment = openByHand.FirstOrDefault();
+        var isNew = payment is null;
+        payment ??= new Payment { BookingId = booking.Id, OrgId = booking.OrgId, CreatedAt = now };
+        foreach (var duplicate in openByHand.Skip(1))
         {
-            BookingId = booking.Id,
-            OrgId = booking.OrgId,
-            Amount = command.Amount,
-            Method = command.Method,
-            Status = PaymentStatus.Completed,
-            ProcessedAt = SettledAt(receivedOn, now),
-            TransactionId = transactionId,
-            Description = note.Length > 1000 ? note[..1000] : note,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
+            duplicate.Status = PaymentStatus.Canceled;
+            duplicate.UpdatedAt = now;
+        }
+
+        var note = (command.Description ?? string.Empty).Trim();
+        payment.Amount = command.Amount;
+        payment.Method = command.Method;
+        payment.Status = PaymentStatus.Completed;
+        payment.ProcessedAt = SettledAt(receivedOn, now);
+        payment.TransactionId = transactionId;
+        if (note.Length > 0 || isNew)
+            payment.Description = note.Length > 1000 ? note[..1000] : note;
+        payment.UpdatedAt = now;
         await fiscalRegimeService.ApplyWithholdingOnCreateAsync(payment, booking, command.ApplyOtaWithholding, command.ManualWithholdingTax);
 
-        db.Payments.Add(payment);
+        if (isNew)
+            db.Payments.Add(payment);
         await db.SaveChangesAsync(cancellationToken);
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
@@ -121,6 +130,12 @@ public sealed class ManualPaymentService(
             "Payment {PaymentId} recorded by the host on booking {BookingId} ({Method})", payment.Id, booking.Id, payment.Method);
         return new ManualPaymentResult(payment, true);
     }
+
+    /// <summary>Pending, and neither a Stripe intent nor a transaction id: only the host can collect it.</summary>
+    private static bool IsWaitingForTheHost(Payment payment) =>
+        payment.Status == PaymentStatus.Pending
+        && string.IsNullOrEmpty(payment.StripePaymentIntentId)
+        && string.IsNullOrEmpty(payment.TransactionId);
 
     /// <summary>
     /// The instant a receipt of <paramref name="receivedOn"/> is settled at: midday in Rome of that day, so its Rome date is the

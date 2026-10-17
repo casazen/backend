@@ -30,7 +30,17 @@ public class ManualPaymentServiceTests
             Source = BookingSource.Manual,
             TotalPrice = 100m,
         };
+        // The row a "pay at the property" booking (or the old form) left Pending: only the host can collect it.
+        var waiting = new Payment
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Amount = 100m,
+            Status = PaymentStatus.Pending,
+            Method = PaymentMethod.CashOnArrival,
+        };
         db.Bookings.Add(booking);
+        db.Payments.Add(waiting);
         await db.SaveChangesAsync();
         var sut = new ManualPaymentService(db, Mock.Of<IFiscalRegimeService>(), NullLogger<ManualPaymentService>.Instance);
 
@@ -40,6 +50,7 @@ public class ManualPaymentServiceTests
         Assert.True(first.Created);
         Assert.Equal(PaymentStatus.Completed, first.Payment.Status);
         Assert.NotNull(first.Payment.ProcessedAt);
+        Assert.Equal(waiting.Id, first.Payment.Id);
         Assert.False(again.Created);
         Assert.Equal(first.Payment.Id, again.Payment.Id);
         Assert.Equal(1, await db.Payments.CountAsync());
