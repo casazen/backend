@@ -1621,6 +1621,18 @@
   <data name="DashboardInvalidOverviewPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, period=Last30Days, period=Next30Days oppure period=Custom con from e to nel formato AAAA-MM-GG (da 1 a 366 giorni).</value>
   </data>
+  <data name="ReportInvalidPeriod" xml:space="preserve">
+    <value>Periodo non valido: indica from e to nel formato AAAA-MM-GG, con from non dopo to.</value>
+  </data>
+  <data name="ReportPeriodTooLong" xml:space="preserve">
+    <value>Il periodo è troppo lungo: un report copre al massimo {0} mesi.</value>
+  </data>
+  <data name="ReportInvalidFormat" xml:space="preserve">
+    <value>Formato non valido: usa format=json oppure format=csv.</value>
+  </data>
+  <data name="CsvTooManyRows" xml:space="preserve">
+    <value>Il file avrebbe più di {0} righe: restringi il periodo o scegli un solo immobile.</value>
+  </data>
   <data name="BookingListInvalidArrivalRange" xml:space="preserve">
     <value>Intervallo non valido: la data di inizio degli arrivi (arrivalFrom) non può essere dopo quella di fine (arrivalTo).</value>
   </data>

@@ -1,9 +1,9 @@
 using System.Globalization;
-using System.Text;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -17,7 +17,6 @@ namespace Casazen.Infrastructure.Services;
 public static class FiscalReportDocuments
 {
     private const string NotAvailable = "n.d.";
-    private const char CsvSeparator = ';';
 
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
 
@@ -436,7 +435,7 @@ public static class FiscalReportDocuments
     }
 
     /// <summary>Display name of a booking source (enum name for the unknown ones).</summary>
-    private static string ChannelLabel(string source) => source switch
+    internal static string ChannelLabel(string source) => source switch
     {
         nameof(BookingSource.BookingCom) => "Booking.com",
         nameof(BookingSource.Direct) => "Sito di prenotazione",
@@ -464,28 +463,7 @@ public static class FiscalReportDocuments
     /// <summary>Amount for a spreadsheet set to Italian: decimal comma, no thousands separator.</summary>
     private static string CsvAmount(decimal value) => value.ToString("0.00", Italian);
 
-    private static byte[] WriteCsv(IEnumerable<IReadOnlyList<string>> rows)
-    {
-        var sb = new StringBuilder();
-        foreach (var row in rows)
-            sb.Append(string.Join(CsvSeparator, row.Select(CsvCell))).Append("\r\n");
-        var bom = Encoding.UTF8.GetPreamble();
-        var body = Encoding.UTF8.GetBytes(sb.ToString());
-        return [.. bom, .. body];
-    }
-
-    /// <summary>
-    /// A CSV cell: quoted when it holds the separator, a quote or a line break. Text starting with <c>= + - @</c> (a
-    /// property name, for example) gets a leading apostrophe so a spreadsheet never runs it as a formula; amounts are
-    /// never negative here.
-    /// </summary>
-    private static string CsvCell(string value)
-    {
-        var text = value;
-        if (text.Length > 0 && text[0] is '=' or '+' or '-' or '@' or '\t' or '\r')
-            text = "'" + text;
-        return text.IndexOfAny([CsvSeparator, '"', '\n', '\r']) >= 0
-            ? "\"" + text.Replace("\"", "\"\"", StringComparison.Ordinal) + "\""
-            : text;
-    }
+    // Every cell is text here (amounts are formatted by CsvAmount), so every cell goes through the guard of CsvWriter, as it always did
+    // (the guard was extracted from this class for SR-10); the fiscal files have never had a limit of rows.
+    private static byte[] WriteCsv(IEnumerable<IReadOnlyList<string>> rows) => CsvWriter.Write(rows, CsvWriter.NoLimit);
 }

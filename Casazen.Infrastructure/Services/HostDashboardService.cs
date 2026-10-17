@@ -149,10 +149,35 @@ public sealed partial class HostDashboardService(
         IReadOnlyCollection<Guid> propertyIds,
         HostDashboardPeriod period,
         DateTime nowUtc,
+        CancellationToken cancellationToken) =>
+        TotalOccupancy((await GetNightsByPropertyAsync(propertyIds, period, nowUtc, cancellationToken)).Values);
+
+    // The Home's occupancy is the sum of its properties' (SR-10): the reports read the nights of each property through this same code.
+    private static HostDashboardOccupancy TotalOccupancy(IEnumerable<HostDashboardOccupancy> properties)
+    {
+        var occupied = 0;
+        var available = 0;
+        var closed = 0;
+        foreach (var property in properties)
+        {
+            occupied += property.OccupiedNights;
+            available += property.AvailableNights;
+            closed += property.ClosedNights;
+        }
+
+        return new HostDashboardOccupancy(occupied, available, closed);
+    }
+
+    // The occupancy of each property of <propertyIds>, one entry for every one of them.
+    private async Task<IReadOnlyDictionary<Guid, HostDashboardOccupancy>> GetNightsByPropertyAsync(
+        IReadOnlyCollection<Guid> propertyIds,
+        HostDashboardPeriod period,
+        DateTime nowUtc,
         CancellationToken cancellationToken)
     {
+        var byProperty = new Dictionary<Guid, HostDashboardOccupancy>();
         if (propertyIds.Count == 0)
-            return new HostDashboardOccupancy(0, 0, 0);
+            return byProperty;
 
         // The nights the booking site shows as taken (BK-05): same expressions and hold TTL as the public availability.
         var expiredHoldCutoff = CheckoutHolds.CutoffAt(nowUtc, CheckoutHolds.GetTtlMinutes(configuration));
@@ -171,27 +196,27 @@ public sealed partial class HostDashboardService(
             .Select(b => new { b.PropertyId, b.Source, Start = b.StartUtc, End = b.EndUtc })
             .ToListAsync(cancellationToken);
 
-        var occupied = 0;
-        var closed = 0;
+        // A period of up to 24 months (the reports) over many properties: grouped once, not searched for every property.
+        var staysOf = stays.ToLookup(s => s.PropertyId);
+        var blocksOf = blocks.ToLookup(b => b.PropertyId);
         foreach (var propertyId in propertyIds)
         {
             var taken = new HashSet<DateTime>();
-            foreach (var stay in stays.Where(s => s.PropertyId == propertyId))
+            foreach (var stay in staysOf[propertyId])
                 taken.UnionWith(PropertyOccupancy.NightsIn(stay.Start, stay.End, period.From, period.To));
-            foreach (var block in blocks.Where(b => b.PropertyId == propertyId && b.Source != CalendarBlockSource.Manual))
+            foreach (var block in blocksOf[propertyId].Where(b => b.Source != CalendarBlockSource.Manual))
                 taken.UnionWith(PropertyOccupancy.NightsIn(block.Start, block.End, period.From, period.To));
 
             // Closed by the host (owner stay, maintenance): out of the availability, unless a stay takes the night anyway.
             var closedOnly = new HashSet<DateTime>();
-            foreach (var block in blocks.Where(b => b.PropertyId == propertyId && b.Source == CalendarBlockSource.Manual))
+            foreach (var block in blocksOf[propertyId].Where(b => b.Source == CalendarBlockSource.Manual))
                 closedOnly.UnionWith(PropertyOccupancy.NightsIn(block.Start, block.End, period.From, period.To));
             closedOnly.ExceptWith(taken);
 
-            occupied += taken.Count;
-            closed += closedOnly.Count;
+            byProperty[propertyId] = new HostDashboardOccupancy(taken.Count, period.Nights - closedOnly.Count, closedOnly.Count);
         }
 
-        return new HostDashboardOccupancy(occupied, propertyIds.Count * period.Nights - closed, closed);
+        return byProperty;
     }
 
     // The figures of one period (SR-03): the current one, and the one before it when the caller compares.
@@ -233,11 +258,15 @@ public sealed partial class HostDashboardService(
         Guid? propertyId,
         HostDashboardPeriod period,
         CancellationToken cancellationToken) =>
-        await BookingsInScope(scope, propertyId)
-            .Where(StayKpiRules.IsConfirmedStay())
-            .Where(PropertyOccupancy.BookingTakesNightIn(period.From, period.To))
+        await RevenueStays(scope, propertyId, period)
             .Select(b => new HostRevenueStay(b.BasePrice, b.CheckInDate, b.CheckOutDate, b.Source))
             .ToListAsync(cancellationToken);
+
+    // The rows the revenue is made of, defined once: the reports (SR-10) cut the very same stays by property and by channel.
+    private IQueryable<Booking> RevenueStays(HostScope scope, Guid? propertyId, HostDashboardPeriod period) =>
+        BookingsInScope(scope, propertyId)
+            .Where(StayKpiRules.IsConfirmedStay())
+            .Where(PropertyOccupancy.BookingTakesNightIn(period.From, period.To));
 
     // Money collected in the period, by cash (SR-03, PaymentCashRules): the payments of the scope that came in on those days.
     private async Task<HostDashboardCollected> GetCollectedAsync(

@@ -1621,6 +1621,18 @@
   <data name="DashboardInvalidOverviewPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days, period=Next30Days or period=Custom with from and to as YYYY-MM-DD (1 to 366 days).</value>
   </data>
+  <data name="ReportInvalidPeriod" xml:space="preserve">
+    <value>Invalid period: give from and to as YYYY-MM-DD, with from not after to.</value>
+  </data>
+  <data name="ReportPeriodTooLong" xml:space="preserve">
+    <value>The period is too long: a report covers at most {0} months.</value>
+  </data>
+  <data name="ReportInvalidFormat" xml:space="preserve">
+    <value>Invalid format: use format=json or format=csv.</value>
+  </data>
+  <data name="CsvTooManyRows" xml:space="preserve">
+    <value>The file would have more than {0} rows: narrow the period or pick a single property.</value>
+  </data>
   <data name="BookingListInvalidArrivalRange" xml:space="preserve">
     <value>Invalid range: the first arrival date (arrivalFrom) cannot be after the last one (arrivalTo).</value>
   </data>
