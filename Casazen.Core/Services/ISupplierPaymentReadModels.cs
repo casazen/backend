@@ -73,4 +73,30 @@ public interface ISupplierPaymentReadModels
         Guid supplierOrgId,
         IReadOnlyCollection<Guid> requestIds,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A page of the supplier's completed and paid jobs with the money of each (SP-16a, <see cref="SupplierEarningRow"/>), the newest first, and how
+    /// many there are in all: the requests (<c>Completato</c>, <c>Pagato</c>) joined with their live payment (the one that is not canceled), if any,
+    /// filtered and paged by the database. <see cref="SupplierEarningsQuery.PageSize"/> is not clamped here (the export asks for one more than its limit).
+    /// </summary>
+    Task<(IReadOnlyList<SupplierEarningRow> Items, int Total)> ListEarningsAsync(
+        Guid supplierOrgId,
+        SupplierEarningsQuery query,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What is still to be collected now (SP-16a): for each completed job, the net of its live payment when it is asked for, in progress, failed or under
+    /// review, else the total the supplier declared (nothing is added for a job with no declared total, but it counts as a job). The same definition as
+    /// <c>toCollectCents</c> of the home overview.
+    /// </summary>
+    Task<SupplierToCollect> ToCollectAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The payments that were <b>paid</b> (<see cref="ServicePaymentStatus.Paid"/>) with <c>PaidAt</c> at or after <paramref name="sinceUtc"/>, as
+    /// when, commission and net: what the series of the earnings and the figures of the month are made of, from one read.
+    /// </summary>
+    Task<IReadOnlyList<SupplierPaidPayment>> PaidSinceAsync(
+        Guid supplierOrgId,
+        DateTime sinceUtc,
+        CancellationToken cancellationToken = default);
 }
