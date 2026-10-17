@@ -2257,6 +2257,15 @@
   <data name="SupplierBlockNotFound" xml:space="preserve">
     <value>Blocco non trovato: potrebbe essere già stato eliminato, oppure arriva dal tuo calendario collegato e si toglie da lì.</value>
   </data>
+  <data name="SupplierEarningsTabInvalid" xml:space="preserve">
+    <value>Scheda degli incassi non valida: usa tutti, da-incassare, pagati, in-ritardo oppure da-verificare.</value>
+  </data>
+  <data name="SupplierEarningsPeriodInvalid" xml:space="preserve">
+    <value>Il periodo degli incassi non è valido: la data iniziale non può essere dopo quella finale.</value>
+  </data>
+  <data name="SupplierEarningsExportTooLarge" xml:space="preserve">
+    <value>Ci sono troppi lavori per un solo file (più di {0}): restringi il periodo e riprova.</value>
+  </data>
   <data name="SupplierRulesInvalid" xml:space="preserve">
     <value>Le regole non sono valide (campi: {0}). Servono tutte e cinque: pausa tra i lavori (da 0 a 240 minuti, a passi di 5), massimo lavori al giorno (da 1 a 50), preavviso (da 0 a 720 ore), orizzonte (da 1 a 365 giorni) e passo degli orari (da 15 a 240 minuti, a passi di 5).</value>
   </data>
