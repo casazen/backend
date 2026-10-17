@@ -613,11 +613,12 @@ public static class ServiceCollectionExtensions
         // The tokens are sealed with Data Protection (the key ring in the database), so every replica reads them.
         services.AddSingleton<GuestSessionTokens>();
         services.AddScoped<IGuestSessionService, GuestSessionService>();
-        // Verified reviews of the stays (DB-12a): the public reads and the guest's review, the host's answers, reports and invitations.
-        // The signed link is made by Data Protection, nothing is stored for it.
+        // Verified reviews of the stays (DB-12a, docs/runbooks/site-reviews.md): the public reads and the guest's review, the host's
+        // answers, reports and invitations, and the staff's decisions. The signed link is made by Data Protection, nothing is stored for it.
         services.AddSingleton<ReviewLinkTokens>();
         services.AddScoped<IPublicReviewService, PublicReviewService>();
         services.AddScoped<IHostReviewService, HostReviewService>();
+        services.AddScoped<IAdminReviewService, AdminReviewService>();
         // Messages between the guest of a direct booking and the host (DB-14a): the thread, its two sides and the two emails
         // that are the consequence of a message (docs/runbooks/guest-messages.md).
         services.AddScoped<IGuestMessageService, GuestMessageService>();
