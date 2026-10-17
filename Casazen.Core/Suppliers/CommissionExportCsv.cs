@@ -68,10 +68,13 @@ public static class CommissionExportCsv
     }
 
     /// <summary>A percentage with up to two decimals, with a dot, whatever the culture of the server.</summary>
-    private static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+    internal static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
-    /// <summary>A text field: neutralized when a spreadsheet would read it as a formula, then quoted when it needs to be.</summary>
-    private static string Text(string? value)
+    /// <summary>
+    /// A text field: neutralized when a spreadsheet would read it as a formula, then quoted when it needs to be. Shared with the supplier's own
+    /// earnings export (<see cref="SupplierEarningsCsv"/>): one rule for every CSV of the money.
+    /// </summary>
+    internal static string Text(string? value)
     {
         if (string.IsNullOrEmpty(value))
             return string.Empty;

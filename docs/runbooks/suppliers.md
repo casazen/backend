@@ -2928,7 +2928,7 @@ green).
 
 Redesign wave task SP-16a, backend only: **no flag, no migration** (the columns were there since SP-03). It gives the pages Impostazioni, Incassi and
 Clienti of the console (SP-16c and SP-16b) the endpoints they were missing, in three pull requests: **29.1** the settings and **29.2** the "Verificato"
-badge of the checklist (this part), then the earnings and their export (29.3) and the clients (29.4). Every endpoint is `RequireSupplier`, scoped by the
+badge of the checklist (this section), then the earnings and their export (section 30) and the clients (section 31). Every endpoint is `RequireSupplier`, scoped by the
 supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read of the console never provisions or links a supplier), not behind a flag.
 
 ### 29.1 `GET` and `PUT api/supplier/settings`
@@ -2968,6 +2968,84 @@ supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read
   flag off ("not available" is not a "no": the console does not count the step). The three consumers of the old `null` keep working with the flag off.
 - `SupplierTodayService` takes the payments account and the flags as optional trailing constructor parameters (the tests that build it by hand stay as they are); the
   container always gives both, and the checklist tests of `SupplierInboxIntegrationTests`, which go through the real host, fail if the registration is lost.
+
+## 30. The supplier's earnings, the page "Incassi" — SP-16a (part 2)
+
+Part 2 of SP-16a (the settings and the checklist are section 29, the clients section 31), backend only: **no flag, no migration, no new table**. `GET api/supplier/earnings`
+and `GET api/supplier/earnings/export`, policy `RequireSupplier`, supplier org from the caller's **own link** (a read of the money never provisions a supplier), **not behind
+`SupplierOnlinePayments`** (with the flag off the list holds only jobs paid outside CasaZen; the console hides the page), `Cache-Control: private, no-store`. Every amount is in
+**integer cents**, every sum is made **by the server** (a screen never recomputes a commission or a net) and the days are Europe/Rome days.
+
+### 30.1 The list
+
+`GET api/supplier/earnings?tab=&from=&to=&clientId=&page=&pageSize=` answers `{ items, total, page, pageSize, timeZone, summary }`. The rows are the supplier's jobs
+`Completato` or `Pagato`, the newest first, each joined with its **live payment** (the one that is not canceled: at most one per request, a unique index).
+
+| Tab (`tab`) | Rows | Notes |
+|---|---|---|
+| `tutti` (default) | every completed or paid job | |
+| `da-incassare` | `to_collect`, `late` and `in_review` | the same set as the tab `da-incassare` of the inbox |
+| `pagati` | `paid`, and the ones refunded afterwards (`refunded`, `partially_refunded`) | |
+| `in-ritardo` | `late` | also in `da-incassare` |
+| `da-verificare` | `in_review` | also in `da-incassare`; the console shows the chip only when there is one |
+
+Another `tab`, or a `from` after `to`, is 400 `validation_error` (`SupplierEarningsTabInvalid`, `SupplierEarningsPeriodInvalid`). `from`/`to` are Europe/Rome days, both
+included, on the **date of the row**: the day it was paid for a paid job (`PaidAt` of the payment, else of the request), otherwise the day it was completed. `clientId` is the
+customer id the inbox uses (the host org, or the private customer of the showcase). `pageSize` up to 100.
+
+**`state`** (an **open set**: the held payments of SP-15c will add blocked, held, released, in dispute; show a generic wording for a value you do not know) is
+`SupplierEarningStates.Of`: **the payment record says where the money is; the job says it only when there is no record**.
+
+| Payment record | `state` |
+|---|---|
+| none, job `Pagato` (the host marked it paid by hand) | `paid` (`paidVia` = `Offline`) |
+| none, job `Completato` | `to_collect` |
+| `Requested` or `Failed` | `late` when `LateAt` is set, else `to_collect` |
+| `Processing` | `to_collect` (in flight) |
+| `Paid` | `paid` |
+| `PartiallyRefunded` / `Refunded` | `partially_refunded` / `refunded` |
+| `NeedsReview` | `in_review` (Stripe reported something that does not match; an admin decides) |
+
+**The money of a row.** With a payment: `grossCents` = its amount, `commissionPercent`/`commissionCents`/`netCents` = the snapshot it was created with. Without one:
+a `Manual` job has **no commission at all** (`commissionPercent` 0, `commissionCents` 0, net = gross = the total the supplier declared), an `Online` job has **none computed
+yet** (the commission is computed when the payment is created), so its commission and net are **empty, never 0**; a job with no declared total has an empty gross.
+`refundedCents` is what was given back; **it does not rewrite the net**. `lateSince` is when the payment was flagged late (only on a `late` row). The customer
+(`clientLabel`) is the full name of a private customer once the job is taken (decision D9: every job here is) or the host org's name; a customer removed by the retention
+job has no label and `clientAnonymized: true` (the console says "Cliente rimosso"). A request by category only has no `serviceName` (the console shows `category`).
+
+### 30.2 The summary (independent of the filters of the list)
+
+| Field | Definition |
+|---|---|
+| `toCollectNetCents`, `toCollectJobs` | still to be collected now: for each job that is owed (`to_collect`, `late`, `in_review`) the **net of its payment** when it has one, else the total the supplier declared; a job with no total adds nothing and counts as a job. The same definition as `toCollectCents` of `GET api/supplier/dashboard/overview` (section 27.2) |
+| `paidThisMonthNetCents`, `commissionThisMonthCents` | the payments with status `Paid` and `PaidAt` in the current Europe/Rome month: their net and the commission CasaZen kept. A payment recorded as received outside CasaZen is `Paid` (no commission). The same figure as the home |
+| `lateCount` | payments asked for that are late and still owed (the same as `paymentsLate` of `inbox/counts`) |
+| `series` | the net paid in each of the last **8** Europe/Rome months (`{ month: "2026-10", netCents }`), the current one last; read together with the figure of the month, so `paidThisMonthNetCents` **is** the last month of the series |
+| `commission { percent, freeUntil }` | what a payment created now is charged: the supplier's own override while it is in force, else `SupplierPayments:CommissionPercent` (the same reading as `GET api/admin/suppliers/{orgId}/commission`); `freeUntil` is when a free period (an own commission of 0 %) ends, null otherwise. **No screen writes the number** (decision SP-D27) |
+| `onlinePayments` | the flag `SupplierOnlinePayments` is on **and** the supplier has at least one payment (not withdrawn) |
+
+**What "incassato" means** is in `stripe.md`: the `Paid` payments by payment date. So a payment refunded afterwards is no longer in the figures of the month and the series (it stays in
+the list with its state), and a job the host marked paid by hand, having no payment record, is listed as paid but is not in them. **Which "earnings" to use**: `GET api/supplier/today`
+(`earnings.estimated`, the totals the supplier declared) is the old estimate of the home; the page Incassi and the overview of the home use the figures above.
+
+### 30.3 The export
+
+`GET api/supplier/earnings/export?tab=&from=&to=&clientId=` is the same rows with the same filters (the page is ignored) as a CSV for the supplier's accountant: UTF-8 with a byte order
+mark, comma, CRLF, `Content-Type: text/csv; charset=utf-8`, `Content-Disposition` `incassi-YYYY-MM-DD.csv`, `Cache-Control: private, no-store`. Columns: `completed_on`, `paid_on`
+(Rome days), `service_request_id`, `service`, `client`, `state`, `payment_mode`, `paid_via`, `currency` (`EUR`), `gross_cents`, `commission_percent`, `commission_cents`, `net_cents`,
+`refunded_cents`. **No contact** is exported (no e-mail, no phone: decision SP-D25) and **no VAT** is computed (decision D4, `[CONSULENTE FISCALE]`, as the staff export). A text
+a spreadsheet would read as a formula (`=`, `+`, `-`, `@`, tab, carriage return) gets a leading apostrophe, with the same code as the staff export (`CommissionExportCsv`). An amount that does
+not exist yet is an empty cell. More than **20000 rows** is 422 `supplier_earnings_export_too_large`: the supplier narrows the period.
+
+### 30.4 Tenancy, cost and limits
+
+- `ServiceRequests` and `ServiceRequestPayments` have two parties and no tenant filter, so the supplier org is an **explicit predicate on both** statements of the list (the payment side
+  starts with `SupplierOrgId == …`, as `ServiceRequestPaymentTenancyTests` demands); all the reads are in `SupplierPaymentReadModels`, the only reader of the payment table for the console. Only the
+  columns the page needs are read (never the payment link, the PaymentIntent or the line items); the private customer's name is an encrypted column and is read **only for the page** returned.
+- One grouped read for what is to be collected, one read of the payments paid in the last 8 months (rows of when, commission and net, added up in memory: fine for one supplier, a grouped
+  read is the answer if one ever has tens of thousands of payments a month), one count of the late ones and the commission reading: five small statements and the page.
+- Limits: a refund does not move the figures of the month (the list shows it); there is no filter by service or by payer kind; `serviceName` is the copy kept on the request.
+- Demo seed: not applicable (the demo showcase has no supplier or service-request data, SP-04e-F5).
 
 ## Known limits (other tasks)
 
