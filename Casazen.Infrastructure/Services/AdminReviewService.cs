@@ -82,9 +82,10 @@ public sealed class AdminReviewService(
         {
             await db.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateConcurrencyException)
+        catch (DbUpdateException ex) when (ex.InnerException is null)
         {
-            // Another staff user decided the same report at the same moment.
+            // Another staff user decided the same report at the same moment: the state of the report is its concurrency token, and
+            // EF refuses the second write with no database error behind it (a real failure of the database carries one and stays a 500).
             db.ChangeTracker.Clear();
             throw new DomainConflictException("review_report_already_decided", "ReviewReportAlreadyDecided");
         }
