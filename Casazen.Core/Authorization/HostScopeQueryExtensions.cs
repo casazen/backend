@@ -47,6 +47,10 @@ public static class HostScopeQueryExtensions
     public static IQueryable<StayCheckout> InScope(this IQueryable<StayCheckout> source, HostScope scope) =>
         source.InScope(scope, checkout => checkout.Booking.Property);
 
+    /// <summary>The reviews of the scope (those of a property it reaches, DB-12a).</summary>
+    public static IQueryable<Review> InScope(this IQueryable<Review> source, HostScope scope) =>
+        source.InScope(scope, review => review.Property);
+
     /// <summary>
     /// The rows of <paramref name="source"/> bound to a property the scope reaches, the property being what
     /// <paramref name="property"/> selects. For an org-wide scope the query is returned as it is.
