@@ -19,8 +19,11 @@ public class EncryptedColumnsTests
             {
                 "Guest.DocumentIssuingCountry:Casazen.Guest.Document",
                 "Guest.DocumentNumber:Casazen.Guest.Document",
+                // LR-12: the values a landlord typed in the wizard and kept in the draft, and the residence of a party of a lease.
+                "LeaseContract.DraftData:Casazen.LeaseContract.Draft",
                 "OtaIntegration.ApiKey:Casazen.OtaIntegration.Secrets",
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
+                "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",

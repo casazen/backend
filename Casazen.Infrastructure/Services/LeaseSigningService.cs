@@ -96,6 +96,7 @@ public class LeaseSigningService(
 
             var now = UtcNow();
             lease.Status = LeaseStatus.Signed;
+            lease.DraftData = null; // the typed state of the wizard (LR-12) is only for a draft; the parties' rows are the contract's data
             lease.SignedPdfStoragePath = key;
             lease.RecordStipula(stipula);
             lease.StipulaDeclaredByUserId = userId;
@@ -306,6 +307,7 @@ public class LeaseSigningService(
 
             var now = UtcNow();
             lease.Status = LeaseStatus.AwaitingSignature;
+            lease.DraftData = null; // the lease leaves the draft: no typed state of the wizard stays behind (LR-12)
             lease.ExternalSigningSessionId = session.ExternalSessionId;
             lease.UpdatedAt = now;
 

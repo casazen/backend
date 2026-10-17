@@ -185,6 +185,9 @@ public enum HostTodoAction
 
     /// <summary>A finished job waits for the host to pay it (SR-03b, <c>PayServiceRequest</c>). Target: the service request.</summary>
     PayServiceRequest,
+
+    /// <summary>Two stays or blocks of a property take the same night (SR-02a, <c>ResolveCalendarConflict</c>). Target: the property and the first stay of the two, if any.</summary>
+    ResolveCalendarConflict,
 }
 
 /// <summary>One thing to do.</summary>
@@ -216,6 +219,10 @@ public sealed record HostTodoItem(
 /// answer to another time stands with the requests (1), and the final amount to confirm with the money that did not come (5), so
 /// the priorities stay 1 to 8; a finished job to pay stands with the departures to close (6).
 /// </para>
+/// <para>
+/// The things the calendar finds (SR-02a) are placed the same way: a night taken twice stands with the legal duties (2: it is the
+/// one thing that cannot wait and that no job or time-out solves).
+/// </para>
 /// </summary>
 public static class HostTodoPriority
 {
@@ -225,6 +232,7 @@ public static class HostTodoPriority
         HostTodoAction.RespondToRequest => 1,
         HostTodoAction.RespondToServiceRequest => 1,
         HostTodoAction.ResolveAlloggiatiFailure => 2,
+        HostTodoAction.ResolveCalendarConflict => 2,
         HostTodoAction.SendAlloggiati => 3,
         HostTodoAction.CompleteGuestCheckIn => 4,
         HostTodoAction.ReviewFailedPayment => 5,

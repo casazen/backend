@@ -34,6 +34,7 @@ public class LegacyRowsSchemaTests
     private const string Sp05 = "AddSupplierBusyWindowFeedKey";
     private const string Sp15b = "AddSupplierPaymentRefunds";
     private const string Db03 = "AddDirectBookingPublicData";
+    private const string Lr12 = "AddGuidedLeaseDraft";
     private const string Am02c = "AddOrgTeamCompletions";
     private const string Latest = "*";
 
@@ -106,6 +107,10 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyLeaseRows), Lr01 },
         { RentScheduleRows, Lr01 },
         { RentInstallmentRows, Lr01 },
+        { nameof(LegacyOrgRows), Lr12 },
+        { nameof(LegacyPropertyRows), Lr12 },
+        { nameof(LegacyLeaseRows), Lr12 },
+        { nameof(LegacyPartyRows), Lr12 },
         { nameof(LegacyOrgRows), Am02c },
         { nameof(LegacyOrgInvitationRows), Am02c },
     };

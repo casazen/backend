@@ -39,6 +39,7 @@ and production never block each other.
 | `stay-alerts` (CO-10, see [§9](#9-stay-alerts-co-10); replaces `alloggiati-deadline-alert` and `guest-checkin-reminder`, removed at startup) | hourly | `StayAlertsJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `cin-deadline-alert` (CO-20: host alert about properties without a valid CIN, once per stage, see [cin-format.md](cin-format.md#cin-deadline-and-host-alerts-co-20)) | 08:00 | `CinDeadlineAlertJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `property-mode-change` (PM-02: applies the scheduled changes of rental mode in the hour after midnight of Rome, idempotent; always registered; see [property-rental-mode.md §8.5](property-rental-mode.md#85-the-job-property-mode-change)) | hourly | `PropertyModeChangeJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run, and the dates lock of each property) | 300 s |
+| `lease-draft-retention` (LR-12, LR-D33: deletes the lease drafts nobody changed for `LongRentLease:DraftRetentionDays` days (180) with their parties and files, never one with a signed copy; idempotent, counts only in the log; always registered; see [long-rent-lease-draft.md §8](long-rent-lease-draft.md#8-the-abandoned-drafts-the-job-lease-draft-retention-decision-lr-d33)) | 03:50 | `LeaseDraftRetentionJob.ExecuteAsync` (plus a PostgreSQL session lock per run, and the row lock of each draft) | 300 s |
 | `lease-sign-status-poll` | `*/10` | `LeaseSignStatusPollingJob.ExecuteAsync` | 60 s |
 | `lease-registration-status-poll` | `*/5` | `LeaseRegistrationStatusPollingJob.ExecuteAsync` | 60 s |
 | `rli-deadline-reminder` (LT-04, see [§8](#8-rli-deadline-reminder-lt-04)) | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
@@ -257,13 +258,13 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 33 recurring jobs in each schema with every flag on; 28 with the defaults
+  -- 34 recurring jobs in each schema with every flag on; 29 with the defaults
   -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider and Features:SupplierRequestAutoCancel off:
   -- ota-sync-all, booking-pull-all, lease-registration-status-poll, lease-sign-status-poll and
   -- service-request-auto-cancel are the five that appear only with their flag on; every other job, among them
   -- service-request-expiry, service-request-reminders, org-invitation-maintenance, org-activity-retention,
-  -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a) and
-  -- property-mode-change (PM-02), is in both counts)
+  -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a),
+  -- property-mode-change (PM-02) and lease-draft-retention (LR-12), is in both counts)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';
