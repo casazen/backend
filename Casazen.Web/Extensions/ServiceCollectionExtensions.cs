@@ -284,6 +284,8 @@ public static class ServiceCollectionExtensions
         // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
         services.AddScoped<IHostTodayService, HostTodayService>();
         services.AddScoped<IComplianceMissingService, ComplianceMissingService>();
+        // The calendar of all the host's properties in one read, and the nights taken twice the Home puts among the things to do (SR-02a).
+        services.AddScoped<IHostCalendarService, HostCalendarService>();
         // Lists that hold up with many rows: bookings by days, status and text, a page at a time; payments by booking and period (SR-03).
         services.AddScoped<IBookingSearchService, BookingSearchService>();
         services.AddScoped<IPaymentListService, PaymentListService>();

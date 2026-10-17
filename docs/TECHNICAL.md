@@ -254,7 +254,8 @@ Property record choices (PC-02):
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
 | `PUT` | `/api/bookings/{id}` | Update a booking |
 | `DELETE` | `/api/bookings/{id}` | Cancel a booking |
-| `GET` | `/api/bookings/calendar` | Calendar view (`?propertyId&startDate&endDate&timezone`) |
+| `GET` | `/api/bookings/calendar` | Calendar view of one property (`?propertyId&startDate&endDate&timezone`); unchanged |
+| `GET` | `/api/calendar` | SR-02a: the calendar of all the host's properties in one read (below): `?from&to&propertyIds&timezone` |
 | `POST` | `/api/bookings/{id}/check-in` | Perform check-in: records `ArrivedAt`, schedules the Alloggiati Web job (idempotent) |
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
 | `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
@@ -310,6 +311,35 @@ payments and the reports of its bookings: none per row.
 satisfy the filters of the search but the chip, the page and the order (`status`, `q`, `from`, `to`, `arrivalFrom`, `arrivalTo`,
 `channel`, `checkInStatus`, `propertyId`, `guestId`), in one aggregate query: a `COUNT(*) FILTER` per chip built from the very
 predicates of the lists, so a counter is the total of its chip. Same scope, same 400s, same 404 and 403 as the search.
+
+**The calendar of all the properties (`GET /api/calendar`, SR-02a; `IHostCalendarService`).** Policy `short-rent booking.read`,
+limited to the caller's `HostScope` in SQL like every host list (the properties of another org, or a collaborator's «Solo alcuni»
+that are not its own, are not there, and asking for one by id gives nothing, as if it did not exist). `from` and `to`
+(`yyyy-MM-dd`, both included; today and the 29 days after it when missing; at most 92 days, 422 `calendar_window_too_large`; `to`
+before `from` is 400 `booking_calendar_range_invalid`; years 2000 to 2100), `propertyIds` (repeated or separated by commas, at
+most 50, 422 `calendar_too_many_properties`; without it the first 50 by name, `propertiesTotal` says how many there are) and
+`timezone` (IANA id, Europe/Rome by default; it only sets `utcOffsetMinutes`, every date is a calendar date). The answer is
+`{ timezone, utcOffsetMinutes, today, from, to, propertiesTotal, properties, items }`:
+- `properties`: the short-rent properties (`IsActive`, not in long-term mode), by name, each `{ id, name, city, rentalMode,
+  status (Active | Paused), minNights, baseRateCents, weekendSurchargePercent, cleaningFeeCents }`.
+- `items`: everything that has a day in the range, from its arrival day to its departure day (the rule of `HostCalendarRange`),
+  by first day. `from` and `to` of an item are the first night and the departure day (a stay that leaves on the 12th and one that
+  arrives on the 12th do not overlap); an intervention has the day of the work and the day after. Told apart by `type`, with the
+  fields of that type only (the others are absent):
+  `Booking` (`status`, `guestName`, `numberOfGuests`, `channel` as in the booking list, `paymentOption`, `onSiteRequestState` and
+  `requestExpiresAt` of a «pay at the property» request still open, `paymentState`, `totalCents`, `icalFeedId`, `channelLabel` and
+  `otaReviewReason` of a stay made from a portal's block); `Ical` (a portal's reservation as a block: `channel`, `feedLabel`,
+  `convertible`, `bookingId` of the stay made from it when that stay does not stand for it, `note`); `Block` (`reason`, `note`);
+  `Service` (`serviceKind` Cleaning | Maintenance | Other, `category`, `serviceName`, `serviceStatus`, `supplierOrgId`,
+  `supplierName`, `bookingId`, `startAt` and `endAt`, absent for a request with no time, which sits on the day its stay leaves).
+  Which bookings are there is `CheckoutHolds.OccupiesDates` (no cancelled, no expired hold, a «pay at the property» request yes);
+  a block that became a stay standing for it (`PropertyOccupancy.IsRepresentedByStay`) is the stay only; the interventions are the
+  short-rent ones that nobody refused or cancelled. No money for an intervention; `totalCents` of a stay is visible to who may read
+  bookings (SR-D7), what came in only as `paymentState`.
+
+One read for the properties and one each for the bookings, their payments, the blocks and the interventions: none per property.
+`GET /api/bookings/calendar` is not touched. The Home puts the nights taken twice among its things to do (`ResolveCalendarConflict`,
+below), from `CalendarAlertRules`, the calculation the future alerts of the calendar will share.
 
 #### Host dashboard (PC-16)
 
@@ -419,6 +449,7 @@ together, the cleaning of all the departures listed together, and one page for t
 | 1 | `RespondToRequest` | a request to accept or decline | `respondBy` |
 | 1 | `RespondToServiceRequest` | SR-03b: a new intervention on which the supplier proposed another time, to accept or decline | the time asked for, if it has one |
 | 2 | `ResolveAlloggiatiFailure` | communication in error or rejected | 24 h (6 h for a stay of one night or less) from the arrival |
+| 2 | `ResolveCalendarConflict` | SR-02a: two stays or blocks of a property take the same night, today or in the next 29 days; the label is the property, the target the property and the first of the two that is a stay | start of the first night they share |
 | 3 | `SendAlloggiati` | communication to send on the portal | same |
 | 4 | `CompleteGuestCheckIn` | data of the guests incomplete (cockpit: arrivals up to tomorrow) | start of the arrival day |
 | 5 | `ReviewFailedPayment` | confirmed stay whose payment failed and nothing else paid it; only for a caller with `payment.read` | — |
@@ -434,7 +465,10 @@ its own table, as for the cockpit links below) with the ids of its target, `miss
 intervention (SR-03b) have the supplier as `label` and its `serviceRequestId` as target; they take the priority of what they are
 like (answer 1, amount 5, payment 6), so no priority of SR-03 moved and the range stays 1 to 8. They are those of the
 properties the caller reaches, in SQL, and at most 10 of them are listed (answers first, then amounts, then payments; the count
-covers all of them): a backlog of finished jobs nobody marked paid never pushes the other things to do out of the 20.
+covers all of them): a backlog of finished jobs nobody marked paid never pushes the other things to do out of the 20. The nights
+taken twice (SR-02a, `ResolveCalendarConflict`, priority 2: the label and `propertyName` are the property, `bookingId` the first of the
+two that is a stay) are those of today and the 29 days after it, of the properties the caller reaches, from `CalendarAlertRules`;
+at most 10 are listed, the count covers all of them. A client that does not know an action leaves it out of the list.
 
 **What an item lacks (`missing`, SR-03).** Every item of the cockpit (`GET /api/compliance/summary`) and of `todo` carries
 `missing`, a list of `{ code, field, count }` with stable snake_case codes the client translates (`IComplianceMissingService`;
@@ -445,7 +479,8 @@ confirmation is left; for the guests of a stay, one `guest_field_missing` per fi
 (`field` camelCase as `AlloggiatiRecordRules` names it, `count` the guests that lack it) and `guest_composition_invalid` when
 the order of the guests is not accepted; for the others, the single thing left (`checkout_not_closed`, `alloggiati_not_sent`,
 `alloggiati_failed`, `property_ready_not_confirmed`, `approval_not_answered`, `payment_failed`, and, about an intervention
-(SR-03b), `proposal_not_answered` (`field` `response`), `final_amount_not_confirmed` (`amount`) and `service_not_paid` (`payment`)).
+(SR-03b), `proposal_not_answered` (`field` `response`), `final_amount_not_confirmed` (`amount`) and `service_not_paid` (`payment`),
+and a night taken twice (SR-02a), `calendar_conflict` (`dates`)).
 
 The bookings summary of `GET /api/properties/{id}/detail` (A2-36) uses the same rules: `totalBookings` = confirmed
 stays, `upcomingBookings` = upcoming check-ins, `activeBookings` = stays in progress today (checked in, or confirmed

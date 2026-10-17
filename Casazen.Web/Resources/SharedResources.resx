@@ -525,6 +525,15 @@
   <data name="BookingCalendarRangeInvalid" xml:space="preserve">
     <value>La data di fine del calendario non può essere precedente alla data di inizio.</value>
   </data>
+  <data name="CalendarWindowTooLarge" xml:space="preserve">
+    <value>Il calendario mostra al massimo {0} giorni alla volta: scegli un periodo più breve.</value>
+  </data>
+  <data name="CalendarTooManyProperties" xml:space="preserve">
+    <value>Puoi chiedere al massimo {0} immobili alla volta.</value>
+  </data>
+  <data name="CalendarInvalidRequest" xml:space="preserve">
+    <value>Le date o gli immobili richiesti non sono validi: controlla le date (da 2000 a 2100) e gli identificativi degli immobili.</value>
+  </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
   </data>

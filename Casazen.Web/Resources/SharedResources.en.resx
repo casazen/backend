@@ -525,6 +525,15 @@
   <data name="BookingCalendarRangeInvalid" xml:space="preserve">
     <value>The last day of the calendar cannot be before its first day.</value>
   </data>
+  <data name="CalendarWindowTooLarge" xml:space="preserve">
+    <value>The calendar shows at most {0} days at a time: choose a shorter period.</value>
+  </data>
+  <data name="CalendarTooManyProperties" xml:space="preserve">
+    <value>You can ask for at most {0} properties at a time.</value>
+  </data>
+  <data name="CalendarInvalidRequest" xml:space="preserve">
+    <value>The dates or the properties asked for are not valid: check the dates (from 2000 to 2100) and the property ids.</value>
+  </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>
