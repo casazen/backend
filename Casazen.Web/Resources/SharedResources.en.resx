@@ -2266,6 +2266,9 @@
   <data name="SupplierShowcaseNotFound" xml:space="preserve">
     <value>This supplier showcase does not exist or is no longer available.</value>
   </data>
+  <data name="SupplierSortInvalid" xml:space="preserve">
+    <value>Invalid order: use name, price or response.</value>
+  </data>
   <data name="FirstNameRequired" xml:space="preserve">
     <value>First name is required.</value>
   </data>

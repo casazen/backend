@@ -115,6 +115,34 @@ public partial class SupplierKpiService(
         return SupplierResponseTimes.PublicMedianMinutes(answers.Select(answer => answer.Minutes).ToList());
     }
 
+    public async Task<IReadOnlyDictionary<Guid, int?>> GetMedianResponseMinutesBatchAsync(
+        IReadOnlyCollection<Guid> supplierOrgIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(supplierOrgIds);
+
+        var medians = supplierOrgIds.Distinct().ToDictionary(id => id, _ => (int?)null);
+        if (medians.Count == 0)
+            return medians;
+
+        // One read for every supplier asked about: the pairs of the window, grouped here. The latest requests of each supplier
+        // make its median, as for the showcase, and the median is made on the pairs so the arithmetic on instants does not depend
+        // on the provider.
+        var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-SupplierEarningsSummary.ResponseWindowDays);
+        var answers = await AnswersOfMany(db, medians.Keys.ToList(), since).ToListAsync(cancellationToken);
+        foreach (var bySupplier in answers.GroupBy(answer => answer.SupplierOrgId))
+        {
+            var latest = bySupplier
+                .OrderByDescending(answer => answer.TakenAt)
+                .Take(PublicShowcaseLimits.ResponseTimeMaxSamples)
+                .Select(answer => (answer.TakenAt - answer.CreatedAt).TotalMinutes)
+                .ToList();
+            medians[bySupplier.Key] = SupplierResponseTimes.PublicMedianMinutes(latest);
+        }
+
+        return medians;
+    }
+
     /// <summary>The jobs and the final amounts of the requests of the supplier completed (or paid) inside <c>[startUtc, endUtc)</c>.</summary>
     /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
     internal static IQueryable<AmountGroup> CompletedInOf(AppDbContext db, Guid supplierOrgId, DateTime startUtc, DateTime endUtc) =>
@@ -156,8 +184,22 @@ public partial class SupplierKpiService(
             .Take(limit)
             .Select(r => new AnswerPair(r.CreatedAt, r.TakenAt!.Value));
 
+    /// <summary>
+    /// When each request taken since <paramref name="sinceUtc"/> was received and taken, for every supplier in
+    /// <paramref name="supplierOrgIds"/> at once: the sample of the response time of the supplier picker (SR-09a).
+    /// </summary>
+    internal static IQueryable<SupplierAnswerPair> AnswersOfMany(AppDbContext db, IReadOnlyCollection<Guid> supplierOrgIds, DateTime sinceUtc) =>
+        // ServiceRequest has no tenant filter (two parties, TN-2 allow-list): scoped by the supplier orgs explicitly.
+        db.ServiceRequests
+            .AsNoTracking()
+            .Where(r => supplierOrgIds.Contains(r.SupplierOrgId) && r.TakenAt != null && r.TakenAt >= sinceUtc)
+            .Select(r => new SupplierAnswerPair(r.SupplierOrgId, r.CreatedAt, r.TakenAt!.Value));
+
     /// <summary>A number of requests and the sum of their final amounts (<c>null</c> when none has one).</summary>
     internal sealed record AmountGroup(int Jobs, long? Amount);
+
+    /// <summary>The moment a request of a supplier was received and the moment the supplier took it.</summary>
+    internal sealed record SupplierAnswerPair(Guid SupplierOrgId, DateTime CreatedAt, DateTime TakenAt);
 
     /// <summary>The moment a request was received and the moment the supplier took it.</summary>
     internal sealed record AnswerPair(DateTime CreatedAt, DateTime TakenAt)

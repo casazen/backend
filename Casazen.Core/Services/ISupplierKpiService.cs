@@ -41,6 +41,17 @@ public interface ISupplierKpiService
     Task<int?> GetMedianResponseMinutesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// <see cref="GetMedianResponseMinutesAsync"/> for several suppliers in one read (the supplier picker of the marketplace, SR-09a):
+    /// the same window of 90 days, the same sample (the latest <see cref="PublicShowcaseLimits.ResponseTimeMaxSamples"/> requests
+    /// taken by each supplier) and the same minimum of <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/> requests. Every id
+    /// asked about is in the result; a supplier whose response time is not measured has <c>null</c>. Read-only; independent of the
+    /// <c>SupplierShowcaseBooking</c> flag.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, int?>> GetMedianResponseMinutesBatchAsync(
+        IReadOnlyCollection<Guid> supplierOrgIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The three numbers of the console home with the period before them (SP-04e, <c>GET api/supplier/dashboard/overview</c>):
     /// what the supplier received, accepted and refused, how often it said yes, how long it took to answer, the jobs it completed
     /// and the money that came in, for <paramref name="period"/> and for the same number of Europe/Rome days just before it.
