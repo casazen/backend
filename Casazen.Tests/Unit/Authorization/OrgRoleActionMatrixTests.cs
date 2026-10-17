@@ -85,6 +85,9 @@ public class OrgRoleActionMatrixTests
         { typeof(PaymentsController), nameof(PaymentsController.GetAll), WithMoney },
         { typeof(FiscalController), nameof(FiscalController.AnnualReport), WithMoney },
         { typeof(FiscalController), nameof(FiscalController.WithholdingReport), WithMoney },
+        { typeof(ReportsController), nameof(ReportsController.RevenueByProperty), WithMoney },
+        { typeof(ReportsController), nameof(ReportsController.OccupancyByProperty), WithMoney },
+        { typeof(ReportsController), nameof(ReportsController.BookingsByChannel), WithMoney },
         { typeof(PaymentsController), nameof(PaymentsController.Create), Operators },
         { typeof(PaymentsController), nameof(PaymentsController.Refund), Operators },
 

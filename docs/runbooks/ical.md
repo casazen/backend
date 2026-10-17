@@ -2,7 +2,8 @@
 
 Tasks PC-10 (audit defects A2-10, A2-12, A2-23, A9-13), PC-11 (A2-11, A2-20), PC-12 (A2-22), SU-15 (A4-11, A9-14:
 supplier sync in Hangfire, [Supplier calendars](#supplier-calendars-su-15)), SP-05 (a supplier's events by the hour,
-[Events by the hour](#events-by-the-hour-sp-05)), CO-21 (GC-AC9, decision D7) and PC-09
+[Events by the hour](#events-by-the-hour-sp-05)), SP-03b (unlinking a supplier's calendar,
+[Unlinking the calendar](#unlinking-the-calendar-sp-03b)), CO-21 (GC-AC9, decision D7) and PC-09
 (A2-25, manual blocks). The
 download of the feed (anti-SSRF client, size and time limits, error codes) is described in
 [external-fetch.md](external-fetch.md) (FD-16). This page covers the import feeds of a property (many per property, URL
@@ -25,7 +26,7 @@ import URLs uses the Data Protection key ring of [storage.md](storage.md) (FD-07
 | Encryption of the import URL, startup re-encryption | `Data/Encryption/EncryptedStringConverter.cs`, `Data/Encryption/PropertyICalFeedUrlEncryption.cs` |
 | Masked URL of the API | `Web/Infrastructure/ICalFeedUrlMask.cs` |
 | Export link of a property, token and its regeneration (PC-12) | entity `PropertyICalExport` (table `PropertyICalExports`), `PropertyICalSyncService.RegenerateExportTokenAsync` |
-| Supplier sync (SU-15): state, "sync now", days of the feed vs manual days; windows of hours (SP-05) | `Services/CalendarSyncService.cs`, job `Web/BackgroundJobs/IcalSupplierSyncJob.cs`, actions `calendar/*` of `Web/Controllers/SupplierProfileController.cs`; the mapping of a supplier feed to days and windows is `ICalImportService.ToSupplierBusy` |
+| Supplier sync (SU-15): state, "sync now", days of the feed vs manual days; windows of hours (SP-05); unlinking (SP-03b, `DisconnectIcalFeedAsync`) | `Services/CalendarSyncService.cs`, job `Web/BackgroundJobs/IcalSupplierSyncJob.cs`, actions `calendar/*` of `Web/Controllers/SupplierProfileController.cs`; the mapping of a supplier feed to days and windows is `ICalImportService.ToSupplierBusy` |
 | OTA stay from a block (CO-21): rules, conversion, "da verificare" | `Core/Services/OtaStays.cs`, `Services/OtaStayService.cs`, `PropertyICalSyncService.ReviewOtaStaysAsync`, `Web/Controllers/OtaStaysController.cs` |
 
 The former F0 spike (`Casazen.Infrastructure/ICalSpike`, `ICalImportSpike`) no longer exists.
@@ -486,6 +487,7 @@ planner and the console calendar read them.
 |---|---|
 | `PUT /api/supplier/calendar/ical` `{ icalFeedUrl }` | Saves the URL (external https only, FD-16: 400 `ical_invalid_url` otherwise) and **queues** the first sync: **202** with `lastSyncStatus: "Syncing"` |
 | `POST /api/supplier/calendar/sync` ("sync now") | **202** `Syncing` and a queued job; if a sync is already queued, the current state and nothing more queued; **422** `ical_supplier_no_feed` without a URL |
+| `DELETE /api/supplier/calendar/ical` (SP-03b) | **204**, also when there is no feed: unlinks the calendar and frees what it closed ([Unlinking the calendar](#unlinking-the-calendar-sp-03b)); **404** `not_found` for an account with no linked supplier org (nothing is provisioned, unlike the routes above) |
 | `GET /api/supplier/calendar/status` (and `calendarSyncStatus` of `GET /api/supplier/dashboard`) | `lastSyncStatus` `None` / `Syncing` / `Success` / `Failure`, `calendarLastSyncAt` (last attempt), `calendarSyncErrorCode` + localized `calendarSyncError` |
 
 Before SU-15 the controller started the first sync with `Task.Run` on the request's scoped services: it always failed
@@ -673,6 +675,42 @@ SELECT "Summary", "IsAllDay", "Recurring", "Occurrences", "NextStartUtc", "Decis
 FROM "SupplierFreeCalendarEvents" WHERE "OrgId" = '<supplier org id>' ORDER BY "NextStartUtc";
 ```
 
+### Unlinking the calendar (SP-03b)
+
+Until SP-03b a supplier could only **replace** the URL: `IcalFeedUrl` is required by `PUT calendar/ical`, so a saved URL never went away,
+and the days and windows of a feed nobody wanted any more stayed in the agenda (BE-SP05-4). `DELETE /api/supplier/calendar/ical` ends it
+(`CalendarSyncService.DisconnectIcalFeedAsync`), **in one transaction under the supplier's advisory lock `SupplierCalendarSync`** — the lock
+of the sync and of every write of the agenda, so an unlink and a sync never write the same rows at once. The rows go with **one set-based `DELETE`
+per table**, in a fixed order (days, windows, "Available" events, then the profile row): nothing is loaded or tracked, and a row that
+`PUT calendar/ical` — which takes no lock and also removes the "Available" events when the URL changes — removed in the meantime is not an error
+(on the in-memory provider of the unit tests, which has no set-based delete, the rows are loaded and removed one by one):
+
+| What | Result |
+|---|---|
+| `SupplierProfiles` of the supplier | `CalendarSyncType` `ICalFeed` → `None` (another kind of link is left as it is), `IcalFeedUrl` null, `CalendarSyncStatus` `None` (**`Syncing` included**), `CalendarSyncError` and `CalendarLastSyncAt` null |
+| `SupplierAvailability` with `Source = ICalFeed` | removed: the days the feed closed are open again (default of a day with no row) |
+| `SupplierBusyWindows` with `Source = ICalFeed` | removed: the engagements by the hour are free again |
+| `SupplierFreeCalendarEvents` | all the rows of the supplier removed, **with the answers it gave** (the titles are personal data of its own calendar) |
+| `Source = Manual` days and windows (closed days, blocks, extra openings), time off, hours | **never touched**; nor any row of another supplier |
+
+- **The sync after it**: the recurring job `ical-supplier-sync` selects only suppliers with `CalendarSyncType = ICalFeed` and a URL, so it never tries
+  this one again; `IcalSupplierSyncJob` already queued runs, finds no feed and leaves no `Syncing` behind; a download that was running when the supplier
+  unlinked takes the lock after the unlink, reads a profile with no URL and **writes nothing** (`iCal feed … changed during the sync: result discarded`).
+- **Idempotent**: with no feed the answer is the same 204 and nothing changes. **Not undone by itself**: linking the calendar again (`PUT calendar/ical`)
+  brings the days and hours back at the first sync, and the free-looking events are asked again.
+- **The public slots** can still hide the freed hours for at most 30 seconds (the cache of [`suppliers.md`](suppliers.md) section 22.5).
+- **Rollback**: nothing is stored that a revert would orphan (no migration, no flag): reverting the PR removes the endpoint; a calendar unlinked in the
+  meantime is linked again by the supplier, or by support with `UPDATE "SupplierProfiles" SET "CalendarSyncType" = 2, "IcalFeedUrl" = '<url>', "CalendarSyncStatus" = 1
+  WHERE "OrgId" = '<supplier org id>';` followed by "Sincronizza ora" (the 15-minute job also picks it up). The days, windows and answers that were removed
+  come back from the feed, not from a backup.
+- Support, to see what is left of a feed (all three counts are 0 after an unlink):
+
+```sql
+SELECT (SELECT count(*) FROM "SupplierAvailability" WHERE "OrgId" = '<supplier org id>' AND "Source" = 1) AS feed_days,
+       (SELECT count(*) FROM "SupplierBusyWindows" WHERE "OrgId" = '<supplier org id>' AND "Source" = 1) AS feed_windows,
+       (SELECT count(*) FROM "SupplierFreeCalendarEvents" WHERE "OrgId" = '<supplier org id>') AS free_events;
+```
+
 ### Migration `AddSupplierCalendarSyncSource` (existing data, prudent choice)
 
 - `SupplierAvailability.Source` is added with default `Manual` for **every existing row**. Before SU-15 nothing recorded
@@ -712,6 +750,7 @@ message can quote the document). Skipped events are logged as counts with the ty
 | `iCal download failed for supplier …` / `iCal feed of supplier … is not a readable iCalendar` / `iCal sync failed for supplier …` | Warning / Warning / Error | Supplier `Failure` with `ical_unreachable` (or `_too_large`, `_invalid_url`) / `ical_invalid_format` / `ical_sync_failed`, days kept |
 | `iCal sync of supplier … failed; continuing with the next supplier` | Error | Even the failure state could not be saved; the batch goes on |
 | `Could not queue the iCal sync of supplier …` | Error | Hangfire storage unavailable when the URL was saved or "sync now" was clicked; the 15-minute job syncs it |
+| `iCal feed of supplier … unlinked: N days, W windows of hours and F "Available" events removed (had a feed: …)` | Information | The supplier unlinked its calendar (SP-03b); counts, never the URL |
 | `iCal feed … added to property …` / `iCal feed … removed from property … with N blocks` | Information | Host linked or disconnected a calendar |
 | `Encrypted N iCal import URLs stored in clear before PC-11` | Information | Startup re-encryption (first start after the PC-11 deploy) |
 | `iCal export link of property … regenerated` | Information | Host replaced the export token (PC-12): the old link answers 404 |
@@ -764,3 +803,7 @@ message can quote the document). Skipped events are logged as counts with the ty
    `bookedDates`, dates only), and a checkout over one of them answers 409 `booking_dates_unavailable`. The check-out
    day of a block stays free. A property not published (inactive or compliance not activated) answers 404
    `public_property_not_found`.
+8. Unlinking (SP-03b): as a supplier with a synced test calendar and a block set by hand, `DELETE /api/supplier/calendar/ical` answers 204 (again: 204),
+   `GET /api/supplier/calendar/status` gives `calendarSyncType: "None"`, `lastSyncStatus: "None"`, `icalFeedUrl: null`, `pendingFreeEventsCount: 0`;
+   `GET /api/supplier/calendar` lists only the block set by hand (no engagement, no day closed by the feed); the SQL of the unlinking section gives 0, 0, 0;
+   the next `ical-supplier-sync` run does not name the supplier. An account with no linked supplier org gets 404 and no organization is created.

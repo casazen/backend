@@ -72,13 +72,14 @@ public static class SupplierSlotPlanner
 
         var dayStartUtc = RomeCalendar.StartOfDayUtc(day);
         var dayEndUtc = RomeCalendar.StartOfDayUtc(day.AddDays(1));
-        var capacity = Math.Max(1, context.Rules.ParallelJobs);
+        var capacity = context.Capacity;
         var duration = TimeSpan.FromMinutes(context.Query.DurationMinutes);
         var step = TimeSpan.FromMinutes(context.Rules.SlotStepMinutes);
 
         // Only what can touch this day: a stretch that ends before the day starts or starts after it ends cannot overlap a slot.
+        var dayInterval = new SupplierInterval(dayStartUtc, dayEndUtc);
         var nearby = context.Widened
-            .Where(interval => interval.EndUtc > dayStartUtc && interval.StartUtc < dayEndUtc)
+            .Where(interval => interval.Overlaps(dayInterval))
             .ToList();
 
         var slots = new List<SupplierSlot>();
@@ -101,10 +102,10 @@ public static class SupplierSlotPlanner
         if (day < context.Today)
             return SupplierDayClosure.Past;
 
-        if (context.TimeOff.Any(range => range.From <= day && day <= range.To))
+        if (context.IsOnTimeOff(day))
             return SupplierDayClosure.TimeOff;
 
-        if (context.ClosedDays.Contains(day))
+        if (context.IsClosedDay(day))
             return SupplierDayClosure.DayClosed;
 
         if (context.Query.WeekdaysMask is { } mask && !SupplierServiceWeekdays.IsOffered(mask, day.DayOfWeek))
@@ -113,7 +114,7 @@ public static class SupplierSlotPlanner
         if (!context.HasHours(day))
             return SupplierDayClosure.NoHours;
 
-        if (context.JobsOn(day) >= context.Rules.MaxJobsPerDay)
+        if (context.IsDayFull(day))
             return SupplierDayClosure.MaxJobsReached;
 
         if (RomeCalendar.StartOfDayUtc(day.AddDays(1)) <= context.EarliestStartUtc)
@@ -128,9 +129,10 @@ public static class SupplierSlotPlanner
     /// <summary>
     /// The continuous bands of the day in UTC, in start order: the weekly bands of the weekday and the extra openings of the
     /// day, bands that touch or overlap joined into one. A band that the daylight saving change leaves with no length (it
-    /// starts in the skipped hour and ends right after it) is dropped.
+    /// starts in the skipped hour and ends right after it) is dropped. Internal: the conflict detector asks it the same question
+    /// ("is this job inside the hours of its day?") instead of keeping a copy of the rule.
     /// </summary>
-    private static List<SupplierInterval> BandsOf(DateOnly day, PlanningContext context)
+    internal static List<SupplierInterval> BandsOf(DateOnly day, PlanningContext context)
     {
         var bands = new List<SupplierInterval>();
         foreach (var band in context.WeeklyBands(day.DayOfWeek))
@@ -163,11 +165,12 @@ public static class SupplierSlotPlanner
 
     /// <summary>
     /// True when the slot <c>[start, end)</c> can take one more job: at no instant of it are there as many widened stretches
-    /// as the supplier can do at once. With a capacity of 1 that is "no stretch overlaps it".
+    /// as the supplier can do at once. With a capacity of 1 that is "no stretch overlaps it". Internal for the conflict detector.
     /// </summary>
-    private static bool HasRoom(DateTime start, DateTime end, IReadOnlyList<SupplierInterval> widened, int capacity)
+    internal static bool HasRoom(DateTime start, DateTime end, IReadOnlyList<SupplierInterval> widened, int capacity)
     {
-        var overlapping = widened.Where(interval => interval.StartUtc < end && interval.EndUtc > start).ToList();
+        var slot = new SupplierInterval(start, end);
+        var overlapping = widened.Where(interval => interval.Overlaps(slot)).ToList();
         if (overlapping.Count < capacity)
             return true;
 
@@ -183,8 +186,12 @@ public static class SupplierSlotPlanner
         return true;
     }
 
-    /// <summary>The input of a plan, indexed once for all its days.</summary>
-    private sealed class PlanningContext
+    /// <summary>
+    /// The input of a plan, indexed once for all its days. Internal: the conflict detector builds the same context (the supplier's
+    /// rules, hours, time off, closed days and what takes the time, with the same pause and the same lapsed holds) and asks it the
+    /// same questions, so the two read the agenda the same way.
+    /// </summary>
+    internal sealed class PlanningContext
     {
         private readonly ILookup<DayOfWeek, SupplierWeeklyBand> _weekly;
         private readonly ILookup<DateOnly, SupplierInterval> _extraByDay;
@@ -196,6 +203,8 @@ public static class SupplierSlotPlanner
             Rules = input.Rules;
             TimeOff = input.TimeOff;
             ClosedDays = input.ClosedDays;
+            Buffer = TimeSpan.FromMinutes(Math.Max(0, input.Rules.BufferMinutes));
+            Capacity = Math.Max(1, input.Rules.ParallelJobs);
 
             var nowUtc = UtcDateTime.Normalize(input.NowUtc);
             Today = DateOnly.FromDateTime(RomeCalendar.TodayAt(new DateTimeOffset(nowUtc)));
@@ -210,11 +219,10 @@ public static class SupplierSlotPlanner
                 .ToLookup(opening => RomeCalendar.DateInRome(opening.StartUtc));
 
             var widened = new List<SupplierInterval>();
-            var buffer = TimeSpan.FromMinutes(Math.Max(0, input.Rules.BufferMinutes));
             foreach (var occupancy in input.Occupancies)
             {
                 // A hold that lapsed no longer holds a place (the planner is given the instant it is judged at).
-                if (occupancy.Kind == SupplierOccupancyKind.Hold && occupancy.ExpiresAtUtc <= nowUtc)
+                if (!occupancy.IsLive(nowUtc))
                     continue;
 
                 if (occupancy.CountsTowardsDailyMax)
@@ -225,8 +233,8 @@ public static class SupplierSlotPlanner
                         _jobsByDay[counted] = _jobsByDay.GetValueOrDefault(counted) + 1;
                 }
 
-                if (occupancy is { StartUtc: { } startUtc, EndUtc: { } endUtc })
-                    widened.Add(new SupplierInterval(startUtc - buffer, endUtc + buffer));
+                if (occupancy.Widened(Buffer) is { } stretch)
+                    widened.Add(stretch);
             }
 
             Widened = widened;
@@ -239,6 +247,12 @@ public static class SupplierSlotPlanner
         public IReadOnlyList<SupplierDateRange> TimeOff { get; }
 
         public IReadOnlySet<DateOnly> ClosedDays { get; }
+
+        /// <summary>The pause kept before and after everything that takes the supplier's time (never negative).</summary>
+        public TimeSpan Buffer { get; }
+
+        /// <summary>How many jobs the supplier can do at once (at least 1).</summary>
+        public int Capacity { get; }
 
         /// <summary>Today in Europe/Rome.</summary>
         public DateOnly Today { get; }
@@ -256,5 +270,14 @@ public static class SupplierSlotPlanner
         public bool HasHours(DateOnly day) => _weekly[day.DayOfWeek].Any() || _extraByDay[day].Any();
 
         public int JobsOn(DateOnly day) => _jobsByDay.GetValueOrDefault(day);
+
+        /// <summary>True when the day already holds as many jobs as the supplier takes at most in a day (<c>MaxJobsPerDay</c>).</summary>
+        public bool IsDayFull(DateOnly day) => JobsOn(day) >= Rules.MaxJobsPerDay;
+
+        /// <summary>True when the supplier is off that day (a time off covers it).</summary>
+        public bool IsOnTimeOff(DateOnly day) => TimeOff.Any(range => range.From <= day && day <= range.To);
+
+        /// <summary>True when the day is closed by hand or by the calendar feed.</summary>
+        public bool IsClosedDay(DateOnly day) => ClosedDays.Contains(day);
     }
 }

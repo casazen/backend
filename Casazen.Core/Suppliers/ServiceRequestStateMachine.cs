@@ -44,4 +44,20 @@ public static class ServiceRequestStateMachine
     /// <summary>True for a status nothing leaves: <c>Rifiutato</c>, <c>Pagato</c> and <c>Annullato</c>.</summary>
     public static bool IsFinal(ServiceRequestStatus status) =>
         status is ServiceRequestStatus.Rifiutato or ServiceRequestStatus.Pagato or ServiceRequestStatus.Annullato;
+
+    /// <summary>
+    /// True for a request that still is, or will be, a job of the supplier: <c>Richiesto</c> (waiting for an answer),
+    /// <c>PresoInCarico</c> or <c>InCorso</c>. What the agenda counts as taking the supplier's time and what the conflict detector
+    /// (SP-03b) checks: one definition for both.
+    /// </summary>
+    public static bool IsOpenJob(ServiceRequestStatus status) =>
+        status is ServiceRequestStatus.Richiesto or ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso;
+
+    /// <summary>
+    /// True for a job the supplier took and has not finished: <c>PresoInCarico</c> or <c>InCorso</c>. Another request may not overlap
+    /// it (409 <c>supplier_commitment_conflict</c>, which spells the same two statuses in its query) and what still waits for an answer
+    /// never counts against it in the conflicts of the console.
+    /// </summary>
+    public static bool IsTakenJob(ServiceRequestStatus status) =>
+        status is ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso;
 }
