@@ -549,6 +549,15 @@
   <data name="BookingCalendarRangeInvalid" xml:space="preserve">
     <value>The last day of the calendar cannot be before its first day.</value>
   </data>
+  <data name="CalendarWindowTooLarge" xml:space="preserve">
+    <value>The calendar shows at most {0} days at a time: choose a shorter period.</value>
+  </data>
+  <data name="CalendarTooManyProperties" xml:space="preserve">
+    <value>You can ask for at most {0} properties at a time.</value>
+  </data>
+  <data name="CalendarInvalidRequest" xml:space="preserve">
+    <value>The dates or the properties asked for are not valid: check the dates (from 2000 to 2100) and the property ids.</value>
+  </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>
@@ -1644,6 +1653,18 @@
   </data>
   <data name="DashboardInvalidOverviewPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days, period=Next30Days or period=Custom with from and to as YYYY-MM-DD (1 to 366 days).</value>
+  </data>
+  <data name="ReportInvalidPeriod" xml:space="preserve">
+    <value>Invalid period: give from and to as YYYY-MM-DD, with from not after to.</value>
+  </data>
+  <data name="ReportPeriodTooLong" xml:space="preserve">
+    <value>The period is too long: a report covers at most {0} months.</value>
+  </data>
+  <data name="ReportInvalidFormat" xml:space="preserve">
+    <value>Invalid format: use format=json or format=csv.</value>
+  </data>
+  <data name="CsvTooManyRows" xml:space="preserve">
+    <value>The file would have more than {0} rows: narrow the period or pick a single property.</value>
   </data>
   <data name="BookingListInvalidArrivalRange" xml:space="preserve">
     <value>Invalid range: the first arrival date (arrivalFrom) cannot be after the last one (arrivalTo).</value>

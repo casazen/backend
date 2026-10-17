@@ -39,6 +39,29 @@ public static class HostCalendarRange
     }
 
     /// <summary>
+    /// A booking of any property with a day from <paramref name="firstDay"/> to <paramref name="lastDay"/>: the same rule as
+    /// <see cref="BookingShownIn(Guid, DateTime, DateTime)"/>, for the calendar of several properties (SR-02a), which narrows the
+    /// properties itself.
+    /// </summary>
+    public static Expression<Func<Booking, bool>> BookingShownIn(DateTime firstDay, DateTime lastDay)
+    {
+        var from = StartOfDay(firstDay);
+        var toExclusive = StartOfDay(lastDay).AddDays(1);
+        return b => b.CheckInDate < toExclusive && b.CheckOutDate >= from;
+    }
+
+    /// <summary>
+    /// A calendar block of any property with a day from <paramref name="firstDay"/> to <paramref name="lastDay"/>: the same rule
+    /// as <see cref="BlockShownIn(Guid, DateTime, DateTime)"/>, for the calendar of several properties (SR-02a).
+    /// </summary>
+    public static Expression<Func<CalendarBlock, bool>> BlockShownIn(DateTime firstDay, DateTime lastDay)
+    {
+        var from = StartOfDay(firstDay);
+        var toExclusive = StartOfDay(lastDay).AddDays(1);
+        return b => b.StartUtc < toExclusive && b.EndUtc >= from;
+    }
+
+    /// <summary>
     /// The day of a stored stay or block date (midnight UTC of that day) as a date without time zone: it is written as
     /// <c>2026-09-30T00:00:00</c>, the same day for every client whatever its time zone.
     /// </summary>
