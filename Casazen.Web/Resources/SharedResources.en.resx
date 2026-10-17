@@ -2266,6 +2266,9 @@
   <data name="SupplierRulesInvalid" xml:space="preserve">
     <value>The rules are not valid (fields: {0}). All five are required: break between jobs (0 to 240 minutes, in steps of 5), jobs per day (1 to 50), notice (0 to 720 hours), horizon (1 to 365 days) and slot step (15 to 240 minutes, in steps of 5).</value>
   </data>
+  <data name="SupplierSettingsInvalid" xml:space="preserve">
+    <value>The settings are not valid (fields: {0}). All five are required: automatic acceptance of regular customers, alert for new requests, reminder of the day before, alert for payments and time to answer (15 to 10080 minutes).</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Provide the municipality or the property to search for suppliers.</value>
   </data>

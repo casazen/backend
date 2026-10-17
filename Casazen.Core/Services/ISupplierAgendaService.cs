@@ -79,6 +79,30 @@ public sealed record SupplierBookingSettings(bool OnlineBookingEnabled, int Resp
 }
 
 /// <summary>
+/// The supplier's own settings as the console shows them (SP-16a, <c>GET/PUT api/supplier/settings</c>). A supplier that never saved a
+/// setting has the defaults of <see cref="Default"/> (a read never creates the row).
+/// </summary>
+/// <param name="OnlineBookingEnabled">
+/// Whether the public showcase takes bookings. <b>Read-only here</b>: only the showcase editor writes it (decision SP-D29).
+/// </param>
+/// <param name="AutoAcceptRegulars">The supplier accepts the requests of its regular hosts by itself (SP-04d reads it).</param>
+/// <param name="NotifyNewRequests">The supplier wants a notification for every new request (SP-16d reads it).</param>
+/// <param name="NotifyDayBeforeReminder">The supplier wants the reminder of tomorrow's jobs (SP-16d reads it).</param>
+/// <param name="NotifyPayments">The supplier wants to know when a payment arrives (SP-16d reads it; column <c>NotifyPaymentMarked</c>).</param>
+/// <param name="RespondWithinMinutes">How long a customer of the public showcase waits for the supplier's answer.</param>
+public sealed record SupplierSettingsView(
+    bool OnlineBookingEnabled,
+    bool AutoAcceptRegulars,
+    bool NotifyNewRequests,
+    bool NotifyDayBeforeReminder,
+    bool NotifyPayments,
+    int RespondWithinMinutes)
+{
+    /// <summary>What a supplier that never saved a setting has: the defaults of the <c>SupplierSettings</c> row.</summary>
+    public static SupplierSettingsView Default { get; } = new(false, false, true, true, true, SupplierAgendaDefaults.RespondWithinMinutes);
+}
+
+/// <summary>
 /// What the supplier's calendar shows for a range of days (<c>GET api/supplier/calendar</c>): the working hours, the days
 /// closed, the time off, the blocks, extra openings and engagements that touch the range, and the requests as items of a
 /// whole day.
@@ -167,6 +191,20 @@ public interface ISupplierAgendaService
     /// Read-only.
     /// </summary>
     Task<SupplierBookingSettings> GetBookingSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The supplier's settings for the console (SP-16a): the switches, the time to answer and, read-only, whether the showcase takes
+    /// bookings. The defaults while the supplier never saved a setting; a read never creates the settings row. Read-only.
+    /// </summary>
+    Task<SupplierSettingsView> GetSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the five settings the console edits (SP-16a); the rest of the row stays as it is, and <b>never</b>
+    /// <c>OnlineBookingEnabled</c>: only the showcase editor turns the bookings on and off (decision SP-D29). The row is created by the
+    /// first write, under the agenda lock.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.SettingsInvalid"/> (with the fields).</exception>
+    Task<SupplierSettingsView> ReplaceSettingsAsync(Guid supplierOrgId, SupplierSettingsInput input, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// What the supplier's calendar shows from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both
