@@ -82,3 +82,6 @@ Sessions/quality/
 
 ## Local official-document scratch (never commit downloaded PDFs)
 tmp-tourist-tax/
+
+# Export HTML del business plan (scripts/business-plan/export.sh)
+docs/business-plan/out/
