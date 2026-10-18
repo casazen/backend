@@ -23,6 +23,16 @@ public interface ICheckoutOutcomeService
     /// <see cref="CheckoutOutcomeErrorCodes.HoldExpired"/> or <see cref="CheckoutOutcomeErrorCodes.PaymentNotResumable"/>.
     /// </exception>
     Task<CheckoutPaymentSession> ResumePaymentAsync(Guid bookingId, string token, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Same as <see cref="ResumePaymentAsync"/> for a guest who already proved the booking with a guest session
+    /// (<c>IGuestSessionService.FindBookingAsync</c>): no checkout token is involved, nothing is checked here besides the state.
+    /// <paramref name="booking"/> needs its <c>Org</c> and <c>Payments</c> loaded.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainConflictException">
+    /// <see cref="CheckoutOutcomeErrorCodes.HoldExpired"/> or <see cref="CheckoutOutcomeErrorCodes.PaymentNotResumable"/>.
+    /// </exception>
+    Task<CheckoutPaymentSession> ResumePaymentOfAsync(Booking booking, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The checkout of a booking as its guest sees it. No personal data of the guest.</summary>

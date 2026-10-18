@@ -76,6 +76,17 @@ public sealed class CheckoutOutcomeService(
         CancellationToken cancellationToken = default)
     {
         var booking = await LoadAsync(bookingId, token, cancellationToken);
+        return await ResumePaymentOfAsync(booking, cancellationToken);
+    }
+
+    public Task<CheckoutPaymentSession> ResumePaymentOfAsync(Booking booking, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        return ResumeAsync(booking, cancellationToken);
+    }
+
+    private async Task<CheckoutPaymentSession> ResumeAsync(Booking booking, CancellationToken cancellationToken)
+    {
         var ttlMinutes = CheckoutHolds.GetTtlMinutes(configuration);
         var state = CheckoutOutcomes.StateOf(booking, CutoffNow(ttlMinutes));
 

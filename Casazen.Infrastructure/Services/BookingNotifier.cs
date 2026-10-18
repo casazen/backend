@@ -79,6 +79,33 @@ public sealed class BookingNotifier(
     }
 
     /// <summary>
+    /// An immediate payment was started at the checkout and the booking is still waiting for it: the guest gets the booking code, the
+    /// time the dates stay held and the personal link to pay again (<paramref name="checkoutToken"/>, the raw token whose hash was just
+    /// stored), so a declined card or a closed page never loses the booking. The confirmation email follows with the payment.
+    /// </summary>
+    public async Task BookingPaymentPendingAsync(
+        Guid bookingId,
+        string checkoutToken,
+        DateTime holdExpiresAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkoutToken);
+        var data = await TryLoadAsync(bookingId, "Payment pending", cancellationToken);
+        if (data is null)
+            return;
+
+        Queue(bookingId, EmailTemplates.Names.GuestBookingPaymentPending, data.GuestEmail, () =>
+            EmailTemplates.GuestBookingPaymentPending(
+                EmailTemplates.DefaultCulture,
+                data.GuestFirstName,
+                data.Summary,
+                holdExpiresAtUtc,
+                links.CheckoutOutcome(data.OrgSlug, data.BookingId, checkoutToken),
+                links.GuestBookings(data.OrgSlug, data.Summary.BookingCode),
+                data.HostContact));
+    }
+
+    /// <summary>
     /// The host cancelled the booking: one email to the guest with the refund Stripe already confirmed
     /// (<paramref name="refundedAmount"/>, whose own confirmation email the caller has claimed) and the refund still in
     /// progress (<paramref name="refundStartedAmount"/>, confirmed by a later email). The host's reason is never sent.

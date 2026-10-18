@@ -65,6 +65,8 @@ public class PropertyRentalModeBookingTests
             _holdExpiry.Object,
             new OnSiteRequestNotifier(
                 _db, new RecordingEmailQueue(), EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
+            new BookingNotifier(
+                _db, new RecordingEmailQueue(), EmailTestHelpers.Links(), Mock.Of<IPushNotificationService>(), Mock.Of<ILogger<BookingNotifier>>()),
             _pricing.Object);
         _pricing
             .Setup(s => s.GetAppliedNightlyPricesAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))

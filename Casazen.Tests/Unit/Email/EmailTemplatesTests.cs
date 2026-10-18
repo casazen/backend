@@ -342,6 +342,24 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void GuestBookingPaymentPending_Italian_ShowsCodeHoldDeadlineAndBothLinksWithoutSayingConfirmed()
+    {
+        var links = EmailTestHelpers.Links();
+        var payUrl = links.CheckoutOutcome("villa-rosa", Guid.Parse("11111111-1111-4111-8111-111111111111"), "tok");
+
+        var content = EmailTemplates.GuestBookingPaymentPending(
+            EmailTemplates.DefaultCulture, "Anna", Summary(), new DateTime(2026, 10, 1, 12, 15, 0, DateTimeKind.Utc), payUrl, links.GuestBookings("villa-rosa"), Host);
+
+        Assert.Equal("Prenotazione in attesa di pagamento - Villa Rosa", content.Subject);
+        Assert.Contains("Codice prenotazione: <strong>b7d3c1f0-0000-4000-8000-000000000001</strong>", content.HtmlBody);
+        Assert.Contains("Le date restano riservate per te fino al", content.HtmlBody);
+        Assert.Contains("14:15", content.HtmlBody);
+        Assert.Contains("href=\"https://casazen-app.test/book/villa-rosa/booking/11111111-1111-4111-8111-111111111111?token=tok\"", content.HtmlBody);
+        Assert.Contains("https://casazen-app.test/book/villa-rosa/my-bookings", content.HtmlBody);
+        Assert.DoesNotContain("è confermata.", content.HtmlBody);
+    }
+
+    [Fact]
     public void GuestBookingConfirmed_PaidOnlineLate_SaysTheDatesWereStillFree()
     {
         var content = EmailTemplates.GuestBookingConfirmed(

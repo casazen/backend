@@ -29,7 +29,7 @@ namespace Casazen.Web.Controllers;
 [Route("api/public/guest")]
 [Authorize(Policy = CasazenPolicies.GuestSession)]
 [PrivateAnswer]
-public class GuestAreaController(IGuestSessionService sessions) : ControllerBase
+public class GuestAreaController(IGuestSessionService sessions, ICheckoutOutcomeService checkoutOutcomes) : ControllerBase
 {
     /// <summary>
     /// Opens a guest session for the booking of this site with the booking code of the confirmation email and the email the booking was
@@ -75,5 +75,28 @@ public class GuestAreaController(IGuestSessionService sessions) : ControllerBase
             return Unauthorized();
 
         return Ok(GuestBookingLookupResponse.From(await sessions.GetBookingAsync(ticket, code, cancellationToken)));
+    }
+
+    /// <summary>
+    /// The guest pays the booking <paramref name="code"/> again from "Le mie prenotazioni" (a card declined, a page closed before paying):
+    /// the client secret of the booking's own PaymentIntent / SetupIntent, so the dates held are the same and nothing is booked twice.
+    /// 401 without a valid token; 404 <c>guest_booking_not_found</c>; 409 <c>checkout_hold_expired</c> once the dates were released,
+    /// 409 <c>checkout_payment_not_resumable</c> when there is nothing left to pay; 429.
+    /// </summary>
+    [HttpPost("bookings/{code}/payment-session")]
+    [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
+    [ProducesResponseType(typeof(CheckoutPaymentSessionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<CheckoutPaymentSessionResponse>> ResumePayment(string code, CancellationToken cancellationToken)
+    {
+        var ticket = User.GetGuestSessionTicket();
+        if (ticket is null)
+            return Unauthorized();
+
+        var booking = await sessions.FindBookingAsync(ticket, code, cancellationToken);
+        return Ok(CheckoutPaymentSessionResponse.From(await checkoutOutcomes.ResumePaymentOfAsync(booking, cancellationToken)));
     }
 }

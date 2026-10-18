@@ -381,6 +381,24 @@
   <data name="Booking_ContactHostEmail" xml:space="preserve">
     <value>For any question, contact the host at {0}.</value>
   </data>
+  <data name="GuestBookingPaymentPending_Subject" xml:space="preserve">
+    <value>Booking awaiting payment - {0}</value>
+  </data>
+  <data name="GuestBookingPaymentPending_Body" xml:space="preserve">
+    <value>we received your booking request at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;. The booking will be confirmed when we receive the payment of &lt;strong&gt;€{3}&lt;/strong&gt;: you will get a second email with the confirmation.</value>
+  </data>
+  <data name="GuestBookingPaymentPending_Hold" xml:space="preserve">
+    <value>The dates are held for you until &lt;strong&gt;{0}&lt;/strong&gt;. If the payment does not go through (declined card, page closed) you can try again with the button below, also with another payment method.</value>
+  </data>
+  <data name="GuestBookingPaymentPending_Cta" xml:space="preserve">
+    <value>Complete the payment</value>
+  </data>
+  <data name="GuestBookingPaymentPending_Personal" xml:space="preserve">
+    <value>This link is personal: do not forward it. If you have already completed the payment, please ignore this email.</value>
+  </data>
+  <data name="GuestBookingPaymentPending_MyBookings" xml:space="preserve">
+    <value>You can also resume the booking from "My bookings" with the code above: {0}</value>
+  </data>
   <data name="GuestBookingConfirmed_Subject" xml:space="preserve">
     <value>Booking confirmed - {0}</value>
   </data>

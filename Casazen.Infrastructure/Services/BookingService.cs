@@ -28,6 +28,7 @@ public class BookingService(
     ILogger<BookingService> logger,
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     OnSiteRequestNotifier onSiteNotifier,
+    BookingNotifier bookingNotifier,
     IPricingAdapterService pricingAdapterService,
     TimeProvider? timeProvider = null) : IBookingService
 {
@@ -286,6 +287,15 @@ public class BookingService(
             // with its guest snapshot instead of staying as a cancelled booking that keeps the guest's personal data.
             await DiscardFailedCheckoutAsync(createdBooking.Id);
             throw;
+        }
+
+        if (input.PaymentOption == PaymentOption.Immediate)
+        {
+            // The guest can lose the page before paying: the email carries the code and the link to pay again. Never throws.
+            await bookingNotifier.BookingPaymentPendingAsync(
+                createdBooking.Id,
+                checkoutToken,
+                _clock.GetUtcNow().UtcDateTime.AddMinutes(GetPendingDirectTtlMinutes()));
         }
 
         var publishableKey = configuration["Stripe:PublishableKey"] ?? string.Empty;

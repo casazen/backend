@@ -178,6 +178,7 @@ fino a …" although the guest cannot cancel by themselves.
   Payment Element again on the same hold. Answers: 200; 404 `checkout_link_invalid`; **409 `checkout_hold_expired`** (hold
   past the TTL, or intent `canceled` by the expiry job: dates released); **409 `checkout_payment_not_resumable`** (already
   paid or being paid: intent `succeeded` / `processing`, booking confirmed or cancelled, "pay at the property" request).
+- `POST /api/public/guest/bookings/{code}/payment-session` (guest session, no body) does the same for the guest who reopened the booking from «Le mie prenotazioni» (`AwaitingPayment` / `PaymentFailed`): same intent, same 409 codes (`checkout_hold_expired`, `checkout_payment_not_resumable`), no new booking.
 - The checkout remembers, in `sessionStorage` of the tab, the booking it just created: if the guest goes back to the form
   and books the same dates again, the 409 `booking_dates_unavailable` comes with "Riprendi la prenotazione" (link to the
   outcome page) instead of a dead end.

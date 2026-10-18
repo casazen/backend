@@ -381,6 +381,24 @@
   <data name="Booking_ContactHostEmail" xml:space="preserve">
     <value>Per qualsiasi domanda contatta l'host all'indirizzo {0}.</value>
   </data>
+  <data name="GuestBookingPaymentPending_Subject" xml:space="preserve">
+    <value>Prenotazione in attesa di pagamento - {0}</value>
+  </data>
+  <data name="GuestBookingPaymentPending_Body" xml:space="preserve">
+    <value>abbiamo ricevuto la tua richiesta di prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;. La prenotazione sarà confermata quando riceveremo il pagamento di &lt;strong&gt;{3} €&lt;/strong&gt;: riceverai una seconda email di conferma.</value>
+  </data>
+  <data name="GuestBookingPaymentPending_Hold" xml:space="preserve">
+    <value>Le date restano riservate per te fino al &lt;strong&gt;{0}&lt;/strong&gt;. Se il pagamento non va a buon fine (carta rifiutata, pagina chiusa) puoi riprovare dal pulsante qui sotto, anche con un altro metodo di pagamento.</value>
+  </data>
+  <data name="GuestBookingPaymentPending_Cta" xml:space="preserve">
+    <value>Completa il pagamento</value>
+  </data>
+  <data name="GuestBookingPaymentPending_Personal" xml:space="preserve">
+    <value>Il link è personale: non inoltrarlo. Se hai già completato il pagamento, ignora questa email.</value>
+  </data>
+  <data name="GuestBookingPaymentPending_MyBookings" xml:space="preserve">
+    <value>Puoi anche riprendere la prenotazione da «Le mie prenotazioni» con il codice qui sopra: {0}</value>
+  </data>
   <data name="GuestBookingConfirmed_Subject" xml:space="preserve">
     <value>Prenotazione confermata - {0}</value>
   </data>

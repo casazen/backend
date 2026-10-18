@@ -32,6 +32,7 @@ public static partial class EmailTemplates
         public const string GuestRefundConfirmed = "guest-refund-confirmed";
         public const string GuestBookingCancelled = "guest-booking-cancelled";
         public const string GuestBookingConfirmed = "guest-booking-confirmed";
+        public const string GuestBookingPaymentPending = "guest-booking-payment-pending";
         public const string HostBookingConfirmed = "host-booking-confirmed";
         public const string GuestPaymentRefundedDatesUnavailable = "guest-payment-refunded-dates-unavailable";
         public const string RliDeadlineReminder = "rli-deadline-reminder";
@@ -540,6 +541,42 @@ public static partial class EmailTemplates
             builder.Muted("GuestBookingConfirmed_NotFiscal");
 
         return builder.Build("GuestBookingConfirmed_Subject", booking.PropertyName);
+    }
+
+    /// <summary>
+    /// The guest started an immediate payment at the checkout and the booking is not confirmed yet: booking code, stay, the
+    /// time the dates stay held and the link to pay again if the payment did not go through (declined card, page closed).
+    /// The confirmation email follows once the payment is received. <paramref name="payUrl"/> is the personal link of the
+    /// checkout outcome page; <paramref name="myBookingsUrl"/> the one of "Le mie prenotazioni".
+    /// </summary>
+    public static EmailContent GuestBookingPaymentPending(
+        CultureInfo culture,
+        string guestName,
+        BookingEmailSummary booking,
+        DateTime holdExpiresAtUtc,
+        string payUrl,
+        string myBookingsUrl,
+        BookingHostContact hostContact)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        var builder = new EmailHtmlBuilder(culture);
+        builder
+            .Paragraph("Booking_Greeting", guestName)
+            .Paragraph(
+                "GuestBookingPaymentPending_Body",
+                booking.PropertyName,
+                booking.CheckInDate,
+                booking.CheckOutDate,
+                Amount(booking.Total, culture))
+            .Paragraph("GuestBookingPaymentPending_Hold", builder.FormatInstant(holdExpiresAtUtc))
+            .Paragraph("Booking_Code", booking.BookingCode)
+            .List(SummaryLines(booking, culture))
+            .Button("GuestBookingPaymentPending_Cta", payUrl)
+            .LinkFallback("Booking_LinkFallback", payUrl)
+            .Muted("GuestBookingPaymentPending_Personal")
+            .Paragraph("GuestBookingPaymentPending_MyBookings", myBookingsUrl)
+            .Muted("Booking_FindIt");
+        return ContactHost(builder, hostContact).Build("GuestBookingPaymentPending_Subject", booking.PropertyName);
     }
 
     /// <summary>

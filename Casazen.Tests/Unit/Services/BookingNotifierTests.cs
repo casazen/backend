@@ -68,6 +68,21 @@ public class BookingNotifierTests : IDisposable
     }
 
     [Fact]
+    public async Task BookingPaymentPendingAsync_AwaitingPayment_EmailsTheGuestCodeAndPersonalPayLinkOnly()
+    {
+        var bookingId = await SeedAsync(BookingStatus.Pending, paid: 0m);
+
+        await Notifier().BookingPaymentPendingAsync(bookingId, "checkout-token", DateTime.UtcNow.AddMinutes(15));
+
+        var email = Assert.Single(_emails.Snapshot());
+        Assert.Equal(EmailTemplates.Names.GuestBookingPaymentPending, email.Template);
+        Assert.Contains("checkout-token", email.Content.HtmlBody);
+        Assert.Contains("Codice prenotazione:", email.Content.HtmlBody);
+        // The host hears of the booking only once it is confirmed.
+        Assert.Empty(_pushes.Queued);
+    }
+
+    [Fact]
     public async Task BookingConfirmedAsync_OnSiteAcceptedByHost_EmailsTheGuestOnly()
     {
         var bookingId = await SeedAsync(BookingStatus.Confirmed, paid: 0m);
