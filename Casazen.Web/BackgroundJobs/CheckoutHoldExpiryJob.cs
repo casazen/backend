@@ -12,7 +12,10 @@ namespace Casazen.Web.BackgroundJobs;
 /// routine, and the guest of an unanswered request gets an email. Runbooks: <c>docs/runbooks/hangfire.md</c>,
 /// <c>docs/runbooks/direct-booking.md</c>.
 /// </summary>
-public class CheckoutHoldExpiryJob(ICheckoutHoldExpiryService expiryService, ILogger<CheckoutHoldExpiryJob> logger)
+public class CheckoutHoldExpiryJob(
+    ICheckoutHoldExpiryService expiryService,
+    ICheckoutPaymentReconciliationService reconciliationService,
+    ILogger<CheckoutHoldExpiryJob> logger)
 {
     public const string RecurringJobId = "checkout-hold-expiry";
 
@@ -23,6 +26,19 @@ public class CheckoutHoldExpiryJob(ICheckoutHoldExpiryService expiryService, ILo
     [DisableConcurrentExecution(JobLockTimeouts.FrequentSeconds)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
+        // First the payments the expiry left to the webhook and the webhook never settled: Stripe says if they were paid. The ones
+        // never paid go back to pending, so the expiry below cancels them in the same run.
+        var reconciled = await reconciliationService.ReconcileInFlightPaymentsAsync(cancellationToken);
+        if (reconciled != CheckoutPaymentReconciliationRun.Empty)
+        {
+            logger.LogInformation(
+                "Checkout payment reconciliation: {Settled} settled, {StillInFlight} still in flight, {Released} never paid, {Failed} failed",
+                reconciled.Settled,
+                reconciled.StillInFlight,
+                reconciled.Released,
+                reconciled.Failed);
+        }
+
         var run = await expiryService.ExpireDueHoldsAsync(cancellationToken);
         if (run == CheckoutHoldExpiryRun.Empty)
             return;
