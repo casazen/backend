@@ -603,6 +603,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICalExportService>();
         services.AddScoped<PropertyICalSyncService>();
         services.AddScoped<ICheckoutHoldExpiryService, CheckoutHoldExpiryService>();
+        services.AddScoped<ICheckoutPaymentReconciliationService, CheckoutPaymentReconciliationService>();
         // "Pay at the property" requests approved by the host (BK-06, D5, docs/runbooks/direct-booking.md).
         services.AddScoped<OnSiteRequestNotifier>();
         services.AddScoped<IOnSiteBookingRequestService, OnSiteBookingRequestService>();

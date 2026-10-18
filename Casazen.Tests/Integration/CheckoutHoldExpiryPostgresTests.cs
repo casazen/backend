@@ -249,7 +249,13 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
             services.GetRequiredService<OnSiteRequestNotifier>(),
             services.GetRequiredService<IConfiguration>(),
             NullLogger<CheckoutHoldExpiryService>.Instance);
-        await new CheckoutHoldExpiryJob(expiry, NullLogger<CheckoutHoldExpiryJob>.Instance)
+        var db = services.GetRequiredService<AppDbContext>();
+        var reconciliation = new CheckoutPaymentReconciliationService(
+            db,
+            _stripe.Object,
+            TestCheckoutPaymentSettlement.Create(db, stripe: _stripe.Object, configuration: services.GetRequiredService<IConfiguration>()),
+            NullLogger<CheckoutPaymentReconciliationService>.Instance);
+        await new CheckoutHoldExpiryJob(expiry, reconciliation, NullLogger<CheckoutHoldExpiryJob>.Instance)
             .ExecuteAsync(CancellationToken.None);
     }
 
