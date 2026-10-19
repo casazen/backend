@@ -1,6 +1,6 @@
 # CasaZen: tipo host Agenzia (B2B), analisi finale
 
-**Versione:** finale (v6), 2026-10-19. Sostituisce le versioni dal 14 al 15/10 (storico in git). Novità v5-v6: check-in con riconoscimento del volto sviluppato in casa (§3.6); nessuna integrazione con le serrature; CU e 770 fuori scope, solo rendiconto mensile delle ritenute (§3.7); costi di terze parti ridotti al channel manager (§5).
+**Versione:** finale (v7), 2026-10-19. Sostituisce le versioni dal 14 al 15/10 (storico in git). Novità v5-v7: check-in con confronto volto-documento fatto dall'utente e sviluppato in casa (§3.6); invio ad Alloggiati automatico da CasaZen; nessuna integrazione con le serrature; fiscale alla pari dei concorrenti, CU e 770 fuori scope (§3.7); costi di terze parti ridotti al channel manager (§5); prezzo di Quokka ~€2.300/mese; stima in finestre di Claude Code Max 20x con timeline (§7).
 **Origine:** le 6 funzionalità che il prospect Quokka 360 ritiene indispensabili, generalizzate come prodotto per tutte le agenzie.
 **Stato:** analisi pre-vendita. Prezzi e numeri **da rivedere con il business plan**.
 
@@ -34,15 +34,15 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | Pagamenti | **Si applica il modello di mercato:** l'agenzia è l'esercente (direct charge sul suo account Stripe con `fees_collector = stripe`). **Stripe addebita tutti i suoi costi direttamente all'agenzia**: CasaZen non incassa nulla e non paga nulla a Stripe |
 | Proprietari | Rendiconto mensile automatico + **file di bonifico SEPA/CH** che l'agenzia approva in banca (come fa Avantio). Su Airbnb, quando l'annuncio è del proprietario, si usa la **ripartizione nativa co-host**. Automazione completa in seguito con EBICS (CH) |
 | Adempimenti | **Regola R12:** dove esiste un'API lo fa CasaZen in automatico (Alloggiati, ISTAT Lombardia/Marche/Sicilia, feratel, pagoPA). Dove non è tecnicamente possibile (Agenzia delle Entrate, F24, portali comunali, polizia del Ticino) **CasaZen prepara file e istruzioni, il caricamento lo fa l'agenzia** e la ricevuta si archivia in CasaZen |
-| Ritenuta 21% | Il portale proprietari produce il **rendiconto mensile** delle ritenute del 21% per il versamento F24 (codice 1919). **File CU e 770: fuori scope per ora** (§3.7) |
-| Check-in | Riconoscimento del volto e del documento **sviluppato in casa**, senza fornitori terzi. Flusso: dati prima dell'arrivo, **QR all'ingresso con confronto volto-documento**, alternativa in videochiamata, codice di accesso inviato per messaggio dopo l'esito, cancellazione alla ricevuta di Alloggiati, registro di verifica (§3.6) |
+| Ritenuta 21% | Fiscale **alla pari dei concorrenti**: rendiconto mensile delle ritenute del 21% e **F24 precompilato** (codice 1919) nel portale proprietari. **File CU e 770: fuori scope** (nessun concorrente verificato li produce); pagamento e invio restano delegati all'agenzia (§3.7) |
+| Check-in | Riconoscimento del volto **sviluppato in casa**, fatto dall'utente nel check-in: confronto tra la sua foto e quella del documento; se sono persone diverse non si prosegue finché non carica la foto giusta. QR code come ultimo passaggio, codice di accesso inviato per messaggio, **invio ad Alloggiati automatico da CasaZen**, cancellazione alla ricevuta (§3.6) |
 | Accesso | **Nessuna integrazione con le serrature**: Quokka usa serrature smart già installate e il **codice viene inviato per messaggio subito dopo il riconoscimento facciale** |
-| Prezzo (proposta) | Base **€7–9/unità/mese** a scaglioni (portale proprietari e check-in con riconoscimento del volto inclusi) + AI e Marketing €4; programma **Founding Partner** a costo del channel manager + €1/unità, con margine bloccato. **Da rivedere con il business plan** (D10) |
-| Sviluppo | **~11–17 settimane attive (~2,75–4,25 mesi)** con 1 abbonamento Claude Code Max 20x + PO. Il percorso critico sono i tempi esterni |
+| Prezzo (proposta) | Base **€7–9/unità/mese** a scaglioni (portale proprietari e check-in con riconoscimento del volto inclusi) + AI e Marketing €4. **Quokka: ~€2.300/mese** (250 unità, €9,20/unità, margine CasaZen ~57%). Da rivedere con il business plan (D10) |
+| Sviluppo | **~100–165 finestre di Claude Code Max 20x** (≈10–16 settimane equivalenti, ipotesi di 10 finestre a settimana) con 1 abbonamento + PO. Timeline per ondate in §7. Il percorso critico sono i tempi esterni |
 
 **Rischi principali:**
 1. tempi esterni: fornitori OTA, verifica identità, enti;
-2. obbligo di un'alternativa non biometrica e verifica all'ingresso (CdS 9101/2025) ⚖;
+2. invio automatico ad Alloggiati: nessuna sandbox e invio irreversibile, il primo invio va supervisionato su una struttura reale;
 3. adempimenti senza API (Ticino ogni giorno, diversi comuni): restano un'attività manuale dell'agenzia, anche se CasaZen prepara tutto;
 4. norme fiscali italiane rinumerate dal 1/1/2027.
 
@@ -63,9 +63,10 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | R10 | Fornitori CasaZen sempre il default. I fornitori propri sono registrati in CasaZen: 0% e fatturazione fuori da CasaZen quando li usa la loro agenzia |
 | R11 | **Tutti i costi Stripe a carico dei clienti** |
 | R12 | **Fattibilità tecnica** (2026-10-15): se un flusso è **tecnicamente possibile** (esiste un'API), lo esegue CasaZen e il costo è suo; caso per caso si decide se venderlo come extra quando è un servizio a pagamento. Se **non è tecnicamente possibile**, CasaZen prepara tutto (file, dati, istruzioni, promemoria, archivio della ricevuta) ma **l'esecuzione resta all'host o all'agenzia**. Niente back-office umano di CasaZen |
-| R13 | **Riconoscimento del volto in casa** (2026-10-19): il confronto volto-documento è obbligatorio nel B2B e si sviluppa in CasaZen, senza fornitori terzi di verifica d'identità. Consenso esplicito e alternativa equivalente (videochiamata) restano obbligatori; i dati biometrici si cancellano subito dopo il confronto, le copie dei documenti alla ricevuta di Alloggiati |
-| R14 | **CU e 770 fuori scope per ora** (2026-10-19): solo il rendiconto mensile delle ritenute del 21% per il versamento mensile, nel portale proprietari (§3.7) |
+| R13 | **Riconoscimento del volto in casa** (2026-10-19): lo fa l'utente nel check-in, confrontando la sua foto con quella del documento; se non corrispondono il check-in non prosegue. Consenso esplicito al trattamento; immagini cancellate subito dopo il confronto, copie dei documenti alla ricevuta di Alloggiati |
+| R14 | **Fiscale** (2026-10-19): impeccabile e alla pari dei concorrenti, nello stesso modo. Rendiconto mensile delle ritenute e F24 precompilato; **CU e 770 fuori scope** (nessun concorrente verificato li produce); pagamento e invio all'AdE delegati all'agenzia (§3.7) |
 | R15 | **Costi di terze parti** (2026-10-19): per ora l'unico costo di integrazione di CasaZen è il channel manager. Nessun fornitore di verifica d'identità, nessuna integrazione con le serrature, nessun servizio di invio CU/770 |
+| R16 | **Alloggiati inviato direttamente da CasaZen** (2026-10-19), senza conferma manuale dell'host: invio automatico, ricevuta archiviata, stato "Inviato" solo con la ricevuta (§3.6) |
 
 ---
 
@@ -82,8 +83,9 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | D7 | Fornitori propri: registrati in CasaZen; 0% e fatturazione esterna con la propria agenzia, regole del marketplace con gli altri; interruttore "visibile nel marketplace" | Deciso |
 | D8 | LLM: DeepSeek (costo). **Raccomandazione aperta:** per i dati degli ospiti usarlo ospitato in UE (AWS Bedrock, Stoccolma) | Deciso con riserva |
 | D9 | Serrature: nessuna integrazione; il codice viene inviato per messaggio subito dopo il riconoscimento facciale | **Rivisto il 19/10** (prima: Seam) |
-| D10 | Prezzi: proposta in §6, **da rivedere con il business plan** | Aperto |
-| D11 | CU e 770: fuori scope per ora; solo il rendiconto mensile delle ritenute per l'F24 | Deciso il 19/10 |
+| D10 | Prezzi: proposta in §6; **Quokka ~€2.300/mese** (19/10: non si abbassa, prima si aumenta il margine di CasaZen). Business plan aggiornato in `Sessions/casazen-platform-launch/business-plan-agency-amendment.md` | Aperto, da confermare con il business plan |
+| D11 | Fiscale: parità con i concorrenti (rendiconto mensile, F24 precompilato); CU e 770 fuori scope; pagamento e invio delegati all'agenzia | Deciso il 19/10 |
+| D12 | Alloggiati: invio automatico da CasaZen, senza conferma manuale (richiede il client del servizio, la gestione della ricevuta e il consenso dell'host come incaricato) | Deciso il 19/10 |
 
 ---
 
@@ -191,7 +193,7 @@ Fonti:
 ### 3.5 Fiscalità e adempimenti Italia + Svizzera
 
 **API ufficiali, automatizzate da CasaZen:**
-- **Alloggiati Web:** SOAP, 12 operazioni ✓ (<https://alloggiatiweb.poliziadistato.it/service/service.asmx>).
+- **Alloggiati Web:** SOAP, 12 operazioni ✓, **invio automatico da CasaZen** (§3.6) (<https://alloggiatiweb.poliziadistato.it/service/service.asmx>).
 - **ISTAT:**
   - Lombardia: Ross1000 `checkinV2` ✓;
   - Marche: Ross1000;
@@ -217,38 +219,38 @@ Fonti:
 - CasaZen non può essere intermediario Entratel.
 - Il **Ticino vieta di fotocopiare il documento** ✓ (RL 942.120 art. 6).
 
-### 3.6 Check-in con riconoscimento del volto, accesso, routine
+### 3.6 Check-in con riconoscimento del volto, accesso, Alloggiati, routine
 
-**Decisione del PO (2026-10-19):** il riconoscimento volto-documento si sviluppa in casa, senza fornitori terzi, ed è obbligatorio nel B2B. Quokka lo vuole per avere un processo strutturato e tracciato in caso di controlli sotto copertura delle autorità. Il flusso sotto è quello approvato dal PO, che lo ritiene conforme alla legge.
+**Decisione del PO (2026-10-19):** il riconoscimento del volto si sviluppa in casa, senza fornitori terzi, e lo fa l'utente durante il check-in. Il PO ritiene il flusso già conforme alla legge: nel flusso non ci sono verifiche legali aggiuntive.
 
-**Base normativa** (testi primari letti il 2026-10-19):
-- **Art. 109 TULPS** ✓: si alloggiano solo persone con documento idoneo; i dati si comunicano alla Questura entro 24 ore (6 ore per soggiorni fino a 24 ore).
-- **D.M. 7/1/2013 e 16/9/2021** ✓: regolano la comunicazione, non il metodo di identificazione. I dati digitali si cancellano alla ricevuta, che si conserva 5 anni.
-- **Circolare del Viminale 18/11/2024 e Consiglio di Stato 9101/2025** ✓: il check-in solo da remoto, con codice di apertura senza verifica, non basta. Serve la verifica *de visu* oppure un videocollegamento all'ingresso che accerti "hic et nunc" la corrispondenza tra ospite e documento (esempio citato: spioncino digitale o QR code che faccia un fermo immagine).
-- **Garante, 29/04/2026** ✓: la copia del documento si cancella alla ricevuta di Alloggiati.
-- **GDPR art. 9:** per i dati biometrici servono consenso esplicito e un'alternativa equivalente.
-
-**Flusso (deciso il 2026-10-19):**
-1. **Prima dell'arrivo:** l'ospite compila i dati richiesti da Alloggiati. L'immagine del documento non è obbligatoria; se si raccoglie, è temporanea.
-2. **All'ingresso:** QR sulla porta; foto o selfie sul posto e confronto con la foto del documento (**opzione A, predefinita**, con consenso esplicito). Alternativa equivalente senza biometria: **videochiamata con una persona** (**opzione B**).
-3. **Codice di accesso:** inviato per messaggio all'ospite **subito dopo l'esito positivo**, mai prima. Esito negativo o dubbio → operatore.
-4. **Invio ad Alloggiati entro 24 ore** (6 ore per soggiorni fino a 24 ore); dal 31° giorno nuova registrazione.
-5. **Dopo la ricevuta:** si cancellano subito dati e copie dei documenti; la ricevuta si scarica **entro 30 giorni** e si conserva 5 anni. I dati biometrici (immagini, template) si cancellano **subito dopo il confronto**.
-6. **Registro di verifica** per prenotazione: data e ora, metodo, esito, operatore, ricevuta. Senza immagini. È il pacchetto di prova in caso di controlli.
-7. Minori senza biometria. DPIA prima del lancio.
+**Flusso:**
+1. **Dati e documento:** l'ospite compila i dati richiesti da Alloggiati e carica il documento (lettura MRZ/OCR; l'ospite conferma i dati).
+2. **Riconoscimento del volto:** con il **consenso esplicito** al trattamento biometrico, l'ospite scatta una foto e CasaZen la confronta con la foto del documento. Se **corrispondono** il check-in prosegue. Se sono **persone diverse non si va avanti**, finché l'ospite non carica la foto giusta. *Proposta, non richiesta dal PO:* dopo N tentativi falliti il check-in passa a un operatore, per evitare che si provino foto diverse fino a ottenere una corrispondenza.
+3. **QR code:** ultimo passaggio del check-in, se l'ospite non lo ha già fatto prima.
+4. **Codice di accesso:** inviato per messaggio subito dopo il riconoscimento facciale (vedi "Accesso").
+5. **Alloggiati:** invio automatico da CasaZen (vedi sotto).
+6. **Dopo la ricevuta:** si cancellano dati e copie dei documenti; la ricevuta si scarica **entro 30 giorni** e si conserva 5 anni. Le immagini e i dati biometrici si cancellano **subito dopo il confronto**.
+7. **Registro di verifica** per prenotazione: data e ora, esito, numero di tentativi, ricevuta. Senza immagini.
+8. Minori senza biometria.
 
 **Componenti sviluppati in casa:**
 
 | Componente | Note |
 |---|---|
 | Lettura del documento (MRZ/OCR) | PassportEye (MIT) con Tesseract o equivalenti; l'ospite conferma i dati |
-| Confronto del volto | Serve un modello con licenza commerciale: OpenCV Zoo SFace (Apache-2.0, dati di addestramento non dichiarati [NV]); **InsightFace escluso** (modelli solo per ricerca non commerciale ✓) |
-| Controllo che la persona sia viva | Di base (passivo o a sfida) |
+| Confronto del volto | Serve un modello con licenza commerciale: OpenCV Zoo SFace (Apache-2.0, dati di addestramento non dichiarati [NV]); **InsightFace escluso** (modelli solo per ricerca non commerciale ✓). La soglia di corrispondenza va calibrata per bilanciare falsi rifiuti e falsi accessi |
+| Controllo che la persona sia viva | Non previsto ora: una foto di una foto potrebbe passare. Rischio accettato dal PO |
 | Documenti | Solo controlli formali (checksum MRZ, scadenza, formato) |
-| Chip NFC | Non previsto ora; richiederebbe un'app nativa |
-| Videochiamata (opzione B) | Daily (gratis fino a 10.000 minuti/mese): infrastruttura video |
 
-**Accesso all'immobile:** Quokka usa **serrature smart già installate** (dato del PO, 2026-10-19; in precedenza risultavano keybox Masterlock). CasaZen non si integra con le serrature: invia il codice per messaggio dopo il riconoscimento. Il codice non è creato né revocato da CasaZen: resta quello impostato dall'agenzia sulla serratura (non è quindi unico per soggiorno né scade alla partenza).
+**Invio ad Alloggiati: automatico da CasaZen** (decisione del PO, 2026-10-19, R16). Oggi il codice non trasmette: l'host invia sul portale e segna "inviato manualmente" (`docs/runbooks/alloggiati.md`). Da sviluppare:
+- client del servizio SOAP (`GenerateToken` → `Test` → `Send` → `Ricevuta`): `Test` prima di ogni `Send`, `Send` solo se ogni riga è valida;
+- **nessuna sandbox e `Send` irreversibile:** il primo invio va supervisionato su una struttura reale; cosa succede con un invio ripetuto (duplicati) è [NV];
+- scadenze: 24 ore dall'arrivo (6 ore per soggiorni fino a 24 ore); il portale accetta solo arrivo di oggi o di ieri;
+- **ricevuta il giorno dopo**, solo PDF per l'intero account: serve un nuovo stato "inviato, ricevuta in attesa", un job giornaliero e un archivio privato di 5 anni; "Inviato" solo con la ricevuta;
+- credenziali dell'host (codici dispositivo) conservate e rigenerate quando cambia la password; l'host delega CasaZen come incaricato alla trasmissione (D.M. 2013/2021, art. 2 ✓) con un consenso in configurazione;
+- errori: invio parziale (il portale acquisisce solo le righe corrette), allarmi e nuovo tentativo.
+
+**Accesso all'immobile:** Quokka usa **serrature smart già installate** (dato del PO, 2026-10-19; in precedenza risultavano keybox Masterlock). CasaZen non si integra con le serrature: invia il codice per messaggio subito dopo il riconoscimento facciale. Il codice non è creato né revocato da CasaZen: resta quello impostato dall'agenzia sulla serratura (non è quindi unico per soggiorno né scade alla partenza).
 
 
 **Routine (definizione del PO, 2026-10-15): costruttore di automazioni configurabile dall'host.** L'host crea le proprie routine nel formato **QUANDO** (evento) → **SE** (condizioni) → **ALLORA** (una o più azioni, anche con attese e passaggi successivi).
@@ -280,25 +282,33 @@ Fonti:
 - <https://help.hostfully.com/en/articles/1674808-create-custom-templates-and-triggers>
 - <https://www.ownerrez.com/support/articles/triggers-setup-configuration>
 
-### 3.7 Ritenuta del 21%: rendiconto mensile (CU e 770 fuori scope per ora)
+### 3.7 Ritenuta del 21%: rendiconto mensile e F24 (pari ai concorrenti; CU e 770 fuori scope)
 
-**Decisione del PO (2026-10-19):** per ora CasaZen produce solo il **rendiconto mensile per il versamento mensile** delle ritenute nel portale proprietari. I file CU e 770 sono esclusi.
+**Decisione del PO (2026-10-19):** sul fiscale CasaZen deve essere impeccabile e produrre quello che producono i concorrenti, nello stesso modo. Il pagamento dell'F24 e l'invio all'AdE restano delegati all'agenzia.
 
 **Perché serve:** l'agenzia che incassa gli affitti brevi è sostituto d'imposta (art. 4 D.L. 50/2017; dal 1/1/2027 art. 208 del nuovo TUIR, D.Lgs. 117/2026). A ogni pagamento al proprietario trattiene il **21% a titolo d'acconto** sul lordo e lo versa con **F24 codice 1919** entro il **16 del mese successivo**, con un versamento cumulativo per tutti i proprietari ✓ (<https://www.agenziaentrate.gov.it/portale/documents/d/guest/locazioni_brevi_disciplina_fiscale_e_regole_per_intermediari_aprile-2026>).
 
-**Cosa produce il portale proprietari ogni mese:**
-- ritenute per proprietario, appartamento e prenotazione, con il totale da versare con l'F24;
-- base di calcolo: lordo con pulizie e biancheria a forfait e con la provvigione dell'agenzia se trattenuta dai soldi del proprietario; esclusi cauzioni, caparre e penali ✓;
-- anno solare di cassa e anno di soggiorno per ogni importo (le prenotazioni a cavallo d'anno restano divise), così una CU futura sarebbe possibile senza rielaborare;
-- esportazione PDF e CSV, e riconciliazione trattenuto/versato con la data di pagamento dell'F24, che l'agenzia registra. Il pagamento dell'F24 resta all'agenzia (R12).
+**Cosa fanno i concorrenti** (pagine ufficiali, verificato il 19/10):
+- **Octorate ✓:** impostazione "sostituto d'imposta" per agenzia; voci di commissione marcabili come deducibili o no prima del calcolo; distinta di pagamento al proprietario e **Modello F24 stampabile**; esportazione Excel.
+- **CiaoBooking ✓:** flag "sostituto d'imposta" sul proprietario (scala un ulteriore 21% dal netto); **nessun F24**.
+- **Nessun concorrente verificato produce il file CU o 770:** Kross, Smoobu, Lodgify, Rentals United, Beddy, Scidoo, Slope, Vikey non ne parlano sui siti ufficiali; Avantio non è verificabile.
 
-**Fuori scope, ma da sapere** (emerso dalla ricerca del 19/10):
-- **Resta a carico dell'agenzia** il lavoro di fine anno: CU entro il 16 marzo, 770 entro il 31 ottobre. Il rendiconto mensile **non sostituisce** il commercialista per quegli invii.
+**Cosa produce CasaZen (parità o meglio):**
+- flag di sostituto d'imposta per agenzia e per proprietario (con P.IVA non si trattiene);
+- commissione dell'agenzia deducibile o no; base di calcolo: lordo con pulizie e biancheria a forfait e provvigione trattenuta dai soldi del proprietario; esclusi cauzioni, caparre e penali ✓;
+- **rendiconto mensile** per proprietario, appartamento e prenotazione, con il totale da versare, in PDF e CSV/Excel;
+- **F24 precompilato** (codice 1919, mese, anno, importo) in PDF;
+- riconciliazione trattenuto/versato con la data di pagamento che l'agenzia registra;
+- anno di cassa e anno di soggiorno per ogni importo (le prenotazioni a cavallo d'anno restano divise).
+
+**Delegato all'agenzia:** il pagamento dell'F24 e l'invio all'AdE.
+
+**Fuori scope, ma da sapere** (ricerca del 19/10):
+- Il lavoro di fine anno resta a carico dell'agenzia: **CU entro il 16 marzo, 770 entro il 31 ottobre**. Il rendiconto mensile non lo sostituisce.
 - L'invio all'AdE è solo con **Entratel** (oltre 20 percipienti); l'AdE non ha un'API di invio e nessun gateway è stato trovato (controllati Openapi, Invio Facile, Genya, Namirial/SpinOk, ACCA).
 - Se si riprenderà: la CU richiede il **CIN a 18 caratteri esatti** (`CinFormat.cs` ne accetta 11–18) e il **codice catastale** del comune, non l'ISTAT.
-- Sanzioni per la CU omessa o errata: €100 per certificazione (max €50.000).
 
-**Da chiedere a Quokka:** cosa copre esattamente il commercialista dei €60 ad appartamento (CU/770 dell'agenzia o anche il 730 dei proprietari). Dato riferito dal PO, non verificato.
+**Da chiedere a Quokka:** cosa copre esattamente il commercialista dei €60 ad appartamento (CU/770 o anche il 730 dei proprietari). Dato riferito dal PO, non verificato.
 
 ---
 
@@ -349,19 +359,18 @@ Non sono né costi né ricavi per CasaZen:
 
 ### 5.3 Scenari mensili
 
-| | **A. 0 clienti** | **B. Quokka, 250 unità, prezzo partner** | **C. 250 unità a listino** (Base €7) |
+| | **A. 0 clienti** | **B. Quokka, 250 unità, ~€2.300** | **C. 250 unità a listino** (Base €7 + AI e Marketing €4) |
 |---|---|---|---|
 | **Paga CasaZen:** channel manager | €0 (se il minimo parte dal go-live) o €350 | €980 (€350 + 200 × €3,15) | €980 |
-| **Pagano i clienti a CasaZen** | — | €1.230 (costo + €1/unità) | €1.750 (250 × €7) |
-| **Risultato mensile** | €0 / −€350 | **+€250** | **+€770** |
+| **Pagano i clienti a CasaZen** | — | €2.300 (€9,20/unità) | €2.750 (€11/unità) |
+| **Risultato mensile** | €0 / −€350 | **+€1.320 (57%)** | **+€1.770 (64%)** |
 
 **Come leggere la tabella:**
 - **Scenario A:** se NextPax fattura il minimo dalla firma, CasaZen perde €350 al mese finché non arriva il primo cliente. Conviene firmare solo quando il cliente è vicino.
-- **Scenario B (Quokka partner):** €1.230 al mese, cioè €4,92 per unità. Copre il channel manager e lascia €1 per unità.
-- **Scenario C:** la differenza con B è il prezzo che si rinuncia a chiedere ai partner.
+- **Scenario B (Quokka):** il prezzo non si abbassa (19/10): ~€2.300 al mese, circa il 16% sotto il listino di €2.750, per un pacchetto con portale proprietari, check-in con riconoscimento del volto, CRM e marketing, routine. Il margine di CasaZen è €1.320, il 57%.
 - **Soglia di convenienza:** il minimo di €350 supera il ricavo del Base (€9) sotto le **39 unità**: a 30 unità si incassano €270 e si pagano €350. Va rivisto lo scaglione o il minimo (D10).
-- **AI e Marketing** (+€4/unità, +€1.000 al mese per 250 unità): costo non conteggiato [NV].
-- **Non sono inclusi:** il tempo del PO, i pareri legali e il costo di sviluppo (§7).
+- **Margine lordo:** 44–64% a seconda del pacchetto, perché il channel manager è un costo variabile per unità. Il target di margine lordo ≥80% del business plan vale per il B2C, non per il tier Agenzia.
+- **Non conteggiati:** costi di piattaforma (hosting, email, SDI, AI, video, abbonamento di sviluppo), tempo del PO, pareri legali e sviluppo (§7).
 
 ---
 
@@ -377,7 +386,6 @@ Non sono né costi né ricavi per CasaZen:
 | **NextPax** | "Full sandbox" + Developer Portal; certificazione prima della produzione | Costo della sandbox non pubblicato [NV] | **Minimo €350/mese: da negoziare con decorrenza dal go-live**, non dalla firma | Annunci e prenotazioni reali sulle OTA |
 | **Octorate** | Proprietà di prova, dati simulati; breve certificazione | Non pubblicato; *"API access is conditional on payment of Octorate services"* | Da chiedere | Connessioni reali ai canali |
 | **Resend** | Piano Free (3.000 email/mese, 100/giorno, 3 domini) | Sì | Pro $20 quando si superano i limiti | — |
-| **Daily** | Piano gratuito (10.000 minuti/mese) | Sì | Oltre i 10.000 minuti | — |
 | **WhatsApp (Meta)** | Account e numero di test creati in automatico | Sì | Per messaggio template in produzione | Messaggi a ospiti reali |
 | **DeepSeek / Bedrock** | Nessuna sandbox | A consumo (pochi euro in sviluppo) | Per token. Su Bedrock in UE DeepSeek V3.2 è disponibile a Stoccolma: $0,74/M in ingresso, $2,22/M in uscita | — |
 | **Alloggiati Web** ✓ | **Nessun ambiente di test.** L'operazione `Test` valida i dati senza inviarli | Gratuito | — | L'invio reale e la ricevuta richiedono **credenziali di una struttura vera** |
@@ -442,7 +450,7 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 
 | Pacchetto | Cosa offre | Prezzo |
 |---|---|---|
-| **Base** | **Gestionale**: proprietà, calendario, prenotazioni, ospiti, KPI.<br>**Channel manager** (Airbnb, Booking.com, Vrbo, Expedia): sincronizzazione di disponibilità, prezzi e prenotazioni; creazione e modifica degli annunci da CasaZen; recensioni.<br>**Inbox unificata** con **risposte AI suggerite**, inviate dall'operatore.<br>**Sito di prenotazione diretta** con pagamento Stripe sull'account dell'agenzia.<br>**Check-in online** con riconoscimento del volto all'ingresso e alternativa in videochiamata; codice di accesso inviato per messaggio dopo l'esito.<br>**Adempimenti via API**: Alloggiati Web, ISTAT (regioni con API), feratel; calcolo della tassa di soggiorno; **file pronti** per dichiarazioni, CU e portali senza API.<br>**Portale proprietari**: dati e documenti, rendiconto mensile automatico, fatture elettroniche SDI per conto dell'agenzia, file di bonifico SEPA/CH, registro delle ritenute.<br>**Routine**: costruttore QUANDO → SE → ALLORA con libreria di routine pronte.<br>**Fornitori**: marketplace, fornitori propri a 0%, staff, app | **€9** (10–49 unità) · **€8** (50–149) · **€7** (150–399) · preventivo (400+) |
+| **Base** | **Gestionale**: proprietà, calendario, prenotazioni, ospiti, KPI.<br>**Channel manager** (Airbnb, Booking.com, Vrbo, Expedia): sincronizzazione di disponibilità, prezzi e prenotazioni; creazione e modifica degli annunci da CasaZen; recensioni.<br>**Inbox unificata** con **risposte AI suggerite**, inviate dall'operatore.<br>**Sito di prenotazione diretta** con pagamento Stripe sull'account dell'agenzia.<br>**Check-in online** con riconoscimento del volto fatto dall'ospite (confronto tra foto e documento); codice di accesso inviato per messaggio dopo l'esito.<br>**Adempimenti via API**: Alloggiati Web, ISTAT (regioni con API), feratel; calcolo della tassa di soggiorno; **file pronti** per dichiarazioni, CU e portali senza API.<br>**Portale proprietari**: dati e documenti, rendiconto mensile automatico, fatture elettroniche SDI per conto dell'agenzia, file di bonifico SEPA/CH, registro delle ritenute.<br>**Routine**: costruttore QUANDO → SE → ALLORA con libreria di routine pronte.<br>**Fornitori**: marketplace, fornitori propri a 0%, staff, app | **€9** (10–49 unità) · **€8** (50–149) · **€7** (150–399) · preventivo (400+) |
 | **+ AI e Marketing** | Risposte AI **inviate in automatico** (sopra una soglia di confidenza), **routine create da una frase** e azioni AI nelle routine, **CRM**: profili ospite, consensi, segmenti, campagne email e WhatsApp con testi AI | **+€4** |
 
 **Perché il portale proprietari è nella base:** per un'agenzia è indispensabile, e sul mercato è spesso incluso (Avantio; il portale di OwnerRez è gratuito). Il costo marginale per CasaZen è di pochi centesimi per unità (fatture SDI). Il ricavo perso (€2) è recuperato alzando il pacchetto AI e Marketing da €2 a €4.
@@ -464,61 +472,81 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 
 ### 6.3 Programma Founding Partner (agenzie della prima ora)
 
-- **Prezzo = costo del channel manager + €1/unità.** Il **margine è bloccato**: il prezzo si rivede una volta l'anno **solo** se cambiano il costo del channel manager o il cambio USD/EUR (voci indicate nel contratto).
+- **Prezzo = listino con sconto di circa il 15%, bloccato per 24 mesi** (proposta, D10); si rivede solo se cambiano il costo del channel manager o il cambio USD/EUR. Quokka: €2.300 al mese, −16% sul listino di €2.750.
 - **Durata del prezzo:** tutto il rapporto, per le funzionalità presenti alla firma. Le nuove opzioni con −30%.
 - **Posti:** le prime 10 agenzie, entro una data da definire.
 - **In cambio:** durata minima 24 mesi, pagamento annuale, test e feedback, referenza o caso di studio.
-- **Costi fissi di piattaforma:** non attribuiti ai partner in questa versione (decisione del PO, 19/10). La copertura di €400 al mese decisa il 15/10 è da riconfermare (D10): con quella, Quokka pagherebbe €1.630.
+- **Margine:** dal 19/10 il margine di CasaZen ha la priorità. Non si applica più la formula "costo + €1/unità" né la copertura dei costi fissi a prezzo di costo.
 - **Esempio Quokka** (250 unità):
 
-| Voce di costo al mese | Importo |
+| Voce al mese | Importo |
 |---|---|
-| Channel manager NextPax (€350 + 200 × €3,15) | €980 |
-| Margine CasaZen (+€1/unità) | €250 |
-| **Totale Quokka** | **~€1.230/mese (€4,92/unità)** |
+| Prezzo Quokka (Base + AI e Marketing, €9,20/unità) | **~€2.300** |
+| Costo channel manager NextPax (€350 + 200 × €3,15) | €980 |
+| **Margine CasaZen** | **~€1.320 (57%)** |
 
-- Quokka spenderebbe **~€770 in meno** rispetto a Kross (~€2.000, −38%) e otterrebbe in più check-in con riconoscimento del volto, compliance CH, portale proprietari, AI e CRM.
-- Canone fisso: nessuna parte variabile legata a verifiche di identità o serrature.
+- Rispetto ai ~€2.000 che Quokka paga oggi a Kross: **+€300 (+15%)**. In cambio ottiene check-in con riconoscimento del volto, compliance CH, portale proprietari, routine, CRM e marketing. La piattaforma di marketing e CRM che usano oggi non è nota: se la sostituiscono, il confronto migliora.
+- Il prezzo si giustifica con il **pacchetto Agenzia completo, non con personalizzazioni**: il prodotto resta unico (R1).
 
-- Il listino pubblico (Base €7 per 250 unità) costerebbe €1.750.
+- Il listino pubblico (Base €7 + AI e Marketing €4, 250 unità) costerebbe €2.750.
 - Se Quokka sostituisce anche la sua attuale piattaforma di marketing e CRM, il risparmio complessivo aumenta.
 
 **B2C:** il listino deciso l'8/10 (Starter €29, Pro €79, Scale €199) non copre il channel manager (€3,15–3,50 a unità). Per il B2C va venduto come opzione per unità (es. €4).
 
 ---
 
-## 7. Stima dello sviluppo (processo AI: 1 Claude Code Max 20x + PO)
+## 7. Stima dello sviluppo (finestre di Claude Code Max 20x)
 
-**Calibrazione dallo storico git:**
-- il modulo Locazioni (~39k righe tra codice, test e frontend, con l'integrazione RLI verso l'AdE) è stato costruito in ~2,5 settimane attive: **~15k righe/settimana**;
-- +25% per test sull'interfaccia e piccoli refactor umani;
-- Anthropic non pubblica limiti numerici del piano Max ✓ (<https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan>).
+**Unità di misura:** la **finestra** è una sessione di lavoro di 5 ore con 1 abbonamento Claude Code Max 20x. Niente giorni-persona.
 
-**Cosa si stima:** solo lo sviluppo in CasaZen, componente per componente, confrontato con parti già misurate del codice.
+**Calibrazione:**
+- il modulo Locazioni (~39k righe tra codice, test e frontend, con l'integrazione RLI verso l'AdE) è stato costruito in ~2,5 settimane attive: **~15k righe a settimana**;
+- **ipotesi di conversione: 1 settimana attiva = ~10 finestre** (2 al giorno per 5 giorni), cioè ~1.500 righe a finestra. **[NV]** Anthropic non pubblica limiti numerici del piano Max ✓ (<https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan>): il rapporto va ricalibrato dopo la prima ondata;
+- le stime includono +25% per test umani sull'interfaccia e piccoli refactor; precisione ±40%.
 
-| Pacchetto | Settimane attive |
-|---|---|
-| WP1 Fondamenta: `Agency`, ruoli `PropertyOwner`/`Staff`, paese/valuta/fuso, tedesco, piani | 1,2–2,0 |
-| WP2 OTA: client, mappatura, disponibilità/tariffe, prenotazioni, editor contenuti, inbox, AI, recensioni | 1,75–2,8 |
-| WP3 CRM + campagne + WhatsApp | 1,2–1,75 |
-| WP4 Proprietari: portale, rendiconti mensili con ritenute 21% per l'F24, SDI per conto, file di bonifico, migrazione degli account Stripe a v2 | 1,3–2,0 |
-| WP5 Fornitori propri e staff | 0,4–0,7 |
-| WP6 Compliance: Alloggiati, ISTAT, feratel, pagoPA via API; file AdE, F24, XML Ticino e CSV comunali con promemoria e archivio ricevute | 1,3–2,1 |
-| WP7 Check-in con riconoscimento del volto **in casa** (cattura, confronto, controllo di base che la persona sia viva, consenso e alternativa, registro di verifica) + QR all'ingresso + videochiamata + invio del codice per messaggio | 2,2–3,6 |
-| WP8 Routine: motore eventi/condizioni/azioni con attese (Hangfire), costruttore web, azioni (messaggi, attività, notifiche, webhook), creazione da linguaggio naturale, libreria, registro | 1,4–2,25 |
-| **Totale** | **~11–17 settimane attive (~2,75–4,25 mesi)** |
+| Pacchetto | Finestre | Cosa pesa |
+|---|---|---|
+| WP1 Fondamenta: `Agency`, ruoli `PropertyOwner`/`Staff`, paese/valuta/fuso, tedesco, piani | 12–20 | Multitenancy, ruoli, traduzioni IT/EN/DE, migrazioni |
+| WP2 OTA: client del channel manager, mappatura, disponibilità/tariffe, prenotazioni, editor contenuti, inbox, risposte AI, recensioni | 18–28 | Il pacchetto più grande: tante superfici (editor, inbox, mappatura) e un partner esterno mai usato |
+| WP3 CRM, campagne, WhatsApp | 12–18 | Consensi, segmenti, invio, testi AI |
+| WP4 Proprietari: portale, rendiconti mensili con ritenute e F24 precompilato, SDI per conto, file di bonifico, account Stripe a v2 | 14–22 | Rendiconti, PDF, migrazione Stripe |
+| WP5 Fornitori propri e staff | 4–7 | Estensione di moduli esistenti |
+| WP6a Alloggiati automatico: client SOAP, `Test`→`Send`, ricevuta e stato, job giornaliero, consenso, allarmi | 6–10 | Nessuna sandbox, invio irreversibile, ricevuta il giorno dopo |
+| WP6b Altri adempimenti: ISTAT, feratel, pagoPA, file e CSV per Ticino e comuni | 7–11 | Più enti, ognuno con il suo formato |
+| WP7 Check-in: confronto volto-documento in casa, consenso, tentativi, QR, messaggio con il codice, registro di verifica | 15–25 | Modello di volto, soglia da calibrare, interfaccia di cattura, cancellazione dei dati |
+| WP8 Routine: motore eventi/condizioni/azioni con attese, costruttore web, azioni, creazione da frase, libreria, registro | 14–22 | Motore con attese (Hangfire) e costruttore |
+| **Totale** | **~102–163** (≈10–16 settimane equivalenti) | |
 
-**Ordine** (un solo abbonamento, quindi in sequenza): WP1 → WP6 + WP7 → WP5 → WP4 → WP2 → WP8 → WP3.
+**Perché la stima è alta:**
+- sono **6 funzionalità più le fondamenta** di un nuovo tipo di host, non una funzione;
+- ogni pacchetto comprende backend, web, i18n in IT/EN (e DE), migrazioni, dati demo e test, come richiedono le regole del repo;
+- tre pacchetti pesano oltre il 40%: WP2, WP7 e WP1;
+- CRM e routine (WP3 + WP8) valgono circa un quarto: sono rimandabili a una seconda uscita, ma il marketing è parte di ciò che Quokka paga;
+- il +25% per test umani e la precisione di ±40% allargano la forchetta.
 
-**Limiti della stima:** misura grossolana basata sulle righe di codice (±40%); il ritmo misurato viene da poche settimane intense; le integrazioni con fornitori mai usati sono le più a rischio.
+**Timeline** (un solo abbonamento, quindi le ondate sono in sequenza):
+
+| Ondata | Contenuto | Finestre | Cumulato | Gate esterni |
+|---|---|---|---|---|
+| 1 | WP1 Fondamenta | 12–20 | 12–20 | — |
+| 2 | WP6a Alloggiati automatico + WP7 Check-in | 21–35 | 33–55 | Struttura reale con credenziali per il primo invio supervisionato; licenza del modello di volto; DPIA |
+| 3 | WP6b + WP5 + WP4 | 25–40 | 58–95 | Stripe Accounts v2; documentazione ISTAT Sicilia; contratto feratel |
+| 4 | WP2 OTA | 18–28 | 76–123 | Channel manager scelto, sandbox e certificazione |
+| 5 | WP8 Routine | 14–22 | 90–145 | — |
+| 6 | WP3 CRM e campagne | 12–18 | 102–163 | Account Meta per WhatsApp; domini email |
+
+I test umani sull'interfaccia sono a fine ondata e sono già dentro le finestre. Equivalenza in calendario: finestre ÷ 10 = settimane **[ipotesi]**.
+
+**Limiti della stima:** misura grossolana basata sulle righe di codice; il ritmo misurato viene da poche settimane intense; le integrazioni con fornitori mai usati sono le più a rischio.
 
 **Percorso critico esterno** (da avviare subito, in parallelo):
 
 | Dipendenza | Blocca |
 |---|---|
-| NextPax / Octorate: risposte scritte + sandbox | WP2 |
-| DPIA; licenza e dati di addestramento del modello di riconoscimento del volto | WP7 |
-| Enti: documentazione Sicilia, web service Liguria/Calabria, contratto feratel; richieste di API ai portali | Parti di WP6 |
+| Channel manager: scelta (in verifica dal PO), risposte scritte e sandbox | WP2 |
+| Struttura reale con credenziali Alloggiati per il primo invio supervisionato | WP6a |
+| Licenza e dati di addestramento del modello di volto; DPIA | WP7 |
+| Enti: documentazione Sicilia, web service Liguria/Calabria, contratto feratel; richieste di API ai portali | WP6b |
 | Stripe: migrazione degli account delle agenzie ad Accounts v2 | WP4 |
 | Pareri ⚖: DAC7 per il sito di prenotazione, contratto Founding Partner, testi di consenso | Go-live |
 | Revisione madrelingua delle traduzioni in tedesco | WP1 per la CH tedesca |
@@ -540,6 +568,10 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 
 **Per CasaZen:**
 - confermare i prezzi con il business plan (D10), compresa la soglia sotto le 39 unità;
+- decidere se dopo N tentativi falliti il confronto del volto passa a un operatore, e il valore di N;
+- chiarire l'ordine tra QR code e messaggio con il codice di accesso (il QR deve essere completato prima del codice?);
+- definire il consenso dell'host alla delega per l'invio ad Alloggiati e la gestione delle credenziali;
+- supervisionare il primo invio ad Alloggiati su una struttura reale;
 - scegliere il channel manager (in verifica dal PO) e negoziare il minimo con decorrenza dal go-live;
 - scegliere e validare il modello di riconoscimento del volto (licenza commerciale e dati di addestramento) e misurare il costo dell'infrastruttura;
 - prezzo di DeepSeek su Bedrock UE;
@@ -607,7 +639,6 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 - <https://invoicetronic.com/en/pricing/>
 - <https://resend.com/pricing>
 - <https://api-docs.deepseek.com/quick_start/pricing>
-- <https://www.daily.co/pricing/video-sdk/>
 
 **CU, 770 e Entratel:**
 - <https://www.agenziaentrate.gov.it/portale/le-regole-per-gli-intermediari>
