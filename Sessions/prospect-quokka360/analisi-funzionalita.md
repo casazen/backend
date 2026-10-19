@@ -113,6 +113,19 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 
 **Prezzo NextPax:** €3,50/unità (€3,15 con fatturazione annuale), minimo €350/mese con 50 unità incluse ✓ (<https://nextpax.com/nextpax-pricing>).
 
+**Alternative verificate il 19/10 su una trentina di fornitori** (fonti ufficiali; scelta del channel manager **in verifica dal PO**). Nessuna rispetta per intero la regola R5 (contenuti e chat via API su Airbnb e Booking.com) a un costo inferiore:
+
+| Fornitore | Esito | Motivo |
+|---|---|---|
+| Octorate | Possibile, condizioni ignote | Contenuti e chat via API su Airbnb, Booking.com e Vrbo; serve una licenza Octorate a pagamento per ogni struttura; nessun prezzo pubblico per software vendor |
+| Rentals United | Parziale | Modifica dei contenuti (anche foto e CIN) sì; **il primo collegamento a una OTA solo dalla loro interfaccia**; API dei messaggi **ristretta ai nuovi clienti**, su preventivo |
+| BookingPal | Da chiedere | Sincronizzazione dei contenuti dichiarata; chat e prezzi non verificati |
+| Channex | No | Nessun contenuto via API (obiettivo 2027, non garantito); ~$380/mese per 250 unità, nessun minimo, staging gratuito |
+| Zodomus | No | Contenuti solo su Booking.com, nessuno su Airbnb; chat non documentata |
+| Beds24, WuBook, Smoobu, Lodgify, Rentlio, RoomCloud | No | Contenuti non scrivibili via API o solo dalla loro interfaccia; chat parziale |
+| Gestionali con API pubblica (Hostaway, Guesty, Hostfully, Hospitable, Uplisting, OwnerRez, iGMS) | No | Tecnicamente alcuni scrivono i contenuti, ma i termini vietano l'uso a un concorrente o non c'è scrittura dei contenuti; doppio abbonamento per l'agenzia |
+
+
 **Da sviluppare in CasaZen** (non è "solo configurazione", perché l'utente deve fare tutto da CasaZen):
 - client API del partner;
 - collegamento dei canali e mappatura;
@@ -665,6 +678,17 @@ Altre misure, senza effetto calcolato:
 - scegliere e validare il modello di riconoscimento del volto (licenza commerciale e dati di addestramento) e misurare il costo dell'infrastruttura;
 - prezzo di DeepSeek su Bedrock UE;
 - verifiche [NV] ancora aperte: Liguria e Calabria, Pegaso, Cinque Terre, Laax/St. Moritz/Andermatt, testi delle norme 2027.
+
+
+**Fornitori esterni e attività in attesa** (da aggiornare quando arrivano notizie):
+- **Channel manager:** scelta in verifica dal PO; richieste scritte (Allegato A) a NextPax e agli altri candidati; minimo con decorrenza dal go-live; ricerca delle alternative già in §3.1.
+- **Google Vacation Rentals:** inviare il modulo di interesse come partner di connessione (8–12 settimane); studiare la specifica del feed.
+- **Meta e Google Ads:** verifica dell'azienda e revisione dell'app Meta (anche per WhatsApp); token sviluppatore Google Ads.
+- **Riconoscimento del volto:** conferma scritta di fal sui dati di addestramento di AuraFace; collaudo su coppie reali di documenti e selfie.
+- **Alloggiati:** una struttura reale con credenziali per il primo invio supervisionato.
+- **Server MCP:** organizzazione verificata su OpenAI, piano Claude a pagamento, registro MCP.
+- **CU e 770 (in sospeso):** risposte di Namirial (SpinOk) e Centro Paghe non ancora richieste; conferma dell'AdE sull'invio della CU con Entratel del sostituto. Si riprende solo se cambia il canale di invio.
+- **Pareri ⚖:** DAC7 per il sito di prenotazione, contratto Founding Partner, testi di consenso, uso degli indirizzi cifrati per i pubblici di Meta.
 
 ---
 

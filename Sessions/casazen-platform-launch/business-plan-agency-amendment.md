@@ -84,3 +84,13 @@ Per ora l'**unico costo di terze parti è il channel manager**: NextPax è il ri
 | R12 | Fiscale: CU e 770 restano a carico dell'agenzia | Prodotto | Media/Media | Parità con i concorrenti su rendiconto e F24; riprendere i file se i clienti lo chiedono |
 | R13 | Confronto del volto in casa senza controllo che la persona sia viva | Tecnico | Media/Media | Soglia calibrata; registro dei tentativi; avviso immediato all'operatore alla prima foto non verificata (nuova foto o videochiamata) |
 | R14 | Perimetro del marketing: HubSpot-class (Professional $800/mese più $3.000) non entra in €4 a unità; le OTA limitano l'uso dei contatti degli ospiti; verifica di Meta, token Google Ads e accettazione come partner di Google Vacation Rentals fuori dal nostro controllo | Prodotto/Normativo | Media/Alta | Fase 1 con Google Vacation Rentals, Google Ads, Meta su pubblico con consenso e post organici; consenso facoltativo raccolto nel check-in; ChatGPT Ads e SEO automatico rimandati |
+
+---
+
+## Stato e prossimi passi (2026-10-19)
+
+- **Decisioni aperte:** scelta del channel manager (in verifica dal PO), prezzi definitivi (D10) e soglia sotto le 39 unità, riconferma della copertura dei €400 di costi fissi per Quokka.
+- **Da avviare subito (tempi esterni):** modulo di interesse a Google Vacation Rentals (8–12 settimane), verifica Meta e token Google Ads, richieste scritte al channel manager, conferma scritta sui dati di addestramento del modello di volto.
+- **In sospeso:** CU e 770 (senza un canale di invio all'AdE l'agenzia paga comunque il commercialista).
+- **Da aggiornare** quando arrivano notizie dai fornitori esterni.
+
