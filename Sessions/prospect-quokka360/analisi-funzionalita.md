@@ -1,6 +1,6 @@
 # CasaZen: tipo host Agenzia (B2B), analisi finale
 
-**Versione:** finale (v10), 2026-10-19. Sostituisce le versioni dal 14 al 15/10 (storico in git). Novità v5-v10: check-in con selfie dal vivo e confronto volto-documento in casa, con avviso all'operatore; invio ad Alloggiati automatico da CasaZen; nessuna integrazione con le serrature; fiscale alla pari dei concorrenti con CU e 770 in sospeso (§3.7); marketing fase 1 con Google Vacation Rentals, Google Ads, Meta su pubblico con consenso e post organici (§3.2); crescita di CasaZen con server MCP e strumento diagnostico gratuito; costi di terze parti (§5); prezzo di Quokka ~€2.300/mese; stima in finestre di Claude Code Max 20x con timeline (§7).
+**Versione:** finale (v10), 2026-10-19. Sostituisce le versioni dal 14 al 15/10 (storico in git). Novità v5-v10: check-in con selfie dal vivo e confronto volto-documento in casa, con avviso all'operatore; invio ad Alloggiati automatico da CasaZen; nessuna integrazione con le serrature; fiscale alla pari dei concorrenti con CU e 770 in sospeso (§3.7); marketing fase 1 con Google Vacation Rentals, Google Ads, Meta su pubblico con consenso e post organici (§3.2); crescita di CasaZen con server MCP e strumento diagnostico gratuito; costi di terze parti (§5); prezzo di Quokka ~€2.300/mese; stima in finestre settimanali di Claude Code Max 20x con timeline (§7).
 **Origine:** le 6 funzionalità che il prospect Quokka 360 ritiene indispensabili, generalizzate come prodotto per tutte le agenzie.
 **Stato:** analisi pre-vendita. Prezzi e numeri **da rivedere con il business plan**.
 
@@ -39,7 +39,7 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | Accesso | **Nessuna integrazione con le serrature**: Quokka usa serrature smart già installate e il **codice viene inviato per messaggio subito dopo il riconoscimento facciale** |
 | Marketing | Fase 1, per il livello Agenzia, in questo ordine: **Google Vacation Rentals** (CasaZen come partner di connessione) e **Google Ads** (annunci con i feed di viaggio), poi **Meta su pubblico con consenso**, poi **post organici**; con targeting dei clienti e campagne email e WhatsApp dal consenso raccolto nel check-in. **ChatGPT Ads rimandati.** Per la crescita di CasaZen: server MCP nelle directory di Claude e ChatGPT e strumento diagnostico gratuito sul CIN (§3.2) |
 | Prezzo (proposta) | Base **€7–9/unità/mese** a scaglioni (portale proprietari e check-in con riconoscimento del volto inclusi) + AI e Marketing €4. **Quokka: ~€2.300/mese** (250 unità, €9,20/unità, margine CasaZen ~57%). Da rivedere con il business plan (D10) |
-| Sviluppo | **~123–200 finestre di Claude Code Max 20x** (≈12–20 settimane equivalenti, ipotesi di 10 finestre a settimana) con 1 abbonamento + PO. Di queste ~8–14 sono per la crescita di CasaZen (server MCP, strumento diagnostico) e non stanno sul percorso di Quokka. Timeline per ondate in §7. Il percorso critico sono i tempi esterni (Google Vacation Rentals, verifica Meta, channel manager) |
+| Sviluppo | **~12–20 finestre settimanali di Claude Code Max 20x** (una finestra = una settimana di quota; ipotesi non verificabile) con 1 abbonamento + PO. Di queste ~0,8–1,4 sono per la crescita di CasaZen (server MCP, strumento diagnostico) e non stanno sul percorso di Quokka. Timeline per ondate in §7. Il percorso critico sono i tempi esterni (Google Vacation Rentals, verifica Meta, channel manager) |
 
 **Rischi principali:**
 1. tempi esterni: fornitori OTA, verifica identità, enti;
@@ -573,65 +573,65 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 
 ---
 
-## 7. Stima dello sviluppo (finestre di Claude Code Max 20x)
+## 7. Stima dello sviluppo (finestre di utilizzo settimanale di Claude Code Max 20x)
 
-**Unità di misura:** la **finestra** è una sessione di lavoro di 5 ore con 1 abbonamento Claude Code Max 20x. Niente giorni-persona.
+**Unità di misura:** la **finestra settimanale** è una settimana di utilizzo di 1 abbonamento Claude Code Max 20x, cioè la quota che si rinnova ogni 7 giorni. Niente giorni-persona e niente sessioni da 5 ore.
 
 **Calibrazione:**
 - il modulo Locazioni (~39k righe tra codice, test e frontend, con l'integrazione RLI verso l'AdE) è stato costruito in ~2,5 settimane attive: **~15k righe a settimana**;
-- **ipotesi di conversione: 1 settimana attiva = ~10 finestre** (2 al giorno per 5 giorni), cioè ~1.500 righe a finestra. **[NV]** Anthropic non pubblica limiti numerici del piano Max ✓ (<https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan>): il rapporto va ricalibrato dopo la prima ondata;
+- **ipotesi: 1 finestra settimanale = 1 settimana attiva al ritmo misurato** (~15k righe). **[NV]** Anthropic non pubblica limiti numerici del piano Max ✓ (<https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan>): non so se la quota settimanale regge quel ritmo con carichi pesanti. Va ricalibrata dopo la prima ondata;
 - le stime includono +25% per test umani sull'interfaccia e piccoli refactor; precisione ±40%.
 
-| Pacchetto | Finestre | Cosa pesa |
+| Pacchetto | Finestre settimanali | Cosa pesa |
 |---|---|---|
-| WP0 Nucleo comune: canali email e WhatsApp con controllo del consenso e lista di soppressione, coda di approvazione, servizio di generazione AI, costruttore di condizioni | 7–11 | Costruito una volta, usato da inbox, check-in, marketing e routine |
-| WP1 Fondamenta: `Agency`, ruoli `PropertyOwner`/`Staff`, paese/valuta/fuso, piani (interfaccia in tedesco rimandata) | 10–17 | Multitenancy, ruoli, traduzioni IT/EN, migrazioni |
-| WP2 OTA: client del channel manager, mappatura, disponibilità/tariffe, prenotazioni, editor contenuti, inbox, risposte AI (coda di approvazione e servizio AI del nucleo), recensioni | 15–24 | Il pacchetto più grande: tante superfici (editor, inbox, mappatura) e un partner esterno mai usato |
-| WP3a Marketing, nucleo: segmenti e targeting (costruttore del nucleo), email, WhatsApp, bozze AI, rendiconto delle campagne con UTM, dati strutturati e visibilità sui motori AI | 8–12 | Segmenti, consensi per canale, deliverability, template WhatsApp |
-| WP3b Google Vacation Rentals: partner di connessione (feed di proprietà, disponibilità e prezzi, controllo dell'accuratezza dei prezzi, collegamento con Hotel Center) | 8–14 | Specifica del feed non ancora studiata [NV], punteggio di accuratezza dei prezzi, approvazione di Google |
-| WP3c Pubblicità a pagamento (solo Agenzia): Google Ads con i feed di viaggio, poi Meta su pubblico con consenso; creazione dall'AI con approvazione, spesa e risultati | 11–17 | Token sviluppatore Google, revisione dell'app Meta, collegamento dei conti, rendiconto |
-| WP3d Post organici (Facebook, Instagram, LinkedIn, Google Business Profile) tramite servizio unificato, con coda di approvazione | 5–8 | Servizio di terzi, termini per rivenditori, approvazioni |
-| WP3e Crescita di CasaZen: server MCP (OAuth, strumenti di lettura e scrittura, directory) e strumento diagnostico gratuito sul CIN | 8–14 | Account demo, documentazione, revisione delle directory, pagina pubblica |
-| WP4 Proprietari: portale, rendiconti mensili con ritenute 21% e F24 precompilato (PDF dei rendiconti fiscali già esistenti), SDI per conto, file di bonifico, account Stripe a v2 | 12–19 | Rendiconti, migrazione Stripe |
-| WP5 Fornitori propri e staff | 4–7 | Estensione di moduli esistenti |
-| WP6a Alloggiati automatico: client SOAP, `Test`→`Send`, ricevuta e stato, job giornaliero, consenso, allarmi | 6–10 | Nessuna sandbox, invio irreversibile, ricevuta il giorno dopo |
-| WP6b Altri adempimenti: ISTAT, feratel, pagoPA, file e CSV per Ticino e comuni | 7–11 | Più enti, ognuno con il suo formato |
-| WP7 Check-in: selfie dal vivo, confronto volto-documento in casa, consenso, console dell'operatore (nuova foto o videochiamata, coda del nucleo), QR, messaggio con il codice (canali del nucleo), registro di verifica | 15–24 | Modello di volto, soglia da calibrare, anti foto di foto, videochiamata, cancellazione dei dati |
-| WP8 Routine: motore eventi/condizioni/azioni con attese (costruttore e azioni di messaggio del nucleo), libreria di routine pronte, registro (creazione da frase rimandata) | 7–12 | Motore con attese (Hangfire) |
-| **Totale** | **~123–200** (≈12–20 settimane equivalenti) | |
+| WP0 Nucleo comune: canali email e WhatsApp con controllo del consenso e lista di soppressione, coda di approvazione, servizio di generazione AI, costruttore di condizioni | 0,7–1,1 | Costruito una volta, usato da inbox, check-in, marketing e routine |
+| WP1 Fondamenta: `Agency`, ruoli `PropertyOwner`/`Staff`, paese/valuta/fuso, piani (interfaccia in tedesco rimandata) | 1,0–1,7 | Multitenancy, ruoli, traduzioni IT/EN, migrazioni |
+| WP2 OTA: client del channel manager, mappatura, disponibilità/tariffe, prenotazioni, editor contenuti, inbox, risposte AI (coda di approvazione e servizio AI del nucleo), recensioni | 1,5–2,4 | Il pacchetto più grande: tante superfici (editor, inbox, mappatura) e un partner esterno mai usato |
+| WP3a Marketing, nucleo: segmenti e targeting (costruttore del nucleo), email, WhatsApp, bozze AI, rendiconto delle campagne con UTM, dati strutturati e visibilità sui motori AI | 0,8–1,2 | Segmenti, consensi per canale, deliverability, template WhatsApp |
+| WP3b Google Vacation Rentals: partner di connessione (feed di proprietà, disponibilità e prezzi, controllo dell'accuratezza dei prezzi, collegamento con Hotel Center) | 0,8–1,4 | Specifica del feed non ancora studiata [NV], punteggio di accuratezza dei prezzi, approvazione di Google |
+| WP3c Pubblicità a pagamento (solo Agenzia): Google Ads con i feed di viaggio, poi Meta su pubblico con consenso; creazione dall'AI con approvazione, spesa e risultati | 1,1–1,7 | Token sviluppatore Google, revisione dell'app Meta, collegamento dei conti, rendiconto |
+| WP3d Post organici (Facebook, Instagram, LinkedIn, Google Business Profile) tramite servizio unificato, con coda di approvazione | 0,5–0,8 | Servizio di terzi, termini per rivenditori, approvazioni |
+| WP3e Crescita di CasaZen: server MCP (OAuth, strumenti di lettura e scrittura, directory) e strumento diagnostico gratuito sul CIN | 0,8–1,4 | Account demo, documentazione, revisione delle directory, pagina pubblica |
+| WP4 Proprietari: portale, rendiconti mensili con ritenute 21% e F24 precompilato (PDF dei rendiconti fiscali già esistenti), SDI per conto, file di bonifico, account Stripe a v2 | 1,2–1,9 | Rendiconti, migrazione Stripe |
+| WP5 Fornitori propri e staff | 0,4–0,7 | Estensione di moduli esistenti |
+| WP6a Alloggiati automatico: client SOAP, `Test`→`Send`, ricevuta e stato, job giornaliero, consenso, allarmi | 0,6–1,0 | Nessuna sandbox, invio irreversibile, ricevuta il giorno dopo |
+| WP6b Altri adempimenti: ISTAT, feratel, pagoPA, file e CSV per Ticino e comuni | 0,7–1,1 | Più enti, ognuno con il suo formato |
+| WP7 Check-in: selfie dal vivo, confronto volto-documento in casa, consenso, console dell'operatore (nuova foto o videochiamata, coda del nucleo), QR, messaggio con il codice (canali del nucleo), registro di verifica | 1,5–2,4 | Modello di volto, soglia da calibrare, anti foto di foto, videochiamata, cancellazione dei dati |
+| WP8 Routine: motore eventi/condizioni/azioni con attese (costruttore e azioni di messaggio del nucleo), libreria di routine pronte, registro (creazione da frase rimandata) | 0,7–1,2 | Motore con attese (Hangfire) |
+| **Totale** | **~12,3–20,0** (≈12–20 settimane se la quota regge) | |
 
 **Perché la stima è alta:**
 - sono **6 funzionalità più le fondamenta** di un nuovo tipo di host, non una funzione;
 - ogni pacchetto comprende backend, web, i18n in IT/EN (e DE), migrazioni, dati demo e test, come richiedono le regole del repo;
 - tre pacchetti pesano circa un terzo: WP2, WP7 e WP1;
-- marketing e routine (WP3a–WP3e + WP8) valgono circa il 38%; WP3e (8–14) è la crescita di CasaZen e non sta sul percorso di Quokka: senza di essa il totale per Quokka è ~115–186;
+- marketing e routine (WP3a–WP3e + WP8) valgono circa il 38%; WP3e (0,8–1,4) è la crescita di CasaZen e non sta sul percorso di Quokka: senza di essa il totale per Quokka è ~11,5–18,6;
 - il +25% per test umani e la precisione di ±40% allargano la forchetta.
 
 **Timeline** (un solo abbonamento, quindi le ondate sono in sequenza):
 
-| Ondata | Contenuto | Finestre | Cumulato | Gate esterni |
+| Ondata | Contenuto | Finestre settimanali | Cumulato | Gate esterni |
 |---|---|---|---|---|
-| 1 | WP1 Fondamenta + WP0 Nucleo comune | 17–28 | 17–28 | — |
-| 2 | WP6a Alloggiati automatico + WP7 Check-in | 21–34 | 38–62 | Struttura reale con credenziali per il primo invio supervisionato; conferma scritta sui dati di addestramento di AuraFace; collaudo su dati reali; DPIA |
-| 3 | WP6b + WP5 + WP4 | 23–37 | 61–99 | Stripe Accounts v2; documentazione ISTAT Sicilia; contratto feratel |
-| 4 | WP2 OTA | 15–24 | 76–123 | Channel manager scelto, sandbox e certificazione |
-| 5 | WP3a Marketing, nucleo + WP3b Google Vacation Rentals | 16–26 | 92–149 | Modulo di interesse a Google da inviare subito (8–12 settimane); referente tecnico, contratto sulla privacy, ≥5 immagini per annuncio; template WhatsApp approvati; domini email |
-| 6 | WP3c Google Ads + Meta Ads | 11–17 | 103–166 | Token sviluppatore Google (Basic automatico dopo la verifica del marchio); Hotel Center collegato; verifica dell'azienda e revisione dell'app Meta (anche per WhatsApp) |
-| 7 | WP3d Post organici + WP8 Routine | 12–20 | 115–186 | Servizio social unificato: lettura dei termini per rivenditori |
-| 8 | WP3e Crescita di CasaZen (server MCP e diagnostico) | 8–14 | 123–200 | Organizzazione verificata su OpenAI; piano Claude a pagamento per la directory; registro MCP |
+| 1 | WP1 Fondamenta + WP0 Nucleo comune | 1,7–2,8 | 1,7–2,8 | — |
+| 2 | WP6a Alloggiati automatico + WP7 Check-in | 2,1–3,4 | 3,8–6,2 | Struttura reale con credenziali per il primo invio supervisionato; conferma scritta sui dati di addestramento di AuraFace; collaudo su dati reali; DPIA |
+| 3 | WP6b + WP5 + WP4 | 2,3–3,7 | 6,1–9,9 | Stripe Accounts v2; documentazione ISTAT Sicilia; contratto feratel |
+| 4 | WP2 OTA | 1,5–2,4 | 7,6–12,3 | Channel manager scelto, sandbox e certificazione |
+| 5 | WP3a Marketing, nucleo + WP3b Google Vacation Rentals | 1,6–2,6 | 9,2–14,9 | Modulo di interesse a Google da inviare subito (8–12 settimane); referente tecnico, contratto sulla privacy, ≥5 immagini per annuncio; template WhatsApp approvati; domini email |
+| 6 | WP3c Google Ads + Meta Ads | 1,1–1,7 | 10,3–16,6 | Token sviluppatore Google (Basic automatico dopo la verifica del marchio); Hotel Center collegato; verifica dell'azienda e revisione dell'app Meta (anche per WhatsApp) |
+| 7 | WP3d Post organici + WP8 Routine | 1,2–2,0 | 11,5–18,6 | Servizio social unificato: lettura dei termini per rivenditori |
+| 8 | WP3e Crescita di CasaZen (server MCP e diagnostico) | 0,8–1,4 | 12,3–20,0 | Organizzazione verificata su OpenAI; piano Claude a pagamento per la directory; registro MCP |
 
-I test umani sull'interfaccia sono a fine ondata e sono già dentro le finestre. Equivalenza in calendario: finestre ÷ 10 = settimane **[ipotesi]**.
+I test umani sull'interfaccia sono a fine ondata e sono già dentro le finestre. Se la quota settimanale regge il ritmo misurato, una finestra settimanale è una settimana di calendario **[ipotesi]**; se non regge, le ondate si allungano.
 
-**Ottimizzazione e variazioni** (stima nuova ~123–200 contro 103–165 della versione precedente):
+**Ottimizzazione e variazioni** (stima nuova ~12,3–20,0 contro 10,3–16,5 della versione precedente, in finestre settimanali):
 
 | Pacchetto | Prima | Ora | Variazione | Perché |
 |---|---|---|---|---|
-| WP1 Fondamenta | 12–20 | 10–17 | −2/−3 | Interfaccia in tedesco rimandata fino a un cliente della Svizzera tedesca |
-| WP8 Routine | 9–15 | 7–12 | −2/−3 | Creazione da una frase rimandata; restano motore, costruttore e libreria |
-| Marketing e pubblicità (WP3a–WP3e) | 16–24 | 40–65 | +24/+41 | Aggiunti Google Vacation Rentals (8–14), Google Ads con Meta (11–17), post organici (5–8) e crescita di CasaZen (8–14); tolta la preparazione degli annunci per ChatGPT |
-| **Totale** | **103–165** | **123–200** | **+20/+35** | |
+| WP1 Fondamenta | 1,2–2,0 | 1,0–1,7 | −0,2/−0,3 | Interfaccia in tedesco rimandata fino a un cliente della Svizzera tedesca |
+| WP8 Routine | 0,9–1,5 | 0,7–1,2 | −0,2/−0,3 | Creazione da una frase rimandata; restano motore, costruttore e libreria |
+| Marketing e pubblicità (WP3a–WP3e) | 1,6–2,4 | 4,0–6,5 | +2,4/+4,1 | Aggiunti Google Vacation Rentals (0,8–1,4), Google Ads con Meta (1,1–1,7), post organici (0,5–0,8) e crescita di CasaZen (0,8–1,4); tolta la preparazione degli annunci per ChatGPT |
+| **Totale** | **10,3–16,5** | **12,3–20,0** | **+2,0/+3,5** | |
 
-Il totale sale perché il PO ha aggiunto perimetro, non perché i pacchetti esistenti siano peggiorati. **Le finestre per Quokka** (senza WP3e, crescita di CasaZen) sono **~115–186**.
+Il totale sale perché il PO ha aggiunto perimetro, non perché i pacchetti esistenti siano peggiorati. **Le finestre per Quokka** (senza WP3e, crescita di CasaZen) sono **~11,5–18,6**.
 
 Mantenuti come prima: recensioni via API (WP2) e adempimenti regionali (WP6b).
 
@@ -639,7 +639,7 @@ Altre misure, senza effetto calcolato:
 - **avviare subito gli iter esterni** (modulo di interesse a Google Vacation Rentals, verifica Meta, WhatsApp, token Google Ads, sandbox del channel manager): sono i tempi più lunghi e non consumano finestre;
 - ogni ondata chiude con un percorso completo (dal dato alla schermata), non con moduli a metà;
 - la coda di approvazione, il servizio AI e il rendiconto con UTM sono del nucleo e servono insieme a Google Ads, Meta, post organici ed email;
-- **ulteriori riduzioni solo tagliando perimetro** (per esempio WP3d o WP3e) o con più abbonamenti in parallelo: questi ultimi accorciano il calendario ma non il numero di finestre.
+- **ulteriori riduzioni solo tagliando perimetro** (per esempio WP3d o WP3e) o con più abbonamenti in parallelo: questi ultimi accorciano il calendario ma non il numero di finestre settimanali.
 
 **Percorso critico esterno** (da avviare subito, in parallelo):
 

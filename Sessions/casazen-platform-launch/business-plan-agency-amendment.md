@@ -70,7 +70,7 @@ Per ora l'**unico costo di terze parti è il channel manager**: NextPax è il ri
 
 - Il pavimento di ARR del primo anno (€90.000 con 40–60 account a €180–200) non include il livello Agenzia. Con Quokka sale di ~€27.600.
 - Un'agenzia da 250 unità vale quanto circa 12 account B2C a €190 di ARPU: il conteggio degli account non è più confrontabile tra i due livelli. Gli obiettivi del §10 vanno letti in ARR e non in numero di account.
-- **Tempi di sviluppo del livello Agenzia:** ~123–200 finestre di Claude Code Max 20x (≈12–20 settimane equivalenti, ipotesi di 10 finestre a settimana **[EST]**), in otto ondate (§7 dell'analisi). Va sommato alle fasi del §10 dopo la devil's review.
+- **Tempi di sviluppo del livello Agenzia:** ~12–20 finestre settimanali di Claude Code Max 20x (una finestra = una settimana di quota; ipotesi non verificabile **[EST]**), in otto ondate (§7 dell'analisi). Va sommato alle fasi del §10 dopo la devil's review.
 
 ---
 
