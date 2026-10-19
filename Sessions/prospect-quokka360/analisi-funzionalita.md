@@ -1,6 +1,6 @@
 # CasaZen: tipo host Agenzia (B2B), analisi finale
 
-**Versione:** finale (v8), 2026-10-19. Sostituisce le versioni dal 14 al 15/10 (storico in git). Novità v5-v8: check-in con selfie dal vivo e confronto volto-documento sviluppato in casa, con avviso all'operatore alla prima foto non verificata; invio ad Alloggiati automatico da CasaZen; nessuna integrazione con le serrature; fiscale alla pari dei concorrenti, CU e 770 fuori scope (§3.7); perimetro del marketing con AI ridefinito (§3.2); costi di terze parti (§5); prezzo di Quokka ~€2.300/mese; stima in finestre di Claude Code Max 20x con timeline (§7).
+**Versione:** finale (v9), 2026-10-19. Sostituisce le versioni dal 14 al 15/10 (storico in git). Novità v5-v9: check-in con selfie dal vivo e confronto volto-documento in casa, con avviso all'operatore; invio ad Alloggiati automatico da CasaZen; nessuna integrazione con le serrature; fiscale alla pari dei concorrenti, CU e 770 fuori scope (§3.7); marketing fase 1 con targeting, email, WhatsApp e pubblicità a pagamento solo B2B (§3.2); costi di terze parti (§5); prezzo di Quokka ~€2.300/mese; stima in finestre di Claude Code Max 20x, ottimizzata, con timeline (§7).
 **Origine:** le 6 funzionalità che il prospect Quokka 360 ritiene indispensabili, generalizzate come prodotto per tutte le agenzie.
 **Stato:** analisi pre-vendita. Prezzi e numeri **da rivedere con il business plan**.
 
@@ -37,8 +37,9 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | Ritenuta 21% | Fiscale **alla pari dei concorrenti**: rendiconto mensile delle ritenute del 21% e **F24 precompilato** (codice 1919) nel portale proprietari. **File CU e 770: fuori scope** (nessun concorrente verificato li produce); pagamento e invio restano delegati all'agenzia (§3.7) |
 | Check-in | Selfie dal vivo e confronto con la foto del documento, **sviluppato in casa**. Se la prima foto non è verificata, **l'operatore è avvisato subito** e sceglie se chiedere una nuova foto o verificare in videochiamata. QR code sempre come ultima verifica; codice di accesso inviato per messaggio solo dopo la verifica; **invio ad Alloggiati automatico da CasaZen**; cancellazione alla ricevuta (§3.6) |
 | Accesso | **Nessuna integrazione con le serrature**: Quokka usa serrature smart già installate e il **codice viene inviato per messaggio subito dopo il riconoscimento facciale** |
+| Marketing | Fase 1, per il livello Agenzia: **targeting dei clienti** con segmenti dal CRM, **campagne email e WhatsApp** con il consenso raccolto nel check-in, **pubblicità a pagamento su Meta (Facebook, Instagram) e su ChatGPT**, solo B2B. Post organici, Google Ads e SEO automatico nelle fasi successive (§3.2) |
 | Prezzo (proposta) | Base **€7–9/unità/mese** a scaglioni (portale proprietari e check-in con riconoscimento del volto inclusi) + AI e Marketing €4. **Quokka: ~€2.300/mese** (250 unità, €9,20/unità, margine CasaZen ~57%). Da rivedere con il business plan (D10) |
-| Sviluppo | **~112–178 finestre di Claude Code Max 20x** (≈11–18 settimane equivalenti, ipotesi di 10 finestre a settimana) con 1 abbonamento + PO. Timeline per ondate in §7. Il percorso critico sono i tempi esterni |
+| Sviluppo | **~103–165 finestre di Claude Code Max 20x** (≈10–16,5 settimane equivalenti, ipotesi di 10 finestre a settimana) con 1 abbonamento + PO, dopo l'ottimizzazione con un nucleo comune (§7). Il percorso critico sono i tempi esterni (verifica Meta, WhatsApp, Google Vacation Rentals, channel manager) |
 
 **Rischi principali:**
 1. tempi esterni: fornitori OTA, verifica identità, enti;
@@ -65,8 +66,9 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | R12 | **Fattibilità tecnica** (2026-10-15): se un flusso è **tecnicamente possibile** (esiste un'API), lo esegue CasaZen e il costo è suo; caso per caso si decide se venderlo come extra quando è un servizio a pagamento. Se **non è tecnicamente possibile**, CasaZen prepara tutto (file, dati, istruzioni, promemoria, archivio della ricevuta) ma **l'esecuzione resta all'host o all'agenzia**. Niente back-office umano di CasaZen |
 | R13 | **Selfie dal vivo e confronto volto-documento in casa** (2026-10-19): l'ospite scatta un selfie con la fotocamera (non si accettano foto di foto) e CasaZen lo confronta con il documento. Alla prima foto non verificata l'operatore è avvisato subito e sceglie: nuova foto o videochiamata. Il codice di accesso parte solo dopo la verifica. Consenso esplicito; immagini cancellate subito dopo il confronto, copie dei documenti alla ricevuta di Alloggiati |
 | R14 | **Fiscale** (2026-10-19): impeccabile e alla pari dei concorrenti, nello stesso modo. Rendiconto mensile delle ritenute e F24 precompilato; **CU e 770 fuori scope** (nessun concorrente verificato li produce); pagamento e invio all'AdE delegati all'agenzia (§3.7) |
-| R15 | **Costi di terze parti** (2026-10-19): per ora l'unico costo di integrazione è il channel manager; con l'opzione AI e Marketing attiva si aggiungono email e API social (~$21–55 al mese per agenzia, §5.1). Nessun fornitore di verifica d'identità, nessuna integrazione con le serrature, nessun servizio di invio CU/770 |
+| R15 | **Costi di terze parti** (2026-10-19): per ora l'unico costo di integrazione è il channel manager; con l'opzione AI e Marketing attiva si aggiungono email e testi AI (~$9–19 al mese per agenzia, §5.1). Nessun fornitore di verifica d'identità, nessuna integrazione con le serrature, nessun servizio di invio CU/770 |
 | R16 | **Alloggiati inviato direttamente da CasaZen** (2026-10-19), senza conferma manuale dell'host: invio automatico, ricevuta archiviata, stato "Inviato" solo con la ricevuta (§3.6) |
+| R17 | **Marketing fase 1** (2026-10-19): targeting dei clienti, campagne email e WhatsApp, pubblicità a pagamento su social e ChatGPT solo per il livello Agenzia. Il consenso al marketing si chiede a tutti gli ospiti nel check-in, in modo facoltativo (§3.2) |
 
 ---
 
@@ -87,6 +89,8 @@ OTA, CRM, fiscalità e routine sono disponibili anche al B2C, con limiti per pia
 | D11 | Fiscale: parità con i concorrenti (rendiconto mensile, F24 precompilato); CU e 770 fuori scope; pagamento e invio delegati all'agenzia | Deciso il 19/10 |
 | D12 | Alloggiati: invio automatico da CasaZen, senza conferma manuale (richiede il client del servizio, la gestione della ricevuta e il consenso dell'host come incaricato) | Deciso il 19/10 |
 | D13 | Riconoscimento del volto con modelli open source: AuraFace-v1 (confronto, riserva legale sui dati di addestramento), MiniFASNet (anti foto di foto), SFace come ripiego; collaudo su dati reali prima del lancio | Deciso il 19/10 |
+| D14 | Marketing fase 1: targeting, email, WhatsApp e pubblicità a pagamento (Meta e ChatGPT) solo B2B; post organici, Google Ads e SEO rimandati. Su ChatGPT, finché CasaZen non è partner OpenAI, CasaZen prepara l'annuncio e l'agenzia lo carica nel proprio Ads Manager (R12) | Deciso il 19/10, con riserve sulla verifica di Meta e sull'accesso all'API di ChatGPT |
+| D15 | Stima ottimizzata con un nucleo comune (canali con consenso, coda di approvazione, servizio AI, costruttore di condizioni) usato da inbox, check-in, marketing e routine | Deciso il 19/10 |
 
 ---
 
@@ -159,18 +163,23 @@ Anche Holo e BabyLoveGrowth sono livelli di creazione e pubblicazione: non possi
 
 | Fase | Contenuto |
 |---|---|
-| **1 (WP3a)** | CRM con la funzione di controllo del consenso, segmenti e lista di soppressione per agenzia. **Email** su Resend: un dominio per agenzia con guida SPF/DKIM/DMARC, disiscrizione con un clic, **tracciamento delle aperture spento** (il Garante richiede il consenso preventivo per i pixel dal 29/10/2026 ✓). **Bozze AI** in IT/EN/DE/FR con approvazione umana. **Visibilità sui motori AI:** consentire il crawler di ricerca di OpenAI (OAI-SearchBot ✓), dati strutturati corretti per le pagine di prenotazione diretta, e candidatura a **Google Vacation Rentals** (gratuita, 8–12 settimane, contratto con Google ✓) |
-| **2 (WP3b)** | **Social tramite API unificata** (Facebook, Instagram, LinkedIn, Google Business Profile) con approvazione prima della pubblicazione; **WhatsApp** con template e consenso per categoria; rendiconto di invii, clic e prenotazioni da campagna (UTM) |
-| **Dopo** | Creazione di pubblicità (Meta, Google, ChatGPT Ads); articoli SEO automatici o rinvio a strumenti come BabyLoveGrowth; sincronizzazione con HubSpot per le agenzie che lo usano; esperimento di app in ChatGPT |
+| **1 (WP3a + WP3b)** | **Targeting:** segmenti dal CRM (origine, soggiorni, paese, lingua, spesa, periodo, proprietà) con lo stesso costruttore di condizioni delle routine, controllo del consenso e lista di soppressione per agenzia. **Email** su Resend: un dominio per agenzia con guida SPF/DKIM/DMARC, disiscrizione con un clic, **aperture non tracciate** (il Garante richiede il consenso preventivo per i pixel dal 29/10/2026 ✓). **WhatsApp** con Embedded Signup e template con consenso per categoria. **Bozze AI** in IT/EN/DE/FR con approvazione umana. **Pubblicità a pagamento, solo Agenzia:** Meta (Facebook e Instagram) e ChatGPT (vedi sotto). Rendiconto di invii, clic, spesa e prenotazioni da campagna (UTM). **Visibilità sui motori AI:** crawler di ricerca di OpenAI consentito (OAI-SearchBot ✓), dati strutturati sulle pagine di prenotazione diretta, candidatura a **Google Vacation Rentals** (gratuita, 8–12 settimane, contratto con Google ✓) |
+| **Dopo** | Post organici su Facebook, Instagram, LinkedIn e Google Business Profile tramite API unificata; Google Ads; articoli SEO automatici o rinvio a strumenti come BabyLoveGrowth; sincronizzazione con HubSpot per le agenzie che lo usano; esperimento di app in ChatGPT |
 | **Fuori** | Reti di backlink e commenti falsi su Reddit/Quora, pubblico "lookalike" costruito su ospiti OTA, importazione di email OTA in liste marketing, liste acquistate, pubblicazione senza approvazione, TikTok, X e Pinterest come predefiniti (su X un post con link costa $0,20) |
+
+**Pubblicità a pagamento (solo livello Agenzia, fase 1):**
+- **Meta (Facebook e Instagram):** CasaZen crea campagne, gruppi di inserzioni e inserzioni con testi e immagini dell'AI, approvati dall'agenzia, tramite l'API Marketing sul **conto pubblicitario dell'agenzia**, collegato con accesso OAuth. La spesa è fatturata da Meta all'agenzia. Per un'app che serve altre aziende servono revisione dell'app, verifica dell'azienda e accesso avanzato (settimane [NV]); la verifica è la stessa del WhatsApp Embedded Signup. Se gli annunci di affitti brevi rientrino nelle categorie speciali di Meta che limitano il targeting è [NV].
+- **ChatGPT:** esiste l'Ads Manager in beta (inserzionisti aziendali; annunci mostrati agli utenti Free e Go; Italia ✓, Svizzera [NV]). **Non sono supportati gli account creati dalle agenzie per conto dei clienti** e l'API è **riservata ai partner** ✓. In fase 1 CasaZen **prepara** l'annuncio (testo, parole chiave, target, UTM) e **l'agenzia lo carica** nel proprio Ads Manager (R12). La creazione via API richiede che CasaZen diventi partner OpenAI: come ottenerlo non è pubblico [NV].
+- **Elenchi di clienti come pubblico** (pubblici personalizzati o simili): significa comunicare indirizzi, in forma cifrata, a Meta. Solo contatti con consenso e con l'informativa che lo prevede ⚖; mai ospiti OTA senza consenso.
+- **Solo B2B:** non disponibile nel B2C. Spesa pubblicitaria e tariffe delle piattaforme a carico dell'agenzia.
 
 **ChatGPT, cosa è reale (fonti OpenAI, 19/10):** non esiste un "pubblicare su ChatGPT". Esistono la **pubblicità in ChatGPT** (Ads Manager in beta, solo per inserzionisti aziendali; le agenzie non possono aprire account per conto dei clienti; mostrata solo agli utenti Free e Go; l'API per i partner richiede un accordo con OpenAI), i feed prodotto (pensati per il commercio al dettaglio, ospitalità [NV]) e le app di ChatGPT (nessuna garanzia di visibilità). Google dichiara che per i riepiloghi AI non servono requisiti aggiuntivi né file speciali: conta la qualità del sito, i dati strutturati e le recensioni. La visibilità più concreta è **Google Vacation Rentals**.
 
-**Social via API:** collegarsi direttamente a Meta, LinkedIn e TikTok richiede lo stato di fornitore tecnico di Meta, verifica di LinkedIn e audit di TikTok. È più realistico un servizio unificato che detiene le approvazioni: **Ayrshare** (Business $599/mese per 30 profili, poi $8,99 ciascuno fino a 100) o **Zernio** (primi 2 account gratis, poi $1–6 per account), da scegliere dopo aver letto i termini per i rivenditori (non verificati). Postiz in proprio ha licenza AGPL e richiederebbe le approvazioni delle piattaforme.
+**Social via API (fase successiva, per i post organici):** collegarsi direttamente a Meta, LinkedIn e TikTok richiede lo stato di fornitore tecnico di Meta, verifica di LinkedIn e audit di TikTok. È più realistico un servizio unificato che detiene le approvazioni: **Ayrshare** (Business $599/mese per 30 profili, poi $8,99 ciascuno fino a 100) o **Zernio** (primi 2 account gratis, poi $1–6 per account), da scegliere dopo aver letto i termini per i rivenditori (non verificati). Postiz in proprio ha licenza AGPL e richiederebbe le approvazioni delle piattaforme.
 
-**Costi e prezzo:** terze parti circa **$21–55 al mese per agenzia** (email $8–16, API social $12–36, testi AI $1–3; stima su prezzi pubblicati), pari al 2–6% di €1.000 (250 unità × €4). WhatsApp e pubblicità sono a carico dell'agenzia. Una piattaforma come HubSpot Professional ($800 più $3.000 di avvio) non entra in €4 a unità. Per le agenzie piccole il costo fisso pesa di più (a 20 unità sono €80): proposta di un minimo mensile o dei social come opzione a parte.
+**Costi e prezzo:** terze parti circa **$9–19 al mese per agenzia** (email $8–16, testi AI $1–3; stima su prezzi pubblicati), pari all'1–2% di €1.000 (250 unità × €4). Quando si aggiungeranno i post organici, +$12–36 per le API social. WhatsApp, spesa pubblicitaria e tariffe di Meta e ChatGPT sono a carico dell'agenzia; nessuna tariffa pubblicata per l'uso delle API pubblicitarie [NV]. Una piattaforma come HubSpot Professional ($800 più $3.000 di avvio) non entra in €4 a unità. Per le agenzie piccole il costo fisso pesa di più (a 20 unità sono €80): proposta di un minimo mensile.
 
-**Cosa è realistico a €4 a unità:** CRM con consensi, email, bozze AI e pianificazione dei social, non una suite come HubSpot.
+**Cosa è realistico a €4 a unità:** CRM con consensi, targeting, email, WhatsApp, bozze AI e creazione di annunci con approvazione. Non è una suite come HubSpot (SEO, backlink, post organici su più reti, attribuzione completa).
 
 
 ### 3.3 Portale proprietari, pagamenti e fatturazione (solo B2B)
@@ -390,7 +399,7 @@ Prezzi ufficiali, IVA esclusa, al 2026-10-19. Per prudenza USD = EUR 1:1.
 | Voce | Costo | Nota |
 |---|---|---|
 | Channel manager (NextPax, **scelta in verifica dal PO**) | Minimo €350/mese con le prime 50 unità incluse; poi €3,15/unità (annuale) o €3,50 (mensile) ✓ | Da negoziare: minimo con decorrenza dal go-live, non dalla firma |
-| AI e Marketing (se attivo) | ~$21–55 al mese per agenzia: email su Resend con piano condiviso $8–16, API social $12–36, testi AI $1–3 (stima su prezzi pubblicati) | WhatsApp e pubblicità a carico dell'agenzia |
+| AI e Marketing (se attivo) | ~$9–19 al mese per agenzia: email su Resend con piano condiviso $8–16, testi AI $1–3 (stima su prezzi pubblicati); +$12–36 per le API social solo quando si aggiungono i post organici | WhatsApp, spesa pubblicitaria e tariffe di Meta e ChatGPT a carico dell'agenzia |
 
 Verifica del 19/10 su una trentina di fornitori (fonti ufficiali): nessuno rispetta la regola R5 (contenuti e chat via API su Airbnb e Booking.com) a un costo inferiore. Channex (~$380/mese per 250 unità) non ha contenuti via API; Octorate non ha prezzi pubblici per software vendor; Rentals United è da quotare. Il confronto completo non è ancora nel documento.
 
@@ -417,7 +426,7 @@ Non sono né costi né ricavi per CasaZen:
 - **Scenario B (Quokka):** il prezzo non si abbassa (19/10): ~€2.300 al mese, circa il 16% sotto il listino di €2.750, per un pacchetto con portale proprietari, check-in con riconoscimento del volto, CRM e marketing, routine. Il margine di CasaZen è €1.320, il 57%.
 - **Soglia di convenienza:** il minimo di €350 supera il ricavo del Base (€9) sotto le **39 unità**: a 30 unità si incassano €270 e si pagano €350. Va rivisto lo scaglione o il minimo (D10).
 - **Margine lordo:** 44–64% a seconda del pacchetto, perché il channel manager è un costo variabile per unità. Il target di margine lordo ≥80% del business plan vale per il B2C, non per il tier Agenzia.
-- **AI e Marketing** (+€4/unità, +€1.000 al mese per 250 unità): costo di terze parti ~$21–55 per agenzia (§5.1), cioè il 2–6% del ricavo.
+- **AI e Marketing** (+€4/unità, +€1.000 al mese per 250 unità): costo di terze parti ~$9–19 per agenzia (§5.1), cioè l'1–2% del ricavo.
 - **Non conteggiati:** costi di piattaforma (hosting, email, SDI, AI, video, abbonamento di sviluppo), tempo del PO, pareri legali e sviluppo (§7).
 
 ---
@@ -554,37 +563,57 @@ Prezzi per unità al mese, IVA esclusa, **con pagamento annuale** (+10% con paga
 
 | Pacchetto | Finestre | Cosa pesa |
 |---|---|---|
+| WP0 Nucleo comune: canali email e WhatsApp con controllo del consenso e lista di soppressione, coda di approvazione, servizio di generazione AI, costruttore di condizioni | 7–11 | Costruito una volta, usato da inbox, check-in, marketing e routine |
 | WP1 Fondamenta: `Agency`, ruoli `PropertyOwner`/`Staff`, paese/valuta/fuso, tedesco, piani | 12–20 | Multitenancy, ruoli, traduzioni IT/EN/DE, migrazioni |
-| WP2 OTA: client del channel manager, mappatura, disponibilità/tariffe, prenotazioni, editor contenuti, inbox, risposte AI, recensioni | 18–28 | Il pacchetto più grande: tante superfici (editor, inbox, mappatura) e un partner esterno mai usato |
-| WP3a CRM con controllo del consenso, email su Resend, bozze AI, dati strutturati e candidatura a Google Vacation Rentals | 12–18 | Consensi per canale, segmenti, deliverability, testi AI |
-| WP3b Social tramite API unificata, WhatsApp con template, rendiconto delle campagne | 8–12 | Servizio social di terzi, approvazioni Meta, UTM |
-| WP4 Proprietari: portale, rendiconti mensili con ritenute e F24 precompilato, SDI per conto, file di bonifico, account Stripe a v2 | 14–22 | Rendiconti, PDF, migrazione Stripe |
+| WP2 OTA: client del channel manager, mappatura, disponibilità/tariffe, prenotazioni, editor contenuti, inbox, risposte AI (coda di approvazione e servizio AI del nucleo), recensioni | 15–24 | Il pacchetto più grande: tante superfici (editor, inbox, mappatura) e un partner esterno mai usato |
+| WP3a Marketing: segmenti e targeting (costruttore del nucleo), email, WhatsApp, bozze AI, rendiconto delle campagne, dati strutturati e candidatura a Google Vacation Rentals | 8–12 | Segmenti, consensi per canale, deliverability, template WhatsApp |
+| WP3b Pubblicità a pagamento (solo Agenzia): campagne Meta tramite API, preparazione degli annunci per ChatGPT, spesa e risultati | 8–12 | Revisione dell'app Meta, collegamento dei conti pubblicitari, rendiconto |
+| WP4 Proprietari: portale, rendiconti mensili con ritenute 21% e F24 precompilato (PDF dei rendiconti fiscali già esistenti), SDI per conto, file di bonifico, account Stripe a v2 | 12–19 | Rendiconti, migrazione Stripe |
 | WP5 Fornitori propri e staff | 4–7 | Estensione di moduli esistenti |
 | WP6a Alloggiati automatico: client SOAP, `Test`→`Send`, ricevuta e stato, job giornaliero, consenso, allarmi | 6–10 | Nessuna sandbox, invio irreversibile, ricevuta il giorno dopo |
 | WP6b Altri adempimenti: ISTAT, feratel, pagoPA, file e CSV per Ticino e comuni | 7–11 | Più enti, ognuno con il suo formato |
-| WP7 Check-in: selfie dal vivo, confronto volto-documento in casa, consenso, avviso e console dell'operatore (nuova foto o videochiamata), QR, messaggio con il codice, registro di verifica | 17–28 | Modello di volto, soglia da calibrare, anti foto di foto, console operatore, videochiamata, cancellazione dei dati |
-| WP8 Routine: motore eventi/condizioni/azioni con attese, costruttore web, azioni, creazione da frase, libreria, registro | 14–22 | Motore con attese (Hangfire) e costruttore |
-| **Totale** | **~112–178** (≈11–18 settimane equivalenti) | |
+| WP7 Check-in: selfie dal vivo, confronto volto-documento in casa, consenso, console dell'operatore (nuova foto o videochiamata, coda del nucleo), QR, messaggio con il codice (canali del nucleo), registro di verifica | 15–24 | Modello di volto, soglia da calibrare, anti foto di foto, videochiamata, cancellazione dei dati |
+| WP8 Routine: motore eventi/condizioni/azioni con attese (costruttore e azioni di messaggio del nucleo), creazione da frase, libreria, registro | 9–15 | Motore con attese (Hangfire) |
+| **Totale** | **~103–165** (≈10–16,5 settimane equivalenti) | |
 
 **Perché la stima è alta:**
 - sono **6 funzionalità più le fondamenta** di un nuovo tipo di host, non una funzione;
 - ogni pacchetto comprende backend, web, i18n in IT/EN (e DE), migrazioni, dati demo e test, come richiedono le regole del repo;
-- tre pacchetti pesano oltre il 40%: WP2, WP7 e WP1;
-- CRM, marketing e routine (WP3a + WP3b + WP8) valgono circa il 30%: sono rimandabili a una seconda uscita, ma il marketing è parte di ciò che Quokka paga;
+- tre pacchetti pesano circa il 40%: WP2, WP7 e WP1;
+- marketing e routine (WP3a + WP3b + WP8) valgono circa un quarto: sono rimandabili a una seconda uscita, ma il marketing è parte di ciò che Quokka paga;
 - il +25% per test umani e la precisione di ±40% allargano la forchetta.
 
 **Timeline** (un solo abbonamento, quindi le ondate sono in sequenza):
 
 | Ondata | Contenuto | Finestre | Cumulato | Gate esterni |
 |---|---|---|---|---|
-| 1 | WP1 Fondamenta | 12–20 | 12–20 | — |
-| 2 | WP6a Alloggiati automatico + WP7 Check-in | 23–38 | 35–58 | Struttura reale con credenziali per il primo invio supervisionato; conferma scritta sui dati di addestramento di AuraFace; collaudo su dati reali; DPIA |
-| 3 | WP6b + WP5 + WP4 | 25–40 | 60–98 | Stripe Accounts v2; documentazione ISTAT Sicilia; contratto feratel |
-| 4 | WP2 OTA | 18–28 | 78–126 | Channel manager scelto, sandbox e certificazione |
-| 5 | WP8 Routine | 14–22 | 92–148 | — |
-| 6 | WP3a + WP3b CRM, campagne e social | 20–30 | 112–178 | Account Meta (WhatsApp e social); domini email; candidatura a Google Vacation Rentals da avviare prima (8–12 settimane) |
+| 1 | WP1 Fondamenta + WP0 Nucleo comune | 19–31 | 19–31 | — |
+| 2 | WP6a Alloggiati automatico + WP7 Check-in | 21–34 | 40–65 | Struttura reale con credenziali per il primo invio supervisionato; conferma scritta sui dati di addestramento di AuraFace; collaudo su dati reali; DPIA |
+| 3 | WP6b + WP5 + WP4 | 23–37 | 63–102 | Stripe Accounts v2; documentazione ISTAT Sicilia; contratto feratel |
+| 4 | WP2 OTA | 15–24 | 78–126 | Channel manager scelto, sandbox e certificazione |
+| 5 | WP3a + WP3b Marketing e pubblicità | 16–24 | 94–150 | Verifica dell'azienda e revisione dell'app Meta (anche per WhatsApp); template WhatsApp approvati; accesso all'API pubblicitaria di ChatGPT, altrimenti solo preparazione; domini email; Google Vacation Rentals da avviare prima (8–12 settimane) |
+| 6 | WP8 Routine | 9–15 | 103–165 | — |
 
 I test umani sull'interfaccia sono a fine ondata e sono già dentro le finestre. Equivalenza in calendario: finestre ÷ 10 = settimane **[ipotesi]**.
+
+**Ottimizzazione** (stima nuova ~103–165 contro 112–178 della versione precedente: **−9/−13 finestre**, anche con la pubblicità a pagamento aggiunta):
+
+| Pacchetto | Prima | Ora | Variazione | Perché |
+|---|---|---|---|---|
+| WP0 Nucleo comune | — | 7–11 | +7/+11 | Canali con consenso, coda di approvazione, servizio AI e costruttore di condizioni costruiti una volta |
+| WP2 OTA | 18–28 | 15–24 | −3/−4 | Le risposte AI usano la coda di approvazione e il servizio AI; il modello di adattatori per i canali esiste già |
+| WP3 Marketing e pubblicità | 20–30 | 16–24 | −4/−6 | Email, WhatsApp e consensi dal nucleo; i post organici sono rimandati; si aggiunge la pubblicità |
+| WP4 Proprietari | 14–22 | 12–19 | −2/−3 | Riuso dei PDF dei rendiconti fiscali già nel codice (`FiscalReportDocuments`) |
+| WP7 Check-in | 17–28 | 15–24 | −2/−4 | Messaggio con il codice e console dell'operatore usano canali e coda del nucleo |
+| WP8 Routine | 14–22 | 9–15 | −5/−7 | Il costruttore di condizioni e le azioni di messaggio vengono dal nucleo |
+| **Totale** | **112–178** | **103–165** | **−9/−13** | |
+
+Altre misure, senza effetto calcolato:
+- **avviare subito gli iter esterni** (verifica Meta, WhatsApp, Google Vacation Rentals, sandbox del channel manager, richiesta a OpenAI): sono i tempi più lunghi e non consumano finestre;
+- ogni ondata chiude con un percorso completo (dal dato alla schermata), non con moduli a metà;
+- traduzioni con l'AI e revisione madrelingua del tedesco una sola volta, a fine ondata;
+- **ulteriori riduzioni solo tagliando perimetro** (WP3b, WP8) o con più abbonamenti in parallelo: questi ultimi accorciano il calendario ma non il numero di finestre.
+
 
 **Limiti della stima:** misura grossolana basata sulle righe di codice; il ritmo misurato viene da poche settimane intense; le integrazioni con fornitori mai usati sono le più a rischio.
 
@@ -598,6 +627,7 @@ I test umani sull'interfaccia sono a fine ondata e sono già dentro le finestre.
 | Enti: documentazione Sicilia, web service Liguria/Calabria, contratto feratel; richieste di API ai portali | WP6b |
 | Stripe: migrazione degli account delle agenzie ad Accounts v2 | WP4 |
 | Google Vacation Rentals: candidatura e contratto (8–12 settimane, gratuita); servizio social di terzi: lettura dei termini per rivenditori | WP3a, WP3b |
+| Meta: verifica dell'azienda e revisione dell'app (WhatsApp e API Marketing); OpenAI: accesso partner all'API pubblicitaria di ChatGPT | WP3a, WP3b |
 | Pareri ⚖: DAC7 per il sito di prenotazione, contratto Founding Partner, testi di consenso | Go-live |
 | Revisione madrelingua delle traduzioni in tedesco | WP1 per la CH tedesca |
 

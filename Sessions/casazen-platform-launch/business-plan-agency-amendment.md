@@ -30,7 +30,7 @@ Si aggiunge il livello **Agenzia (B2B)** accanto a Starter, Pro e Scale. È lo s
 | Pacchetto | Prezzo per unità al mese **[EST]** | Cosa include |
 |---|---|---|
 | **Base** | **€9** (10–49 unità) · **€8** (50–149) · **€7** (150–399) · preventivo oltre | Gestionale, channel manager con contenuti, inbox con risposte AI suggerite, sito di prenotazione diretta, check-in con riconoscimento del volto, Alloggiati, portale proprietari, routine, fornitori |
-| **+ AI e Marketing** | **+€4** | Risposte AI automatiche, routine da una frase, CRM con consensi, email, bozze AI, social tramite API unificata, WhatsApp. Costo di terze parti ~$21–55 al mese per agenzia **[EST]**; per le agenzie piccole serve un minimo mensile o i social come opzione a parte |
+| **+ AI e Marketing** | **+€4** | Risposte AI automatiche, routine da una frase, CRM con consensi e targeting, campagne email e WhatsApp, bozze AI, pubblicità a pagamento su Meta e ChatGPT (solo Agenzia). Costo di terze parti ~$9–19 al mese per agenzia **[EST]**; spesa pubblicitaria e WhatsApp a carico dell'agenzia; per le agenzie piccole serve un minimo mensile |
 | **Quokka (prima agenzia)** | **~€2.300 al mese** per 250 unità (€9,20/unità) | Base + AI e Marketing, circa −16% sul listino di €2.750 |
 
 - Il prezzo di Quokka **non si abbassa**: la priorità è il margine di CasaZen.
@@ -70,7 +70,7 @@ Per ora l'**unico costo di terze parti è il channel manager**: NextPax è il ri
 
 - Il pavimento di ARR del primo anno (€90.000 con 40–60 account a €180–200) non include il livello Agenzia. Con Quokka sale di ~€27.600.
 - Un'agenzia da 250 unità vale quanto circa 12 account B2C a €190 di ARPU: il conteggio degli account non è più confrontabile tra i due livelli. Gli obiettivi del §10 vanno letti in ARR e non in numero di account.
-- **Tempi di sviluppo del livello Agenzia:** ~112–178 finestre di Claude Code Max 20x (≈11–18 settimane equivalenti, ipotesi di 10 finestre a settimana **[EST]**), in sei ondate (§7 dell'analisi). Va sommato alle fasi del §10 dopo la devil's review.
+- **Tempi di sviluppo del livello Agenzia:** ~103–165 finestre di Claude Code Max 20x (≈10–16,5 settimane equivalenti, ipotesi di 10 finestre a settimana **[EST]**), in sei ondate (§7 dell'analisi). Va sommato alle fasi del §10 dopo la devil's review.
 
 ---
 
@@ -83,4 +83,4 @@ Per ora l'**unico costo di terze parti è il channel manager**: NextPax è il ri
 | R11 | Invio automatico ad Alloggiati: nessuna sandbox, invio irreversibile, ricevuta il giorno dopo | Tecnico/Normativo | Media/Alta | `Test` prima di ogni `Send`; primo invio supervisionato su una struttura reale; stato "ricevuta in attesa" |
 | R12 | Fiscale: CU e 770 restano a carico dell'agenzia | Prodotto | Media/Media | Parità con i concorrenti su rendiconto e F24; riprendere i file se i clienti lo chiedono |
 | R13 | Confronto del volto in casa senza controllo che la persona sia viva | Tecnico | Media/Media | Soglia calibrata; registro dei tentativi; avviso immediato all'operatore alla prima foto non verificata (nuova foto o videochiamata) |
-| R14 | Perimetro del marketing: HubSpot-class (Professional $800/mese più $3.000) non entra in €4 a unità; le OTA limitano l'uso dei contatti degli ospiti | Prodotto/Normativo | Media/Alta | Perimetro in due fasi (CRM, email, bozze AI, poi social e WhatsApp); consenso raccolto nel check-in; pubblicità e SEO automatico rimandati |
+| R14 | Perimetro del marketing: HubSpot-class (Professional $800/mese più $3.000) non entra in €4 a unità; le OTA limitano l'uso dei contatti degli ospiti; verifica di Meta e accesso all'API pubblicitaria di ChatGPT fuori dal nostro controllo | Prodotto/Normativo | Media/Alta | Fase 1 con targeting, email, WhatsApp e pubblicità su Meta; consenso facoltativo raccolto nel check-in; su ChatGPT preparazione dell'annuncio finché non c'è l'accesso partner; post organici e SEO rimandati |
