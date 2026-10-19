@@ -682,8 +682,8 @@ Altre misure, senza effetto calcolato:
 
 **Fornitori esterni e attività in attesa** (da aggiornare quando arrivano notizie):
 - **Channel manager:** scelta in verifica dal PO; richieste scritte (Allegato A) a NextPax e agli altri candidati; minimo con decorrenza dal go-live; ricerca delle alternative già in §3.1.
-- **Google Vacation Rentals:** inviare il modulo di interesse come partner di connessione (8–12 settimane); studiare la specifica del feed.
-- **Meta e Google Ads:** verifica dell'azienda e revisione dell'app Meta (anche per WhatsApp); token sviluppatore Google Ads.
+- **Google Vacation Rentals:** richiesta di partecipazione al programma **inviata dal PO (19/10)**; in attesa del contatto di Google. Per Google le 8–12 settimane partono dalla **lista delle proprietà**: serve quella di Quokka. Poi referente tecnico, contratto sulla privacy, assistenza localizzata; studiare la specifica del feed.
+- **Meta e Google Ads:** registrazione come sviluppatore Meta **fatta dal PO (19/10)**; restano verifica dell'azienda, stato di fornitore tecnico e revisione dell'app (anche per WhatsApp); token sviluppatore Google Ads.
 - **Riconoscimento del volto:** conferma scritta di fal sui dati di addestramento di AuraFace; collaudo su coppie reali di documenti e selfie.
 - **Alloggiati:** una struttura reale con credenziali per il primo invio supervisionato.
 - **Server MCP:** organizzazione verificata su OpenAI, piano Claude a pagamento, registro MCP.

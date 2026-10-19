@@ -90,7 +90,8 @@ Per ora l'**unico costo di terze parti è il channel manager**: NextPax è il ri
 ## Stato e prossimi passi (2026-10-19)
 
 - **Decisioni aperte:** scelta del channel manager (in verifica dal PO), prezzi definitivi (D10) e soglia sotto le 39 unità, riconferma della copertura dei €400 di costi fissi per Quokka.
-- **Da avviare subito (tempi esterni):** modulo di interesse a Google Vacation Rentals (8–12 settimane), verifica Meta e token Google Ads, richieste scritte al channel manager, conferma scritta sui dati di addestramento del modello di volto.
+- **Fatto il 19/10:** registrazione come sviluppatore Meta; richiesta di partecipazione al programma Google Vacation Rentals.
+- **Da avviare subito (tempi esterni):** lista delle proprietà di Quokka per Google (le 8–12 settimane partono da lì), verifica dell'azienda Meta e token Google Ads, richieste scritte al channel manager, conferma scritta sui dati di addestramento del modello di volto.
 - **In sospeso:** CU e 770 (senza un canale di invio all'AdE l'agenzia paga comunque il commercialista).
 - **Da aggiornare** quando arrivano notizie dai fornitori esterni.
 
