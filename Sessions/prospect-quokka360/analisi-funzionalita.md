@@ -144,7 +144,16 @@ Anche Holo e BabyLoveGrowth sono livelli di creazione e pubblicazione: non possi
 | Booking.com | **Non per impostazione predefinita:** il contratto vieta di usare i contatti per comunicazioni non richieste (clausola 2.9.3 ✓); l'indirizzo è un alias. Il consenso va raccolto sul canale dell'agenzia (modulo pre-arrivo, check-in) | Come email |
 | Dati di Alloggiati | **No** (raccolti per obbligo di legge) | **No** |
 
-Per l'obiettivo "incrementare la clientela dalle OTA" la strada è chiedere il consenso nel check-in e riportare l'ospite sul canale diretto, non scrivere agli indirizzi OTA. Ogni contatto porta origine, consenso per canale, base giuridica e prova; la campagna rifiuta i contatti senza base idonea.
+**Consenso nel check-in (decisione del PO, 2026-10-19):** per tutti gli ospiti, anche delle OTA, il check-in online chiede il consenso al marketing. Regole di progetto:
+- **Facoltativo e non preselezionato.** Se fosse obbligatorio per completare il check-in, il consenso non sarebbe libero e non varrebbe. Il check-in prosegue anche senza.
+- **Separato dagli altri consensi** (biometria, informativa) e **per canale**: email e WhatsApp con caselle distinte. Il Garante richiede consensi non accorpati (decisione Libero/Virgilio, 22/2/2024 ✓).
+- **Per ogni ospite adulto che dà il proprio indirizzo,** non solo per chi ha prenotato. I minori sono esclusi.
+- **Titolare del trattamento è l'agenzia;** CasaZen è responsabile. Il testo indica l'agenzia, le finalità, i canali, come revocare e il link all'informativa.
+- **Prova del consenso:** data e ora, versione del testo, canale, prenotazione di origine. Revoca con un clic in ogni email e lista di soppressione per agenzia.
+- **Nessun uso dei dati di Alloggiati.** L'email di marketing è un campo a parte, raccolto per quella finalità.
+
+**Qual è l'email giusta:** per Booking.com e Airbnb l'indirizzo della prenotazione è un alias di inoltro e non va usato per il marketing. Nel check-in si chiede **l'email reale** in un campo dedicato, legato al consenso. Si salvano separati: indirizzo della prenotazione (alias) e indirizzo di marketing. Conferma con **doppio consenso** (email con un link da cliccare): non è un obbligo di legge, ma prova che l'indirizzo è dell'ospite, evita errori di battitura e protegge la reputazione del mittente. Fino alla conferma non si invia nulla. Il consenso va chiesto nella pagina di check-in di CasaZen, mai nei messaggi della OTA.
+
 
 **Perimetro proposto (da confermare dal PO):**
 
@@ -258,7 +267,7 @@ Fonti:
 **Decisione del PO (2026-10-19):** il riconoscimento del volto si sviluppa in casa, senza fornitori terzi, e lo fa l'utente durante il check-in. Il PO ritiene il flusso già conforme alla legge: nel flusso non ci sono verifiche legali aggiuntive.
 
 **Flusso:**
-1. **Dati e documento:** l'ospite compila i dati richiesti da Alloggiati e carica il documento (lettura MRZ/OCR; l'ospite conferma i dati).
+1. **Dati e documento:** l'ospite compila i dati richiesti da Alloggiati e carica il documento (lettura MRZ/OCR; l'ospite conferma i dati). In una schermata separata, dopo i passaggi obbligatori, la richiesta facoltativa di consenso al marketing (§3.2).
 2. **Selfie dal vivo e confronto:** con il **consenso esplicito** al trattamento biometrico, l'ospite scatta un selfie con la fotocamera (non si accettano foto di foto né file caricati dalla galleria). CasaZen lo confronta con la foto del documento; se corrisponde, la verifica è superata.
 3. **Se la prima foto non è verificata:** CasaZen **avvisa subito l'operatore**, che sceglie se **chiedere una nuova foto** oppure **verificare con una videochiamata**. L'ospite non prosegue finché la verifica non è superata.
 4. **QR code:** resta sempre come ultima verifica, se l'ospite non ha ancora inviato il selfie; scansionato all'ingresso, porta allo stesso passaggio.
