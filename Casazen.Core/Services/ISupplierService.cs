@@ -154,7 +154,7 @@ public interface ISupplierService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns <see cref="SupplierStatus.Active"/> suppliers for a given comune (AC6). With a
+    /// Returns <see cref="SupplierStatus.Active"/> suppliers matched by ISTAT code when known, otherwise by comune name (AC6). With a
     /// <paramref name="category"/> only suppliers that declared that category code are returned (a supplier without
     /// categories matches no category).
     /// </summary>
@@ -162,12 +162,6 @@ public interface ISupplierService
     /// Code <c>invalid_service_category</c>: <paramref name="category"/> is not a
     /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// </exception>
-    Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Same as <see cref="GetActiveByComune"/> for a <see cref="Casazen.Core.Suppliers.ComuneTarget"/>: matched by ISTAT code
-    /// when the comune has one (the property's chosen comune), by the written name otherwise (SU-04, A4-12).
-    /// </summary>
     Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
         Casazen.Core.Suppliers.ComuneTarget target,
         string? category,

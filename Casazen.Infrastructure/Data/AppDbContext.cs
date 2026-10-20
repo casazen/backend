@@ -1,3 +1,4 @@
+using Casazen.Infrastructure.Data.Configurations;
 using System.Reflection;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
@@ -1012,148 +1013,19 @@ public class AppDbContext(
             .OnDelete(DeleteBehavior.Cascade);
 
         // ─── Org membership (AM-01) ─────────────────────────────────────────────
-        modelBuilder.Entity<OrgMember>(entity =>
-        {
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(m => m.OrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(m => m.User)
-                .WithMany()
-                .HasForeignKey(m => m.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // One org per user. It is also what two parallel onboardings of the same user race on: the loser gets 23505.
-            entity.HasIndex(m => m.UserId)
-                .IsUnique()
-                .HasDatabaseName("UIX_OrgMembers_UserId");
-
-            // The tenant filter reads by OrgId; the team page lists an org's people and finds its owner.
-            entity.HasIndex(m => new { m.OrgId, m.Role })
-                .HasDatabaseName("IX_OrgMembers_OrgId_Role");
-        });
+        modelBuilder.ApplyConfiguration(new OrgMemberConfiguration());
 
         // ─── Org invitations (AM-02) ────────────────────────────────────────────
-        modelBuilder.Entity<OrgInvitation>(entity =>
-        {
-            // The invitations of an org go with it.
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(i => i.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // The link finds its invitation by the hash of the token; rotating the token swaps the hash, so it is unique.
-            entity.HasIndex(i => i.TokenHash)
-                .IsUnique()
-                .HasDatabaseName("UIX_OrgInvitations_TokenHash");
-
-            // At most one pending invitation per org and email: two parallel invitations of the same person race on this
-            // (the loser gets 23505, answered as 409). Filter on Status = Pending (1), which is explicit and never reused.
-            entity.HasIndex(i => new { i.OrgId, i.Email })
-                .IsUnique()
-                .HasFilter($"\"Status\" = {(int)OrgInvitationStatus.Pending}")
-                .HasDatabaseName("UIX_OrgInvitations_OrgId_Email_Pending");
-
-            // The tenant filter reads by OrgId; the team page lists an org's open invitations and the seat count counts them.
-            entity.HasIndex(i => new { i.OrgId, i.Status })
-                .HasDatabaseName("IX_OrgInvitations_OrgId_Status");
-
-            // The maintenance job scans by state and date: the invitations to remind, expire or delete.
-            entity.HasIndex(i => new { i.Status, i.ExpiresAt })
-                .HasDatabaseName("IX_OrgInvitations_Status_ExpiresAt");
-
-            // The sends of the last 24 hours (AM-02c): an empty list for every invitation written before they were tracked, so the
-            // column can be NOT NULL on a table that already has rows. No send is invented for them.
-            entity.Property(i => i.SendLog).HasDefaultValueSql("'{}'");
-        });
+        modelBuilder.ApplyConfiguration(new OrgInvitationConfiguration());
 
         // ─── The properties an invitation carries (AM-02c) ──────────────────────
-        modelBuilder.Entity<OrgInvitationProperty>(entity =>
-        {
-            // They go with the invitation (which goes with the org, and 30 days after it closed).
-            entity.HasOne<OrgInvitation>()
-                .WithMany()
-                .HasForeignKey(p => p.InvitationId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(p => p.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // The property is soft-deleted, so in practice never removed; if it ever is, its mention goes with it.
-            entity.HasOne<Property>()
-                .WithMany()
-                .HasForeignKey(p => p.PropertyId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // A property is carried once by an invitation: the second one of the same pair loses the race on this index (23505).
-            // It also serves the read of the properties of one invitation (and the tenant filter on top of it).
-            entity.HasIndex(p => new { p.InvitationId, p.PropertyId })
-                .IsUnique()
-                .HasDatabaseName("UIX_OrgInvitationProperties_InvitationId_PropertyId");
-
-            // The cascade of a property reads the rows that mention it.
-            entity.HasIndex(p => p.PropertyId)
-                .HasDatabaseName("IX_OrgInvitationProperties_PropertyId");
-        });
+        modelBuilder.ApplyConfiguration(new OrgInvitationPropertyConfiguration());
 
         // ─── Property scope of the org members (AM-03) ──────────────────────────
-        modelBuilder.Entity<PropertyMemberAccess>(entity =>
-        {
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(a => a.OrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            // The grants of a property go with it (it is soft-deleted, so in practice never) and the grants of a person go
-            // with the account.
-            entity.HasOne(a => a.Property)
-                .WithMany(p => p.MemberAccesses)
-                .HasForeignKey(a => a.PropertyId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne<User>()
-                .WithMany()
-                .HasForeignKey(a => a.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // A member reaches a property once: the second grant of the same pair loses the race on this index (23505).
-            // It also serves the EXISTS of every list (UserId first) and the reads of the member's own grants.
-            entity.HasIndex(a => new { a.UserId, a.PropertyId })
-                .IsUnique()
-                .HasDatabaseName("UIX_PropertyMemberAccesses_UserId_PropertyId");
-
-            // «Chi può accedere» per property, and the tenant filter (OrgId) of every read.
-            entity.HasIndex(a => new { a.PropertyId })
-                .HasDatabaseName("IX_PropertyMemberAccesses_PropertyId");
-            entity.HasIndex(a => new { a.OrgId, a.UserId })
-                .HasDatabaseName("IX_PropertyMemberAccesses_OrgId_UserId");
-        });
+        modelBuilder.ApplyConfiguration(new PropertyMemberAccessConfiguration());
 
         // ─── Activity log of the org (AM-02b) ───────────────────────────────────────────────────────────────
-        modelBuilder.Entity<OrgActivityEntry>(entity =>
-        {
-            // The log of an org goes with it. No foreign key to the account: the history outlives it and holds ids only.
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(e => e.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // The page of the people who administer the org: the newest lines of one org (the tenant filter reads OrgId too).
-            entity.HasIndex(e => new { e.OrgId, e.When })
-                .IsDescending(false, true)
-                .HasDatabaseName("IX_OrgActivityEntries_OrgId_When");
-
-            // The filter by event, and the count of the access requests of one person.
-            entity.HasIndex(e => new { e.OrgId, e.Type })
-                .HasDatabaseName("IX_OrgActivityEntries_OrgId_Type");
-
-            // The retention deletes across every org what is older than the cutoff.
-            entity.HasIndex(e => e.When)
-                .HasDatabaseName("IX_OrgActivityEntries_When");
-        });
+        modelBuilder.ApplyConfiguration(new OrgActivityEntryConfiguration());
 
         // The member in charge of a property (AM-03): notified together with the org's administrators. The account can go;
         // the property keeps its history and is simply left without a named person.
@@ -1242,144 +1114,20 @@ public class AppDbContext(
         // repair moves them to the keeper before it deletes a duplicate profile). The slug is unique among the services
         // that are not deleted, so a deleted one frees it; xmin is the concurrency token. The checks mirror
         // SupplierServiceListingRules (looser where the rule is a product bound, e.g. the shortest duration).
-        modelBuilder.Entity<SupplierServiceListing>(entity =>
-        {
-            entity.HasOne(l => l.SupplierProfile)
-                .WithMany()
-                .HasForeignKey(l => l.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.Property(l => l.Version).IsRowVersion();
-
-            entity.HasIndex(l => new { l.OrgId, l.Slug })
-                .IsUnique()
-                .HasFilter("\"DeletedAt\" IS NULL")
-                .HasDatabaseName("UIX_SupplierServiceListings_OrgId_Slug");
-
-            entity.ToTable(t =>
-            {
-                t.HasCheckConstraint(
-                    "CK_SupplierServiceListings_PriceFromCents", "\"PriceFromCents\" IS NULL OR \"PriceFromCents\" > 0");
-                t.HasCheckConstraint(
-                    "CK_SupplierServiceListings_DurationMinutes", "\"DurationMinutes\" IS NULL OR \"DurationMinutes\" > 0");
-                t.HasCheckConstraint(
-                    "CK_SupplierServiceListings_MinNoticeHours", "\"MinNoticeHours\" IS NULL OR \"MinNoticeHours\" >= 0");
-                t.HasCheckConstraint(
-                    "CK_SupplierServiceListings_WeekdaysMask", "\"WeekdaysMask\" BETWEEN 0 AND 127");
-            });
-        });
+        modelBuilder.ApplyConfiguration(new SupplierServiceListingConfiguration());
 
         // SP-03: the supplier's agenda. Children of the supplier profile in cascade, like the availability days and the
         // catalog: the repair moves them to the keeper before it deletes a duplicate profile. The checks mirror
         // SupplierAgendaRules / SupplierAgendaLimits (the rules refuse first; the database is the last guard).
-        modelBuilder.Entity<SupplierWorkingHours>(entity =>
-        {
-            entity.HasOne(h => h.SupplierProfile)
-                .WithMany()
-                .HasForeignKey(h => h.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.ApplyConfiguration(new SupplierWorkingHoursConfiguration());
 
-            // One band per weekday and start: the same band twice is never meant. The overlap of two bands and the limit of
-            // three a day need more than a unique index: the service decides both under the agenda lock.
-            entity.HasIndex(h => new { h.OrgId, h.Weekday, h.StartMinute })
-                .IsUnique()
-                .HasDatabaseName("UIX_SupplierWorkingHours_OrgId_Weekday_StartMinute");
+        modelBuilder.ApplyConfiguration(new SupplierTimeOffConfiguration());
 
-            entity.ToTable(t =>
-            {
-                t.HasCheckConstraint("CK_SupplierWorkingHours_Weekday", "\"Weekday\" BETWEEN 0 AND 6");
-                t.HasCheckConstraint(
-                    "CK_SupplierWorkingHours_Minutes",
-                    $"\"StartMinute\" >= 0 AND \"StartMinute\" < \"EndMinute\" AND \"EndMinute\" <= {SupplierAgendaLimits.MinutesPerDay}");
-            });
-        });
+        modelBuilder.ApplyConfiguration(new SupplierBusyWindowConfiguration());
 
-        modelBuilder.Entity<SupplierTimeOff>(entity =>
-        {
-            entity.HasOne(t => t.SupplierProfile)
-                .WithMany()
-                .HasForeignKey(t => t.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.ApplyConfiguration(new SupplierFreeCalendarEventConfiguration());
 
-            entity.HasIndex(t => new { t.OrgId, t.FromDate })
-                .HasDatabaseName("IX_SupplierTimeOff_OrgId_FromDate");
-
-            entity.ToTable(t => t.HasCheckConstraint("CK_SupplierTimeOff_Dates", "\"FromDate\" <= \"ToDate\""));
-        });
-
-        modelBuilder.Entity<SupplierBusyWindow>(entity =>
-        {
-            entity.HasOne(w => w.SupplierProfile)
-                .WithMany()
-                .HasForeignKey(w => w.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // The planner and the calendar read the windows of one supplier by time.
-            entity.HasIndex(w => new { w.OrgId, w.StartUtc })
-                .HasDatabaseName("IX_SupplierBusyWindows_OrgId_StartUtc");
-
-            // SP-05: the iCal sync writes one row per occurrence of a feed event and finds it again by this key at every sync
-            // (the UID, and the start because a series repeats the UID), so the same occurrence is never stored twice. The
-            // windows the supplier sets by hand have no ExternalUid and are outside the index.
-            entity.HasIndex(w => new { w.OrgId, w.ExternalUid, w.StartUtc })
-                .IsUnique()
-                .HasFilter("\"ExternalUid\" IS NOT NULL")
-                .HasDatabaseName("UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc");
-
-            entity.ToTable(t => t.HasCheckConstraint("CK_SupplierBusyWindows_Interval", "\"StartUtc\" < \"EndUtc\""));
-        });
-
-        modelBuilder.Entity<SupplierFreeCalendarEvent>(entity =>
-        {
-            entity.HasOne(e => e.SupplierProfile)
-                .WithMany()
-                .HasForeignKey(e => e.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // The sync finds the row of an event again by its key at every run: one row per event and supplier.
-            entity.HasIndex(e => new { e.OrgId, e.DecisionKey })
-                .IsUnique()
-                .HasDatabaseName("UIX_SupplierFreeCalendarEvents_OrgId_DecisionKey");
-
-            // The console lists the unanswered ones of a supplier by their next date.
-            entity.HasIndex(e => new { e.OrgId, e.Decision, e.NextStartUtc })
-                .HasDatabaseName("IX_SupplierFreeCalendarEvents_OrgId_Decision_NextStartUtc");
-        });
-
-        modelBuilder.Entity<SupplierSettings>(entity =>
-        {
-            // One row per supplier: the key is the supplier org, which is also the foreign key.
-            entity.HasOne(s => s.SupplierProfile)
-                .WithOne()
-                .HasForeignKey<SupplierSettings>(s => s.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // The bounds are the ones of SupplierAgendaLimits (a constant, so the rules and the database cannot drift).
-            entity.ToTable(t =>
-            {
-                t.HasCheckConstraint(
-                    "CK_SupplierSettings_BufferMinutes",
-                    $"\"BufferMinutes\" BETWEEN {SupplierAgendaLimits.MinBufferMinutes} AND {SupplierAgendaLimits.MaxBufferMinutes}");
-                t.HasCheckConstraint(
-                    "CK_SupplierSettings_MaxJobsPerDay",
-                    $"\"MaxJobsPerDay\" BETWEEN {SupplierAgendaLimits.MinJobsPerDay} AND {SupplierAgendaLimits.MaxJobsPerDayLimit}");
-                t.HasCheckConstraint(
-                    "CK_SupplierSettings_MinNoticeHours",
-                    $"\"MinNoticeHours\" BETWEEN {SupplierAgendaLimits.MinNoticeHours} AND {SupplierAgendaLimits.MaxNoticeHours}");
-                t.HasCheckConstraint(
-                    "CK_SupplierSettings_HorizonDays",
-                    $"\"HorizonDays\" BETWEEN {SupplierAgendaLimits.MinHorizonDays} AND {SupplierAgendaLimits.MaxHorizonDays}");
-                t.HasCheckConstraint(
-                    "CK_SupplierSettings_SlotStepMinutes",
-                    $"\"SlotStepMinutes\" BETWEEN {SupplierAgendaLimits.MinSlotStepMinutes} AND {SupplierAgendaLimits.MaxSlotStepMinutes}");
-                t.HasCheckConstraint(
-                    "CK_SupplierSettings_ParallelJobs",
-                    $"\"ParallelJobs\" BETWEEN {SupplierAgendaLimits.MinParallelJobs} AND {SupplierAgendaLimits.MaxParallelJobs}");
-                t.HasCheckConstraint(
-                    "CK_SupplierSettings_RespondWithinMinutes",
-                    $"\"RespondWithinMinutes\" BETWEEN {SupplierAgendaLimits.MinRespondWithinMinutes} AND {SupplierAgendaLimits.MaxRespondWithinMinutes}");
-            });
-        });
+        modelBuilder.ApplyConfiguration(new SupplierSettingsConfiguration());
 
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => i.Email);
@@ -1536,56 +1284,9 @@ public class AppDbContext(
                 + "AND \"LocationAddress\" IS NULL AND \"LocationFloor\" IS NULL AND \"LocationAccessNotes\" IS NULL)"));
         });
 
-        modelBuilder.Entity<ServiceCustomer>(entity =>
-        {
-            // A child of the supplier profile like the agenda: the repair moves the customers before it deletes a profile.
-            entity.HasOne(c => c.SupplierProfile)
-                .WithMany()
-                .HasForeignKey(c => c.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.ApplyConfiguration(new ServiceCustomerConfiguration());
 
-            // One customer per supplier and address; the HMAC of the address is the only thing the address is found by.
-            entity.HasIndex(c => new { c.OrgId, c.EmailHash })
-                .IsUnique()
-                .HasDatabaseName("UIX_ServiceCustomers_OrgId_EmailHash");
-        });
-
-        modelBuilder.Entity<ShowcaseBookingHold>(entity =>
-        {
-            entity.HasOne(h => h.SupplierProfile)
-                .WithMany()
-                .HasForeignKey(h => h.OrgId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // The request born from the hold. Set to null if the request is ever removed for good: the hold only remembers it.
-            entity.HasOne<ServiceRequest>()
-                .WithMany()
-                .HasForeignKey(h => h.ServiceRequestId)
-                .OnDelete(DeleteBehavior.SetNull);
-
-            // The column says what it holds: encrypted at rest through the value converter of EncryptedColumns.
-            entity.Property(h => h.Payload).HasColumnName("PayloadEncrypted");
-
-            // The same client request id is the same hold (idempotency); a code is unique among the supplier's holds.
-            entity.HasIndex(h => new { h.OrgId, h.ClientRequestId })
-                .IsUnique()
-                .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_ClientRequestId");
-            entity.HasIndex(h => new { h.OrgId, h.PublicCode })
-                .IsUnique()
-                .HasDatabaseName("UIX_ShowcaseBookingHolds_OrgId_PublicCode");
-
-            // The planner reads the holds of one supplier by time; the upkeep job reads the expired ones of every supplier; the
-            // cap of unverified bookings counts the ones of one address.
-            entity.HasIndex(h => new { h.OrgId, h.StartUtc }).HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_StartUtc");
-            entity.HasIndex(h => h.ExpiresAt).HasDatabaseName("IX_ShowcaseBookingHolds_ExpiresAt");
-            entity.HasIndex(h => new { h.OrgId, h.EmailHash }).HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_EmailHash");
-
-            entity.ToTable(t =>
-            {
-                t.HasCheckConstraint("CK_ShowcaseBookingHolds_Interval", "\"StartUtc\" < \"EndUtc\"");
-                t.HasCheckConstraint("CK_ShowcaseBookingHolds_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
-            });
-        });
+        modelBuilder.ApplyConfiguration(new ShowcaseBookingHoldConfiguration());
 
         // ─── Payment of the service requests inside CasaZen (SP-15a) ─────────────
         // The commission a supplier is charged instead of the platform's (an admin sets it, SP-15b): a percentage, 0 to 50.
@@ -1597,64 +1298,7 @@ public class AppDbContext(
         // One payment per request that is not canceled: the live one. A canceled row (replaced by an offline record, or withdrawn)
         // frees the request, so the index ignores it. The creation paths also take the advisory lock ServiceRequestPayment; this
         // index is what makes a second live payment impossible even if one of them did not.
-        modelBuilder.Entity<ServiceRequestPayment>(entity =>
-        {
-            entity.HasOne(p => p.ServiceRequest)
-                .WithMany()
-                .HasForeignKey(p => p.ServiceRequestId)
-                .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(p => p.SupplierOrg)
-                .WithMany()
-                .HasForeignKey(p => p.SupplierOrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(p => p.PayerOrg)
-                .WithMany()
-                .HasForeignKey(p => p.PayerOrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasIndex(p => p.ServiceRequestId)
-                .IsUnique()
-                .HasDatabaseName(ServiceCharges.LivePaymentIndexName)
-                .HasFilter($"\"Status\" <> {(int)ServicePaymentStatus.Canceled}");
-
-            // A PaymentIntent belongs to one payment: the webhook finds its payment by it (SP-15b).
-            entity.HasIndex(p => p.StripePaymentIntentId)
-                .IsUnique()
-                .HasDatabaseName("UIX_ServiceRequestPayments_StripePaymentIntentId")
-                .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
-
-            entity.HasIndex(p => new { p.SupplierOrgId, p.Status });
-            entity.HasIndex(p => p.PayerOrgId);
-
-            // The JSON column is added to no existing rows, but the database gives it the empty list like the other jsonb columns.
-            entity.Property(p => p.LineItemsJson).HasDefaultValue("[]");
-
-            // The checks mirror the rules of the service: a bad row is refused by the database too. The amounts follow
-            // SupplierCommission (the fee is strictly below the amount, or 0 for none, and the net is what is left), the percentage
-            // is the one of the options, a host payer has its org, and a payment that was paid says when and how.
-            entity.ToTable(t =>
-            {
-                t.HasCheckConstraint(
-                    "CK_ServiceRequestPayments_Amounts",
-                    $"\"AmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents} AND \"ApplicationFeeCents\" >= 0 "
-                    + "AND \"ApplicationFeeCents\" < \"AmountCents\" AND \"NetCents\" = \"AmountCents\" - \"ApplicationFeeCents\" "
-                    + "AND \"RefundedCents\" BETWEEN 0 AND \"AmountCents\" AND \"PaymentIntentCount\" >= 0 AND \"SentCount\" >= 0");
-                t.HasCheckConstraint(
-                    "CK_ServiceRequestPayments_CommissionPercent",
-                    $"\"CommissionPercent\" BETWEEN 0 AND {(int)SupplierPaymentsOptions.MaxCommissionPercent}");
-                t.HasCheckConstraint(
-                    "CK_ServiceRequestPayments_FeeVat",
-                    "(\"FeeVatMode\" IS NULL AND \"FeeVatCents\" IS NULL) OR "
-                    + "(\"FeeVatMode\" IS NOT NULL AND \"FeeVatCents\" IS NOT NULL AND \"FeeVatCents\" >= 0)");
-                t.HasCheckConstraint(
-                    "CK_ServiceRequestPayments_Payer",
-                    $"(\"PayerKind\" = {(int)ServicePayerKind.Host} AND \"PayerOrgId\" IS NOT NULL) OR \"PayerKind\" = {(int)ServicePayerKind.Private}");
-                t.HasCheckConstraint(
-                    "CK_ServiceRequestPayments_Paid",
-                    $"\"Status\" NOT IN ({(int)ServicePaymentStatus.Paid}, {(int)ServicePaymentStatus.PartiallyRefunded}, {(int)ServicePaymentStatus.Refunded}) "
-                    + "OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
-            });
-        });
+        modelBuilder.ApplyConfiguration(new ServiceRequestPaymentConfiguration());
 
         // ─── Refunds of the service payments and the commission period (SP-15b) ─────────────
         // The end of a commission period only makes sense with the percentage it ends.
@@ -1665,39 +1309,7 @@ public class AppDbContext(
 
         // A refund belongs to its payment: restrict, so a payment with refunds is never deleted. The sequence is the n of the
         // idempotency key and is unique within the payment; a Stripe refund and a key belong to one refund each.
-        modelBuilder.Entity<ServiceRequestPaymentRefund>(entity =>
-        {
-            entity.HasOne(r => r.ServiceRequestPayment)
-                .WithMany()
-                .HasForeignKey(r => r.ServiceRequestPaymentId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasIndex(r => new { r.ServiceRequestPaymentId, r.Sequence })
-                .IsUnique()
-                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_Payment_Sequence");
-            entity.HasIndex(r => r.StripeRefundId)
-                .IsUnique()
-                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_StripeRefundId")
-                .HasFilter("\"StripeRefundId\" IS NOT NULL");
-            entity.HasIndex(r => r.IdempotencyKey)
-                .IsUnique()
-                .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_IdempotencyKey")
-                .HasFilter("\"IdempotencyKey\" IS NOT NULL");
-            // The sync job looks for the refunds that wait for Stripe, by status.
-            entity.HasIndex(r => r.Status);
-
-            entity.ToTable(t =>
-            {
-                t.HasCheckConstraint(
-                    "CK_ServiceRequestPaymentRefunds_Amounts",
-                    $"\"AmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents} AND \"Sequence\" >= 1 "
-                    + "AND (\"ApplicationFeeRefundedCents\" IS NULL OR \"ApplicationFeeRefundedCents\" >= 0)");
-                // A refund that succeeded says when.
-                t.HasCheckConstraint(
-                    "CK_ServiceRequestPaymentRefunds_Succeeded",
-                    $"\"Status\" <> {(int)ServicePaymentRefundStatus.Succeeded} OR \"CompletedAt\" IS NOT NULL");
-            });
-        });
+        modelBuilder.ApplyConfiguration(new ServiceRequestPaymentRefundConfiguration());
 
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         modelBuilder.Entity<CalendarBlock>()
@@ -1856,23 +1468,7 @@ public class AppDbContext(
                 r.Permissions.Select(p => new RolePermission { RoleId = r.Id, PermissionKey = p })));
 
         // Guest check-in session (US-020 / #296)
-        modelBuilder.Entity<GuestCheckInSession>(entity =>
-        {
-            entity.HasOne(s => s.Booking)
-                .WithMany()
-                .HasForeignKey(s => s.BookingId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasIndex(s => s.TokenHash)
-                .IsUnique()
-                .HasDatabaseName("UIX_GuestCheckInSessions_TokenHash");
-
-            // Only one active session per booking at a time (statuses 0-3 are active)
-            entity.HasIndex(s => new { s.BookingId, s.Status })
-                .IsUnique()
-                .HasFilter("\"Status\" IN (0, 1, 2, 3)")
-                .HasDatabaseName("UIX_GuestCheckInSessions_BookingId_ActiveStatus");
-        });
+        modelBuilder.ApplyConfiguration(new GuestCheckInSessionConfiguration());
 
         modelBuilder.Entity<TerritorialRentAgreement>(entity =>
         {
@@ -1948,86 +1544,23 @@ public class AppDbContext(
         // ─── Verified reviews (DB-12a) ──────────────────────────────────────────
         // A review goes with its booking and its property (a property is soft-deleted, so in practice it stays for good): the host has no
         // way to delete one, and no foreign key stops the platform's own cleanups (the reset of the demo deletes bookings in bulk).
-        modelBuilder.Entity<Review>(entity =>
-        {
-            entity.HasOne(r => r.Property)
-                .WithMany()
-                .HasForeignKey(r => r.PropertyId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(r => r.Booking)
-                .WithMany()
-                .HasForeignKey(r => r.BookingId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(r => r.OrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            // Two parallel submissions for one booking (the link opened twice): the loser gets 23505 on UIX_Reviews_BookingId and 409.
-            entity.ToTable(t => t.HasCheckConstraint("CK_Reviews_Rating", "\"Rating\" BETWEEN 1 AND 5"));
-        });
+        modelBuilder.ApplyConfiguration(new ReviewConfiguration());
 
         // The report goes with its review. One per review: the second one loses the race on UIX_ReviewReports_ReviewId (23505, 409).
         // Two staff users deciding the same report at once: the state is the concurrency token, the second decision is a 409.
-        modelBuilder.Entity<ReviewReport>(entity =>
-        {
-            entity.Property(r => r.Status).IsConcurrencyToken();
-            entity.HasOne(r => r.Review)
-                .WithMany()
-                .HasForeignKey(r => r.ReviewId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(r => r.OrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
+        modelBuilder.ApplyConfiguration(new ReviewReportConfiguration());
 
         // The mark of the email asked by the host, once per booking: it goes with the booking.
-        modelBuilder.Entity<ReviewInvite>(entity =>
-        {
-            entity.HasOne(i => i.Booking)
-                .WithMany()
-                .HasForeignKey(i => i.BookingId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(i => i.OrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
+        modelBuilder.ApplyConfiguration(new ReviewInviteConfiguration());
 
         // ─── Messages between the guest and the host (DB-14a) ───────────────────
         // A thread goes with its booking (and its property, which is soft-deleted, so in practice it stays): the reset of the demo deletes
         // bookings in bulk and the erasure of a guest deletes its threads, so no foreign key may stop either. The messages go with the thread.
         // Two first messages at the same moment: the loser gets 23505 on UIX_GuestThreads_BookingId and reads the thread the winner made.
-        modelBuilder.Entity<GuestThread>(entity =>
-        {
-            entity.HasOne(t => t.Property)
-                .WithMany()
-                .HasForeignKey(t => t.PropertyId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(t => t.Booking)
-                .WithMany()
-                .HasForeignKey(t => t.BookingId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(t => t.OrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
+        modelBuilder.ApplyConfiguration(new GuestThreadConfiguration());
 
         // A retried send with the same key loses the race on UIX_GuestMessages_ThreadId_IdempotencyKey (23505) and reads the first message.
-        modelBuilder.Entity<GuestMessage>(entity =>
-        {
-            entity.HasOne(m => m.Thread)
-                .WithMany()
-                .HasForeignKey(m => m.ThreadId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(m => m.OrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-            entity.ToTable(t => t.HasCheckConstraint("CK_GuestMessages_Sender", "\"Sender\" IN (0, 1)"));
-        });
+        modelBuilder.ApplyConfiguration(new GuestMessageConfiguration());
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
         // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,

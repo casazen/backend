@@ -702,9 +702,6 @@ public partial class SupplierService(
         return count;
     }
 
-    public Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default) =>
-        GetActiveByComuneAsync(ComuneTarget.FromInput(comuneCode), category, cancellationToken);
-
     public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
         ComuneTarget target,
         string? category,
