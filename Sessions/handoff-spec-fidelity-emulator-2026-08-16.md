@@ -1,7 +1,7 @@
 # Handoff — spec-fidelity loop + Android emulator / Maestro
 
-**Date:** 2026-08-16  
-**Stopped by user:** do not continue the Gradle/Maestro work in the previous chat. Start from this file.  
+**Date:** 2026-08-16
+**Stopped by user:** do not continue the Gradle/Maestro work in the previous chat. Start from this file.
 **Goal of the previous session:** finish `/spec-fidelity-loop` for GJ-001 by installing an Android emulator and running Maestro M1–M7 against the real local API (no mocks, no production).
 
 Suggested first message for a new chat:
@@ -20,9 +20,9 @@ CasaZen is three repos on Windows:
 | Frontend | `C:\Users\luca.la-malfa\private-project\casazen\frontend` | `develop` (**behind origin by 4 commits**) |
 | Mobile | `C:\Users\luca.la-malfa\private-project\casazen\mobile` | `develop` |
 
-**Spec:** `Sessions/specs/spec-golden-journey-e2e.md` (GJ-001).  
-**Superseded:** `spec-production-e2e-flow-verification.md` — do **not** hit `casazen-app.vercel.app` or set `E2E_PROD_SMOKE`.  
-**Loop artifacts:** `reports/attempt-1/` … `reports/attempt-5/`.  
+**Spec:** specifica rimossa (storico in git) (GJ-001).
+**Superseded:** `spec-production-e2e-flow-verification.md` — do **not** hit `casazen-app.vercel.app` or set `E2E_PROD_SMOKE`.
+**Loop artifacts:** `reports/attempt-1/` … `reports/attempt-5/`.
 **Last verdict:** `reports/attempt-5/05-final-verdict.md` → `GOAL_NON_RAGGIUNTO` solely because Maestro/device was missing. That is now only partly true (CLI + AVD exist; app not installed/run).
 
 There is no `development` branch. Use `develop`.
@@ -151,7 +151,7 @@ Maestro was last run before the AVD existed → `0 devices connected`. It has **
 
 ### P0 — Debug APK needs Metro
 
-`expo run:android` builds a **debug** app. Without Metro the app shows “Unable to load script”.  
+`expo run:android` builds a **debug** app. Without Metro the app shows “Unable to load script”.
 Last attempt skipped Metro because 8081 was busy. Next run must either:
 
 - start Metro on a free port and keep it up, or
@@ -159,9 +159,9 @@ Last attempt skipped Metro because 8081 was busy. Next run must either:
 
 ### P0 — Maestro cannot pass login as written
 
-`m1-calendar.yaml` does `launchApp` then asserts `CasaZen Host` + `Calendario` + `Mese corrente`.  
-The app always lands on **login** unless a token exists (`AuthProvider` + `app/_layout.tsx`).  
-`EXPO_PUBLIC_E2E_DEMO` was removed from the yaml (spec: real API, no demo). Demo login button only appears when `EXPO_PUBLIC_E2E_DEMO=1`.  
+`m1-calendar.yaml` does `launchApp` then asserts `CasaZen Host` + `Calendario` + `Mese corrente`.
+The app always lands on **login** unless a token exists (`AuthProvider` + `app/_layout.tsx`).
+`EXPO_PUBLIC_E2E_DEMO` was removed from the yaml (spec: real API, no demo). Demo login button only appears when `EXPO_PUBLIC_E2E_DEMO=1`.
 Without a real Auth0 session, M1 fails even if the APK installs.
 
 Options (pick one, do not silently re-enable demo for API calls):
@@ -186,7 +186,7 @@ No Questura test credentials. Skip that assertion.
 
 Do not commit unless asked. Do not commit `mobile/android/` unless the team wants a committed native project. Do not commit `reports/` secrets (there should be none).
 
-Unrelated dirty file: `backend/Sessions/specs/spec-regime-fiscale-2026.md` (pre-existing, not part of this loop).
+Unrelated dirty file: `backend/specifica rimossa (storico in git)` (pre-existing, not part of this loop).
 
 ---
 

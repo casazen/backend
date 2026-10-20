@@ -18,7 +18,7 @@
 | Stage 02 design PASS for `#271` | **Honest** — local `Sessions/loop/evidence/delivery-13/gates.json` `overall=pass`; G1–G10 + G9b all `exit_code=0`. Re-ran `check-ac-matrix.ps1 -DesignPath Sessions/design-271.md` → PASS (12 AC rows). |
 | Not claiming Stage 03 FE/product complete | **Pass** — Notes + PR body defer activation checklist / subprocessors page / titled L2–L3 expansion to Stage 03. No invented FE activation implementation PASS. |
 | No device / Maestro invented PASS | **Pass** — AC Test Map is web L1/L2/L3 only; no Maestro/`mobile/` paths; no native PASS claims. |
-| Design cites spec | **Pass** — `Sessions/specs/spec-onboarding-plg.md` (G10). |
+| Design cites spec | **Pass** — specifica rimossa (storico in git) (G10). |
 | Diff surface | Design + e2e path scaffolds + `check-ac-matrix.ps1` parent-path hardening — matches PR description. |
 
 ## Checklist (`.claude/sdlc/04-review/agents/code-reviewer.md`) — Stage 02 design adaptation

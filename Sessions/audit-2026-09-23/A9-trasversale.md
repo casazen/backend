@@ -201,7 +201,7 @@
 
 ### 5. Verdetto
 
-**Registry "shipped" vs realtà infrastrutturale** (`Sessions/specs/README.md:108-127`; lo stato è stato portato a "shipped" dalla PR #400 in base alle issue **chiuse**, non a verifiche funzionali, `Sessions/review-400-security.md`)
+**Registry "shipped" vs realtà infrastrutturale** (specifica rimossa (storico in git); lo stato è stato portato a "shipped" dalla PR #400 in base alle issue **chiuse**, non a verifiche funzionali, `Sessions/review-400-security.md`)
 
 | Spec "shipped" | Perché a livello infrastrutturale non lo è |
 |---|---|

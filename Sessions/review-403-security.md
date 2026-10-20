@@ -17,7 +17,7 @@
 - Guardrails: `.claude/rules/security.md`, council-security-engineer skill
 - `gh pr view 403` / `gh pr diff 403` (`casazen/backend`)
 - Design: `Sessions/design-271.md` (primary)
-- Spec cross-check: `Sessions/specs/spec-onboarding-plg.md` (AC1–AC12)
+- Spec cross-check: specifica rimossa (storico in git) (AC1–AC12)
 - Context only (not in PR diff; used to validate design claims vs tree): `LegalController`, `OnboardingController`, `UsersController` onboarding path, `OnboardingService`
 - Changed files (5):
   1. `Sessions/design-271.md` — Stage 02 design (API/FE/security/GDPR/AC Test Map)

@@ -722,7 +722,7 @@ Recurring jobs → `domain-recheck` ([`hangfire.md`](hangfire.md)).
 
 ## 11. Public site of CasaZen (SEO-VETRINA)
 
-Acceptance criteria: `Sessions/specs/spec-public-marketing-site.md` (US-029).
+Acceptance criteria: specifica rimossa (storico in git) (US-029).
 
 Before this the root `/` of the public domain was the entry of the console (a redirect to the login): a search for "CasaZen"
 found no page that says what CasaZen is. The public site adds four pages, **static HTML rendered at build time** (the method

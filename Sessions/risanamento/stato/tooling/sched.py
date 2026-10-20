@@ -4,8 +4,8 @@ import json,sys,functools
 P='/tmp/claude-0/-home-user/9c8184b5-4d4a-5ad1-b5a4-defdd11e6e5c/scratchpad/plan/'
 T=json.load(open(P+'tasks.json')); S=json.load(open(P+'status.json'))
 ids=[x['id'] for x in T]; X={x['id']:x for x in T}
-# '*' = every task except itself, the FN-* sweeps and the AI-* tasks of wave 8 (they run after FN-05: counting them would be a cycle)
-dep={i:([j for j in ids if j!=i and not j.startswith(('FN-','AI-'))] if X[i]['deps']==['*'] else X[i]['deps']) for i in ids}
+# '*' = every task except itself and the FN-* sweeps (avoid cycles)
+dep={i:([j for j in ids if j!=i and not j.startswith('FN-')] if X[i]['deps']==['*'] else X[i]['deps']) for i in ids}
 @functools.lru_cache(None)
 def depth(i): return 0 if not dep[i] else 1+max(depth(d) for d in dep[i])
 OK={'done','partial','already'}

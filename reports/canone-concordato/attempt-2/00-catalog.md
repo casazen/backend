@@ -9,7 +9,7 @@ Attempt 1 (`reports/canone-concordato/attempt-1/`) mapped AC1–AC13 after IMU e
 | Field | Value |
 |---|---|
 | **slug** | `spec-ltr-canone-concordato-calculator` |
-| **path** | `Sessions/specs/spec-ltr-canone-concordato-calculator.md` |
+| **path** | specifica rimossa (storico in git) |
 | **AC ids (this attempt)** | AC6 (DTO → template contract), AC12 (calculator on existing shell — create + detail) |
 | **Related** | `spec-ltr-rli-registration` AC3 (per-regime template; unapproved blocks PDF; approved must be real PDF for e-sign) |
 | **Draft copy** | `Sessions/contratto-locazione-canone-concordato-bozza.html` (counsel-stamped BOZZA) |

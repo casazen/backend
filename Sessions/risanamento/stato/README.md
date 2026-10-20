@@ -1,6 +1,6 @@
 # Stato del risanamento (snapshot del 2026-10-02)
 
-Copia dello stato dell'orchestrazione, per poter riprendere il lavoro da un'altra sessione o in locale. Ultimo aggiornamento: task FN-05 (stato finale: 163 task `done` su 166, 3 `partial`: RS-7, CO-13, CO-22; i 12 task `AI-*` sono `pending`).
+Copia dello stato dell'orchestrazione, per poter riprendere il lavoro da un'altra sessione o in locale. Ultimo aggiornamento: task FN-05 (stato finale: 163 task `done` su 166, 3 `partial`: RS-7, CO-13, CO-22).
 
 | File | Contenuto |
 |---|---|

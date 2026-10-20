@@ -2,7 +2,7 @@
 
 > **Pattern**: builder-validator · **Protocol**: deliberative-voting · **Rounds**: 3 (consensus)
 > **Date**: 2026-06-05 · **Session**: `Sessions/casazen-platform-launch/`
-> **Final artifact**: `draft-v3.md` → `business-plan.md` + `implementation-roadmap.md` + 17 macro-specs in `Sessions/specs/`
+> **Final artifact**: `draft-v3.md` → `business-plan.md` + `implementation-roadmap.md` + 17 macro-specs in raccolta di specifiche rimossa (storico in git)
 
 ---
 
@@ -47,7 +47,7 @@ The council **approves by consensus** a go-to-market and product strategy positi
 | **US-016** | enterprise agency | multi-brand, SSO, SLA, portfolio AI | `spec-enterprise-scale` | 4 |
 | **US-017** | CasaZen | ES/FR compliance modules replicating the Italian pattern | `spec-eu-compliance-es-fr` | 4 |
 
-Acceptance criteria (BE + FE) and regulatory gates per story live in the corresponding `Sessions/specs/spec-{slug}.md`.
+Acceptance criteria (BE + FE) and regulatory gates per story live in the corresponding specifica rimossa (storico in git).
 
 ---
 

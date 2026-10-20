@@ -7,7 +7,7 @@ topic: |
   Sessions/market-analysis-2026/AI-short/long-term-platform.md
   ("Piattaforma AI per affitti brevi/lunghi e direct booking"), current codebase and
   documentation. Deliverables: (1) full business plan, (2) long-term shared implementation
-  plan from current state to sellable production platform, (3) macro-specs in Sessions/specs/
+  plan from current state to sellable production platform, (3) requisiti nel planning Quokka
   anchored to current implementation. Include Italian legal/compliance path (CIN D.L. 145/2023,
   GDPR, Alloggiati Web, tourist tax, company formation) and lawful cost-minimization
   strategies (grants, tax incentives, freemium hosting, phased licensing). Position per market
@@ -55,7 +55,7 @@ agents:
 | Business plan | `Sessions/casazen-platform-launch/business-plan.md` |
 | Implementation roadmap (long-term) | `Sessions/casazen-platform-launch/implementation-roadmap.md` |
 | Council decision record | `Sessions/casazen-platform-launch/decision.md` |
-| Macro-specs (one per roadmap phase/feature) | `Sessions/specs/spec-{slug}.md` |
+| Macro-specs (one per roadmap phase/feature) | specifica rimossa (storico in git) |
 
 **Session slug**: `casazen-platform-launch`
 

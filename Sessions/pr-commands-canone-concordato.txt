@@ -7,7 +7,7 @@ git checkout -b feature/canone-concordato-research
 
 --- 2. Aggiungi SOLO i file di questa sessione (non le altre modifiche non committate gia' presenti) ---
 
-git add Sessions/research-canone-concordato-mb.md Sessions/business-analysis-canone-concordato.md Sessions/contratto-locazione-canone-concordato-bozza.html Sessions/specs/spec-ltr-canone-concordato-calculator.md Sessions/specs/README.md .claude/context/regulations/canone_concordato.md
+git add Sessions/research-canone-concordato-mb.md Sessions/business-analysis-canone-concordato.md Sessions/contratto-locazione-canone-concordato-bozza.html specifica rimossa (storico in git) specifica rimossa (storico in git) .claude/context/regulations/canone_concordato.md
 
 --- 3. Commit ---
 
@@ -23,7 +23,7 @@ gh pr create --base develop --title "docs: canone concordato research + calculat
 - Regulatory research on canone concordato (L. 431/1998) for Seveso and Cesano Maderno, with official Accordo Territoriale rent-band tables and IMU aliquote
 - Business analysis for a future CasaZen calculator/contract-generator feature
 - Draft 3+2 lease contract template (HTML, opens in Word) - not for real use without legal review
-- New spec spec-ltr-canone-concordato-calculator.md, registered in Sessions/specs/README.md under the frozen Phase 1.5 LTR section (depends on spec-ltr-rli-registration + spec-ltr-frontend)
+- New spec spec-ltr-canone-concordato-calculator.md, registered in specifica rimossa (storico in git) under the frozen Phase 1.5 LTR section (depends on spec-ltr-rli-registration + spec-ltr-frontend)
 - New condensed regulatory context file at .claude/context/regulations/canone_concordato.md
 
 ## Notes for reviewers
@@ -35,6 +35,6 @@ gh pr create --base develop --title "docs: canone concordato research + calculat
 --- Nota ---
 Se preferisci un solo comando da incollare, puoi concatenare i passi 1-4 con &&:
 
-git checkout -b feature/canone-concordato-research && git add Sessions/research-canone-concordato-mb.md Sessions/business-analysis-canone-concordato.md Sessions/contratto-locazione-canone-concordato-bozza.html Sessions/specs/spec-ltr-canone-concordato-calculator.md Sessions/specs/README.md .claude/context/regulations/canone_concordato.md && git commit -m "docs: canone concordato research, contract draft and calculator spec (Seveso/Cesano Maderno pilot)" && git push origin feature/canone-concordato-research
+git checkout -b feature/canone-concordato-research && git add Sessions/research-canone-concordato-mb.md Sessions/business-analysis-canone-concordato.md Sessions/contratto-locazione-canone-concordato-bozza.html specifica rimossa (storico in git) specifica rimossa (storico in git) .claude/context/regulations/canone_concordato.md && git commit -m "docs: canone concordato research, contract draft and calculator spec (Seveso/Cesano Maderno pilot)" && git push origin feature/canone-concordato-research
 
 poi il comando 5 (gh pr create) separatamente.

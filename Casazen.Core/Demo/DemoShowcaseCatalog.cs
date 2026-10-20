@@ -6,7 +6,7 @@ namespace Casazen.Core.Demo;
 /// <summary>
 /// The showcase a client walks through. Every feature that adds a screen, an entity or a flow a host or a guest can
 /// see adds a scenario here, in the same change, and extends <see cref="Scenarios"/>. The rule is in
-/// <c>Sessions/specs/_TEMPLATE.md</c> (Demo seed) and <c>.claude/rules/demo-seed.md</c>.
+/// <c>.claude/rules/demo-seed.md</c>.
 /// </summary>
 /// <remarks>
 /// Places use the ISTAT codes the rest of the product already treats as examples (Roma <c>058091</c>) or the official

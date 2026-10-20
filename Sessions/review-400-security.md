@@ -16,7 +16,7 @@
 - Auditor brief: `.claude/sdlc/04-review/agents/security-auditor.md`
 - `gh pr view 400` / `gh pr diff 400 --repo casazen/backend`
 - Changed files (3 files, +88/−50):
-  1. `Sessions/specs/README.md` — MVP SPEC registry status `planned` → `shipped` for CLOSED/COMPLETED issues; seo-funnel remains `planned` with G4 label note
+  1. specifica rimossa (storico in git) — MVP SPEC registry status `planned` → `shipped` for CLOSED/COMPLETED issues; seo-funnel remains `planned` with G4 label note
   2. `scripts/quality/build-work-queue.ps1` — skip SPEC queue picks when linked GH issue is not `OPEN`
   3. `Sessions/quality/requirements.json` — extract refresh (`updated` timestamp + P0 row reorder only)
 
