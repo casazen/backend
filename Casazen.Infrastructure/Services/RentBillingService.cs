@@ -55,6 +55,7 @@ public sealed partial class RentBillingService(
     };
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    private readonly RentPaymentEventApplier _paymentEvents = new(timeProvider ?? TimeProvider.System, logger);
 
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
 
@@ -486,79 +487,8 @@ public sealed partial class RentBillingService(
         return notice;
     }
 
-    /// <summary>
-    /// Applies an event to an installment. Only the current PaymentIntent moves it, except a success, which is money
-    /// received in any case: recorded once, and logged as an error when the installment was already paid another way.
-    /// </summary>
-    private RentPaymentNotice? ApplyEvent(RentLedgerEntry entry, RentPaymentIntentEvent paymentEvent)
-    {
-        var isCurrent = string.Equals(entry.StripePaymentIntentId, paymentEvent.PaymentIntentId, StringComparison.Ordinal);
-        var now = UtcNow;
-        switch (paymentEvent.EventType)
-        {
-            case "payment_intent.succeeded":
-                if (entry.Status == RentLedgerStatus.Paid)
-                {
-                    if (!(entry.PaidVia == RentPaymentChannel.Stripe && isCurrent))
-                    {
-                        logger.LogError(
-                            "Rent installment {InstallmentId} already paid ({PaidVia}) received payment intent {PaymentIntentId}: refund one of them from the Stripe dashboard",
-                            entry.Id,
-                            entry.PaidVia,
-                            paymentEvent.PaymentIntentId);
-                    }
-
-                    return null;
-                }
-
-                if (entry.Status == RentLedgerStatus.Cancelled)
-                {
-                    logger.LogWarning(
-                        "Rent installment {InstallmentId} was cancelled but payment intent {PaymentIntentId} succeeded: recorded as paid",
-                        entry.Id,
-                        paymentEvent.PaymentIntentId);
-                }
-
-                entry.Status = RentLedgerStatus.Paid;
-                entry.PaidVia = RentPaymentChannel.Stripe;
-                entry.PaidOn = Today;
-                entry.PaidAt = now;
-                entry.StripePaymentIntentId = paymentEvent.PaymentIntentId;
-                entry.FailureCode = null;
-                entry.UpdatedAt = now;
-                return new RentPaymentNotice(entry.Id, RentPaymentNoticeKind.Received);
-
-            case "payment_intent.processing":
-                if (!isCurrent || entry.Status is RentLedgerStatus.Paid or RentLedgerStatus.Cancelled)
-                    return null;
-                entry.Status = RentLedgerStatus.Processing;
-                entry.UpdatedAt = now;
-                return null;
-
-            case "payment_intent.payment_failed":
-                if (!isCurrent || entry.Status is RentLedgerStatus.Paid or RentLedgerStatus.Cancelled)
-                    return null;
-                var wasInFlight = entry.Status == RentLedgerStatus.Processing;
-                entry.Status = RentLedgerStatus.Failed;
-                entry.FailureCode = Truncate(paymentEvent.FailureCode, 100);
-                entry.LastFailedAt = now;
-                entry.UpdatedAt = now;
-                // On-session failures are shown to the tenant on the page; a payment that fails after it was accepted
-                // (e.g. a SEPA debit returned) gets an email with a new link.
-                return wasInFlight ? new RentPaymentNotice(entry.Id, RentPaymentNoticeKind.Failed) : null;
-
-            case "payment_intent.canceled":
-                if (!isCurrent || entry.Status is RentLedgerStatus.Paid or RentLedgerStatus.Cancelled)
-                    return null;
-                entry.StripePaymentIntentId = null;
-                entry.Status = entry.Status == RentLedgerStatus.Failed ? RentLedgerStatus.Failed : RentLedgerStatus.Scheduled;
-                entry.UpdatedAt = now;
-                return null;
-
-            default:
-                return null;
-        }
-    }
+    private RentPaymentNotice? ApplyEvent(RentLedgerEntry entry, RentPaymentIntentEvent paymentEvent) =>
+        _paymentEvents.Apply(entry, paymentEvent);
 
     public async Task CompleteAsync(RentPaymentNotice notice, CancellationToken cancellationToken = default)
     {

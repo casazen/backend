@@ -576,8 +576,10 @@ public class ServiceRequestServiceTests
         Assert.Null(stored.RejectionReason);
     }
 
-    [Fact]
-    public async Task RejectAsync_ReasonWithSpaces_StoresItTrimmed()
+    [Theory]
+    [InlineData("Non disponibile")]
+    [InlineData("  Non disponibile  ")]
+    public async Task RejectAsync_FromRequested_StoresRefusalAndTrimmedReason(string reason)
     {
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
@@ -586,7 +588,7 @@ public class ServiceRequestServiceTests
             hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
 
-        var rejected = await service.RejectAsync(created.Id, supplierOrgId, "  Non disponibile  ");
+        var rejected = await service.RejectAsync(created.Id, supplierOrgId, reason);
 
         Assert.Equal(ServiceRequestStatus.Rifiutato, rejected.Status);
         Assert.Equal("Non disponibile", rejected.RejectionReason);
@@ -699,22 +701,6 @@ public class ServiceRequestServiceTests
         Assert.Equal(matched.Id, Assert.Single(items).Id);
         Assert.Equal(2, propertyTotal);
         Assert.Equal(new[] { matched.Id, other.Id }.Order(), propertyItems.Select(r => r.Id).Order());
-    }
-
-    [Fact]
-    public async Task RejectAsync_FromRichiesto_SetsRifiutato()
-    {
-        await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
-        var service = CreateService(db);
-        var created = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
-            "cleaning", ServiceRequestUrgency.Normal, null, false));
-
-        var rejected = await service.RejectAsync(created.Id, supplierOrgId, "Non disponibile");
-
-        Assert.Equal(ServiceRequestStatus.Rifiutato, rejected.Status);
-        Assert.Equal("Non disponibile", rejected.RejectionReason);
     }
 
     // ─── FD-13: notifications rendered from templates, links from config, queued outside the request ───

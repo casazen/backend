@@ -1,6 +1,6 @@
 # Piano di esecuzione del risanamento
 
-> Generato dal registro [`tasks.json`](./tasks.json). Ogni difetto dell'audit ([`../audit-2026-09-23/`](../audit-2026-09-23/README.md)) è assegnato ad almeno un task. Le decisioni del product owner sono in [`DECISIONI.md`](./DECISIONI.md); il protocollo seguito da ogni agente è in [`AGENT-PROTOCOL.md`](./AGENT-PROTOCOL.md).
+> Generato dal registro [`tasks.json`](./tasks.json). Ogni difetto dell'audit ([`../audit-2026-09-23/`](../audit-2026-09-23/README.md)) è assegnato ad almeno un task. Le decisioni del product owner sono in [`DECISIONI.md`](./DECISIONI.md); il protocollo seguito da ogni agente è in protocollo storico rimosso (disponibile in git).
 
 **166 task** coprono **335 difetti** (46 P0, 149 P1, 140 P2), più i punti pianificati mai sviluppati (soggiorno OTA da iCal, ISTAT, portali regionali, generazione Alloggiati).
 

@@ -1,6 +1,6 @@
 ## A3 — Direct booking, pagamenti, siti pubblici, domini
 
-> Audit in sola lettura su `/home/user/backend` (HEAD `4cbaeaa`), `/home/user/frontend` (HEAD `0b91e3c`), `/home/user/mobile`. Nessun build/test eseguito: ogni stato è ricavato dal codice. Il registry specifica rimossa (storico in git) dichiara **shipped** tutte e sei le spec dell'area; i report `reports/attempt-7/05-final-verdict.md:3` dichiarano `GOAL_RAGGIUNTO`, ma lo step 4 del Golden Journey L3 non passa dal checkout guest (vedi A3-23).
+> Audit in sola lettura su `/home/user/backend` (HEAD `4cbaeaa`), `/home/user/frontend` (HEAD `0b91e3c`), `/home/user/mobile`. Nessun build/test eseguito: ogni stato è ricavato dal codice. Il registry specifica rimossa (storico in git) dichiara **shipped** tutte e sei le spec dell'area; i report report storico rimosso (disponibile in git) dichiarano `GOAL_RAGGIUNTO`, ma lo step 4 del Golden Journey L3 non passa dal checkout guest (vedi A3-23).
 >
 > Legenda stato: **DONE** = collegato end-to-end e plausibilmente funzionante · **PARTIAL** · **STUB** (UI senza backend reale / demo / TODO) · **MISSING** · **BROKEN** (esiste ma un bug lo rende inutilizzabile).
 
