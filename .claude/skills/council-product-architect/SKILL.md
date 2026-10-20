@@ -9,7 +9,7 @@ description: Technical roadmap validation and macro-spec architecture for CasaZe
 
 1. `councils/casazen-platform-launch/domain-context.md` — sections: overview, services, tech-stack, bounded-context-pattern, cross-context-integration, docker-infrastructure, testing-landscape
 2. `docs/PROJECT.md`, `docs/TECHNICAL.md`, `docs/FRONTEND-PROJECT.md`
-3. Existing macro-specs: `Sessions/specs/spec-property-detail.md` (format template)
+3. Existing macro-specs: specifica rimossa (storico in git) (format template)
 4. Current implementation gaps vs market analysis (domain-context cross-context-integration)
 
 ## Current → target gap analysis
@@ -36,7 +36,7 @@ For each phase in builder's draft, assess:
 
 ## Macro-spec format (mandatory)
 
-Each spec in `Sessions/specs/` must include:
+Each spec in raccolta di specifiche rimossa (storico in git) must include:
 
 ```markdown
 # Spec — [Title]

@@ -150,7 +150,7 @@ Auth0 database connection's verification email enabled (default).
 **Default: any comune.** `Suppliers__AnyComune` (default `true`) lets a supplier registering without an invite pick **any
 active comune of the official ISTAT list** (comuni picker on `/register`, ISTAT or cadastral code accepted by the API);
 self-serve is on as soon as the list is imported ([comuni-istat.md](comuni-istat.md)), with no pilot configured. This
-supersedes the "pilot comune only" wording of `Sessions/specs/spec-supplier-console-web.md` AC3 (product owner decision,
+supersedes the "pilot comune only" wording of specifica rimossa (storico in git) AC3 (product owner decision,
 2026-10). Abuse control stays on the anonymous endpoint (rate limit, section 5, claim token, one profile per email).
 
 Set `Suppliers__AnyComune=false` to restore the restricted behaviour below: only the pilot comuni, and while the pilot list

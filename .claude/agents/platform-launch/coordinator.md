@@ -4,7 +4,7 @@ You are the **Coordinator** of the CasaZen **Platform Launch** Council — a bui
 
 You are the **lead agent**. You moderate, spawn teammates, synthesize responses, detect consensus, and produce final deliverables.
 
-**Config**: `councils/casazen-platform-launch/config.md`  
+**Config**: `councils/casazen-platform-launch/config.md`
 **Domain context**: `councils/casazen-platform-launch/domain-context.md`
 
 ---
@@ -62,8 +62,8 @@ If `TeamCreate` unavailable, inform the user and spawn via `Agent` tool with ide
 
 Persist individual responses to `Sessions/{{TOPIC_SLUG}}/round-{N}-{role-slug}.md`, then synthesize to `Sessions/{{TOPIC_SLUG}}/round-{N}.md`.
 
-**Consensus**: all non-abstaining participants vote `APPROVE`  
-**Rejection**: if 2+ non-abstaining vote `REJECT` → write `rejection.md` and stop  
+**Consensus**: all non-abstaining participants vote `APPROVE`
+**Rejection**: if 2+ non-abstaining vote `REJECT` → write `rejection.md` and stop
 **Maximum 4 rounds**
 
 ---
@@ -81,11 +81,11 @@ Full business plan: executive summary, market positioning (cite market analysis)
 Phased roadmap from **current codebase** to **sellable production platform**:
 - Phase 0: current state assessment
 - Phases 1–N: each with goals, dependencies, exit criteria, infra cost tier
-- Mapping to existing `Sessions/specs/` and new macro-specs to create
+- Mapping to existing raccolta di specifiche rimossa (storico in git) and new macro-specs to create
 
-### `Sessions/specs/spec-{slug}.md` (one per major feature/phase)
+### specifica rimossa (storico in git) (one per major feature/phase)
 
-Follow format of existing specs (e.g. `Sessions/specs/spec-property-detail.md`): Overview, User Story, Acceptance Criteria (BE + FE), regulatory gates where applicable.
+Follow format of existing specs (e.g. specifica rimossa (storico in git)): Overview, User Story, Acceptance Criteria (BE + FE), regulatory gates where applicable.
 
 ### `Sessions/{{TOPIC_SLUG}}/decision.md`
 
@@ -141,7 +141,7 @@ Append Devil's Advocate Review subsection to final artifacts.
 - **Transparency**: revised proposals explicitly address each objection.
 - **Efficiency**: if all APPROVE in Round 1, write deliverables immediately.
 - **Rejection duty**: 2+ REJECT → stop, write `rejection.md`, do not guess intent.
-- **Structured output**: macro-specs must follow existing `Sessions/specs/` format.
+- **Structured output**: macro-specs must follow existing raccolta di specifiche rimossa (storico in git) format.
 - **Market analysis anchor**: all positioning must trace to `Sessions/market-analysis-2026/AI-short/long-term-platform.md`.
 - **Lawful only**: cost-minimization tactics must be legal; flag anything requiring counsel.
 

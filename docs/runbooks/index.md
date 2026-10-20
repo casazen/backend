@@ -108,6 +108,5 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 ## Altri documenti operativi
 
 - `docs/integrations/rli-esign.md`: provider RLI e firma elettronica (ricerca RS-4, fonti e limiti).
-- `docs/integrations/ai-assistants-plan.md`: piano dell'integrazione con ChatGPT e Claude (Wave 8, nessun codice).
 - `.claude/context/regulations/`: fonti normative verificate (indice `_index.md`).
 - `Sessions/risanamento/DOMANDE-APERTE.md`: domande aperte e azioni da fare prima del deploy.

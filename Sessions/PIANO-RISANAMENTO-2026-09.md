@@ -133,7 +133,7 @@ Effort in giorni-persona (g). Gli ID tra parentesi rimandano ai report in `audit
 Obiettivo: smettere di peggiorare la situazione, spegnere il finto, sbloccare i bug più visibili con fix piccole.
 
 **0.1 Governance (0,5 g)**
-- [ ] Aggiornare `Sessions/specs/README.md` con gli stati reali della tabella §2, e `PLANNING.md` ("LTR, API OTA, discovery AI: spenti dietro flag").
+- [ ] Aggiornare specifica rimossa (storico in git) con gli stati reali della tabella §2, e `PLANNING.md` ("LTR, API OTA, discovery AI: spenti dietro flag").
 - [ ] Riaprire #269 come frozen (è chiusa "completed" ma non è implementata).
 - [ ] Aprire un'issue per ogni punto P0 di questo piano, con label `risanamento`.
 
@@ -435,13 +435,13 @@ Senza queste decisioni alcuni punti restano bloccati. Per ciascuna c'è una racc
   - `A8-seo-ai-freeze.md`: SEO, funnel, AI, feature in freeze
   - `A9-trasversale.md`: sicurezza, inventario endpoint, test, CI
 - Visione e Golden Journey: [`PLANNING.md`](./PLANNING.md)
-- Registry spec: [`specs/README.md`](./specs/README.md) (da aggiornare in Fase 0.1)
+- Registry spec: specifica rimossa (storico in git) (da aggiornare in Fase 0.1)
 
 ---
 
 ## 9. Stato finale del risanamento (2026-10-02, task FN-05)
 
-> Le sezioni 1-8 sono l'istantanea dell'audit del 2026-09-23 e restano come cronaca: i numeri e gli stati "reale" lì sono **quelli di allora**. Lo stato attuale è qui. Riepilogo narrativo e procedura di rilascio: [`risanamento/RIEPILOGO-FINALE.md`](./risanamento/RIEPILOGO-FINALE.md). Registro spec riallineato: [`specs/README.md`](./specs/README.md).
+> Le sezioni 1-8 sono l'istantanea dell'audit del 2026-09-23 e restano come cronaca: i numeri e gli stati "reale" lì sono **quelli di allora**. Lo stato attuale è qui. Riepilogo narrativo e procedura di rilascio: [`risanamento/RIEPILOGO-FINALE.md`](./risanamento/RIEPILOGO-FINALE.md). Registro spec riallineato: specifica rimossa (storico in git).
 
 **Significato degli stati.** *Chiuso* = il task che copre il difetto è `done` in `risanamento/stato/status.json`, ha codice e test sul branch di integrazione `claude/sleepy-edison-oil8ru` e la correzione è verificabile con il commit, il runbook o il test citato. *Parziale* = una parte del difetto resta da fare o non è stata provata. *Aperto* = nessun intervento. **Nessuno di questi stati significa "in produzione"**: il lavoro della prima ondata è su `develop` (PR casazen/backend#451, frontend#209, mobile#5), quello della sessione di ripresa è solo sul branch `claude/sleepy-edison-oil8ru` (procedura in `RIEPILOGO-FINALE.md`); lo stato dei deploy non è registrato in questi documenti e le configurazioni dei servizi esterni spettano al PO (`docs/runbooks/deploy-checklist.md`).
 
@@ -454,7 +454,6 @@ Senza queste decisioni alcuni punti restano bloccati. Per ciascuna c'è una racc
 | P2 | 140 | 139 | 1 | 0 |
 | **Difetti** | **335** | **327** | **8** | **0** |
 
-Task del piano (`risanamento/stato/status.json`): 166 task di risanamento, di cui 163 `done` (FN-05 incluso) e 3 `partial` (RS-7, CO-13, CO-22), più i 3 task aggiunti in corso d'opera `PL14-SUBP`, `LEGAL-TEXTS`, `FIX-DEPLOYCHK` (tutti `done`). I 12 task `AI-01..AI-12` della Wave 8 sono `pending` per scelta: non chiudono difetti e partono solo dopo le risposte del PO.
 
 Lo stato `done` di FN-03 e FN-04 è **parziale nella sostanza**: vedi i difetti A6-04, A6-22, A6-23, A6-24 e A3-23 sotto.
 
@@ -474,7 +473,6 @@ Nessun difetto è rimasto del tutto aperto. Restano invece aperti **punti pianif
 - **CO-13 (partial)**: il file tracciato Alloggiati Web è generato (backend e frontend), il client del web service **non è implementato** (nessuna sandbox, invio irreversibile, decisioni di prodotto mancanti). Il "File Unico" non è generato. Fonte: copie su GitHub dei manuali Rev. 01 del 24/01/2022, da confrontare con il portale (`docs/runbooks/alloggiati.md`). Commit be@c0f81730, fe@ee5e034.
 - **CO-22 (partial, di fatto bloccato)**: ISTAT (#6) e portali regionali (#8, Ross1000 Lombardia). Le specifiche ufficiali non sono verificabili dalla rete della sessione; nessun codice scritto. Runbook `docs/runbooks/ross1000.md`, commit be@0096dcec.
 - **RS-7 (partial)**: tariffe dell'imposta di soggiorno dei comuni pilota **non verificate alla fonte** (domini dei comuni bloccati, dati da estratti di ricerca); per Seveso e Cesano Maderno non è stata trovata un'imposta. Il livello di verifica è riga per riga in `.claude/context/regulations/imposta_soggiorno.md` (§ "Tariffe verificate (2026-09)") e nel CSV `Casazen.Infrastructure/Data/Seeds/tourist-tax/rates.csv`.
-- **AI-01..AI-12**: integrazione con ChatGPT e Claude, solo pianificata (`docs/integrations/ai-assistants-plan.md`).
 
 ### 9.3 Stato di tutti i 335 difetti
 
@@ -734,7 +732,7 @@ Colonna *Evidenza*: `be@` commit del backend, `fe@` frontend, `mo@` mobile (prim
 | A7-27 | P2 | chiuso | LT-11 | LT-11: be@d1573a59 fe@901fbcc |  |
 | A7-28 | P2 | chiuso | LT-14 | LT-14: be@e066d398 fe@dbb56a8 |  |
 | A7-29 | P2 | parziale | LT-15 | LT-15: CanoneConcordatoCoefficientMatrixTests.cs | LT-15 consegna flusso reale su Postgres, matrice dei coefficienti ed e2e; la copertura con coverlet/soglie non è stata aggiunta (DOMANDE-APERTE, LT-15) |
-| A7-30 | P2 | chiuso | FN-05 | FN-05: questo commit | questo task: registro spec allineato (Sessions/specs/README.md) |
+| A7-30 | P2 | chiuso | FN-05 | FN-05: questo commit | questo task: registro spec allineato (specifica rimossa (storico in git)) |
 | A7-31 | P2 | chiuso | PL-07 | PL-07: be@ba321332 |  |
 | A8-01 | P0 | chiuso | FD-21 | FD-21: be@896cac90 fe@5016b35 |  |
 | A8-02 | P0 | chiuso | SE-02 | SE-02: be@abfd960a fe@4765769 |  |

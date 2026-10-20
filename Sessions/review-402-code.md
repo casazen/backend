@@ -78,7 +78,7 @@ gh pr view/diff 402 — 1 file; Sessions/quality/requirements.json only; base de
 Semantic compare develop vs head: set(id,status,gap,prio,active) equal; counts pass=14 blocked=9 unknown=4; open P0=[]
 gh issue view 271 — OPEN; labels include compliance + priority:high; 12 ACs; Technical Notes
 Sessions/loop/evidence/delivery-12/gates.json — overall=pass; G1–G5 + G2b exit 0
-gate-G2b.log — check-ac-depth PASS on Sessions/specs/spec-onboarding-plg.md
+gate-G2b.log — check-ac-depth PASS on specifica rimossa (storico in git)
 No product code; no Stage 03 AC claims; design AC map N/A
 ```
 

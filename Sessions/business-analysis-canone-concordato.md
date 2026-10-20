@@ -1,6 +1,6 @@
 # Business Analysis — Funzionalità "Canone Concordato Assistito" (pilota Seveso / Cesano Maderno)
 
-> Preparato per il team prodotto CasaZen sulla base della ricerca normativa in [`research-canone-concordato-mb.md`](./research-canone-concordato-mb.md), incrociata con lo stato attuale del codebase (`Sessions/specs/spec-ltr-rli-registration.md`, `spec-ltr-frontend.md`, `.claude/context/regulations/fiscale.md`, `Sessions/PLANNING.md`, `.claude/rules/compliance.md`). Vedi anche la spec tecnica proposta: [`Sessions/specs/spec-ltr-canone-concordato-calculator.md`](./specs/spec-ltr-canone-concordato-calculator.md).
+> Preparato per il team prodotto CasaZen sulla base della ricerca normativa in [`research-canone-concordato-mb.md`](./research-canone-concordato-mb.md), incrociata con lo stato attuale del codebase (specifica rimossa (storico in git), `spec-ltr-frontend.md`, `.claude/context/regulations/fiscale.md`, `Sessions/PLANNING.md`, `.claude/rules/compliance.md`). Vedi anche la spec tecnica proposta: specifica rimossa (storico in git).
 
 ---
 
@@ -10,7 +10,7 @@ Il canone concordato (L. 431/1998 art. 2 c.3) è un'opportunità di prodotto con
 
 Il codebase ha **già** una spec dedicata (`spec-ltr-rli-registration.md`) che modella `CanoneConcordato` come valore dell'enum `FiscalRegime` e integra Openapi.it come canale di filing — con un impianto di guardrail legali (delega per-filing, ToS, template counsel-reviewed, disclaimer non vincolante) nato da un **rescope esplicito da "automatico" ad "assistito"** dopo revisione legale (Legal C4). Questo precedente interno convalida esattamente la cautela richiesta: qualunque nuova funzionalità di calcolo/generazione contratto/avvio RLI per il canone concordato deve incastrarsi in questo stesso framework "assistito, mai automatico", non introdurne uno nuovo.
 
-**Raccomandazione sintetica** (dettagli §8): **procedere**, ma in fasi separate — (a) calcolatore di idoneità/vantaggio fiscale con disclaimer non vincolante, (b) generazione contratto su template counsel-reviewed, (c) innesto nel flusso RLI assistito già speccato — con priorità allo sblocco del sign-off legale che oggi condiziona l'intera GA di LTR, non solo questa feature. **Nota di governance**: l'intera fase "1.5 — LTR" risulta **frozen** nel registro spec (`Sessions/specs/README.md`, issue #269 "closed — do not resume"); questo documento e la spec associata sono materiale preparatorio, non un'autorizzazione a riprendere lo sviluppo.
+**Raccomandazione sintetica** (dettagli §8): **procedere**, ma in fasi separate — (a) calcolatore di idoneità/vantaggio fiscale con disclaimer non vincolante, (b) generazione contratto su template counsel-reviewed, (c) innesto nel flusso RLI assistito già speccato — con priorità allo sblocco del sign-off legale che oggi condiziona l'intera GA di LTR, non solo questa feature. **Nota di governance**: l'intera fase "1.5 — LTR" risulta **frozen** nel registro spec (specifica rimossa (storico in git), issue #269 "closed — do not resume"); questo documento e la spec associata sono materiale preparatorio, non un'autorizzazione a riprendere lo sviluppo.
 
 ---
 

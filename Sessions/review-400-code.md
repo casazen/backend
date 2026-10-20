@@ -6,7 +6,7 @@
 | Title | `fix(sdlc): sync shipped MVP registry and skip closed-issue queue picks` |
 | Base / head | `develop` ← `cursor/casazen-sdlc-delivery-4211` |
 | Reviewer | Stage 04 `code-reviewer` (fresh context) |
-| Scope | Diff only: `Sessions/specs/README.md`, `scripts/quality/build-work-queue.ps1`, `Sessions/quality/requirements.json` |
+| Scope | Diff only: specifica rimossa (storico in git), `scripts/quality/build-work-queue.ps1`, `Sessions/quality/requirements.json` |
 | Work-unit | Delivery tick 11 `SPEC:seo-funnel` Stage 01 — **blocked** (G4) |
 | Kind | Process/quality only — registry sync + queue closed-issue filter + requirements extract refresh |
 
@@ -22,7 +22,7 @@
 
 ## Diff summary
 
-1. **`Sessions/specs/README.md`**: Registry status `planned`→`shipped` for CLOSED/COMPLETED MVP issues `#297` `#298` `#299` `#292` `#295` `#296` `#301` `#294` `#293` and `#230` (`saas-billing`). Notes acknowledge remaining env-blocked matrix gaps (Maestro / L3) without claiming those ACs pass. **`seo-funnel` (`#300`) stays `planned`** with explicit note: Stage 01 needs `compliance`\|`none-required`; automation cannot edit issues.
+1. **specifica rimossa (storico in git)**: Registry status `planned`→`shipped` for CLOSED/COMPLETED MVP issues `#297` `#298` `#299` `#292` `#295` `#296` `#301` `#294` `#293` and `#230` (`saas-billing`). Notes acknowledge remaining env-blocked matrix gaps (Maestro / L3) without claiming those ACs pass. **`seo-funnel` (`#300`) stays `planned`** with explicit note: Stage 01 needs `compliance`\|`none-required`; automation cannot edit issues.
 2. **`scripts/quality/build-work-queue.ps1`**: Defers `Add-Item` for planned/in-dev SPEC rows; when `-SkipGh` is off, `gh issue view --json state` drops rows where state ≠ `OPEN` (prevents stale registry from starving the queue). `-SkipGh` path still enqueues without GH filter.
 3. **`Sessions/quality/requirements.json`**: Timestamp bump + gap-entry reorder from extract. **No invented pass**; blocked/pass set unchanged (9 blocked, open P0 = 0).
 

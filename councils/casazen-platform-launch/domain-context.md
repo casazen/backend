@@ -13,7 +13,7 @@ CasaZen is evolving from a vacation-rental PMS (Italian STR compliance, OTA sync
 **Council deliverables**:
 1. **Business plan** — positioning, segments, pricing, GTM, unit economics, 5-year vision
 2. **Implementation roadmap** — phased path from current implementation to sellable production platform
-3. **Macro-specs** — in `Sessions/specs/`, each anchored to current codebase gaps and roadmap phases
+3. **Macro-specs** — in raccolta di specifiche rimossa (storico in git), each anchored to current codebase gaps and roadmap phases
 
 **Constraints**: operate legally in Italy; maximize lawful cost minimization (grants, tax incentives, freemium tiers, phased licensing); no illegal shortcuts.
 
@@ -28,7 +28,7 @@ CasaZen is evolving from a vacation-rental PMS (Italian STR compliance, OTA sync
 | Hosts (1–9 units) | Phase 2 — simplified onboarding, freemium | Customer | Secondary segment |
 | Italian authorities | CIN, Alloggiati Web, tourist tax, business registration | Regulatory | Non-negotiable compliance |
 | OTA platforms | Channel distribution + API dependencies | Partner / constraint | Airbnb, Booking.com, etc. |
-| CasaZen dev (AI-SDLC) | Implements macro-specs via existing 6-stage pipeline | Execution | Specs land in `Sessions/specs/` |
+| CasaZen dev (AI-SDLC) | Implements macro-specs via existing 6-stage pipeline | Execution | Specs land in raccolta di specifiche rimossa (storico in git) |
 
 ---
 
@@ -95,7 +95,7 @@ CasaZen is evolving from a vacation-rental PMS (Italian STR compliance, OTA sync
 
 ## operational-context
 
-- **Implementation**: macro-specs live in `Sessions/specs/`
+- **Implementation**: macro-specs live in raccolta di specifiche rimossa (storico in git)
 - **Existing macro-specs**: property-detail, admin-backend, pricing-adapter-verification, role-onboarding, split-layer
 - **Current release cadence**: GitHub Flow — feature → develop → staging → main
 - **Infra**: Supabase (PostgreSQL), Vercel (FE), Railway/Render (BE)
@@ -109,7 +109,7 @@ See `Docs/INDEX.md`. Priority reads for this council:
 - `Sessions/market-analysis-2026/AI-short/long-term-platform.md` — **mandatory**
 - `docs/BUSINESS.md`, `docs/PROJECT.md`, `docs/INFRA.md`
 - `Sessions/decision-hosting-zero-budget.md`
-- `Sessions/specs/spec-*.md` — existing spec format to follow
+- specifica rimossa (storico in git) — existing spec format to follow
 
 ---
 

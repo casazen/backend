@@ -1,6 +1,6 @@
 # Runbook — Golden Journey (manual fallback)
 
-**Spec:** GJ-001 (`Sessions/specs/spec-golden-journey-e2e.md`)  
+**Spec:** GJ-001 (specifica rimossa (storico in git))
 **Environment:** local/dev only (`http://localhost:5000` + `http://localhost:5173`). Do not use production URLs.
 
 Use this checklist when CI or Playwright/Maestro is unavailable. Record a short video or screenshots per step.

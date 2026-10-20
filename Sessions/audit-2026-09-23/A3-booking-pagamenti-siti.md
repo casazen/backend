@@ -1,6 +1,6 @@
 ## A3 — Direct booking, pagamenti, siti pubblici, domini
 
-> Audit in sola lettura su `/home/user/backend` (HEAD `4cbaeaa`), `/home/user/frontend` (HEAD `0b91e3c`), `/home/user/mobile`. Nessun build/test eseguito: ogni stato è ricavato dal codice. Il registry `Sessions/specs/README.md:110-115` dichiara **shipped** tutte e sei le spec dell'area; i report `reports/attempt-7/05-final-verdict.md:3` dichiarano `GOAL_RAGGIUNTO`, ma lo step 4 del Golden Journey L3 non passa dal checkout guest (vedi A3-23).
+> Audit in sola lettura su `/home/user/backend` (HEAD `4cbaeaa`), `/home/user/frontend` (HEAD `0b91e3c`), `/home/user/mobile`. Nessun build/test eseguito: ogni stato è ricavato dal codice. Il registry specifica rimossa (storico in git) dichiara **shipped** tutte e sei le spec dell'area; i report `reports/attempt-7/05-final-verdict.md:3` dichiarano `GOAL_RAGGIUNTO`, ma lo step 4 del Golden Journey L3 non passa dal checkout guest (vedi A3-23).
 >
 > Legenda stato: **DONE** = collegato end-to-end e plausibilmente funzionante · **PARTIAL** · **STUB** (UI senza backend reale / demo / TODO) · **MISSING** · **BROKEN** (esiste ma un bug lo rende inutilizzabile).
 
@@ -77,7 +77,7 @@
 | BS-AC12 | JSON-LD `VacationRental` | MISSING | grep `ld+json` in `src/features/public-booking`: 0 risultati | La BE non espone check-in/out time, pets, rating. |
 | BS-AC13 | Meta/OG/Twitter/canonical | MISSING | FE `index.html:2,7` (`lang="en"`, `<title>temp-vite</title>`) | Nessun aggiornamento di title/meta sulle pagine `/book` (A3-20). |
 | BS-AC14 | `sitemap.xml` per org + robots | MISSING | `PublicOrgController.cs` (nessuna action sitemap); FE `public/` contiene solo favicon/icons | |
-| BS-AC15 | Deep link `?checkin=&checkout=&guests=` | PARTIAL | `use-booking-search-params.ts:16-17` | Il codice usa `checkIn`/`checkOut` (camelCase): il contratto GVR (`Sessions/specs/spec-google-vacation-rentals.md:50`) non precompila le date (A3-28). |
+| BS-AC15 | Deep link `?checkin=&checkout=&guests=` | PARTIAL | `use-booking-search-params.ts:16-17` | Il codice usa `checkIn`/`checkOut` (camelCase): il contratto GVR (specifica rimossa (storico in git)) non precompila le date (A3-28). |
 
 #### 1.5 spec-public-site-design-system (#297)
 

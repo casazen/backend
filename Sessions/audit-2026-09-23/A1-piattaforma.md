@@ -199,7 +199,7 @@ Legenda stati: DONE / PARTIAL / STUB / MISSING / BROKEN.
 
 **A1-07 · P1 · Frontend del SaaS billing completamente assente**
 - **Dove:** nessun `FE/features/billing/*`, `api/billing.api.ts` o `queries/use-billing.ts`; `route-manifest.ts` senza `/settings/billing`.
-- **Scenario:** nessun operatore può pagare, aprire il portale o inserire la P.IVA. Il registry (`Sessions/specs/README.md:126`) dichiara "shipped".
+- **Scenario:** nessun operatore può pagare, aprire il portale o inserire la P.IVA. Il registry (specifica rimossa (storico in git)) dichiara "shipped".
 - **Fix:** implementare SB-AC10…AC13: pagina piani con checkout, pagina billing con subscription e portale, form paese/P.IVA (`PUT /api/billing/profile`), gestione di `billing_gate_closed` e `managed_by_stripe`, stringhe in `t()`. La pagina piano esistente reindirizza al checkout quando il gate è aperto.
 - **Effort:** L.
 
@@ -353,7 +353,7 @@ Ordine con dipendenze. Le stime sono in giorni-persona.
 18. **A1-16** (route CIN), **A1-17** (ruoli multipli e audit), **A1-26**, **A1-27**, **A1-41**.
 19. **A1-28 / A1-29**: RF1 su `Guest` (migrazione in 3 step) e filtri per le tabelle scoperte.
 20. **A1-25 (i18n)**, **A1-36**, **A1-38**, **A1-14**, **A1-20**, **A1-21**, **A1-33**.
-21. **A1-43**: test L3 reali (utente Auth0 di test: onboarding POST, backfill con PUT, admin senza org), rimozione dei test vuoti, aggiornamento del registry `Sessions/specs/README.md` (billing e admin non sono "shipped").
+21. **A1-43**: test L3 reali (utente Auth0 di test: onboarding POST, backfill con PUT, admin senza org), rimozione dei test vuoti, aggiornamento del registry specifica rimossa (storico in git) (billing e admin non sono "shipped").
 
 ---
 
