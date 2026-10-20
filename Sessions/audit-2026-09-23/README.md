@@ -42,7 +42,7 @@ I conteggi sono approssimati e includono duplicati tra aree: per esempio l'ospit
 
 ## Attenzione ai report precedenti
 
-I verdetti `GOAL_RAGGIUNTO` in `reports/attempt-*` e `reports/verification-2026-08-16` **non sono prova di funzionamento**. Si basavano su:
+I verdetti `GOAL_RAGGIUNTO` in report storico rimosso (disponibile in git) e report storico rimosso (disponibile in git) **non sono prova di funzionamento**. Si basavano su:
 - test d'integrazione su InMemory;
 - E2E con mock o in demo mode;
 - un solo utente che faceva sia l'host sia il fornitore;

@@ -29,7 +29,7 @@ Il conteggio dei commit è `git log --no-merges origin/develop..HEAD` nei tre re
 - **RS-1..RS-9**: ricerche su fonti ufficiali con esito in `.claude/context/regulations/` (CIN, Alloggiati, sicurezza D.L. 145/2023, Openapi.it/firma elettronica in `docs/integrations/rli-esign.md`, regole fiscali e OSS, canone concordato, ISTAT). Il dataset dei comuni ISTAT (21/02/2026, 7.894 comuni) lo ha fornito il PO. RS-7 (tariffe imposta di soggiorno) è parziale, vedi § 3.
 
 ### Fondamenta tecniche (FD) e confine tenant (TN)
-- **CI vera**: frontend con lint, typecheck, vitest e build obbligatori (FD-01, `ci-frontend.md`); backend con gate sui pacchetti vulnerabili e rimozione di SendGrid (FD-02, `ci-backend.md`); mobile con tsc ed export (FD-03); test d'integrazione su PostgreSQL reale (FD-04, nota in `AGENT-PROTOCOL.md`).
+- **CI vera**: frontend con lint, typecheck, vitest e build obbligatori (FD-01, `ci-frontend.md`); backend con gate sui pacchetti vulnerabili e rimozione di SendGrid (FD-02, `ci-backend.md`); mobile con tsc ed export (FD-03); test d'integrazione su PostgreSQL reale (FD-04, protocollo storico disponibile in git).
 - **Contratto errori e localizzazione** (FD-05, FN-01): ProblemDetails con `code` stabile e messaggi da `.resx` IT/EN; il test `SharedResourcesLocalizationTests` fa fallire una chiave mancante.
 - **Date** (FD-06): UTC normalizzato dall'infrastruttura, "oggi" in Europe/Rome (`RomeCalendar`, `CalendarTodayArchitectureTests`).
 - **File e chiavi** (FD-07): Supabase Storage con bucket pubblico e privato, chiavi DataProtection persistite (`storage.md`).
