@@ -1,356 +1,57 @@
-# 🏠🧘 CASAZEN - Backend (.NET 10)
+# CasaZen — Backend API
 
-## 🚀 Quick Start
+API .NET 10 per la gestione di immobili, prenotazioni, ospiti, organizzazioni, affitti lunghi, adempimenti e servizi ai proprietari. La webapp e l’app mobile sono repository separati:
 
-### Prerequisites
-- .NET 10 SDK
-- PostgreSQL 16 (local `casazen_dev` or Supabase — see `docs/INFRA.md`)
+- [Webapp](https://github.com/casazen/frontend)
+- [App mobile](https://github.com/casazen/mobile)
 
-### Local Setup
+## Documentazione
+
+- [Indice tecnico e operativo](docs/index.md)
+- [Architettura e responsabilità](docs/technical/architecture.md)
+- [Sviluppo e verifica locale](docs/technical/development.md)
+- [Riferimento API e modello dati](docs/TECHNICAL.md)
+- [Runbook per argomento](docs/runbooks/index.md)
+- [Checklist di deploy](docs/runbooks/deploy-checklist.md)
+- **Guida utenti:** nella webapp, dopo il login, aprire **Guida** nell’intestazione. [Contenuti e manutenzione](https://github.com/casazen/frontend/blob/develop/docs/product/README.md).
+
+## Avvio rapido
+
+Prerequisiti: .NET 10 SDK, PostgreSQL 16 ed EF CLI coerente con i pacchetti del progetto (attualmente 10.0.12). I test di integrazione usano database dedicati.
 
 ```bash
-# Clone repository
-git clone https://github.com/casazen/casazen-backend.git
-cd casazen-backend
-
-# Restore packages
+git clone https://github.com/casazen/backend.git
+cd backend
 dotnet restore
+```
 
-# Configure database
-cp appsettings.json appsettings.Development.json
-# Edit connection string in appsettings.Development.json
+Configurare la connessione locale tramite user secrets del progetto Web, senza salvare credenziali reali nel repository:
 
-# Create database
-dotnet ef database update
-
-# Run
+```bash
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Port=5432;Database=casazen_dev;Username=postgres;Password=dev" --project Casazen.Web
+dotnet ef database update --project Casazen.Infrastructure --startup-project Casazen.Web
 dotnet run --project Casazen.Web
 ```
 
-**API Swagger:** https://localhost:5001/swagger
+`postgres/dev` è solo un esempio per un database locale. Per autenticazione e servizi esterni usare i valori dell’ambiente di sviluppo e i [runbook](docs/runbooks/index.md).
 
-Local PostgreSQL and the deploy use the root `Dockerfile` (no `docker-compose.yml`). See `docs/INFRA.md` (hosting in revisione: Railway è stato cancellato dal PO il 2026-10-02, vedi [`docs/runbooks/free-hosting-analysis.md`](docs/runbooks/free-hosting-analysis.md)).
+- API locale: `http://localhost:5000/api`
+- Swagger, in sviluppo: `http://localhost:5000/swagger`
+- Liveness: `/api/health/live`
+- Readiness: `/api/health/ready` (verificare anche il contenuto della risposta)
 
----
+Non esiste un `docker-compose.yml` alla radice. Il `Dockerfile` descrive l’immagine dell’API; per l’infrastruttura leggere [INFRA.md](docs/INFRA.md) e le note sullo stato dell’hosting.
 
-## 📋 Architecture
-
-### Layered Architecture
-```
-Casazen.Web (Presentation)
-├── Controllers
-└── Middleware
-
-Casazen.Core (Business Logic)
-├── Entities
-├── Repositories (Interfaces)
-└── Services (Interfaces)
-
-Casazen.Infrastructure (Data Access)
-├── Data (DbContext)
-├── Repositories (Implementations)
-├── Services (Implementations)
-└── OTA (External Adapters)
-
-Casazen.Tests (Quality)
-├── Unit Tests
-└── Integration Tests
-```
-
-## 🔐 Authentication
-**Auth0 Integration:**
-
-1. Create Auth0 tenant
-2. Configure application
-3. Set in appsettings.json:
-
-```json
-{
-  "Auth0": {
-    "Domain": "your-tenant.auth0.com",
-    "Audience": "https://casazen-api",
-    "ClientId": "YOUR_CLIENT_ID",
-    "ClientSecret": "YOUR_CLIENT_SECRET"
-  }
-}
-```
-
-JWT tokens automatically validated on /api endpoints
-
-## 💳 Stripe Integration
-**Payment Processing:**
-
-1. Create Stripe account
-2. Get API keys
-3. Configure in `appsettings.json`:
-
-```json
-{
-  "Stripe": {
-    "PublishableKey": "pk_test_...",
-    "SecretKey": "sk_test_...",
-    "WebhookSecret": "whsec_..."
-  }
-}
-```
-
-Webhooks handled automatically
-
-## 📮 Email (Resend)
-
-Transactional emails go through a single `IEmailService` (Resend HTTP API) configured with typed `EmailOptions`,
-rendered from localized IT/EN templates (`Casazen.Infrastructure/Email/Templates`, every dynamic value HTML-encoded)
-and delivered by a Hangfire job, never inside the request.
-
-| Config key | Value |
-|---|---|
-| `Email__Provider` | `Resend` |
-| `Email__ApiKey` | Resend API key (`re_...`) |
-| `Email__FromAddress` | sender on the domain verified on Resend (no default in code) |
-| `Email__FromName` | `CasaZen` |
-| `App__PublicSiteBaseUrl` | public URL of the web app, base of every email link |
-
-Outside Development and Testing a missing or invalid value stops the app at startup. Domain verification (SPF/DKIM),
-Railway variables and send test: [`docs/runbooks/email.md`](docs/runbooks/email.md).
-
-Every variable of the three repositories, with where to set it and what happens without it: [`docs/runbooks/deploy-checklist.md`](docs/runbooks/deploy-checklist.md).
-
-> ⚠️ **Never commit** real credentials. Set them via **Railway environment variables** or `appsettings.Development.json` (gitignored).
-
-## 🌐 OTA Integrations
-**Supported Platforms:**
-
-✅ Airbnb
-✅ Booking.com
-✅ Expedia
-✅ VRBO
-✅ TripAdvisor
-✅ Agoda
-
-### Resilience Patterns
-
-All OTA integrations implement production-grade resilience patterns using **Polly**:
-
-**Retry Policy:**
-- Exponential backoff: 2s, 4s, 8s
-- Retries on transient HTTP errors (500-599, timeout)
-- Configurable retry count per platform
-
-**Circuit Breaker:**
-- Opens after 5 consecutive failures (default)
-- Stays open for 60 seconds (configurable)
-- Prevents cascading failures
-- Logs circuit state changes
-
-**Timeout Policy:**
-- Per-request timeout: 30 seconds (default)
-- Prevents long-running requests from blocking
-- Works with retry policy for total bounded time
-
-**Rate Limiting:**
-- Per-platform request limits
-- Sliding window algorithm
-- Concurrent request limits
-- Prevents API quota exhaustion
-
-**Configuration:**
-
-```json
-{
-  "OTA": {
-    "Resilience": {
-      "Airbnb": {
-        "RetryCount": 3,
-        "CircuitBreakerFailures": 5,
-        "CircuitBreakerDurationSeconds": 60,
-        "TimeoutSeconds": 30,
-        "MaxRequestsPerWindow": 100,
-        "WindowDurationSeconds": 60,
-        "MaxConcurrentRequests": 10
-      }
-    }
-  }
-}
-```
-
-**Observability:**
-- All resilience events logged (retry, circuit open/close, timeout)
-- Structured logging with platform context
-- Integrates with application logging infrastructure
-
-### Airbnb Integration Setup
-
-**Prerequisites:**
-1. Create an Airbnb partner account at [https://www.airbnb.com/partner](https://www.airbnb.com/partner)
-2. Register your application and obtain API credentials
-3. Generate an OAuth 2.0 access token
-
-**Configuration:**
-
-Add Airbnb credentials to `appsettings.Development.json`:
-
-```json
-{
-  "OTA": {
-    "Airbnb": {
-      "BaseUrl": "https://api.airbnb.com/v2",
-      "ApiKey": "YOUR_AIRBNB_OAUTH_TOKEN"
-    },
-    "Resilience": {
-      "Airbnb": {
-        "RetryCount": 3,
-        "CircuitBreakerFailures": 5,
-        "CircuitBreakerDurationSeconds": 60,
-        "TimeoutSeconds": 30
-      }
-    }
-  }
-}
-```
-
-**API Validation:**
+## Build e test
 
 ```bash
-POST /api/ota/validate
-{
-  "platform": "airbnb",
-  "apiKey": "YOUR_AIRBNB_OAUTH_TOKEN"
-}
+dotnet build --configuration Release
+dotnet test --configuration Release --no-build
+dotnet format --verify-no-changes
 ```
 
-**Features:**
-- Sync bookings from Airbnb (GET /api/ota/bookings)
-- Update calendar availability (PUT /api/ota/availability)
-- Update nightly pricing (PUT /api/ota/pricing)
-- Automatic retry with exponential backoff
-- Circuit breaker pattern for fault tolerance
-- Rate limiting (respects Airbnb API limits)
+Per un’esecuzione riproducibile dei test di integrazione, impostare `TEST_POSTGRES_CONNECTION` verso un PostgreSQL locale dedicato ai test; le factory creano database temporanei. Dettagli e limiti nella [guida sviluppo](docs/technical/development.md).
 
-**API Endpoints:**
-- `GET /api/ota/bookings?platform=airbnb&propertyId={id}&startDate={date}&endDate={date}` - Fetch bookings
-- `PUT /api/ota/availability` - Update availability
-- `PUT /api/ota/pricing` - Update pricing
+## Contribuire
 
-**Testing:**
-
-Use test credentials for development:
-```bash
-# Validate credentials
-curl -X POST https://localhost:5001/api/ota/validate \
-  -H "Content-Type: application/json" \
-  -d '{"platform":"airbnb","apiKey":"test_token"}'
-
-# Fetch bookings
-curl -X GET "https://localhost:5001/api/ota/bookings?platform=airbnb&propertyId=123&startDate=2026-04-01&endDate=2026-04-30" \
-  -H "Authorization: Bearer {your_jwt_token}"
-```
-
-**Rate Limits:**
-- Airbnb API: 5 requests/second per listing
-- 200 requests/minute per account
-- Automatically handled by built-in rate limiter
-
-**Error Handling:**
-- Network errors: Automatic retry up to 3 times
-- 5xx errors: Circuit breaker activates after 5 failures
-- 4xx errors: Logged and returned without retry
-- Timeout: 30 seconds per request
-
-## 📊 Database
-**Database schema (PostgreSQL):**
-
-```
-Users
-├── Id (PK)
-├── Email
-├── FirstName
-├── LastName
-└── Role
-
-Properties
-├── Id (PK)
-├── OwnerId (FK)
-├── Name
-├── City
-├── NightlyRate
-└── ...
-
-Bookings
-├── Id (PK)
-├── PropertyId (FK)
-├── GuestId (FK)
-├── CheckInDate
-├── CheckOutDate
-├── TotalPrice
-└── Status
-
-Payments
-├── Id (PK)
-├── BookingId (FK)
-├── Amount
-├── Status
-├── Method
-└── TransactionId
-
-OtaIntegrations
-├── Id (PK)
-├── PropertyId (FK)
-├── Platform
-├── ExternalPropertyId
-├── ApiKey
-└── LastSyncAt
-```
-
-## 🧪 Testing
-```bash
-# Run all tests
-dotnet test
-
-# Run specific test
-dotnet test --filter "PropertyServiceTests"
-
-# With coverage
-dotnet test /p:CollectCoverage=true
-```
-
-## 📚 API Endpoints
-
-### Properties
-- `GET /api/properties` - List owner properties
-- `GET /api/properties/{id}` - Get property
-- `POST /api/properties` - Create
-- `PUT /api/properties/{id}` - Update
-- `DELETE /api/properties/{id}` - Delete
-
-### Bookings
-- `GET /api/bookings` - List bookings
-- `GET /api/bookings/{id}` - Get booking
-- `POST /api/bookings` - Create
-- `PUT /api/bookings/{id}` - Update
-- `DELETE /api/bookings/{id}` - Cancel
-
-### Payments
-- `GET /api/payments` - List payments
-- `POST /api/payments` - Create
-- `POST /api/payments/{id}/process` - Process
-- `POST /api/payments/{id}/refund` - Refund
-
-### OTA
-- `POST /api/ota/sync` - Sync all platforms
-- `GET /api/ota/status` - Get sync status
-- `PUT /api/ota/pricing` - Update pricing
-
-## 🔄 CI/CD
-GitHub Actions workflow included:
-
-- Build & Test on push
-- Deploy on release tag
-
-## 📞 Support
-- **GitHub Issues:** https://github.com/casazen/issues
-- **Email:** support@casazen.app
-- **Docs:** https://casazen.app/docs
-
----
-
-**🏠🧘 CASAZEN - Vacation rentals without stress!**
+Il flusso è Web → Core/Infrastructure; il dominio resta in Core. Ogni modifica a un comportamento operativo deve aggiornare il relativo runbook e, se cambia il flusso visibile, la guida utenti della webapp. Pianificazione e interviste in `Sessions/` sono materiale di lavoro, non il riferimento tecnico delle funzioni consegnate.
