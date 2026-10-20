@@ -6,4 +6,4 @@ Every feature that adds or changes something a host, a guest, a supplier or a st
 - Data is invented and obviously test (`TEST` in the CIN, `DOCUMENTO DI TEST` in the PDF, `@example.com` guests) and still valid for the real rules. Do not bypass CIN, document or safety checks.
 - Mark new rows with `TestDataMarkers` and, for a new table, add a constant to `TestDataEntities`. Reset deletes only showcase markers.
 - Extend `Casazen.Tests/Unit/Demo/DemoShowcaseTests.cs` so a scenario without template data fails.
-- The spec template section is `Sessions/specs/_TEMPLATE.md` (“Demo seed”). The runbook is `docs/runbooks/demo-environment.md`.
+- The spec template section is specifica rimossa (storico in git) (“Demo seed”). The runbook is `docs/runbooks/demo-environment.md`.

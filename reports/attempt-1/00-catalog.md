@@ -14,7 +14,7 @@ This catalog maps artifacts only. It does not assess correctness.
 |---|---|
 | id | GJ-001 |
 | slug | golden-journey-e2e |
-| file | Sessions/specs/spec-golden-journey-e2e.md |
+| file | specifica rimossa (storico in git) |
 | AC ids | AC1–AC16 |
 
 **AC summary:** AC1–AC5 web Playwright 12-step; AC6–AC12 host app M1–M7; AC13 supplier mobile F1–F2; AC14 parity; AC15 CI; AC16 runbook.

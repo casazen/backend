@@ -4,7 +4,7 @@ Evidenze di dettaglio a supporto di [`../PIANO-RISANAMENTO-2026-09.md`](../PIANO
 
 ## Metodo
 
-- **9 audit per area**, eseguiti da agenti in sola lettura su backend (`develop@4cbaeaa`), frontend (`develop@0b91e3c`) e mobile (`develop@4b20215`). Ogni agente ha confrontato le spec in `Sessions/specs/` e `PLANNING.md` con il codice, tracciando il percorso FE → client API → controller → service → DB → job. Per ogni area ha prodotto:
+- **9 audit per area**, eseguiti da agenti in sola lettura su backend (`develop@4cbaeaa`), frontend (`develop@0b91e3c`) e mobile (`develop@4b20215`). Ogni agente ha confrontato le spec in raccolta di specifiche rimossa (storico in git) e `PLANNING.md` con il codice, tracciando il percorso FE → client API → controller → service → DB → job. Per ogni area ha prodotto:
   - una tabella di copertura del piano (DONE / PARTIAL / STUB / MISSING / BROKEN);
   - un elenco dei difetti con file:riga, scenario di fallimento, fix proposto ed effort;
   - un piano di fix e un verdetto.

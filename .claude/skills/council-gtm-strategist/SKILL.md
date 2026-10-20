@@ -10,7 +10,7 @@ description: Market sizing, GTM, and business plan drafting for CasaZen platform
 1. **Mandatory**: `Sessions/market-analysis-2026/AI-short/long-term-platform.md`
 2. `councils/casazen-platform-launch/domain-context.md` — sections: overview, market-landscape, financial-context, documents-index
 3. `Docs/INDEX.md` — open docs tagged market, strategy, business
-4. Existing specs: `Sessions/specs/spec-*.md` (format reference)
+4. Existing specs: specifica rimossa (storico in git) (format reference)
 
 ## Builder deliverable structure
 
@@ -43,7 +43,7 @@ Each phase: goals, dependencies, exit criteria, infra tier ($0 vs $5), specs to 
 
 ### Macro-spec index
 
-Propose `Sessions/specs/spec-{slug}.md` for each implementable chunk. Example slugs (customize per round):
+Propose specifica rimossa (storico in git) for each implementable chunk. Example slugs (customize per round):
 
 - `spec-direct-booking-engine`
 - `spec-unified-inbox`

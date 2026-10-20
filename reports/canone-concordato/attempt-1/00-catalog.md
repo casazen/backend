@@ -8,7 +8,7 @@ Cataloger only. No severity, no fix advice.
 |---|---|
 | **id** | — (frontmatter placeholder) |
 | **slug** | `spec-ltr-canone-concordato-calculator` |
-| **path** | `Sessions/specs/spec-ltr-canone-concordato-calculator.md` |
+| **path** | specifica rimossa (storico in git) |
 | **AC ids** | AC1, AC2, AC3, AC4, AC5, AC6, AC7, AC8, AC9, AC10, AC11, AC12, AC13 |
 
 ## 2. Implemented feature list

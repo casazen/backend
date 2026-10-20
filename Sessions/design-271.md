@@ -1,12 +1,12 @@
 # Design Spec — Issue #271: Self-serve onboarding & activation PLG (US-006)
 
-**Issue**: [#271](https://github.com/casazen/backend/issues/271)  
-**Feature**: feat(MVP): self-serve onboarding PLG — Org provision, consents, activation checklist  
-**Spec**: `Sessions/specs/spec-onboarding-plg.md`  
-**ADR / related**: `spec-role-onboarding`, `spec-tenant-boundary`, `spec-branded-booking-site`, `spec-direct-checkout`  
-**Status**: complete  
-**Date**: 2026-08-13  
-**Branch**: `feature/271-onboarding-plg`  
+**Issue**: [#271](https://github.com/casazen/backend/issues/271)
+**Feature**: feat(MVP): self-serve onboarding PLG — Org provision, consents, activation checklist
+**Spec**: specifica rimossa (storico in git)
+**ADR / related**: `spec-role-onboarding`, `spec-tenant-boundary`, `spec-branded-booking-site`, `spec-direct-checkout`
+**Status**: complete
+**Date**: 2026-08-13
+**Branch**: `feature/271-onboarding-plg`
 **Repos**: BE partial (ConsentRecord, LegalController, OnboardingController, Users onboarding consents) already in tree; FE partial (consents step, legal.api). Stage 03 closes remaining AC gaps + L2/L3 titled tests.
 
 ---
@@ -195,7 +195,7 @@ Register `DbSet<ConsentRecord>` in `AppDbContext` (already present). Stage 03 ve
 - Subprocessor acknowledgement (Supabase EU, Auth0, Stripe, SendGrid) with versioned public list.
 - Marketing opt-in optional; when true, persist as `ConsentType.Marketing` (**Stage 03 enum addition** — see Migration Plan). Until that lands, do not silently drop marketing opt-in: Stage 03 must ship the enum value in the same PR that records marketing rows.
 
-**Out of scope:** Guest name/DOB/document — **N/A — no Guest personal data in this flow.**  
+**Out of scope:** Guest name/DOB/document — **N/A — no Guest personal data in this flow.**
 Data minimization: role, org, consent metadata only.
 
 ---
