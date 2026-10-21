@@ -1,249 +1,145 @@
-# Analisi tecnica per Helix — integrazione minima ConcordatoFacile
+# Requisiti per Helix — integrazione ConcordatoFacile
 
-Versione 5.1 · 21 ottobre 2026 · Documento unico e autosufficiente per Helix. Il flusso di riferimento è quello concordato qui: tipo di contratto come primo passo, bozza minima con leaseId, contratto redatto da CF e importazione dei documenti definitivi. La pagina di caricamento degli allegati del contratto viene realizzata separatamente nelle PR frontend #314/#315; gli altri requisiti di questa analisi sono da implementare con Helix e non attestano funzionalità già rilasciate. Documentazione del flusso: `docs/integrations/concordatofacile/README.md`. Sostituisce le precedenti analisi e proposte tecniche per questo flusso. I documenti destinati al fornitore restano materiale di corrispondenza, non ulteriori requisiti da sommare. Questa revisione contiene istruzioni: non implementa funzionalità.
+Revisione 6 · 21 ottobre 2026. Questo è l’unico documento di requisiti da fornire a Helix. Descrive il lavoro ancora necessario per il servizio CF; accordi e percorso dell’utente sono nella [documentazione del flusso](../docs/integrations/concordatofacile/README.md). Sostituisce le precedenti proposte di integrazione, senza richiedere di sommarne le funzionalità.
 
-## Relazioni vincolanti e navigazione
+## 1. Base da riusare e lavoro restante
 
-- Casa → documenti della casa (APE, planimetria e documenti propri dell'immobile): archivio separato.
-- Casa → contratti della casa.
-- Contratto → documenti del contratto: contratto definitivo, attestazione, ricevuta di registrazione e altri allegati.
-- La nuova pagina riceve **leaseId**, carica e salva esclusivamente documenti di quel contratto. Nessun upload con il solo propertyId e nessuna scelta automatica di un contratto dalla casa.
-- Dalla casa si vede la lista dei contratti collegati; si apre un contratto e si consulta la sua sezione Documenti. I suoi allegati non vengono inseriti né duplicati nella lista «Documenti della casa».
+Le PR [frontend #315](https://github.com/casazen/frontend/pull/315) e [backend #561](https://github.com/casazen/backend/pull/561), verso `develop`, realizzano già il caricamento e la conservazione. Prima di iniziare verificare che siano integrate; una PR aperta non dimostra disponibilità in produzione. Leggere AGENTS.md dei repository e lavorare sul codice corrente.
 
-## 1. Obiettivo e perimetro minimo
-
-Implementare il flusso seguente nell'app esistente:
-
-1. Chiedere come prima cosa il tipo di contratto. Per il concordato creare subito una bozza minima assegnata alla casa e ottenere il vero leaseId, prima di chiedere parti, date, canone o APE.
-2. Presentare il servizio e incassare **119,00 euro IVA compresa per singola pratica di contratto**, prima di aprire CF. Ammettere accesso diretto per admin CasaZen e una pratica omaggio per abbonamento biennale, con diritto governato dal database.
-3. Dopo la verifica del diritto di accesso, aprire il modulo ConcordatoFacile dal contratto CasaZen con quattro parametri.
-4. Ricevere l'utente dal bottone nelle email CF e consentirgli di caricare contratto definitivo, attestazione e ricevuta di registrazione come allegati del leaseId: conservarne le copie e popolare automaticamente i dati/sezioni del contratto corrispondenti.
-5. Mostrare lo stato della pratica letto dal backend CasaZen attraverso l'endpoint CF, appena il fornitore ne consegna il contratto tecnico.
-
-CF gestisce dati, documenti, verifiche, contratto, attestazione quando necessaria, firme e registrazione se richiesta. Email operative e consegna documenti sono tra CF e utente. CasaZen non vuole la prima email di pratica ricevuta, quella finale né copie/inoltri: l'unico canale per conoscere lo stato è l'endpoint CF.
-
-La parte documentale può essere quasi tutta riuso. Pagamento e pratica omaggio richiedono invece controllo server, persistenza e migrazione: il perimetro non è più limitato a tre link. La lettura dello stato richiede una piccola integrazione server, ancora dipendente da informazioni CF mancanti. Riusare storage e controlli esistenti; estendere il modello per documenti collegati al contratto e importazione dei dati. Non costruire un processo di firma o una nuova registrazione fiscale: li gestisce il partner.
-
-## 2. Stato verificato del codice e componenti da riusare
-
-Rilevazione nei checkout `casazen/frontend` commit `e27b2fb7` e `casazen/backend` commit `6481cb0f`. Prima di modificare, leggere AGENTS.md e verificare i corrispondenti file sulle branch correnti: i riferimenti sono una mappa di partenza, non istruzioni di sovrascrittura.
-
-| Esigenza | Riuso verificato |
+| Già implementato nelle PR di codice: riusare | Resta a Helix |
 |---|---|
-| Routing applicativo | frontend: `src/config/route-manifest.ts`; dettaglio contratto `/app/long-rent/leases/:id` |
-| Contratto e casa associata | frontend: `src/queries/use-leases.ts`, `src/api/leases.api.ts`; backend: `Casazen.Core/DTOs/Leases/LeaseDtos.cs`, campo `PropertyId` |
-| Pagina della casa long-rent | frontend: `src/features/properties/long-rent/long-rent-property-detail-page.tsx` |
-| Documenti casa | `PropertyDocumentsSection` resta per i soli documenti dell'immobile, separata dagli allegati del contratto |
-| Allegati contratto | Nuova `LeaseDocumentsPanel` condivisa dalla pagina upload e dal dettaglio contratto; usare le API lease, non properties |
-| API allegati contratto | `GET/POST /api/leases/{leaseId}/documents` e `GET /api/leases/{leaseId}/documents/{documentId}/download`; nuova entità LeaseDocument collegata a LeaseContract e OrgId |
-| Controlli allegati contratto | Il POST lease verifica lease.read/lease.create e accesso al contratto; elenco/download verificano lease.read e appartenenza del documentId al leaseId. Storage privato, validazione PDF e isolamento OrgId. |
-| Modello archivio | backend: `Casazen.Core/Entities/PropertyDocument.cs`: `PropertyId`, `OrgId`, tipo, file e autore. Non contiene un `LeaseId`. |
-| Tipi allegati | Contract, Attestation, Registration, Other; nessuna deduzione dello stato fiscale dal tipo selezionato dall'utente |
-| Ritorno dopo login | frontend: `src/lib/auth-return-to.ts`, `currentReturnTo` e `safeReturnTo`; integrare il flusso di accesso esistente, senza nuova autenticazione. |
-| Informazioni attestazione | frontend: `src/features/leases/components/attestation-guidance-panel.tsx`; non sostituire il calcolatore o le altre informazioni normative. |
+| Pagina `/app/long-rent/documents/upload?leaseId=…`, login con ritorno allo stesso contratto | Tipo di contratto come prima scelta; bozza minima concordato e collegamento al servizio CF |
+| Allegati `LeaseDocument`, API autorizzate elenco/upload/download, storage privato e isolamento OrgId | Pagina offerta, pagamento singolo 119 € IVA compresa, flag pratica omaggio biennale e bypass admin CasaZen |
+| Sezione Documenti del contratto, raggiungibile anche aprendo il contratto dalla casa | Apertura del modulo CF con i quattro parametri concordati, dopo verifica server del diritto |
+| Un PDF esistente oppure più foto JPEG/PNG riordinate/ruotate e unite in un solo PDF scaricabile; le foto non sono conservate separatamente | Estrazione dai documenti del contratto e popolamento delle rispettive sezioni dello stesso leaseId |
+| OCR e controlli fondamentali APE, nel distinto archivio della casa | Lettura dello stato CF dal backend, quando il fornitore consegna specifica e credenziali |
 
-Il leaseId è l'ID reale e stabile della bozza, non quello della casa, di un pagamento o di una pratica CF. Resta identico quando arrivano i dati definitivi: non creare un secondo contratto all'importazione.
+Non ricostruire pagina upload, assemblaggio foto/PDF, OCR APE o un secondo archivio. La funzione documentale multipagina è generale, non un nuovo requisito CF. Il suo riuso nell’importazione contrattuale non implica che il controllo APE sappia già estrarre i dati di un contratto.
 
-PropertyDocument resta esclusivamente l'archivio della casa. LeaseDocument è l'archivio del contratto: relazione obbligatoria a LeaseContract e OrgId, storage privato e tipi Contract/Attestation/Registration/Other. Il caricamento e la consultazione vengono implementati subito; estrazione strutturata e versionamento avanzato sono lavoro Helix. Riusare questo archivio lease senza creare copie nell'archivio casa.
+### Relazioni vincolanti
 
-### Ingresso concordato e bozza minima (baseline di prodotto per Helix)
+- Casa → documenti della casa: APE, planimetria e documenti propri dell’immobile.
+- Casa → contratti; contratto → documenti del contratto: contratto definitivo, attestazione, registrazione e altri allegati.
+- Il caricamento di allegati del contratto richiede `leaseId`; `propertyId` non lo sostituisce. La casa si ricava dal contratto autorizzato. Dalla casa si apre il contratto e poi la sua sezione Documenti.
+- `leaseId` è l’UUID reale e stabile di `LeaseContract`, anche quando è una bozza. Non usare l’ID della casa, del pagamento o della pratica CF. L’importazione non crea un secondo contratto.
 
-- Il primo passo chiede «Che tipo di contratto vuoi gestire?» prima di parti, termini o calcolatore. Libero mantiene il proprio percorso; concordato sceglie il percorso CF e non il generatore CasaZen.
-- Per il concordato bastano tipo e casa selezionata. Casa già esistente: nessun altro dato obbligatorio per ottenere l'ID. Non bloccare la creazione minima per APE, dati delle parti, importi, date, coefficienti o attestazione assenti: arriveranno dal partner.
-- Salvare subito lato server una vera bozza collegata a PropertyId e OrgId e restituire leaseId. Nel codice develop esistono `POST /api/leases/drafts`, `LeaseDraftService` e una bozza incompleta che crea una riga LeaseContract reale; verificarne disponibilità in produzione e riusare/estendere quel percorso per registrare atomicamente tipo Concordato e provenienza CF. Non usare solo un UUID locale, l'ID della casa o un record fittizio di contratto completo.
-- Doppi click/retry non devono creare più bozze per la stessa azione: idempotenza server e ripresa del riferimento salvato. Un nuovo contratto intenzionale sulla stessa casa resta possibile.
-- Mostrare «Bozza — in attesa del contratto del partner», nome della casa e leaseId copiabile. Dati mancanti come «Da acquisire», mai canone zero, date segnaposto o persone inventate presentate come dati reali. La bozza non genera occupazione, promemoria fiscali, canoni da incassare o ricevute di contratto già registrato.
-- Dopo creazione, pagina offerta/pagamento o uso omaggio; admin CasaZen accede direttamente secondo i controlli indicati sotto. Solo dopo il diritto acquisito si passa a CF con quel leaseId.
-- CF prepara il contratto vero: CasaZen non deve chiedere di completare e generare prima un altro contratto concordato né avviare una propria firma/registrazione per questa pratica.
+Punti di riuso: frontend `src/config/route-manifest.ts`, `src/api/leases.api.ts`, `src/queries/use-leases.ts`, `LeaseDocumentsPanel`, `src/lib/document-pdf.ts`; backend `LeaseDraftService`, `LeaseDocumentService`, `IApeDocumentInspector`, storage e autorizzazioni esistenti. Le API allegati sono `GET/POST /api/leases/{leaseId}/documents` e `GET /api/leases/{leaseId}/documents/{documentId}/download`.
 
-## 3. Pagina offerta, pagamento e accessi gratuiti
+## 2. Ingresso e bozza minima concordato
 
-### Regole commerciali vincolanti
+Il flusso di prodotto da realizzare parte dalla scelta del tipo di contratto, prima di parti, termini economici o calcolatore. Per il canone concordato il vero contratto è preparato da CF e poi importato in CasaZen.
 
-- Prezzo all'utente: **119,00 euro totali, IVA compresa, per una pratica riferita a un contratto**. È il prezzo CasaZen con il proprio ricarico, non il costo del fornitore. Non aggiungere IVA al checkout e non esporre all'utente i costi CF 69/89 euro. Registro e bollo restano esclusi quando dovuti, come nel servizio del partner.
-- L'utente ordinario deve pagare CasaZen prima di poter proseguire al modulo CF. Pagamento fallito, cancellato o ancora in attesa non sblocca il servizio.
-- L'admin **di piattaforma CasaZen** accede direttamente al modulo, senza pagina di pagamento e senza consumare omaggi. Riusare la policy server `CasazenPolicies.AdminOnly` (ruolo JWT `Admin`), non confonderla con l'amministratore dell'organizzazione o con `OrgBillingAdmin`. Conservare i controlli di accesso al contratto e l'eventuale contesto amministrativo previsto dal prodotto.
-- Chi sottoscrive un abbonamento CasaZen di due anni riceve **una sola pratica omaggio**, non accesso gratuito illimitato. Il diritto è governato da un flag persistente nel DB. Assunzione di implementazione coerente con il billing attuale: beneficio dell'organizzazione titolare dell'abbonamento, condiviso tra i membri autorizzati; non una pratica per ogni membro.
-- Una pratica già pagata o già associata all'omaggio si riapre senza un secondo pagamento/consumo. La seconda pratica su un altro contratto torna a 119 euro una volta esaurito l'omaggio.
+1. Con casa selezionata e tipo concordato, salvare subito una bozza minima `LeaseContract` con PropertyId, OrgId, tipo/provenienza CF e restituire leaseId. Verificare e riusare `POST /api/leases/drafts` / `LeaseDraftService`; non generare soltanto un UUID nel browser.
+2. Non richiedere APE, parti, canone, deposito, date, coefficienti o attestazione per ottenere il riferimento della bozza. Non allentare per questo i controlli dei diversi percorsi di firma/registrazione già esistenti.
+3. Mostrare casa, leaseId copiabile e «Bozza — in attesa del contratto del partner». I dati mancanti restano da acquisire, senza importi zero, date o persone fittizie presentate come definitive. La bozza non genera occupazione, incassi o adempimenti di un contratto attivo.
+4. Doppi click e retry della stessa azione riusano la bozza salvata; rimane possibile creare intenzionalmente un nuovo contratto sulla stessa casa.
+5. Da quella bozza si accede all’offerta/pagamento o all’omaggio. L’admin CasaZen segue l’accesso diretto descritto sotto. Il percorso libero mantiene il proprio funzionamento: non inviarlo al modulo riservato ai concordati.
 
-### Pagina di presentazione richiesta
+## 3. Offerta, pagamento e pratica omaggio
 
-Percorso proposto: `/app/long-rent/leases/:id/concordatofacile`, raggiungibile dal contratto concordato. È la pagina dell'offerta CasaZen, prima del pagamento. Non costruire il modulo del partner in CasaZen.
+### Pagina servizio
 
-Mostrare casa e contratto interessati, prezzo finale **119 € IVA compresa**, eventuale omaggio disponibile e questi passaggi, in ordine e in linguaggio per il locatore:
+Percorso proposto: `/app/long-rent/leases/:id/concordatofacile`. Mostrare casa e contratto, prezzo **119,00 € totali IVA compresa per pratica**, eventuale omaggio e questi passaggi prima del pagamento:
 
-1. «Dopo il pagamento, o usando la pratica inclusa nel tuo abbonamento biennale, vieni reindirizzato al modulo del nostro partner ConcordatoFacile.»
-2. «Compila il modulo con i dati e i documenti richiesti per il tuo contratto.»
-3. «Gestisci direttamente via email con il partner eventuali integrazioni, revisione del contratto e firma. Il partner segue la pratica e la registrazione prevista dal servizio.»
-4. «Alla fine ricevi dal partner un'email con i documenti e il link per caricarli in CasaZen.»
-5. «Ti consigliamo di caricare i documenti sul tuo contratto: potrai ritrovarli e gestire i tuoi contratti in un unico posto, in CasaZen.»
+1. Dopo il pagamento o l’uso dell’omaggio vieni reindirizzato al modulo del partner ConcordatoFacile.
+2. Compili il modulo con i dati e i documenti richiesti.
+3. Gestisci direttamente via email con il partner integrazioni, revisione del contratto e firma, fino alla registrazione prevista dal servizio.
+4. Ricevi l’email finale del partner con i documenti e il link per caricarli in CasaZen.
+5. Ti consigliamo di caricarli sul tuo contratto per conservare e gestire tutti i contratti in modo centralizzato in CasaZen.
 
-Chiarire che gli aggiornamenti di stato sono visibili in CasaZen ma le comunicazioni operative rimangono con il partner, che il caricamento finale è effettuato dall'utente e che registro/bollo eventualmente dovuti sono esclusi dai 119 euro. Non promettere inclusioni aggiuntive dei pacchetti CF finché non sono confermate.
+Registro e bollo eventualmente dovuti sono esclusi. Il caricamento è effettuato dall’utente: non promettere un trasferimento automatico dei file da CF. I costi di acquisto dal fornitore non sono il prezzo dell’utente e non vanno esposti nel checkout.
 
-CTA secondo lo stato verificato dal server:
-
-| Condizione | Azione |
+| Condizione verificata dal server | Azione |
 |---|---|
-| Utente senza diritto | «Paga 119 € e continua» → checkout CasaZen |
-| Pratica omaggio disponibile | «Usa la pratica omaggio e continua» → associa atomicamente l'omaggio al contratto, poi apre CF; nessun checkout |
-| Accesso già pagato o omaggio già associato a questo contratto | «Continua sul modulo del partner» → stesso accesso, senza addebito |
-| Admin CasaZen | Azione diretta dal contratto → verifica server → modulo CF, senza passare dalla pagina di pagamento |
-| Pagamento in conferma | Messaggio di attesa/verifica, senza link CF sbloccato |
+| Utente senza diritto | «Paga 119 € e continua» → checkout CasaZen una tantum |
+| Omaggio disponibile | «Usa la pratica omaggio e continua» → assegnazione atomica a questo leaseId, poi CF |
+| Pratica già pagata o omaggio già associato a questo leaseId | «Continua sul modulo del partner», senza nuovo addebito/consumo |
+| Admin di piattaforma CasaZen | Accesso diretto dal contratto, senza pagina di pagamento e senza consumare omaggi |
+| Pagamento in attesa, fallito o annullato | Stato comprensibile, nessun accesso CF sbloccato |
 
-Il ritorno dopo checkout va alla pagina offerta dello stesso contratto. Dopo conferma server il pulsante permette di proseguire a CF; non perdere casa/contratto nel checkout o nel login.
+### Controlli e persistenza
 
-### Implementazione minima di pagamento e diritto di accesso
+- Usare il billing CasaZen esistente (`BillingController`, `BillingCheckoutService`, `StripeBillingService`, `ProcessedStripeEvent`, `StripeWebhookJob` e frontend billing). Aggiungere un acquisto **una tantum**, senza cambiare l’abbonamento e senza utilizzare pagamenti degli affitti o Stripe Connect.
+- Il server determina EUR **11900 centesimi, IVA già inclusa**. Price/configurazione fiscale devono mantenere il totale; non aggiungere IVA sopra i 119 €. L’esenzione dichiarata dall’associazione non si applica automaticamente alla vendita CasaZen. Riusare la documentazione fiscale CasaZen pertinente.
+- Il diritto è legato a OrgId e LeaseId e ne conserva origine, stato, identificativi del pagamento e date necessarie. Sbloccare da pagamento confermato server, con eventi Stripe verificati e corrispondenza di acquisto, importo, valuta e contratto. Il ritorno `checkout=success` non è una prova.
+- Solo l’admin di **piattaforma** (`CasazenPolicies.AdminOnly`, ruolo JWT `Admin`) salta il pagamento. L’admin dell’organizzazione o `OrgBillingAdmin` non ha questo bypass. Mantenere autorizzazione al contratto e audit; non simulare un pagamento admin.
+- L’abbonamento effettivamente sottoscritto per **due anni** assegna una sola pratica omaggio all’organizzazione abbonata, condivisa tra i membri autorizzati. Non equivale a 24 pagamenti mensili o due anni di anzianità. Verificare il mapping del piano/Price; se manca, evidenziare la configurazione necessaria senza creare prodotti Stripe live come prova.
+- Flag DB persistente, ad esempio `HasConcordatoGift`, con riferimento al leaseId beneficiario e date/identificativo abbonamento, o equivalente. Migrazione con default non disponibile. Assegnazione solo server o admin autorizzato/auditato; rinnovi, refresh ed eventi duplicati non rigenerano un beneficio già assegnato o consumato. Per abbonamenti esistenti verificare i dati prima del riconoscimento.
+- Consumare l’omaggio e associarlo al contratto nella stessa transazione, con controllo di concorrenza tra schede/membri. La riapertura dello stesso leaseId resta gratuita; un altro contratto torna a pagamento. I GET non consumano il beneficio. Se manca la configurazione necessaria ad aprire CF, non consumarlo.
+- Checkout idempotente per lo stesso acquisto; ricontrollare il diritto prima di creare una sessione. Gestire conferme duplicate/fuori ordine o tardive rispetto all’uso di un omaggio senza doppio diritto/addebito. Se abilitati, gestire anche pagamenti asincroni.
+- Rimborsi/contestazioni verificati aggiornano il relativo diritto secondo il billing esistente, senza cancellare automaticamente pratica CF o documenti. Non inventare una politica commerciale di rimborso: lasciare il caso alla gestione operativa.
 
-Nel codice esistono `BillingController`, `BillingCheckoutService`, `StripeBillingService`, `ProcessedStripeEvent`, `StripeWebhookJob` e frontend `src/features/billing`, `src/queries/use-billing.ts`. Riusare SDK, configurazione, profilo di fatturazione e gestione eventi già presenti dove compatibili. Il checkout attuale degli abbonamenti non è automaticamente un checkout per acquisto singolo: aggiungere un flusso **una tantum** del servizio CF senza cambiare l'abbonamento dell'utente e senza usare i pagamenti degli affitti o Stripe Connect.
+Esporre comandi/letture interni, nel contesto del contratto, per prezzo e diritto, checkout e prosecuzione. I nomi sono una scelta Helix coerente con il repository. Il comando di prosecuzione autorizza sempre sul server: il frontend non decide gratuità e non deve aggirare il controllo aprendo un URL costruito da solo. Login e checkout preservano il contratto di partenza.
 
-- Importo determinato dal server: EUR 11900 centesimi complessivi, IVA inclusa. La configurazione fiscale/Price del servizio deve preservare questo totale; non riutilizzare automaticamente configurazioni che aggiungono imposte al prezzo. Integrare la documentazione fiscale CasaZen con i meccanismi esistenti; non applicare a CasaZen l'esenzione IVA dichiarata dall'associazione.
-- Persistenza minima: acquisto/diritto riferito a `OrgId` e `LeaseId`, origine (`Paid`, `BiennialGift`, `Admin` come motivo di bypass, senza finto pagamento), stato del pagamento ove presente, identificativi Stripe e date necessarie. Il bypass admin può essere registrato nell'audit esistente senza un ordine fittizio.
-- Flag DB sull'organizzazione, ad esempio `HasConcordatoGift`, più `ConcordatoGiftLeaseId` e data di assegnazione/consumo, o campi equivalenti. Il flag distingue disponibilità del beneficio; il riferimento al contratto mantiene l'accesso quando il flag è consumato. Non basta un booleano permanente di gratuità.
-- Abilitare il flag una sola volta alla conferma server di un abbonamento realmente sottoscritto per due anni, identificato da piano/Price o durata verificata del contratto di abbonamento. Non confondere due anni con 24 pagamenti mensili o con il semplice tempo passato come cliente. Collegare l'assegnazione all'identificativo dell'abbonamento, così rinnovi notificati più volte, login o refresh non rigenerano l'omaggio. Verificare se il catalogo biennale esiste: se manca, esplicitare il mapping da configurare senza inventare un prodotto Stripe live.
-- Il flag viene amministrato solo dal server e dagli strumenti admin autorizzati; nessun campo modificabile dall'utente nel profilo. Migrazione con flag false per default; per abbonamenti biennali esistenti assegnare il beneficio solo dopo verifica dei dati di sottoscrizione, senza omaggi generalizzati. Riutilizzare un backoffice esistente se disponibile, altrimenti prevedere un controllo admin minimo e auditato per assegnazione/correzione, senza ricaricare benefici già spesi per errore.
-- Consumo omaggio e associazione al leaseId nella stessa transazione con controllo di concorrenza: due schede o due membri non devono spenderlo su contratti diversi. La riapertura dello stesso contratto non lo consuma di nuovo. Se manca configurazione/dato necessario per costruire il link, non consumare l'omaggio.
-- Una sessione checkout aperta per quel contratto viene riusata/idempotente per evitare doppi click; prima di crearla ricontrollare diritto già acquisito e omaggio. Non avviare un addebito se lo stesso contratto è stato appena sbloccato con omaggio da un'altra scheda. Il completamento tardivo di una sessione già aperta va riconciliato senza creare due pratiche o due diritti.
-- Sbloccare solo da pagamento confermato server con firma/eventi Stripe verificati e correlazione di importo, valuta, acquisto e contratto. `?checkout=success`, ID sessione nel browser o click sul ritorno non sono prova del pagamento. Eventi duplicati o fuori ordine non devono riaprire ordini falliti né annullare pagamenti validi. Gestire anche metodi asincroni se abilitati.
-- Rimborso/contestazione confermati devono aggiornare il diritto del pagamento interessato secondo il flusso esistente; non devono cancellare automaticamente una pratica CF già avviata o i documenti dell'utente. Non inventare una politica di rimborso del servizio: documentare il caso per la gestione operativa.
+Il modulo CF è pubblico e il link concordato è senza firma: il controllo CasaZen protegge la propria offerta, ma non impedisce la ricostruzione dell’URL esterno. Prima dell’operatività concordare con CF verifica del diritto o riconciliazione prima di lavorare pratiche partner. Non inventare firme o parametri aggiuntivi.
 
-Prevedere endpoint interni nel contesto del contratto per leggere prezzo/diritto e stato acquisto, avviare checkout e proseguire a CF. Il comando «prosegui» controlla sempre sul server admin/diritto pagato/omaggio e autorizzazione al contratto; restituisce il link CF solo quando autorizzato. I GET informativi non consumano omaggi. Il frontend non decide la gratuità da solo. I nomi esatti degli endpoint interni sono una scelta Helix coerente con le convenzioni esistenti.
+## 4. Apertura CF
 
-**Limite da esplicitare:** il modulo CF è pubblico e il link concordato non è firmato. CasaZen può proteggere la propria sezione e l'emissione del link; questo non impedisce tecnicamente a un utente di ricostruire un URL CF. Per garantire che nessuna pratica venga lavorata senza pagamento/omaggio, concordare con CF una verifica del diritto presso CasaZen o una riconciliazione operativa prima di accettare/lavorare le pratiche partner. Non aggiungere di nascosto parametri o firme non concordati e non dichiarare impossibile l'accesso diretto a un modulo pubblico. La verifica di pagamento sul server CasaZen rimane obbligatoria.
+Aprire `https://app.concordatofacile.it` con i soli parametri:
 
-## 3 bis. Apertura del modulo CF dopo lo sblocco
-
-Base: `https://app.concordatofacile.it`.
-
-Query obbligatoria per CasaZen:
-
-| Parametro | Valore |
+| Parametro | Origine |
 |---|---|
-| `partner` | Codice assegnato da CF; configurabile, ancora da ricevere |
-| `leaseId` | UUID reale del contratto già salvato in CasaZen |
+| `partner` | Codice assegnato da CF, configurabile e ancora da ricevere |
+| `leaseId` | UUID reale della bozza salvata |
 | `comune` | Nome del comune della casa |
 | `provincia` | Sigla provinciale, per esempio `MB` |
 
-Costruire con URL/URLSearchParams per codificare correttamente spazi e accenti. Nessuna firma, scadenza, `theme`, codice ISTAT o `returnUrl` da aggiungere al modulo.
+Usare URL/URLSearchParams per accenti e spazi. Ricavare i dati territoriali dalla sorgente esistente, senza dedurre arbitrariamente la provincia dall’indirizzo. Dati o codice partner assenti impediscono l’apertura con spiegazione utile. Nessun `signature`, `expiresAt`, `theme`, `returnUrl` o codice ISTAT richiesto al modulo.
 
-Esempio illustrativo, con codice partner segnaposto:
-
-`https://app.concordatofacile.it?partner=CODICE_CF&leaseId=0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11&comune=Cesano%20Maderno&provincia=MB`
-
-Inserire l'azione di accesso al servizio nel contratto concordato esistente: utente ordinario verso la pagina offerta, admin verso il comando server di accesso diretto. Aprire CF soltanto dopo il controllo del diritto descritto sopra. Leggere comune e provincia dai dati territoriali già disponibili: verificare la sorgente della sigla, non derivarla arbitrariamente dal testo dell'indirizzo. Se manca un dato necessario o il codice partner, spiegare cosa manca e non aprire un link incompleto. Usare la bozza minima reale descritta sopra; non richiedere il completamento del vecchio form concordato per ottenere il leaseId.
-
-Il modulo accetta oggi solo concordati. Libero 4+4 e transitori sono trattati da CF per email: non inviarli nel modulo e non costruire quel canale manuale in questo intervento. Aprire il modulo non prova che CF abbia creato una pratica; non marcare la pratica come ricevuta o completata dal solo click. Nessun requisito di sessione o riapertura CF è da inventare.
-
-## 4. URL definitivo per email e bottone
-
-Dominio confermato dall'utente: `https://casazen.space`.
-
-**Verifica produzione del 21 ottobre 2026:** il browser mostra «404 — Pagina non trovata» sul percorso, anche con leaseId. La pagina non è operativa; il fornitore deve mantenere disattivati i link fino a conferma esplicita CasaZen dopo il collaudo completo. Il redirect a www.casazen.space va incluso nel test di conservazione del parametro.
-
-**URL da dare a CF e implementare senza cambiarlo:**
+Il ritorno già realizzato nelle PR di codice resta:
 
 `https://casazen.space/app/long-rent/documents/upload?leaseId=<leaseId>`
 
-CF sostituisce `<leaseId>` con l'UUID ricevuto all'apertura del modulo. Esempio completo:
+È una pagina web, non l’endpoint di stato o un’API di importazione da CF. Il bottone nelle email all’utente contiene lo stesso leaseId; la conferma testuale usa il link per esteso. CasaZen non riceve email di pratica, finali o copie delle comunicazioni: per lo stato utilizza soltanto l’endpoint.
 
-`https://casazen.space/app/long-rent/documents/upload?leaseId=0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11`
+## 5. Importazione dei dati dai documenti del contratto
 
-È una pagina web aperta con GET, non un'API multipart né l'endpoint di stato. Nell’email con i documenti definitivi inviata dopo la firma, CF inserisce il link al leaseId della bozza. Nelle email all'utente che contengono documenti CF usa il bottone «Carica i dati in CasaZen»; nella conferma solo testo scrive il link per esteso. Non servono propertyId, dati personali, chiavi o URL di download nella query.
+Estendere l’archivio **LeaseDocument già implementato**, conservando lo stesso leaseId e la relazione alla casa. L’upload oggi archivia, ma non popola ancora i campi del contratto.
 
-### Comportamento della pagina
-
-1. Registrare `/app/long-rent/documents/upload` nel routing esistente, con i permessi coerenti con caricamento documenti e accesso long-rent e permessi lease.read/lease.create.
-2. Validare leaseId. Se l'utente non è autenticato, usare il login esistente e preservare percorso e query al ritorno; mantenere anche il corretto contesto organizzativo secondo le regole esistenti.
-3. Caricare il contratto con le API autorizzate esistenti e ottenere il suo propertyId. Non fidarsi di identificativi aggiuntivi provenienti dal link.
-4. Mostrare nome/indirizzo della casa e riferimento del contratto, poi permettere di caricare gli allegati del leaseId e selezionare contratto, attestazione, registrazione o altro. La classificazione manuale è disponibile subito; Helix aggiunge riconoscimento ed estrazione dei dati. Si può comporre una pagina minima con i componenti esistenti; non serve ridisegnare il dettaglio casa.
-5. Dopo il caricamento mostrare conferma e accesso alla sezione Documenti del contratto. L'utente può ripetere il caricamento per altri file usando il comportamento esistente.
-6. Con leaseId mancante, malformato, inesistente o non accessibile, mostrare uno stato comprensibile e un collegamento alle proprie case; non caricare file, non associare alla prima casa trovata e non rivelare informazioni altrui.
-
-I controlli effettivi rimangono sul server: accesso al contratto in lettura/scrittura secondo operazione e isolamento dell'organizzazione. Il documentId va verificato insieme al leaseId per lista e download. Un UUID nel link non concede diritti. Usare i permessi esistenti senza limitarsi a confrontare OwnerId nel client.
-
-Il click non importa file direttamente da CF. L'utente sceglie e carica i documenti ricevuti; il caricamento avvia l'importazione strutturata descritta sotto. Niente lettura delle email dell'utente o download arbitrario da URL esterni. Nessun secondo pagamento per caricare o consultare i documenti della propria casa.
-
-## 4 bis. Documenti definitivi: conservazione e popolamento automatico
-
-Questa è parte del flusso da implementare con Helix. Le copie e i dati estratti devono rimanere collegati allo stesso leaseId della bozza e alla sua casa, senza generare un nuovo contratto.
-
-| Documento caricato | Popolamento automatico atteso | Sezione e copia consultabile |
+| Documento | Dati da acquisire quando presenti | Destinazione |
 |---|---|---|
-| Contratto definitivo CF, dopo firma | Parti e ruoli, dati dell'immobile, tipo concordato, durata/date, data di stipula se rilevabile, canone, deposito e regime fiscale ove dichiarati esplicitamente | Dati del contratto + copia del contratto originale/firme |
-| Attestazione | Numero/data attestazione, accordo territoriale/comune, soggetti attestatori e dati attestati del canone se presenti | Attestazione del contratto + PDF originale |
-| Ricevuta di registrazione | Data registrazione, protocollo/codice identificativo e ufficio, esito, eventuale opzione fiscale e importi soltanto se presenti nel documento | Registrazione del contratto + ricevuta originale |
+| Contratto definitivo CF | Parti/ruoli, immobile, tipo, durata/date, stipula, canone, deposito e regime fiscale esplicito | Dati del contratto + PDF consultabile |
+| Attestazione | Numero/data, accordo territoriale/comune, attestatori, dati attestati del canone | Sezione Attestazione + PDF consultabile |
+| Ricevuta di registrazione | Data, protocollo/codice, ufficio, esito ed eventuali dati fiscali espressi nel documento | Sezione Registrazione + PDF consultabile |
 
-- Ogni file viene persistito nello storage privato e ha metadati nel DB (leaseId, OrgId derivato dal contratto, tipo, nome, data caricamento, autore, stato elaborazione e impronta/versione). La casa si ricava dalla relazione del contratto. Gli allegati si consultano nella sezione Documenti di quel contratto, anche quando lo si apre partendo dalla casa; non sono documenti della casa e non si duplicano in PropertyDocuments.
-- Conservare i byte originali: non ristampare né sostituire il PDF firmato o la ricevuta con una versione OCR. L'eventuale OCR è un derivato per estrazione, non la copia legale consultabile.
-- Estrarre automaticamente il testo del PDF e, se scansione, usare un percorso OCR/estrazione compatibile con i servizi già disponibili. Scelta concreta di libreria/provider a Helix dopo verifica dello stack: non presupporre che una API esistente sappia già leggere i PDF. Classificare documento e campi in modo verificabile, con evidenza della pagina e provenienza del valore.
-- Popolare automaticamente i campi estratti con sufficiente affidabilità, dopo validazione e verifica di coerenza con casa, contratto e documenti già acquisiti. Campi mancanti restano vuoti/da completare; errori, bassa affidabilità o conflitti vanno in revisione con anteprima dei valori, senza indovinare né sovrascrivere silenziosamente dati già confermati.
-- Per importi, codice fiscale, date, immobile e regime fiscale richiedere controlli strutturali e di coerenza; un semplice nome file non prova il tipo/esito del documento. Un contratto della casa o delle parti sbagliate viene conservato come caricamento da verificare senza popolare il contratto corrente finché non è chiarito.
-- Le sezioni attestazione e registrazione sono indipendenti. Caricare il contratto non equivale a ottenere attestazione o registrazione. Una ricevuta di trasmissione non basta a marcare «Registrato»: verificare l'esito di registrazione o usare lo stato CF confermato secondo la sua semantica. L'upload non attiva un secondo invio a registrazione.
-- Mostrare stati «Caricato», «Elaborazione», «Dati acquisiti» o «Da verificare» per documento e permettere apertura/download autenticato di tutte e tre le copie. Se l'estrazione fallisce, il file deve comunque restare conservato e consultabile, con possibilità di correggere/riprovare.
-- Ordine di arrivo libero: contratto, attestazione e registrazione possono arrivare separatamente. Nessuna perdita dei dati già acquisiti; conferma delle variazioni importanti prima di sovrascrivere. Stesso file ricaricato/riprocessato idempotente per leaseId/impronta; una nuova versione va distinta e non cancella la precedente senza una regola esplicita.
-- Le scritture sui dati del contratto avvengono attraverso le regole del dominio esistenti, con audit della provenienza documento/estrazione, controllo concorrenza e autorizzazione di scrittura. Il flag pagamento/omaggio non è un sostituto dei permessi dell'utente.
-- Rifiutare il caricamento con il solo propertyId: il riferimento richiesto è leaseId. Un documento di un contratto non va mai salvato nella raccolta dei documenti della casa.
+- Input già normalizzato: un PDF preesistente è conservato con gli stessi byte; più foto diventano un solo PDF ordinato e scaricabile, senza originali fotografici separati. Non introdurre qui una seconda copia delle foto. Non riscrivere PDF firmati o ricevute per aggiungere il testo OCR.
+- Estrarre il testo del documento intero, usando OCR quando serve, anche se i dati sono distribuiti su più pagine. Verificare il riuso dei tool locali già introdotti per l’APE, adattando interfacce/limiti solo dove necessario per gli allegati del contratto. Non riutilizzare il validatore APE come validatore contrattuale e non introdurre un provider esterno per presunzione.
+- Popolare automaticamente i dati affidabili dopo controlli strutturali e coerenza con casa, parti e contratto. Campi mancanti restano da acquisire; valori incerti o conflitti vanno in revisione con evidenza della pagina e del documento. Nessuna sovrascrittura silenziosa dei dati confermati.
+- Se file sbagliato, OCR fallito o documento incompleto: mantenerlo consultabile e segnalare «Da verificare», senza inventare dati o eliminare l’upload. Questo è diverso dal controllo bloccante dell’APE nei documenti della casa: non estenderlo agli allegati contrattuali.
+- Aggiungere soltanto i metadati di elaborazione necessari (stato, provenienza, impronta/versione e risultato utile), con audit e concorrenza secondo il dominio esistente. Arrivo dei tre tipi in ordine libero; retry dello stesso file non crea un secondo contratto o evento. Nuove versioni non eliminano implicitamente le precedenti.
+- Distinguere «Caricato», «Elaborazione», «Dati acquisiti» e «Da verificare». Caricare il contratto non prova attestazione o registrazione; una ricevuta di trasmissione non prova esito positivo. Verificare il documento/esito o la semantica dello stato CF prima di segnare registrato. Non avviare un secondo invio fiscale.
+- Conservare autorizzazioni lease.read/lease.create secondo operazione, isolamento OrgId e verifica documentId insieme a leaseId. Nessuna duplicazione in PropertyDocuments e nessun secondo acquisto per caricare o consultare i documenti.
 
-## 5. Stato della pratica: integrazione server minima
+L’APE resta un documento della casa. Il suo OCR verifica i dati fondamentali e le date sull’intero attestato; non è una prova di autenticità nel registro regionale e non sostituisce le verifiche del partner. Non deve bloccare l’assegnazione del leaseId alla bozza minima.
 
-### Dati confermati da CF
+## 6. Lettura dello stato CF
 
-CF fornirà un endpoint interrogabile per leaseId, con una chiave fornita da CF. La risposta contiene numero pratica, stato comprensivo della registrazione e data dell'ultimo passaggio, senza dati personali.
+CF ha confermato interrogazione per leaseId con chiave, numero pratica, stato inclusa registrazione e data dell’ultimo passaggio, senza dati personali. Mancano URL/metodo, header, schema JSON, enum e significati, formato/fuso della data, limiti, pratica assente e regole per riapertura/multiple pratiche. Non trattare vecchi OpenAPI, esempi o placeholder come contratto effettivo.
 
-### Informazioni ancora mancanti
+Quando disponibili:
 
-URL, metodo, header della chiave, schema JSON, valori degli stati, formato/fuso orario della data, rate limit, risposta per pratica assente e regola per più pratiche sullo stesso leaseId. Senza questi dati non esiste un contratto esterno implementabile e verificabile: non usare come reali i vecchi OpenAPI e non inventare endpoint CF.
+- Client HTTP tipizzato nel backend con URL/chiave configurati solo sul server; mai credenziali nel browser, link o log.
+- Lettura interna autorizzata nel contesto del contratto, ad esempio `GET /api/leases/{leaseId}/concordatofacile/status`. È una proposta CasaZen, non l’URL del fornitore né un endpoint già presente.
+- Lettura all’apertura del contratto e su «Aggiorna stato». Nessun nuovo job, webhook CF, polling continuo o archivio storico nel minimo intervento; aggiungere cache/refresh solo se giustificati dai limiti CF.
+- Mostrare numero pratica, stato documentato e data. Gestire nuovi valori senza inventare un completamento; distinguere pratica assente, configurazione mancante e indisponibilità. Timeout/429 non equivalgono a «nessuna pratica» e non cancellano l’ultimo risultato valido. Timeout, retry limitati e Retry-After secondo i pattern esistenti.
+- Non applicare risposte obsolete o confondere stato CF, elaborazione documenti, attestazione e registrazione. Il popolamento dei campi rimane governato dall’importazione verificata.
 
-### Scelta di implementazione CasaZen
+Finché CF non consegna i dettagli, realizzare il resto senza simulare stati reali in produzione. La verifica live di questa parte resta esplicitamente dipendente dal fornitore.
 
-- Un piccolo client HTTP tipizzato nel backend, secondo i pattern esistenti, con URL/chiave configurati sul server. Nessuna chiave o chiamata autenticata CF dal browser.
-- Esporre una lettura autorizzata nel contesto del contratto. Percorso interno proposto: `GET /api/leases/{leaseId}/concordatofacile/status`; non è un endpoint richiesto a CF e non è già presente. Verificare assenza di conflitti prima di aggiungerlo.
-- Verificare accesso alla locazione e organizzazione prima di chiamare CF. Applicare timeout e gestione degli errori coerenti con il backend.
-- Il frontend legge su apertura del dettaglio contratto e con azione esplicita «Aggiorna stato». Nessun job Hangfire, polling continuo o nuova tabella per memorizzare lo stato CF nel minimo rilascio; la persistenza acquisto/omaggio è invece richiesta. Introdurre refresh periodico o cache server solo se necessario per i limiti comunicati da CF.
-- Mostrare numero pratica, stato e data ultimo passaggio. Lo stato CF non è lo stato di caricamento/estrazione dei documenti. Il popolamento dei dati e delle sezioni è governato dall'importazione sopra, non dal semplice click di ritorno o da una stringa di stato generica.
-- Finché CF non consegna gli enum, non inventare una macchina a stati. Dopo la consegna mappare i valori documentati a etichette italiane e gestire valori nuovi senza presentare uno stato terminale falso.
-- Distinguere configurazione mancante, pratica assente e servizio temporaneamente indisponibile. Non trasformare un timeout in «nessuna pratica». Un refresh fallito non sostituisce un risultato valido già mostrato con uno stato negativo inventato. Non fare retry illimitati; rispettare 429/Retry-After se previsti.
-- Per aggiornamenti concorrenti non applicare una risposta più vecchia di quella già mostrata; usare il dato temporale CF solo dopo averne chiarito la semantica. Gestione di pratica riaperta/multipla secondo contratto CF, senza creare uno storico locale non richiesto.
+## 7. Accettazione e consegna
 
-DTO normalizzato CasaZen da definire nella lettura interna: numero pratica, stato originale CF, data ultimo passaggio e momento della consultazione. I nomi JSON di questo DTO sono una scelta interna, non la forma confermata della risposta CF.
-
-Prima della consegna dei dettagli CF si possono completare apertura modulo e pagina di ritorno e predisporre il confine del client secondo necessità. Un mock può servire nei test ma non deve comparire come stato reale in produzione. Dichiarare esplicitamente che la verifica live dello stato resta bloccata dai dettagli CF mancanti.
-
-## 6. Sequenza di lavoro per Helix
-
-1. Verificare route, accesso long-rent, DTO contratto, sorgente provincia e riuso upload sulle branch correnti. Elencare il delta reale prima di modificare.
-2. Implementare scelta del tipo come primo passo e bozza minima concordato con leaseId reale; poi pagina offerta, acquisto singolo 119 € IVA inclusa, diritto persistente e flag omaggio biennale con migrazione, bypass admin e controlli server. Poi collegare apertura CF e pagina di ritorno; estendere l'upload esistente con documenti tipizzati, relazione al contratto, estrazione e popolamento automatico delle sezioni. Riusare lo storage, senza archivio parallelo.
-3. Integrare la lettura di stato quando disponibili specifica CF e credenziali server. Tenere isolata questa parte se i dettagli mancano.
-4. Aggiornare documentazione e aprire le PR nei repository effettivamente modificati, con test pertinenti e limitazioni esplicite. Non effettuare deployment, invii di pratiche reali o pagamenti come prova.
-
-## 7. Criteri di completamento
-
-| Caso | Risultato atteso |
+| Prova | Risultato |
 |---|---|
-| Pagina offerta | Prezzo totale 119 € IVA inclusa e tutti i cinque passaggi descritti prima del pagamento |
-| Utente ordinario non pagante | Nessun link CF emesso dal server; accesso alla pagina commerciale |
-| Checkout annullato/fallito/in attesa o success URL alterato | Nessuno sblocco; contratto e casa preservati al ritorno |
-| Pagamento singolo verificato | Una pratica sbloccata, totale EUR 11900, nessun rinnovo di abbonamento |
-| Admin CasaZen / admin di organizzazione | Solo il primo salta il pagamento; accesso risorsa sempre controllato |
-| Abbonamento biennale confermato | Flag assegnato una sola volta; una pratica omaggio, seconda pratica a pagamento |
-| Due schede/membri usano omaggio | Un solo contratto associato atomicamente; riapertura dello stesso resta gratuita |
-| Webhook pagamento/abbonamento duplicato | Nessun doppio ordine, addebito o riaccredito del flag omaggio |
-| Link email per caricamento | Nessun secondo pagamento o consumo omaggio per archiviare documenti; controlli ordinari su contratto/casa |
-| Scelta iniziale concordato | Solo casa e tipo necessari per creare bozza persistita; nessun APE, dati parti o canone richiesti per ottenere il leaseId |
-| Documenti definitivi | Contratto, attestazione e registrazione popolano le rispettive sezioni dello stesso leaseId; originali conservati |
-| Estrazione fallita/conflitto/documento sbagliato | File consultabile, errore o revisione visibile; nessuna sovrascrittura falsa dei dati |
-| Doppio upload o nuova versione | Nessun doppio contratto o evento; versioni e provenienza preservate |
-| Apertura modulo da concordato salvato | Solo quattro parametri corretti; comune con accenti/spazi codificato; provincia in sigla |
-| Partner o dati obbligatori assenti | Azione non produce link incompleto; spiegazione utile |
-| Libero/transitorio | Nessun invio nel modulo riservato ai concordati |
-| Link email da utente non autenticato | Dopo login ritorna allo stesso path con leaseId preservato |
-| Contratto accessibile | Casa corretta mostrata, file persistiti e consultabili nel contratto aperto anche dalla casa; tre sezioni con relativi dati acquisiti |
-| LeaseId mancante/errato o altro utente/org | Nessun accesso a dati altrui, nessuna scrittura o associazione automatica |
-| Riapertura del link | Nessun documento creato senza selezione e conferma dell'utente |
-| Stato CF disponibile | Lettura solo via server, numero pratica/stato/data corretti; chiave assente da bundle e log |
-| CF assente/non configurato/timeout/429 | Stati distinti e gestiti; nessun falso completamento, nessun azzeramento di un risultato valido |
-| Stato di attestazione/registrazione | Distinto dall'archivio e dall'IMU; dati acquisiti soltanto da importazione verificata/stato CF documentato |
+| Concordato scelto come primo passo | Bozza reale con soli casa/tipo; leaseId stabile anche dopo importazione; nessun APE/dato definitivo richiesto prima |
+| Offerta e checkout | Cinque passaggi comprensibili, 119 € IVA inclusa, conferma solo server, ritorno allo stesso contratto |
+| Admin piattaforma / admin organizzazione | Solo il primo salta il pagamento; entrambi rispettano l’accesso alla risorsa |
+| Biennale, eventi duplicati e accessi concorrenti | Un omaggio assegnato una volta, consumabile da un solo contratto, riapertura senza addebito |
+| CF | Quattro parametri codificati, dati mancanti bloccanti, nessun invio del libero al modulo concordati |
+| Importazione | Dati delle tre sezioni sullo stesso leaseId, PDF consultabili, gestione incompleti/conflitti/versioni senza perdita di dati |
+| Più pagine | Riuso del PDF unificato esistente; estrazione sull’intero documento, senza conservare foto separate |
+| Permessi | Nessuna scrittura su casa/contratto altrui, nessun uso del solo propertyId, nessuna chiave CF al client |
+| Stato CF | Numero/stato/data corretti; errori e pratica assente distinti; nessun falso completamento |
 
-Test mirati: diritto di accesso lato server, acquisto singolo e conferma Stripe, distinzione admin piattaforma/org, assegnazione/consumo omaggio concorrente e idempotente, composizione URL, ritorno dopo login, relazione lease-documento e permessi upload/download e client di stato con risposte CF documentate. Usare i test esistenti come base; nessun test che verifichi soltanto il testo di questa specifica. Eseguire lint/typecheck e test pertinenti secondo le istruzioni dei repository; per le modifiche server anche build e test del percorso autorizzato. Verifica checkout in modalità test e flusso offerta → conferma → CF con stub controllato; verifica manuale del link completo su desktop/mobile e caricamento di un documento di prova, senza pratica reale CF.
+Eseguire test pertinenti del diritto lato server, Stripe test, consumo atomico dell’omaggio, bozza minima, importazione con PDF digitale/scansione multipagina e risposte CF documentate; verificare il riuso senza regressioni di upload/download. Seguire build/lint/typecheck e controlli richiesti dai repository. Nessun invio di pratiche reali o addebito live come prova.
 
-**Consegna richiesta:** il flusso minimo funzionante, elenco dei file modificati, verifiche eseguite e dettagli CF ancora mancanti. Non dichiarare completata l'integrazione live se l'endpoint CF non è stato fornito e verificato.
-
+Consegna: PR con delta effettivo, verifiche eseguite e configurazione/dati CF ancora necessari. Non dichiarare attivo in produzione ciò che è soltanto implementato o in PR.

@@ -1,12 +1,242 @@
 openapi: 3.0.3
 info:
-  title: CasaZen - ConcordatoFacile - contratto in definizione
-  version: 2.0-pending
+  title: CasaZen - ConcordatoFacile integration
+  version: 1.3-draft
   description: |
-    Il flusso corrente è descritto in da-inviare/01-technical-specification.md
-    (per la copia in da-inviare, nel file 01-technical-specification.md accanto a questo).
-    La proposta di webhook v1.3 è ritirata. CF prepara un endpoint di stato per leaseId
-    con chiave, numero pratica, stato inclusa registrazione e data ultimo passaggio,
-    senza dati personali. URL, metodo, autenticazione, nomi JSON ed enum non sono
-    stati forniti: paths vuoto evita di pubblicare un contratto inventato.
-paths: {}
+    Contratto tecnico di `01-technical-specification.md` (che prevale in caso di discrepanza).
+    I nomi sono quelli già usati nell'API di CasaZen: JSON camelCase, valori enumerati come nome del membro,
+    date ISO 8601 UTC, importi decimali in euro, errori application/problem+json.
+
+    L'utente svolge tutta la pratica nel modulo di ConcordatoFacile (link firmato della sezione 2): CasaZen non
+    chiama nessun endpoint di ConcordatoFacile. L'unico endpoint di questo contratto è quello che CasaZen espone
+    per ricevere gli avvisi di stato e l'esito finale della pratica (sezione 3).
+tags:
+  - name: CasaZen
+
+paths:
+  /webhooks/concordatofacile:
+    servers:
+      - url: '{casazenBaseUrl}'
+        variables:
+          casazenBaseUrl:
+            default: https://test.example.invalid
+            description: URL di prova e di produzione comunicati separatamente
+    post:
+      tags: [CasaZen]
+      operationId: receiveEvent
+      summary: Receives status notices and the final outcome of a case from ConcordatoFacile
+      description: |
+        Firma: X-ConcordatoFacile-Signature = hex minuscolo di HMAC-SHA256(secret, rawBody), rawBody = byte esatti del corpo (UTF-8).
+        CasaZen verifica la firma, accoda l'evento e risponde subito; l'elaborazione è asincrona.
+        Idempotenza per eventId. Un evento con occurredAt precedente all'ultimo applicato per lo stesso caseId, o ricevuto dopo l'evento finale, è ignorato.
+        Un leaseId sconosciuto riceve comunque 200 (evento ignorato e registrato nel log).
+        Ritentare solo su 5xx, errori di rete e timeout.
+      parameters:
+        - name: X-ConcordatoFacile-Signature
+          in: header
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+            examples:
+              cancelled:
+                summary: Vettore di prova (secret test_secret_0123456789abcdef0123456789abcdef)
+                description: Signature 29feda5f7daf037d0aecbe49cdc7a2b8d0ab215cf26b164b0106775c2fd484b3 sul corpo su una sola riga, senza spazi aggiunti
+                value:
+                  eventId: 7b0c1c5e-3a52-4d0e-9d3e-0a1f2b3c4d5e
+                  eventType: case_cancelled
+                  occurredAt: '2026-10-13T09:30:00Z'
+                  caseId: CF-TEST-000001
+                  leaseId: 0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11
+                  data:
+                    reason: cancelled_by_user
+      responses:
+        '200':
+          description: Evento accettato (anche se già ricevuto o per un leaseId sconosciuto)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received: { type: boolean, enum: [true] }
+        '401':
+          description: Firma assente o errata. Non ritentare.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              examples:
+                signature: { value: { status: 401, code: invalid_signature } }
+        '503':
+          description: Problema temporaneo. Ritentare con backoff.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+components:
+  schemas:
+    Problem:
+      type: object
+      required: [status, code]
+      properties:
+        status: { type: integer }
+        code: { type: string, description: 'invalid_signature, oppure un code generico di CasaZen (per esempio service_unavailable)' }
+        title: { type: string }
+        detail: { type: string }
+
+    EventEnvelope:
+      type: object
+      required: [eventId, eventType, occurredAt, caseId, leaseId, data]
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string }
+        occurredAt: { type: string, format: date-time }
+        caseId: { type: string }
+        leaseId: { type: string, format: uuid, description: 'GUID del contratto in CasaZen, restituito sempre' }
+        data: { type: object }
+
+    Event:
+      oneOf:
+        - { $ref: '#/components/schemas/CaseStatusChangedEvent' }
+        - { $ref: '#/components/schemas/CaseCompletedEvent' }
+        - { $ref: '#/components/schemas/CaseRejectedEvent' }
+        - { $ref: '#/components/schemas/CaseCancelledEvent' }
+      discriminator:
+        propertyName: eventType
+        mapping:
+          case_status_changed: '#/components/schemas/CaseStatusChangedEvent'
+          case_completed: '#/components/schemas/CaseCompletedEvent'
+          case_rejected: '#/components/schemas/CaseRejectedEvent'
+          case_cancelled: '#/components/schemas/CaseCancelledEvent'
+
+    CaseStatusChangedEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [case_status_changed] }
+            data:
+              type: object
+              required: [status]
+              description: 'Con ActionRequired, reason e detail sono obbligatori'
+              properties:
+                status: { type: string, enum: [InReview, ActionRequired] }
+                reason: { type: string, enum: [information_requested, draft_ready] }
+                detail: { type: string, maxLength: 1000, description: "Testo per l'utente, in italiano" }
+                dueAt: { type: string, format: date-time }
+
+    CaseCompletedEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [case_completed] }
+            data:
+              type: object
+              required: [attestation, file]
+              properties:
+                attestation: { $ref: '#/components/schemas/Attestation' }
+                file: { $ref: '#/components/schemas/File' }
+
+    CaseRejectedEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [case_rejected] }
+            data:
+              type: object
+              required: [reason, detail]
+              properties:
+                reason: { type: string, enum: [rent_out_of_range, inconsistent_data, agreement_not_in_force, municipality_not_covered, invalid_documents, other] }
+                detail: { type: string, maxLength: 1000, description: "Testo per l'utente, in italiano" }
+                limits:
+                  type: object
+                  properties:
+                    canoneMinMensile: { type: number, minimum: 0, multipleOf: 0.01 }
+                    canoneMaxMensile: { type: number, minimum: 0, multipleOf: 0.01 }
+
+    CaseCancelledEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            eventType: { type: string, enum: [case_cancelled] }
+            data:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [cancelled_by_user, expired, other] }
+                detail: { type: string, maxLength: 500 }
+
+    File:
+      type: object
+      required: [fileId, kind, fileName, contentType, downloadUrl, downloadUrlExpiresAt]
+      properties:
+        fileId: { type: string }
+        kind: { type: string, enum: [Attestation] }
+        fileName: { type: string, maxLength: 150 }
+        contentType: { type: string, enum: [application/pdf] }
+        downloadUrl: { type: string, format: uri, description: 'HTTPS, valido almeno 7 giorni; PDF fino a 20 MB' }
+        downloadUrlExpiresAt: { type: string, format: date-time }
+
+    Attestation:
+      type: object
+      required: [attestationCode, issuedAt, agreementName, comuneIstatCode, signatories, property, lease, parties, assessment]
+      properties:
+        attestationCode: { type: string }
+        issuedAt: { type: string, format: date-time, description: Mezzanotte UTC della data di rilascio }
+        agreementName: { type: string }
+        comuneIstatCode: { type: string, pattern: '^[0-9]{6}$' }
+        signatories:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [name, role]
+            properties:
+              name: { type: string }
+              role: { type: string, enum: [Proprieta, Inquilini] }
+        property:
+          type: object
+          description: Dati catastali attestati
+          required: [cadastralSheet, cadastralParcel, cadastralCategory]
+          properties:
+            cadastralSheet: { type: string }
+            cadastralParcel: { type: string }
+            cadastralSubaltern: { type: string, description: 'Assente se l''unità non ha subalterno' }
+            cadastralCategory: { type: string }
+        lease:
+          type: object
+          required: [startDate, endDate, monthlyRent]
+          properties:
+            startDate: { type: string, format: date-time, description: Mezzanotte UTC }
+            endDate: { type: string, format: date-time, description: Mezzanotte UTC }
+            monthlyRent: { type: number, minimum: 0, multipleOf: 0.01 }
+        parties:
+          type: array
+          minItems: 2
+          description: Solo ruolo, posizione e codice fiscale
+          items:
+            type: object
+            required: [partyRole, position, fiscalCode]
+            properties:
+              partyRole: { type: string, enum: [Landlord, Tenant] }
+              position: { type: integer, minimum: 0, description: 'Posizione della parte tra quelle dello stesso ruolo, da 0' }
+              fiscalCode: { type: string, minLength: 16, maxLength: 16 }
+        assessment:
+          type: object
+          required: [zone, subFascia, sqm, usableSqm, canoneMinAnnuo, canoneMaxAnnuo, canoneMinMensile, canoneMaxMensile]
+          properties:
+            zone: { type: string }
+            subFascia: { type: integer, minimum: 1, maximum: 3 }
+            sqm: { type: number, multipleOf: 0.01 }
+            usableSqm: { type: number, multipleOf: 0.01 }
+            canoneMinAnnuo: { type: number, minimum: 0, multipleOf: 0.01 }
+            canoneMaxAnnuo: { type: number, minimum: 0, multipleOf: 0.01 }
+            canoneMinMensile: { type: number, minimum: 0, multipleOf: 0.01 }
+            canoneMaxMensile: { type: number, minimum: 0, multipleOf: 0.01 }
