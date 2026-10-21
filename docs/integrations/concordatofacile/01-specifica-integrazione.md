@@ -4,4 +4,4 @@ Aggiornamento del 21 ottobre 2026: il riferimento corrente è [flusso concordato
 
 La vecchia specifica v1.0 e la proposta v1.3 sono superate: link firmati, webhook, invio dei dati attestati via API, registrazione esclusivamente con Openapi, credito mensile e listino 79/99 non descrivono l'accordo corrente. Le versioni precedenti restano nella storia Git.
 
-Il nuovo flusso usa il modulo senza firma, un endpoint di stato CF con chiave e ritorno a CasaZen dalle email. I dettagli dell'endpoint e del dominio sono da definire; non sono funzionalità già implementate.
+Il nuovo flusso usa il modulo senza firma, un endpoint di stato CF con chiave e ritorno a CasaZen dalle email. Il dominio definitivo è `casazen.space` e l'atterraggio definito è `/app/long-rent/documents/upload?leaseId=<leaseId>` (da implementare). I dettagli dell'endpoint CF sono da definire; non sono funzionalità già implementate.

@@ -46,11 +46,11 @@ Il margine CasaZen non è determinabile senza prezzo al cliente, pacchetti confe
 - Conservare stato originale CF, numero pratica, data ultimo passaggio e data ultima sincronizzazione; distinguere indisponibilità da pratica non trovata. Retry con backoff e gestione 429; frequenza da concordare. In caso di timestamp precedente non regredire lo stato; in caso di nuova pratica o timestamp ambiguo verificare prima di sovrascrivere.
 - Un numero pratica diverso per lo stesso leaseId può indicare riapertura: definire la regola con CF, non perdere lo storico e non bloccare per sempre il polling dopo l'attestazione se è prevista registrazione.
 - Per attestazione e ricevute usare caricamento controllato e verifica dei documenti. Nessuna estrazione strutturata automatica promessa; eventuale futuro trasferimento file richiede accordo separato.
-- Veste: logo `frontend/public/brand/lockup.svg`, marchio `marchio.svg`; terracotta `#e2622d`, inchiostro `#1f3a3d`, fondo chiaro. Dominio definitivo ancora da comunicare; non usare il namespace Auth0 come prova del dominio pubblico.
+- Veste: logo `frontend/public/brand/lockup.svg`, marchio `marchio.svg`; terracotta `#e2622d`, inchiostro `#1f3a3d`, fondo chiaro. Dominio definitivo confermato dal referente: `casazen.space`. Non usare il namespace Auth0 come prova del dominio pubblico.
 
 ## 5. Punti aperti e accettazione
 
-Prima della costruzione: ricevere endpoint e chiave per canale riservato, esempio di risposta senza dati personali, enum inclusi registrazione/rifiuto/annullamento, timezone, rate limit, comportamento su leaseId ignoto e pratiche multiple; fissare dominio e URL del bottone. Confermare pacchetti 69/89, tariffe per transitori e requisiti, pagamenti, organizzazioni firmatarie per comune, ruoli privacy e conservazione. Le precedenti proposte su account, ripresa, 48 ore, dieci anni, sandbox e rinnovo link non sono accettazioni del fornitore.
+Prima della costruzione: ricevere endpoint e chiave per canale riservato, esempio di risposta senza dati personali, enum inclusi registrazione/rifiuto/annullamento, timezone, rate limit, comportamento su leaseId ignoto e pratiche multiple; implementare e verificare l'URL del bottone definito sotto. Confermare pacchetti 69/89, tariffe per transitori e requisiti, pagamenti, organizzazioni firmatarie per comune, ruoli privacy e conservazione. Le precedenti proposte su account, ripresa, 48 ore, dieci anni, sandbox e rinnovo link non sono accettazioni del fornitore.
 
 Accettazione del futuro sviluppo:
 
@@ -62,3 +62,15 @@ Accettazione del futuro sviluppo:
 6. Firma, pagamento CasaZen, ricevuta al locatore e documenti finali verificati su pratica pilota; IMU resta separata.
 
 Per il contratto del 1° novembre 2026 il fornitore propone di usare subito il modulo ordinario come pratica CasaZen, senza aspettare la veste. Questa richiesta aggiorna documenti e apre PR: non autorizza l'invio di una pratica reale né il pagamento. La data di stipula può differire dalla decorrenza e determina il controllo del termine applicabile.
+
+## 6. Atterraggio per il caricamento sulla casa
+
+Dominio confermato dal referente CasaZen: `https://casazen.space`. URL definito per il fornitore:
+
+`https://casazen.space/app/long-rent/documents/upload?leaseId=<leaseId>`
+
+Percorso applicativo proposto: `/app/long-rent/documents/upload`; query `leaseId` obbligatoria, UUID del contratto già trasmesso a CF. Non serve un propertyId nel link: il backend ricava la casa dal contratto, verifica i diritti dell'utente su contratto e casa e mantiene il riferimento a entrambi nell'archiviazione. Mostrare casa e contratto prima di confermare l'upload; i documenti compaiono nell'archivio della casa con il collegamento alla locazione.
+
+Se l'utente deve accedere, preservare percorso e leaseId nel ritorno interno dopo login. Non accettare destinazioni di redirect esterne. Con leaseId assente, malformato, inesistente o non autorizzato non caricare né associare file automaticamente; proporre un ritorno alle proprie case senza rivelare dati altrui. Ripetere il controllo dei diritti all'effettivo caricamento, non solo all'apertura della pagina.
+
+Questo è il percorso da implementare nel frontend e collegare al caricamento documentale: non è una route già disponibile, e questa PR rimane documentale. Prima dell'attivazione delle email verificare login con ritorno preservato, associazione alla casa corretta, accesso negato per un altro utente, leaseId errato e caricamento ripetuto.

@@ -16,7 +16,15 @@ Alla vostra domanda: sì, desideriamo mantenere sia la prima email di pratica ri
 
 Confermiamo il bottone «Carica i dati in CasaZen» nelle email con documenti da conservare e il link scritto per esteso nella conferma testuale del modulo. Concordiamo un dominio fisso e la presenza del leaseId nel collegamento di ritorno. Il ritorno servirà ad aprire CasaZen e consentire all'utente di caricare/confermare i documenti; non presuppone un trasferimento automatico dei file dal vostro sistema.
 
-Dominio definitivo per il bottone: da comunicare separatamente prima di fissarlo. Vi trasmetteremo l'URL completo dopo aver verificato il percorso di ritorno nella piattaforma; non consideratelo già attivo.
+Il dominio definitivo è https://casazen.space. Il percorso di atterraggio che definiamo per il bottone e per il link testuale è:
+
+`https://casazen.space/app/long-rent/documents/upload?leaseId=<leaseId>`
+
+Sostituite `<leaseId>` con l'identificativo CasaZen ricevuto all'apertura del modulo. Esempio completo:
+
+`https://casazen.space/app/long-rent/documents/upload?leaseId=0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11`
+
+La pagina sarà il punto di caricamento dei documenti sulla casa associata al contratto: dopo l'accesso, CasaZen ricaverà la casa dal leaseId e mostrerà casa e contratto per conferma. Il collegamento sarà mantenuto anche durante il login. Non occorre inviare un propertyId né dati personali nell'URL. In caso di identificativo assente, non valido o non accessibile, non verrà eseguita alcuna associazione automatica. Il percorso è definito per l'integrazione e deve essere implementato e verificato prima di attivare i link nelle email.
 
 ## Endpoint di stato
 

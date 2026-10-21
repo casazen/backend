@@ -8,7 +8,7 @@ Versione 2.0 — 21 ottobre 2026. Revisione documentale sulla risposta CF riport
 - Esempio illustrativo (codice partner da confermare): `https://app.concordatofacile.it?partner=CODICE_CF&leaseId=0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11&comune=Cesano%20Maderno&provincia=MB`.
 - CF conserva leaseId fino alla pratica e lo restituisce nelle email e nell'endpoint.
 - CF prepara un endpoint di stato interrogabile per leaseId con chiave fornita da CF: numero pratica, stato inclusa registrazione, data ultimo passaggio; nessun dato personale. CasaZen lo consulta dal backend. URL, metodo, header, nomi JSON, enum, timezone e limiti da definire con CF; nessun webhook richiesto nel nuovo flusso.
-- Bottone «Carica i dati in CasaZen» nelle email con documenti da conservare. Nella conferma del modulo, solo testo, link per esteso. Dominio fisso CasaZen da comunicare. Path e parametri del ritorno da concordare, conservando leaseId per il collegamento.
+- Bottone «Carica i dati in CasaZen» nelle email con documenti da conservare. Nella conferma del modulo, solo testo, link per esteso. Dominio definitivo confermato: `https://casazen.space`. URL del ritorno definito da CasaZen: `https://casazen.space/app/long-rent/documents/upload?leaseId=<leaseId>`. CF sostituisce il segnaposto con il leaseId ricevuto. Percorso da implementare e verificare prima di attivare le email.
 - CF prepara il contratto su modello ministeriale; se il contratto esiste, cura l'attestazione. Registrazione telematica dell'associazione come intermediario a nome del locatore, senza delega firmata delle parti secondo CF. Opzione cedolare in registrazione.
 - Tempi indicativi: pochi giorni dal ricevimento di firmati e pagamento, entro il termine di 30 giorni dalla stipula indicato da CF; nessuno SLA di 48 ore concordato.
 - Registro e bollo esclusi. Con cedolare non dovuti; senza cedolare addebito sul conto del locatore, IBAN raccolto da CF.
@@ -25,7 +25,7 @@ Logo e colori: `frontend/public/brand/lockup.svg` e `marchio.svg`; terracotta `#
 
 1. Codice partner, URL/method/header dell'endpoint, esempio reale anonimizzato, stati e significati, data/ora e timezone, limiti e frequenza di interrogazione, prova con leaseId ignoto e chiave errata. Chiave da consegnare fuori banda.
 2. Comportamento per stesso leaseId riaperto, pratiche multiple e correzioni; il link iniziale non è un'autenticazione e non deve consentire lettura di dati riservati.
-3. Dominio e URL del bottone, parametri di correlazione, login e ritorno al contratto, contenuto dei documenti finali. Nessuna API di importazione file concordata.
+3. Implementazione e verifica del percorso di caricamento definito sotto; contenuto dei documenti finali da confermare. Nessuna API di importazione file concordata.
 4. Contenuti dei pacchetti da 69/89, condizioni dei 20 euro, modalità di pagamento e riconciliazione tra pagante CasaZen e ricevuta al locatore, annullamenti e rifiuti.
 5. Attestazioni e firmatari per accordo territoriale, transitori, privacy, conservazione, supporto e date di disponibilità. Nessuna delle garanzie aggiuntive della vecchia bozza è automaticamente accettata.
 
@@ -36,3 +36,11 @@ Polling server con chiave segreta, retry/backoff e gestione rate limit. Conserva
 Archiviazione documenti separata dallo stato; caricamento autenticato e verificato. IMU separata dalla registrazione. Il canale CF non passa anche da Openapi per la stessa registrazione; gli altri canali mantengono i loro requisiti.
 
 Prove previste: quattro parametri e URL encoding; leaseId preservato in email/stato/ritorno; chiave mai al client; risposta priva di dati personali; stato registrazione distinto dall'attestazione; guasti e timestamp vecchi; accesso al contratto solo autorizzato; caricamenti ripetuti; ricevute finali e IMU distinta. Questa PR modifica solo documenti.
+
+## Atterraggio CasaZen definito
+
+`https://casazen.space/app/long-rent/documents/upload?leaseId=<leaseId>`
+
+Il dominio è definitivo; il percorso `/app/long-rent/documents/upload` è il punto di atterraggio da realizzare per caricare i documenti sulla casa collegata al contratto. Il leaseId è obbligatorio e non autentica l'utente. Dopo login, con percorso e parametro preservati, CasaZen verifica i diritti e ricava la casa dal contratto: mostra entrambi prima della conferma e archivia sulla casa mantenendo il collegamento al contratto. Nessun propertyId o dato personale aggiuntivo richiesto a CF.
+
+Con leaseId assente, errato o non autorizzato non si effettua alcun caricamento o associazione automatica. Il server verifica nuovamente i diritti al caricamento. Il percorso rimane una specifica, non una funzionalità già attiva: testare ritorno dopo login, associazione alla casa e accesso di un altro utente prima di inserirlo nelle email operative.
