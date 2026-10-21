@@ -872,9 +872,9 @@ public class PropertiesController(
         catch (ApeComplianceException ex)
         {
             return this.ApiProblem(
-                StatusCodes.Status400BadRequest,
-                ex.Code,
-                ex.Code == ApeComplianceException.InvalidContentCode ? "ApeInvalidContent" : "ApeRequired");
+                ex.IsUnavailable ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status400BadRequest,
+                ex.Code, ex.MessageKey,
+                string.Join(", ", ex.MissingFields.Select(field => HttpContext.RequestServices.GetRequiredService<IStringLocalizer<SharedResources>>()[$"ApeField_{field}"].Value)));
         }
         catch (DomainRuleException ex)
         {

@@ -104,6 +104,47 @@ public class LeasesController(
         return denied ?? Ok(LeaseDtoMapper.ToDetail(lease!, _clock.TodayInRome()));
     }
 
+    /// <summary>Original PDFs attached to this lease (not the property's document collection).</summary>
+    [HttpGet("{id:guid}/documents")]
+    public async Task<IActionResult> GetDocuments(Guid id, [FromServices] ILeaseDocumentService documents, CancellationToken ct)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null) return denied;
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(await documents.ListAsync(id, ct));
+    }
+
+    [HttpPost("{id:guid}/documents")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(20 * 1024 * 1024 + 65536)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 20 * 1024 * 1024 + 65536)]
+    public async Task<IActionResult> UploadDocument(Guid id, [FromForm] LeaseAttachmentForm form,
+        [FromServices] ILeaseDocumentService documents, CancellationToken ct)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Create);
+        if (denied is not null) return denied;
+        if (!EnumNames.TryParseDefined<LeaseDocumentKind>(form.Kind, out var kind))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "LeaseDocumentInvalid");
+        if (GetOwnerId() is not { } actor) return Unauthorized();
+        var saved = await documents.UploadAsync(id, form.File, kind, actor, ct);
+        Response.Headers.CacheControl = "private, no-store";
+        return CreatedAtAction(nameof(DownloadDocument), new { id, documentId = saved.Id }, saved);
+    }
+
+    [HttpGet("{id:guid}/documents/{documentId:guid}/download")]
+    public async Task<IActionResult> DownloadDocument(Guid id, Guid documentId,
+        [FromServices] ILeaseDocumentService documents, CancellationToken ct)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null) return denied;
+        var document = await documents.DownloadAsync(id, documentId, ct);
+        if (document is null) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        return File(document.Content, "application/pdf", document.FileName);
+    }
+
     /// <summary>Create a new lease contract draft.</summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
@@ -666,9 +707,9 @@ public class LeasesController(
     /// </summary>
     private ObjectResult ApeProblem(ApeComplianceException ex) =>
         this.ApiProblem(
-            StatusCodes.Status400BadRequest,
-            ex.Code,
-            ex.Code == ApeComplianceException.InvalidContentCode ? "ApeInvalidContent" : "ApeRequired");
+            ex.IsUnavailable ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status400BadRequest,
+            ex.Code, ex.MessageKey,
+            string.Join(", ", ex.MissingFields.Select(field => localizer[$"ApeField_{field}"].Value)));
 
     private string ChecklistLabel(string key)
     {
@@ -822,4 +863,10 @@ public sealed class ManualRegistrationForm
     /// <summary>The receipt, a PDF of at most 10 MB.</summary>
     [Required]
     public IFormFile? Receipt { get; set; }
+}
+
+public sealed class LeaseAttachmentForm
+{
+    [Required] public IFormFile File { get; set; } = null!;
+    [Required] public string Kind { get; set; } = "Other";
 }

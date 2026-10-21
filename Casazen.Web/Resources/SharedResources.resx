@@ -415,7 +415,7 @@
     <value>Pratica inviata al provider: il contratto non è ancora registrato. Lo stato si aggiorna quando arriva la ricevuta dell'Agenzia delle Entrate.</value>
   </data>
   <data name="ApeInvalidContent" xml:space="preserve">
-    <value>Il file caricato non è un APE valido (attestato di prestazione energetica). Il contenuto del PDF non corrisponde a un attestato ufficiale. Carica l'APE in corso di validità e riprova.</value>
+    <value>Non è stato possibile riconoscere un APE leggibile. Carica tutte le pagine del documento in PDF o come foto nitide JPEG/PNG.</value>
   </data>
   <data name="LeaseContractTemplateNotApproved" xml:space="preserve">
     <value>Il modello di contratto per questo regime fiscale non è ancora approvato da un legale: è disponibile solo l'anteprima in bozza e il contratto non può essere inviato alla firma.</value>
@@ -3051,5 +3051,36 @@
   </data>
   <data name="IdempotencyKeyInvalid" xml:space="preserve">
     <value>La richiesta non ha una chiave di invio valida (intestazione Idempotency-Key, da 8 a 64 lettere, numeri, trattini).</value>
+  </data>
+  <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Carica un PDF valido fino a 20 MB.</value></data>
+  <data name="ApeIncomplete" xml:space="preserve">
+    <value>Dati APE mancanti o non leggibili: {0}. Aggiungi tutte le pagine o sostituisci le foto poco nitide.</value>
+  </data>
+  <data name="ApeExpired" xml:space="preserve">
+    <value>La data di scadenza letta nell’APE è trascorsa. Carica un attestato in corso di validità.</value>
+  </data>
+  <data name="ApeOcrUnavailable" xml:space="preserve">
+    <value>Il servizio OCR non è disponibile. Nessun documento è stato salvato: riprova tra poco.</value>
+  </data>
+  <data name="ApeField_EnergyClass" xml:space="preserve">
+    <value>classe energetica</value>
+  </data>
+  <data name="ApeField_Performance" xml:space="preserve">
+    <value>indice EPgl</value>
+  </data>
+  <data name="ApeField_CertificateCode" xml:space="preserve">
+    <value>codice identificativo dell’attestato</value>
+  </data>
+  <data name="ApeField_Address" xml:space="preserve">
+    <value>indirizzo dell’immobile</value>
+  </data>
+  <data name="ApeField_Certifier" xml:space="preserve">
+    <value>nome del certificatore</value>
+  </data>
+  <data name="ApeField_IssueDate" xml:space="preserve">
+    <value>data di emissione valida</value>
+  </data>
+  <data name="ApeField_ExpiryDate" xml:space="preserve">
+    <value>data di scadenza valida</value>
   </data>
 </root>

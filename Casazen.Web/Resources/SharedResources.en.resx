@@ -415,7 +415,7 @@
     <value>Filing sent to the provider: the contract is not registered yet. The status updates when the receipt of the Agenzia delle Entrate arrives.</value>
   </data>
   <data name="ApeInvalidContent" xml:space="preserve">
-    <value>The uploaded file is not a valid APE (energy performance certificate). The PDF content does not match an official attestato di prestazione energetica. Upload a valid official APE and try again.</value>
+    <value>A readable energy certificate could not be recognized. Upload all pages as a PDF or clear JPEG/PNG photos.</value>
   </data>
   <data name="LeaseContractTemplateNotApproved" xml:space="preserve">
     <value>The contract template for this fiscal regime has not been approved by a lawyer yet: only the draft preview is available and the contract cannot be sent for signature.</value>
@@ -3051,5 +3051,36 @@
   </data>
   <data name="IdempotencyKeyInvalid" xml:space="preserve">
     <value>The request has no valid send key (Idempotency-Key header, 8 to 64 letters, digits or dashes).</value>
+  </data>
+  <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Upload a valid PDF up to 20 MB.</value></data>
+  <data name="ApeIncomplete" xml:space="preserve">
+    <value>Missing or unreadable certificate data: {0}. Add all pages or replace unclear photos.</value>
+  </data>
+  <data name="ApeExpired" xml:space="preserve">
+    <value>The expiry date read from the certificate has passed. Upload a current certificate.</value>
+  </data>
+  <data name="ApeOcrUnavailable" xml:space="preserve">
+    <value>OCR is unavailable. No document was saved; please retry shortly.</value>
+  </data>
+  <data name="ApeField_EnergyClass" xml:space="preserve">
+    <value>energy class</value>
+  </data>
+  <data name="ApeField_Performance" xml:space="preserve">
+    <value>EPgl index</value>
+  </data>
+  <data name="ApeField_CertificateCode" xml:space="preserve">
+    <value>certificate identification code</value>
+  </data>
+  <data name="ApeField_Address" xml:space="preserve">
+    <value>property address</value>
+  </data>
+  <data name="ApeField_Certifier" xml:space="preserve">
+    <value>certifier name</value>
+  </data>
+  <data name="ApeField_IssueDate" xml:space="preserve">
+    <value>valid issue date</value>
+  </data>
+  <data name="ApeField_ExpiryDate" xml:space="preserve">
+    <value>valid expiry date</value>
   </data>
 </root>

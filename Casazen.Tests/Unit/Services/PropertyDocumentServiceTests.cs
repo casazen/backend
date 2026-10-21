@@ -89,24 +89,41 @@ public class PropertyDocumentServiceTests
     }
 
     [Fact]
-    public async Task UploadDocumentAsync_WithValidFile_CallsStorageServiceWithCorrectParams()
+    public async Task UploadDocumentAsync_WithApePhoto_PersistsOnlyPdf()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
-        var mockFile = CreateMockFile("floor-plan.png");
-        var storageUrl = "/uploads/properties/floor-plan.png";
+        var bytes = await File.ReadAllBytesAsync(Path.Combine(System.AppContext.BaseDirectory, "Fixtures", "ape", "complete.jpg"));
+        var photo = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "floor-plan.jpg")
+        { Headers = new HeaderDictionary(), ContentType = "image/jpeg" };
+        var storageUrl = "/uploads/properties/floor-plan.pdf";
         var savedDocument = new PropertyDocument { Id = Guid.NewGuid(), PropertyId = propertyId };
-
         _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
-        _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
-        _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
+        _mockStorageService.Setup(x => x.ValidateDocument(It.IsAny<IFormFile>())).Returns(true);
+        _mockStorageService.Setup(x => x.UploadDocumentAsync(It.IsAny<IFormFile>(), propertyId)).ReturnsAsync(storageUrl);
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync(savedDocument);
 
-        // Act
-        await _service.UploadDocumentAsync(propertyId, mockFile.Object, DocumentType.FloorPlan, "owner@example.com");
+        await _service.UploadDocumentAsync(propertyId, photo, DocumentType.Ape, "owner@example.com");
 
-        // Assert
-        _mockStorageService.Verify(x => x.UploadDocumentAsync(mockFile.Object, propertyId), Times.Once);
+        _mockStorageService.Verify(x => x.UploadDocumentAsync(It.Is<IFormFile>(f => f.FileName == "floor-plan.pdf" && f.ContentType == "application/pdf"), propertyId), Times.Once);
+        _mockStorageService.Verify(x => x.UploadDocumentAsync(photo, propertyId), Times.Never);
+        _mockDocumentRepository.Verify(x => x.AddAsync(It.Is<PropertyDocument>(d => d.FileName == "floor-plan.pdf")), Times.Once);
+    }
+
+    [Fact]
+    public async Task UploadDocumentAsync_LegacyNonApeImage_KeepsOriginalFileContract()
+    {
+        var propertyId = Guid.NewGuid();
+        var file = CreateMockFile("CinCertificate.png").Object;
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
+        _mockStorageService.Setup(x => x.ValidateDocument(file)).Returns(true);
+        _mockStorageService.Setup(x => x.UploadDocumentAsync(file, propertyId)).ReturnsAsync("/private/CinCertificate.png");
+        _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync((PropertyDocument document) => document);
+
+        var result = await _service.UploadDocumentAsync(propertyId, file, DocumentType.CinCertificate, "owner");
+
+        Assert.Equal("CinCertificate.png", result.FileName);
+        _mockStorageService.Verify(x => x.UploadDocumentAsync(file, propertyId), Times.Once);
+        _mockApeCompliance.Verify(x => x.EnsureUploadedFileIsOfficialApeAsync(It.IsAny<IFormFile>()), Times.Never);
     }
 
     [Fact]
