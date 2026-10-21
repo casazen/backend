@@ -1668,7 +1668,8 @@ public class PropertiesControllerTests
         var problem = AssertProblem(result.Result, StatusCodes.Status400BadRequest);
         Assert.Equal(ApeComplianceException.InvalidContentCode, problem.Extensions["code"]);
         // The localized text of the resource reaches the client, the English text of the exception never does.
-        Assert.Contains("non è un APE valido", problem.Detail);
+        Assert.Contains("riconoscere un APE leggibile", problem.Detail);
+        Assert.DoesNotContain("contenuto del PDF", problem.Detail ?? string.Empty);
         Assert.DoesNotContain("not a valid APE", problem.Detail ?? string.Empty);
     }
 
