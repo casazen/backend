@@ -2,6 +2,24 @@
 
 Aggiornamento: 21 ottobre 2026. Questo documento descrive il flusso concordato, non certifica che l'integrazione sia già attiva. Le sole attività da implementare sono nell'[analisi tecnica per Helix](../../../Sessions/business-analysis-canone-concordato.md).
 
+## Offerta CasaZen e accesso al servizio
+
+Il prezzo all'utente è **119 euro IVA compresa per una pratica di contratto**, con ricarico CasaZen già compreso. L'utente ordinario accede dalla pagina servizio del contratto, che presenta prezzo e sequenza dei passaggi, paga CasaZen e prosegue al modulo CF soltanto dopo conferma server del pagamento. Registro e bollo eventualmente dovuti restano esclusi. Il pagamento al fornitore è distinto dall'acquisto dell'utente.
+
+L'admin di piattaforma CasaZen può aprire direttamente il modulo senza pagina di pagamento; questo bypass non vale per l'admin di una normale organizzazione. Un abbonamento CasaZen di due anni dà diritto a una pratica omaggio: il flag persistente nel database abilita il beneficio, consumato una sola volta e associato al contratto. L'architettura billing attuale attribuisce il beneficio all'organizzazione abbonata. La seconda pratica richiede il pagamento ordinario; riaprire la pratica già sbloccata non costa di nuovo.
+
+La pagina spiega all'utente:
+
+1. Dopo il pagamento o l'utilizzo dell'omaggio vieni reindirizzato al modulo del partner.
+2. Compili il modulo con dati e documenti richiesti.
+3. Gestisci tutto direttamente via email con il partner: integrazioni, contratto e firma, fino alla registrazione prevista dal servizio.
+4. Alla fine ricevi l'email del partner con documenti e link per caricarli in CasaZen.
+5. Ti consigliamo il caricamento per conservare i documenti sulla tua casa e gestire i contratti in modo centralizzato in CasaZen.
+
+Il controllo commerciale è sul server: il solo ritorno dal checkout non prova il pagamento. Apertura per admin, pratica pagata o omaggio usa lo stesso leaseId della pratica. Il caricamento finale non richiede un secondo acquisto.
+
+Il link CF senza firma non garantisce da solo che un utente non ricostruisca l'indirizzo pubblico del modulo. Prima dell'avvio va concordata con CF la verifica del diritto o riconciliazione prima di lavorare pratiche partner; CasaZen protegge sempre l'accesso dalla propria piattaforma.
+
 ## Dal contratto alla pratica
 
 L'utente apre il servizio ConcordatoFacile dal proprio contratto concordato in CasaZen. Il link porta a `https://app.concordatofacile.it` con quattro parametri: `partner`, `leaseId`, `comune` e `provincia`. La provincia è una sigla, per esempio `MB`; il link non è firmato. Il codice partner deve essere assegnato da CF.
@@ -14,7 +32,7 @@ CasaZen non riceve la prima email di pratica ricevuta, quella finale con i docum
 
 CasaZen conosce lo stato esclusivamente tramite l'endpoint del fornitore, interrogato dal backend con chiave e leaseId. CF ha confermato numero pratica, stato comprensivo della registrazione e data dell'ultimo passaggio, senza dati personali. URL, metodo, schema, autenticazione, stati e limiti restano da fornire: non esiste ancora un contratto tecnico esterno definitivo.
 
-Il minimo previsto è leggere lo stato quando l'utente apre il contratto o chiede di aggiornarlo. Non sono richiesti webhook, email di stato o un motore di sincronizzazione in background.
+Il minimo previsto è leggere lo stato quando l'utente apre il contratto o chiede di aggiornarlo. Non sono richiesti webhook CF, email di stato o un motore di sincronizzazione in background. Gli eventi server verificati del provider di pagamento sono invece necessari per confermare acquisti e omaggi.
 
 ## Ritorno a CasaZen e documenti sulla casa
 
@@ -38,7 +56,7 @@ Il click non trasferisce automaticamente documenti da CF, non registra il contra
 
 Se richiesta, l'associazione registra telematicamente come intermediario a nome del locatore; secondo CF non occorre delega firmata dalle parti. La cedolare viene scelta in registrazione. La stessa registrazione non passa anche da Openapi; i percorsi alternativi esistenti mantengono i propri requisiti.
 
-CasaZen paga per pratica dopo invio dei firmati; l'utente non paga direttamente CF. Queste attività restano operative, senza checkout o pagamento automatico aggiunto dall'integrazione.
+CasaZen paga per pratica dopo invio dei firmati; l'utente non paga direttamente CF. Il saldo CasaZen → CF resta operativo; il checkout utente → CasaZen a 119 € IVA compresa è invece parte dell'implementazione richiesta.
 
 CF indica prezzi finali di 69 e 89 euro senza IVA e ricevuta al locatore per quota associativa e contributo, quale operazione non commerciale esente IVA ai sensi dell'art. 4 D.P.R. 633/72. L'abbinamento dei servizi ai due importi è ancora da confermare. La sola registrazione di contratto già pronto è indicata a 20 euro, con condizioni da completare.
 
