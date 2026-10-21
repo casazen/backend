@@ -109,6 +109,7 @@ builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
 builder.Services.AddCasazenAiProvider(builder.Configuration);
 // Lease services
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
+builder.Services.AddScoped<ILeaseDocumentService, LeaseDocumentService>();
 // Contract templates: final PDF only from a complete, lawyer-approved template (LT-03, A7-03)
 builder.Services.AddCasazenLeaseContractTemplates(builder.Configuration);
 // Signature: offline by default, provider only with Features:ESignProvider on and a configured provider (LT-02)

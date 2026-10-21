@@ -18,6 +18,9 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static partial class StorageKeys
 {
+    public static string LeaseAttachment(Guid orgId, Guid leaseId, string fileName) =>
+        $"orgs/{orgId}/leases/{leaseId}/documents/{fileName}";
+
     public static string PropertyPhoto(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/photos/{fileName}";
 

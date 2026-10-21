@@ -2803,4 +2803,5 @@
   <data name="HostInviteEmailMismatch" xml:space="preserve">
     <value>This invitation was written for another email address: sign in with the account it was sent to.</value>
   </data>
+  <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Upload a valid PDF up to 20 MB.</value></data>
 </root>
