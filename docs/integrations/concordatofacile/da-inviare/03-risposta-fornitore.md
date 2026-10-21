@@ -12,7 +12,7 @@ Confermiamo il link al vostro modulo con i soli parametri partner, leaseId, comu
 
 ## Email e bottone CasaZen
 
-Alla vostra domanda: sì, desideriamo mantenere sia la prima email di pratica ricevuta sia quella finale con i documenti. L'endpoint coprirà l'aggiornamento degli stati, quindi non servono più le righe di stato nelle email. Restano necessarie le comunicazioni all'utente per eventuali integrazioni, revisione del contratto e firma.
+Alla vostra domanda: per CasaZen sono sufficienti l'endpoint con lo stato della pratica e il bottone di ritorno. Non ci servono né la prima email di pratica ricevuta né quella finale con i documenti, e non richiediamo copie o inoltri delle email destinate all'utente. Le comunicazioni operative e la consegna dei documenti restano direttamente tra voi e l'utente, che le gestisce autonomamente. CasaZen consulta esclusivamente l'endpoint per conoscere lo stato, registrazione compresa; non servono righe di stato nelle email.
 
 Confermiamo il bottone «Carica i dati in CasaZen» nelle email con documenti da conservare e il link scritto per esteso nella conferma testuale del modulo. Concordiamo un dominio fisso e la presenza del leaseId nel collegamento di ritorno. Il ritorno servirà ad aprire CasaZen e consentire all'utente di caricare/confermare i documenti; non presuppone un trasferimento automatico dei file dal vostro sistema.
 

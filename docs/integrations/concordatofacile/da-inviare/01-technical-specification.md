@@ -17,7 +17,7 @@ Versione 2.0 — 21 ottobre 2026. Revisione documentale sulla risposta CF riport
 
 ## Scelte CasaZen proposte nella risposta
 
-Mantenere prima email di pratica ricevuta e finale con documenti, oltre alle email necessarie per integrazioni e firma. Eliminare le righe di stato via email: le copre l'endpoint. Il ritorno a CasaZen è navigazione verso caricamento/conferma dell'utente, dopo login e verifica dei diritti. Non trasmette da solo documenti o dati strutturati. Il click non certifica completamento o registrazione.
+CasaZen non richiede la prima email di pratica ricevuta né quella finale con documenti, né copie o inoltri delle email dell'utente. Per CasaZen l'unico canale di aggiornamento dello stato è l'endpoint CF, registrazione compresa. Le comunicazioni operative e la consegna dei documenti restano tra CF e utente, che le gestisce autonomamente; nelle email all'utente con documenti resta il bottone di ritorno. Non servono righe di stato via email. Il ritorno a CasaZen è navigazione verso caricamento/conferma dell'utente, dopo login e verifica dei diritti. Non trasmette da solo documenti o dati strutturati. Il click non certifica completamento o registrazione.
 
 Logo e colori: `frontend/public/brand/lockup.svg` e `marchio.svg`; terracotta `#e2622d`, inchiostro `#1f3a3d`, fondo chiaro. Data veste da CF dopo consegna asset e dominio; avvio pilota senza attendere la veste.
 
