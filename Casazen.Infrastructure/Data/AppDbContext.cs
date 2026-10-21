@@ -167,6 +167,7 @@ public class AppDbContext(
     public DbSet<RegulatoryDataAuditEntry> RegulatoryDataAuditEntries { get; set; } = null!;
 
     // Long-term lease
+    public DbSet<LeaseDocument> LeaseDocuments { get; set; } = null!;
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
@@ -505,6 +506,11 @@ public class AppDbContext(
         // Demo environment: one platform row, and one marker per invented row so a reset never touches host data.
         modelBuilder.ApplyConfiguration(new DemoEnvironmentSettingConfiguration());
         modelBuilder.ApplyConfiguration(new TestDataMarkerConfiguration());
+
+        modelBuilder.Entity<LeaseDocument>().HasOne(d => d.LeaseContract).WithMany()
+            .HasForeignKey(d => d.LeaseContractId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<LeaseDocument>().HasIndex(d => new { d.LeaseContractId, d.UploadedAt });
+        modelBuilder.Entity<LeaseDocument>().HasIndex(d => d.OrgId);
 
         // LeaseContract → Property (restrict to preserve history)
         modelBuilder.Entity<LeaseContract>()

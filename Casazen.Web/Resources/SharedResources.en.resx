@@ -3052,4 +3052,5 @@
   <data name="IdempotencyKeyInvalid" xml:space="preserve">
     <value>The request has no valid send key (Idempotency-Key header, 8 to 64 letters, digits or dashes).</value>
   </data>
+  <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Upload a valid PDF up to 20 MB.</value></data>
 </root>

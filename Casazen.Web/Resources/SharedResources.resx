@@ -3052,4 +3052,5 @@
   <data name="IdempotencyKeyInvalid" xml:space="preserve">
     <value>La richiesta non ha una chiave di invio valida (intestazione Idempotency-Key, da 8 a 64 lettere, numeri, trattini).</value>
   </data>
+  <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Carica un PDF valido fino a 20 MB.</value></data>
 </root>
