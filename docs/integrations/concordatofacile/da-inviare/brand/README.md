@@ -31,3 +31,15 @@ Usare uno sfondo bianco o chiaro che mantenga leggibili entrambi i colori.
 Il dominio definitivo CasaZen è `https://casazen.space`.
 
 Una volta ricevuti asset e dominio, attendiamo la vostra data per la veste personalizzata.
+
+## Indirizzo da inserire nelle email
+
+Nel bottone «Carica i dati in CasaZen» e nel link per esteso della conferma testuale del modulo usare:
+
+`https://casazen.space/app/long-rent/documents/upload?leaseId=<leaseId>`
+
+Sostituire `<leaseId>` con l'UUID CasaZen ricevuto nei parametri del modulo. Esempio:
+
+`https://casazen.space/app/long-rent/documents/upload?leaseId=0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11`
+
+È l'indirizzo web di atterraggio per l'utente, non l'endpoint di stato né l'API di upload. Dopo l'accesso, CasaZen individua la casa dal contratto e permette all'utente di caricare i documenti. Non inserire dati personali, chiavi o propertyId nel link. Il percorso deve essere implementato e verificato prima di attivare i link nelle email operative.
