@@ -1,11 +1,33 @@
-# CasaZen — kit per ConcordatoFacile
+# CasaZen — kit marchio per ConcordatoFacile
 
-Copia dei file del repository `casazen/frontend`, cartella `public/brand`, al 21 ottobre 2026.
+Questo kit contiene il marchio CasaZen da usare per la veste personalizzata del modulo e delle comunicazioni all'utente, su fondo chiaro.
 
-- `lockup.svg`: marchio con nome, per fondo chiaro.
-- `marchio.svg`: marchio senza nome, per fondo chiaro.
-- Colori: terracotta `#e2622d`, inchiostro `#1f3a3d`.
+## File inclusi
 
-Spazio di rispetto: almeno la larghezza della casa su ogni lato. Dimensione minima: marchio 16 px, lockup 24 px di altezza. Non ruotare, non ricolorare, non aggiungere ombre. Il wordmark nel file usa Figtree 600 se installato, altrimenti sans di sistema; per stampa convertire il testo in tracciati.
+- `lockup.svg`: marchio completo con simbolo e nome CasaZen. Usarlo quando deve essere visibile anche il nome del servizio, ad esempio nell'intestazione del modulo o delle email.
+- `marchio.svg`: solo simbolo CasaZen, senza nome. Usarlo per spazi compatti o dove il nome CasaZen è già presente.
+- `README.md`: descrizione del kit, colori e indicazioni d'uso.
 
-Dominio del bottone confermato: `https://casazen.space`. URL definito: `https://casazen.space/app/long-rent/documents/upload?leaseId=<leaseId>` (percorso da implementare e verificare). Data di rilascio della veste da concordare.
+I due file SVG sono vettoriali e possono essere ridimensionati mantenendo le proporzioni. Il simbolo rappresenta un cerchio zen a pennello in terracotta che incornicia una casa in inchiostro.
+
+## Colori su fondo chiaro
+
+| Colore | Codice HEX | Uso |
+|---|---|---|
+| Terracotta | `#e2622d` | Cerchio zen e colore di accento |
+| Inchiostro | `#1f3a3d` | Casa e nome CasaZen |
+
+Usare uno sfondo bianco o chiaro che mantenga leggibili entrambi i colori.
+
+## Indicazioni d'uso
+
+- Mantenere proporzioni e colori originali: non deformare, ruotare, ricolorare o aggiungere ombre.
+- Lasciare uno spazio libero intorno al marchio almeno pari alla larghezza della casa contenuta nel simbolo.
+- Dimensioni minime: simbolo 16 px; marchio completo 24 px di altezza. Verificare sempre la leggibilità nel contesto finale.
+- Il nome nel lockup usa Figtree 600, se disponibile, con alternativa sans di sistema. Per la stampa convertire il testo in tracciati.
+
+## Dominio e veste personalizzata
+
+Il dominio definitivo CasaZen è `https://casazen.space`.
+
+Una volta ricevuti asset e dominio, attendiamo la vostra data per la veste personalizzata.
