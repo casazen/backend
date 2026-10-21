@@ -34,12 +34,15 @@ public class PropertyDocumentService(
             throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
         }
 
-        // Normalize image documents before any storage write; only the resulting PDF is persisted.
-        file = await PhotoDocumentPdf.NormalizeAsync(file);
-        if (!storageService.ValidateDocument(file))
-            throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
         if (documentType == DocumentType.Ape)
+        {
+            // Legacy APE clients also persist a PDF. Other legacy APIs keep their existing file contract;
+            // the shared multi-page frontend sends a single assembled PDF for every document type.
+            file = await PhotoDocumentPdf.NormalizeAsync(file);
+            if (!storageService.ValidateDocument(file))
+                throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
             await apeCompliance.EnsureUploadedFileIsOfficialApeAsync(file);
+        }
 
         var storageUrl = await storageService.UploadDocumentAsync(file, propertyId);
 
