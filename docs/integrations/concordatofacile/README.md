@@ -46,7 +46,7 @@ Esempio completo:
 
 `https://casazen.space/app/long-rent/documents/upload?leaseId=0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11`
 
-CF sostituisce il segnaposto con l'identificativo ricevuto. Questo è un indirizzo web di atterraggio, non l'endpoint di stato e non l'API di caricamento file. La route deve essere realizzata e verificata prima di attivare i collegamenti nelle email.
+CF sostituisce il segnaposto con l'identificativo ricevuto. Questo è un indirizzo web di atterraggio, non l'endpoint di stato e non l'API di caricamento file. La route deve essere realizzata e verificata prima di attivare i collegamenti nelle email. Verifica in browser produzione del 21 ottobre 2026: il percorso (anche con leaseId) mostra «404 — Pagina non trovata» su www.casazen.space; nessun via libera al fornitore finché non supera la verifica completa. Il solo HTTP 200 della shell SPA non è una prova di funzionamento.
 
 Dopo login CasaZen verifica l'accesso al contratto, ricava la casa associata e mostra il caricamento documenti esistente. L'utente sceglie i file e conferma; i documenti vengono conservati nell'archivio della casa. Nel minimo rilascio leaseId individua il contesto: non si introduce un legame persistente nuovo tra documento e contratto.
 
@@ -66,6 +66,7 @@ Stato pratica CF, documenti archiviati, registrazione e comunicazione IMU restan
 
 ## Materiale per il fornitore
 
+- [Riscontro su attivazione link e lockup in tracciati](da-inviare/04-riscontro-link-e-marchio.md).
 - [Riscontro in PDF](da-inviare/03-risposta-fornitore.pdf) e [sorgente Markdown](da-inviare/03-risposta-fornitore.md).
 - [ZIP del marchio](da-inviare/CasaZen-kit-marchio.zip): lockup.svg, marchio.svg e README.md con descrizioni, colori e URL da usare nelle email. Terracotta `#e2622d`, inchiostro `#1f3a3d`, fondo chiaro.
 - [Sintesi degli accordi tecnici](da-inviare/01-technical-specification.md).

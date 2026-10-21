@@ -116,6 +116,8 @@ Il modulo accetta oggi solo concordati. Libero 4+4 e transitori sono trattati da
 
 Dominio confermato dall'utente: `https://casazen.space`.
 
+**Verifica produzione del 21 ottobre 2026:** il browser mostra «404 — Pagina non trovata» sul percorso, anche con leaseId. La pagina non è operativa; il fornitore deve mantenere disattivati i link fino a conferma esplicita CasaZen dopo il collaudo completo. Il redirect a www.casazen.space va incluso nel test di conservazione del parametro.
+
 **URL da dare a CF e implementare senza cambiarlo:**
 
 `https://casazen.space/app/long-rent/documents/upload?leaseId=<leaseId>`
