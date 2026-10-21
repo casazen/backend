@@ -1,6 +1,14 @@
 # Analisi tecnica per Helix — integrazione minima ConcordatoFacile
 
-Versione 5.0 · 21 ottobre 2026 · Documento unico e autosufficiente per Helix. Il flusso di riferimento è quello concordato qui: tipo di contratto come primo passo, bozza minima con leaseId, contratto redatto da CF e importazione dei documenti definitivi. La pagina di caricamento sulla casa viene realizzata separatamente nelle PR frontend #314/#315; gli altri requisiti di questa analisi sono da implementare con Helix e non attestano funzionalità già rilasciate. Documentazione del flusso: `docs/integrations/concordatofacile/README.md`. Sostituisce le precedenti analisi e proposte tecniche per questo flusso. I documenti destinati al fornitore restano materiale di corrispondenza, non ulteriori requisiti da sommare. Questa revisione contiene istruzioni: non implementa funzionalità.
+Versione 5.1 · 21 ottobre 2026 · Documento unico e autosufficiente per Helix. Il flusso di riferimento è quello concordato qui: tipo di contratto come primo passo, bozza minima con leaseId, contratto redatto da CF e importazione dei documenti definitivi. La pagina di caricamento degli allegati del contratto viene realizzata separatamente nelle PR frontend #314/#315; gli altri requisiti di questa analisi sono da implementare con Helix e non attestano funzionalità già rilasciate. Documentazione del flusso: `docs/integrations/concordatofacile/README.md`. Sostituisce le precedenti analisi e proposte tecniche per questo flusso. I documenti destinati al fornitore restano materiale di corrispondenza, non ulteriori requisiti da sommare. Questa revisione contiene istruzioni: non implementa funzionalità.
+
+## Relazioni vincolanti e navigazione
+
+- Casa → documenti della casa (APE, planimetria e documenti propri dell'immobile): archivio separato.
+- Casa → contratti della casa.
+- Contratto → documenti del contratto: contratto definitivo, attestazione, ricevuta di registrazione e altri allegati.
+- La nuova pagina riceve **leaseId**, carica e salva esclusivamente documenti di quel contratto. Nessun upload con il solo propertyId e nessuna scelta automatica di un contratto dalla casa.
+- Dalla casa si vede la lista dei contratti collegati; si apre un contratto e si consulta la sua sezione Documenti. I suoi allegati non vengono inseriti né duplicati nella lista «Documenti della casa».
 
 ## 1. Obiettivo e perimetro minimo
 
@@ -9,7 +17,7 @@ Implementare il flusso seguente nell'app esistente:
 1. Chiedere come prima cosa il tipo di contratto. Per il concordato creare subito una bozza minima assegnata alla casa e ottenere il vero leaseId, prima di chiedere parti, date, canone o APE.
 2. Presentare il servizio e incassare **119,00 euro IVA compresa per singola pratica di contratto**, prima di aprire CF. Ammettere accesso diretto per admin CasaZen e una pratica omaggio per abbonamento biennale, con diritto governato dal database.
 3. Dopo la verifica del diritto di accesso, aprire il modulo ConcordatoFacile dal contratto CasaZen con quattro parametri.
-4. Ricevere l'utente dal bottone nelle email CF e consentirgli di caricare contratto definitivo, attestazione e ricevuta di registrazione: conservarne le copie e popolare automaticamente i dati/sezioni del contratto corrispondenti.
+4. Ricevere l'utente dal bottone nelle email CF e consentirgli di caricare contratto definitivo, attestazione e ricevuta di registrazione come allegati del leaseId: conservarne le copie e popolare automaticamente i dati/sezioni del contratto corrispondenti.
 5. Mostrare lo stato della pratica letto dal backend CasaZen attraverso l'endpoint CF, appena il fornitore ne consegna il contratto tecnico.
 
 CF gestisce dati, documenti, verifiche, contratto, attestazione quando necessaria, firme e registrazione se richiesta. Email operative e consegna documenti sono tra CF e utente. CasaZen non vuole la prima email di pratica ricevuta, quella finale né copie/inoltri: l'unico canale per conoscere lo stato è l'endpoint CF.
@@ -25,18 +33,18 @@ Rilevazione nei checkout `casazen/frontend` commit `e27b2fb7` e `casazen/backend
 | Routing applicativo | frontend: `src/config/route-manifest.ts`; dettaglio contratto `/app/long-rent/leases/:id` |
 | Contratto e casa associata | frontend: `src/queries/use-leases.ts`, `src/api/leases.api.ts`; backend: `Casazen.Core/DTOs/Leases/LeaseDtos.cs`, campo `PropertyId` |
 | Pagina della casa long-rent | frontend: `src/features/properties/long-rent/long-rent-property-detail-page.tsx` |
-| Archivio documenti casa | frontend: `src/features/properties/components/property-documents-section.tsx` |
-| Caricamento esistente | frontend: `src/features/properties/components/document-upload-dialog.tsx`, `src/queries/use-properties.ts`, `src/api/properties.api.ts` |
-| API archivio | backend: `Casazen.Web/Controllers/PropertiesController.cs`: `GET/POST /api/properties/{id}/documents`, download e cancellazione già disponibili |
-| Controlli upload | Il POST esistente verifica autenticazione, policy SharedPropertyWrite, accesso alla casa e tipo documento. Conservare queste regole e le validazioni del servizio di storage. |
+| Documenti casa | `PropertyDocumentsSection` resta per i soli documenti dell'immobile, separata dagli allegati del contratto |
+| Allegati contratto | Nuova `LeaseDocumentsPanel` condivisa dalla pagina upload e dal dettaglio contratto; usare le API lease, non properties |
+| API allegati contratto | `GET/POST /api/leases/{leaseId}/documents` e `GET /api/leases/{leaseId}/documents/{documentId}/download`; nuova entità LeaseDocument collegata a LeaseContract e OrgId |
+| Controlli allegati contratto | Il POST lease verifica lease.read/lease.create e accesso al contratto; elenco/download verificano lease.read e appartenenza del documentId al leaseId. Storage privato, validazione PDF e isolamento OrgId. |
 | Modello archivio | backend: `Casazen.Core/Entities/PropertyDocument.cs`: `PropertyId`, `OrgId`, tipo, file e autore. Non contiene un `LeaseId`. |
-| Tipo generico | L'upload frontend offre `Other`; usarlo come default per i documenti CF nel minimo rilascio, evitando CIN o APE predefiniti. |
+| Tipi allegati | Contract, Attestation, Registration, Other; nessuna deduzione dello stato fiscale dal tipo selezionato dall'utente |
 | Ritorno dopo login | frontend: `src/lib/auth-return-to.ts`, `currentReturnTo` e `safeReturnTo`; integrare il flusso di accesso esistente, senza nuova autenticazione. |
 | Informazioni attestazione | frontend: `src/features/leases/components/attestation-guidance-panel.tsx`; non sostituire il calcolatore o le altre informazioni normative. |
 
 Il leaseId è l'ID reale e stabile della bozza, non quello della casa, di un pagamento o di una pratica CF. Resta identico quando arrivano i dati definitivi: non creare un secondo contratto all'importazione.
 
-Il modello attuale PropertyDocument non basta da solo per l'obiettivo finale: servono documenti collegati anche alla locazione, tipizzati e consultabili dalle sezioni del contratto. Riusare storage e API dove possibile, aggiungendo relazione/versioni/metadati ed eventuali migrazioni necessarie. L'upload generico sulla casa è il primo passo già isolato nelle PR frontend, non l'importazione strutturata completa.
+PropertyDocument resta esclusivamente l'archivio della casa. LeaseDocument è l'archivio del contratto: relazione obbligatoria a LeaseContract e OrgId, storage privato e tipi Contract/Attestation/Registration/Other. Il caricamento e la consultazione vengono implementati subito; estrazione strutturata e versionamento avanzato sono lavoro Helix. Riusare questo archivio lease senza creare copie nell'archivio casa.
 
 ### Ingresso concordato e bozza minima (baseline di prodotto per Helix)
 
@@ -68,7 +76,7 @@ Mostrare casa e contratto interessati, prezzo finale **119 € IVA compresa**, e
 2. «Compila il modulo con i dati e i documenti richiesti per il tuo contratto.»
 3. «Gestisci direttamente via email con il partner eventuali integrazioni, revisione del contratto e firma. Il partner segue la pratica e la registrazione prevista dal servizio.»
 4. «Alla fine ricevi dal partner un'email con i documenti e il link per caricarli in CasaZen.»
-5. «Ti consigliamo di caricare i documenti sulla tua casa: potrai ritrovarli e gestire i tuoi contratti in un unico posto, in CasaZen.»
+5. «Ti consigliamo di caricare i documenti sul tuo contratto: potrai ritrovarli e gestire i tuoi contratti in un unico posto, in CasaZen.»
 
 Chiarire che gli aggiornamenti di stato sono visibili in CasaZen ma le comunicazioni operative rimangono con il partner, che il caricamento finale è effettuato dall'utente e che registro/bollo eventualmente dovuti sono esclusi dai 119 euro. Non promettere inclusioni aggiuntive dei pacchetti CF finché non sono confermate.
 
@@ -143,14 +151,14 @@ CF sostituisce `<leaseId>` con l'UUID ricevuto all'apertura del modulo. Esempio 
 
 ### Comportamento della pagina
 
-1. Registrare `/app/long-rent/documents/upload` nel routing esistente, con i permessi coerenti con caricamento documenti e accesso long-rent.
+1. Registrare `/app/long-rent/documents/upload` nel routing esistente, con i permessi coerenti con caricamento documenti e accesso long-rent e permessi lease.read/lease.create.
 2. Validare leaseId. Se l'utente non è autenticato, usare il login esistente e preservare percorso e query al ritorno; mantenere anche il corretto contesto organizzativo secondo le regole esistenti.
 3. Caricare il contratto con le API autorizzate esistenti e ottenere il suo propertyId. Non fidarsi di identificativi aggiuntivi provenienti dal link.
-4. Mostrare nome/indirizzo della casa e riferimento del contratto, poi permettere di caricare i documenti e riconoscere/selezionare contratto, attestazione e registrazione. Il primo rilascio generico riusa Other; Helix aggiunge la classificazione e il collegamento al contratto descritti sotto. Si può comporre una pagina minima con i componenti esistenti; non serve ridisegnare il dettaglio casa.
-5. Dopo il caricamento mostrare conferma e accesso ai documenti della casa. L'utente può ripetere il caricamento per altri file usando il comportamento esistente.
+4. Mostrare nome/indirizzo della casa e riferimento del contratto, poi permettere di caricare gli allegati del leaseId e selezionare contratto, attestazione, registrazione o altro. La classificazione manuale è disponibile subito; Helix aggiunge riconoscimento ed estrazione dei dati. Si può comporre una pagina minima con i componenti esistenti; non serve ridisegnare il dettaglio casa.
+5. Dopo il caricamento mostrare conferma e accesso alla sezione Documenti del contratto. L'utente può ripetere il caricamento per altri file usando il comportamento esistente.
 6. Con leaseId mancante, malformato, inesistente o non accessibile, mostrare uno stato comprensibile e un collegamento alle proprie case; non caricare file, non associare alla prima casa trovata e non rivelare informazioni altrui.
 
-I controlli effettivi rimangono sul server: accesso al contratto in lettura e autorizzazione alla casa in scrittura, con isolamento dell'organizzazione. Un UUID nel link non concede diritti. Usare i permessi esistenti senza limitarsi a confrontare OwnerId nel client.
+I controlli effettivi rimangono sul server: accesso al contratto in lettura/scrittura secondo operazione e isolamento dell'organizzazione. Il documentId va verificato insieme al leaseId per lista e download. Un UUID nel link non concede diritti. Usare i permessi esistenti senza limitarsi a confrontare OwnerId nel client.
 
 Il click non importa file direttamente da CF. L'utente sceglie e carica i documenti ricevuti; il caricamento avvia l'importazione strutturata descritta sotto. Niente lettura delle email dell'utente o download arbitrario da URL esterni. Nessun secondo pagamento per caricare o consultare i documenti della propria casa.
 
@@ -164,7 +172,7 @@ Questa è parte del flusso da implementare con Helix. Le copie e i dati estratti
 | Attestazione | Numero/data attestazione, accordo territoriale/comune, soggetti attestatori e dati attestati del canone se presenti | Attestazione del contratto + PDF originale |
 | Ricevuta di registrazione | Data registrazione, protocollo/codice identificativo e ufficio, esito, eventuale opzione fiscale e importi soltanto se presenti nel documento | Registrazione del contratto + ricevuta originale |
 
-- Ogni file viene persistito nello storage privato e ha metadati nel DB (leaseId, propertyId derivato dal contratto, tipo, nome, data caricamento, autore, stato elaborazione e impronta/versione). Riusare i servizi esistenti, evitando due copie fisiche dello stesso file per archivio casa e contratto: rendere consultabile lo stesso documento da entrambi i contesti.
+- Ogni file viene persistito nello storage privato e ha metadati nel DB (leaseId, OrgId derivato dal contratto, tipo, nome, data caricamento, autore, stato elaborazione e impronta/versione). La casa si ricava dalla relazione del contratto. Gli allegati si consultano nella sezione Documenti di quel contratto, anche quando lo si apre partendo dalla casa; non sono documenti della casa e non si duplicano in PropertyDocuments.
 - Conservare i byte originali: non ristampare né sostituire il PDF firmato o la ricevuta con una versione OCR. L'eventuale OCR è un derivato per estrazione, non la copia legale consultabile.
 - Estrarre automaticamente il testo del PDF e, se scansione, usare un percorso OCR/estrazione compatibile con i servizi già disponibili. Scelta concreta di libreria/provider a Helix dopo verifica dello stack: non presupporre che una API esistente sappia già leggere i PDF. Classificare documento e campi in modo verificabile, con evidenza della pagina e provenienza del valore.
 - Popolare automaticamente i campi estratti con sufficiente affidabilità, dopo validazione e verifica di coerenza con casa, contratto e documenti già acquisiti. Campi mancanti restano vuoti/da completare; errori, bassa affidabilità o conflitti vanno in revisione con anteprima dei valori, senza indovinare né sovrascrivere silenziosamente dati già confermati.
@@ -173,7 +181,7 @@ Questa è parte del flusso da implementare con Helix. Le copie e i dati estratti
 - Mostrare stati «Caricato», «Elaborazione», «Dati acquisiti» o «Da verificare» per documento e permettere apertura/download autenticato di tutte e tre le copie. Se l'estrazione fallisce, il file deve comunque restare conservato e consultabile, con possibilità di correggere/riprovare.
 - Ordine di arrivo libero: contratto, attestazione e registrazione possono arrivare separatamente. Nessuna perdita dei dati già acquisiti; conferma delle variazioni importanti prima di sovrascrivere. Stesso file ricaricato/riprocessato idempotente per leaseId/impronta; una nuova versione va distinta e non cancella la precedente senza una regola esplicita.
 - Le scritture sui dati del contratto avvengono attraverso le regole del dominio esistenti, con audit della provenienza documento/estrazione, controllo concorrenza e autorizzazione di scrittura. Il flag pagamento/omaggio non è un sostituto dei permessi dell'utente.
-- Un caricamento soltanto con propertyId (pagina esposta subito per conservare i documenti della casa) persiste correttamente il file, ma non sceglie arbitrariamente un contratto tra più presenti. Il flusso definitivo CF usa leaseId; per file già in archivio casa prevedere selezione esplicita della bozza corretta e associazione/riprocessamento, senza nuova copia o nuovo ID.
+- Rifiutare il caricamento con il solo propertyId: il riferimento richiesto è leaseId. Un documento di un contratto non va mai salvato nella raccolta dei documenti della casa.
 
 ## 5. Stato della pratica: integrazione server minima
 
@@ -228,13 +236,17 @@ Prima della consegna dei dettagli CF si possono completare apertura modulo e pag
 | Partner o dati obbligatori assenti | Azione non produce link incompleto; spiegazione utile |
 | Libero/transitorio | Nessun invio nel modulo riservato ai concordati |
 | Link email da utente non autenticato | Dopo login ritorna allo stesso path con leaseId preservato |
-| Contratto accessibile | Casa corretta mostrata, file persistiti e consultabili da casa e contratto; tre sezioni con relativi dati acquisiti |
+| Contratto accessibile | Casa corretta mostrata, file persistiti e consultabili nel contratto aperto anche dalla casa; tre sezioni con relativi dati acquisiti |
 | LeaseId mancante/errato o altro utente/org | Nessun accesso a dati altrui, nessuna scrittura o associazione automatica |
 | Riapertura del link | Nessun documento creato senza selezione e conferma dell'utente |
 | Stato CF disponibile | Lettura solo via server, numero pratica/stato/data corretti; chiave assente da bundle e log |
 | CF assente/non configurato/timeout/429 | Stati distinti e gestiti; nessun falso completamento, nessun azzeramento di un risultato valido |
 | Stato di attestazione/registrazione | Distinto dall'archivio e dall'IMU; dati acquisiti soltanto da importazione verificata/stato CF documentato |
 
-Test mirati: diritto di accesso lato server, acquisto singolo e conferma Stripe, distinzione admin piattaforma/org, assegnazione/consumo omaggio concorrente e idempotente, composizione URL, ritorno dopo login, contesto casa/permessi upload e client di stato con risposte CF documentate. Usare i test esistenti come base; nessun test che verifichi soltanto il testo di questa specifica. Eseguire lint/typecheck e test pertinenti secondo le istruzioni dei repository; per le modifiche server anche build e test del percorso autorizzato. Verifica checkout in modalità test e flusso offerta → conferma → CF con stub controllato; verifica manuale del link completo su desktop/mobile e caricamento di un documento di prova, senza pratica reale CF.
+Test mirati: diritto di accesso lato server, acquisto singolo e conferma Stripe, distinzione admin piattaforma/org, assegnazione/consumo omaggio concorrente e idempotente, composizione URL, ritorno dopo login, relazione lease-documento e permessi upload/download e client di stato con risposte CF documentate. Usare i test esistenti come base; nessun test che verifichi soltanto il testo di questa specifica. Eseguire lint/typecheck e test pertinenti secondo le istruzioni dei repository; per le modifiche server anche build e test del percorso autorizzato. Verifica checkout in modalità test e flusso offerta → conferma → CF con stub controllato; verifica manuale del link completo su desktop/mobile e caricamento di un documento di prova, senza pratica reale CF.
 
 **Consegna richiesta:** il flusso minimo funzionante, elenco dei file modificati, verifiche eseguite e dettagli CF ancora mancanti. Non dichiarare completata l'integrazione live se l'endpoint CF non è stato fornito e verificato.
+
+## APE fotografico: archivio della casa separato
+
+Il fix APE accetta copie JPEG/PNG per conservazione nei documenti della casa, verificando firma del formato, estensione e MIME. Non converte una foto in un falso PDF e non considera automaticamente verificata la validità dell'attestato. La verifica del contenuto prima degli adempimenti resta separata: per immagini e scansioni non si può inferire completezza, scadenza o classe energetica dal solo caricamento. Il frontend segnala la natura di copia fotografica e invita a conservare tutte le pagine. Questo non cambia la relazione contratto → allegati del contratto descritta sopra e non deve bloccare la creazione iniziale della bozza CF per la quale è sufficiente la casa.

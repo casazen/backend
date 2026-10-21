@@ -50,9 +50,11 @@ Esempio completo:
 
 CF sostituisce il segnaposto con l'identificativo ricevuto. Questo è un indirizzo web di atterraggio, non l'endpoint di stato e non l'API di caricamento file. La route deve essere realizzata e verificata prima di attivare i collegamenti nelle email. Verifica in browser produzione del 21 ottobre 2026: il percorso (anche con leaseId) mostra «404 — Pagina non trovata» su www.casazen.space; nessun via libera al fornitore finché non supera la verifica completa. Il solo HTTP 200 della shell SPA non è una prova di funzionamento.
 
-Dopo login CasaZen verifica l'accesso al contratto, ricava la casa associata e mostra il caricamento documenti esistente. L'utente sceglie i file e conferma; i documenti vengono conservati nell'archivio della casa. Nella pagina di caricamento iniziale è disponibile anche propertyId per conservare file sulla casa prima che esista il contratto. Il successivo lavoro Helix collega i documenti al leaseId della bozza e li rende consultabili sia dalla casa sia dal contratto.
+Dopo login CasaZen verifica l'accesso al contratto identificato dal leaseId. L'utente seleziona PDF fino a 20 MB, sceglie il tipo (contratto, attestazione, registrazione o altro) e li carica. I byte originali sono conservati nello storage privato; i metadati sono collegati al contratto e alla sua organizzazione, mai alla raccolta PropertyDocuments.
 
-Il click non trasferisce automaticamente documenti da CF e non invia la registrazione. Nel flusso definitivo il caricamento del contratto, dell'attestazione e della ricevuta di registrazione conserva gli originali e avvia l'estrazione dei dati per popolare le rispettive sezioni del contratto. Errori o campi incerti restano da verificare; non si crea un altro contratto e le copie restano consultabili. L'estrazione strutturata è lavoro Helix successivo all'esposizione della pagina generica. Senza identificativo valido o autorizzazione non avviene alcun caricamento. I controlli di scrittura sulla casa rimangono sul server.
+Le relazioni sono separate: casa → documenti della casa; casa → contratti; contratto → documenti del contratto. Dalla pagina della casa si apre un contratto e si trova la sua sezione Documenti, con elenco e download autenticato degli allegati caricati dalla nuova pagina. Non esiste un caricamento con il solo propertyId.
+
+Il lavoro immediato riguarda persistenza e consultazione di questi allegati. Con Helix, il caricamento di contratto definitivo, attestazione e ricevuta di registrazione acquisirà automaticamente i dati nelle rispettive sezioni dello stesso leaseId. Gli originali rimarranno consultabili. Campi incerti/conflitti saranno da verificare; il solo caricamento non equivale a registrazione confermata e non attiva un nuovo invio fiscale.
 
 ## Registrazione, pagamento e adempimenti
 
@@ -74,3 +76,7 @@ Stato pratica CF, documenti archiviati, registrazione e comunicazione IMU restan
 - [Sintesi degli accordi tecnici](da-inviare/01-technical-specification.md).
 
 Le proposte precedenti di link firmati e webhook sono ritirate. I file OpenAPI correnti hanno `paths: {}` proprio perché CF non ha ancora fornito il contratto effettivo dell'endpoint.
+
+## APE della casa
+
+L'APE rimane tra i documenti propri dell'immobile. Il fix del caricamento fotografico conserva JPEG/PNG riconosciuti dal formato, con messaggio esplicito che la validità non è verificata automaticamente. I documenti definitivi del servizio CF restano invece allegati alla locazione. Le PR sono verso develop: la disponibilità effettiva nelle email del partner va confermata solo dopo il rilascio e il collaudo del percorso autenticato.
