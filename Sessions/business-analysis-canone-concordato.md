@@ -247,6 +247,3 @@ Test mirati: diritto di accesso lato server, acquisto singolo e conferma Stripe,
 
 **Consegna richiesta:** il flusso minimo funzionante, elenco dei file modificati, verifiche eseguite e dettagli CF ancora mancanti. Non dichiarare completata l'integrazione live se l'endpoint CF non è stato fornito e verificato.
 
-## APE fotografico: archivio della casa separato
-
-Il fix APE accetta copie JPEG/PNG per conservazione nei documenti della casa, verificando firma del formato, estensione e MIME. Non converte una foto in un falso PDF e non considera automaticamente verificata la validità dell'attestato. La verifica del contenuto prima degli adempimenti resta separata: per immagini e scansioni non si può inferire completezza, scadenza o classe energetica dal solo caricamento. Il frontend segnala la natura di copia fotografica e invita a conservare tutte le pagine. Questo non cambia la relazione contratto → allegati del contratto descritta sopra e non deve bloccare la creazione iniziale della bozza CF per la quale è sufficiente la casa.
