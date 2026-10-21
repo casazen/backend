@@ -707,9 +707,9 @@ public class LeasesController(
     /// </summary>
     private ObjectResult ApeProblem(ApeComplianceException ex) =>
         this.ApiProblem(
-            StatusCodes.Status400BadRequest,
-            ex.Code,
-            ex.Code == ApeComplianceException.InvalidContentCode ? "ApeInvalidContent" : "ApeRequired");
+            ex.IsUnavailable ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status400BadRequest,
+            ex.Code, ex.MessageKey,
+            string.Join(", ", ex.MissingFields.Select(field => localizer[$"ApeField_{field}"].Value)));
 
     private string ChecklistLabel(string key)
     {

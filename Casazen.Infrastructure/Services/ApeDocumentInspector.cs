@@ -57,9 +57,50 @@ public sealed class ApeDocumentInspector : IApeDocumentInspector
         var hasTitle = TitleMarkers.Any(m => normalized.Contains(m, StringComparison.Ordinal));
         var hasSupporting = SupportingMarkers.Any(m => normalized.Contains(m, StringComparison.Ordinal));
 
-        return hasTitle && hasSupporting
-            ? new ApeInspectionResult(ApeInspectionStatus.Valid)
-            : new ApeInspectionResult(ApeInspectionStatus.ContentMismatch);
+        if (!hasTitle || !hasSupporting)
+            return new(ApeInspectionStatus.ContentMismatch);
+
+        var missing = new List<string>();
+        bool Matches(string pattern) => Regex.IsMatch(normalized, pattern, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        if (!Matches(@"CLASSE ENERGETICA (?:[A-G]|A[1-4]|A PLUS)(?: |$)")) missing.Add("EnergyClass");
+        if (!Matches(@"EP ?GL(?: NREN| NR?EN| GLOBALE)? [0-9]+(?: [0-9]+)?")) missing.Add("Performance");
+        if (!Matches(@"(?:CODICE IDENTIFICATIVO(?: ATTESTATO| APE)?|CODICE ATTESTATO|NUMERO ATTESTATO|CODICE CERTIFICATO) [A-Z0-9]*[0-9][A-Z0-9]*")) missing.Add("CertificateCode");
+        if (!Matches(@"INDIRIZZO [A-Z0-9]+")) missing.Add("Address");
+        if (!Matches(@"(?:SOGGETTO CERTIFICATORE|CERTIFICATORE ENERGETICO|NOME E COGNOME) [A-Z]{2,} [A-Z]{2,}")) missing.Add("Certifier");
+        var issue = ReadDate(normalized, @"(?:DATA DI EMISSIONE|DATA EMISSIONE|RILASCIATO IL|DATA DI RILASCIO)");
+        var expiry = ReadDate(normalized, @"(?:VALIDO FINO AL|VALIDITA FINO AL|DATA DI SCADENZA|DATA SCADENZA|SCADENZA)");
+        if (issue is null || issue > DateOnly.FromDateTime(DateTime.UtcNow)) missing.Add("IssueDate");
+        if (expiry is null || (issue is not null && expiry <= issue)) missing.Add("ExpiryDate");
+        if (missing.Count > 0) return new(ApeInspectionStatus.Incomplete, missing);
+        return expiry < DateOnly.FromDateTime(DateTime.UtcNow)
+            ? new(ApeInspectionStatus.Expired)
+            : new(ApeInspectionStatus.Valid);
+    }
+
+    private static DateOnly? ReadDate(string text, string label)
+    {
+        var match = Regex.Match(text, label + @" (\d{1,2}) (\d{1,2}) (\d{4})(?: |$)", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        return match.Success && DateOnly.TryParseExact($"{match.Groups[1].Value.PadLeft(2, '0')}/{match.Groups[2].Value.PadLeft(2, '0')}/{match.Groups[3].Value}", "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;
+    }
+
+    public async Task<ApeInspectionResult> InspectAsync(Stream content, CancellationToken ct = default)
+    {
+        using var copy = new MemoryStream();
+        await content.CopyToAsync(copy, ct);
+        if (copy.Length == 0 || copy.Length > 10 * 1024 * 1024)
+            return new(ApeInspectionStatus.Unreadable);
+        var bytes = copy.ToArray();
+        var isPdf = HasPdfHeader(bytes);
+        if (!isPdf && ImageSignature.Detect(bytes.AsSpan(0, Math.Min(bytes.Length, ImageSignature.HeaderLength))) is not ("image/jpeg" or "image/png"))
+            return new(ApeInspectionStatus.NotAPdf);
+        // Real PDFs need a layout-aware reader; literal extraction alone misses embedded fonts.
+        try
+        {
+            var text = await ApeOcrReader.ReadAsync(bytes, isPdf, ct);
+            return InspectExtractedText(text);
+        }
+        catch (ApeOcrUnavailableException) { return new(ApeInspectionStatus.OcrUnavailable); }
+        catch (InvalidDataException) { return new(ApeInspectionStatus.Unreadable); }
     }
 
     internal static string Normalize(string text)

@@ -34,6 +34,10 @@ public class PropertyDocumentService(
             throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
         }
 
+        // Normalize image documents before any storage write; only the resulting PDF is persisted.
+        file = await PhotoDocumentPdf.NormalizeAsync(file);
+        if (!storageService.ValidateDocument(file))
+            throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
         if (documentType == DocumentType.Ape)
             await apeCompliance.EnsureUploadedFileIsOfficialApeAsync(file);
 

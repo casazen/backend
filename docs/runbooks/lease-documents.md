@@ -21,3 +21,6 @@ Estrazione automatica dei dati, creazione minima della bozza CF, pagamento/offer
 ## Verifica
 
 Test del servizio: originali conservati, nessun PropertyDocument creato, separazione tra leaseId, PDF non validi e limiti, nessun avanzamento fiscale automatico. Test controller: accesso negato non raggiunge lo storage. Test PostgreSQL/API: upload multipart, elenco, download originale, riapertura del DB e rifiuto di anonimi/altra organizzazione.
+
+
+Le selezioni fotografiche possono essere riunite in un solo PDF prima dell’invio: vedere [Documenti multipagina e OCR APE](documenti-multipagina.md). La funzione è condivisa con i documenti della casa e non cambia la titolarità degli allegati.

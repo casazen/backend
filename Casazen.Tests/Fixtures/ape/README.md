@@ -1,0 +1,1 @@
+Synthetic APE facsimiles for OCR tests, containing no real personal or property data. Page 1 alone lacks certifier and dates; the combined PDF contains them on page 2. Dates: 2025–2035. Generated using Pillow/DejaVu Sans and ReportLab. Not a valid official certificate.
