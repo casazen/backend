@@ -20,11 +20,13 @@ Il controllo commerciale è sul server: il solo ritorno dal checkout non prova i
 
 Il link CF senza firma non garantisce da solo che un utente non ricostruisca l'indirizzo pubblico del modulo. Prima dell'avvio va concordata con CF la verifica del diritto o riconciliazione prima di lavorare pratiche partner; CasaZen protegge sempre l'accesso dalla propria piattaforma.
 
-## Dal contratto alla pratica
+## Dalla casa alla bozza concordato
 
-L'utente apre il servizio ConcordatoFacile dal proprio contratto concordato in CasaZen. Il link porta a `https://app.concordatofacile.it` con quattro parametri: `partner`, `leaseId`, `comune` e `provincia`. La provincia è una sigla, per esempio `MB`; il link non è firmato. Il codice partner deve essere assegnato da CF.
+Nel flusso definitivo la prima domanda è il tipo di contratto. Se l'utente sceglie canone concordato, CasaZen salva subito una bozza reale collegata alla casa e assegna il leaseId; non chiede prima dati che saranno definiti dal partner. Quel riferimento rimane lo stesso dopo l'acquisizione dei documenti definitivi.
 
-Il fornitore conserva leaseId e lo associa al numero di pratica. L'utente gestisce direttamente con CF i dati, i documenti, eventuali integrazioni, il contratto e la firma. CF prepara il contratto sul modello ministeriale; se è già predisposto, cura l'attestazione quando necessaria. Il modulo attuale accetta solo concordati: libero 4+4 e transitori sono gestiti dal fornitore per email, fuori dall'integrazione del modulo.
+Dopo pagamento o omaggio, il link apre `https://app.concordatofacile.it` con `partner`, `leaseId`, `comune` e `provincia` (sigla, ad esempio MB), senza firma. Il codice partner deve essere assegnato da CF. L'admin CasaZen segue l'accesso diretto previsto.
+
+CF prepara il vero contratto; l'utente gestisce direttamente con CF dati, documenti, integrazioni, revisione e firma. CasaZen non genera prima un secondo contratto concordato. Il modulo attuale accetta solo concordati: libero 4+4 e transitori sono gestiti dal fornitore per email, fuori da questo percorso.
 
 ## Comunicazioni e stato
 
@@ -48,9 +50,9 @@ Esempio completo:
 
 CF sostituisce il segnaposto con l'identificativo ricevuto. Questo è un indirizzo web di atterraggio, non l'endpoint di stato e non l'API di caricamento file. La route deve essere realizzata e verificata prima di attivare i collegamenti nelle email. Verifica in browser produzione del 21 ottobre 2026: il percorso (anche con leaseId) mostra «404 — Pagina non trovata» su www.casazen.space; nessun via libera al fornitore finché non supera la verifica completa. Il solo HTTP 200 della shell SPA non è una prova di funzionamento.
 
-Dopo login CasaZen verifica l'accesso al contratto, ricava la casa associata e mostra il caricamento documenti esistente. L'utente sceglie i file e conferma; i documenti vengono conservati nell'archivio della casa. Nel minimo rilascio leaseId individua il contesto: non si introduce un legame persistente nuovo tra documento e contratto.
+Dopo login CasaZen verifica l'accesso al contratto, ricava la casa associata e mostra il caricamento documenti esistente. L'utente sceglie i file e conferma; i documenti vengono conservati nell'archivio della casa. Nella pagina di caricamento iniziale è disponibile anche propertyId per conservare file sulla casa prima che esista il contratto. Il successivo lavoro Helix collega i documenti al leaseId della bozza e li rende consultabili sia dalla casa sia dal contratto.
 
-Il click non trasferisce automaticamente documenti da CF, non registra il contratto e non certifica il completamento della pratica. Senza identificativo valido o autorizzazione non avviene alcun caricamento. I controlli di scrittura sulla casa rimangono sul server.
+Il click non trasferisce automaticamente documenti da CF e non invia la registrazione. Nel flusso definitivo il caricamento del contratto, dell'attestazione e della ricevuta di registrazione conserva gli originali e avvia l'estrazione dei dati per popolare le rispettive sezioni del contratto. Errori o campi incerti restano da verificare; non si crea un altro contratto e le copie restano consultabili. L'estrazione strutturata è lavoro Helix successivo all'esposizione della pagina generica. Senza identificativo valido o autorizzazione non avviene alcun caricamento. I controlli di scrittura sulla casa rimangono sul server.
 
 ## Registrazione, pagamento e adempimenti
 
