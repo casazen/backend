@@ -65,7 +65,10 @@ public sealed record ShowcaseBookingPlace(string City, string? PostalCode, strin
 /// One line of the price, in cents of euro: the choices of the customer at the time of the booking, or — once the supplier
 /// completed the work — the lines of the final amount.
 /// </summary>
-/// <param name="Kind"><c>service</c> (the work), <c>option</c> (a supplement the customer picked) or <c>extra</c> (added when the work was completed).</param>
+/// <param name="Kind">
+/// <c>service</c> (the work), <c>option</c> (a supplement the customer picked), <c>urgent</c> (the surcharge of an urgent booking,
+/// SP-04c: the page says it in the customer's language) or <c>extra</c> (added when the work was completed).
+/// </param>
 public sealed record ShowcaseBookingPriceLine(string Kind, string Label, int Quantity, int UnitAmountCents, int AmountCents);
 
 /// <summary>

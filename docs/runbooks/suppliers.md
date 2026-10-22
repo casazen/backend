@@ -25,6 +25,7 @@ request, the payer's link, the host's confirmation of an amount above the quote,
 Section 27: the read models of the console screens "Oggi" and "Richieste" (SP-04e). Section 28: what the Portal's agenda reads, the titles, the
 conflicts with a fix, "how customers see you" and the unlinking of the calendar (SP-03b, redesign wave).
 Section 29: the console's settings, earnings and clients (SP-16a, redesign wave).
+Section 32: the urgent requests with a surcharge, the supplier's settings, the urgent slots, the estimate and the booking (SP-04c, redesign wave).
 
 ## 1. How a supplier joins
 
@@ -3113,6 +3114,90 @@ is not the caller's, or is nobody's, is 404 `supplier_client_not_found` (the sam
 - Cost: one grouped read of the supplier's open or taken requests (count, sum, max, min per customer: the database does the arithmetic), then one read of the private customers of the page and
   one of the host orgs of the page. Limits: no counters of the chips (the console counts what it loaded), no search by name in the database, no filter by source other than the chips.
 - Demo seed: not applicable (the demo showcase has no supplier or service-request data, SP-04e-F5).
+
+## 32. Urgent requests with a surcharge — SP-04c
+
+Redesign wave task SP-04c (branch `feature/rd-supplier-urgent`, backend only): **no new flag**, migration `AddSupplierUrgentSlots` (additive, nothing is backfilled but the window
+default). The supplier says "I accept urgent requests for today and tomorrow, even outside my normal hours, with this surcharge", for each service it chooses; the customer of the public
+showcase sees urgent slots and the surcharge **before** sending. The supplier's switches are harmless alone (nothing public changes until the supplier turns one on); the customer reaches
+them only through the endpoints of sections 22 and 23, which stay behind `SupplierShowcaseBooking` (off by default). Decision SP-D9 (the defaults below are the ones applied).
+
+### 32.1 The settings
+
+| Where | Field | Default | Rule |
+|---|---|---|---|
+| `SupplierSettings` (the supplier) | `UrgentEnabled` / `enabled` | `false` | the supplier's switch **comes first**: with it off no service has urgent slots or a surcharge, whatever its own switch says (the lamp stays, the effect does not) |
+| | `UrgentFromMinute`, `UrgentToMinute` / `fromMinute`, `toMinute` | 420 and 1320 (07:00-22:00) | minutes after midnight on the clock of Rome; `0 <= from < to <= 1440` (check `CK_SupplierSettings_UrgentWindow`); **outside the working hours too** |
+| | `UrgentSurchargeCents` / `surchargeCents` | `0` | the default surcharge, `0` to **50 000** cents (500 €; `CK_SupplierSettings_UrgentSurchargeCents`) |
+| `SupplierServiceListings` (a service) | `UrgentEnabled` / `urgentEnabled` | `false` | "a service without its own switch is not urgent" |
+| | `UrgentSurchargeCents` / `urgentSurchargeCents` | `null` | `null` is the supplier's default; `0` is a surcharge (an urgency for free); `0` to 50 000 (`CK_SupplierServiceListings_UrgentSurchargeCents`) |
+
+The surcharge is a fixed gross amount in euro, like the price of the service (decision D4: VAT is only the supplier's declaration). Percent surcharges, the level `Emergency`, urgency for more
+than one day and urgent requests of the hosts (`POST api/service-requests`) are not part of the task.
+
+### 32.2 Endpoints
+
+| Endpoint | What |
+|---|---|
+| `GET api/supplier/availability/urgent` | the four settings; the defaults while the supplier never saved them (a read creates no row) |
+| `PUT api/supplier/availability/urgent` | replaces them, **all four needed**; 422 `supplier_urgent_invalid` with `fields` (`enabled`, `fromMinute`, `toMinute`, `surchargeCents`) names every one at fault, as `PUT availability/rules`; a window that does not start before it ends names `toMinute`. Written under the `SupplierCalendarSync` lock of the supplier, the same one every booking takes |
+| `api/supplier/services` (`POST`, `PUT`, `GET`) | `urgentEnabled` (a replacement: left out is `false`) and `urgentSurchargeCents` (left out is `null`); a surcharge outside 0-50 000 is 422 `supplier_service_invalid` with the field `urgentSurchargeCents`. The service is saved as the supplier wrote it, also with the supplier's switch off |
+| `GET api/supplier/preview/slots?urgent=true` (SP-03b) | the supplier's own preview of the urgent slots, from the same planner and the same window as the public page; **no day at all** while the service or the supplier does not accept urgent requests (the answer says `urgent: true`) |
+| `GET api/public/suppliers/{slug}/services`, `…/services/{serviceSlug}` and `services` of the page | each service gains `urgent { enabled, surchargeCents }`, **effective**: `enabled` only when the service and the supplier both accept urgent requests, `surchargeCents` the service's own or else the supplier's default (`0` when not enabled). The supplier's settings are read only when a service has its own switch on |
+| `GET api/public/suppliers/{slug}/slots?service=&from=&days=&urgent=true` | the urgent slots (see below); `urgent: true` in the answer and in each slot (left out of a normal answer: the normal slots are byte for byte as before) |
+| `POST api/public/suppliers/{slug}/quote` and `POST …/bookings` with `urgent: true` | the estimate and the booking of an urgent slot (below) |
+
+### 32.3 The urgent slots (the planner)
+
+`SupplierSlotQuery` gains `Urgent`, `SupplierPlanningInput` the supplier's urgent settings (read in the same query as the rules: no query more). With `Urgent`, `SupplierSlotPlanner`:
+
+- opens **only today and tomorrow** (Europe/Rome days; never beyond the supplier's horizon): a later day is `BeyondHorizon`;
+- takes **30 minutes of notice** (`SupplierAgendaLimits.UrgentNoticeMinutes`, a constant), **not** the supplier's or the service's `MinNoticeHours`;
+- makes the day's one band the supplier's **urgent window** (turned into UTC for that date by `RomeCalendar.ToUtc`, so on 29 March and 25 October the real minutes are walked and nothing is
+  moved by hand), in place of the working bands and the extra openings; the slots start at the beginning of the window and then every `SlotStepMinutes`;
+- keeps everything else as it is: time off and the days closed by hand or by the calendar feed close the day; blocks, engagements of the calendar feed, requests with hours and holds are in the
+  way (with the pause); `MaxJobsPerDay` counts all the requests and holds of the day, urgent or not; the weekdays of the service apply; the 409 `supplier_commitment_conflict` of the take is untouched;
+- finds **no slot on any day** (`SupplierDayClosure.UrgentNotOffered`) when the supplier does not accept urgent requests or has a window with no length. The service's own switch is the caller's:
+  `SupplierPublicService.ToSlotQuery(urgent)` is asked for only when `Urgent.Enabled`.
+
+Without `Urgent` the planner is exactly what it was (the conflict detector builds its context without it: `outside_hours` stays a warning for a job taken outside the working hours, an urgent one
+included; the supplier decides about a time outside the published hours, SP-D28).
+
+### 32.4 The estimate and the booking
+
+- **One line, once.** `SupplierQuoteRequest.Urgent` adds one line of kind `Urgent` (JSON `"Urgent"`, label `Urgenza`: the clients write their own text for the kind) with the surcharge of the service,
+  **last**, inside the total; `quantity × unitAmountCents = amountCents` as for the others. A request that is not urgent has no such line; a surcharge of `0` has none either. Urgent for a service that
+  does not offer it (its switch, or the supplier's, is off) is 422 `supplier_quote_invalid` with the field `urgent` in the estimate **and** in the booking.
+- **The booking prices the request with the same function**: the total the customer saw is the `EstimatedAmountCents` the request carries (the surcharge once), the snapshot of the choices
+  (`OptionsJson`) has one entry with the code `urgent` (`ServiceRequestOptionCodes.Urgent`), and the customer's page of the booking (SP-11) shows it as a line of kind `urgent`. A service on quote
+  has no total, and the surcharge is in the options only. The final price lines (`price.lines`) are written when the work is completed, as ever, from the agreed price, which already includes the surcharge.
+- **The slot is judged by the urgent plan under the calendar lock.** The hold takes `SupplierCalendarSync` (the same lock as every normal booking, request and agenda write), reads the agenda after
+  taking it and plans with `Urgent` **without the public cache**; the hold then counts in the planner as a request with hours. An urgent and a normal booking of the same hour therefore cannot both pass:
+  the second finds the hold of the first (409 `supplier_slot_unavailable`, also for a slot that the supplier closed meanwhile). `[PostgresFact]` coverage of the race is the one of the normal booking (section 23.4); the urgent plan only changes which slots exist.
+- **The hold never outlives the start of the work**: its length is `Suppliers:Showcase:EmailVerificationMinutes` (30) or the minutes left to the start if fewer, and the e-mail says that number. With the 30
+  minutes of notice and the default length nothing changes. The request is born **`Urgency = High`**, and its `ResponseDueAt` is `RespondWithinMinutes` after the check **or the start of the work, if earlier**
+  (an answer after the hour is of no use; the job `service-request-expiry` lapses it as any unanswered request and tells the customer).
+- **Public cache (30 s per replica):** the plan of the urgent slots is another entry (the key ends with `|urgent`); a normal plan keeps its key. A change of the urgent settings reaches the public within
+  the TTL, except that a supplier that turns urgent **off** is not offered at once: the effective terms are read before the cache.
+
+### 32.5 Decisions applied (SP-D9 defaults, nothing asked)
+
+Only today and tomorrow; 30 minutes of notice; the maximum per day counts the urgent requests too; holidays win; a fixed surcharge in euro per service with the supplier's default; window 07:00-22:00;
+a service without its own switch is not urgent; the supplier's switch comes first. The service's own `0` beats the supplier's default (a deliberate free urgency).
+
+### 32.6 Known limits (follow-ups, nothing is broken)
+
+- **SP-04c-FU1** — a customer who moves an urgent booking while it is still new (SP-11, section 24) moves it to a **normal** slot and keeps the surcharge on the request: re-price it or refuse the
+  move (a decision of the product owner). The supplier sees `urgency` `High` and decides about the new time.
+- **SP-04c-FU2** — the label `Urgenza` of the line and of the option is a fixed Italian text; the clients translate by kind. A localized label needs the culture at the mapper.
+- **SP-04c-FU3** — the final price lines of a completed urgent request show one base line that includes the surcharge; splitting it needs the payment line items to know the kind.
+- The e-mails to the supplier do not say "urgent" (the inbox does, `urgency`); a different notification priority is out of the task.
+- Demo seed: not applicable (the demo showcase has no supplier, service or request data, runbook 27.12).
+
+### 32.7 After a deploy
+
+Nothing to configure. The migration adds the columns with the defaults above to the rows that exist (a supplier keeps its settings; urgent is off for all of them). To try it on a test supplier: `PUT availability/urgent`
+(`enabled: true`), `PUT services/{id}` with `urgentEnabled: true` and a surcharge, then `GET …/slots?service=…&urgent=true` with `SupplierShowcaseBooking` on.
 
 ## Known limits (other tasks)
 

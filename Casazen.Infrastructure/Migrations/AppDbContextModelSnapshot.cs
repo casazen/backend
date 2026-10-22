@@ -6415,6 +6415,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("UrgentEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("UrgentSurchargeCents")
+                        .HasColumnType("integer");
+
                     b.Property<uint>("Version")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -6438,6 +6444,8 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_SupplierServiceListings_MinNoticeHours", "\"MinNoticeHours\" IS NULL OR \"MinNoticeHours\" >= 0");
 
                             t.HasCheckConstraint("CK_SupplierServiceListings_PriceFromCents", "\"PriceFromCents\" IS NULL OR \"PriceFromCents\" > 0");
+
+                            t.HasCheckConstraint("CK_SupplierServiceListings_UrgentSurchargeCents", "\"UrgentSurchargeCents\" IS NULL OR \"UrgentSurchargeCents\" BETWEEN 0 AND 50000");
 
                             t.HasCheckConstraint("CK_SupplierServiceListings_WeekdaysMask", "\"WeekdaysMask\" BETWEEN 0 AND 127");
                         });
@@ -6493,6 +6501,22 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("UrgentEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("UrgentFromMinute")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(420);
+
+                    b.Property<int>("UrgentSurchargeCents")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UrgentToMinute")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1320);
+
                     b.HasKey("OrgId");
 
                     b.ToTable("SupplierSettings", t =>
@@ -6510,6 +6534,10 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_SupplierSettings_RespondWithinMinutes", "\"RespondWithinMinutes\" BETWEEN 15 AND 10080");
 
                             t.HasCheckConstraint("CK_SupplierSettings_SlotStepMinutes", "\"SlotStepMinutes\" BETWEEN 15 AND 240");
+
+                            t.HasCheckConstraint("CK_SupplierSettings_UrgentSurchargeCents", "\"UrgentSurchargeCents\" BETWEEN 0 AND 50000");
+
+                            t.HasCheckConstraint("CK_SupplierSettings_UrgentWindow", "\"UrgentFromMinute\" >= 0 AND \"UrgentToMinute\" <= 1440 AND \"UrgentFromMinute\" < \"UrgentToMinute\"");
                         });
                 });
 

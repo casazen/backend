@@ -91,6 +91,20 @@ public class SupplierServiceListing
     public int WeekdaysMask { get; set; } = SupplierServiceWeekdays.AllMask;
 
     /// <summary>
+    /// The service accepts urgent requests, for today and tomorrow, even outside the supplier's working hours (SP-04c, decision
+    /// SP-D9). Off until the supplier says so. The supplier's own switch (<see cref="SupplierSettings.UrgentEnabled"/>) comes first:
+    /// with it off the flag stays saved here but has no effect (no urgent slot, no surcharge).
+    /// </summary>
+    public bool UrgentEnabled { get; set; }
+
+    /// <summary>
+    /// The surcharge of an urgent request for this service, in euro cents (0 to
+    /// <see cref="SupplierAgendaLimits.MaxUrgentSurchargeCents"/>; a gross amount like the price, decision D4). <c>null</c>: the supplier's
+    /// default (<see cref="SupplierSettings.UrgentSurchargeCents"/>).
+    /// </summary>
+    public int? UrgentSurchargeCents { get; set; }
+
+    /// <summary>
     /// JSON array of <see cref="SupplierServiceSupplement"/> (<c>code</c>, <c>label</c>, <c>amountCents</c>, <c>per</c>,
     /// <c>max</c>): structured, because the price estimate of the booking (SP-09) is computed from them.
     /// </summary>

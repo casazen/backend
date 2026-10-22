@@ -2374,6 +2374,9 @@
   <data name="SupplierSettingsInvalid" xml:space="preserve">
     <value>Le impostazioni non sono valide (campi: {0}). Servono tutte e cinque: accettazione automatica dei clienti abituali, avviso per le nuove richieste, promemoria del giorno prima, avviso per i pagamenti e tempo per rispondere (da 15 a 10080 minuti).</value>
   </data>
+  <data name="SupplierUrgentInvalid" xml:space="preserve">
+    <value>Le impostazioni delle urgenze non sono valide (campi: {0}). Servono tutti e quattro: urgenze accettate (sì o no), inizio e fine della fascia oraria (minuti dalla mezzanotte: l'inizio da 0 a 1439, la fine da 1 a 1440 e dopo l'inizio) e sovrapprezzo (da 0 a 50000 centesimi).</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Indica il comune oppure l'immobile per cercare i fornitori.</value>
   </data>

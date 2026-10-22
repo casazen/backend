@@ -204,6 +204,10 @@ public sealed record SupplierOccupancy
 /// opposed to the ones the supplier closed by hand. The planner never reads it (every closed day is closed); the conflict detector
 /// (SP-03b) does, to tell "another engagement" from "a day off". <c>null</c> is none.
 /// </param>
+/// <param name="Urgent">
+/// The supplier's urgent settings (SP-04c): read only by a plan that asks for urgent slots (<see cref="SupplierSlotQuery.Urgent"/>),
+/// which uses their window and finds no slot at all when they are off. <c>null</c> is a supplier that never saved them: off.
+/// </param>
 public sealed record SupplierPlanningInput(
     DateTime NowUtc,
     SupplierPlanningRules Rules,
@@ -212,13 +216,22 @@ public sealed record SupplierPlanningInput(
     IReadOnlySet<DateOnly> ClosedDays,
     IReadOnlyList<SupplierInterval> ExtraOpenings,
     IReadOnlyList<SupplierOccupancy> Occupancies,
-    IReadOnlySet<DateOnly>? CalendarClosedDays = null);
+    IReadOnlySet<DateOnly>? CalendarClosedDays = null,
+    SupplierUrgentSettings? Urgent = null);
 
 /// <summary>What the slots are for: how long the service lasts, and what it asks of the supplier's own rules.</summary>
 /// <param name="DurationMinutes">How long the work lasts (a slot is that long).</param>
 /// <param name="MinNoticeHours">The service's own notice (<c>SupplierServiceListing.MinNoticeHours</c>); <c>null</c> is the supplier's.</param>
 /// <param name="WeekdaysMask">The days the service is offered on (<see cref="SupplierServiceWeekdays"/>); <c>null</c> is every day.</param>
-public sealed record SupplierSlotQuery(int DurationMinutes, int? MinNoticeHours = null, int? WeekdaysMask = null);
+/// <param name="Urgent">
+/// The slots of an <b>urgent</b> request (SP-04c, decision SP-D9) instead of the normal ones: only today and tomorrow, 30 minutes of
+/// notice (<see cref="SupplierAgendaLimits.UrgentNoticeMinutes"/>, never <paramref name="MinNoticeHours"/>), and the day's bands are
+/// the supplier's urgent window (outside its normal hours too). Holidays, closed days, blocks, engagements, other requests, the
+/// pause, the daily maximum, the weekdays of the service, the step and daylight saving time apply as ever. The caller asks only for a
+/// service that offers urgent requests (<see cref="SupplierUrgentRules.Effective"/>); the supplier's own switch is the planner's
+/// (<see cref="SupplierPlanningInput.Urgent"/>). <c>false</c> is the plan every caller got before.
+/// </param>
+public sealed record SupplierSlotQuery(int DurationMinutes, int? MinNoticeHours = null, int? WeekdaysMask = null, bool Urgent = false);
 
 /// <summary>A free slot: the work can start at <see cref="StartUtc"/> and ends at <see cref="EndUtc"/> (UTC).</summary>
 public readonly record struct SupplierSlot(DateTime StartUtc, DateTime EndUtc);
@@ -249,8 +262,14 @@ public enum SupplierDayClosure
     /// <summary>The whole day is inside the notice: it ends before the earliest start (now plus the notice).</summary>
     WithinNotice,
 
-    /// <summary>The day is further away than the horizon.</summary>
+    /// <summary>The day is further away than the horizon (for an urgent plan: later than tomorrow).</summary>
     BeyondHorizon,
+
+    /// <summary>
+    /// Only for a plan of urgent slots (SP-04c): the supplier does not accept urgent requests. Checked right after
+    /// <see cref="Past"/>, so every day from today on shows it.
+    /// </summary>
+    UrgentNotOffered,
 }
 
 /// <summary>

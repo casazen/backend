@@ -17,6 +17,10 @@ public sealed record SupplierPreviewCoverage(bool Inside, string Comune);
 /// <param name="BookableUntil">The last Europe/Rome day that can be booked: today plus the supplier's horizon.</param>
 /// <param name="Days">One entry for every day of the window, in date order; the days beyond the horizon are not listed.</param>
 /// <param name="Coverage">Only when the caller asked about a comune.</param>
+/// <param name="Urgent">
+/// The preview is of the urgent slots (SP-04c): today and tomorrow, in the supplier's urgent window. Then <paramref name="BookableUntil"/>
+/// is tomorrow, and there is no day at all while the service or the supplier does not accept urgent requests.
+/// </param>
 public sealed record SupplierSlotPreview(
     Guid ServiceId,
     string ServiceSlug,
@@ -24,7 +28,8 @@ public sealed record SupplierSlotPreview(
     int DurationMinutes,
     DateOnly BookableUntil,
     IReadOnlyList<PublicSlotDay> Days,
-    SupplierPreviewCoverage? Coverage);
+    SupplierPreviewCoverage? Coverage,
+    bool Urgent = false);
 
 /// <summary>
 /// The supplier's preview "how customers see you" (SP-03b): the slots a customer would be offered for one of the supplier's
@@ -38,7 +43,9 @@ public interface ISupplierSlotPreviewService
     /// <summary>
     /// The slots of the service <paramref name="serviceId"/> from <paramref name="from"/> (never before today) for
     /// <paramref name="days"/> days (1 to 62, 14 when left out), cut at the supplier's horizon, and, when <paramref name="comune"/> is
-    /// given, whether it is one of the supplier's zones. Read-only.
+    /// given, whether it is one of the supplier's zones. Read-only. With <paramref name="urgent"/> (SP-04c) the preview of the urgent
+    /// slots, from the same planner: today and tomorrow, in the supplier's urgent window, 30 minutes from now, and no day at all
+    /// while the service or the supplier does not accept urgent requests (the draft or paused service is previewed all the same).
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException">
     /// <c>supplier_service_not_found</c>: not a service of this supplier (another's, or deleted: the answer is the same).
@@ -49,5 +56,6 @@ public interface ISupplierSlotPreviewService
         DateOnly? from,
         int? days,
         string? comune,
+        bool urgent = false,
         CancellationToken cancellationToken = default);
 }

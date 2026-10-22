@@ -33,7 +33,16 @@ public sealed record PublicSlotDay(DateOnly Date, IReadOnlyList<SupplierSlot> Sl
 /// <param name="DurationMinutes">How long the work lasts (a slot is that long).</param>
 /// <param name="BookableUntil">The last Europe/Rome day that can be booked: today plus the supplier's horizon.</param>
 /// <param name="Days">One entry for every day of the window, in date order; the days beyond the horizon are not listed.</param>
-public sealed record PublicSlots(string ServiceSlug, int DurationMinutes, DateOnly BookableUntil, IReadOnlyList<PublicSlotDay> Days);
+/// <param name="Urgent">
+/// The slots are the urgent ones (SP-04c): today and tomorrow only, in the supplier's urgent window. Then <paramref name="BookableUntil"/>
+/// is tomorrow, and a service or a supplier that does not offer urgent requests has no day at all.
+/// </param>
+public sealed record PublicSlots(
+    string ServiceSlug,
+    int DurationMinutes,
+    DateOnly BookableUntil,
+    IReadOnlyList<PublicSlotDay> Days,
+    bool Urgent = false);
 
 /// <summary>Whether the place of an estimate is one of the supplier's zones.</summary>
 public enum PublicQuoteCoverage
@@ -98,13 +107,16 @@ public interface IPublicSupplierShowcaseService
     /// The free slots of a service from <paramref name="from"/> (default and never before today, Europe/Rome) for
     /// <paramref name="days"/> days (default <see cref="PublicShowcaseLimits.SlotsDefaultDays"/>, at most
     /// <see cref="PublicShowcaseLimits.SlotsMaxDays"/>), cut at the supplier's horizon. <c>null</c> when the service is not one
-    /// of the supplier's published ones. Read-only.
+    /// of the supplier's published ones. Read-only. With <paramref name="urgent"/> (SP-04c) the urgent slots instead: today and
+    /// tomorrow, in the supplier's urgent window, 30 minutes from now; no day at all when the service or the supplier does not accept
+    /// urgent requests. Without it the slots every caller got before, from the same plan and the same cache.
     /// </summary>
     Task<PublicSlots?> GetSlotsAsync(
         SupplierProfile supplier,
         string? serviceSlug,
         DateOnly? from,
         int? days,
+        bool urgent = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -75,7 +75,8 @@ public class SupplierServiceCatalogService(
                 l.PriceFromCents,
                 l.PriceUnit,
                 l.RequiresQuote,
-                l.Slug))
+                l.Slug,
+                l.UrgentEnabled))
             .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<int> CountActiveAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
@@ -332,6 +333,8 @@ public class SupplierServiceCatalogService(
             DurationMinutes = source.DurationMinutes,
             MinNoticeHours = source.MinNoticeHours,
             WeekdaysMask = source.WeekdaysMask,
+            UrgentEnabled = source.UrgentEnabled,
+            UrgentSurchargeCents = source.UrgentSurchargeCents,
             SupplementsJson = source.SupplementsJson,
             IncludedJson = source.IncludedJson,
             ExcludedJson = source.ExcludedJson,
@@ -450,7 +453,9 @@ public class SupplierServiceCatalogService(
             SupplierServiceListingJson.ReadStrings(listing.ExcludedJson),
             SupplierServiceListingJson.ReadStrings(listing.PhotoUrlsJson),
             listing.MinNoticeHours,
-            listing.WeekdaysMask);
+            listing.WeekdaysMask,
+            listing.UrgentEnabled,
+            listing.UrgentSurchargeCents);
 
     /// <summary>The slugs, among <paramref name="listings"/> other than <paramref name="except"/>, that start with <paramref name="baseSlug"/>.</summary>
     internal static IQueryable<string> SlugsStartingWith(IQueryable<SupplierServiceListing> listings, string baseSlug, Guid except) =>

@@ -150,6 +150,7 @@ public class SupplierServiceMapperTests
                 "id", "slug", "name", "category", "summary", "description", "priceFromCents", "priceUnit", "pricesIncludeVat",
                 "requiresQuote", "durationMinutes", "minNoticeHours", "weekdays", "supplements", "included", "excluded",
                 "photoUrls", "status", "sortOrder", "publishable", "missingForPublication", "createdAt", "updatedAt", "version",
+                "urgentEnabled", "urgentSurchargeCents",
             }.Order(),
             root.EnumerateObject().Select(p => p.Name).Order());
         Assert.Equal("PerHour", root.GetProperty("priceUnit").GetString());

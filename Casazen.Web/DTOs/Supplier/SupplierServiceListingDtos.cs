@@ -72,6 +72,19 @@ public class SaveSupplierServiceRequest
 
     /// <summary>Position in the catalog (0 to 9,999); left out keeps it (a new service goes last).</summary>
     public int? SortOrder { get; set; }
+
+    /// <summary>
+    /// The service accepts urgent requests (SP-04c): an urgent slot for today or tomorrow, even outside the supplier's working hours,
+    /// with a surcharge. A replacement, so a left out value is off. The supplier's own switch
+    /// (<c>PUT api/supplier/availability/urgent</c>) comes first: with it off this stays saved but has no effect.
+    /// </summary>
+    public bool UrgentEnabled { get; set; }
+
+    /// <summary>
+    /// The surcharge of an urgent request for this service, in euro cents (0 to 50000; a gross amount like the price). <c>null</c>, also
+    /// when left out, is the supplier's default surcharge. 422 <c>supplier_service_invalid</c> (field <c>urgentSurchargeCents</c>) outside the limits.
+    /// </summary>
+    public int? UrgentSurchargeCents { get; set; }
 }
 
 /// <summary>Body of <c>PUT api/supplier/services/{id}</c>: the content plus the version the client read.</summary>
@@ -142,6 +155,12 @@ public class SupplierServiceDto
     /// <summary>The days the service is offered on, Monday first.</summary>
     public IReadOnlyList<DayOfWeek> Weekdays { get; set; } = [];
 
+    /// <summary>The service's own switch for urgent requests, as saved (SP-04c). It has an effect only while the supplier's switch is on too.</summary>
+    public bool UrgentEnabled { get; set; }
+
+    /// <summary>The service's own urgent surcharge in euro cents; <c>null</c> is the supplier's default (<c>api/supplier/availability/urgent</c>).</summary>
+    public int? UrgentSurchargeCents { get; set; }
+
     public IReadOnlyList<SupplierServiceSupplementDto> Supplements { get; set; } = [];
 
     public IReadOnlyList<string> Included { get; set; } = [];
@@ -203,6 +222,8 @@ public static class SupplierServiceMapper
             DurationMinutes = listing.DurationMinutes,
             MinNoticeHours = listing.MinNoticeHours,
             Weekdays = SupplierServiceWeekdays.FromMask(listing.WeekdaysMask),
+            UrgentEnabled = listing.UrgentEnabled,
+            UrgentSurchargeCents = listing.UrgentSurchargeCents,
             Supplements = SupplierServiceListingJson.ReadSupplements(listing.SupplementsJson)
                 .Select(s => new SupplierServiceSupplementDto
                 {
@@ -247,5 +268,7 @@ public static class SupplierServiceMapper
             request.Included,
             request.Excluded,
             request.PhotoUrls,
-            request.SortOrder);
+            request.SortOrder,
+            request.UrgentEnabled,
+            request.UrgentSurchargeCents);
 }

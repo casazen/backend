@@ -28,6 +28,12 @@ namespace Casazen.Core.Suppliers;
 /// over the limit, an amount over the limit: the answer is a <see cref="SupplierQuote"/> with no total and the reason. Only a
 /// value that does not fit the service (an unknown supplement, a quantity over <c>max</c>...) is a
 /// <see cref="SupplierQuoteRuleException"/>.</para>
+/// <para><b>Urgent requests</b> (SP-04c). A request for an urgent slot (<see cref="SupplierQuoteRequest.Urgent"/>) adds <b>one</b>
+/// line of kind <see cref="SupplierQuoteLineKind.Urgent"/> with the surcharge of the service
+/// (<see cref="SupplierPublicService.Urgent"/>: its own, else the supplier's default), last, inside the total; nothing else of
+/// the estimate changes, and a request that is not urgent has no such line. It is refused (field <c>urgent</c>) for a service that
+/// does not offer urgent requests. The booking prices the request with this same function, so the surcharge the customer saw is
+/// the one the request carries, once.</para>
 /// </remarks>
 public static class SupplierQuoteCalculator
 {
@@ -48,11 +54,12 @@ public static class SupplierQuoteCalculator
         var picks = ReadPicks(service, request.Options, invalid);
         var place = ReadPlace(request.Comune, invalid);
         var postalCode = ReadPostalCode(request.PostalCode, invalid);
+        var urgent = ReadUrgent(service, request.Urgent, invalid);
 
         if (invalid.Count > 0)
             throw SupplierQuoteErrors.InvalidFields(invalid);
 
-        return new SupplierQuoteChoices(quantity, surface, picks, place, postalCode);
+        return new SupplierQuoteChoices(quantity, surface, picks, place, postalCode, urgent);
     }
 
     /// <summary>
@@ -91,6 +98,11 @@ public static class SupplierQuoteCalculator
 
             lines.Add((SupplierQuoteLineKind.Supplement, supplement.Code, supplement.Label, supplement.Per, units, supplement.AmountCents, (long)supplement.AmountCents * units));
         }
+
+        // An urgent request pays the surcharge once, as its own last line (nothing for a request that is not urgent, and nothing when
+        // the service asks no surcharge).
+        if (UrgentSurchargeOf(service, choices) is { } surcharge)
+            lines.Add((SupplierQuoteLineKind.Urgent, null, SupplierQuoteLabels.Urgent, null, 1, surcharge, surcharge));
 
         var total = lines.Sum(line => line.Amount);
         if (total > SupplierServiceCatalogLimits.MaxAmountCents)
@@ -156,8 +168,23 @@ public static class SupplierQuoteCalculator
                 options.Add(new ServiceRequestOption(supplement.Code, supplement.Label, supplement.AmountCents, supplement.Per, units));
         }
 
+        // The surcharge of an urgent request is a choice of the customer too: it stays on the request as the line the estimate had.
+        if (UrgentSurchargeOf(service, choices) is { } surcharge)
+        {
+            options.Add(new ServiceRequestOption(
+                ServiceRequestOptionCodes.Urgent, SupplierQuoteLabels.Urgent, surcharge, SupplierServiceSupplementUnits.Flat, 1));
+        }
+
         return options;
     }
+
+    /// <summary>
+    /// The surcharge an urgent request adds to the estimate: the service's urgent terms when the customer chose an urgent slot and
+    /// the service offers it; <c>null</c> for a request that is not urgent and for a surcharge of zero (an urgency for free has no line).
+    /// One definition, so the estimate and the snapshot of the booking cannot disagree.
+    /// </summary>
+    private static int? UrgentSurchargeOf(SupplierPublicService service, SupplierQuoteChoices choices) =>
+        choices.Urgent && service.Urgent is { Enabled: true, SurchargeCents: > 0 } terms ? terms.SurchargeCents : null;
 
     private static SupplierQuote Declined(SupplierQuoteOutcome outcome, SupplierQuoteReason reason, bool pricesIncludeVat) =>
         new(outcome, reason, null, [], pricesIncludeVat);
@@ -275,6 +302,21 @@ public static class SupplierQuoteCalculator
         }
 
         return ComuneTarget.FromInput(text);
+    }
+
+    /// <summary>An urgent slot is for a service that offers urgent requests (its own switch and the supplier's, <see cref="SupplierPublicService.Urgent"/>).</summary>
+    private static bool ReadUrgent(SupplierPublicService service, bool requested, List<string> invalid)
+    {
+        if (!requested)
+            return false;
+
+        if (!service.Urgent.Enabled)
+        {
+            AddOnce(invalid, SupplierQuoteFields.Urgent);
+            return false;
+        }
+
+        return true;
     }
 
     private static string? ReadPostalCode(string? postalCode, List<string> invalid)

@@ -402,7 +402,7 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
     }
 
     [Fact]
-    public async Task Preview_WithAComune_SaysInsideOrOutside_AndUrgentIsIgnored()
+    public async Task Preview_WithAComune_SaysInsideOrOutside_AndUrgentOnAServiceThatDoesNotOfferItHasNoDays()
     {
         var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(factory); // works in H501
         using var client = SupplierClient(userId);
@@ -417,7 +417,12 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Equal("inside", inside.GetProperty("coverage").GetProperty("outcome").GetString());
         Assert.Equal("H501", inside.GetProperty("coverage").GetProperty("comune").GetString());
         Assert.Equal("outside", outside.GetProperty("coverage").GetProperty("outcome").GetString());
-        Assert.Equal(plain.GetProperty("days").ToString(), withUrgent.GetProperty("days").ToString()); // urgent=true changes nothing yet
+        // SP-04c: the service (and the supplier) never accepted urgent requests, so there is nothing urgent to preview; a normal
+        // preview is still the one it always was.
+        Assert.True(withUrgent.GetProperty("urgent").GetBoolean());
+        Assert.Equal(0, withUrgent.GetProperty("days").GetArrayLength());
+        Assert.NotEqual(0, plain.GetProperty("days").GetArrayLength());
+        Assert.False(plain.TryGetProperty("urgent", out _));
     }
 
     [Fact]

@@ -62,6 +62,13 @@ public static class ServiceRequestOptionCodes
 
     /// <summary><c>Per</c> of the quantity of a price per square meter (the supplements have <see cref="SupplierServiceSupplementUnits"/>).</summary>
     public const string SquareMeter = "sqm";
+
+    /// <summary>
+    /// The surcharge of an urgent request (SP-04c): the label is <see cref="SupplierQuoteLabels.Urgent"/>, <c>AmountCents</c> the
+    /// surcharge, <c>Quantity</c> 1. Present only when the booking was urgent and the surcharge above zero; it adds up with the other
+    /// choices to the estimate of the request. The request itself is <c>Urgency = High</c>.
+    /// </summary>
+    public const string Urgent = "urgent";
 }
 
 /// <summary>A photo of the work in the private bucket (<c>ServiceRequest.WorkPhotosJson</c>): the id is what the download endpoint takes.</summary>

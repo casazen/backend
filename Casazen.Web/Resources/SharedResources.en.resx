@@ -2374,6 +2374,9 @@
   <data name="SupplierSettingsInvalid" xml:space="preserve">
     <value>The settings are not valid (fields: {0}). All five are required: automatic acceptance of regular customers, alert for new requests, reminder of the day before, alert for payments and time to answer (15 to 10080 minutes).</value>
   </data>
+  <data name="SupplierUrgentInvalid" xml:space="preserve">
+    <value>The urgent settings are not valid (fields: {0}). All four are required: urgent requests accepted (yes or no), start and end of the time window (minutes after midnight: the start from 0 to 1439, the end from 1 to 1440 and after the start) and surcharge (0 to 50000 cents).</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Provide the municipality or the property to search for suppliers.</value>
   </data>
