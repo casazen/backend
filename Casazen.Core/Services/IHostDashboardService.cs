@@ -109,6 +109,14 @@ public interface IHostDashboardService
 
     /// <summary>The iCal import feeds of the properties of <paramref name="scope"/>, by property name then creation.</summary>
     Task<IReadOnlyList<HostDashboardIcalFeed>> GetIcalFeedsAsync(HostScope scope, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The calendars of every active short-rent property of <paramref name="scope"/> in one read (SR-10b,
+    /// <c>GET /api/properties/calendar-overview</c>): the feeds of <see cref="GetIcalFeedsAsync"/> (the same code, never the import
+    /// URL) gathered by property, the properties that have none, and the token of each property's export link. Three queries whatever
+    /// the number of properties; the export link of a property that never asked for it is missing, not created.
+    /// </summary>
+    Task<HostCalendarOverview> GetCalendarOverviewAsync(HostScope scope, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Kind of period of the dashboard KPIs.</summary>

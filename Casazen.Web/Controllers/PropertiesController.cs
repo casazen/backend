@@ -1077,6 +1077,61 @@ public class PropertiesController(
     // TN-3 on every action: PropertyRead / PropertyWrite policies plus the resource check of the property (404 when
     // it is not visible, e.g. another org; 403 when visible but the operation is not allowed).
 
+    /// <summary>
+    /// The calendars of all the caller's properties in one read (SR-10b): for every active short-rent property of the caller's reach
+    /// (<c>HostScope</c>, AM-03) its import feeds with their state (as <c>GET /api/dashboard/ical-feeds</c>, never the import URL),
+    /// its export link, and how often the feeds are synced. A property with no feed is there with an empty list; a property whose link
+    /// nobody asked for has <c>exportUrl: null</c> (<c>GET .../ical/export-url</c> creates it). Needs <c>property.read</c>, like that
+    /// single read: the export link shows the dates taken to whoever has it, a secret in practice, so the answer is
+    /// <c>private, no-store</c> and the link is never written to a log. A fixed number of queries.
+    /// </summary>
+    [HttpGet("calendar-overview")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(HostCalendarOverviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<HostCalendarOverviewDto>> GetCalendarOverview(
+        [FromServices] IHostDashboardService dashboardService,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var overview = await dashboardService.GetCalendarOverviewAsync(scope, cancellationToken);
+
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(new HostCalendarOverviewDto
+        {
+            SyncEveryMinutes = PropertyICalSchedule.SyncEveryMinutes,
+            StaleAfterMinutes = PropertyICalSchedule.StaleAfterMinutes,
+            Properties = overview.Properties.Select(property => new HostCalendarOverviewPropertyDto
+            {
+                PropertyId = property.PropertyId,
+                PropertyName = property.PropertyName,
+                ExportUrl = property.ExportToken is { } token ? propertyICalSyncService.BuildExportUrl(token) : null,
+                Feeds = property.Feeds.Select(feed => ToCalendarOverviewFeed(feed, localizer)).ToList(),
+            }).ToList(),
+        });
+    }
+
+    private static HostCalendarOverviewFeedDto ToCalendarOverviewFeed(HostDashboardIcalFeed feed, IStringLocalizer localizer)
+    {
+        var (code, message) = ICalErrorMessages.Describe(feed.LastError, localizer);
+        return new HostCalendarOverviewFeedDto
+        {
+            FeedId = feed.FeedId,
+            Channel = feed.Channel.ToString(),
+            Label = feed.Label,
+            LastImportAt = feed.LastImportAt,
+            LastImportStatus = feed.LastImportStatus?.ToString(),
+            LastErrorCode = code,
+            LastError = message,
+            Syncing = feed.LastImportStatus == PropertyICalImportStatus.Syncing,
+        };
+    }
+
     /// <summary>Export link, block count and import feeds of the property.</summary>
     [HttpGet("{id:guid}/ical/status")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
