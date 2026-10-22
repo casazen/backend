@@ -347,6 +347,10 @@ public class DemoEnvironmentService(
 
         var checkIn = today.AddDays(template.CheckInOffsetDays).ToDateTime(TimeOnly.MinValue);
         var nights = property.NightlyRate * template.Nights;
+        // SR-06a: a booking entered by hand at a price the host agreed (the demo stays carry no tourist tax, so the total is the lodging).
+        var quoted = nights + property.CleaningFee;
+        var total = template.AgreedTotal ?? quoted;
+        var priceAgreed = total != quoted;
         // SR-05a: the history of a demo stay reads in order, as the timeline of the booking shows it: made a month before the
         // arrival and confirmed at once, so a stay already over was not "made today"; checked out at the end of its last night.
         var madeAt = DateTime.SpecifyKind(checkIn.AddDays(-30), DateTimeKind.Utc);
@@ -362,11 +366,13 @@ public class DemoEnvironmentService(
             NumberOfGuests = 2,
             NumberOfAdults = 2,
             Status = template.Status,
-            Source = BookingSource.Local,
+            Source = template.Source,
             PaymentOption = PaymentOption.Immediate,
-            BasePrice = nights + property.CleaningFee,
-            CleaningFee = property.CleaningFee,
-            TotalPrice = nights + property.CleaningFee,
+            BasePrice = total,
+            CleaningFee = Math.Min(property.CleaningFee, total),
+            TotalPrice = total,
+            PriceOverridden = priceAgreed,
+            PriceOverrideNote = priceAgreed ? template.PriceNote : null,
             SpecialRequests = "Prenotazione di dimostrazione con un ospite inventato.",
             CreatedAt = madeAt,
             UpdatedAt = madeAt,
