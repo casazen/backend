@@ -1,88 +1,125 @@
 # CasaZen e ConcordatoFacile — flusso del servizio
 
-Aggiornamento: 21 ottobre 2026. Questo documento spiega ruoli, percorso dell’utente e accordi operativi. Il lavoro ancora da implementare è definito nell’unico [documento di requisiti per Helix](../../../Sessions/business-analysis-canone-concordato.md). Questi due documenti sostituiscono le precedenti proposte tecniche CF: vecchi OpenAPI, link firmati, webhook o corrispondenza non costituiscono ulteriori requisiti.
+Aggiornamento: 22 ottobre 2026. Questo documento spiega ruoli, percorso dell'utente e accordi operativi. Il lavoro residuo è nell'unico [documento di requisiti per Helix](../../../Sessions/business-analysis-canone-concordato.md). La fonte tecnica corrente è «ConcordatoFacile — specifica endpoint di stato v0.1», ottobre 2026, ancora bozza per commenti. La precedente «01-technical-specification», v1.3 del 13 ottobre, vale soltanto per firma/vettore del link (§2) e convenzioni richiamate dalla nuova specifica: webhook, eventi finali e consegna automatica di file della v1.3 non fanno parte di questo flusso.
 
 ## 1. Dalla casa al modulo del partner
 
-L’utente sceglie prima il tipo di contratto. Se sceglie canone concordato, CasaZen crea una bozza reale collegata alla casa e assegna subito il **leaseId**, senza chiedere prima parti, canone, date o APE. Quel riferimento identifica il contratto per tutto il percorso: non è il propertyId e non cambia quando arrivano i documenti definitivi.
+L'utente sceglie prima il tipo di contratto. Se sceglie canone concordato, CasaZen crea una bozza reale collegata alla casa e assegna subito il **leaseId**, senza chiedere prima parti, canone, date o APE. Quel riferimento identifica il contratto per tutto il percorso: non è il propertyId e non cambia quando arrivano i documenti definitivi. Ogni nuovo contratto, anche sulla stessa casa, ha il proprio leaseId.
 
-Il vero contratto viene preparato da ConcordatoFacile, non generato prima una seconda volta da CasaZen. Il percorso libero conserva il proprio funzionamento; il modulo CF attuale accetta soltanto concordati.
+Il contratto viene preparato da ConcordatoFacile e poi importato, senza generarlo prima una seconda volta in CasaZen. Il percorso libero conserva il proprio funzionamento; il modulo CF attuale accetta soltanto concordati.
 
-CasaZen presenta il servizio a **119 € IVA compresa per pratica**, con il proprio ricarico già incluso. L’utente paga CasaZen prima di accedere al modulo, salvo:
+CasaZen presenta il servizio a **119 € IVA compresa per pratica**, con il proprio ricarico incluso. L'utente paga CasaZen prima del modulo, salvo:
 
-- admin di piattaforma CasaZen: accesso diretto senza pagina di pagamento; non vale per un amministratore di una normale organizzazione;
-- abbonamento CasaZen di due anni: una pratica omaggio, governata da flag nel database e associata una sola volta a un contratto dell’organizzazione abbonata.
+- admin di piattaforma CasaZen: accesso diretto senza pagina di pagamento; non vale per l'amministratore di una normale organizzazione;
+- abbonamento CasaZen di due anni: una pratica omaggio, governata da flag nel database e associata una sola volta a un contratto dell'organizzazione abbonata.
 
-La seconda pratica torna a pagamento dopo il consumo dell’omaggio. Riaprire la stessa pratica già sbloccata non richiede un altro acquisto. Il server conferma pagamento/diritto; il semplice ritorno dal checkout non basta.
+La seconda pratica torna a pagamento dopo il consumo dell'omaggio. Riaprire lo stesso contratto già sbloccato non richiede un altro acquisto, ma non autorizza a duplicare la pratica nel modulo. Il server conferma il diritto; il ritorno dal checkout non basta.
 
-La pagina servizio descrive prima del pagamento questi passaggi: reindirizzamento al modulo del partner; compilazione dei dati/documenti; gestione diretta via email con CF di integrazioni, revisione e firma; ricezione finale dei documenti; caricamento consigliato in CasaZen per la gestione centralizzata dei contratti. Registro e bollo eventualmente dovuti sono esclusi.
+Prima del pagamento la pagina spiega: reindirizzamento al modulo partner; compilazione dei dati/documenti; gestione diretta via email con CF di integrazioni, revisione e firma; ricezione finale dei documenti; caricamento consigliato in CasaZen per la gestione centralizzata dei contratti. Registro e bollo eventualmente dovuti sono esclusi.
 
-Dopo lo sblocco, CasaZen apre `https://app.concordatofacile.it` con i soli parametri `partner`, `leaseId`, `comune` e `provincia` in sigla, ad esempio `MB`, senza firma. CF conserva il leaseId nella pratica e lo restituisce nei riferimenti delle email e nell’endpoint di stato. Il codice partner deve ancora essere consegnato.
+### Link firmato al clic
 
-Poiché il modulo esterno è pubblico e il link non è firmato, prima dell’operatività va concordata con CF una verifica del diritto o una riconciliazione prima di lavorare le pratiche partner. Il controllo di pagamento CasaZen non rende segreto l’indirizzo del modulo.
+Dopo lo sblocco, il **server** CasaZen genera un link a `https://app.concordatofacile.it/` con `partner=casazen`, leaseId, scadenza UTC a 15 minuti e firma HMAC-SHA256; comune e provincia in sigla precompilano la località. La firma usa il testo esatto `leaseId.expiresAt`; tutti i valori sono poi codificati nell'URL. Segreto e diritto al servizio restano sul server. CF non usa i vecchi parametri `comuneIstatCode`, `returnUrl` o `theme`.
 
-## 2. Lavorazione e comunicazioni
+Questo aggiorna il precedente accordo provvisorio del link senza firma. CF verifica firma e scadenza, conserva il leaseId nelle bozze e nelle riprese e lo collega alla compilazione. Se il link è assente, errato o scaduto, il modulo resta compilabile ma la pratica nasce **senza leaseId**: CF deve collegarla manualmente. La firma non rende il modulo privato e non prova da sola il pagamento della singola pratica non collegata.
 
-CF segue raccolta dati, documenti, integrazioni, preparazione del contratto sul modello ministeriale, attestazione quando necessaria, firma e registrazione prevista dal servizio. Se l’utente ha già un contratto, CF cura l’attestazione secondo il servizio concordato.
+Con il link CasaZen, CF non mostra i propri prezzi: l'utente sceglie nel modulo servizio base o completo e il saldo del partner rimane a carico CasaZen. La scelta non genera un altro pagamento dell'utente. Il campo che distingue i due servizi va richiesto nell'endpoint, perché è necessario a interpretare correttamente lo stato finale e riconciliare i costi.
 
-Le comunicazioni operative e la consegna dei documenti avvengono **direttamente tra CF e utente**. CasaZen non vuole la prima email di pratica ricevuta, quella finale, copie o inoltri delle email dell’utente. Non sono richieste righe di stato nelle email.
+Prima dell'invio, nello stesso browser/dispositivo, un nuovo link può riprendere la bozza. Dopo l'invio oppure su altro dispositivo apre invece una compilazione nuova: un secondo invio può produrre una seconda pratica sullo stesso contratto. CasaZen deve mostrare lo stato al posto del pulsante modulo per pratiche non chiuse; con attestazione già rilasciata non deve generare nuovi link. Dopo l'invio, correzioni e firma passano per email con CF.
 
-CasaZen legge lo stato soltanto attraverso l’endpoint CF, dal proprio backend con una chiave fornita dal partner. L’interrogazione usa il leaseId; i dati confermati in risposta sono numero pratica, stato comprensivo della registrazione e data dell’ultimo passaggio, senza dati personali. L’utente vede lo stato nel contratto e può aggiornarlo; non è richiesto un motore di sincronizzazione in background.
+## 2. Lavorazione, stati e comunicazioni
 
-URL, metodo, header, schema, stati e significati, formato/fuso della data, limiti e gestione di pratica assente/riaperta/multipla restano da concordare. Non esiste ancora una specifica esterna implementabile da presentare come definitiva. Le credenziali devono essere consegnate riservatamente e restare sul server CasaZen.
+CF segue raccolta dei dati/documenti, integrazioni, contratto sul modello ministeriale, firma, attestazione quando necessaria e registrazione prevista dal servizio. Se l'utente ha già un contratto, CF cura l'attestazione secondo il servizio concordato.
+
+Le comunicazioni operative e la consegna dei documenti avvengono **direttamente tra CF e utente**. CasaZen non vuole prima email di pratica ricevuta, email finale, copie o inoltri delle comunicazioni all'utente. Non sono richieste righe di stato nelle email.
+
+CasaZen legge gli stati dal proprio backend su `https://stato.concordatofacile.it`, con una chiave Bearer per partner e ambiente:
+
+- `GET /v1/leases/{leaseId}/practices`: fino a 20 pratiche del contratto, dalla più recente; 200 con elenco vuoto se non esistono, non sono collegate o il contratto non è del partner;
+- `GET /v1/practices/{practiceId}`: singola pratica, anche con leaseId nullo; stesso 404 per riferimento inesistente, di altro partner o altro ambiente.
+
+La risposta contiene numero pratica `P-` più 16 caratteri esadecimali, stato, date UTC dell'invio/ultimo passaggio, comune, indicazione dell'eventuale cambio di comune e motivo di chiusura. Non contiene documenti o dati delle parti. Il numero pratica sostituisce il precedente caseId delle vecchie proposte.
+
+| Fase | Stati CF e azione dell'utente |
+|---|---|
+| Ricezione e lavorazione | `Received`, `InProgress`, `SignedReceived`, `SentToAssociation` |
+| Azione richiesta | `AwaitingUser`, `DraftSent`: leggere e gestire le email del partner |
+| Attestazione | `Attested`: finale solo per il servizio base; per il completo segue la registrazione |
+| Registrazione | `Registered`: finale del servizio completo |
+| Chiusura senza attestazione | `ClosedWithoutAttestation`: motivo duplicate, withdrawn, not_compliant oppure other |
+| Sospensione | `Suspended`: può riprendere, non è una chiusura definitiva |
+
+Gli stati possono ripetersi e alternarsi; la data dell'ultimo passaggio non retrocede. I doppioni restano nell'elenco e CF li chiude con il motivo duplicate. Non nascondere le altre pratiche prendendo solo la prima e non considerare «attestata» equivalente a «registrata».
+
+### Frequenza proposta da CasaZen
+
+La lettura avviene quando l'utente apre la **sezione di verifica del contratto**, riusando uno snapshot applicativo privato valido per **15 minuti**. Schede e utenti della stessa organizzazione condividono il risultato: non più di una interrogazione elenco ogni 15 minuti per contratto. Non è previsto polling in background; anche l'aggiornamento manuale rispetta il periodo.
+
+Questo significa al massimo **4 richieste/ora per contratto consultato continuativamente**, zero per i contratti non consultati, più gli eventuali lookup per numero pratica dagli arrivi email, anch'essi accorpati per 15 minuti. Senza il numero di pratiche attive non è ancora possibile indicare un totale partner: il limite complessivo va dimensionato con CF su questa formula, senza promettere volumi inventati.
+
+Il `Cache-Control: no-store` di CF resta rispettato per cache HTTP/browser/proxy: lo snapshot è uno stato applicativo autorizzato, non una risposta pubblicamente cacheabile. Un guasto non diventa «nessuna pratica» e non cancella l'ultimo risultato valido; la UI distingue ultimo passaggio del partner, ultima verifica riuscita e temporanea indisponibilità. I 429 rispettano Retry-After. La pratica può comparire con ritardo: CF ritenta la pubblicazione ogni 15 minuti.
 
 ## 3. Email finale e ritorno a CasaZen
 
-Nelle email all’utente con documenti da conservare CF inserisce il bottone «Carica i dati in CasaZen»; nella conferma del modulo, di solo testo, usa il link scritto per esteso. Il partner ha precisato che i documenti definitivi sono inviati dopo la firma.
+Nelle email all'utente con documenti da conservare CF inserisce «Carica i dati in CasaZen»; nella conferma testuale del modulo usa il link per esteso. I documenti definitivi sono inviati dopo la firma. Il bottone apre una pagina web: non trasferisce automaticamente file e non è l'endpoint di stato.
 
-Dominio e URL fissati:
+Il percorso CasaZen resta:
 
-`https://casazen.space/app/long-rent/documents/upload?leaseId=<leaseId>`
+`https://casazen.space/app/long-rent/documents/upload`
 
-CF sostituisce il segnaposto con l’identificativo della bozza ricevuto all’apertura del modulo. È una pagina web di atterraggio, non l’endpoint di stato né un’API che trasferisce file da CF. Non contiene chiavi, propertyId o dati personali aggiuntivi. Il leaseId non è una credenziale.
+La pagina **già sviluppata** accetta `?leaseId=<uuid>`. La v0.1 propone invece `?practice=<practiceId>`: Helix deve aggiungere questa risoluzione dal backend e la selezione/conferma esplicita del contratto prima dell'upload. Non confondere i due parametri e non dichiarare il nuovo formato già disponibile.
 
-Dopo login, con percorso e parametro preservati, CasaZen verifica l’accesso al contratto e mostra casa e riferimento. L’utente carica i documenti ricevuti, scegliendo contratto, attestazione, registrazione o altro. Non serve un secondo pagamento. Un riferimento errato o non autorizzato non consente accessi o associazioni automatiche.
+**Proposta da confermare a CF:** usare `?practice=P-…&leaseId=<uuid>` quando il contratto è collegato, e `?practice=P-…` quando manca. Il lookup deve funzionare anche se CF invia soltanto practice; i vecchi link con solo leaseId rimangono supportati. La presenza di entrambi non è un accordo già concluso. Nessun segreto, propertyId o dato delle parti nel link; gli identificativi non sono credenziali.
+
+Dopo login, con percorso e parametri preservati, CasaZen verifica accesso e appartenenza all'organizzazione. Il leaseId restituito dalla pratica aiuta a proporre il contratto, ma **non prova che i dati compilati o i file appartengano a quel contratto**. L'utente deve scegliere/confermare casa e contratto prima di caricare; può correggere la destinazione fra i propri contratti. Il cambio comune segnalato da CF è un avvertimento parziale, non una validazione di tutto il contenuto.
+
+Con pratica non collegata o riferimenti discordanti, CasaZen non collega automaticamente la pratica, non mostra dati di altri tenant e non fattura dal solo abbinamento. L'utente può conservare i documenti su un proprio contratto autorizzato; CF deve correggere manualmente il collegamento nel proprio sistema. Questa scelta non cambia il leaseId della pratica remota. Non è richiesto un secondo acquisto per upload o consultazione.
 
 ## 4. Conservazione e consultazione dei documenti
 
-Le relazioni sono distinte:
-
 | Raccolta | Contenuto e accesso |
 |---|---|
-| Documenti della casa | APE, planimetria e documenti dell’immobile |
-| Contratti della casa | Contratti collegati alla casa, ciascuno con il proprio leaseId |
+| Documenti della casa | APE, planimetria e documenti propri dell'immobile |
+| Contratti della casa | Ogni contratto con il proprio leaseId |
 | Documenti del contratto | Contratto definitivo, attestazione, registrazione e altri allegati di quel leaseId |
 
-Dalla casa si apre un contratto e si consulta la sua sezione Documenti. Gli allegati del contratto non sono duplicati nei documenti della casa. Lo storage è privato e il download richiede accesso autorizzato al contratto/documento.
+Dalla casa si apre il contratto e la sua sezione Documenti. Gli allegati contrattuali non sono duplicati nei documenti della casa. Storage privato e download richiedono autorizzazione sul contratto e sul documento.
 
-Si può caricare un PDF oppure più foto JPEG/PNG dello stesso documento. Le foto possono essere aggiunte in più selezioni, visualizzate, ruotate, riordinate o rimosse; l’utente conferma che tutte le pagine siano presenti. CasaZen le riunisce in **un solo PDF scaricabile**: le fotografie non vengono conservate separatamente. Un PDF già esistente è conservato senza modificarne i byte, comprese eventuali firme digitali.
+Si può caricare un PDF oppure più foto JPEG/PNG dello stesso documento. Le foto possono essere aggiunte in più selezioni, visualizzate, ruotate, riordinate o rimosse; l'utente conferma che tutte le pagine siano presenti. CasaZen conserva **un solo PDF scaricabile**, senza originali fotografici separati. Un PDF preesistente conserva i propri byte, incluse eventuali firme digitali.
 
-La funzione multipagina è condivisa con i documenti della casa ed è indipendente dal canone concordato. Il nuovo caricamento ammette fino a 12 foto, 20 MB per foto e 40 MB totali in ingresso; il PDF risultante deve rispettare 10 MB per i documenti della casa e 20 MB per gli allegati del contratto. Se supera il limite, non viene salvato un documento parziale.
+La funzione multipagina è condivisa con i documenti della casa ed è indipendente dal concordato: fino a 12 foto, 20 MB per foto e 40 MB totali in ingresso; il PDF risultante deve rispettare 10 MB per i documenti della casa e 20 MB per gli allegati del contratto. Nessun salvataggio parziale se il limite viene superato.
 
-Per l’APE, che rimane nella casa, CasaZen esegue estrazione/OCR sull’intero attestato, anche se codice, classe, indice EPgl, indirizzo, certificatore e date sono distribuiti su pagine diverse. Se dati fondamentali non sono leggibili, mancano o le date non sono valide, segnala cosa correggere prima di salvare. Il controllo non certifica autenticità nel registro regionale o validità legale in ogni circostanza. Non serve completare questo controllo per ottenere il leaseId della bozza minima.
+Per l'APE, che rimane nella casa, CasaZen estrae testo/OCR sull'intero attestato: codice, classe, EPgl, indirizzo, certificatore e date possono trovarsi su pagine diverse. Dati fondamentali mancanti/illeggibili o date non valide vengono segnalati prima del salvataggio. Non è una certificazione di autenticità nel registro regionale e non blocca l'assegnazione del leaseId alla bozza minima.
 
-Il successivo lavoro Helix acquisirà invece i dati dei documenti contrattuali: contratto definitivo → dati del contratto; attestazione → sezione Attestazione; ricevuta → sezione Registrazione. Tutto rimane sullo stesso leaseId. Valori incerti o in conflitto richiedono revisione; i PDF rimangono consultabili anche se l’estrazione fallisce. L’OCR APE non equivale già a questa importazione contrattuale.
+Il lavoro residuo Helix acquisirà i dati dei documenti contrattuali: contratto definitivo → dati del contratto; attestazione → sezione Attestazione; ricevuta → sezione Registrazione. Tutto resta sul leaseId selezionato. Valori incerti o discordanti richiedono revisione; PDF consultabili anche se l'estrazione fallisce. L'OCR APE esistente non equivale a questa importazione.
 
-Caricamento, attestazione e registrazione sono eventi distinti. Un file caricato o una ricevuta di sola trasmissione non prova che il contratto sia registrato e non attiva un secondo invio fiscale.
+Caricamento, attestazione e registrazione sono eventi distinti. Il solo upload o una ricevuta di trasmissione non prova la registrazione; lo stato CF Registered non significa che la ricevuta sia già archiviata in CasaZen. Nessun secondo invio fiscale automatico.
 
 ## 5. Accordi economici e adempimenti
 
-Il pagamento dell’utente a CasaZen (119 € IVA compresa) è distinto dal saldo al partner. L’utente **non paga CF**: CasaZen paga pratica per pratica dopo l’invio dei firmati.
+Il pagamento dell'utente a CasaZen (119 € IVA compresa) è distinto dal saldo al partner. L'utente **non paga CF**: CasaZen paga pratica per pratica dopo l'invio dei firmati.
 
-CF ha indicato importi finali di **69 e 89 € senza IVA**, con ricevuta al locatore per quota associativa e contributo, quale operazione non commerciale esente IVA ai sensi dell’art. 4 D.P.R. 633/72, secondo la dichiarazione del fornitore. L’abbinamento preciso dei servizi ai due prezzi, documenti finali, modalità di pagamento/riconciliazione e condizioni di annullamento o pratica non attestabile restano da confermare. Non applicare questa esenzione alla vendita CasaZen.
+CF ha indicato importi finali **69 e 89 € senza IVA**, con ricevuta al locatore per quota associativa e contributo quale operazione non commerciale esente IVA ai sensi dell'art. 4 D.P.R. 633/72, secondo la dichiarazione del fornitore. La v0.1 conferma scelta base/completo nel modulo ma non espone il servizio nell'endpoint: chiedere campo, corrispondenza precisa servizio/tariffa e modalità di riconciliazione. Condizioni di annullamento o pratica non attestabile sono ancora da confermare. Non applicare questa esenzione alla vendita CasaZen.
 
-Secondo CF, l’associazione presenta la registrazione telematica come intermediario a nome del locatore, senza delega firmata dalle parti; la cedolare viene scelta in registrazione. La stessa pratica non deve essere inviata anche tramite Openapi. I percorsi alternativi esistenti mantengono i propri requisiti.
+Secondo CF, l'associazione registra telematicamente come intermediario a nome del locatore, senza delega firmata dalle parti; la cedolare si sceglie in registrazione. Non registrare la stessa pratica anche tramite Openapi. I percorsi alternativi esistenti mantengono i propri requisiti.
 
-Registro e bollo sono esclusi dal prezzo: con cedolare non sono dovuti; altrimenti vengono addebitati sul conto del locatore, con IBAN raccolto da CF nel proprio canale, mai inserito nei link. I tempi indicati sono pochi giorni dopo firmati e pagamento, entro il termine dalla stipula richiamato dal partner; non è uno SLA garantito di 48 ore.
+Registro e bollo sono esclusi: con cedolare non sono dovuti; altrimenti addebito sul conto del locatore e IBAN raccolto da CF nel proprio canale, mai nei link. I tempi indicati sono pochi giorni dopo firmati e pagamento, entro il termine dalla stipula richiamato dal partner: non uno SLA garantito di 48 ore.
 
-CF segue anche libero 4+4 e transitori per email finché il modulo accetta solo concordati; non sono da implementare in questo percorso. Ha indicato 20 € per la sola registrazione di un contratto già pronto, con condizioni da completare. Per transitori soggetti ad accordo territoriale verificare quando occorre attestazione. La comunicazione IMU al Comune resta separata dalla registrazione e non è automatizzata da questa integrazione.
+CF segue anche libero 4+4 e transitori per email finché il modulo accetta solo concordati; sono fuori da questo percorso. Ha indicato 20 € per la sola registrazione di un contratto già pronto, con condizioni da completare. Per transitori soggetti ad accordo verificare quando occorre attestazione. La comunicazione IMU al Comune resta separata e non automatizzata.
 
-## 6. Disponibilità e coordinamento con il partner
+## 6. Coordinamento e risposte per CF
 
-Le PR [frontend #315](https://github.com/casazen/frontend/pull/315) e [backend #561](https://github.com/casazen/backend/pull/561) implementano caricamento, archivio, PDF multipagina e controllo APE. Non attestano rilascio in produzione. Scelta iniziale/bozza CF, offerta e pagamento/omaggio, apertura partner, importazione dei dati contrattuali e lettura stato restano descritti nei requisiti Helix.
+Le PR [frontend #315](https://github.com/casazen/frontend/pull/315) e [backend #561](https://github.com/casazen/backend/pull/561) sono integrate in develop: upload/archivio, PDF multipagina e controllo APE. Le PR correttive [frontend #316](https://github.com/casazen/frontend/pull/316) e [backend #562](https://github.com/casazen/backend/pull/562) riguardano CI, ritorno dal login e date APE. Questa integrazione non attesta il rilascio in produzione. Bozza CF/pagamento/omaggio, firma del link, stato, ritorno practice/conferma ed estrazione contrattuale restano nel delta Helix.
 
-Il link nelle email va attivato dopo conferma esplicita CasaZen, successiva al rilascio e al collaudo: apertura del link, eventuale redirect fra dominio e www, login, leaseId preservato, contratto corretto, upload, riapertura e download. Il solo HTTP 200 della shell applicativa non prova il funzionamento della pagina.
+Le risposte ai quattro punti della v0.1 sono:
 
-Per la veste personalizzata il partner richiede marchio e dominio; colori su fondo chiaro: terracotta `#e2622d` e inchiostro `#1f3a3d`. Il lockup da consegnare deve avere il nome in tracciati, senza dipendere da Figtree installato. La data della veste è da comunicare da CF dopo ricezione dei materiali: non blocca tecnicamente la gestione di una pratica pilota concordata.
+1. **Firma.** Confermiamo generazione sul server CasaZen al clic, scadenza 15 minuti, leaseId minuscolo, UTC al secondo con Z, HMAC-SHA256 sui valori decodificati e query URL-encoded come §2. È un requisito da completare nella nostra implementazione, non una funzione già attiva.
+2. **Frequenza.** Interroghiamo all'apertura della sezione di verifica del contratto con riuso privato di 15 minuti, condiviso fra utenti/schede; massimo quattro letture elenco/ora per contratto consultato, senza polling di fondo. I lookup della pratica dai link email rispettano lo stesso intervallo. Per il limite aggregato partner proponiamo di partire da questo profilo e concordare la soglia sulla base delle pratiche effettive.
+3. **Bottone.** Il percorso è `https://casazen.space/app/long-rent/documents/upload`. Oggi il parametro sviluppato è leaseId; il nuovo practice della v0.1 richiede l'adattamento sopra descritto. Proponiamo practice e, quando noto, anche leaseId, con conferma del contratto prima del caricamento. Non attivate il nuovo formato prima della nostra conferma del collaudo; vi confermeremo separatamente la disponibilità effettiva.
+4. **Chiavi.** Consegnate segreto firma e chiave endpoint, distinti per prova e produzione, direttamente a Luca La Malfa all'indirizzo **luca.lamal@hotmail.it**, con Bitwarden Send a una sola apertura e password comunicata su un altro canale da concordare. Non inviate le chiavi in chiaro nella stessa email.
 
-Prima dell’operatività completare codice partner e contratto dell’endpoint, contenuti dei pacchetti, modalità di riconciliazione dei diritti/pagamenti e riferimenti operativi dell’associazione, assistenza, ruoli privacy e tempi di conservazione. Questi punti di coordinamento non richiedono nuovi documenti o funzionalità non previste nei requisiti Helix.
+Da chiudere con CF: campo servizio base/completo e sua semantica; formato finale del link email; URL o selezione dell'ambiente di prova e relativi casi campione; soglia complessiva delle chiamate; riconciliazione delle pratiche senza leaseId e costi; inquadramento privacy v1.3 R24, riferimenti dell'associazione, assistenza e conservazione prima delle pratiche reali. Non riproporre webhook o i dati attestati della vecchia v1.3 come obblighi del nuovo endpoint.
+
+Il bottone si attiva dopo conferma esplicita CasaZen successiva a rilascio e collaudo: redirect dominio/www, login, parametri preservati, pratica risolta, contratto autorizzato e confermato, upload, riapertura e download. La raggiungibilità HTTP della shell non prova questa sequenza. Nessuna data di produzione è deducibile dal solo merge in develop.
+
+Per la veste personalizzata: terracotta `#e2622d` e inchiostro `#1f3a3d` su fondo chiaro; lockup con nome in tracciati, senza dipendere da Figtree installato. CF comunicherà la data della veste dopo ricezione di marchio e dominio; questo non blocca una pratica pilota esplicitamente concordata.
