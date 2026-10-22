@@ -1,4 +1,5 @@
 using Casazen.Core.Features;
+using Casazen.Core.Services;
 using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -156,10 +157,11 @@ public static class RecurringJobsRegistration
             "*/15 * * * *",  // Every 15 minutes
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // SR-10b: the page of the calendars says how often this runs from the same constant, never from a number of its own.
         recurringJobManager.AddOrUpdate<PropertyICalSyncJob>(
             "property-ical-sync",
             job => job.ExecuteAsync(),
-            "*/15 * * * *",
+            PropertyICalSchedule.SyncCron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         recurringJobManager.AddOrUpdate<GuestCheckInSendJob>(

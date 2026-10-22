@@ -66,6 +66,24 @@ Airbnb **and** Booking.com (and any other iCal source) and the dates of every on
 contract: `lastErrorCode` is the stable code, `lastError` its localized text; the frontend translates the code
 (`apiErrors.codes.*`) and shows `lastError` only for a code it does not know.
 
+### Calendars of all the properties in one read (SR-10b)
+
+`GET /api/properties/calendar-overview` (`PropertyRead`, the permission of `GET …/ical/export-url`; limited to the caller's `HostScope`
+in SQL) answers `{ syncEveryMinutes, staleAfterMinutes, properties[] }`: one entry per **active short-rent property** of the caller's
+reach, by name, `{ propertyId, propertyName, exportUrl, feeds[] }`, and a feed is `{ feedId, channel, label, lastImportAt,
+lastImportStatus, lastErrorCode, lastError, syncing }` (the state of `GET /api/dashboard/ical-feeds`, from the same code
+`IHostDashboardService.GetIcalFeedsAsync`; never the import URL; `syncing` is `lastImportStatus = Syncing`). A property with no feed is in
+the list with `feeds: []`.
+
+- **The export link is a secret in practice** (whoever has it sees the dates taken): `exportUrl` is only for who may read the property,
+  only for the properties in reach, the answer is `Cache-Control: private, no-store`, and the link is built in the controller and
+  written to no log. It is `null` while nobody asked for the link of that property: the overview creates nothing (a read that inserted a
+  row per property would not have a fixed number of queries); `GET …/ical/export-url` creates it on first use.
+- **Three queries** whatever the number of properties: the properties, the feeds, the links.
+- **The frequency is declared, not promised by the page**: `syncEveryMinutes` is `PropertyICalSchedule.SyncEveryMinutes`, the constant the
+  cron of `property-ical-sync` is built from (`RecurringJobsRegistration`), and `staleAfterMinutes` (eight rounds) is the age of the
+  last try after which a feed is "to check". The page compares `lastImportAt` with it; it also marks a feed whose last import failed.
+
 ### Import URL encrypted at rest (A2-20)
 
 Airbnb links carry a token (`?s=…`) that gives access to the reservations: the URL is never stored, returned or logged
