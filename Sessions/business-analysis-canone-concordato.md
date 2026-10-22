@@ -4,11 +4,11 @@ Revisione 8 · 22 ottobre 2026. Questo è l’unico documento che guida lo svilu
 
 ## 1. Base da riusare e lavoro restante
 
-Le PR [frontend #315](https://github.com/casazen/frontend/pull/315) e [backend #561](https://github.com/casazen/backend/pull/561) sono integrate in `develop` e realizzano già il caricamento e la conservazione. Le successive PR [frontend #316](https://github.com/casazen/frontend/pull/316) (al 22 ottobre ancora aperta) e [backend #562](https://github.com/casazen/backend/pull/562) (integrata) correggono i controlli CI, il ritorno dal login e il riferimento temporale del controllo APE: verificare il codice corrente prima di intervenire. Integrazione in `develop` e CI verde non attestano disponibilità in produzione. Leggere AGENTS.md dei repository e lavorare sul codice corrente.
+Le PR [frontend #315](https://github.com/casazen/frontend/pull/315) e [backend #561](https://github.com/casazen/backend/pull/561) sono integrate in `develop` e realizzano già il caricamento e la conservazione. Le successive PR [frontend #316](https://github.com/casazen/frontend/pull/316) e [backend #562](https://github.com/casazen/backend/pull/562), integrate in `develop` il 22 ottobre, correggono i controlli CI, il ritorno dal login e il riferimento temporale del controllo APE: verificare il codice corrente prima di intervenire. Integrazione in `develop` e CI verde non attestano disponibilità in produzione. Leggere AGENTS.md dei repository e lavorare sul codice corrente.
 
 | Già implementato nelle PR di codice: riusare | Resta a Helix |
 |---|---|
-| Pagina `/app/long-rent/documents/upload?leaseId=…` (accetta solo `leaseId`); il ritorno dal login è corretto da frontend #316, ancora aperta | Tipo di contratto come prima scelta; bozza minima concordato e collegamento al servizio CF |
+| Pagina `/app/long-rent/documents/upload?leaseId=…` (accetta solo `leaseId`), login con ritorno allo stesso contratto | Tipo di contratto come prima scelta; bozza minima concordato e collegamento al servizio CF |
 | Allegati `LeaseDocument`, API autorizzate elenco/upload/download, storage privato e isolamento OrgId | Pagina offerta, pagamento singolo 119 € IVA compresa, flag pratica omaggio biennale e bypass admin CasaZen |
 | Sezione Documenti del contratto, raggiungibile anche aprendo il contratto dalla casa | Scheda del contratto con pulsante e stato della pratica; link CF firmato dal server al clic, dopo verifica del diritto; una sola pratica per contratto |
 | Un PDF esistente oppure più foto JPEG/PNG riordinate/ruotate e unite in un solo PDF scaricabile; le foto non sono conservate separatamente | Estrazione dai documenti del contratto e popolamento delle rispettive sezioni dello stesso leaseId |

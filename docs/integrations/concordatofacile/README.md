@@ -120,7 +120,7 @@ CF segue anche libero 4+4 e transitori per email finché il modulo accetta solo 
 
 ## 6. Coordinamento e risposte per CF
 
-Le PR [frontend #315](https://github.com/casazen/frontend/pull/315) e [backend #561](https://github.com/casazen/backend/pull/561) sono integrate in develop: upload/archivio, PDF multipagina e controllo APE. Le PR correttive [frontend #316](https://github.com/casazen/frontend/pull/316) (ancora aperta al 22 ottobre) e [backend #562](https://github.com/casazen/backend/pull/562) (integrata) riguardano CI, ritorno dal login e date APE. Questa integrazione non attesta il rilascio in produzione. Bozza CF/pagamento/omaggio, firma del link, stato, ritorno practice/conferma ed estrazione contrattuale restano nel delta Helix.
+Le PR [frontend #315](https://github.com/casazen/frontend/pull/315) e [backend #561](https://github.com/casazen/backend/pull/561) sono integrate in develop: upload/archivio, PDF multipagina e controllo APE. Le PR correttive [frontend #316](https://github.com/casazen/frontend/pull/316) e [backend #562](https://github.com/casazen/backend/pull/562), integrate in develop il 22 ottobre, riguardano CI, ritorno dal login e date APE. Questa integrazione non attesta il rilascio in produzione. Bozza CF/pagamento/omaggio, firma del link, stato, ritorno practice/conferma ed estrazione contrattuale restano nel delta Helix.
 
 Le risposte ai punti della v0.1 (§7 e §1) sono:
 
