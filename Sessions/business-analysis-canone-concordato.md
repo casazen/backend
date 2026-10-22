@@ -93,6 +93,16 @@ Comando interno autenticato e autorizzato sul contratto, preferibilmente POST, c
 
 Firmare i **valori decodificati esatti**, poi codificare ogni valore per la query con una libreria URL. Non firmare il testo URL-encoded né normalizzare dopo la firma. Verificare il vettore pubblico della v1.3 §2, ripreso dalla v0.1; non usare la sua chiave dimostrativa in produzione. Comune/provincia non sono coperti dalla firma. CF tollera due minuti di scarto e rifiuta scadenze oltre 60 minuti: CasaZen emette sempre 15 minuti nella forma canonica. Configurazione e segreti distinti per prova/produzione, solo backend, mai nel bundle, nelle query interne, nei log o nella telemetria. Il link restituito contiene una firma temporanea: evitare log del relativo URL completo e risposte cacheabili.
 
+Vettore pubblico di conformità v1.3 §2, confermato dalla v0.1 (è una fixture dimostrativa, **non una credenziale operativa**):
+
+```text
+linkSecret = test_link_secret_0123456789abcdef0123456789abcdef
+message    = 0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11.2026-10-13T10:00:00Z
+signature  = fa10ce472c1e3b33939e62e01a7f5f8cec10d45abc02726f691cae37bd639eea
+```
+
+La scadenza storica serve al test puro della firma, non all'apertura live. Nel link il relativo `expiresAt` è `2026-10-13T10%3A00%3A00Z`; il messaggio HMAC mantiene i due punti decodificati. Per i link reali usare invece scadenza corrente + 15 minuti e segreto dell'ambiente fornito da CF.
+
 Non inviare `comuneIstatCode`, `returnUrl` o `theme`: CF li ignora. Aprire in navigazione normale, mai iframe; se nuova scheda usare `noopener noreferrer`. CF rimuove i parametri firmati dalla barra prima di script di terzi; non dare per questo il leaseId come autenticazione dell'utente.
 
 Prima dell'invio, stesso dispositivo/browser: un nuovo link può riprendere la bozza. Dopo l'invio o su altro dispositivo può creare **un'altra pratica**, non riaprire quella inviata. Quando l'elenco contiene una pratica non chiusa mostrare stato e indicazione di proseguire per email con CF, al posto del pulsante modulo. Non generare nuovi link con una pratica attestata/registrata; una nuova richiesta dopo chiusura senza attestazione deve essere intenzionale e non consuma automaticamente un altro pagamento/omaggio. Con errore nella lettura non interpretare «nessuna pratica» e non riaprire automaticamente. Anche un elenco vuoto può dipendere dal ritardo di pubblicazione: dopo il clic non rilanciare il modulo in automatico né promettere unicità garantita da CF.
