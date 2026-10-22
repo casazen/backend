@@ -309,6 +309,6 @@ precedente mantenuto).
 
 ## Sorgenti
 
-Ricerca completa con tabelle ufficiali, contatti e gap espliciti: `Sessions/research-canone-concordato-mb.md`. Business analysis: `Sessions/business-analysis-canone-concordato.md`. Spec tecnica: specifica rimossa (storico in git).
+Ricerca completa con tabelle ufficiali, contatti e gap espliciti: `Sessions/research-canone-concordato-mb.md`. Requisiti di sviluppo dell'integrazione ConcordatoFacile (Helix): `Sessions/business-analysis-canone-concordato.md`. Spec tecnica: specifica rimossa (storico in git).
 
 **Data consultazione ricerca sottostante**: 2026-08-16 · **Verifica RS-5 su fonti ufficiali**: 2026-09-23 (vedi `fiscale.md`) · **Verifica RS-8 dell'accordo territoriale MB**: 2026-09-23 (sezione "Accordi verificati (2026-09)") · **Correzioni LT-10 al calcolo e al seed**: 2026-09-24 (sezione "Cosa ha cambiato LT-10"; runbook `docs/runbooks/canone-concordato.md`)
