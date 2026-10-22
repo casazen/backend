@@ -110,6 +110,18 @@ public class Booking : ITenantOwned
     public decimal TotalPrice { get; set; }
 
     /// <summary>
+    /// The host entered a total other than the quote's when creating the booking by hand (SR-06a,
+    /// <c>POST /api/bookings/manual</c>): <see cref="TotalPrice"/> is the price they agreed, <see cref="TouristTax"/> stays the
+    /// tax of the quote and <see cref="BasePrice"/> is what is left (<see cref="Services.ManualBookingRules.PriceOf"/>). False
+    /// for every other booking, and again after the host changes the dates or the guests, which prices the stay anew.
+    /// </summary>
+    public bool PriceOverridden { get; set; }
+
+    /// <summary>What the host wrote about the price they agreed (at most <see cref="Services.ManualBookingRules.PriceNoteMaxLength"/> characters); null when there is no note or no agreed price.</summary>
+    [MaxLength(Services.ManualBookingRules.PriceNoteMaxLength)]
+    public string? PriceOverrideNote { get; set; }
+
+    /// <summary>
     /// Tourist tax amount calculated based on city rates (Italian law)
     /// </summary>
     [Precision(18, 2)]

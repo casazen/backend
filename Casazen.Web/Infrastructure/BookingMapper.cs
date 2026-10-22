@@ -52,6 +52,8 @@ public static class BookingMapper
         response.BasePrice = booking.BasePrice;
         response.CleaningFee = booking.CleaningFee;
         response.TouristTax = booking.TouristTax;
+        response.PriceOverridden = booking.PriceOverridden;
+        response.PriceOverrideNote = booking.PriceOverrideNote;
         response.Status = booking.Status.ToString();
         response.CancellationNote = booking.CancellationNote;
         response.Source = booking.Source.ToString();

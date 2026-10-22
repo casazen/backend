@@ -41,8 +41,9 @@ public sealed class OtaStayService(
         var lastName = conversion.LastName?.Trim() ?? string.Empty;
         var email = conversion.Email?.Trim() ?? string.Empty;
         var guests = conversion.NumberOfGuests ?? OtaStays.DefaultNumberOfGuests;
-        if (firstName.Length == 0 || lastName.Length == 0 || email.Length == 0 || guests < 1
-            || conversion.TotalPrice is < 0)
+        // The last name is asked by the endpoint of the block; the light creation of SR-06a (the host gives the name and the email
+        // only) may leave it empty, and the guest completes it with the online check-in.
+        if (firstName.Length == 0 || email.Length == 0 || guests < 1 || conversion.TotalPrice is < 0)
             throw new DomainRuleException(BookingErrorCodes.CreateInvalid, "BookingCreateInvalid");
 
         var target = await db.CalendarBlocks
@@ -109,6 +110,8 @@ public sealed class OtaStayService(
             FirstName = firstName,
             LastName = lastName,
             Email = email,
+            PhoneNumber = conversion.Phone?.Trim() ?? string.Empty,
+            Country = conversion.Country?.Trim() ?? string.Empty,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -123,6 +126,7 @@ public sealed class OtaStayService(
             NumberOfGuests = guests,
             NumberOfAdults = guests,
             NumberOfChildren = 0,
+            SpecialRequests = conversion.Note?.Trim() ?? string.Empty,
             Status = BookingStatus.Confirmed,
             ConfirmedAt = now,
             Source = source.Value,
