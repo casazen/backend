@@ -546,6 +546,18 @@
   <data name="BookingTooManyGuests" xml:space="preserve">
     <value>Questo immobile accoglie al massimo {0} ospiti.</value>
   </data>
+  <data name="BookingPriceOverrideInvalid" xml:space="preserve">
+    <value>Il prezzo concordato non è valido: deve coprire almeno l'imposta di soggiorno e la parte di soggiorno non può superare 100.000 €.</value>
+  </data>
+  <data name="BookingPriceNoteTooLong" xml:space="preserve">
+    <value>La nota sul prezzo può avere al massimo 80 caratteri.</value>
+  </data>
+  <data name="BookingBlockDatesMismatch" xml:space="preserve">
+    <value>Le date non sono quelle del blocco del portale che stai completando: controllale di nuovo.</value>
+  </data>
+  <data name="AvailabilityInvalidRequest" xml:space="preserve">
+    <value>Le date richieste non sono valide: indica l'arrivo e la partenza (anni dal 2000 al 2100) e, se la indichi, un portale tra Airbnb, BookingCom e Other.</value>
+  </data>
   <data name="BookingCalendarRangeInvalid" xml:space="preserve">
     <value>La data di fine del calendario non può essere precedente alla data di inizio.</value>
   </data>

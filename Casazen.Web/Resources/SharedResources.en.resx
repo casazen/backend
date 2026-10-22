@@ -546,6 +546,18 @@
   <data name="BookingTooManyGuests" xml:space="preserve">
     <value>This property hosts at most {0} guests.</value>
   </data>
+  <data name="BookingPriceOverrideInvalid" xml:space="preserve">
+    <value>The agreed price is not valid: it must cover at least the tourist tax, and the lodging part cannot exceed €100,000.</value>
+  </data>
+  <data name="BookingPriceNoteTooLong" xml:space="preserve">
+    <value>The note on the price can have at most 80 characters.</value>
+  </data>
+  <data name="BookingBlockDatesMismatch" xml:space="preserve">
+    <value>The dates are not those of the portal block you are completing: check them again.</value>
+  </data>
+  <data name="AvailabilityInvalidRequest" xml:space="preserve">
+    <value>The dates asked for are not valid: give the arrival and the departure (years 2000 to 2100) and, if you give one, a portal among Airbnb, BookingCom and Other.</value>
+  </data>
   <data name="BookingCalendarRangeInvalid" xml:space="preserve">
     <value>The last day of the calendar cannot be before its first day.</value>
   </data>

@@ -326,6 +326,9 @@ public static class ServiceCollectionExtensions
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();
+        // Whether a stay of the host's property is free, and the booking the host enters by hand with only the name and the email (SR-06a).
+        services.AddScoped<IHostAvailabilityService, HostAvailabilityService>();
+        services.AddScoped<IManualBookingService, ManualBookingService>();
         services.AddScoped<ICalendarBlockService, CalendarBlockService>();
         // Scheduled change of rental mode of a property: preview, creation, the hourly application (PM-02).
         services.AddScoped<IPropertyModeService, PropertyModeService>();
