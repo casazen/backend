@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261022151346_AddSupplierUrgentSlots")]
+    [Migration("20261022164333_AddSupplierUrgentSlots")]
     partial class AddSupplierUrgentSlots
     {
         /// <inheritdoc />
@@ -335,6 +335,13 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("PaymentOption")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("PriceOverridden")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("PriceOverrideNote")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
 
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
