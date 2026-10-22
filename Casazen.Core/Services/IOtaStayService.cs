@@ -2,10 +2,16 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>What the host gives to turn an iCal block into an OTA stay (CO-21). Names and email are required.</summary>
+/// <summary>
+/// What the host gives to turn an iCal block into an OTA stay (CO-21). The first name and the email are required; the last name is
+/// asked by <c>POST /api/ical-blocks/{blockId}/ota-stay</c> but may be empty for the light creation of SR-06a.
+/// </summary>
 /// <param name="NumberOfGuests">Guests of the stay; <see cref="OtaStays.DefaultNumberOfGuests"/> when not given.</param>
 /// <param name="TotalPrice">Amount of the reservation as the channel shows it, when the host gives it; never made up.</param>
 /// <param name="Source">OTA of the reservation, used only when the feed's channel is "other".</param>
+/// <param name="Phone">Phone of the guest, when the host has it (SR-06a).</param>
+/// <param name="Country">Country of the guest, when the host has it (SR-06a).</param>
+/// <param name="Note">Note of the host on the stay (<see cref="Booking.SpecialRequests"/>), when there is one (SR-06a).</param>
 public sealed record OtaStayConversion(
     Guid BlockId,
     string FirstName,
@@ -13,7 +19,10 @@ public sealed record OtaStayConversion(
     string Email,
     int? NumberOfGuests = null,
     decimal? TotalPrice = null,
-    BookingSource? Source = null);
+    BookingSource? Source = null,
+    string? Phone = null,
+    string? Country = null,
+    string? Note = null);
 
 /// <summary>OTA stays created by the host from iCal blocks (CO-21, decision D7). Rules in <see cref="OtaStays"/>.</summary>
 public interface IOtaStayService

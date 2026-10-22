@@ -333,6 +333,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("PaymentOption")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("PriceOverridden")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("PriceOverrideNote")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
