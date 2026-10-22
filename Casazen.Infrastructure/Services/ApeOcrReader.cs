@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -11,7 +12,7 @@ internal static class ApeOcrReader
     private const int MaxPages = 12;
     private const long MaxTextBytes = 1_000_000;
 
-    internal static async Task<string> ReadAsync(byte[] bytes, bool isPdf, CancellationToken ct)
+    internal static async Task<string> ReadAsync(byte[] bytes, bool isPdf, Func<string, ApeInspectionResult> inspectExtractedText, CancellationToken ct)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(90));
@@ -37,8 +38,8 @@ internal static class ApeOcrReader
                 var extracted = Path.Combine(directory, "embedded.txt");
                 await RunAsync("pdftotext", ["-layout", input, extracted], token);
                 text.Append(await ReadTextAsync(extracted, token));
-                var inspection = new ApeDocumentInspector().InspectExtractedText(text.ToString());
-                if (inspection.Status is Casazen.Core.Services.ApeInspectionStatus.Valid or Casazen.Core.Services.ApeInspectionStatus.Expired)
+                var inspection = inspectExtractedText(text.ToString());
+                if (inspection.Status is ApeInspectionStatus.Valid or ApeInspectionStatus.Expired)
                     return text.ToString();
             }
             for (var page = 1; page <= pages; page++)
