@@ -20,6 +20,9 @@ Task SP-16a (redesign wave) adds no flag. Two things to know when switching the 
 showcase takes bookings only for a supplier whose `SupplierSettings.OnlineBookingEnabled` is true, a column that **only the showcase editor writes**
 (`PUT api/supplier/settings` neither takes nor changes it, decision SP-D29), so `SupplierShowcaseBooking` alone opens nothing; and `GET api/supplier/checklist`
 tells `verification` whatever the flag says and `paymentsActive` only while `SupplierOnlinePayments` is on (`null` otherwise).
+Task SP-04c (redesign wave) adds no flag: the urgent requests with a surcharge are the supplier's own settings (`api/supplier/availability/urgent`, `urgentEnabled` of a
+service, off until the supplier turns them on), and what the customer sees of them (`urgent=true` on the slots, the estimate and the booking) is part of the public reads and
+booking already behind `SupplierShowcaseBooking` (`docs/runbooks/suppliers.md` section 32).
 
 The functions of the redesign wave that had a flag of their own (the new interface, the org team and its activity log, the scheduled
 change of the rental mode, the in-app notifications, the global search) are always on: they have no flag any more, and a
