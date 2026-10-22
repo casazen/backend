@@ -2,11 +2,13 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Services;
 
-public sealed class ApeDocumentInspector : IApeDocumentInspector
+public sealed class ApeDocumentInspector(TimeProvider? timeProvider = null) : IApeDocumentInspector
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private static readonly string[] TitleMarkers =
     [
         "ATTESTATO DI PRESTAZIONE ENERGETICA",
@@ -69,10 +71,11 @@ public sealed class ApeDocumentInspector : IApeDocumentInspector
         if (!Matches(@"(?:SOGGETTO CERTIFICATORE|CERTIFICATORE ENERGETICO|NOME E COGNOME) [A-Z]{2,} [A-Z]{2,}")) missing.Add("Certifier");
         var issue = ReadDate(normalized, @"(?:DATA DI EMISSIONE|DATA EMISSIONE|RILASCIATO IL|DATA DI RILASCIO)");
         var expiry = ReadDate(normalized, @"(?:VALIDO FINO AL|VALIDITA FINO AL|DATA DI SCADENZA|DATA SCADENZA|SCADENZA)");
-        if (issue is null || issue > DateOnly.FromDateTime(DateTime.UtcNow)) missing.Add("IssueDate");
+        var today = _clock.TodayInRomeAsDateOnly();
+        if (issue is null || issue > today) missing.Add("IssueDate");
         if (expiry is null || (issue is not null && expiry <= issue)) missing.Add("ExpiryDate");
         if (missing.Count > 0) return new(ApeInspectionStatus.Incomplete, missing);
-        return expiry < DateOnly.FromDateTime(DateTime.UtcNow)
+        return expiry < today
             ? new(ApeInspectionStatus.Expired)
             : new(ApeInspectionStatus.Valid);
     }
@@ -96,7 +99,7 @@ public sealed class ApeDocumentInspector : IApeDocumentInspector
         // Real PDFs need a layout-aware reader; literal extraction alone misses embedded fonts.
         try
         {
-            var text = await ApeOcrReader.ReadAsync(bytes, isPdf, ct);
+            var text = await ApeOcrReader.ReadAsync(bytes, isPdf, InspectExtractedText, ct);
             return InspectExtractedText(text);
         }
         catch (ApeOcrUnavailableException) { return new(ApeInspectionStatus.OcrUnavailable); }
