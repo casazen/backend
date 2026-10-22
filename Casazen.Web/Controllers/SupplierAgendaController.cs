@@ -201,6 +201,38 @@ public class SupplierAgendaController(
                 await agenda.ReplaceRulesAsync(orgId, SupplierAgendaMapper.ToInput(request), cancellationToken))),
             cancellationToken);
 
+    // ─── Urgent requests (SP-04c) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// The urgent settings: whether the supplier accepts urgent requests (today and tomorrow, 30 minutes of notice), the window of the
+    /// day they are accepted in (07:00 to 22:00 by default, outside the working hours too) and its default surcharge in euro cents.
+    /// Off, with no surcharge, while the supplier never saved them (a read writes nothing).
+    /// </summary>
+    [HttpGet("availability/urgent")]
+    [ProducesResponseType(typeof(SupplierUrgentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierUrgentDto>> GetUrgent(CancellationToken cancellationToken) =>
+        await RunAsync(
+            async orgId => Ok(SupplierAgendaMapper.ToDto(await agenda.GetUrgentAsync(orgId, cancellationToken))),
+            cancellationToken);
+
+    /// <summary>
+    /// Replaces the urgent settings (all four are needed). 422 <c>supplier_urgent_invalid</c> (with <c>fields</c>) for a value that is
+    /// missing or outside its limits: a window that does not start before it ends, a surcharge above 50000 cents (500 €).
+    /// </summary>
+    [HttpPut("availability/urgent")]
+    [ProducesResponseType(typeof(SupplierUrgentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<SupplierUrgentDto>> ReplaceUrgent(
+        [FromBody] SaveSupplierUrgentRequest request,
+        CancellationToken cancellationToken) =>
+        await RunAsync(
+            async orgId => Ok(SupplierAgendaMapper.ToDto(
+                await agenda.ReplaceUrgentAsync(orgId, SupplierAgendaMapper.ToInput(request), cancellationToken))),
+            cancellationToken);
+
     // ─── Calendar ────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -287,9 +319,11 @@ public class SupplierAgendaController(
     /// (<c>Cache-Control: private, no-store</c>), a draft or paused service and a supplier that is not active are previewed too, and
     /// the public feature flag <c>SupplierShowcaseBooking</c> does not apply (it answers with every flag off). With <c>comune</c>
     /// (an ISTAT code or a name) it also says whether it is one of the supplier's zones (<c>coverage.outcome</c> <c>inside</c> or
-    /// <c>outside</c>, decision D10: the postal code does not decide). <c>urgent</c> is accepted and ignored until urgent slots exist
-    /// (SP-04c). 400 <c>validation_error</c> for a missing service or <c>days</c> outside 1 to 62; 404 <c>supplier_service_not_found</c>
-    /// for a service that is not this supplier's (another's and deleted answer the same).
+    /// <c>outside</c>, decision D10: the postal code does not decide). With <c>urgent=true</c> (SP-04c) the preview of the urgent slots,
+    /// from the same planner as the public page: today and tomorrow, in the urgent window, 30 minutes from now, and no day at all
+    /// while the service or the supplier does not accept urgent requests. 400 <c>validation_error</c> for a missing service or
+    /// <c>days</c> outside 1 to 62; 404 <c>supplier_service_not_found</c> for a service that is not this supplier's (another's and
+    /// deleted answer the same).
     /// </summary>
     [HttpGet("preview/slots")]
     [ProducesResponseType(typeof(SupplierSlotPreviewResponse), StatusCodes.Status200OK)]
@@ -300,6 +334,7 @@ public class SupplierAgendaController(
         [FromQuery] DateOnly? from,
         [FromQuery] int? days,
         [FromQuery, MaxLength(PublicShowcaseLimits.QuoteComuneMaxLength)] string? comune,
+        [FromQuery] bool? urgent,
         [FromServices] ISupplierSlotPreviewService preview,
         CancellationToken cancellationToken)
     {
@@ -316,7 +351,7 @@ public class SupplierAgendaController(
 
         return await RunAsync(
             async orgId => Ok(SupplierAgendaReadsMapper.ToDto(
-                await preview.GetAsync(orgId, service.Value, from, days, comune, cancellationToken))),
+                await preview.GetAsync(orgId, service.Value, from, days, comune, urgent ?? false, cancellationToken))),
             cancellationToken);
     }
 

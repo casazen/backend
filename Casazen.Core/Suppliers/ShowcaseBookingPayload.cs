@@ -19,6 +19,10 @@ namespace Casazen.Core.Suppliers;
 /// <param name="Options">The supplements the customer picked and the quantity, as a snapshot (<c>ServiceRequest.OptionsJson</c>).</param>
 /// <param name="ComuneIstat">ISTAT code of the comune, when the customer chose it from the official list.</param>
 /// <param name="ConsentIp">The client address the privacy notice was accepted from (consent evidence).</param>
+/// <param name="Urgent">
+/// The booking is for an urgent slot (SP-04c): the request is born <c>Urgency = High</c>, and <paramref name="EstimatedAmountCents"/>
+/// and <paramref name="Options"/> already carry the surcharge. A hold saved before SP-04c has no such field: it reads as not urgent.
+/// </param>
 public sealed record ShowcaseBookingPayload(
     Guid ServiceListingId,
     string ServiceName,
@@ -37,7 +41,8 @@ public sealed record ShowcaseBookingPayload(
     string? AccessNotes,
     string PrivacyNoticeVersion,
     DateTime PrivacyAcceptedAt,
-    string ConsentIp)
+    string ConsentIp,
+    bool Urgent = false)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {

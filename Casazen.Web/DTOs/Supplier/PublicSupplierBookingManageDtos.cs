@@ -159,7 +159,7 @@ public class PublicSupplierBookingPriceDto
 
 public class PublicSupplierBookingPriceLineDto
 {
-    /// <summary><c>service</c>, <c>option</c> or <c>extra</c>.</summary>
+    /// <summary><c>service</c>, <c>option</c>, <c>urgent</c> (the surcharge of an urgent booking) or <c>extra</c>.</summary>
     public string Kind { get; set; } = string.Empty;
 
     public string Label { get; set; } = string.Empty;

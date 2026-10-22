@@ -119,7 +119,12 @@ public class PublicSupplierController(
     /// before today) and <c>days</c> (1 to 62, default 14), cut at the supplier's horizon. Each day says whether it is
     /// available and lists its slots in UTC and in Rome time; a day without a slot is just "not available", with no reason.
     /// Computed by the supplier's slot planner and cached for 30 seconds: <b>a slot shown is not a promise</b>, the booking
-    /// recomputes it. 400 <c>validation_error</c> for a missing service or a <c>days</c> outside 1 to 62.
+    /// recomputes it. With <c>urgent=true</c> (SP-04c) the urgent slots instead (<c>urgent: true</c> in the answer and in each slot):
+    /// today and tomorrow only, in the supplier's urgent window (outside its working hours too), from 30 minutes from now,
+    /// <c>bookableUntil</c> tomorrow, and no day at all for a service or a supplier that does not accept urgent requests (see
+    /// <c>urgent</c> of the service); holidays, closed days, blocks, other requests, the pause and the daily maximum still apply. A
+    /// client that does not send <c>urgent</c> gets what it always got. 400 <c>validation_error</c> for a missing service or a
+    /// <c>days</c> outside 1 to 62.
     /// </summary>
     [HttpGet("{slug}/slots")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
@@ -132,6 +137,7 @@ public class PublicSupplierController(
         [FromQuery] string? service,
         [FromQuery] DateOnly? from,
         [FromQuery] int? days,
+        [FromQuery] bool? urgent,
         CancellationToken ct)
     {
         MarkNotIndexable();
@@ -149,7 +155,7 @@ public class PublicSupplierController(
         if (supplier is null)
             return SupplierNotFound();
 
-        var slots = await showcase.GetSlotsAsync(supplier, service, from, days, ct);
+        var slots = await showcase.GetSlotsAsync(supplier, service, from, days, urgent ?? false, ct);
         return slots is null ? ServiceNotFound() : Ok(PublicSupplierMapper.ToDto(slots));
     }
 

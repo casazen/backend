@@ -15,6 +15,11 @@ namespace Casazen.Core.Suppliers;
 /// leaves the photos as they are. Uploading is <c>POST .../photos</c>.
 /// </param>
 /// <param name="SortOrder">Position in the catalog; <c>null</c> keeps it (a new service goes last).</param>
+/// <param name="UrgentEnabled">The service accepts urgent requests (SP-04c); a replacement, so a left out value is off.</param>
+/// <param name="UrgentSurchargeCents">
+/// The service's own urgent surcharge in cents, 0 to <see cref="SupplierAgendaLimits.MaxUrgentSurchargeCents"/>; <c>null</c> (also a
+/// left out value) is the supplier's default.
+/// </param>
 public sealed record SupplierServiceListingInput(
     string? Name,
     string? Category,
@@ -31,7 +36,9 @@ public sealed record SupplierServiceListingInput(
     IReadOnlyList<string?>? Included,
     IReadOnlyList<string?>? Excluded,
     IReadOnlyList<string?>? PhotoUrls,
-    int? SortOrder);
+    int? SortOrder,
+    bool UrgentEnabled = false,
+    int? UrgentSurchargeCents = null);
 
 /// <summary>
 /// The content of a service after <see cref="SupplierServiceListingRules.Normalize"/>: trimmed, checked, and in the form
@@ -53,7 +60,9 @@ public sealed record SupplierServiceListingContent(
     IReadOnlyList<string> Included,
     IReadOnlyList<string> Excluded,
     IReadOnlyList<string>? PhotoUrls,
-    int? SortOrder)
+    int? SortOrder,
+    bool UrgentEnabled = false,
+    int? UrgentSurchargeCents = null)
 {
     /// <summary>
     /// Writes the content into <paramref name="listing"/>. Not the slug, the status, the photos, the position or the
@@ -73,6 +82,8 @@ public sealed record SupplierServiceListingContent(
         listing.DurationMinutes = DurationMinutes;
         listing.MinNoticeHours = MinNoticeHours;
         listing.WeekdaysMask = WeekdaysMask;
+        listing.UrgentEnabled = UrgentEnabled;
+        listing.UrgentSurchargeCents = UrgentSurchargeCents;
         listing.SupplementsJson = SupplierServiceListingJson.Serialize(Supplements);
         listing.IncludedJson = SupplierServiceListingJson.Serialize(Included);
         listing.ExcludedJson = SupplierServiceListingJson.Serialize(Excluded);
@@ -138,6 +149,10 @@ public static partial class SupplierServiceListingRules
         if (input.SortOrder is { } sortOrder && sortOrder is < 0 or > SupplierServiceCatalogLimits.MaxSortOrder)
             AddOnce(invalid, SupplierServiceFields.SortOrder);
 
+        // The surcharge of an urgent request (SP-04c): 0 is an urgency for free, null is the supplier's default.
+        if (input.UrgentSurchargeCents is { } urgentSurcharge && !SupplierUrgentRules.IsValidSurcharge(urgentSurcharge))
+            AddOnce(invalid, SupplierServiceFields.UrgentSurchargeCents);
+
         if (invalid.Count > 0)
             throw SupplierServiceCatalogErrors.InvalidFields(invalid);
 
@@ -157,7 +172,9 @@ public static partial class SupplierServiceListingRules
             included,
             excluded,
             photoUrls,
-            input.SortOrder);
+            input.SortOrder,
+            input.UrgentEnabled,
+            input.UrgentSurchargeCents);
     }
 
     /// <summary>

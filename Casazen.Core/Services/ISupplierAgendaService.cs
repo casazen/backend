@@ -207,6 +207,21 @@ public interface ISupplierAgendaService
     Task<SupplierSettingsView> ReplaceSettingsAsync(Guid supplierOrgId, SupplierSettingsInput input, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The supplier's urgent settings (SP-04c, <c>GET api/supplier/availability/urgent</c>): whether it accepts urgent requests, the
+    /// window of the day they are accepted in and its default surcharge. <see cref="SupplierUrgentSettings.Default"/> (off, 07:00 to
+    /// 22:00, no surcharge) while the supplier never saved them; a read never creates the settings row. Read-only.
+    /// </summary>
+    Task<SupplierUrgentSettings> GetUrgentAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the urgent settings (every field is needed); the rest of the settings row stays as it is. The row is created by the
+    /// first write, under the agenda lock, which every request flow takes before it plans a slot: a booking is judged on the settings
+    /// as they are saved.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.UrgentInvalid"/> (with the fields).</exception>
+    Task<SupplierUrgentSettings> ReplaceUrgentAsync(Guid supplierOrgId, SupplierUrgentInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// What the supplier's calendar shows from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both
     /// included, at most <see cref="SupplierAgendaLimits.MaxCalendarDays"/>): hours, closed days, time off, windows and the
     /// requests that have a day. Read-only.

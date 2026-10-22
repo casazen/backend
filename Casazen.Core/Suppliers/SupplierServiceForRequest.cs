@@ -12,6 +12,7 @@ namespace Casazen.Core.Suppliers;
 /// The public slug of the service (SP-11): the name the customer's page asks the free slots with
 /// (<c>GET api/public/suppliers/{slug}/slots?service=</c>) when it moves its booking to another time.
 /// </param>
+/// <param name="UrgentEnabled">The service's own switch for urgent requests (SP-04c); the supplier's switch is the planner's.</param>
 public sealed record SupplierServiceForRequest(
     Guid Id,
     string Name,
@@ -23,7 +24,8 @@ public sealed record SupplierServiceForRequest(
     int? PriceFromCents,
     SupplierServicePriceUnit PriceUnit,
     bool RequiresQuote,
-    string Slug)
+    string Slug,
+    bool UrgentEnabled = false)
 {
     /// <summary>True for a published service: the only kind a request can be made for.</summary>
     public bool IsRequestable => Status == SupplierServiceListingStatus.Active;
@@ -35,7 +37,11 @@ public sealed record SupplierServiceForRequest(
     public int? EstimatedAmountCents =>
         !RequiresQuote && PriceUnit == SupplierServicePriceUnit.PerJob && PriceFromCents is > 0 ? PriceFromCents : null;
 
-    /// <summary>The slot query of the planner for this service (<c>null</c> when it has no duration, so no slot can be computed).</summary>
-    public SupplierSlotQuery? ToSlotQuery() =>
-        DurationMinutes is > 0 ? new SupplierSlotQuery(DurationMinutes.Value, MinNoticeHours, WeekdaysMask) : null;
+    /// <summary>
+    /// The slot query of the planner for this service (<c>null</c> when it has no duration, so no slot can be computed). With
+    /// <paramref name="urgent"/> the query asks for the urgent slots (SP-04c): the supplier's preview asks only when
+    /// <see cref="UrgentEnabled"/> is on.
+    /// </summary>
+    public SupplierSlotQuery? ToSlotQuery(bool urgent = false) =>
+        DurationMinutes is > 0 ? new SupplierSlotQuery(DurationMinutes.Value, MinNoticeHours, WeekdaysMask, urgent) : null;
 }

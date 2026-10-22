@@ -170,13 +170,15 @@ public static class SupplierAgendaReadsMapper
     public static SupplierSlotPreviewResponse ToDto(SupplierSlotPreview preview)
     {
         // The days are the public ones, and so is their shape: the same mapper as the public page.
-        var days = PublicSupplierMapper.ToDto(new PublicSlots(preview.ServiceSlug, preview.DurationMinutes, preview.BookableUntil, preview.Days));
+        var days = PublicSupplierMapper.ToDto(
+            new PublicSlots(preview.ServiceSlug, preview.DurationMinutes, preview.BookableUntil, preview.Days, preview.Urgent));
         return new SupplierSlotPreviewResponse
         {
             Service = days.Service,
             DurationMinutes = days.DurationMinutes,
             TimeZone = days.TimeZone,
             BookableUntil = days.BookableUntil,
+            Urgent = days.Urgent,
             Days = days.Days,
             ServiceId = preview.ServiceId,
             ServiceStatus = preview.ServiceStatus,

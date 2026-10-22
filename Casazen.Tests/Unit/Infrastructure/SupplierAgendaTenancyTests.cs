@@ -144,6 +144,8 @@ public class SupplierAgendaTenancyTests
                 "CK_SupplierSettings_ParallelJobs",
                 "CK_SupplierSettings_RespondWithinMinutes",
                 "CK_SupplierSettings_SlotStepMinutes",
+                "CK_SupplierSettings_UrgentSurchargeCents",
+                "CK_SupplierSettings_UrgentWindow",
             ],
             ChecksOf(typeof(SupplierSettings)));
     }

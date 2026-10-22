@@ -32,6 +32,7 @@ public sealed class SupplierSlotPreviewService(
         DateOnly? from,
         int? days,
         string? comune,
+        bool urgent = false,
         CancellationToken cancellationToken = default)
     {
         var service = await catalog.FindForRequestAsync(supplierOrgId, serviceId, cancellationToken)
@@ -39,11 +40,19 @@ public sealed class SupplierSlotPreviewService(
 
         var today = clock.TodayInRomeAsDateOnly();
         var rules = await agenda.GetRulesAsync(supplierOrgId, cancellationToken);
-        var bookableUntil = today.AddDays(rules.HorizonDays);
+
+        // The urgent slots (SP-04c) are today and tomorrow, never more than the horizon, and exist only when the service and the
+        // supplier both accept urgent requests: otherwise there is no day at all (the public page answers the same).
+        var horizonDays = urgent ? Math.Min(rules.HorizonDays, SupplierAgendaLimits.UrgentHorizonDays) : rules.HorizonDays;
+        var bookableUntil = today.AddDays(horizonDays);
+        var offered = !urgent
+            || (service.UrgentEnabled && (await agenda.GetUrgentAsync(supplierOrgId, cancellationToken)).IsOn);
 
         // A draft without a duration has no slot to compute: no day, not an error (the console says the service is incomplete).
         IReadOnlyList<PublicSlotDay> window = [];
-        if (service.ToSlotQuery() is { } query && PublicSlotWindow.RangeOf(today, bookableUntil, from, days) is { } range)
+        if (offered
+            && service.ToSlotQuery(urgent) is { } query
+            && PublicSlotWindow.RangeOf(today, bookableUntil, from, days) is { } range)
         {
             var plans = await agenda.PlanAsync(supplierOrgId, range.First, range.Last, query, cancellationToken);
             window = plans.Select(plan => new PublicSlotDay(plan.Day, plan.Slots)).ToList();
@@ -56,7 +65,8 @@ public sealed class SupplierSlotPreviewService(
             service.DurationMinutes ?? 0,
             bookableUntil,
             window,
-            await CoverageAsync(supplierOrgId, comune, cancellationToken));
+            await CoverageAsync(supplierOrgId, comune, cancellationToken),
+            urgent);
     }
 
     /// <summary>

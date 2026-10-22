@@ -30,6 +30,15 @@ public static class SupplierAgendaDefaults
 
     /// <summary>How long a supplier has to answer a new request, in minutes (3 hours; used by the request flow, SP-04).</summary>
     public const int RespondWithinMinutes = 180;
+
+    /// <summary>Where the window of the urgent requests starts, in minutes after midnight on the clock of Rome: 07:00 (decision SP-D9).</summary>
+    public const int UrgentFromMinute = 7 * 60;
+
+    /// <summary>Where the window of the urgent requests ends, in minutes after midnight on the clock of Rome: 22:00 (decision SP-D9).</summary>
+    public const int UrgentToMinute = 22 * 60;
+
+    /// <summary>The surcharge of an urgent request until the supplier sets one: none.</summary>
+    public const int UrgentSurchargeCents = 0;
 }
 
 /// <summary>
@@ -103,6 +112,26 @@ public static class SupplierAgendaLimits
 
     public const int MinRespondWithinMinutes = 15;
     public const int MaxRespondWithinMinutes = 7 * 24 * 60;
+
+    // ─── Urgent requests (SP-04c) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Highest surcharge of an urgent request, in cents (500 €, the limit of the design): a guard against a typo, not a price list.
+    /// The same bound for the supplier's default and for the surcharge of a service; <c>0</c> is an urgency with no surcharge.
+    /// </summary>
+    public const int MaxUrgentSurchargeCents = 50_000;
+
+    /// <summary>
+    /// Shortest notice of an urgent request, in minutes (decision SP-D9). A constant of the product: the urgent plan never reads
+    /// <c>MinNoticeHours</c>, neither the supplier's nor the service's.
+    /// </summary>
+    public const int UrgentNoticeMinutes = 30;
+
+    /// <summary>
+    /// How many days after today an urgent request can still be made: today and tomorrow (decision SP-D9). Never beyond the supplier's
+    /// own horizon.
+    /// </summary>
+    public const int UrgentHorizonDays = 1;
 
     // ─── Calendar ────────────────────────────────────────────────────────────────
 

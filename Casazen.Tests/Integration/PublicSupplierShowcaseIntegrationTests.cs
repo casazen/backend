@@ -189,7 +189,7 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
             new[]
             {
                 "category", "description", "durationMinutes", "excluded", "included", "name", "photoUrls", "priceFromCents", "priceUnit",
-                "pricesIncludeVat", "requiresQuote", "slug", "summary", "supplements",
+                "pricesIncludeVat", "requiresQuote", "slug", "summary", "supplements", "urgent",
             },
             names);
         AssertNoPrivateText(await response.Content.ReadAsStringAsync(), supplier.Secrets);
