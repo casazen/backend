@@ -31,6 +31,16 @@ public class BookingResponseDto
     public decimal CleaningFee { get; set; }
 
     public decimal TouristTax { get; set; }
+
+    /// <summary>
+    /// The host entered a total other than the quote's when they created the booking by hand (SR-06a): <see cref="TotalPrice"/> is the
+    /// price they agreed with the guest, <see cref="TouristTax"/> stays the tax of the quote.
+    /// </summary>
+    public bool PriceOverridden { get; set; }
+
+    /// <summary>The host's note on that price (at most 80 characters); <c>null</c> when there is none.</summary>
+    public string? PriceOverrideNote { get; set; }
+
     public string Currency { get; set; } = "EUR";
     public string Status { get; set; } = string.Empty;
 
