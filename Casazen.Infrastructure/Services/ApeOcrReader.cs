@@ -5,17 +5,29 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Local OCR: no certificate data leaves the API host. Temporary inputs are deleted on every exit path.</summary>
+/// <summary>
+/// Local OCR: no certificate data leaves the API host. Temporary inputs are deleted on every exit path.
+/// </summary>
+/// <remarks>
+/// A page of a scan or a photo is rendered in gray and read three ways: as it is (automatic layout, Sauvola thresholding for the
+/// uneven light of a photo), as its negative (white text on the dark bands: title, header with code and expiry, box of the class)
+/// and, around the labels found by those two, zone by zone (<see cref="ApeAnchors"/>). The texts are joined: the checks and the
+/// reading of the data look at all of them. The two extra readings stop after <see cref="ExtraPassesUntil"/>, so a long document
+/// still ends within the deadline.
+/// </remarks>
 internal static class ApeOcrReader
 {
     private static readonly SemaphoreSlim Workers = new(2);
     private const int MaxPages = 12;
     private const long MaxTextBytes = 1_000_000;
+    private const long MaxPageImageBytes = 30 * 1024 * 1024;
+    private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(110);
+    private static readonly TimeSpan ExtraPassesUntil = TimeSpan.FromSeconds(60);
 
     internal static async Task<string> ReadAsync(byte[] bytes, bool isPdf, Func<string, ApeInspectionResult> inspectExtractedText, CancellationToken ct)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        deadline.CancelAfter(TimeSpan.FromSeconds(90));
+        deadline.CancelAfter(Deadline);
         var token = deadline.Token;
         var acquired = false;
         var directory = Path.Combine(Path.GetTempPath(), $"casazen-ape-{Guid.NewGuid():N}");
@@ -42,18 +54,23 @@ internal static class ApeOcrReader
                 if (inspection.Status is ApeInspectionStatus.Valid or ApeInspectionStatus.Expired)
                     return text.ToString();
             }
+            var elapsed = Stopwatch.StartNew();
             for (var page = 1; page <= pages; page++)
             {
-                var image = input;
                 if (isPdf)
                 {
                     var prefix = Path.Combine(directory, "page");
-                    await RunAsync("pdftoppm", ["-f", page.ToString(System.Globalization.CultureInfo.InvariantCulture), "-l", page.ToString(System.Globalization.CultureInfo.InvariantCulture), "-singlefile", "-scale-to", "2400", "-png", input, prefix], token);
-                    image = prefix + ".png";
+                    var number = page.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    await RunAsync("pdftoppm", ["-f", number, "-l", number, "-singlefile", "-gray", "-scale-to", "2400", input, prefix], token);
+                    await ReadPageAsync(directory, prefix + ".pgm", text, extraPasses: elapsed.Elapsed < ExtraPassesUntil, token);
                 }
-                var output = Path.Combine(directory, "ocr");
-                await RunAsync("tesseract", [image, output, "-l", "ita+eng", "--psm", "3"], token);
-                text.AppendLine(await ReadTextAsync(output + ".txt", token));
+                else
+                {
+                    // A single photo sent as such by an older client: read as it is.
+                    var output = Path.Combine(directory, "ocr");
+                    await RunAsync("tesseract", [input, output, "-l", "ita+eng", "--psm", "3"], token);
+                    text.AppendLine(await ReadTextAsync(output + ".txt", token));
+                }
                 if (text.Length > MaxTextBytes) throw new InvalidDataException("APE text exceeds limit.");
             }
             return text.ToString();
@@ -64,6 +81,39 @@ internal static class ApeOcrReader
         {
             try { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
             finally { if (acquired) Workers.Release(); }
+        }
+    }
+
+    /// <summary>One page in gray: as it is, as its negative, then zone by zone around the labels the two readings found.</summary>
+    private static async Task ReadPageAsync(string directory, string pagePath, StringBuilder text, bool extraPasses, CancellationToken token)
+    {
+        var plain = Path.Combine(directory, "plain");
+        await RunAsync("tesseract", [pagePath, plain, "-l", "ita+eng", "--psm", "3", "-c", "thresholding_method=2", "txt", "tsv"], token);
+        text.AppendLine(await ReadTextAsync(plain + ".txt", token));
+        if (!extraPasses)
+            return;
+
+        if (!File.Exists(pagePath) || new FileInfo(pagePath).Length > MaxPageImageBytes)
+            throw new InvalidDataException("Unreadable APE page image.");
+        var page = GrayImage.Read(await File.ReadAllBytesAsync(pagePath, token));
+        var negativePath = Path.Combine(directory, "negative.pgm");
+        await File.WriteAllBytesAsync(negativePath, page.Negated().ToPgm(), token);
+        var negative = Path.Combine(directory, "negative");
+        await RunAsync("tesseract", [negativePath, negative, "-l", "ita+eng", "--psm", "11", "txt", "tsv"], token);
+        text.AppendLine(await ReadTextAsync(negative + ".txt", token));
+
+        var words = OcrWord.ParseTsv(await ReadTextAsync(plain + ".tsv", token))
+            .Concat(OcrWord.ParseTsv(await ReadTextAsync(negative + ".tsv", token)));
+        var index = 0;
+        foreach (var (left, top, right, bottom) in ApeAnchors.Boxes(words))
+        {
+            if (page.Crop(left, top, right, bottom) is not { } zone)
+                continue;
+            var zonePath = Path.Combine(directory, $"zone{index++}.pgm");
+            await File.WriteAllBytesAsync(zonePath, zone.ToPgm(), token);
+            var output = Path.Combine(directory, "zone");
+            await RunAsync("tesseract", [zonePath, output, "-l", "ita+eng", "--psm", "6"], token);
+            text.AppendLine(await ReadTextAsync(output + ".txt", token));
         }
     }
 
