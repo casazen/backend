@@ -213,8 +213,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             RemoveAllOf<IApeComplianceService>(services);
             var ape = new Mock<IApeComplianceService>();
             ape.Setup(s => s.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).Returns(Task.CompletedTask);
-            ape.Setup(s => s.EnsureUploadedFileIsOfficialApeAsync(It.IsAny<IFormFile>()))
-                .Returns(Task.CompletedTask);
+            ape.Setup(s => s.CheckUploadedApeAsync(It.IsAny<IFormFile>()))
+                .ReturnsAsync(ApeUploadCheck.Passed);
             services.AddSingleton(ape.Object);
         });
     }

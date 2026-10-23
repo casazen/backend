@@ -832,9 +832,12 @@ public class PropertiesController(
     /// <param name="id">The unique identifier of the property.</param>
     /// <param name="file">The document file to upload.</param>
     /// <param name="documentType">The document type (e.g. <c>CinCertificate</c>, <c>FloorPlan</c>).</param>
-    /// <returns>The created <see cref="PropertyDocumentDto"/>.</returns>
+    /// <returns>
+    /// The created <see cref="PropertyDocumentDto"/>; for an APE with <c>apeCheck</c> (and <c>apeUnreadFields</c>): a certificate the
+    /// automatic reading could not read whole is stored all the same, and the landlord confirms it by typing its code and class.
+    /// </returns>
     /// <response code="201">Document uploaded successfully.</response>
-    /// <response code="400">Invalid document type value.</response>
+    /// <response code="400">Invalid document type value; for an APE, a file that is not a PDF/JPEG/PNG, unreadable or expired.</response>
     /// <response code="401">The caller is not authenticated.</response>
     /// <response code="403">The caller does not own this property.</response>
     /// <response code="404">No property found with the given <paramref name="id"/>.</response>
@@ -866,8 +869,14 @@ public class PropertiesController(
 
         try
         {
-            var document = await documentService.UploadDocumentAsync(id, file, docType, userId);
-            return CreatedAtAction(nameof(GetDocuments), new { id }, ToDocumentDto(document));
+            var upload = await documentService.UploadDocumentAsync(id, file, docType, userId);
+            var dto = ToDocumentDto(upload.Document);
+            if (upload.ApeCheck is { } check)
+            {
+                dto.ApeCheck = check.Outcome;
+                dto.ApeUnreadFields = [.. check.UnreadFields.Select(field => HttpContext.RequestServices.GetRequiredService<IStringLocalizer<SharedResources>>()[$"ApeField_{field}"].Value)];
+            }
+            return CreatedAtAction(nameof(GetDocuments), new { id }, dto);
         }
         catch (ApeComplianceException ex)
         {
