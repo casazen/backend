@@ -451,7 +451,7 @@ The receipt is served only by `GET /api/leases/{id}/rli/questura/receipt` (`leas
 ### Reminders (same job `rli-deadline-reminder`, daily 08:00 UTC)
 
 For every lease with an extra-EU tenant, in any status except `Rejected` (**registered leases included**), not ended
-yet (`EndDate` ≥ today) and not declared. Same threshold logic as the RLI deadline: only the most urgent threshold
+yet (`CurrentTermEndDate` ≥ today, LR-14: the end of the period the lease is in) and not declared. Same threshold logic as the RLI deadline: only the most urgent threshold
 reached today, once per deadline, recorded as `DeadlineReminderSent` with payload `{threshold}:{deadline}` only when the
 email was accepted; a changed delivery date starts its own thresholds. Thresholds are a product choice:
 
@@ -481,7 +481,7 @@ Four nullable columns on `LeaseContracts`, no data change. Consequences:
 -- Active leases with an extra-EU tenant and no declared Questura communication
 SELECT l."Id", l."Status", l."StartDate", l."PropertyDeliveryDate"
 FROM casazen_prod."LeaseContracts" l
-WHERE l."Status" <> 7 AND l."QuesturaCommunicationDate" IS NULL AND l."EndDate" >= now()
+WHERE l."Status" <> 7 AND l."QuesturaCommunicationDate" IS NULL AND l."CurrentTermEndDate" >= now()
   AND EXISTS (SELECT 1 FROM casazen_prod."Parties" p
               WHERE p."LeaseContractId" = l."Id" AND p."Role" = 1 AND p."IsExtraEU");
 

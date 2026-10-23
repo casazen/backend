@@ -1680,6 +1680,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime>("CurrentTermEndDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("DraftData")
                         .HasColumnType("text");
 
@@ -1705,6 +1708,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal>("MonthlyRent")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("NoticeFrom")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("NoticeOn")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
@@ -1768,6 +1777,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("TaxRegime")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("TerminatedOn")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1781,6 +1793,8 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("PropertyId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("OrgId", "CurrentTermEndDate");
 
                     b.ToTable("LeaseContracts");
                 });

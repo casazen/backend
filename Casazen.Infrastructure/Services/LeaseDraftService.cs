@@ -311,7 +311,7 @@ public sealed class LeaseDraftService(
                         && l.Status != LeaseStatus.Rejected
                         && (l.Status != LeaseStatus.Draft || l.SentForSignatureAt != null)
                         && l.StartDate <= to
-                        && l.EndDate >= from,
+                        && l.CurrentTermEndDate >= from,
                     cancellationToken);
         }
 

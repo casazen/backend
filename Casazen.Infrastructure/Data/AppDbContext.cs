@@ -530,6 +530,10 @@ public class AppDbContext(
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.PropertyId);
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.Status);
 
+        // LR-14: what is asked of the leases of an org is asked of the end of the period they are in now (the lists, the deadlines, the
+        // occupancy of a property, the tacit renewal job), never of the end the contract states.
+        modelBuilder.Entity<LeaseContract>().HasIndex(l => new { l.OrgId, l.CurrentTermEndDate });
+
         // Party → LeaseContract (cascade)
         modelBuilder.Entity<Party>()
             .HasOne(p => p.LeaseContract)
