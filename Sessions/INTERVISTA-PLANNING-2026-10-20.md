@@ -38,3 +38,9 @@ Prossimo lavoro: confronto della v10 con il codice corrente e backlog del pilota
 ## Pulizia autorizzata dal PO
 
 Cancellare il precedente piano AI assistants con task e domande correlati e tutte le specifiche della raccolta Sessions. Focus attuale esclusivo sul pilota Quokka; eventuale analisi assistants da rifare in futuro.
+
+## Aggiornamento del 23 ottobre: fase 1
+
+- Il PO ha chiesto di separare e sviluppare subito le parti della v10 che non dipendono da fornitori terzi: sono i [requisiti della fase 1](prospect-quokka360/requisiti-fase1-helix.md), da fornire a Helix.
+- **Channel management fuori dalla fase 1**: punto ancora aperto, il PO deve capire cosa offrirà il fornitore. La specifica Octorate ([PR #558](https://github.com/casazen/backend/pull/558)) resta separata.
+- Le domande della fase 1 hanno un default proposto (sezione 6 dei requisiti); l'unica bloccante è da dove arrivano gli importi delle prenotazioni OTA per i rendiconti.

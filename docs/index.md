@@ -13,6 +13,7 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 | Lavorare sul mobile | [Repository mobile](https://github.com/casazen/mobile) e [runbook rilascio](runbooks/mobile-release.md) |
 | Configurare o diagnosticare una funzione | [Indice runbook](runbooks/index.md) |
 | Preparare un deploy | [Checklist](runbooks/deploy-checklist.md), [health check](runbooks/health-checks.md), [infrastruttura](INFRA.md) |
+| Seguire il pilota Quokka | [Planning](../Sessions/PLANNING.md), poi i [requisiti della fase 1 in sviluppo](../Sessions/prospect-quokka360/requisiti-fase1-helix.md) |
 
 ## Struttura
 
@@ -40,7 +41,7 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 - Affitti lunghi: [bozza guidata](runbooks/long-rent-lease-draft.md), [RLI](runbooks/rli.md), [template contratti](runbooks/lease-contract-templates.md).
 - Fornitori: [profili e richieste](runbooks/suppliers.md).
 
-Alloggiati è attualmente un flusso di preparazione e invio manuale; un obiettivo di automazione nel pilota non modifica lo stato del connettore consegnato. Verificare sempre esiti e ricevute, non soltanto la generazione di un file.
+Alloggiati è attualmente un flusso di preparazione e invio manuale. L'invio automatico è in sviluppo per il pilota (Q1-14 dei [requisiti della fase 1](../Sessions/prospect-quokka360/requisiti-fase1-helix.md)): finché non è rilasciato non modifica lo stato del connettore consegnato. Verificare sempre esiti e ricevute, non soltanto la generazione di un file.
 
 ## Mantenimento
 
