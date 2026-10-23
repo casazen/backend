@@ -87,13 +87,20 @@ public class PropertyDocumentDto
     public string DownloadUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// Only in the answer of an APE upload: what the automatic reading found (<c>Verified</c>, <c>Incomplete</c>,
-    /// <c>NotRecognized</c>, <c>NotChecked</c>, see <see cref="Casazen.Core.Services.ApeUploadCheck"/>); null in every other answer.
+    /// Only in the answer of an APE upload or reading (<c>POST .../ape/read</c>): what the automatic reading found (<c>Verified</c>,
+    /// <c>Incomplete</c>, <c>NotRecognized</c>, <c>NotChecked</c>, <c>Expired</c> on a reading, see
+    /// <see cref="Casazen.Core.Services.ApeUploadCheck"/>); null in every other answer.
     /// </summary>
     public string? ApeCheck { get; set; }
 
     /// <summary>Only with <see cref="ApeCheck"/> <c>Incomplete</c>: the data that were not read, in words of the request language.</summary>
     public IReadOnlyList<string>? ApeUnreadFields { get; set; }
+
+    /// <summary>
+    /// Only with <see cref="ApeCheck"/>: where <see cref="ApeCode"/> came from when it was found automatically, <c>Document</c> (read
+    /// on the file) or <c>Registry</c> (the public register of the region, the file did not show it legibly); null otherwise.
+    /// </summary>
+    public string? ApeIdentificationSource { get; set; }
 }
 
 public class OtaIntegrationSummaryDto

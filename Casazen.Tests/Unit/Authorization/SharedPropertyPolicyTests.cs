@@ -34,6 +34,8 @@ public class SharedPropertyPolicyTests
         "PropertiesController.GetById",
         "PropertiesController.GetDocumentSignedUrl",
         "PropertiesController.GetDocuments",
+        // The code and the class read again from a stored APE (and the register of Lombardy): they belong to the property core.
+        "PropertiesController.ReadApeIdentification",
         "PropertiesController.Update",
         // LT-10: the lease contract needs the cadastral data of the unit and the APE code and class (property core).
         "PropertiesController.UpdateApeIdentification",

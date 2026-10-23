@@ -15,15 +15,27 @@ public interface IApeComplianceService
     /// Reads an APE being uploaded (OCR for images and scanned PDFs). Throws only for a file that cannot be a certificate still in
     /// force: not a PDF/JPEG/PNG, unreadable, or expired by the date read on it. A certificate whose data could not all be read (a
     /// photo, a photocopy, a regional model the reader does not know, the reader not available) is accepted: the answer says what
-    /// was not read, and the landlord confirms the certificate by typing its code and energy class.
+    /// was not read. It also gives the code and the energy class read on the file; a code that cannot be read is asked to the public
+    /// register of the region (<see cref="IApeRegistryLookup"/>, Lombardy) with the comune of <paramref name="context"/> and the
+    /// index read on the file.
     /// </summary>
-    Task<ApeUploadCheck> CheckUploadedApeAsync(IFormFile file);
+    Task<ApeUploadCheck> CheckUploadedApeAsync(IFormFile file, ApeRegistryContext? context = null);
+
+    /// <summary>
+    /// Reads again an APE already stored (one uploaded before its code and class were read, or confirmed by hand): the same reading
+    /// and register as <see cref="CheckUploadedApeAsync"/>, without refusing anything (<c>Expired</c> is an outcome here).
+    /// </summary>
+    Task<ApeUploadCheck> ReadStoredApeAsync(Stream content, ApeRegistryContext? context = null, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Where the property of an APE is: the comune (as the register writes it) and CasaZen's code of its region (<c>LOM</c>).</summary>
+public sealed record ApeRegistryContext(string? Comune, string? RegionCode);
 
 /// <summary>What the automatic reading of an uploaded APE found.</summary>
 /// <param name="Outcome">
 /// <c>Verified</c> (every field read), <c>Incomplete</c> (recognised, some fields not read: <paramref name="UnreadFields"/>),
-/// <c>NotRecognized</c> (the title of an APE was not found) or <c>NotChecked</c> (the reader is not available).
+/// <c>NotRecognized</c> (the title of an APE was not found), <c>NotChecked</c> (the reader is not available) or, only when a
+/// stored APE is read again, <c>Expired</c>.
 /// </param>
 /// <param name="UnreadFields">The fields not read, as the inspector names them (<c>CertificateCode</c>, <c>ExpiryDate</c>, ...).</param>
 public sealed record ApeUploadCheck(string Outcome, IReadOnlyList<string> UnreadFields)
@@ -32,8 +44,24 @@ public sealed record ApeUploadCheck(string Outcome, IReadOnlyList<string> Unread
     public const string Incomplete = "Incomplete";
     public const string NotRecognized = "NotRecognized";
     public const string NotChecked = "NotChecked";
+    public const string Expired = "Expired";
+
+    /// <summary>The code came from the file itself.</summary>
+    public const string FromDocument = "Document";
+
+    /// <summary>The code came from the public register (the file did not show it legibly).</summary>
+    public const string FromRegistry = "Registry";
 
     public static ApeUploadCheck Passed { get; } = new(Verified, []);
+
+    /// <summary>The identification code found (on the file or in the register); null when none was.</summary>
+    public string? CertificateCode { get; init; }
+
+    /// <summary>The energy class found (A4...G); null when none was.</summary>
+    public string? EnergyClass { get; init; }
+
+    /// <summary>Where <see cref="CertificateCode"/> came from: <see cref="FromDocument"/> or <see cref="FromRegistry"/>.</summary>
+    public string? CodeSource { get; init; }
 }
 
 public sealed class ApeComplianceException : InvalidOperationException
