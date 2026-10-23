@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -48,15 +49,22 @@ internal sealed class PropertyModeHarness : IDisposable
     /// <summary>The given day of October 2026, midnight UTC (negative or past 31: the days around it).</summary>
     public static DateTime Day(int day) => new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(day - 1);
 
-    /// <summary>A service on another context over the same database, as a second request or a second job run would have.</summary>
-    public PropertyModeService NewService(AppDbContext db) =>
+    /// <summary>
+    /// A service on another context over the same database, as a second request or a second job run would have. The activity log is
+    /// required (every host has it); the default is the one of <paramref name="db"/>.
+    /// </summary>
+    public PropertyModeService NewService(AppDbContext db, IActivityLog? activityLog = null) =>
         new(
             db,
             new ConfigurationBuilder().Build(),
             Compliance.Object,
             Notifications.Object,
+            activityLog ?? ActivityLogFor(db),
             NullLogger<PropertyModeService>.Instance,
             Clock);
+
+    /// <summary>The activity log writer of AM-02c on <paramref name="db"/>.</summary>
+    public ActivityLog ActivityLogFor(AppDbContext db) => new(db, Clock);
 
     public AppDbContext SecondContext() => new(DbOptions);
 

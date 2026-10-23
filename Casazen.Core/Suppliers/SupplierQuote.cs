@@ -34,7 +34,7 @@ public enum SupplierQuoteReason
     OutsideArea = 4,
 }
 
-/// <summary>The two kinds of line of an estimate.</summary>
+/// <summary>The kinds of line of an estimate.</summary>
 public enum SupplierQuoteLineKind
 {
     /// <summary>The base price of the service (the "from" price times the quantity of its unit).</summary>
@@ -42,13 +42,26 @@ public enum SupplierQuoteLineKind
 
     /// <summary>A supplement of the service.</summary>
     Supplement = 1,
+
+    /// <summary>
+    /// The surcharge of an urgent request (SP-04c): one line, once, only when the customer asked for an urgent slot and the surcharge is
+    /// above zero. The clients write their own text for this kind (<see cref="SupplierQuoteLabels.Urgent"/> is the fallback).
+    /// </summary>
+    Urgent = 2,
+}
+
+/// <summary>The fixed labels of the lines of an estimate that are not written by the supplier.</summary>
+public static class SupplierQuoteLabels
+{
+    /// <summary>The label of the surcharge line of an urgent request (<see cref="SupplierQuoteLineKind.Urgent"/>).</summary>
+    public const string Urgent = "Urgenza";
 }
 
 /// <summary>
 /// One line of an estimate: <c>quantity × unitAmountCents = amountCents</c>, always (integer cents, nothing is rounded).
 /// </summary>
-/// <param name="Kind">Base price or supplement.</param>
-/// <param name="Code">The supplement's code; <c>null</c> for the base price.</param>
+/// <param name="Kind">Base price, supplement or the surcharge of an urgent request.</param>
+/// <param name="Code">The supplement's code; <c>null</c> for the base price and the urgent surcharge.</param>
 /// <param name="Label">What the customer reads: the name of the service or the supplement's label, as the supplier wrote them.</param>
 /// <param name="Per">The unit of a supplement (<see cref="SupplierServiceSupplementUnits"/>); <c>null</c> for the base price.</param>
 public sealed record SupplierQuoteLine(
@@ -92,12 +105,17 @@ public sealed record SupplierQuote(
 /// <param name="Options">The supplements picked (by code). A <c>sqm30</c> supplement is not picked: it follows the surface.</param>
 /// <param name="Comune">Where the work is: an ISTAT code or the name of the comune. The supplier covers comuni, not postal codes.</param>
 /// <param name="PostalCode">Five digits; checked for its shape and echoed, it does not decide the coverage.</param>
+/// <param name="Urgent">
+/// The customer asks for an urgent slot (SP-04c): the estimate gets the surcharge of the service as one more line. Refused (422, field
+/// <c>urgent</c>) for a service that does not offer urgent requests. <c>false</c> is the estimate every client got before.
+/// </param>
 public sealed record SupplierQuoteRequest(
     int? Quantity,
     int? SurfaceSqm,
     IReadOnlyList<SupplierQuoteOption?>? Options,
     string? Comune,
-    string? PostalCode);
+    string? PostalCode,
+    bool Urgent = false);
 
 /// <summary>A supplement the customer picked: its <paramref name="Code"/> and how many units (default 1).</summary>
 public sealed record SupplierQuoteOption(string? Code, int? Quantity);
@@ -110,12 +128,14 @@ public sealed record SupplierQuotePick(SupplierServiceSupplement Supplement, int
 /// codes resolved to the service's supplements, the place ready for the coverage check.
 /// </summary>
 /// <param name="Place">The comune to check against the supplier's zones; <c>null</c> when the request named none.</param>
+/// <param name="Urgent">The customer asked for an urgent slot and the service offers it (SP-04c).</param>
 public sealed record SupplierQuoteChoices(
     int? Quantity,
     int? SurfaceSqm,
     IReadOnlyList<SupplierQuotePick> Picks,
     ComuneTarget? Place,
-    string? PostalCode);
+    string? PostalCode,
+    bool Urgent = false);
 
 /// <summary>
 /// Names of the fields of a quote request, as the client sends them (what a 422 <c>supplier_quote_invalid</c> lists in
@@ -129,6 +149,7 @@ public static class SupplierQuoteFields
     public const string Options = "options";
     public const string Comune = "comune";
     public const string PostalCode = "postalCode";
+    public const string Urgent = "urgent";
 }
 
 /// <summary>

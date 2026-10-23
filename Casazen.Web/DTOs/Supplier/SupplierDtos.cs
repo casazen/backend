@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Suppliers;
 
 namespace Casazen.Web.DTOs.Supplier;
 
@@ -293,6 +295,19 @@ public class GetSuppliersQuery
     public string? Comune { get; set; }
     public Guid? PropertyId { get; set; }
     public string? Category { get; set; }
+
+    /// <summary>
+    /// Words to look for (SR-09a): every word must be in the legal name of the supplier, in one of its category codes or in the
+    /// name of one of its published services, whatever the case. Blank is no filter.
+    /// </summary>
+    public string? Q { get; set; }
+
+    /// <summary>
+    /// The order of the list (SR-09a): <c>name</c> (default), <c>price</c> (the lowest "from" price first, suppliers without a
+    /// price last) or <c>response</c> (the fastest measured response first, suppliers without one last). Anything else is 400
+    /// <c>supplier_list_invalid_sort</c>.
+    /// </summary>
+    public string? Sort { get; set; }
 }
 
 public class SupplierPickerDto
@@ -307,6 +322,35 @@ public class SupplierPickerDto
     public IEnumerable<string> Comuni { get; set; } = [];
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
+
+    // ─── SR-09a: what a host weighs when it chooses a supplier (additive: nothing above changed) ───
+
+    /// <summary>
+    /// The first published services of the supplier in its own order, at most <see cref="SupplierPickerLimits.MaxServices"/>. Empty
+    /// when it has none (and on the long-rent search, which does not read the catalog).
+    /// </summary>
+    public IEnumerable<SupplierPickerServiceDto> Services { get; set; } = [];
+
+    /// <summary>The lowest "from" price in euro cents among all its published services; <c>null</c> when none has a price.</summary>
+    public int? PriceFromCents { get; set; }
+
+    /// <summary>What <see cref="PriceFromCents"/> is for (<c>PerJob</c>, <c>PerHour</c>, <c>PerSet</c>, <c>PerSquareMeter</c>); <c>null</c> without a price.</summary>
+    public SupplierServicePriceUnit? PriceFromUnit { get; set; }
+
+    /// <summary>
+    /// The typical time the supplier takes to answer, in minutes: the median of the requests it took in the last 90 days, the rule of
+    /// its public showcase. <c>null</c> until it is measured (at least five requests): it is never written by hand.
+    /// </summary>
+    public int? MedianResponseMinutes { get; set; }
+
+    /// <summary>
+    /// The "Verificato" badge: an active profile with a VAT number (<see cref="SupplierVerification.IsProfileVerified"/>). Only the
+    /// boolean is sent, never the VAT number; it does not depend on the Stripe account.
+    /// </summary>
+    public bool Verified { get; set; }
+
+    /// <summary>The address of the public showcase (<c>/fornitori/{slug}</c>); <c>null</c> when the supplier has none published.</summary>
+    public string? ShowcaseSlug { get; set; }
 
     /// <summary>
     /// The supplier as a host sees it when choosing one (short-rent and long-rent search alike). <c>comuni</c> lists the names
@@ -323,6 +367,58 @@ public class SupplierPickerDto
         Comuni = SupplierComuniView.Names(sp, listed),
         Bio = sp.Bio,
         PhotoUrls = JsonSerializer.Deserialize<IEnumerable<string>>(sp.PhotoUrlsJson, JsonOpts) ?? [],
+        Verified = SupplierVerification.IsProfileVerified(sp.Status, sp.VatNumber),
+        ShowcaseSlug = string.IsNullOrWhiteSpace(sp.ShowcaseSlug) ? null : sp.ShowcaseSlug,
+    };
+
+    /// <summary>
+    /// The same picker entry with what the marketplace adds (SR-09a):
+    /// <paramref name="services"/> are all the published services of the supplier in its order (the first
+    /// <see cref="SupplierPickerLimits.MaxServices"/> are listed, the "from" price is the lowest of all of them) and
+    /// <paramref name="medianResponseMinutes"/> its measured response time, <c>null</c> when it has none.
+    /// </summary>
+    public static SupplierPickerDto From(
+        SupplierProfile sp,
+        IReadOnlyDictionary<string, Comune>? listed,
+        IReadOnlyList<SupplierPickerService> services,
+        int? medianResponseMinutes)
+    {
+        var dto = From(sp, listed);
+        var cheapest = services.Where(s => s.PriceFromCents is not null).OrderBy(s => s.PriceFromCents).FirstOrDefault();
+
+        dto.Services = services.Take(SupplierPickerLimits.MaxServices).Select(SupplierPickerServiceDto.From).ToList();
+        dto.PriceFromCents = cheapest?.PriceFromCents;
+        dto.PriceFromUnit = cheapest?.PriceUnit;
+        dto.MedianResponseMinutes = medianResponseMinutes;
+        return dto;
+    }
+}
+
+/// <summary>A published service of a supplier in the picker of the marketplace (SR-09a): see <see cref="SupplierPickerService"/>.</summary>
+public class SupplierPickerServiceDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public int? DurationMinutes { get; set; }
+
+    /// <summary>The "from" price in euro cents; <c>null</c> is "on quote".</summary>
+    public int? PriceFromCents { get; set; }
+
+    /// <summary><c>PerJob</c>, <c>PerHour</c>, <c>PerSet</c> or <c>PerSquareMeter</c>.</summary>
+    public SupplierServicePriceUnit PriceUnit { get; set; }
+
+    public bool RequiresQuote { get; set; }
+
+    public static SupplierPickerServiceDto From(SupplierPickerService service) => new()
+    {
+        Id = service.Id,
+        Name = service.Name,
+        Category = service.Category,
+        DurationMinutes = service.DurationMinutes,
+        PriceFromCents = service.PriceFromCents,
+        PriceUnit = service.PriceUnit,
+        RequiresQuote = service.RequiresQuote,
     };
 }
 
@@ -626,6 +722,6 @@ public class SupplierShowcasePreviewDto
     /// <summary>Absolute URL on <c>App:PublicSiteBaseUrl</c>; null when the slug or the public URL is not configured.</summary>
     public string? PublicUrl { get; set; }
 
-    /// <summary>Always false in v0: the public page is <c>noindex</c> and in <c>robots.txt</c>.</summary>
+    /// <summary>True when the public page is published and indexed (it has a category or a text).</summary>
     public bool Indexable { get; set; }
 }

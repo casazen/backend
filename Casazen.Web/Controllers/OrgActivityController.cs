@@ -1,6 +1,5 @@
 using System.Globalization;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -15,12 +14,11 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The activity log of the caller's org (AM-02b): who did what, in a short list with ids and codes and no personal data, and
 /// the same list as a CSV. For the people who hold <c>org.activity.read</c> (the owner and the administrators, policy
-/// <see cref="CasazenPolicies.OrgActivityRead"/>); behind the <c>OrgTeam</c> flag: 404 while it is off. The org is always
-/// the caller's own (read from its account), never a value of the request. Runbook <c>docs/runbooks/org-team.md</c>.
+/// <see cref="CasazenPolicies.OrgActivityRead"/>). The org is always the caller's own (read from its account), never a value
+/// of the request. Runbook <c>docs/runbooks/org-team.md</c>.
 /// </summary>
 [ApiController]
 [Route("api/orgs/me")]
-[FeatureGate(FeatureFlags.OrgTeam)]
 [Authorize(Policy = CasazenPolicies.OrgActivityRead)]
 public class OrgActivityController(
     IOrgActivityService activity,

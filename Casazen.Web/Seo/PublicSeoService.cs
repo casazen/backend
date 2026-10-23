@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -7,9 +8,11 @@ using Casazen.Core.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
@@ -39,7 +42,8 @@ public sealed class PublicSeoService(
     PublicSiteLinks links,
     PublicOrgSiteUrls urls,
     IStringLocalizer<SharedResources> localizer,
-    IFeatureFlags featureFlags) : IPublicSeoService
+    IFeatureFlags featureFlags,
+    IComuneDirectory comuneDirectory) : IPublicSeoService
 {
     /// <summary>Brand of the platform pages (<c>og:site_name</c>, publisher of the guides).</summary>
     public const string PlatformName = "CasaZen";
@@ -287,6 +291,119 @@ public sealed class PublicSeoService(
             BodyHtml = body.ToString(),
         });
     }
+
+    public async Task<SeoPageResult> RenderSupplierAsync(string slug, CancellationToken cancellationToken = default)
+    {
+        var normalized = SupplierShowcaseSlug.Normalize(slug);
+        if (!SupplierShowcaseSlug.IsLookupable(normalized, PublicShowcaseLimits.SlugMaxLength))
+            return NotFound();
+
+        // Same rule as the public API: only an Active supplier; pending, suspended and unknown are one 404.
+        var profile = await db.SupplierProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.ShowcaseSlug == normalized && p.Status == SupplierStatus.Active, cancellationToken);
+        if (profile is null)
+            return NotFound();
+
+        if (!string.Equals(slug, normalized, StringComparison.Ordinal))
+            return Moved(PublicSitePaths.SupplierShowcase(normalized));
+
+        var listed = await comuneDirectory.GetByIstatCodesAsync(SupplierComuniView.IstatCodes(profile), cancellationToken);
+        var name = SeoHtml.Collapse(profile.LegalName);
+        var categories = ReadStrings(profile.CategoriesJson).Select(SupplierCategoryLabel).ToList();
+        var comuni = SupplierComuniView.Names(profile, listed);
+        var photos = ReadStrings(profile.PhotoUrlsJson).Select(SeoHtml.TryHttpsUrl).OfType<string>().Take(MaxImages).ToList();
+        var canonical = links.TryPublicPage(PublicSitePaths.SupplierShowcase(normalized));
+        var bio = SeoHtml.Collapse(profile.Bio);
+
+        var body = new StringBuilder();
+        body.Append("<main>\n<article>\n<h1>").Append(SeoHtml.Encode(name)).Append("</h1>\n");
+        foreach (var photo in photos)
+        {
+            body.Append("<img src=\"").Append(SeoHtml.Encode(photo)).Append("\" alt=\"").Append(SeoHtml.Encode(name)).Append("\">\n");
+        }
+
+        body.Append(SeoHtml.Paragraphs(profile.Bio));
+        if (categories.Count > 0)
+        {
+            body.Append("<h2>").Append(SeoHtml.Encode(T("SeoSupplierServices"))).Append("</h2>\n<ul>\n");
+            foreach (var category in categories)
+                body.Append("<li>").Append(SeoHtml.Encode(category)).Append("</li>\n");
+            body.Append("</ul>\n");
+        }
+
+        if (comuni.Count > 0)
+        {
+            body.Append("<h2>").Append(SeoHtml.Encode(T("SeoSupplierAreas"))).Append("</h2>\n<ul>\n");
+            foreach (var comune in comuni)
+                body.Append("<li>").Append(SeoHtml.Encode(comune)).Append("</li>\n");
+            body.Append("</ul>\n");
+        }
+
+        body.Append("</article>\n</main>\n");
+
+        return Ok(new SeoDocument
+        {
+            Language = Language(),
+            Title = T("SeoSupplierTitle", name),
+            Description = SeoHtml.Truncate(string.IsNullOrEmpty(bio) ? SupplierDescription(name, categories, comuni) : bio),
+            CanonicalUrl = canonical,
+            // A showcase with no category and no text is as thin as a booking site without properties.
+            Indexable = SupplierHasContent(profile),
+            SiteName = PlatformName,
+            ImageUrl = photos.FirstOrDefault(),
+            JsonLd =
+            [
+                SeoJsonLd.Supplier(name, canonical, SeoHtml.Truncate(profile.Bio), photos, comuni),
+                SeoJsonLd.BreadcrumbList([(PlatformName, links.TryPublicPage("/")), (name, canonical)]),
+            ],
+            BodyHtml = body.ToString(),
+        });
+    }
+
+    public async Task<string> BuildSupplierSitemapAsync(CancellationToken cancellationToken = default)
+    {
+        links.EnsureConfigured();
+
+        var rows = await db.SupplierProfiles.AsNoTracking()
+            .Where(p => p.Status == SupplierStatus.Active && p.ShowcaseSlug != null && p.ShowcaseSlug != "")
+            .OrderBy(p => p.ShowcaseSlug)
+            .Take(SeoSitemaps.MaxEntries)
+            .Select(p => new { p.ShowcaseSlug, p.CategoriesJson, p.Bio, p.UpdatedAt })
+            .ToListAsync(cancellationToken);
+
+        return SeoSitemaps.UrlSet(rows
+            .Where(r => ReadStrings(r.CategoriesJson).Count > 0 || !string.IsNullOrWhiteSpace(r.Bio))
+            .Select(r => (links.PublicPage(PublicSitePaths.SupplierShowcase(r.ShowcaseSlug!)), r.UpdatedAt)));
+    }
+
+    private static bool SupplierHasContent(Casazen.Core.Entities.SupplierProfile profile) =>
+        ReadStrings(profile.CategoriesJson).Count > 0 || !string.IsNullOrWhiteSpace(profile.Bio);
+
+    private static List<string> ReadStrings(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json, JsonSerializerOptions.Web) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private string SupplierCategoryLabel(string code)
+    {
+        var label = localizer[$"SeoSupplierCategory_{code}"];
+        return label.ResourceNotFound ? code : label.Value;
+    }
+
+    private string SupplierDescription(string name, IReadOnlyList<string> categories, IReadOnlyList<string> comuni) =>
+        categories.Count > 0 && comuni.Count > 0
+            ? T("SeoSupplierDescriptionFull", name, string.Join(", ", categories), string.Join(", ", comuni.Take(5)))
+            : T("SeoSupplierDescriptionBasic", name);
 
     public async Task<SeoPageResult> RenderGuideAsync(string regionSlug, string comuneSlug, CancellationToken cancellationToken = default)
     {

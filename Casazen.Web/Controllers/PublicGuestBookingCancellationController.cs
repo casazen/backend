@@ -19,9 +19,11 @@ public class PublicGuestBookingCancellationController(
 {
     /// <summary>
     /// Verifies the signed one-time token and, if valid, cancels the booking with the refund dictated by the
-    /// property's cancellation policy (base = stay price excluding tourist tax, no CasaZen floor). The token is
-    /// consumed on success and not usable again. Invalid or expired tokens → 422; booking not found → 404;
-    /// concurrent payment in progress → 409.
+    /// property's cancellation policy (base = stay price excluding tourist tax, no CasaZen floor). The link is spent by
+    /// the cancellation that succeeds; an error leaves it usable until it expires. A booking already cancelled (by the
+    /// host, or by an earlier or simultaneous click of the same link) answers 200 with that cancellation's outcome,
+    /// however many times the link is used, and refunds nothing again. Invalid or expired tokens → 422; booking not
+    /// found → 404; concurrent payment in progress → 409.
     /// </summary>
     [HttpPost("{id:guid}/cancel")]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]

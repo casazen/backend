@@ -4,7 +4,7 @@ Chiusura del piano di risanamento nato dall'audit del 2026-09-23 ([`../audit-202
 
 **Come leggere "fatto".** Significa: codice e test sul branch di integrazione `claude/sleepy-edison-oil8ru` (o già su `develop` per la prima ondata). **Non** significa "in produzione" né "provato su un ambiente reale": le configurazioni dei servizi esterni (Auth0, Stripe, Supabase, Resend, Vercel, EAS) non sono state applicate da nessun agente (decisione D9) e sono elencate in [`DOMANDE-APERTE.md`](./DOMANDE-APERTE.md) § 1 e in `docs/runbooks/deploy-checklist.md`.
 
-Documenti collegati: stato per difetto in [`../PIANO-RISANAMENTO-2026-09.md`](../PIANO-RISANAMENTO-2026-09.md) § 9, stato per task in [`PIANO-ESECUZIONE.md`](./PIANO-ESECUZIONE.md), stato per spec in [`../specs/README.md`](../specs/README.md), indice dei runbook in [`../../docs/runbooks/index.md`](../../docs/runbooks/index.md).
+Documenti collegati: stato per difetto in [`../PIANO-RISANAMENTO-2026-09.md`](../PIANO-RISANAMENTO-2026-09.md) § 9, stato per task in [`PIANO-ESECUZIONE.md`](./PIANO-ESECUZIONE.md), stato per spec in specifica rimossa (storico in git), indice dei runbook in [`../../docs/runbooks/index.md`](../../docs/runbooks/index.md).
 
 ---
 
@@ -15,7 +15,6 @@ Documenti collegati: stato per difetto in [`../PIANO-RISANAMENTO-2026-09.md`](..
 | Difetti dell'audit | 335 (46 P0, 149 P1, 140 P2): **327 chiusi, 8 parziali, 0 aperti** (A7-30 e A8-30 si chiudono con questo task) |
 | Task del piano | 166: 163 `done` (FN-05 incluso), 3 `partial` (RS-7, CO-13, CO-22) |
 | Task aggiunti in corso d'opera | `PL14-SUBP`, `LEGAL-TEXTS`, `FIX-DEPLOYCHK`: `done` |
-| Wave 8 (assistenti AI) | 12 task `AI-01..AI-12`, tutti `pending` (solo pianificati) |
 | Prima ondata (24-25 settembre) | già su `develop`: PR casazen/backend#451, casazen/frontend#209, casazen/mobile#5 |
 | Seconda ondata (questa sessione, dal 2026-10-01) | solo su `claude/sleepy-edison-oil8ru`: backend 120 commit non-merge (43 task), frontend 60 (30 task), mobile 7 (6 task) rispetto a `origin/develop` |
 
@@ -30,7 +29,7 @@ Il conteggio dei commit è `git log --no-merges origin/develop..HEAD` nei tre re
 - **RS-1..RS-9**: ricerche su fonti ufficiali con esito in `.claude/context/regulations/` (CIN, Alloggiati, sicurezza D.L. 145/2023, Openapi.it/firma elettronica in `docs/integrations/rli-esign.md`, regole fiscali e OSS, canone concordato, ISTAT). Il dataset dei comuni ISTAT (21/02/2026, 7.894 comuni) lo ha fornito il PO. RS-7 (tariffe imposta di soggiorno) è parziale, vedi § 3.
 
 ### Fondamenta tecniche (FD) e confine tenant (TN)
-- **CI vera**: frontend con lint, typecheck, vitest e build obbligatori (FD-01, `ci-frontend.md`); backend con gate sui pacchetti vulnerabili e rimozione di SendGrid (FD-02, `ci-backend.md`); mobile con tsc ed export (FD-03); test d'integrazione su PostgreSQL reale (FD-04, nota in `AGENT-PROTOCOL.md`).
+- **CI vera**: frontend con lint, typecheck, vitest e build obbligatori (FD-01, `ci-frontend.md`); backend con gate sui pacchetti vulnerabili e rimozione di SendGrid (FD-02, `ci-backend.md`); mobile con tsc ed export (FD-03); test d'integrazione su PostgreSQL reale (FD-04, protocollo storico disponibile in git).
 - **Contratto errori e localizzazione** (FD-05, FN-01): ProblemDetails con `code` stabile e messaggi da `.resx` IT/EN; il test `SharedResourcesLocalizationTests` fa fallire una chiave mancante.
 - **Date** (FD-06): UTC normalizzato dall'infrastruttura, "oggi" in Europe/Rome (`RomeCalendar`, `CalendarTodayArchitectureTests`).
 - **File e chiavi** (FD-07): Supabase Storage con bucket pubblico e privato, chiavi DataProtection persistite (`storage.md`).
@@ -81,7 +80,6 @@ Messaggi backend su `.resx` (FN-01), rimozione di 26 file frontend morti e `knip
 - **CO-13 — web service Alloggiati non implementato (partial).** Il file tracciato è generato (be@c0f81730, fe@ee5e034); manca il client SOAP. Motivi: invio irreversibile e senza sandbox; decisioni di prodotto mancanti (stato "inviato, ricevuta in attesa", duplicati, invio automatico); il "File Unico" non è generato perché il manuale non specifica il padding. Le specifiche vengono da **copie su GitHub** dei manuali Rev. 01 del 24/01/2022 (il portale della Polizia è bloccato dalla rete): confrontare l'SHA-256 con un download ufficiale prima dell'uso (`alloggiati.md`). L'invio resta manuale (D6).
 - **CO-22 — ISTAT (#6) e Ross1000/portali regionali (#8): bloccato.** Le specifiche ufficiali non sono verificabili (`flussituristici.servizirl.it`, `regione.lombardia.it` bloccati, WSDL compreso). Nessun codice scritto, per non inventare tracciati. Cosa è noto e cosa manca: `ross1000.md` (be@0096dcec). Servono i PDF ufficiali o lo sblocco dei domini, più prerequisiti nel modello (CIR separato, residenza codificata, capogruppo, disponibilità giornaliera) e un parere sul ruolo GDPR per le credenziali.
 - **RS-7 — tariffe dell'imposta di soggiorno non verificate alla fonte (partial).** I domini dei comuni sono bloccati: i dati vengono da estratti di ricerca, livello U/D/T riga per riga in `.claude/context/regulations/imposta_soggiorno.md` e nel CSV `Casazen.Infrastructure/Data/Seeds/tourist-tax/rates.csv`. Per Seveso e Cesano Maderno non è stata trovata alcuna imposta; Torino è da fonte terza; Bologna (percentuale) e Venezia (per gruppo catastale) richiedono il modello esteso di BK-03. Aprire i PDF ufficiali da una rete libera e confermare ogni riga prima di presentarle come ufficiali.
-- **Assistenti AI (AI-01..AI-12)**: solo piano (`docs/integrations/ai-assistants-plan.md`); partono dopo le risposte del PO alle domande della sezione 8 di DOMANDE-APERTE. Nota: i fatti OpenAI e Auth0 del piano sono estratti di ricerca non riverificati sulle pagine ufficiali (rete bloccata).
 
 ### Dipendenze esterne e decisioni che bloccano il go-live
 - **Hosting.** Il PO ha cancellato Railway (2026-10-02). Il database resta su Supabase (decisione: non SQLite/Turso, troppe dipendenze da PostgreSQL); l'analisi dell'hosting gratuito del backend è del task HOSTING ([`docs/runbooks/free-hosting-analysis.md`](../../docs/runbooks/free-hosting-analysis.md), 2026-10-02: raccomanda una VM Oracle Cloud Always Free con Docker Compose; il database free di Supabase non ha backup automatici e va coperto con `pg_dump`; Vercel Hobby non ammette uso commerciale). Decisione del PO ancora da prendere. Tutti i riferimenti a Railway in `docs/INFRA.md` e nei runbook sono storici; il merge su `develop` attiva i deploy nativi del provider, che oggi potrebbe non esistere.
@@ -105,7 +103,7 @@ Messaggi backend su `.resx` (FN-01), rimozione di 26 file frontend morti e `knip
 - § 1 azioni da fare prima del deploy (variabili, Auth0, Supabase, Hangfire, tabelle Alloggiati, CI);
 - § 2 domande per il commercialista, § 3 domande legali;
 - § 4 decisioni di prodotto per area (check-in, prenotazioni, calendario, LTR, fornitori, piattaforma, mobile, SEO);
-- § 8 domande emerse nelle sessioni di ripresa (una voce per task: PL-04, PL-05, PL-14, BK-12, BK-13, BK-14, PC-03, PC-05, PC-06, PL-13, CO-13, CO-22, FN-03, FN-04, SU-05, SU-13, FN-01, …) e le domande bloccanti AI-*.
+- § 8 domande emerse nelle sessioni di ripresa (una voce per task: PL-04, PL-05, PL-14, BK-12, BK-13, BK-14, PC-03, PC-05, PC-06, PL-13, CO-13, CO-22, FN-03, FN-04, SU-05, SU-13, FN-01, …).
 
 Le più rilevanti per sbloccare il rilascio: chiavi Stripe live e `Billing__*`, dati societari e revisione legale, periodi di conservazione GDPR, regione dei dati (tenant Auth0 EU o US), provider SDI, conferma della conversione delle org nel passaggio PL-05 e dei dati modificati da PC-06, decisione sul client Alloggiati, sblocco o PDF ufficiali per Ross1000, hosting del backend.
 

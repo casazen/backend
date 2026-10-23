@@ -1,5 +1,4 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -47,8 +46,8 @@ public sealed class QueuedInAppNotification
 /// <summary>
 /// Hangfire job that writes the in-app notifications of one event (UI-12a): resolves the <b>users</b> of the audience (the
 /// push resolves devices from the same audience), then gives each one a row <see cref="InAppNotification"/> for the delivery
-/// key of the event. Queued by <see cref="InAppNotificationPushDecorator"/> next to the push, with
-/// <c>Features:InAppNotifications</c> on. Runbook: <c>docs/runbooks/in-app-notifications.md</c>.
+/// key of the event. Queued by <see cref="InAppNotificationPushDecorator"/> next to the push.
+/// Runbook: <c>docs/runbooks/in-app-notifications.md</c>.
 /// </summary>
 /// <remarks>
 /// <para><b>Once per event and user.</b> <c>(DeliveryKey, UserId)</c> is unique. A user who already has a row for the key
@@ -66,7 +65,6 @@ public sealed class QueuedInAppNotification
 /// </remarks>
 public sealed class InAppNotificationJob(
     AppDbContext db,
-    IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<InAppNotificationJob> logger)
 {
@@ -78,14 +76,6 @@ public sealed class InAppNotificationJob(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(deliveryKey);
         ArgumentNullException.ThrowIfNull(notification);
-
-        // The flag may have been turned off between the event and this run: nothing is written while it is off.
-        if (!featureFlags.IsEnabled(FeatureFlags.InAppNotifications))
-        {
-            logger.LogInformation(
-                "In-app notification {Type} (key {DeliveryKey}) skipped: {Flag} is off", notification.Type, deliveryKey, FeatureFlags.InAppNotifications);
-            return;
-        }
 
         var occurredAt = notification.OccurredAt == default
             ? timeProvider.GetUtcNow().UtcDateTime

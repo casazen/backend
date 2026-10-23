@@ -289,6 +289,16 @@ public class UpdatePropertyRequestTests
     [InlineData("""{ "damageDeposit": 50000.01 }""", nameof(UpdatePropertyRequest.DamageDeposit))]
     [InlineData("""{ "timezone": "Mars/Olympus" }""", nameof(UpdatePropertyRequest.Timezone))]
     [InlineData("""{ "houseRules": "x" }""", null)]
+    [InlineData("""{ "minNights": 0 }""", nameof(UpdatePropertyRequest.MinNights))]
+    [InlineData("""{ "minNights": 31 }""", nameof(UpdatePropertyRequest.MinNights))]
+    [InlineData("""{ "minNights": -2 }""", nameof(UpdatePropertyRequest.MinNights))]
+    [InlineData("""{ "weekendSurchargePercent": -1 }""", nameof(UpdatePropertyRequest.WeekendSurchargePercent))]
+    [InlineData("""{ "weekendSurchargePercent": 100.5 }""", nameof(UpdatePropertyRequest.WeekendSurchargePercent))]
+    [InlineData("""{ "minNights": null }""", null)]
+    [InlineData("""{ "minNights": 1 }""", null)]
+    [InlineData("""{ "minNights": 30 }""", null)]
+    [InlineData("""{ "weekendSurchargePercent": 100 }""", null)]
+    [InlineData("""{ "weekendSurchargePercent": 0 }""", null)]
     public void Validate_SentFields_AreValidatedAndAbsentOnesAreNot(string json, string? invalidMember)
     {
         var request = Read(json);
@@ -363,29 +373,6 @@ public class UpdatePropertyRequestTests
         Assert.Equal(0m, property.WeekendSurchargePercent);
     }
 
-    [Theory]
-    [InlineData("""{ "minNights": 0 }""", nameof(UpdatePropertyRequest.MinNights))]
-    [InlineData("""{ "minNights": 31 }""", nameof(UpdatePropertyRequest.MinNights))]
-    [InlineData("""{ "minNights": -2 }""", nameof(UpdatePropertyRequest.MinNights))]
-    [InlineData("""{ "weekendSurchargePercent": -1 }""", nameof(UpdatePropertyRequest.WeekendSurchargePercent))]
-    [InlineData("""{ "weekendSurchargePercent": 100.5 }""", nameof(UpdatePropertyRequest.WeekendSurchargePercent))]
-    [InlineData("""{ "minNights": null }""", null)]
-    [InlineData("""{ "minNights": 1 }""", null)]
-    [InlineData("""{ "minNights": 30 }""", null)]
-    [InlineData("""{ "weekendSurchargePercent": 100 }""", null)]
-    [InlineData("""{ "weekendSurchargePercent": 0 }""", null)]
-    public void Validate_StayRules_AreBoundedAndNullIsAllowed(string json, string? invalidMember)
-    {
-        var request = Read(json);
-        var results = new List<ValidationResult>();
-
-        Validator.TryValidateObject(request, new ValidationContext(request), results, validateAllProperties: true);
-
-        if (invalidMember is null)
-            Assert.Empty(results);
-        else
-            Assert.Contains(invalidMember, Assert.Single(results).MemberNames);
-    }
 
     [Fact]
     public void ToProperty_CreateWithStayRules_CarriesThemAndTheDefaultsChangeNothing()

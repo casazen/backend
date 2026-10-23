@@ -34,4 +34,4 @@ A showcase listing that has a lease cannot be reset (`demo_reset_blocked`): remo
 
 ## When a feature is added
 
-Update the catalog, the marker and `DemoShowcaseTests` in the same change. The requirement is in `Sessions/specs/_TEMPLATE.md` and `.claude/rules/demo-seed.md`.
+Update the catalog, the marker and `DemoShowcaseTests` in the same change. The requirement is in specifica rimossa (storico in git) and `.claude/rules/demo-seed.md`.

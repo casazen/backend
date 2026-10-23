@@ -1,5 +1,4 @@
 using System.Globalization;
-using Casazen.Core.Features;
 using Casazen.Core.Search;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Search;
@@ -12,8 +11,7 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The global search of the palette, server side (UI-13a, F13 of the redesign): <c>GET /api/search?q=&amp;limit=</c> finds, among the
-/// objects of the caller, the ones whose words begin with the words of the term. Behind <see cref="FeatureFlags.GlobalSearch"/>: off,
-/// it answers 404 like a route that does not exist, before anything is read. Runbook: <c>docs/runbooks/global-search.md</c>.
+/// objects of the caller, the ones whose words begin with the words of the term. Runbook: <c>docs/runbooks/global-search.md</c>.
 /// </summary>
 /// <remarks>
 /// <para>TN-3. There is no single policy for it: the palette searches every area of the caller, and a group is there only when the
@@ -27,7 +25,6 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/search")]
 [Authorize(Policy = CasazenPolicies.Authenticated)]
-[FeatureGate(FeatureFlags.GlobalSearch)]
 [EnableRateLimiting(RateLimitPolicies.GlobalSearch)]
 public class SearchController(
     ISearchAccessResolver accessResolver,
@@ -39,12 +36,10 @@ public class SearchController(
     /// </summary>
     /// <response code="200">The groups with results, possibly none.</response>
     /// <response code="400"><c>search_query_too_short</c> or <c>search_query_too_long</c>.</response>
-    /// <response code="404">The flag is off.</response>
     /// <response code="429"><c>rate_limited</c>.</response>
     [HttpGet]
     [ProducesResponseType(typeof(GlobalSearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<GlobalSearchResponse>> Search(
         [FromQuery] string? q,

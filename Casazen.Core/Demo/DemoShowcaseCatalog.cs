@@ -6,7 +6,7 @@ namespace Casazen.Core.Demo;
 /// <summary>
 /// The showcase a client walks through. Every feature that adds a screen, an entity or a flow a host or a guest can
 /// see adds a scenario here, in the same change, and extends <see cref="Scenarios"/>. The rule is in
-/// <c>Sessions/specs/_TEMPLATE.md</c> (Demo seed) and <c>.claude/rules/demo-seed.md</c>.
+/// <c>.claude/rules/demo-seed.md</c>.
 /// </summary>
 /// <remarks>
 /// Places use the ISTAT codes the rest of the product already treats as examples (Roma <c>058091</c>) or the official
@@ -15,7 +15,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-13.1";
+    public const string Version = "2026-10-22.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -30,6 +30,7 @@ public static class DemoShowcaseCatalog
         public const string LongStayCadastral = "long-stay-cadastral";
         public const string BookingUpcoming = "booking-upcoming";
         public const string BookingPast = "booking-past";
+        public const string BookingManualLight = "booking-manual-light";
         public const string HostInvitePending = "host-invite-pending";
         public const string HostInviteUsed = "host-invite-used";
         public const string HostInviteExpired = "host-invite-expired";
@@ -44,6 +45,7 @@ public static class DemoShowcaseCatalog
         Scenario.LongStayCadastral,
         Scenario.BookingUpcoming,
         Scenario.BookingPast,
+        Scenario.BookingManualLight,
         Scenario.HostInvitePending,
         Scenario.HostInviteUsed,
         Scenario.HostInviteExpired,
@@ -75,11 +77,24 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight],
             Bookings:
             [
                 new("arrivo", "Giulia", "Bianchi", "ospite.demo.arrivo@example.com", 14, 4, BookingStatus.Confirmed, Scenario.BookingUpcoming),
                 new("partito", "Marco", "Rossi", "ospite.demo.partito@example.com", -20, 4, BookingStatus.CheckedOut, Scenario.BookingPast),
+                // SR-06a: entered by hand with only the name and the email, at a price agreed over the phone (the guest gives the rest with the online check-in).
+                new(
+                    "a-mano",
+                    "Elena",
+                    string.Empty,
+                    "ospite.demo.a-mano@example.com",
+                    40,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingManualLight,
+                    BookingSource.Manual,
+                    AgreedTotal: 500m,
+                    PriceNote: "Concordato al telefono (dimostrazione)"),
             ]),
         new(
             Key: "appartamento-brera",
@@ -161,7 +176,10 @@ public sealed record DemoBookingTemplate(
     int CheckInOffsetDays,
     int Nights,
     BookingStatus Status,
-    string Scenario);
+    string Scenario,
+    BookingSource Source = BookingSource.Local,
+    decimal? AgreedTotal = null,
+    string? PriceNote = null);
 
 public sealed record DemoPropertyTemplate(
     string Key,

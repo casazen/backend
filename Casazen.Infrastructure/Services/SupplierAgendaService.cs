@@ -35,14 +35,6 @@ public class SupplierAgendaService(
     ILogger<SupplierAgendaService> logger,
     TimeProvider? timeProvider = null) : ISupplierAgendaService
 {
-    /// <summary>The statuses of a request that count for the day's maximum: it still is, or will be, a job of the supplier.</summary>
-    private static readonly ServiceRequestStatus[] JobStatuses =
-    [
-        ServiceRequestStatus.Richiesto,
-        ServiceRequestStatus.PresoInCarico,
-        ServiceRequestStatus.InCorso,
-    ];
-
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     // ─── Working hours ───────────────────────────────────────────────────────────
@@ -269,6 +261,75 @@ public class SupplierAgendaService(
             .FirstOrDefaultAsync(cancellationToken)
         ?? SupplierBookingSettings.Default;
 
+    public async Task<SupplierSettingsView> GetSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
+    {
+        var settings = await SettingsOf(supplierOrgId).AsNoTracking().FirstOrDefaultAsync(cancellationToken);
+        return settings is null ? SupplierSettingsView.Default : ToView(settings);
+    }
+
+    public async Task<SupplierSettingsView> ReplaceSettingsAsync(
+        Guid supplierOrgId,
+        SupplierSettingsInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var content = SupplierSettingsRules.Normalize(input);
+
+        // The row is shared with the agenda rules and the working hours: the same lock, so two saves never write it at once.
+        await using var transaction = await LockAgendaAsync(supplierOrgId, cancellationToken);
+
+        var now = Now();
+        var settings = await EnsureSettingsAsync(supplierOrgId, now, cancellationToken);
+
+        // OnlineBookingEnabled is not touched: the console cannot open the showcase to bookings (decision SP-D29).
+        settings.AutoAcceptRegulars = content.AutoAcceptRegulars;
+        settings.NotifyNewRequests = content.NotifyNewRequests;
+        settings.NotifyDayBeforeReminder = content.NotifyDayBeforeReminder;
+        settings.NotifyPaymentMarked = content.NotifyPayments;
+        settings.RespondWithinMinutes = content.RespondWithinMinutes;
+        settings.UpdatedAt = now;
+
+        await db.SaveChangesAsync(cancellationToken);
+        await CommitAsync(transaction, cancellationToken);
+
+        logger.LogInformation("Supplier {OrgId}: settings replaced", supplierOrgId);
+        return ToView(settings);
+    }
+
+    // ─── Urgent requests (SP-04c) ────────────────────────────────────────────────
+
+    public async Task<SupplierUrgentSettings> GetUrgentAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
+        await SettingsOf(supplierOrgId)
+            .AsNoTracking()
+            .Select(s => new SupplierUrgentSettings(s.UrgentEnabled, s.UrgentFromMinute, s.UrgentToMinute, s.UrgentSurchargeCents))
+            .FirstOrDefaultAsync(cancellationToken)
+        ?? SupplierUrgentSettings.Default;
+
+    public async Task<SupplierUrgentSettings> ReplaceUrgentAsync(
+        Guid supplierOrgId,
+        SupplierUrgentInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var content = SupplierUrgentRules.Normalize(input);
+
+        // The row is shared with the rules, the settings and the working hours, and every request flow takes this lock before it
+        // plans a slot: a booking is judged on the urgent settings as they are saved.
+        await using var transaction = await LockAgendaAsync(supplierOrgId, cancellationToken);
+
+        var now = Now();
+        var settings = await EnsureSettingsAsync(supplierOrgId, now, cancellationToken);
+        settings.UrgentEnabled = content.Enabled;
+        settings.UrgentFromMinute = content.FromMinute;
+        settings.UrgentToMinute = content.ToMinute;
+        settings.UrgentSurchargeCents = content.SurchargeCents;
+        settings.UpdatedAt = now;
+
+        await db.SaveChangesAsync(cancellationToken);
+        await CommitAsync(transaction, cancellationToken);
+
+        logger.LogInformation("Supplier {OrgId}: urgent settings replaced", supplierOrgId);
+        return ToUrgent(settings);
+    }
+
     // ─── Calendar and planner ────────────────────────────────────────────────────
 
     public async Task<SupplierCalendar> GetCalendarAsync(
@@ -277,7 +338,7 @@ public class SupplierAgendaService(
         DateOnly to,
         CancellationToken cancellationToken = default)
     {
-        EnsureRange(from, to, SupplierAgendaLimits.MaxCalendarDays);
+        SupplierAgendaRange.Ensure(from, to, SupplierAgendaLimits.MaxCalendarDays);
 
         var startUtc = RomeCalendar.StartOfDayUtc(from);
         var endUtc = RomeCalendar.StartOfDayUtc(to.AddDays(1));
@@ -286,7 +347,9 @@ public class SupplierAgendaService(
         var closedDays = await ClosedDaysOfAsync(supplierOrgId, from, to, cancellationToken);
         var timeOff = await TimeOffOverlappingAsync(supplierOrgId, from, to, cancellationToken);
         var windows = await WindowsOverlappingAsync(supplierOrgId, startUtc, endUtc, cancellationToken);
-        var agendaRequests = await requests.ListForAgendaAsync(supplierOrgId, from, to, cancellationToken);
+
+        // With the titles (SP-03b): who asks, the service, the comune. The planner reads the lighter ListForAgendaAsync below.
+        var agendaRequests = await requests.ListForCalendarAsync(supplierOrgId, from, to, cancellationToken);
 
         return new SupplierCalendar(
             from,
@@ -312,9 +375,12 @@ public class SupplierAgendaService(
         Guid? exceptRequestId,
         CancellationToken cancellationToken = default)
     {
-        EnsureRange(from, to, SupplierSlotPlanner.MaxRangeDays);
+        SupplierAgendaRange.Ensure(from, to, SupplierSlotPlanner.MaxRangeDays);
 
-        var rules = await GetRulesAsync(supplierOrgId, cancellationToken);
+        // One read of the settings row for the rules and for the urgent settings (SP-04c; only a plan of urgent slots reads them).
+        var settings = await SettingsOf(supplierOrgId).AsNoTracking().FirstOrDefaultAsync(cancellationToken);
+        var rules = settings is null ? SupplierPlanningRules.Default : ToRules(settings);
+        var urgent = settings is null ? SupplierUrgentSettings.Default : ToUrgent(settings);
         var hours = await HoursOf(supplierOrgId).AsNoTracking().ToListAsync(cancellationToken);
         var closedDays = await ClosedDaysOfAsync(supplierOrgId, from, to, cancellationToken);
         var timeOff = await TimeOffOverlappingAsync(supplierOrgId, from, to, cancellationToken);
@@ -337,10 +403,10 @@ public class SupplierAgendaService(
                     extraOpenings.Add(new SupplierInterval(window.StartUtc, window.EndUtc));
                     break;
                 case SupplierBusyWindowKind.External:
-                    occupancies.Add(SupplierOccupancy.External(window.StartUtc, window.EndUtc));
+                    occupancies.Add(SupplierOccupancy.External(window.StartUtc, window.EndUtc, window.Id));
                     break;
                 default:
-                    occupancies.Add(SupplierOccupancy.Block(window.StartUtc, window.EndUtc));
+                    occupancies.Add(SupplierOccupancy.Block(window.StartUtc, window.EndUtc, window.Id));
                     break;
             }
         }
@@ -348,13 +414,14 @@ public class SupplierAgendaService(
         // The requests of the supplier (SP-04): one with hours is a TimedRequest, which no slot may overlap (buffer included);
         // one that only has a day (the check-out day of its stay, the time still to agree) counts for the day's maximum and
         // takes no hour. A day more on each side, as for the windows. The request being moved is left out: it must not be in
-        // its own way.
+        // its own way. Only a request that still is, or will be, a job of the supplier takes its time.
         var agendaRequests = await requests.ListForAgendaAsync(supplierOrgId, from.AddDays(-1), to.AddDays(1), cancellationToken);
+        // The id and whether the supplier took it are for the conflict detector (SP-03b); the planner never reads them.
         occupancies.AddRange(agendaRequests
-            .Where(request => request.Id != exceptRequestId && JobStatuses.Contains(request.Status))
+            .Where(request => request.Id != exceptRequestId && ServiceRequestStateMachine.IsOpenJob(request.Status))
             .Select(request => request is { StartUtc: { } start, EndUtc: { } end }
-                ? SupplierOccupancy.TimedRequest(start, end)
-                : SupplierOccupancy.DatedRequest(request.Date)));
+                ? SupplierOccupancy.TimedRequest(start, end, request.Id, ServiceRequestStateMachine.IsTakenJob(request.Status))
+                : SupplierOccupancy.DatedRequest(request.Date, request.Id, ServiceRequestStateMachine.IsTakenJob(request.Status))));
 
         // The bookings from the public showcase that wait for the customer's e-mail check (SP-10) hold their slot like a request
         // that has hours: a hold has its hours, its place in the day's maximum, and ends at its expiry. A hold that was checked
@@ -375,7 +442,11 @@ public class SupplierAgendaService(
             timeOff.Select(entry => new SupplierDateRange(entry.FromDate, entry.ToDate)).ToList(),
             closedDays.Select(day => day.Date).ToHashSet(),
             extraOpenings,
-            occupancies);
+            occupancies,
+            // Which of the closed days the calendar feed closed (an all-day event): the planner closes them all alike, the conflict
+            // detector (SP-03b) calls that "another engagement" and not "a day off".
+            closedDays.Where(day => day.Source == SupplierAvailabilitySource.ICalFeed).Select(day => day.Date).ToHashSet(),
+            urgent);
     }
 
     public Task<IReadOnlyList<SupplierDayPlan>> PlanAsync(
@@ -497,14 +568,6 @@ public class SupplierAgendaService(
 
     private DateOnly Today() => _clock.TodayInRomeAsDateOnly();
 
-    private static void EnsureRange(DateOnly from, DateOnly to, int maxDays)
-    {
-        if (to < from)
-            throw new ArgumentOutOfRangeException(nameof(to), "The last day cannot be before the first.");
-        if (to.DayNumber - from.DayNumber + 1 > maxDays)
-            throw new ArgumentOutOfRangeException(nameof(to), $"The range covers at most {maxDays} days.");
-    }
-
     /// <summary>The bands as planner input: Monday first, then by start.</summary>
     private static List<SupplierWeeklyBand> ToBands(IEnumerable<SupplierWorkingHours> rows) =>
         rows
@@ -512,6 +575,18 @@ public class SupplierAgendaService(
             .ThenBy(row => row.StartMinute)
             .Select(row => new SupplierWeeklyBand(row.Weekday, row.StartMinute, row.EndMinute))
             .ToList();
+
+    private static SupplierSettingsView ToView(SupplierSettings settings) =>
+        new(
+            settings.OnlineBookingEnabled,
+            settings.AutoAcceptRegulars,
+            settings.NotifyNewRequests,
+            settings.NotifyDayBeforeReminder,
+            settings.NotifyPaymentMarked,
+            settings.RespondWithinMinutes);
+
+    private static SupplierUrgentSettings ToUrgent(SupplierSettings settings) =>
+        new(settings.UrgentEnabled, settings.UrgentFromMinute, settings.UrgentToMinute, settings.UrgentSurchargeCents);
 
     private static SupplierPlanningRules ToRules(SupplierSettings settings) =>
         new(

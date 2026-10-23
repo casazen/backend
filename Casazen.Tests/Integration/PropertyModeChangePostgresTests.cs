@@ -499,7 +499,7 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
         await action(scope.ServiceProvider.GetRequiredService<AppDbContext>());
     }
 
-    /// <summary>The integration host with <c>Features:PropertyModeChange</c> on, a fixed clock and the e-mails recorded.</summary>
+    /// <summary>The integration host with a fixed clock and the e-mails recorded.</summary>
     public sealed class Factory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();
@@ -507,8 +507,6 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             base.ConfigureWebHost(builder);
-            builder.ConfigureAppConfiguration((_, config) =>
-                config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:PropertyModeChange"] = "true" }));
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<TimeProvider>();

@@ -104,4 +104,20 @@ public static class BookingErrorCodes
 
     /// <summary>409: the property is declared ready before the check-out of the stay (CO-17).</summary>
     public const string CheckoutNotCompleted = "checkout_not_completed";
+
+    /// <summary>
+    /// 409: the booking is already cancelled (a double click, another device, a cancellation that was first). The guest's
+    /// cancel link answers it with the outcome of that cancellation instead (DB-08h).
+    /// </summary>
+    public const string AlreadyCancelled = "booking_already_cancelled";
+
+    /// <summary>
+    /// 422: the price the host agreed for a booking entered by hand cannot be recorded (SR-06a): the lodging left once the tourist
+    /// tax is taken out is negative or above <see cref="ManualBookingRules.MaxAgreedBasePrice"/>, or the note on the price is longer
+    /// than <see cref="ManualBookingRules.PriceNoteMaxLength"/> characters.
+    /// </summary>
+    public const string PriceOverrideInvalid = "booking_price_override_invalid";
+
+    /// <summary>422: the dates of a booking that completes a portal's block are not the dates of that block (SR-06a).</summary>
+    public const string BlockDatesMismatch = "booking_block_dates_mismatch";
 }

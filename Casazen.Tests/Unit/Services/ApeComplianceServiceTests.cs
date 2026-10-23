@@ -90,6 +90,33 @@ public class ApeComplianceServiceTests
         await _sut.EnsureUploadedFileIsOfficialApeAsync(file);
     }
 
+    [Theory]
+    [InlineData("complete.jpg", true)]
+    [InlineData("page-1.jpg", false)]
+    [InlineData("scanned-two-pages.pdf", true)]
+    public async Task Upload_RunsRealOcrAcrossAllPages(string fixture, bool valid)
+    {
+        var bytes = await File.ReadAllBytesAsync(Path.Combine(System.AppContext.BaseDirectory, "Fixtures", "ape", fixture));
+        var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", fixture)
+        { Headers = new HeaderDictionary(), ContentType = fixture.EndsWith("pdf") ? "application/pdf" : "image/jpeg" };
+        if (valid) await _sut.EnsureUploadedFileIsOfficialApeAsync(file);
+        else
+        {
+            var error = await Assert.ThrowsAsync<ApeComplianceException>(() => _sut.EnsureUploadedFileIsOfficialApeAsync(file));
+            Assert.Equal("ApeIncomplete", error.MessageKey);
+            Assert.Contains("Certifier", error.MissingFields);
+            Assert.Contains("ExpiryDate", error.MissingFields);
+        }
+    }
+
+    [Fact]
+    public async Task Upload_TextRenamedToJpeg_StillFails()
+    {
+        var bytes = "<html>not an image</html>"u8.ToArray();
+        var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "ape.jpeg") { Headers = new HeaderDictionary(), ContentType = "image/jpeg" };
+        await Assert.ThrowsAsync<ApeComplianceException>(() => _sut.EnsureUploadedFileIsOfficialApeAsync(file));
+    }
+
     private static PropertyDocument ApeDoc(string url) => new()
     {
         DocumentType = DocumentType.Ape,
@@ -104,7 +131,7 @@ public class ApeComplianceServiceTests
 
     private static byte[] OfficialApeBytes() => PdfBytes(
         "ATTESTATO DI PRESTAZIONE ENERGETICA",
-        "Classe energetica C. EPgl,nren 120. SIAPE. Certificatore energetico.");
+        "Classe energetica C. EPgl,nren 120.\nCodice identificativo APE 123456.\nIndirizzo Via Esempio 12.\nSoggetto certificatore Mario Esempio.\nData di emissione 01/01/2025.\nValido fino al 01/01/2035.");
 
     private static byte[] PdfBytes(string title, string body) => LiteralTextPdf.Build(title, body);
 

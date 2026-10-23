@@ -59,7 +59,11 @@ public class SupplierSettings
     /// </summary>
     public DateTime? HoursConfiguredAt { get; set; }
 
-    /// <summary>The supplier accepts the requests of its regular customers by itself (default off, a later task).</summary>
+    /// <summary>
+    /// The supplier accepts the requests of its regular hosts by itself (default off). Read when a host's request is created
+    /// (SP-04d, <see cref="ServiceRequestAutoAccept"/>); written by <c>PUT api/supplier/settings</c> (SP-16a-1), under the same
+    /// agenda lock that creation takes, so a request is judged on the value as it is saved.
+    /// </summary>
     public bool AutoAcceptRegulars { get; set; }
 
     /// <summary>The supplier wants a notification for every new request (default on, a later task).</summary>
@@ -70,6 +74,29 @@ public class SupplierSettings
 
     /// <summary>The supplier wants to know when a customer marks a job as paid (default on, a later task).</summary>
     public bool NotifyPaymentMarked { get; set; } = true;
+
+    /// <summary>
+    /// The supplier accepts urgent requests (SP-04c, decision SP-D9): for today and tomorrow, with 30 minutes of notice, inside
+    /// <see cref="UrgentFromMinute"/>–<see cref="UrgentToMinute"/>, for the services that offer them
+    /// (<see cref="SupplierServiceListing.UrgentEnabled"/>). Default off. Written by <c>PUT api/supplier/availability/urgent</c>, under
+    /// the agenda lock; read by the slot planner.
+    /// </summary>
+    public bool UrgentEnabled { get; set; }
+
+    /// <summary>
+    /// Where the urgent window starts, minutes after midnight on the clock of Rome (0 to 1439, before <see cref="UrgentToMinute"/>;
+    /// default 07:00). Outside the working hours too: the window is the urgent day's band.
+    /// </summary>
+    public int UrgentFromMinute { get; set; } = SupplierAgendaDefaults.UrgentFromMinute;
+
+    /// <summary>Where the urgent window ends (1 to 1440, after <see cref="UrgentFromMinute"/>; default 22:00).</summary>
+    public int UrgentToMinute { get; set; } = SupplierAgendaDefaults.UrgentToMinute;
+
+    /// <summary>
+    /// The surcharge of an urgent request, in euro cents (0 to <see cref="SupplierAgendaLimits.MaxUrgentSurchargeCents"/>), for a
+    /// service that has no surcharge of its own (<see cref="SupplierServiceListing.UrgentSurchargeCents"/>). Default 0.
+    /// </summary>
+    public int UrgentSurchargeCents { get; set; } = SupplierAgendaDefaults.UrgentSurchargeCents;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

@@ -17,8 +17,11 @@ public class ApeDocumentInspectorTests
             ATTESTATO DI PRESTAZIONE ENERGETICA
             Classe energetica G
             EPgl,nren 180 kWh/m2 anno
-            SIAPE codice identificativo
-            Certificatore energetico
+            Codice identificativo APE 123456
+            Indirizzo Via Esempio 12
+            Soggetto certificatore Mario Esempio
+            Data di emissione 01/01/2025
+            Valido fino al 01/01/2035
             """;
 
         var result = _sut.InspectExtractedText(text);
@@ -49,7 +52,7 @@ public class ApeDocumentInspectorTests
     {
         var pdf = LiteralTextPdf.Build(
             "ATTESTATO DI PRESTAZIONE ENERGETICA",
-            "Classe energetica D. EPgl,nren 95. SIAPE. Certificatore energetico. D.Lgs. 192/2005.");
+            CompleteFields);
 
         using var stream = new MemoryStream(pdf);
         var result = _sut.Inspect(stream);
@@ -81,7 +84,7 @@ public class ApeDocumentInspectorTests
     [Fact]
     public void Inspect_FlateEncodedApePdf_IsValid()
     {
-        var pdf = FlatePdf("ATTESTATO DI PRESTAZIONE ENERGETICA Classe energetica A4 EPgl SIAPE");
+        var pdf = FlatePdf("ATTESTATO DI PRESTAZIONE ENERGETICA " + CompleteFields);
 
         using var stream = new MemoryStream(pdf);
         var result = _sut.Inspect(stream);
@@ -106,12 +109,71 @@ public class ApeDocumentInspectorTests
     {
         var pdf = MultiFlatePdf(
             PdfLiteralTextExtractor.MaxFlateStreams + 50,
-            "ATTESTATO DI PRESTAZIONE ENERGETICA Classe energetica A4 EPgl SIAPE");
+            "ATTESTATO DI PRESTAZIONE ENERGETICA " + CompleteFields);
 
         using var stream = new MemoryStream(pdf);
         var result = _sut.Inspect(stream);
 
         Assert.True(result.IsValid);
+    }
+
+    private const string CompleteFields = "Classe energetica F. EPgl,nren 146,67. Codice identificativo APE 123456. Indirizzo Via Esempio 12. Soggetto certificatore Mario Esempio. Data di emissione 01/01/2025. Valido fino al 01/01/2035.";
+
+    [Fact]
+    public void HeaderAloneCannotValidateAnIncompleteCertificate()
+    {
+        var result = _sut.InspectExtractedText("ATTESTATO DI PRESTAZIONE ENERGETICA Classe energetica F EPgl,nren 146,67");
+        Assert.Equal(ApeInspectionStatus.Incomplete, result.Status);
+        Assert.Contains("CertificateCode", result.MissingFields!);
+        Assert.Contains("ExpiryDate", result.MissingFields!);
+    }
+
+    [Fact]
+    public void ExpiredOrImpossibleDatesCannotPass()
+    {
+        var result = _sut.InspectExtractedText("ATTESTATO DI PRESTAZIONE ENERGETICA " + CompleteFields.Replace("01/01/2035", "01/01/2026"));
+        Assert.Equal(ApeInspectionStatus.Expired, result.Status);
+        result = _sut.InspectExtractedText("ATTESTATO DI PRESTAZIONE ENERGETICA " + CompleteFields.Replace("01/01/2035", "31/02/2035"));
+        Assert.Contains("ExpiryDate", result.MissingFields!);
+    }
+
+    [Theory]
+    [InlineData("2026-01-14T23:30:00Z", "15/01/2026")]
+    [InlineData("2026-07-14T22:30:00Z", "15/07/2026")]
+    public void IssueDate_UsesRomeTodayAcrossUtcMidnightInWinterAndSummer(string instant, string issueDate)
+    {
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse(instant, System.Globalization.CultureInfo.InvariantCulture));
+        var inspector = new ApeDocumentInspector(clock);
+        var text = "ATTESTATO DI PRESTAZIONE ENERGETICA " + CompleteFields.Replace("01/01/2025", issueDate);
+
+        Assert.True(inspector.InspectExtractedText(text).IsValid);
+    }
+
+    [Theory]
+    [InlineData("2026-01-14T22:30:00Z", "14/01/2026", ApeInspectionStatus.Valid)]
+    [InlineData("2026-01-14T23:30:00Z", "14/01/2026", ApeInspectionStatus.Expired)]
+    [InlineData("2026-07-14T21:30:00Z", "14/07/2026", ApeInspectionStatus.Valid)]
+    [InlineData("2026-07-14T22:30:00Z", "14/07/2026", ApeInspectionStatus.Expired)]
+    public void ExpiryDate_RemainsValidThroughItsRomeCalendarDay(string instant, string expiryDate, ApeInspectionStatus expected)
+    {
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse(instant, System.Globalization.CultureInfo.InvariantCulture));
+        var inspector = new ApeDocumentInspector(clock);
+        var text = "ATTESTATO DI PRESTAZIONE ENERGETICA " + CompleteFields.Replace("01/01/2035", expiryDate);
+
+        Assert.Equal(expected, inspector.InspectExtractedText(text).Status);
+    }
+
+    [Fact]
+    public void FutureIssueDate_StillFailsBeforeRomeMidnight()
+    {
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 1, 14, 22, 30, 0, TimeSpan.Zero));
+        var inspector = new ApeDocumentInspector(clock);
+        var text = "ATTESTATO DI PRESTAZIONE ENERGETICA " + CompleteFields.Replace("01/01/2025", "15/01/2026");
+
+        var result = inspector.InspectExtractedText(text);
+
+        Assert.Equal(ApeInspectionStatus.Incomplete, result.Status);
+        Assert.Contains("IssueDate", result.MissingFields!);
     }
 
     private static byte[] FlatePdf(string text)

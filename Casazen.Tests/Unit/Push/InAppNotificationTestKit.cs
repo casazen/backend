@@ -1,12 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 
 namespace Casazen.Tests.Unit.Push;
 
@@ -25,30 +23,22 @@ internal sealed class InAppNotificationTestKit : IDisposable
 {
     public static readonly DateTime Now = new(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc);
 
-    public InAppNotificationTestKit(bool flagOn = true)
+    public InAppNotificationTestKit()
     {
         Db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
         Clock = new FakeTimeProvider(new DateTimeOffset(Now));
-        Flags = new Mock<IFeatureFlags>();
-        Flags.Setup(f => f.IsEnabled(FeatureFlags.InAppNotifications)).Returns(() => FlagOn);
-        FlagOn = flagOn;
     }
 
     public AppDbContext Db { get; }
 
     public FakeTimeProvider Clock { get; }
 
-    public Mock<IFeatureFlags> Flags { get; }
-
-    /// <summary>The state of <c>Features:InAppNotifications</c> seen by the job; a test flips it between the event and the run.</summary>
-    public bool FlagOn { get; set; }
-
     public void Dispose() => Db.Dispose();
 
     public InAppNotificationJob Job() =>
-        new(Db, Flags.Object, Clock, NullLogger<InAppNotificationJob>.Instance);
+        new(Db, Clock, NullLogger<InAppNotificationJob>.Instance);
 
     public async Task<World> SeedWorldAsync()
     {

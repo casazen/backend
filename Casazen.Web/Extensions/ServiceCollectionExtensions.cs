@@ -27,6 +27,7 @@ using Microsoft.AspNetCore.Authorization;
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -100,6 +101,18 @@ public static class ServiceCollectionExtensions
 
                 options.Events = new JwtBearerEvents
                 {
+                    OnMessageReceived = context =>
+                    {
+                        // The token of a guest session (DB-06a) is not a JWT: only the GuestSession scheme reads it. The sign-in
+                        // of the hosts leaves it alone, so it neither tries to validate it nor logs a failure at every call.
+                        if (context.Request.Headers.Authorization.ToString()
+                            .StartsWith("Bearer " + GuestSessionTokens.Prefix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            context.NoResult();
+                        }
+
+                        return Task.CompletedTask;
+                    },
                     OnAuthenticationFailed = context =>
                     {
                         var logger = context.HttpContext.RequestServices
@@ -180,7 +193,11 @@ public static class ServiceCollectionExtensions
                 {
                     options.RequireHttpsMetadata = false;
                 }
-            });
+            })
+            // The guest of a booking site with no account (DB-06a): its own scheme, used only by the policy GuestSession.
+            .AddScheme<AuthenticationSchemeOptions, GuestSessionAuthenticationHandler>(
+                GuestSessionDefaults.AuthenticationScheme,
+                _ => { });
 
         return services;
     }
@@ -214,7 +231,12 @@ public static class ServiceCollectionExtensions
             .AddPolicy(CasazenPolicies.AdminOnly, policy => policy.RequireRole("Admin"))
             .AddPolicy(CasazenPolicies.Supplier, policy => policy.RequireRole("Supplier"))
             .AddPolicy(CasazenPolicies.OrgBillingAdmin, policy =>
-                policy.Requirements.Add(new OrgBillingAdminRequirement()));
+                policy.Requirements.Add(new OrgBillingAdminRequirement()))
+            // The guest of a booking site with no account (DB-06a): its own authentication scheme, no role, no host context.
+            .AddPolicy(CasazenPolicies.GuestSession, policy => policy
+                .AddAuthenticationSchemes(GuestSessionDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .RequireClaim(GuestSessionDefaults.OrgIdClaim));
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
@@ -284,11 +306,17 @@ public static class ServiceCollectionExtensions
         // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
         services.AddScoped<IHostTodayService, HostTodayService>();
         services.AddScoped<IComplianceMissingService, ComplianceMissingService>();
+        // The calendar of all the host's properties in one read, and the nights taken twice the Home puts among the things to do (SR-02a).
+        services.AddScoped<IHostCalendarService, HostCalendarService>();
         // Lists that hold up with many rows: bookings by days, status and text, a page at a time; payments by booking and period (SR-03).
         services.AddScoped<IBookingSearchService, BookingSearchService>();
+        // The history of one booking, derived from its timestamps and the rows tied to it (SR-05a, SR-D17).
+        services.AddScoped<IBookingTimelineService, BookingTimelineService>();
         services.AddScoped<IPaymentListService, PaymentListService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
+        // A payment the host received outside CasaZen (cash, bank transfer): born Completed, capped to the balance, once per key (SR-06b).
+        services.AddScoped<IManualPaymentService, ManualPaymentService>();
         // Refunds and cancellations on Stripe Connect (BK-02, docs/runbooks/stripe.md "Refunds").
         services.AddScoped<PaymentRefundService>();
         services.AddScoped<IPaymentRefundService>(sp => sp.GetRequiredService<PaymentRefundService>());
@@ -298,6 +326,9 @@ public static class ServiceCollectionExtensions
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();
+        // Whether a stay of the host's property is free, and the booking the host enters by hand with only the name and the email (SR-06a).
+        services.AddScoped<IHostAvailabilityService, HostAvailabilityService>();
+        services.AddScoped<IManualBookingService, ManualBookingService>();
         services.AddScoped<ICalendarBlockService, CalendarBlockService>();
         // Scheduled change of rental mode of a property: preview, creation, the hourly application (PM-02).
         services.AddScoped<IPropertyModeService, PropertyModeService>();
@@ -432,7 +463,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly
-        // maintenance (reminders, expiry, deletion of the closed ones). All behind the OrgTeam flag at the endpoints.
+        // maintenance (reminders, expiry, deletion of the closed ones).
         services.AddScoped<IOrgSeatService, OrgSeatService>();
         services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
         services.AddScoped<IOrgInvitationService, OrgInvitationService>();
@@ -446,6 +477,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgActivityService, OrgActivityService>();
         services.AddScoped<IOrgAccessRequestService, OrgAccessRequestService>();
         services.AddScoped<IOrgActivityRetentionService, OrgActivityRetentionService>();
+        // AM-02c: the matrix of the roles for the team screens, and the overview of the org for the account home.
+        services.AddScoped<IOrgRoleMatrixService, OrgRoleMatrixService>();
+        services.AddScoped<IOrgOverviewService, OrgOverviewService>();
         services.AddScoped<IAccountEmailResolver, AccountEmailResolver>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         // SE-04: events of the SEO funnel (no personal data) and the featured properties of a comune.
@@ -461,6 +495,10 @@ public static class ServiceCollectionExtensions
         // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
         services.AddSingleton<PublicSupplierSlotCache>();
         services.AddScoped<IPublicSupplierShowcaseService, PublicSupplierShowcaseService>();
+        // What the Portal's agenda reads on top of the planner (SP-03b): the conflicts of the jobs to come with a time to propose
+        // instead, and the supplier's own preview of the slots of a service (no cache, no flag, draft and paused services too).
+        services.AddScoped<ISupplierConflictService, SupplierConflictService>();
+        services.AddScoped<ISupplierSlotPreviewService, SupplierSlotPreviewService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
         // Invitation of new independent hosts by admins and hosts: limits are configuration (HostInvites), validated at startup.
@@ -544,12 +582,20 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
         services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();
         services.AddScoped<IServiceCustomerPrivacyService, ServiceCustomerPrivacyService>();
-        // Supplier dashboard KPIs from the service requests (SU-11, A4-15) and the money of the console home (SP-04).
+        // The reads of the payments of a request for the supplier console: the summary of a job, the counters and the figures of the
+        // home (SP-04e). The only reader of the payment table outside the payments service.
+        services.AddScoped<ISupplierPaymentReadModels, SupplierPaymentReadModels>();
+        // The supplier's earnings, the page "Incassi": its completed and paid jobs with gross, commission and net, the figures above them and
+        // the CSV for its accountant (SP-16a).
+        services.AddScoped<ISupplierEarningsService, SupplierEarningsService>();
+        // Supplier dashboard KPIs from the service requests (SU-11, A4-15), the money of the console home (SP-04) and its overview (SP-04e).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
         // The home ("Oggi") and the activation checklist of the supplier console (SP-04).
         services.AddScoped<ISupplierTodayService, SupplierTodayService>();
         // Supplier inbox, history and request detail: address, date and host contact after the take (SU-08, A4-14).
         services.AddScoped<ISupplierServiceRequestReader, SupplierServiceRequestReader>();
+        // The supplier's customers, the page "Clienti": hosts and private customers of the showcase aggregated from the requests (SP-16a).
+        services.AddScoped<ISupplierClientsService, SupplierClientsService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         services.AddScoped<CalendarSyncService>();
         // The supplier's answers about the "Available" events of its calendar (they occupy until answered).
@@ -560,12 +606,28 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICalExportService>();
         services.AddScoped<PropertyICalSyncService>();
         services.AddScoped<ICheckoutHoldExpiryService, CheckoutHoldExpiryService>();
+        services.AddScoped<ICheckoutPaymentReconciliationService, CheckoutPaymentReconciliationService>();
         // "Pay at the property" requests approved by the host (BK-06, D5, docs/runbooks/direct-booking.md).
         services.AddScoped<OnSiteRequestNotifier>();
         services.AddScoped<IOnSiteBookingRequestService, OnSiteBookingRequestService>();
         // Outcome page of the public checkout, read with the checkout token (BK-07, A3-15).
         services.AddScoped<ICheckoutOutcomeService, CheckoutOutcomeService>();
-        services.AddScoped<IGuestBookingLookupService, GuestBookingLookupService>();
+        // One instance per request for both: the session service reuses the proof and the view of "Le mie prenotazioni" (DB-06a).
+        services.AddScoped<GuestBookingLookupService>();
+        services.AddScoped<IGuestBookingLookupService>(sp => sp.GetRequiredService<GuestBookingLookupService>());
+        // The guest's session with no account: code + email once, then a signed token (DB-06a, docs/runbooks/direct-booking.md § 8.4).
+        // The tokens are sealed with Data Protection (the key ring in the database), so every replica reads them.
+        services.AddSingleton<GuestSessionTokens>();
+        services.AddScoped<IGuestSessionService, GuestSessionService>();
+        // Verified reviews of the stays (DB-12a, docs/runbooks/site-reviews.md): the public reads and the guest's review, the host's
+        // answers, reports and invitations, and the staff's decisions. The signed link is made by Data Protection, nothing is stored for it.
+        services.AddSingleton<ReviewLinkTokens>();
+        services.AddScoped<IPublicReviewService, PublicReviewService>();
+        services.AddScoped<IHostReviewService, HostReviewService>();
+        services.AddScoped<IAdminReviewService, AdminReviewService>();
+        // Messages between the guest of a direct booking and the host (DB-14a): the thread, its two sides and the two emails
+        // that are the consequence of a message (docs/runbooks/guest-messages.md).
+        services.AddScoped<IGuestMessageService, GuestMessageService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();

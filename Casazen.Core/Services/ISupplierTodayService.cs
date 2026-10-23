@@ -9,18 +9,39 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <param name="Date">Today, in Europe/Rome.</param>
 /// <param name="Jobs">
-/// The jobs whose day is today (taken, in progress, completed or paid), the first in time first; a job with no day (to agree
-/// with the host) is not here.
+/// The jobs whose day is today, or one of the <paramref name="Days"/> from today (taken, in progress, completed or paid), the first in
+/// time first; a job with no day (to agree with the host) is not here.
 /// </param>
 /// <param name="NewRequests">The first requests waiting for the supplier's answer, the one with the earliest deadline first.</param>
 /// <param name="NewRequestsTotal">How many requests wait for the supplier's answer.</param>
 /// <param name="Earnings">The earnings of the month, the amount to collect and the average response time (an estimate until SP-15).</param>
+/// <param name="JobsTotal">
+/// How many jobs fall on those days (SP-04e): more than <paramref name="Jobs"/> holds when the list was cut at its maximum, which a
+/// week can reach where a day cannot.
+/// </param>
+/// <param name="Days">
+/// How many days <paramref name="Jobs"/> cover, from <paramref name="Date"/> on (SP-04e, <c>today?days=</c>, 1 to
+/// <see cref="SupplierTodayLimits.MaxDays"/>): 1 is today only, as before.
+/// </param>
 public sealed record SupplierToday(
     DateOnly Date,
     IReadOnlyList<SupplierServiceRequestView> Jobs,
     IReadOnlyList<SupplierServiceRequestView> NewRequests,
     int NewRequestsTotal,
-    SupplierEarningsSummary Earnings);
+    SupplierEarningsSummary Earnings,
+    int JobsTotal,
+    int Days = 1)
+{
+    /// <summary>The last day <see cref="Jobs"/> cover.</summary>
+    public DateOnly LastDate => Date.AddDays(Days - 1);
+}
+
+/// <summary>The limits of the home of the console (SP-04e).</summary>
+public static class SupplierTodayLimits
+{
+    /// <summary>Most days <c>GET api/supplier/today?days=</c> covers: "today and the next days" of the home, a week at most.</summary>
+    public const int MaxDays = 7;
+}
 
 /// <summary>
 /// The steps of the activation checklist of the console (SP-04, <c>GET api/supplier/checklist</c>), each computed from what the
@@ -34,8 +55,14 @@ public sealed record SupplierToday(
 /// <param name="ShowcasePublished">The public showcase is online: an active supplier with a showcase address.</param>
 /// <param name="FirstRequestAnswered">The supplier answered a request at least once: it took one or rejected one.</param>
 /// <param name="PaymentsActive">
-/// Whether the supplier receives payments through CasaZen. <b>Always <c>null</c> for now</b>: the payments arrive with SP-14 and
-/// SP-15, so the answer "not available yet" is not a "no" and the console does not count the step.
+/// Whether the supplier receives payments through CasaZen (SP-16a): <c>true</c> when its Stripe account takes charges and payouts
+/// (<see cref="SupplierVerification.CanReceivePayments"/>) and <c>false</c> when it does not, <b>only while the flag
+/// <c>SupplierOnlinePayments</c> is on</b>; <c>null</c> with the flag off, because "not available" is not a "no" and the console does
+/// not count the step.
+/// </param>
+/// <param name="Verification">
+/// The "Verificato" badge (decision D11, SP-16a): read from <see cref="SupplierVerification"/> whatever the flag says. <c>null</c> only in a
+/// service built without the payments account (a test); the application always fills it.
 /// </param>
 public sealed record SupplierChecklist(
     int ProfileCompletionPercent,
@@ -45,7 +72,14 @@ public sealed record SupplierChecklist(
     DateTime? HoursConfiguredAt,
     bool ShowcasePublished,
     bool FirstRequestAnswered,
-    bool? PaymentsActive);
+    bool? PaymentsActive,
+    SupplierChecklistVerification? Verification = null);
+
+/// <summary>
+/// Whether the supplier is "Verificato" and, when it is not, what is still missing (SP-16a): the stable codes of
+/// <see cref="SupplierVerification"/> (<c>profile_not_active</c>, <c>payments_not_enabled</c>, <c>vat_number_missing</c>), in that order.
+/// </summary>
+public sealed record SupplierChecklistVerification(bool Verified, IReadOnlyList<string> Missing);
 
 /// <summary>
 /// The two reads of the supplier's console home (SP-04), composed from the service requests, the profile, the catalog and the
@@ -55,6 +89,14 @@ public interface ISupplierTodayService
 {
     /// <summary>The home of the supplier for today (Europe/Rome). Read-only.</summary>
     Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The home of the supplier for today and the next days (SP-04e): the jobs go from today to today plus
+    /// <paramref name="days"/> minus one (at most 50 of them), the rest is as for today. <paramref name="days"/> is from 1 to
+    /// <see cref="SupplierTodayLimits.MaxDays"/>. Read-only.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="days"/> is outside that range.</exception>
+    Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, int days, CancellationToken cancellationToken = default);
 
     /// <summary>The activation checklist of the supplier. Read-only; <c>null</c> when the org has no supplier profile.</summary>
     Task<SupplierChecklist?> GetChecklistAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);

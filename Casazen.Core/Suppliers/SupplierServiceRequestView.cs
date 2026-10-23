@@ -46,6 +46,11 @@ namespace Casazen.Core.Suppliers;
 /// <param name="CompletionNotes">What the supplier wrote when it completed the work.</param>
 /// <param name="WorkPhotos">The photos of the work, in the private bucket (the ids the download endpoint takes).</param>
 /// <param name="PaymentMode">How the request is paid (SP-15a): decided when the supplier took it; <c>Manual</c> for every earlier request.</param>
+/// <param name="Payment">
+/// Where the payment of a completed job stands and what the supplier may do about it (SP-04e): <b>null</b> unless the request has a payment
+/// record or is <c>Completato</c>. Filled by the reader (<see cref="SupplierJobPayment"/>); null in a view built without it.
+/// </param>
+/// <param name="AutoAccepted">The request was born taken: accepted automatically for a regular host (SP-04d); its take is a step of CasaZen itself in <paramref name="History"/>.</param>
 public sealed record SupplierServiceRequestView(
     Guid Id,
     ServiceRequestRentalContext RentalContext,
@@ -75,7 +80,61 @@ public sealed record SupplierServiceRequestView(
     SupplierJobCancellation? Cancellation,
     string? CompletionNotes,
     IReadOnlyList<ServiceRequestPhoto> WorkPhotos,
-    ServiceRequestPaymentMode PaymentMode = ServiceRequestPaymentMode.Manual);
+    ServiceRequestPaymentMode PaymentMode = ServiceRequestPaymentMode.Manual,
+    SupplierJobPayment? Payment = null,
+    bool AutoAccepted = false)
+{
+    /// <summary>
+    /// The phase of the request (SP-04e): <see cref="SupplierRequestPhases"/>, derived from the status and the proposed time in one
+    /// place. An open set: a client shows a generic wording for a value it does not know.
+    /// </summary>
+    public string Phase => SupplierRequestPhases.Of(Status, hasPendingProposal: Proposal is not null);
+}
+
+/// <summary>
+/// The payment of a completed job as the supplier sees it (SP-04e): the split "price, commission, net" of the payment record when
+/// there is one, and what the supplier may do now, computed with <b>the rules of the endpoints</b> it would call
+/// (<see cref="ServicePaymentActions"/>), so a button of the console and the answer of the server agree.
+/// </summary>
+/// <remarks>
+/// <para>It exists when the request has a payment record or is <c>Completato</c>. A completed job paid outside CasaZen has no record
+/// yet: <see cref="Id"/> and <see cref="Status"/> are then null, <see cref="AmountCents"/> is the final amount the supplier declared
+/// and the commission fields are null (nothing was computed), but the two actions are still told. A job the host marked paid by
+/// hand has no record and no summary.</para>
+/// <para><see cref="Status"/> is the status of the record (<see cref="ServicePaymentStatus"/>) and <b>an open set</b>: the held
+/// payments of SP-15c will add values.</para>
+/// </remarks>
+/// <param name="Id">The payment record; null while the job has none.</param>
+/// <param name="Status">Where the record is; null while there is none.</param>
+/// <param name="AmountCents">What the payer pays, gross, in cents: the record's amount, else the declared final amount.</param>
+/// <param name="CommissionPercent">The commission percentage the record was created with (a snapshot); null while there is no record.</param>
+/// <param name="CommissionCents">The commission CasaZen keeps, in cents (0 when none is sent); null while there is no record.</param>
+/// <param name="NetCents">What the supplier receives before Stripe's own fees, in cents; null while there is no record.</param>
+/// <param name="PaidAt">When it was paid.</param>
+/// <param name="PaidVia">How it was collected (<c>Stripe</c> or <c>Offline</c>).</param>
+/// <param name="RequestedAt">When the payer was first asked; null while nothing was sent.</param>
+/// <param name="LastSentAt">When the payer was last sent a link.</param>
+/// <param name="SentCount">Emails with a link sent so far.</param>
+/// <param name="Late">The payer is late: the record was flagged late and is still owed.</param>
+/// <param name="NeedsAmountConfirmation">The final amount is above the quote by more than the tolerance and the host has not confirmed it (decision D7).</param>
+/// <param name="CanRequest">The supplier may ask the payer for the payment (or remind them) now: <c>POST api/supplier/requests/{id}/payment-request</c> would not refuse.</param>
+/// <param name="CanRecordOffline">The supplier may record that it was paid outside CasaZen now: <c>POST api/supplier/requests/{id}/payment/offline</c> would not refuse.</param>
+public sealed record SupplierJobPayment(
+    Guid? Id,
+    ServicePaymentStatus? Status,
+    int? AmountCents,
+    decimal? CommissionPercent,
+    int? CommissionCents,
+    int? NetCents,
+    DateTime? PaidAt,
+    ServicePaymentChannel? PaidVia,
+    DateTime? RequestedAt,
+    DateTime? LastSentAt,
+    int SentCount,
+    bool Late,
+    bool NeedsAmountConfirmation,
+    bool CanRequest,
+    bool CanRecordOffline);
 
 /// <summary>The values of <see cref="SupplierServiceRequestView.Source"/>.</summary>
 public static class SupplierRequestSources
@@ -89,6 +148,26 @@ public static class SupplierRequestSources
     /// <summary>The value of <see cref="SupplierServiceRequestView.Source"/> for a request of <paramref name="source"/>.</summary>
     public static string Of(Entities.Enums.ServiceRequestSource source) =>
         source == Entities.Enums.ServiceRequestSource.Showcase ? Showcase : CasaZen;
+
+    /// <summary>
+    /// The origin named <paramref name="value"/> (<c>casazen</c> or <c>showcase</c>, any case): the <c>source</c> filter of the inbox
+    /// (SP-04e). False for any other value, including numbers and the enum names.
+    /// </summary>
+    public static bool TryParse(string? value, out Entities.Enums.ServiceRequestSource source)
+    {
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case CasaZen:
+                source = Entities.Enums.ServiceRequestSource.Host;
+                return true;
+            case Showcase:
+                source = Entities.Enums.ServiceRequestSource.Showcase;
+                return true;
+            default:
+                source = default;
+                return false;
+        }
+    }
 }
 
 /// <summary>

@@ -31,6 +31,21 @@ public static class OrgActivityDetails
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = false };
 
+    /// <summary>The code of a set of areas that holds none: a member with no rental membership (a drift the reconcile reports).</summary>
+    public const string NoAreas = "none";
+
+    /// <summary>
+    /// The code of a set of areas (rental contexts) as a detail value: the keys sorted and joined with a dot
+    /// (<c>long-rent.short-rent</c>), which is a short code the log accepts. Not a sentence, never a name. No areas at all are
+    /// <see cref="NoAreas"/>: an empty value is not a code and the log refuses it, so the change that repairs such a member could
+    /// never be written.
+    /// </summary>
+    public static string AreasCode(IEnumerable<string> areas)
+    {
+        var code = string.Join('.', areas.Select(a => a.Trim().ToLowerInvariant()).Distinct().Order(StringComparer.Ordinal));
+        return code.Length == 0 ? NoAreas : code;
+    }
+
     /// <summary>The JSON of <paramref name="details"/>: keys in alphabetical order, so the same details always read the same; <c>{}</c> when there are none.</summary>
     public static string Serialize(IReadOnlyDictionary<string, string>? details)
     {

@@ -264,6 +264,70 @@ public class HostNotificationAudienceReachTests : IDisposable
         Assert.Equal(["admin", "owner"], await ToldAsync("manager-away"));
     }
 
+    // --- The area of the collaborator (AM-02c) -----------------------------------------------------------
+
+    private async Task WorksInAsync(string name, params string[] contexts)
+    {
+        foreach (var context in contexts)
+            OrgTeamTestData.AddMembership(_db, Id(name), context, "staff");
+
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+    }
+
+    private async Task SetModeAsync(RentalMode mode)
+    {
+        (await _db.Properties.SingleAsync(p => p.Id == _propertyId)).RentalMode = mode;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+    }
+
+    [Theory]
+    [InlineData("short", RentalMode.Short, true)]
+    [InlineData("short", RentalMode.Long, false)]
+    [InlineData("long", RentalMode.Long, true)]
+    [InlineData("long", RentalMode.Short, false)]
+    [InlineData("both", RentalMode.Short, true)]
+    [InlineData("both", RentalMode.Long, true)]
+    [InlineData("none", RentalMode.Long, true)]
+    public async Task UsersToTell_ACollaboratorSoloAlcuniInCharge_IsToldOnlyWhileItWorksInAnAreaOfThePropertysMode(
+        string areas,
+        RentalMode propertyMode,
+        bool told)
+    {
+        await SeedAsync();
+        string[] contexts = areas switch
+        {
+            "short" => ["short-rent"],
+            "long" => ["long-rent"],
+            "both" => ["short-rent", "long-rent"],
+            _ => [],
+        };
+        await WorksInAsync("collab-granted", contexts);
+        // The property changed mode after it was given to the collaborator (the daily job of PM-02), or it was given in the other area.
+        await SetModeAsync(propertyMode);
+
+        // The grant is still there: what decides is the area, read on the live property. With no area known nothing narrows it
+        // (OrgRoleCatalog.SingleModeOf, as the lists do).
+        var expected = told ? new[] { "admin", "collab-granted", "owner" } : new[] { "admin", "owner" };
+        Assert.Equal(expected, await ToldAsync("collab-granted"));
+    }
+
+    [Fact]
+    public async Task UsersToTell_TheAreaRule_IsTheOneOfACollaboratorSoloAlcuniOnly()
+    {
+        await SeedAsync();
+        // A manager and an accountant who work in one area only still reach every property of the org by their role.
+        await WorksInAsync("manager", "short-rent");
+        await WorksInAsync("accountant", "short-rent");
+        await WorksInAsync("collab-all", "short-rent");
+        await SetModeAsync(RentalMode.Long);
+
+        Assert.Equal(["admin", "manager", "owner"], await ToldAsync("manager"));
+        Assert.Equal(["accountant", "admin", "owner"], await ToldAsync("accountant"));
+        Assert.Equal(["admin", "collab-all", "owner"], await ToldAsync("collab-all"));
+    }
+
     // --- The emails -------------------------------------------------------------------------------------
 
     private BookingNotifier Notifier() =>

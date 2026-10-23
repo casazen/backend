@@ -33,6 +33,13 @@ namespace Casazen.Core.Services;
 /// (<see cref="BookingSource.Direct"/>).</item>
 /// <item><b>Previous period</b> (SR-03, on request): the figures of the period with the same number of nights that ends
 /// where this one starts (<see cref="HostDashboardPeriod.Previous"/>).</item>
+/// <item><b>Overview</b> (SR-03b): the same figures of the period and of the one before, the difference between them worked out
+/// here and not by the client (<see cref="HostOverviewRules"/>), the stays that arrive in the period (a request still waiting for
+/// the host counts here, as it does not in <see cref="StayKpiRules"/>) and the revenue by week or month
+/// (<see cref="HostOverviewSeries"/>), which adds up to the revenue of the period.</item>
+/// <item><b>Reports</b> (SR-10): the revenue, the occupancy and the stays of a period of up to <see cref="HostReportRules.MaxMonths"/>
+/// months cut by property or by channel, read through the code of the KPIs (the same stays, the same nights, the same rule), so
+/// the total of a report is the number of the Home for the same days.</item>
 /// </list>
 /// </remarks>
 public interface IHostDashboardService
@@ -67,8 +74,49 @@ public interface IHostDashboardService
     /// </summary>
     Task<HostDashboardTodayStays> GetTodayStaysAsync(HostScope scope, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The numbers of the Home (SR-03b, <c>GET /api/dashboard/overview</c>): the figures of <see cref="GetKpisAsync(HostScope, HostDashboardQuery, CancellationToken)"/>
+    /// (the same code, never a second copy of a rule) compared with the period before, the stays that arrive in the period, the
+    /// next arrivals and, for a caller who may read money, the revenue by week or month.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">
+    /// <see cref="HostOverviewQuery.PropertyId"/> is not a property of the scope: the same 404 as <c>kpis</c>.
+    /// </exception>
+    /// <exception cref="ArgumentException">A <see cref="HostDashboardPeriodKind.Custom"/> query whose days are missing or not accepted by <see cref="HostDashboardPeriod.TryCustom"/>.</exception>
+    Task<HostOverview> GetOverviewAsync(HostScope scope, HostOverviewQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The revenue of the Home cut by property (SR-10, <c>GET /api/reports/revenue-by-property</c>): the same confirmed stays and the
+    /// same rule (<see cref="StayKpiRules"/>), so the total is the revenue the Home gives for the same days and each row the one the
+    /// Home gives for that property. The days are checked by <see cref="HostReportRules.CheckPeriod"/> before this is called.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="HostReportQuery.PropertyId"/> is not a property of the scope: the same 404 as <c>kpis</c>.</exception>
+    Task<HostRevenueByProperty> GetRevenueByPropertyAsync(HostScope scope, HostReportQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The occupancy of the Home cut by property (SR-10, <c>GET /api/reports/occupancy-by-property</c>): the same nights, per active
+    /// short-rent property, and the total the Home gives.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">As <see cref="GetRevenueByPropertyAsync"/>.</exception>
+    Task<HostOccupancyByProperty> GetOccupancyByPropertyAsync(HostScope scope, HostReportQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The confirmed stays of the Home cut by channel, <see cref="Booking.Source"/> (SR-10, <c>GET /api/reports/bookings-by-channel</c>):
+    /// the stays, nights and revenue of each, over the same stays as the revenue.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">As <see cref="GetRevenueByPropertyAsync"/>.</exception>
+    Task<HostBookingsByChannel> GetBookingsByChannelAsync(HostScope scope, HostReportQuery query, CancellationToken cancellationToken = default);
+
     /// <summary>The iCal import feeds of the properties of <paramref name="scope"/>, by property name then creation.</summary>
     Task<IReadOnlyList<HostDashboardIcalFeed>> GetIcalFeedsAsync(HostScope scope, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The calendars of every active short-rent property of <paramref name="scope"/> in one read (SR-10b,
+    /// <c>GET /api/properties/calendar-overview</c>): the feeds of <see cref="GetIcalFeedsAsync"/> (the same code, never the import
+    /// URL) gathered by property, the properties that have none, and the token of each property's export link. Three queries whatever
+    /// the number of properties; the export link of a property that never asked for it is missing, not created.
+    /// </summary>
+    Task<HostCalendarOverview> GetCalendarOverviewAsync(HostScope scope, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Kind of period of the dashboard KPIs.</summary>
@@ -82,6 +130,12 @@ public enum HostDashboardPeriodKind
 
     /// <summary>The next 30 days, today included (SR-03): the forecast of the Home.</summary>
     Next30Days,
+
+    /// <summary>
+    /// A free period of at most <see cref="HostDashboardPeriod.MaxCustomDays"/> days, from a first to a last day chosen by the
+    /// caller (SR-03b): only <c>GET /api/dashboard/overview</c> takes it.
+    /// </summary>
+    Custom,
 }
 
 /// <summary>
@@ -95,12 +149,16 @@ public enum HostDashboardPeriodKind
 /// Also compute the cash figure (<see cref="HostDashboardKpis.Collected"/>). Money collected is payment data: the web layer
 /// sets it only for a caller who may read payments, so the default is to leave it out.
 /// </param>
+/// <param name="From">First day of a <see cref="HostDashboardPeriodKind.Custom"/> period (included); ignored by any other kind.</param>
+/// <param name="To">Last day of a <see cref="HostDashboardPeriodKind.Custom"/> period (included); ignored by any other kind.</param>
 public sealed record HostDashboardQuery(
     HostDashboardPeriodKind Kind = HostDashboardPeriodKind.Month,
     DateOnly? Month = null,
     Guid? PropertyId = null,
     bool Compare = false,
-    bool IncludeCollected = false);
+    bool IncludeCollected = false,
+    DateOnly? From = null,
+    DateOnly? To = null);
 
 /// <summary>
 /// Period of the KPIs: the nights from <see cref="From"/> (included) to <see cref="To"/> (excluded), calendar dates as
@@ -143,6 +201,33 @@ public sealed record HostDashboardPeriod(HostDashboardPeriodKind Kind, DateTime 
     {
         var from = todayInRome.Date;
         return new HostDashboardPeriod(HostDashboardPeriodKind.Next30Days, from, from.AddDays(Next30DaysLength));
+    }
+
+    /// <summary>The longest <see cref="HostDashboardPeriodKind.Custom"/> period, in days (SR-03b): a year, leap year included.</summary>
+    public const int MaxCustomDays = 366;
+
+    /// <summary>The first year a free period may touch, as for a month of <c>kpis</c>.</summary>
+    public const int MinCustomYear = 2000;
+
+    /// <summary>The last year a free period may touch, as for a month of <c>kpis</c>.</summary>
+    public const int MaxCustomYear = 2100;
+
+    /// <summary>
+    /// The free period from <paramref name="firstDay"/> to <paramref name="lastDay"/>, both included (SR-03b), or false when the
+    /// days are not in order, the period is longer than <see cref="MaxCustomDays"/> days or a day is out of the supported years.
+    /// </summary>
+    public static bool TryCustom(DateOnly firstDay, DateOnly lastDay, out HostDashboardPeriod period)
+    {
+        period = null!;
+        if (lastDay < firstDay
+            || firstDay.Year < MinCustomYear
+            || lastDay.Year > MaxCustomYear
+            || lastDay.DayNumber - firstDay.DayNumber + 1 > MaxCustomDays)
+            return false;
+
+        var from = firstDay.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        period = new HostDashboardPeriod(HostDashboardPeriodKind.Custom, from, from.AddDays(lastDay.DayNumber - firstDay.DayNumber + 1));
+        return true;
     }
 }
 

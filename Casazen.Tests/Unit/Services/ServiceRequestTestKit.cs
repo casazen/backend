@@ -62,7 +62,12 @@ internal sealed class ServiceRequestTestKit : IDisposable
         Storage = new FileSystemFileStorage(storageOptions, NullLogger<FileSystemFileStorage>.Instance);
         Images = new ImageStorageService(Storage, storageOptions, NullLogger<ImageStorageService>.Instance);
 
-        Reader = new SupplierServiceRequestReader(db, Clock);
+        // SP-04e: the reader tells the payment of a completed job, and the KPIs add up the payments that came in, through the real read
+        // models (the flag and the options are the kit's own, so a test that switches the payments on sees them in the summaries).
+        PaymentReads = new SupplierPaymentReadModels(
+            db, Flags, Microsoft.Extensions.Options.Options.Create(PaymentOptions), LegalTestServices.Legal(), Clock);
+        Reader = new SupplierServiceRequestReader(db, Clock, PaymentReads);
+        Kpis = new SupplierKpiService(db, Clock, Flags, PaymentReads);
         Holds = new ShowcaseHoldReader(db);
         Agenda = new SupplierAgendaService(db, Reader, Holds, NullLogger<SupplierAgendaService>.Instance, Clock);
         Catalog = new SupplierServiceCatalogService(db, Storage, Images, NullLogger<SupplierServiceCatalogService>.Instance, Clock);
@@ -164,6 +169,12 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public ImageStorageService Images { get; }
 
     public SupplierServiceRequestReader Reader { get; }
+
+    /// <summary>The reads of the payments of the supplier console (SP-04e), over the kit's flags and options.</summary>
+    public SupplierPaymentReadModels PaymentReads { get; }
+
+    /// <summary>The KPIs of the supplier (SP-04e: with the overview, over <see cref="PaymentReads"/>).</summary>
+    public SupplierKpiService Kpis { get; }
 
     public ShowcaseHoldReader Holds { get; }
 

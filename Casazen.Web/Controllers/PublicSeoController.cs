@@ -74,6 +74,16 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
         CancellationToken cancellationToken) =>
         ToResult(await seoService.RenderHostPageAsync(host, path, cancellationToken));
 
+    /// <summary>The public showcase of an active supplier (<c>/fornitori/{slug}</c>).</summary>
+    [HttpGet("suppliers/{slug}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status301MovedPermanently)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetSupplier(
+        [RegularExpression(SlugPattern)] string slug,
+        CancellationToken cancellationToken) =>
+        ToResult(await seoService.RenderSupplierAsync(slug, cancellationToken));
+
     /// <summary>A compliance guide of a comune.</summary>
     [HttpGet("guides/{regionSlug}/{comuneSlug}")]
     [ProducesResponseType(StatusCodes.Status200OK)]

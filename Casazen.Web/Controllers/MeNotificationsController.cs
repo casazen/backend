@@ -1,5 +1,4 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
@@ -11,8 +10,7 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The in-app notifications of the caller, for the bell of the shell (UI-12a): the list, the unread count, and the two ways to
-/// clear them. Behind <see cref="FeatureFlags.InAppNotifications"/>: off, every action answers 404 like a route that does not exist,
-/// before authentication. Runbook: <c>docs/runbooks/in-app-notifications.md</c>.
+/// clear them. Runbook: <c>docs/runbooks/in-app-notifications.md</c>.
 /// </summary>
 /// <remarks>
 /// <para>TN-3. The notifications are the caller's own, so the policy is <see cref="CasazenPolicies.Authenticated"/> (every context
@@ -27,7 +25,6 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/me/notifications")]
 [Authorize(Policy = CasazenPolicies.Authenticated)]
-[FeatureGate(FeatureFlags.InAppNotifications)]
 public class MeNotificationsController(IInAppNotificationService notifications) : ControllerBase
 {
     /// <summary>

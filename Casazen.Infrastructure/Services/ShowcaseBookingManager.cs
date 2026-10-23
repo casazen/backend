@@ -219,7 +219,13 @@ public sealed class ShowcaseBookingManager(
                 .ToList()
             : ServiceRequestJson.ReadOptions(row.OptionsJson)
                 .Select(option => new ShowcaseBookingPriceLine(
-                    option.Code == ServiceRequestOptionCodes.Quantity ? "service" : "option",
+                    option.Code switch
+                    {
+                        ServiceRequestOptionCodes.Quantity => "service",
+                        // The surcharge of an urgent booking (SP-04c) is told apart so the page can say it in the customer's language.
+                        ServiceRequestOptionCodes.Urgent => "urgent",
+                        _ => "option",
+                    },
                     option.Label,
                     option.Quantity,
                     option.AmountCents,

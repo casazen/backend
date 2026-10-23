@@ -21,8 +21,8 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// The web host with the org team flag on and the invitation emails recorded instead of queued, so a test can read the link
-/// the invited person would receive.
+/// The web host with the invitation emails recorded instead of queued, so a test can read the link the invited person would
+/// receive.
 /// </summary>
 public sealed class OrgInvitationsFactory : CasazenWebApplicationFactory
 {
@@ -38,8 +38,6 @@ public sealed class OrgInvitationsFactory : CasazenWebApplicationFactory
     {
         base.ConfigureWebHost(builder);
         var inMemoryStore = $"org-invitations-{Guid.NewGuid():N}";
-        builder.ConfigureAppConfiguration((_, config) =>
-            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:OrgTeam"] = "true" }));
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IEmailQueue>();
@@ -385,7 +383,12 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            (await db.OrgInvitations.IgnoreQueryFilters().SingleAsync(i => i.Id == expiredId)).ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+            var expiredRow = await db.OrgInvitations.IgnoreQueryFilters().SingleAsync(i => i.Id == expiredId);
+            expiredRow.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+            // An invitation expires a week after its last email: the test forces the expiry, so its last send is old too (AM-02c:
+            // «reinvia» waits an hour after the last one).
+            expiredRow.LastSentAt = DateTime.UtcNow.AddDays(-8);
+            expiredRow.SendLog = [];
             await db.SaveChangesAsync();
         }
 
@@ -497,58 +500,318 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.Equal((410, "invitation_invalid"), (answers[0].Status, answers[0].Code));
     }
 
+    // ─── The completions of AM-02c ──────────────────────────────────────────────────────────────────────
+
+    private async Task<Guid> MemberRowIdAsync(HttpClient owner, string userId)
+    {
+        var members = await (await owner.GetAsync("/api/orgs/me/members")).Content.ReadFromJsonAsync<JsonElement>();
+        return members.GetProperty("items").EnumerateArray()
+            .Single(m => m.GetProperty("userId").GetString() == userId)
+            .GetProperty("id").GetGuid();
+    }
+
+    private async Task<Guid> SeedPropertyAsync(Guid orgId, string ownerId, string name, RentalMode mode = RentalMode.Short)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var property = HostScopeScenario.NewProperty(orgId, ownerId, name);
+        property.RentalMode = mode;
+        db.Properties.Add(property);
+        await db.SaveChangesAsync();
+        return property.Id;
+    }
+
+    private static async Task<List<Guid>> PropertyIdsAsync(HttpClient client)
+    {
+        var response = await client.GetAsync("/api/properties");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var rows = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var items = rows.ValueKind == JsonValueKind.Array ? rows : rows.GetProperty("items");
+        return items.EnumerateArray().Select(row => row.GetProperty("id").GetGuid()).ToList();
+    }
+
+    [Fact]
+    public async Task Roles_TheOwnerReadsTheMatrixOfTheFiveRoles_AndAnyMemberReadsItWithNothingToGive()
+    {
+        var (ownerId, orgId) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        using var owner = OwnerClient(ownerId);
+
+        var response = await owner.GetAsync("/api/orgs/me/roles");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var roles = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("roles").EnumerateArray().ToList();
+        Assert.Equal(["Owner", "Admin", "PropertyManager", "Collaborator", "Accountant"], roles.Select(r => r.GetProperty("role").GetString()));
+        // The owner gives every role but its own; only the collaborator can be limited to some properties.
+        Assert.Equal([false, true, true, true, true], roles.Select(r => r.GetProperty("assignable").GetBoolean()));
+        Assert.Equal(["Collaborator"], roles.Where(r => r.GetProperty("scopeSupported").GetBoolean()).Select(r => r.GetProperty("role").GetString()));
+        Assert.All(roles, r => Assert.Equal(12, r.GetProperty("capabilities").GetArrayLength()));
+
+        // The levels are read from the permissions of the seeded roles: the collaborator reads the prices, handles the guests and has
+        // no account; the property manager holds the restricted membership of the account.
+        var collaborator = roles.Single(r => r.GetProperty("role").GetString() == "Collaborator");
+        var levels = collaborator.GetProperty("capabilities").EnumerateArray()
+            .ToDictionary(c => c.GetProperty("id").GetString()!, c => c.GetProperty("level").GetString());
+        Assert.Equal(("Read", "Yes", "No", "No"), (levels["prices"], levels["guests"], levels["people"], levels["billing"]));
+        var collaboratorContexts = collaborator.GetProperty("permissionsByContext");
+        Assert.Equal("staff", collaboratorContexts.GetProperty("short-rent").GetProperty("roleKey").GetString());
+        Assert.False(collaboratorContexts.TryGetProperty("account", out _));
+        var manager = roles.Single(r => r.GetProperty("role").GetString() == "PropertyManager");
+        Assert.Equal("org_manager", manager.GetProperty("permissionsByContext").GetProperty("account").GetProperty("roleKey").GetString());
+
+        // A member who is no manager reads the same matrix, and can give nothing.
+        var memberUserId = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Collaborator, ["short-rent"]);
+        using var member = factory.CreateAuthenticatedClient(memberUserId);
+        var seen = (await (await member.GetAsync("/api/orgs/me/roles")).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("roles").EnumerateArray();
+        Assert.All(seen, r => Assert.False(r.GetProperty("assignable").GetBoolean()));
+        using var anonymous = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/orgs/me/roles")).StatusCode);
+    }
+
+    [Fact]
+    public async Task PropertyManager_HasTheAccountContextWithTheSuppliersOnly_AndThePeopleStayClosedToIt()
+    {
+        var (_, orgId) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        var managerId = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.PropertyManager, ["short-rent"]);
+        using var manager = factory.CreateAuthenticatedClient(managerId);
+
+        Assert.Equal(["account", "short-rent"], (await OrgTeamHttp.ContextKeysAsync(manager)).Order());
+        foreach (var path in new[] { "/api/orgs/me/members", "/api/orgs/me/invitations", "/api/orgs/me/activity", "/api/orgs/me/overview" })
+            Assert.Equal(HttpStatusCode.Forbidden, (await manager.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await manager.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(NewEmail("x")))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Areas_TheOwnerChangesTheAreasOfAMember_AndTheMemberOpensTheNewContextsAtOnce()
+    {
+        var (ownerId, orgId) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        var userId = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Collaborator, ["short-rent"]);
+        using var owner = OwnerClient(ownerId);
+        using var member = factory.CreateAuthenticatedClient(userId);
+        var memberId = await MemberRowIdAsync(owner, userId);
+        var path = $"/api/orgs/me/members/{memberId}/areas";
+        Assert.Equal(["short-rent"], await OrgTeamHttp.ContextKeysAsync(member));
+
+        var both = await owner.PutAsJsonAsync(path, new { areas = new[] { "short-rent", "long-rent" } });
+
+        Assert.Equal(HttpStatusCode.OK, both.StatusCode);
+        var row = await both.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(("Collaborator", "Active"), (row.GetProperty("role").GetString(), row.GetProperty("status").GetString()));
+        Assert.Equal(["long-rent", "short-rent"], row.GetProperty("areas").EnumerateArray().Select(a => a.GetString()).Order());
+        Assert.Equal(["long-rent", "short-rent"], (await OrgTeamHttp.ContextKeysAsync(member)).Order());
+
+        // The same set again writes nothing; taking an area away is as direct.
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync(path, new { areas = new[] { "long-rent", "short-rent" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync(path, new { areas = new[] { "long-rent" } })).StatusCode);
+        Assert.Equal(["long-rent"], await OrgTeamHttp.ContextKeysAsync(member));
+
+        // Two lines in the log, not three: who changed whose areas, from what to what.
+        var log = await (await owner.GetAsync("/api/orgs/me/activity?type=MemberAreasChanged")).Content.ReadFromJsonAsync<JsonElement>();
+        var lines = log.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(
+            ("short-rent", "long-rent.short-rent"),
+            (lines[1].GetProperty("details").GetProperty("fromAreas").GetString(), lines[1].GetProperty("details").GetProperty("toAreas").GetString()));
+        Assert.Equal(
+            ("long-rent.short-rent", "long-rent"),
+            (lines[0].GetProperty("details").GetProperty("fromAreas").GetString(), lines[0].GetProperty("details").GetProperty("toAreas").GetString()));
+        Assert.All(lines, l => Assert.Equal(ownerId, l.GetProperty("actorUserId").GetString()));
+
+        // What the request can get wrong, with its own code; none of it touched the member.
+        await OrgTeamHttp.AssertProblemAsync(
+            await owner.PutAsJsonAsync(path, new { areas = Array.Empty<string>() }), HttpStatusCode.UnprocessableEntity, "org_member_area_required");
+        await OrgTeamHttp.AssertProblemAsync(
+            await owner.PutAsJsonAsync(path, new { areas = new[] { "admin" } }), HttpStatusCode.UnprocessableEntity, "org_member_area_required");
+        await OrgTeamHttp.AssertProblemAsync(
+            await owner.PutAsJsonAsync(path, new { }), HttpStatusCode.UnprocessableEntity, "org_member_area_required");
+        var members = await (await owner.GetAsync("/api/orgs/me/members")).Content.ReadFromJsonAsync<JsonElement>();
+        var ownerRowId = members.GetProperty("items").EnumerateArray().Single(m => m.GetProperty("role").GetString() == "Owner").GetProperty("id").GetGuid();
+        await OrgTeamHttp.AssertProblemAsync(
+            await owner.PutAsJsonAsync($"/api/orgs/me/members/{ownerRowId}/areas", new { areas = new[] { "short-rent" } }),
+            HttpStatusCode.Conflict,
+            "org_last_owner");
+        await OrgTeamHttp.AssertProblemAsync(
+            await owner.PutAsJsonAsync($"/api/orgs/me/members/{Guid.NewGuid()}/areas", new { areas = new[] { "short-rent" } }),
+            HttpStatusCode.NotFound,
+            "org_member_not_found");
+        Assert.Equal(HttpStatusCode.Forbidden, (await member.PutAsJsonAsync(path, new { areas = new[] { "short-rent" } })).StatusCode);
+        Assert.Equal(["long-rent"], await OrgTeamHttp.ContextKeysAsync(member));
+    }
+
+    [Fact]
+    public async Task Overview_TheOwnerReadsTheHomeInOneRequest_AndAMemberWhoIsNoManagerIsRefused()
+    {
+        var (ownerId, orgId) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        using var owner = OwnerClient(ownerId);
+        await SeedPropertyAsync(orgId, ownerId, "Casa Breve Uno");
+        await SeedPropertyAsync(orgId, ownerId, "Casa Breve Due");
+        await SeedPropertyAsync(orgId, ownerId, "Casa Lunga", RentalMode.Long);
+        await InviteAsync(owner, NewEmail("attesa"));
+
+        var response = await owner.GetAsync("/api/orgs/me/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var home = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("ok", home.GetProperty("standing").GetString());
+        Assert.True(home.GetProperty("openAccess").ValueKind is JsonValueKind.True or JsonValueKind.False);
+        var seats = home.GetProperty("seats");
+        Assert.Equal((10, 2, false), (seats.GetProperty("max").GetInt32(), seats.GetProperty("used").GetInt32(), seats.GetProperty("unlimited").GetBoolean()));
+        var properties = home.GetProperty("properties");
+        Assert.Equal(
+            (3, 2, 1, 2),
+            (properties.GetProperty("total").GetInt32(), properties.GetProperty("short").GetInt32(), properties.GetProperty("long").GetInt32(), properties.GetProperty("toComplete").GetInt32()));
+        var invitations = home.GetProperty("invitations");
+        Assert.Equal((1, 0), (invitations.GetProperty("pending").GetInt32(), invitations.GetProperty("oldestPendingDays").GetInt32()));
+        Assert.Equal(0, home.GetProperty("accessRequests").GetProperty("pending").GetInt32());
+        Assert.Equal(0, home.GetProperty("suppliers").GetProperty("trusted").GetInt32());
+        Assert.Equal(2, home.GetProperty("alloggiati").GetProperty("propertiesWithoutCredentials").GetInt32());
+        var recent = home.GetProperty("recentActivity").EnumerateArray().ToList();
+        Assert.Equal("MemberInvited", Assert.Single(recent).GetProperty("type").GetString());
+
+        var memberUserId = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Collaborator, ["short-rent"]);
+        using var member = factory.CreateAuthenticatedClient(memberUserId);
+        Assert.Equal(HttpStatusCode.Forbidden, (await member.GetAsync("/api/orgs/me/overview")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Invite_ACollaboratorSoloAlcuniWithItsProperties_ReachesThemTheMomentItAccepts()
+    {
+        var (ownerId, orgId) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        using var owner = OwnerClient(ownerId);
+        var first = await SeedPropertyAsync(orgId, ownerId, "Casa Uno");
+        var second = await SeedPropertyAsync(orgId, ownerId, "Casa Due");
+        await SeedPropertyAsync(orgId, ownerId, "Casa Tre");
+        var annaId = NewUserId("anna");
+        var annaEmail = NewEmail("anna");
+
+        var created = await owner.PostAsJsonAsync("/api/orgs/me/invitations", new
+        {
+            email = annaEmail,
+            name = "Anna Leone",
+            role = "Collaborator",
+            areas = new[] { "short-rent" },
+            propertyScope = "Selected",
+            propertyIds = new[] { first, second },
+        });
+
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var invitation = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("invitation");
+        Assert.Equal(new[] { first, second }.Order(), invitation.GetProperty("propertyIds").EnumerateArray().Select(p => p.GetGuid()).Order());
+        Assert.NotEqual(JsonValueKind.Null, invitation.GetProperty("lastSentAt").ValueKind);
+        var listed = Assert.Single((await (await owner.GetAsync("/api/orgs/me/invitations")).Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray());
+        Assert.Equal(new[] { first, second }.Order(), listed.GetProperty("propertyIds").EnumerateArray().Select(p => p.GetGuid()).Order());
+
+        // She accepts and reaches the two properties she was invited with, and not the third: no second step for the owner.
+        var token = LinkTokenSentTo(annaEmail, EmailTemplates.Names.OrgInvitation);
+        using var anna = InviteeClient(annaId, annaEmail);
+        Assert.Equal(HttpStatusCode.OK, (await anna.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(token))).StatusCode);
+        Assert.Equal(new[] { first, second }.Order(), (await PropertyIdsAsync(anna)).Order());
+        var memberId = await MemberRowIdAsync(owner, annaId);
+        var access = await (await owner.GetAsync($"/api/orgs/me/members/{memberId}/properties")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Selected", access.GetProperty("propertyScope").GetString());
+        Assert.Equal(
+            new[] { first, second }.Order(),
+            access.GetProperty("properties").EnumerateArray().Where(p => p.GetProperty("granted").GetBoolean()).Select(p => p.GetProperty("propertyId").GetGuid()).Order());
+    }
+
+    [Fact]
+    public async Task Invite_ThePropertiesOfTheInvitation_AreCheckedWhenItIsWritten()
+    {
+        var (ownerId, orgId) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        var (otherOwnerId, otherOrgId) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        using var owner = OwnerClient(ownerId);
+        var mine = await SeedPropertyAsync(orgId, ownerId, "Casa Mia");
+        var foreign = await SeedPropertyAsync(otherOrgId, otherOwnerId, "Casa Altrui");
+        object Body(string role, string scope, params Guid[] ids) =>
+            new { email = NewEmail("x"), name = "Anna Leone", role, areas = new[] { "short-rent" }, propertyScope = scope, propertyIds = ids };
+
+        // A property that is not the org's (unknown, of another org) is refused; so is one given to a role or a scope that cannot have it.
+        await OrgTeamHttp.AssertProblemAsync(
+            await owner.PostAsJsonAsync("/api/orgs/me/invitations", Body("Collaborator", "Selected", Guid.NewGuid())),
+            HttpStatusCode.UnprocessableEntity,
+            "org_member_property_unknown");
+        await OrgTeamHttp.AssertProblemAsync(
+            await owner.PostAsJsonAsync("/api/orgs/me/invitations", Body("Collaborator", "Selected", mine, foreign)),
+            HttpStatusCode.UnprocessableEntity,
+            "org_member_property_unknown");
+        await OrgTeamHttp.AssertProblemAsync(
+            await owner.PostAsJsonAsync("/api/orgs/me/invitations", Body("Collaborator", "All", mine)),
+            HttpStatusCode.UnprocessableEntity,
+            "org_member_scope_not_supported");
+        await OrgTeamHttp.AssertProblemAsync(
+            await owner.PostAsJsonAsync("/api/orgs/me/invitations", Body("Accountant", "Selected", mine)),
+            HttpStatusCode.UnprocessableEntity,
+            "org_member_scope_not_supported");
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await owner.PostAsJsonAsync("/api/orgs/me/invitations", Body("Collaborator", "Selected", Enumerable.Range(0, 501).Select(_ => Guid.NewGuid()).ToArray()))).StatusCode);
+
+        // None of them wrote an invitation or sent an email.
+        Assert.Empty(await (await owner.GetAsync("/api/orgs/me/invitations")).Content.ReadFromJsonAsync<JsonElement[]>() ?? []);
+        Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync("/api/orgs/me/invitations", Body("Collaborator", "Selected", mine))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Invite_TheCapOnTheEmails_AnswersTooManyRequests_AndARevokedInvitationStillCounts()
+    {
+        var (ownerId, _) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        using var owner = OwnerClient(ownerId);
+
+        // Ten emails in the day (the default of OrgTeam:InvitationDailyLimit). Each invitation is revoked at once: that frees its seat
+        // and gives back no email.
+        for (var i = 0; i < 10; i++)
+        {
+            var (invitationId, _) = await InviteAsync(owner, NewEmail($"giorno{i}"));
+            Assert.Equal(HttpStatusCode.NoContent, (await owner.PostAsync($"/api/orgs/me/invitations/{invitationId}/revoke", null)).StatusCode);
+        }
+
+        var refused = await owner.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(NewEmail("undicesima")));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, refused.StatusCode);
+        var problem = await refused.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invitation_daily_limit_reached", problem.GetProperty("code").GetString());
+        // The message says the limit the org ran into.
+        Assert.Contains("10", problem.GetProperty("detail").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Resend_AnHourBetweenTwoSends_AnswersTooManyRequestsUntilTheHourHasPassed()
+    {
+        var (ownerId, _) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
+        using var owner = OwnerClient(ownerId);
+        var email = NewEmail("fretta");
+        var (invitationId, firstToken) = await InviteAsync(owner, email);
+
+        var tooSoon = await owner.PostAsync($"/api/orgs/me/invitations/{invitationId}/resend", null);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, tooSoon.StatusCode);
+        var problem = await tooSoon.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invitation_resend_too_soon", problem.GetProperty("code").GetString());
+        // The message says how many minutes are left.
+        Assert.Matches("\\d", problem.GetProperty("detail").GetString()!);
+        // Nothing went out, and the link of the first email still works.
+        Assert.Single(factory.SentEmails(), e => e.Template == EmailTemplates.Names.OrgInvitation && string.Equals(e.To, email, StringComparison.OrdinalIgnoreCase));
+        using var anonymous = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.PostAsJsonAsync("/api/org-invitations/lookup", new { token = firstToken })).StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var row = await db.OrgInvitations.IgnoreQueryFilters().SingleAsync(i => i.Id == invitationId);
+            row.LastSentAt = DateTime.UtcNow.AddMinutes(-61);
+            await db.SaveChangesAsync();
+        }
+
+        var again = await owner.PostAsync($"/api/orgs/me/invitations/{invitationId}/resend", null);
+
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        Assert.Equal(2, factory.SentEmails().Count(e => e.Template == EmailTemplates.Names.OrgInvitation && string.Equals(e.To, email, StringComparison.OrdinalIgnoreCase)));
+        // The first link stopped working with the new one.
+        await OrgTeamHttp.AssertProblemAsync(
+            await anonymous.PostAsJsonAsync("/api/org-invitations/lookup", new { token = firstToken }), HttpStatusCode.Gone, "invitation_invalid");
+    }
+
     /// <summary>A context on the host's database, for the data a test writes directly (the scope lives as long as the test).</summary>
     private AppDbContext NewHostContext() => factory.Services.CreateScope().ServiceProvider.GetRequiredService<AppDbContext>();
-}
-
-/// <summary>
-/// With the <c>OrgTeam</c> flag off (the default) the endpoints of the team do not exist: 404 for anyone, before the
-/// authentication, so nothing leaks about a feature that is not on.
-/// </summary>
-public class OrgInvitationsFlagOffIntegrationTests(OrgInvitationsFlagOffIntegrationTests.Factory factory)
-    : IClassFixture<OrgInvitationsFlagOffIntegrationTests.Factory>
-{
-    /// <summary>The default host (flag off), without the comuni sample: see <see cref="OrgInvitationsFactory"/>.</summary>
-    public sealed class Factory : CasazenWebApplicationFactory
-    {
-        protected override bool SeedComuneSample => false;
-    }
-
-    private const string SomeId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
-
-    [Theory]
-    [InlineData("GET", "/api/orgs/me/invitations")]
-    [InlineData("POST", "/api/orgs/me/invitations")]
-    [InlineData("POST", $"/api/orgs/me/invitations/{SomeId}/resend")]
-    [InlineData("POST", $"/api/orgs/me/invitations/{SomeId}/revoke")]
-    [InlineData("POST", $"/api/orgs/me/invitations/{SomeId}/link")]
-    [InlineData("GET", "/api/orgs/me/members")]
-    [InlineData("PUT", $"/api/orgs/me/members/{SomeId}")]
-    [InlineData("POST", $"/api/orgs/me/members/{SomeId}/deactivate")]
-    [InlineData("POST", $"/api/orgs/me/members/{SomeId}/reactivate")]
-    [InlineData("DELETE", $"/api/orgs/me/members/{SomeId}")]
-    [InlineData("POST", "/api/org-invitations/lookup")]
-    [InlineData("POST", "/api/org-invitations/accept")]
-    [InlineData("GET", "/api/orgs/me/activity")]
-    [InlineData("GET", "/api/orgs/me/activity.csv")]
-    [InlineData("POST", "/api/orgs/me/access-requests")]
-    public async Task EveryEndpointOfTheTeam_WithTheFlagOff_AnswersNotFound_ToAnyone(string method, string path)
-    {
-        using var anonymous = factory.CreateClient();
-        using var owner = factory.CreateAuthenticatedClient("auth0|am02-flag-off-owner", roles: "PropertyOwner");
-
-        foreach (var client in new[] { anonymous, owner })
-        {
-            using var request = new HttpRequestMessage(new HttpMethod(method), path)
-            {
-                Content = method is "GET" or "DELETE" ? null : JsonContent.Create(new { }),
-            };
-
-            var response = await client.SendAsync(request);
-
-            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        }
-    }
 }
 
 /// <summary>
@@ -568,7 +831,6 @@ public class OrgInvitationsLookupRateLimitIntegrationTests(OrgInvitationsLookupR
             builder.ConfigureAppConfiguration((_, config) =>
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Features:OrgTeam"] = "true",
                     ["RateLimiting:PublicInvitationLookup:PermitLimit"] = "3",
                 }));
         }

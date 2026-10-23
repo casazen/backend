@@ -1,4 +1,3 @@
-using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -13,12 +12,10 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The two calls of the person who was invited (AM-02): what the link is for, and the acceptance. Both take the secret
-/// token <b>in the body</b>, never in a URL (URLs end up in logs and history). Behind the <c>OrgTeam</c> flag: 404 while it is
-/// off. Runbook <c>docs/runbooks/org-team.md</c>.
+/// token <b>in the body</b>, never in a URL (URLs end up in logs and history). Runbook <c>docs/runbooks/org-team.md</c>.
 /// </summary>
 [ApiController]
 [Route("api/org-invitations")]
-[FeatureGate(FeatureFlags.OrgTeam)]
 public class OrgInvitationAcceptanceController(
     IOrgInvitationService invitations,
     IOnboardingService onboardingService,

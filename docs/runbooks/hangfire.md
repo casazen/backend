@@ -38,7 +38,8 @@ and production never block each other.
 | `gdpr-data-retention` | 03:00 | `GdprDataRetentionJob.ExecuteAsync` | 300 s |
 | `stay-alerts` (CO-10, see [§9](#9-stay-alerts-co-10); replaces `alloggiati-deadline-alert` and `guest-checkin-reminder`, removed at startup) | hourly | `StayAlertsJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `cin-deadline-alert` (CO-20: host alert about properties without a valid CIN, once per stage, see [cin-format.md](cin-format.md#cin-deadline-and-host-alerts-co-20)) | 08:00 | `CinDeadlineAlertJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
-| `property-mode-change` (PM-02: applies the scheduled changes of rental mode in the hour after midnight of Rome, idempotent; only with `Features:PropertyModeChange=true`, otherwise removed at startup: FD-20, [feature-flags.md](feature-flags.md); see [property-rental-mode.md §8.5](property-rental-mode.md#85-the-job-property-mode-change)) | hourly | `PropertyModeChangeJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run, and the dates lock of each property) | 300 s |
+| `property-mode-change` (PM-02: applies the scheduled changes of rental mode in the hour after midnight of Rome, idempotent; always registered; see [property-rental-mode.md §8.5](property-rental-mode.md#85-the-job-property-mode-change)) | hourly | `PropertyModeChangeJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run, and the dates lock of each property) | 300 s |
+| `lease-draft-retention` (LR-12, LR-D33: deletes the lease drafts nobody changed for `LongRentLease:DraftRetentionDays` days (180) with their parties and files, never one with a signed copy; idempotent, counts only in the log; always registered; see [long-rent-lease-draft.md §8](long-rent-lease-draft.md#8-the-abandoned-drafts-the-job-lease-draft-retention-decision-lr-d33)) | 03:50 | `LeaseDraftRetentionJob.ExecuteAsync` (plus a PostgreSQL session lock per run, and the row lock of each draft) | 300 s |
 | `lease-sign-status-poll` | `*/10` | `LeaseSignStatusPollingJob.ExecuteAsync` | 60 s |
 | `lease-registration-status-poll` | `*/5` | `LeaseRegistrationStatusPollingJob.ExecuteAsync` | 60 s |
 | `rli-deadline-reminder` (LT-04, see [§8](#8-rli-deadline-reminder-lt-04)) | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
@@ -58,9 +59,9 @@ and production never block each other.
 | `property-compliance-check` (CO-06, see [§10](#10-property-compliance-check-co-06)) | 04:00 | `PropertyComplianceCheckJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `push-receipts` (MO-04, see [§11](#11-push-notifications-mo-04)) | `*/15` | `PushReceiptsJob.ExecuteAsync` | 60 s |
 | `domain-recheck` (BK-17: custom domains activate by themselves, a removed DNS record is noticed, dropped domains leave the Vercel project; see [seo-domain.md](seo-domain.md#10-custom-domains-on-vercel-bk-17)) | `*/15` | `DomainRecheckJob.ExecuteAsync` (what is due is decided per domain) | 60 s |
-| `org-invitation-maintenance` (AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days; it runs with `Features:OrgTeam` off too, and then it only deletes; see [org-team.md](org-team.md#15-emails-and-the-maintenance-job)) | hourly at :10 | `OrgInvitationMaintenanceJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run and the org's seats lock per invitation) | 300 s |
-| `org-activity-retention` (AM-02b: deletes the lines of the org activity log older than `OrgTeam__ActivityRetentionMonths`, 12 by default, in batches of 500 and at most 100 batches a run; always registered, because the retention does not depend on `Features:OrgTeam`; see [org-team.md](org-team.md#34-retention-12-months)) | 03:40 | `OrgActivityRetentionJob.ExecuteAsync` (plus a PostgreSQL session advisory lock per run) | 300 s |
-| `in-app-notification-retention` (UI-12a: deletes the in-app notifications older than 90 days, read or not, in one statement; **always registered**, rows written while `Features:InAppNotifications` was on are purged after it is turned off; see [§15](#15-in-app-notifications-ui-12a)) | 03:45 | `InAppNotificationRetentionJob.ExecuteAsync` | 300 s |
+| `org-invitation-maintenance` (AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days; see [org-team.md](org-team.md#15-emails-and-the-maintenance-job)) | hourly at :10 | `OrgInvitationMaintenanceJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run and the org's seats lock per invitation) | 300 s |
+| `org-activity-retention` (AM-02b: deletes the lines of the org activity log older than `OrgTeam__ActivityRetentionMonths`, 12 by default, in batches of 500 and at most 100 batches a run; see [org-team.md](org-team.md#34-retention-12-months)) | 03:40 | `OrgActivityRetentionJob.ExecuteAsync` (plus a PostgreSQL session advisory lock per run) | 300 s |
+| `in-app-notification-retention` (UI-12a: deletes the in-app notifications older than 90 days, read or not, in one statement; see [§15](#15-in-app-notifications-ui-12a)) | 03:45 | `InAppNotificationRetentionJob.ExecuteAsync` | 300 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
@@ -257,12 +258,13 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 29 recurring jobs in each schema with every flag on; 23 with the defaults
-  -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider, Features:SupplierRequestAutoCancel and
-  -- Features:PropertyModeChange off; service-request-expiry, service-request-reminders, org-invitation-maintenance,
-  -- org-activity-retention, service-payment-sync, service-payment-reminders and in-app-notification-retention (UI-12a) are
-  -- in both counts: they ignore the flags; property-mode-change (PM-02) is the one that appears with
-  -- Features:PropertyModeChange on)
+  -- 34 recurring jobs in each schema with every flag on; 29 with the defaults
+  -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider and Features:SupplierRequestAutoCancel off:
+  -- ota-sync-all, booking-pull-all, lease-registration-status-poll, lease-sign-status-poll and
+  -- service-request-auto-cancel are the five that appear only with their flag on; every other job, among them
+  -- service-request-expiry, service-request-reminders, org-invitation-maintenance, org-activity-retention,
+  -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a),
+  -- property-mode-change (PM-02) and lease-draft-retention (LR-12), is in both counts)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';
@@ -630,15 +632,14 @@ Task UI-12a. Two jobs, both described in [in-app-notifications.md](in-app-notifi
 
 | Job | When | Lock (wait) | What |
 |---|---|---|---|
-| `InAppNotificationJob.CreateAsync(key, notification)` | queued next to every push by the decorator of `IPushNotificationService`, only with `Features:InAppNotifications` on | `InAppNotificationJob.CreateAsync:<key>` (60 s) | resolves the users of the push's audience and writes one `InAppNotifications` row per user for the key (unique on key and user). `[AutomaticRetry(Attempts = 5)]`, deleted after the last attempt; the arguments hold the audience, the type, the entity id and the instant, never the push text. Skips quietly if the flag was turned off meanwhile |
-| `in-app-notification-retention` (`InAppNotificationRetentionJob`) | 03:45 UTC, **always registered** | `InAppNotificationRetentionJob.ExecuteAsync` (300 s) | deletes the notifications older than 90 days, read or not (one statement over the index on `CreatedAt`) |
+| `InAppNotificationJob.CreateAsync(key, notification)` | queued next to every push by the decorator of `IPushNotificationService` | `InAppNotificationJob.CreateAsync:<key>` (60 s) | resolves the users of the push's audience and writes one `InAppNotifications` row per user for the key (unique on key and user). `[AutomaticRetry(Attempts = 5)]`, deleted after the last attempt; the arguments hold the audience, the type, the entity id and the instant, never the push text |
+| `in-app-notification-retention` (`InAppNotificationRetentionJob`) | 03:45 UTC | `InAppNotificationRetentionJob.ExecuteAsync` (300 s) | deletes the notifications older than 90 days, read or not (one statement over the index on `CreatedAt`) |
 
 **Logs**: `In-app notification <type> queued for <audience> <id> (key …, job …)` when the decorator queues it; `… (key …) written for N users
 of <audience> <id>`, `… the N users were told already`, `… nobody to tell for …`, `… written concurrently or a user is gone: read again
 (attempt n)` from the job; `In-app notification retention job done: N notifications deleted` every night. No user id and no push text.
 
-**If notifications do not appear** with the flag on: the push jobs run (`PushDeliveryJob`), the notification jobs queue next to them (SQL of
-[in-app-notifications.md § 6](in-app-notifications.md#6-turning-it-on-checking-rolling-back), last query), the audience has at least one
-active user (a booking that is gone, or every member deactivated, writes nothing and logs `nobody to tell`), and the flag is on **for the
-API process that queues the push and for the one that runs the job** (the same service on Railway). `InAppNotificationJobTests` and
+**If notifications do not appear**: the push jobs run (`PushDeliveryJob`), the notification jobs queue next to them (SQL of
+[in-app-notifications.md § 6](in-app-notifications.md#6-checking-rolling-back), last query), and the audience has at least one
+active user (a booking that is gone, or every member deactivated, writes nothing and logs `nobody to tell`). `InAppNotificationJobTests` and
 `InAppNotificationRetentionJobTests` fail if the job loses its retry or its lock, or the retention its schedule.

@@ -22,7 +22,7 @@ public static class PushServiceCollectionExtensions
         });
 
         // The services ask for IPushNotificationService and get the queue wrapped by the decorator that gives every push an in-app
-        // notification (UI-12a); with Features:InAppNotifications off the decorator only forwards.
+        // notification (UI-12a).
         services.AddScoped<HangfirePushQueue>();
         services.AddScoped<IPushNotificationService>(provider =>
             ActivatorUtilities.CreateInstance<InAppNotificationPushDecorator>(provider, provider.GetRequiredService<HangfirePushQueue>()));

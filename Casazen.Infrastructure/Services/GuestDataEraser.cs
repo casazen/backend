@@ -34,8 +34,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
 
     /// <summary>
     /// Full anonymization of <paramref name="guest"/>: every personal field, its document scan, the guests of its stays,
-    /// the IP and note of its consent events, the special requests of its bookings; open check-in links of its bookings
-    /// expire. <see cref="GuestErasureOutcome.Changed"/> is false when there was nothing left to remove (idempotent).
+    /// the IP and note of its consent events, the special requests of its bookings, the name shown on its reviews (DB-12a: the
+    /// mark and the text stay, anonymous); open check-in links of its bookings expire. <see cref="GuestErasureOutcome.Changed"/> is false when there was nothing left to remove (idempotent).
     /// </summary>
     public async Task<GuestErasureOutcome> AnonymizeAsync(Guest guest, DateTime now, CancellationToken cancellationToken)
     {
@@ -48,10 +48,12 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var stayGuests = await AnonymizeStayGuestsOfBookerAsync(guest.Id, now, cancellationToken);
         var consentEvidence = await ClearConsentEvidenceAsync(guest.Id, cancellationToken);
         var specialRequests = await ClearSpecialRequestsAsync(guest.Id, now, cancellationToken);
+        var reviews = await AnonymizeReviewsAsync(guest.Id, cancellationToken);
         await ExpireOpenCheckInLinksAsync(guest.Id, now, cancellationToken);
+        var threads = await DeleteMessageThreadsAsync(guest.Id, cancellationToken);
 
         var changed = Fingerprint(guest) != before
-            || filesDeleted > 0 || stayGuests > 0 || consentEvidence > 0 || specialRequests > 0
+            || filesDeleted > 0 || stayGuests > 0 || consentEvidence > 0 || specialRequests > 0 || reviews > 0 || threads > 0
             || guest.DataAnonymizedDate is null;
         guest.AlloggiatiDataErasedAt ??= now;
         guest.DataAnonymizedDate ??= now;
@@ -243,6 +245,35 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         }
 
         return bookings.Count;
+    }
+
+    /// <summary>
+    /// The first name the public reads on the reviews of the guest's stays (DB-12a) goes back to «Ospite»; the mark and the text of the
+    /// review stay, with no name: they are the host's reputation and the guest's own words, not an identity.
+    /// </summary>
+    private async Task<int> AnonymizeReviewsAsync(Guid guestId, CancellationToken cancellationToken)
+    {
+        var reviews = await db.Reviews
+            .Where(r => r.AuthorName != ReviewRules.AnonymousAuthorName
+                        && db.Bookings.Any(b => b.Id == r.BookingId && b.GuestId == guestId))
+            .ToListAsync(cancellationToken);
+        foreach (var review in reviews)
+            review.AuthorName = ReviewRules.AnonymousAuthorName;
+
+        return reviews.Count;
+    }
+
+    /// <summary>
+    /// The messages of the guest with the host (DB-14a) are free text written by the guest and can hold anything: the threads of the
+    /// guest's bookings are deleted, with their messages (the foreign key cascades). The host keeps the bookings, not the conversations.
+    /// </summary>
+    private async Task<int> DeleteMessageThreadsAsync(Guid guestId, CancellationToken cancellationToken)
+    {
+        var threads = await db.GuestThreads
+            .Where(t => db.Bookings.Any(b => b.Id == t.BookingId && b.GuestId == guestId))
+            .ToListAsync(cancellationToken);
+        db.GuestThreads.RemoveRange(threads);
+        return threads.Count;
     }
 
     /// <summary>An open check-in link would let someone enter personal data again for an anonymized guest.</summary>

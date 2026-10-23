@@ -309,7 +309,7 @@ Al momento della ricerca l'adapter era `Casazen.Infrastructure/External/LeaseESi
 ## 6. Riferimenti interni
 
 - `Sessions/audit-2026-09-23/A7-ltr.md`: A7-01, A7-02, A7-16, A7-20, A7-21.
-- `Sessions/specs/spec-ltr-rli-registration.md`: AC1, AC8, AC9 e i `[COUNSEL_REQUIRED]`.
+- specifica rimossa (storico in git): AC1, AC8, AC9 e i `[COUNSEL_REQUIRED]`.
 - `Sessions/research-canone-concordato-mb.md`: §8.1 (canali RLI) e §10.1 (Openapi).
 - `.claude/context/regulations/canone_concordato.md`: CasaZen non è intermediario abilitato.
 - Repository ufficiale Openapi: [github.com/openapi/openapi-skills](https://github.com/openapi/openapi-skills), commit `fe121c2` (2026-09-15). File letti: `knowledge/oas/docuengine.openapi.json`, `knowledge/oas/oauthv2.openapi.json`, `knowledge/oas/esignature.openapi.json`, `knowledge/platform-guide.md`, `knowledge/faq.md`, `knowledge/references.md`.

@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -21,11 +20,9 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Reminder.</b> Three days after an invitation was sent and until it expires, the invited person gets one
 /// reminder with a <b>fresh link</b> (the token is rotated: only the hash is stored). The email is queued first and the new
 /// hash saved only if it was queued, so a failure never leaves a person with a dead link and no email; the invitation is
-/// simply tried again at the next run. Only with the <c>OrgTeam</c> flag on: with it off the screens and the endpoints
-/// do not exist and nobody should receive mail about them.</item>
+/// simply tried again at the next run.</item>
 /// <item><b>Purge.</b> A closed invitation (accepted, revoked, expired) is deleted, with the name and the email of the
-/// invitee, <c>OrgTeam:InvitationRetentionDays</c> (30) days after it was closed. This runs with the flag off too: the
-/// retention of personal data does not depend on a feature being on.</item>
+/// invitee, <c>OrgTeam:InvitationRetentionDays</c> (30) days after it was closed.</item>
 /// </list>
 /// <para>Every invitation is handled in a transaction of its own under its org's seats lock, so the job never races with a
 /// person who accepts, revokes or sends it again, and one failing invitation does not stop the others.
@@ -33,7 +30,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class OrgInvitationMaintenanceService(
     AppDbContext db,
-    IFeatureFlags featureFlags,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
     IConfiguration configuration,
@@ -59,10 +55,9 @@ public sealed class OrgInvitationMaintenanceService(
         }
 
         var now = _clock.GetUtcNow().UtcDateTime;
-        var notify = featureFlags.IsEnabled(FeatureFlags.OrgTeam);
 
-        var expired = await ExpireAsync(now, notify, cancellationToken);
-        var reminded = notify ? await RemindAsync(now, cancellationToken) : 0;
+        var expired = await ExpireAsync(now, cancellationToken);
+        var reminded = await RemindAsync(now, cancellationToken);
         var purged = await PurgeAsync(now, cancellationToken);
 
         if (expired + reminded + purged > 0)
@@ -77,7 +72,7 @@ public sealed class OrgInvitationMaintenanceService(
 
     // ─── Expiry ─────────────────────────────────────────────────────────────────────────────────────────
 
-    private async Task<int> ExpireAsync(DateTime now, bool notify, CancellationToken cancellationToken)
+    private async Task<int> ExpireAsync(DateTime now, CancellationToken cancellationToken)
     {
         var due = await db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
             .Where(i => i.Status == OrgInvitationStatus.Pending && i.ExpiresAt <= now)
@@ -97,8 +92,7 @@ public sealed class OrgInvitationMaintenanceService(
                     continue;
 
                 expired++;
-                if (notify)
-                    await NotifyInviterAsync(invitation, cancellationToken);
+                await NotifyInviterAsync(invitation, cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -298,6 +292,18 @@ public sealed class OrgInvitationMaintenanceService(
             .ToListAsync(cancellationToken);
         if (old.Count == 0)
             return 0;
+
+        // The properties an invitation carried (AM-02c) go with it: the foreign key cascades on PostgreSQL, so nothing is read for
+        // them there (an invitation may carry up to 500 and a batch has 200 invitations). A provider with no cascade (the in-memory
+        // one of the tests) has them named. IgnoreQueryFilters: scoped to the org the job passes, which runs with no tenant.
+        if (!db.Database.IsRelational())
+        {
+            var oldIds = old.Select(i => i.Id).ToList();
+            var carried = await db.OrgInvitationProperties.IgnoreQueryFilters()
+                .Where(p => p.OrgId == orgId && oldIds.Contains(p.InvitationId))
+                .ToListAsync(cancellationToken);
+            db.OrgInvitationProperties.RemoveRange(carried);
+        }
 
         db.OrgInvitations.RemoveRange(old);
         await db.SaveChangesAsync(cancellationToken);

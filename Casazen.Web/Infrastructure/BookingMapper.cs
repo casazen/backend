@@ -13,6 +13,24 @@ public static class BookingMapper
     public static BookingResponseDto ToResponse(Booking booking, DateTime nowUtc) => Fill(new BookingResponseDto(), booking, nowUtc);
 
     /// <summary>
+    /// A row of the booking list (SR-03b): the booking and what the list says besides it. Without <paramref name="details"/> (a row
+    /// the service did not describe) nothing has come in.
+    /// </summary>
+    public static BookingListItemDto ToListItem(Booking booking, BookingRowDetails? details, DateTime nowUtc)
+    {
+        var item = Fill(new BookingListItemDto(), booking, nowUtc);
+        item.Channel = BookingListRules.ChannelOf(booking.Source).ToString();
+        item.PaymentState = (details?.PaymentState ?? BookingPaymentState.None).ToString();
+        item.PaidAmount = details?.PaidAmount;
+        item.AlloggiatiStatus = details?.AlloggiatiStatus?.ToString();
+        // The answer is the host's only once the guest confirmed the email; a request that is not the host's yet has no term to show.
+        item.RespondBy = OnSiteRequests.StateOf(booking, nowUtc) == OnSiteRequestState.AwaitingHostApproval
+            ? booking.RequestExpiresAt
+            : null;
+        return item;
+    }
+
+    /// <summary>
     /// Fills <paramref name="response"/> (a <see cref="BookingResponseDto"/> or a response that adds fields to it, such
     /// as <see cref="ArrivalRegisteredResponse"/>) with the booking.
     /// </summary>
@@ -34,6 +52,8 @@ public static class BookingMapper
         response.BasePrice = booking.BasePrice;
         response.CleaningFee = booking.CleaningFee;
         response.TouristTax = booking.TouristTax;
+        response.PriceOverridden = booking.PriceOverridden;
+        response.PriceOverrideNote = booking.PriceOverrideNote;
         response.Status = booking.Status.ToString();
         response.CancellationNote = booking.CancellationNote;
         response.Source = booking.Source.ToString();
@@ -59,6 +79,12 @@ public static class BookingMapper
             };
         response.CreatedAt = booking.CreatedAt;
         response.UpdatedAt = booking.UpdatedAt;
+        response.ConfirmedAt = booking.ConfirmedAt;
+        response.CancelledAt = booking.CancelledAt;
+        response.ArrivedAt = booking.ArrivedAt;
+        response.CheckedOutAt = booking.CheckedOutAt;
+        // The rule of PUT /api/bookings/{id}: the booking sheet and the calendar do not guess it (SR-05a).
+        response.CanEdit = BookingEditabilityDto.From(BookingEditRules.Of(booking));
         return response;
     }
 }

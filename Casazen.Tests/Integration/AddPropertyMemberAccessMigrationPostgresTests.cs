@@ -35,6 +35,11 @@ public class AddPropertyMemberAccessMigrationPostgresTests : IAsyncLifetime
         return all[index - 1];
     }
 
+    /// <summary>This migration's own id: the test migrates up to it, not to the latest, so a later migration that seeds a permission
+    /// (AM-02c: <c>org.suppliers.manage</c> for the role 13) is not counted as something this one added.</summary>
+    private static string ThisMigration(AppDbContext db) =>
+        db.Database.GetMigrations().Single(m => m.EndsWith("_AddPropertyMemberAccess", StringComparison.Ordinal));
+
     private static async Task<List<(int RoleId, string Permission)>> PermissionsAsync(AppDbContext db) =>
         (await db.RolePermissions.AsNoTracking().Select(p => new { p.RoleId, p.PermissionKey }).ToListAsync())
         .Select(p => (p.RoleId, p.PermissionKey))
@@ -74,13 +79,14 @@ public class AddPropertyMemberAccessMigrationPostgresTests : IAsyncLifetime
         db.GetService<IMigrator>().Migrate(PreviousMigration(db));
         var before = await PermissionsAsync(db);
 
-        await db.Database.MigrateAsync();
+        // Up to this migration only: the rows that appear are the ones this migration writes, whatever later ones seed.
+        db.GetService<IMigrator>().Migrate(ThisMigration(db));
 
         db.ChangeTracker.Clear();
         var after = await PermissionsAsync(db);
         Assert.Equal(AddedRows().Order().ToList(), after.Except(before).Order().ToList());
         Assert.Empty(before.Except(after));
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+        Assert.DoesNotContain(ThisMigration(db), await db.Database.GetPendingMigrationsAsync());
     }
 
     [PostgresFact]

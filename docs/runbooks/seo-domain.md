@@ -50,8 +50,8 @@ Section 6 describes the funnel, the Auth0 setting it needs and how to read the a
 | Footer Privacy / Terms (SE-03, PL-14) | The public footer links the web app pages `/legale/privacy` and `/legale/termini` (and, on the CasaZen pages, `/legale/sub-responsabili` and `/legale`). The pages read `GET /api/legal/*`: text provided by the product owner (D14), "in preparazione" until then. No domain in the frontend | frontend `Footer.tsx`, `features/legal/*`; runbook `legal-documents.md` |
 | Frontend (SE-03) | No `casazen.app` in the shipped frontend (test `src/test/no-hardcoded-domain.test.ts`, same claim exception). The web app's own hosts for the custom-host fallback are the host of `VITE_PUBLIC_SITE_URL`, `localhost` and `*.vercel.app` | frontend `src/config/public-site.ts`, `use-custom-host-redirect.ts` |
 | Crawler pages (BK-15) | Known crawlers (`user-agent` rewrites in `vercel.json`) get the HTML of `/book/{slug}`, `/book/{slug}/property/{slug or id}` and `/p/…` from the Vercel Function `api/seo.ts`, which returns `GET {VITE_API_BASE_URL}/public/seo/…` of the backend; people keep getting the single-page app. Section 8 | backend `PublicSeoController`, `Casazen.Web/Seo/*`; frontend `api/seo.ts`, `vercel.json` |
-| Sitemaps of the booking sites (BK-15) | `/sitemap-book.xml` (index: one entry per org with a published property) and `/book/{slug}/sitemap.xml` (landing page + published properties, `lastmod` = `UpdatedAt`), through the same Vercel Function as `/sitemap.xml` (`api/sitemap.ts`). Both are declared in `robots.txt` | `PublicOrgSitemapController`, `PublicSeoService`; frontend `api/sitemap.ts` |
-| `robots.txt` (BK-15) | Production also disallows what is never worth indexing: `/app/`, `/checkin/`, `/login`, `/book/*/my-bookings`, `/book/*/booking/`, `/book/*/requests/`, `/book/*/property/*/checkout`; declares `/sitemap.xml` and `/sitemap-book.xml`. Also `/fornitori/` (the supplier showcases, `noindex` in v0, SU-13: [`suppliers.md`](suppliers.md) §18) | frontend `src/config/robots-txt.ts` |
+| Sitemaps of the booking sites (BK-15) | `/sitemap-book.xml` (index: one entry per org with a published property) and `/book/{slug}/sitemap.xml` (landing page + published properties, `lastmod` = `UpdatedAt`), through the same Vercel Function as `/sitemap.xml` (`api/sitemap.ts`). Both are declared in `robots.txt`. Supplier showcases: `/sitemap-supplier.xml` (`name=supplier`, one entry per active supplier with a category or text), also declared | `PublicOrgSitemapController`, `PublicSeoService`; frontend `api/sitemap.ts` |
+| `robots.txt` (BK-15) | Production also disallows what is never worth indexing: `/app/`, `/checkin/`, `/login`, `/book/*/my-bookings`, `/book/*/booking/`, `/book/*/requests/`, `/book/*/property/*/checkout`; declares `/sitemap.xml`, `/sitemap-book.xml` and `/sitemap-supplier.xml`. The supplier showcases `/fornitori/{slug}` are indexed ([`suppliers.md`](suppliers.md) §18) | frontend `src/config/robots-txt.ts` |
 
 ### Why a function for the sitemap and a build-time robots.txt
 
@@ -722,7 +722,7 @@ Recurring jobs → `domain-recheck` ([`hangfire.md`](hangfire.md)).
 
 ## 11. Public site of CasaZen (SEO-VETRINA)
 
-Acceptance criteria: `Sessions/specs/spec-public-marketing-site.md` (US-029).
+Acceptance criteria: specifica rimossa (storico in git) (US-029).
 
 Before this the root `/` of the public domain was the entry of the console (a redirect to the login): a search for "CasaZen"
 found no page that says what CasaZen is. The public site adds four pages, **static HTML rendered at build time** (the method

@@ -36,10 +36,90 @@ public interface ISupplierKpiService
     /// <c>TakenAt − CreatedAt</c> over the requests taken in the last <see cref="SupplierEarningsSummary.ResponseWindowDays"/>
     /// days (the same pairs the average of <see cref="GetEarningsSummaryAsync"/> is made of), in whole minutes. <c>null</c> until
     /// there are <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/> of them: a response time is shown only when it is
-    /// measured, never written by hand. Read-only.
+    /// measured, never written by hand. The requests accepted automatically (SP-04d) are not among them: nobody answered them.
+    /// Read-only.
     /// </summary>
     Task<int?> GetMedianResponseMinutesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <see cref="GetMedianResponseMinutesAsync"/> for several suppliers in one read (the supplier picker of the marketplace, SR-09a):
+    /// the same window of 90 days, the same requests (the ones accepted automatically, SP-04d, are left out), the same sample (the
+    /// latest <see cref="PublicShowcaseLimits.ResponseTimeMaxSamples"/> taken by each supplier) and the same minimum of
+    /// <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/> requests. Every id
+    /// asked about is in the result; a supplier whose response time is not measured has <c>null</c>. Read-only; independent of the
+    /// <c>SupplierShowcaseBooking</c> flag.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, int?>> GetMedianResponseMinutesBatchAsync(
+        IReadOnlyCollection<Guid> supplierOrgIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The three numbers of the console home with the period before them (SP-04e, <c>GET api/supplier/dashboard/overview</c>):
+    /// what the supplier received, accepted and refused, how often it said yes, how long it took to answer, the jobs it completed
+    /// and the money that came in, for <paramref name="period"/> and for the same number of Europe/Rome days just before it.
+    /// <paramref name="period"/> is one of <see cref="SupplierKpiPeriods.OverviewPeriods"/>. Read-only; scoped by the supplier org.
+    /// </summary>
+    Task<SupplierOverview> GetOverviewAsync(
+        Guid supplierOrgId,
+        SupplierKpiPeriod period,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// The overview of the console home for a period and the one before it (SP-04e). The definitions of each figure are in
+/// <see cref="SupplierOverviewPeriod"/> and in <c>docs/runbooks/suppliers.md</c> § 27.
+/// </summary>
+/// <param name="Period">The period asked for.</param>
+/// <param name="OnlinePayments">
+/// The supplier has money that goes through CasaZen to show: the flag <c>SupplierOnlinePayments</c> is on and the supplier has at least
+/// one payment. When false the console talks about the jobs completed, not about "incassi", and the money figures are 0.
+/// </param>
+/// <param name="Current">The period asked for.</param>
+/// <param name="Previous">The same number of days just before it.</param>
+public sealed record SupplierOverview(
+    SupplierKpiPeriod Period,
+    bool OnlinePayments,
+    SupplierOverviewPeriod Current,
+    SupplierOverviewPeriod Previous);
+
+/// <summary>
+/// The figures of one period of the overview, every day an Europe/Rome calendar day (both ends included). A figure that does not
+/// exist (a rate with nobody answered, an average with no answer) is <c>null</c>, never 0.
+/// </summary>
+/// <param name="From">First day.</param>
+/// <param name="To">Last day.</param>
+/// <param name="Received">Requests that arrived (by <c>CreatedAt</c>), whatever became of them.</param>
+/// <param name="Accepted">Requests the supplier took (by <c>TakenAt</c>); a request cancelled after the take stays accepted.</param>
+/// <param name="Rejected">Requests the supplier refused (by the date of the refusal).</param>
+/// <param name="AcceptanceRate">Accepted over accepted plus rejected, from 0 to 1 with four decimals; null when the supplier answered none.</param>
+/// <param name="AverageResponseMinutes">
+/// Average of <c>TakenAt − CreatedAt</c> of the requests taken in the period, in whole minutes (the same pairs as
+/// <c>GET api/supplier/today</c>); null when it took none. A request accepted automatically (SP-04d) does not count: it is born taken,
+/// so its wait would be zero (it counts as accepted in <paramref name="Accepted"/>).
+/// </param>
+/// <param name="CompletedJobs">Jobs completed (<c>Completato</c>, or <c>Pagato</c> afterwards), by completion date.</param>
+/// <param name="PaidNetCents">The net of the payments paid in the period (by <c>PaidAt</c>); 0 unless <see cref="SupplierOverview.OnlinePayments"/>.</param>
+/// <param name="PaidGrossCents">The gross of the payments paid in the period; 0 unless <see cref="SupplierOverview.OnlinePayments"/>.</param>
+/// <param name="CommissionCents">The commission CasaZen kept on them; 0 unless <see cref="SupplierOverview.OnlinePayments"/>.</param>
+/// <param name="ToCollectCents">
+/// What is still to be collected <b>now</b> from the jobs completed and not paid: the declared total of a job paid outside CasaZen, the
+/// net of the payment of one paid inside it. Only in the current period; null in the previous one.
+/// </param>
+/// <param name="ToCollectJobs">How many jobs are still to be collected now. Only in the current period; null in the previous one.</param>
+public sealed record SupplierOverviewPeriod(
+    DateOnly From,
+    DateOnly To,
+    int Received,
+    int Accepted,
+    int Rejected,
+    double? AcceptanceRate,
+    int? AverageResponseMinutes,
+    int CompletedJobs,
+    long PaidNetCents,
+    long PaidGrossCents,
+    long CommissionCents,
+    long? ToCollectCents,
+    int? ToCollectJobs);
 
 /// <summary>Service-request KPIs of a supplier org.</summary>
 /// <param name="Period">The requested period.</param>
@@ -73,7 +153,8 @@ public record SupplierServiceRequestKpis(
 /// <param name="ToCollectJobs">Completed jobs not marked as paid yet.</param>
 /// <param name="AverageResponseMinutes">
 /// Average time from the arrival of a request to its take (<c>TakenAt − CreatedAt</c>) over the requests taken in the last
-/// <see cref="ResponseWindowDays"/> days, in whole minutes; <c>null</c> when there are none.
+/// <see cref="ResponseWindowDays"/> days, in whole minutes; <c>null</c> when there are none. The requests accepted automatically (SP-04d)
+/// are left out: nobody answered them.
 /// </param>
 /// <param name="IsEstimate">True while the amounts are declarations and not payments (always, until SP-15).</param>
 public sealed record SupplierEarningsSummary(

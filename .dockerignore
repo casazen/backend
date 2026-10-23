@@ -1,0 +1,25 @@
+# Repository metadata, local state and build output do not belong in COPY . .
+.git
+.github
+.claude
+.cursor
+.vs
+.vscode
+.idea
+**/bin
+**/obj
+**/node_modules
+**/TestResults
+**/coverage
+work
+reports
+Sessions
+.env
+.env.*
+secrets
+**/appsettings.Development.json
+**/*.user
+**/*.suo
+**/*.log
+**/*.bak
+**/*.orig

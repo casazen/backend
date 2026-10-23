@@ -183,7 +183,7 @@ public class OrgMembershipServiceTests
     }
 
     [Theory]
-    [InlineData(OrgRole.PropertyManager, new[] { "short-rent" }, new[] { "short-rent/property_manager" })]
+    [InlineData(OrgRole.PropertyManager, new[] { "short-rent" }, new[] { "account/org_manager", "short-rent/property_manager" })]
     [InlineData(OrgRole.Collaborator, new[] { "long-rent" }, new[] { "long-rent/staff" })]
     [InlineData(OrgRole.Collaborator, new[] { "short-rent", "long-rent" }, new[] { "long-rent/staff", "short-rent/staff" })]
     [InlineData(OrgRole.Accountant, new[] { "short-rent" }, new[] { "account/org_accountant", "short-rent/accountant" })]

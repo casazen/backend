@@ -295,6 +295,12 @@ public class ServiceRequestDto
     /// every earlier request.
     /// </summary>
     public string PaymentMode { get; set; } = nameof(ServiceRequestPaymentMode.Manual);
+
+    /// <summary>
+    /// The request was <b>accepted automatically</b> by CasaZen (SP-04d): the supplier accepts the requests of its regular hosts by
+    /// itself, so it was born <c>PresoInCarico</c> and no member of the supplier took it. <c>false</c> for every other request.
+    /// </summary>
+    public bool AutoAccepted { get; set; }
 }
 
 /// <summary>

@@ -100,7 +100,9 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
             || !string.IsNullOrWhiteSpace(org.ThemeColor)
             || !string.IsNullOrWhiteSpace(org.PublicThemeId)
             || !string.IsNullOrWhiteSpace(org.HeroImageUrl)
-            || !string.IsNullOrWhiteSpace(org.Tagline))
+            || !string.IsNullOrWhiteSpace(org.Tagline)
+            || !string.IsNullOrWhiteSpace(org.LegalName)
+            || !string.IsNullOrWhiteSpace(org.RegisteredOffice))
             blockers.Add("branding");
     }
 

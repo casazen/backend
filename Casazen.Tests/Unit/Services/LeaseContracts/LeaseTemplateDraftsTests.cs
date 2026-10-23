@@ -6,6 +6,7 @@ using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
 using Casazen.Core.Options;
+using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services.LeaseContracts;
 using Casazen.Tests.Unit.Documents;
@@ -394,7 +395,7 @@ public sealed partial class LeaseTemplateDraftsTests
     private static LeaseContractTemplateService CreateSut(FiscalRegime regime) =>
         new(
             LeaseTemplateTestFiles.Catalog(OptionsFor(regime, DraftVersion)),
-            new SerializedPdfRenderer(),
+            new MigraDocPdfDocumentRenderer(),
             NullLogger<LeaseContractTemplateService>.Instance);
 
     private static LeaseContractTemplateState LoadDraft(FiscalRegime regime) =>

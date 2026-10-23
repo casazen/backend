@@ -95,6 +95,25 @@ public class SaveSupplierRulesRequest
     public int? SlotStepMinutes { get; set; }
 }
 
+/// <summary>
+/// Body of <c>PUT api/supplier/availability/urgent</c> (SP-04c): the four urgent settings, all of them (<c>PUT</c> replaces them;
+/// one that is left out is a 422 <c>supplier_urgent_invalid</c> naming it, never reset to its default).
+/// </summary>
+public class SaveSupplierUrgentRequest
+{
+    /// <summary>The supplier accepts urgent requests, for the services that offer them too (off by default).</summary>
+    public bool? Enabled { get; set; }
+
+    /// <summary>Where the urgent window starts, in minutes after midnight on the clock of Rome (0 to 1439; default 420 = 07:00).</summary>
+    public int? FromMinute { get; set; }
+
+    /// <summary>Where it ends (1 to 1440, after <c>fromMinute</c>; default 1320 = 22:00). Outside the working hours too.</summary>
+    public int? ToMinute { get; set; }
+
+    /// <summary>The supplier's default surcharge, in euro cents (0 to 50000), for a service with none of its own (default 0).</summary>
+    public int? SurchargeCents { get; set; }
+}
+
 // ─── Responses ───────────────────────────────────────────────────────────────
 
 /// <summary>A band of working hours: minutes after midnight on the wall clock of Rome.</summary>
@@ -197,6 +216,26 @@ public class SupplierRulesDto
     public int SlotStepMinutes { get; set; }
 }
 
+/// <summary>
+/// Body of <c>GET</c> and <c>PUT api/supplier/availability/urgent</c> (SP-04c): whether the supplier accepts urgent requests (today and
+/// tomorrow, 30 minutes of notice), the window of the day they are accepted in (outside its working hours too) and its default
+/// surcharge. Off, 07:00 to 22:00, no surcharge while none was saved. A service has its own switch and surcharge
+/// (<c>urgentEnabled</c>, <c>urgentSurchargeCents</c> of <c>api/supplier/services</c>); the supplier's switch comes first.
+/// </summary>
+public class SupplierUrgentDto
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Minutes after midnight on the clock of Rome.</summary>
+    public int FromMinute { get; set; }
+
+    /// <summary>Minutes after midnight on the clock of Rome (1440 is midnight).</summary>
+    public int ToMinute { get; set; }
+
+    /// <summary>The surcharge in euro cents, a gross amount like the price (decision D4).</summary>
+    public int SurchargeCents { get; set; }
+}
+
 /// <summary>A day closed by hand or by the supplier's calendar feed.</summary>
 public class SupplierClosedDayDto
 {
@@ -235,6 +274,32 @@ public class SupplierCalendarRequestDto
 
     /// <summary>A code of <c>GET /api/service-categories</c>.</summary>
     public string Category { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The name of the catalog service the request is for, as it was when the request was made; <c>null</c> when the request is for a
+    /// category only (show <see cref="Category"/> then).
+    /// </summary>
+    public string? ServiceName { get; set; }
+
+    /// <summary>
+    /// Who asks, as the supplier may know it before taking the request (decision D9): the name of the host's org for a host's
+    /// request; for a private customer of the public showcase <c>Nome C.</c> until the request is taken, the full name after.
+    /// Never an address, a contact or a note.
+    /// </summary>
+    public string? ClientLabel { get; set; }
+
+    /// <summary>The comune of the work as written (never the street, the postal code or the name of the property).</summary>
+    public string? Comune { get; set; }
+
+    /// <summary><c>casazen</c> (a host asked) or <c>showcase</c> (a customer booked from the supplier's public page).</summary>
+    public string Source { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Where the request is in its life, derived by the server (one place for every read of the console):
+    /// <c>to_answer</c>, <c>proposal_pending</c>, <c>quote_pending</c>, <c>scheduled</c>, <c>in_progress</c>, <c>completed</c>,
+    /// <c>paid</c>. An open set: a client shows a value it does not know with a neutral label.
+    /// </summary>
+    public string Phase { get; set; } = string.Empty;
 }
 
 /// <summary>Body of <c>GET api/supplier/calendar</c>: what the supplier's calendar shows for the days asked.</summary>
@@ -349,6 +414,18 @@ public static class SupplierAgendaMapper
     public static SupplierRulesInput ToInput(SaveSupplierRulesRequest request) =>
         new(request.BufferMinutes, request.MaxJobsPerDay, request.MinNoticeHours, request.HorizonDays, request.SlotStepMinutes);
 
+    public static SupplierUrgentDto ToDto(SupplierUrgentSettings urgent) =>
+        new()
+        {
+            Enabled = urgent.Enabled,
+            FromMinute = urgent.FromMinute,
+            ToMinute = urgent.ToMinute,
+            SurchargeCents = urgent.SurchargeCents,
+        };
+
+    public static SupplierUrgentInput ToInput(SaveSupplierUrgentRequest request) =>
+        new(request.Enabled, request.FromMinute, request.ToMinute, request.SurchargeCents);
+
     public static SupplierCalendarDto ToDto(SupplierCalendar calendar) =>
         new()
         {
@@ -370,6 +447,11 @@ public static class SupplierAgendaMapper
                     EndUtc = request.EndUtc,
                     Status = request.Status,
                     Category = request.Category,
+                    ServiceName = request.ServiceName,
+                    ClientLabel = request.ClientLabel,
+                    Comune = request.Comune,
+                    Source = request.Source,
+                    Phase = request.Phase,
                 })
                 .ToList(),
         };

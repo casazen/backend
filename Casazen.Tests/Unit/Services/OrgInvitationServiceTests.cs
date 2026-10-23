@@ -449,6 +449,8 @@ public class OrgInvitationServiceTests
     public async Task CreateAsync_Scale_HasNoLimit()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Scale);
+        // The seats of the plan are unlimited; the cap on the emails of a day (AM-D15) is another limit, raised for the test.
+        _kit.Settings[OrgInvitationRules.DailyLimitConfigKey] = "100";
         for (var i = 0; i < 12; i++)
             await CreateAsync(Request(org.Id, email: $"p{i}@example.com"));
 
@@ -587,6 +589,7 @@ public class OrgInvitationServiceTests
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
         var created = await CreateAsync(Request(org.Id));
+        _kit.Clock.Advance(TimeSpan.FromMinutes(OrgInvitationRules.DefaultResendMinutes));
 
         await using var db = _kit.NewDb();
         var sent = await _kit.Invitations(db).ResendAsync(org.Id, created.Invitation.Id, "auth0|owner");

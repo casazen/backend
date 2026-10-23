@@ -82,3 +82,10 @@ Sessions/quality/
 
 ## Local official-document scratch (never commit downloaded PDFs)
 tmp-tourist-tax/
+
+# Task scratch and obsolete pipeline output
+/work/
+/reports/attempt-*/
+/reports/canone-concordato/
+/reports/rli-registration/
+/reports/verification-*/

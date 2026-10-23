@@ -59,7 +59,9 @@ public sealed class HostBookingService(
         await using var transaction = await LockBookingAsync(current.PropertyId, update.BookingId, cancellationToken);
         var booking = await LoadAsync(update.BookingId, cancellationToken);
 
-        if (booking.Status == BookingStatus.Cancelled)
+        // The rule of the `canEdit` of every booking answer (SR-05a): a cancelled booking changes nothing, not even its notes.
+        var editability = BookingEditRules.Of(booking);
+        if (editability.Reason == BookingEditLock.Cancelled)
             throw new DomainRuleException(BookingErrorCodes.NotEditable, "BookingNotEditable");
 
         var datesChanged = checkIn != booking.CheckInDate.Date || checkOut != booking.CheckOutDate.Date;
@@ -69,12 +71,12 @@ public sealed class HostBookingService(
 
         if (datesChanged || guestsChanged)
         {
-            if (booking.Status is BookingStatus.CheckedIn or BookingStatus.CheckedOut)
+            if (editability.Reason == BookingEditLock.Started)
                 throw new DomainRuleException(BookingErrorCodes.StayLocked, "BookingStayLocked");
 
             // A booking from the booking site or a channel keeps the price, payment, free cancellation deadline and
             // check-in link agreed there: only the bookings entered by the host are priced here.
-            if (booking.Source != BookingSource.Manual)
+            if (editability.Reason == BookingEditLock.SourceLocked)
                 throw new DomainRuleException(BookingErrorCodes.SourceLocked, "BookingUpdateSourceLocked");
 
             if (checkIn != booking.CheckInDate.Date && checkIn < _clock.TodayInRome())
@@ -91,6 +93,9 @@ public sealed class HostBookingService(
             booking.TouristTax = price.TouristTax.AmountOrZero;
             booking.TouristTaxAmount = price.TouristTax.AmountOrZero;
             booking.TotalPrice = price.TotalPrice;
+            // The stay is priced anew (SR-06a): a price the host had agreed for the old dates and guests does not follow it.
+            booking.PriceOverridden = false;
+            booking.PriceOverrideNote = null;
             booking.NumberOfGuests = update.NumberOfGuests;
             booking.NumberOfAdults = adults;
             booking.NumberOfChildren = update.NumberOfChildren;
@@ -152,6 +157,7 @@ public sealed class HostBookingService(
 
         booking.Status = BookingStatus.Confirmed;
         booking.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
+        booking.ConfirmedAt = booking.UpdatedAt;
 
         // The repository also issues the guest check-in token of a confirmed booking.
         await SaveAsync(booking, transaction, checkOverlap: true, cancellationToken);

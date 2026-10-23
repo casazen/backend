@@ -5,7 +5,7 @@ using Casazen.Core.Multitenancy;
 namespace Casazen.Core.Entities;
 
 /// <summary>
-/// One notification of the bell of the shell, for one user (UI-12a, behind <c>Features:InAppNotifications</c>): "something
+/// One notification of the bell of the shell, for one user (UI-12a): "something
 /// happened to a booking or a service request you follow". It is written by <c>InAppNotificationJob</c>, queued next to every
 /// push the backend sends (<c>IPushNotificationService</c>), so the two cannot disagree on who is told. Runbook:
 /// <c>docs/runbooks/in-app-notifications.md</c>.

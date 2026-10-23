@@ -30,6 +30,15 @@ public static class SupplierAgendaDefaults
 
     /// <summary>How long a supplier has to answer a new request, in minutes (3 hours; used by the request flow, SP-04).</summary>
     public const int RespondWithinMinutes = 180;
+
+    /// <summary>Where the window of the urgent requests starts, in minutes after midnight on the clock of Rome: 07:00 (decision SP-D9).</summary>
+    public const int UrgentFromMinute = 7 * 60;
+
+    /// <summary>Where the window of the urgent requests ends, in minutes after midnight on the clock of Rome: 22:00 (decision SP-D9).</summary>
+    public const int UrgentToMinute = 22 * 60;
+
+    /// <summary>The surcharge of an urgent request until the supplier sets one: none.</summary>
+    public const int UrgentSurchargeCents = 0;
 }
 
 /// <summary>
@@ -104,6 +113,26 @@ public static class SupplierAgendaLimits
     public const int MinRespondWithinMinutes = 15;
     public const int MaxRespondWithinMinutes = 7 * 24 * 60;
 
+    // ─── Urgent requests (SP-04c) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Highest surcharge of an urgent request, in cents (500 €, the limit of the design): a guard against a typo, not a price list.
+    /// The same bound for the supplier's default and for the surcharge of a service; <c>0</c> is an urgency with no surcharge.
+    /// </summary>
+    public const int MaxUrgentSurchargeCents = 50_000;
+
+    /// <summary>
+    /// Shortest notice of an urgent request, in minutes (decision SP-D9). A constant of the product: the urgent plan never reads
+    /// <c>MinNoticeHours</c>, neither the supplier's nor the service's.
+    /// </summary>
+    public const int UrgentNoticeMinutes = 30;
+
+    /// <summary>
+    /// How many days after today an urgent request can still be made: today and tomorrow (decision SP-D9). Never beyond the supplier's
+    /// own horizon.
+    /// </summary>
+    public const int UrgentHorizonDays = 1;
+
     // ─── Calendar ────────────────────────────────────────────────────────────────
 
     /// <summary><c>GET api/supplier/calendar</c> answers at most this many days, both ends counted (two months).</summary>
@@ -111,4 +140,37 @@ public static class SupplierAgendaLimits
 
     /// <summary>The range of <c>GET api/supplier/calendar</c> when the request does not say: today and the next 30 days.</summary>
     public const int DefaultCalendarDays = 31;
+
+    /// <summary>
+    /// Days kept clear at each end of the calendar (the year 1 and the year 9999) by a range of the agenda
+    /// (<see cref="SupplierAgendaRange"/>): the arithmetic around a range (a day more or less on each side, the days a suggestion looks
+    /// ahead, the start of a day in UTC) overflows there, so a date that close to an end is a 400 and never a 500.
+    /// </summary>
+    public const int RangeEdgeDays = 90;
+
+    // ─── Conflicts (SP-03b) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Jobs <c>GET api/supplier/calendar/conflicts</c> looks at in one answer, the nearest first (the range holds a few jobs a
+    /// day: this is a bound on the work, not a product rule). A longer list is cut and the answer says so (<c>truncated</c>).
+    /// </summary>
+    public const int MaxConflictRequests = 300;
+
+    /// <summary>
+    /// How many days after the day of a job the first free slot is looked for, to suggest another time for a request still waiting
+    /// for an answer. Never beyond the supplier's own horizon (the planner closes the days past it).
+    /// </summary>
+    public const int ConflictSuggestionDays = 21;
+
+    /// <summary>
+    /// How many years back the range of <c>GET api/supplier/calendar/conflicts</c> may start: only jobs still to come are checked, so
+    /// the past is never a reason for a range.
+    /// </summary>
+    public const int ConflictsMaxYearsBack = 1;
+
+    /// <summary>
+    /// How many years ahead of today that range may end. It bounds the dates the planner is asked about, so a made-up date (the end of
+    /// the calendar) is a 400 and never an overflow.
+    /// </summary>
+    public const int ConflictsMaxYearsAhead = 10;
 }

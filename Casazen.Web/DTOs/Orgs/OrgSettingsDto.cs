@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
+using Casazen.Core.Branding;
 using Casazen.Core.Entities;
 using Casazen.Web.DTOs.Users;
 
@@ -19,6 +21,12 @@ public class OrgSettingsDto
     /// <summary>When true, <see cref="ContactEmail"/> is shown on the public booking site (<c>PublicOrgDto</c>). Off by default (GDPR opt-in).</summary>
     public bool ContactEmailPublic { get; set; }
 
+    /// <summary>The legal name of the operator that the booking site shows in its footer (DB-03b-a), or null while not entered.</summary>
+    public string? LegalName { get; set; }
+
+    /// <summary>The registered office ("sede legale") that the booking site shows in its footer (DB-03b-a), or null while not entered.</summary>
+    public string? RegisteredOffice { get; set; }
+
     public static OrgSettingsDto FromOrg(Org org) => new()
     {
         Id = org.Id,
@@ -26,10 +34,20 @@ public class OrgSettingsDto
         Slug = org.Slug,
         ContactEmail = org.ContactEmail,
         ContactEmailPublic = org.ContactEmailPublic,
+        LegalName = org.LegalName,
+        RegisteredOffice = org.RegisteredOffice,
     };
 }
 
-/// <summary>Body of <c>PUT /api/orgs/me/settings</c>. Error messages are keys of <c>Resources/SharedResources.resx</c>.</summary>
+/// <summary>
+/// Body of <c>PUT /api/orgs/me/settings</c>. Error messages are keys of <c>Resources/SharedResources.resx</c>.
+/// </summary>
+/// <remarks>
+/// The name, the slug and the contact email are replaced as a whole, as they always were. The operator data of the booking-site
+/// footer (DB-03b-a: <see cref="LegalName"/>, <see cref="RegisteredOffice"/>) follows the rule of the public profile of
+/// <c>PUT /api/orgs/me/branding</c> instead: a member that is not in the body keeps its stored value, so a client that does not
+/// know it never erases it; <c>null</c> or a blank clears it.
+/// </remarks>
 public class UpdateOrgSettingsDto
 {
     [Required(ErrorMessage = "OrgNameRequired")]
@@ -51,6 +69,46 @@ public class UpdateOrgSettingsDto
 
     /// <summary>Explicit opt-in to publish <see cref="ContactEmail"/> on the public booking site. Defaults to false when omitted.</summary>
     public bool ContactEmailPublic { get; set; }
+
+    /// <summary>
+    /// The legal name of the operator (DB-03b-a), plain text, at most <see cref="OrgOperatorRules.LegalNameMaxLength"/> characters
+    /// once whitespace is collapsed. Whatever is saved here is shown in the footer of the booking site. Left out = unchanged;
+    /// <c>null</c> or blank = none.
+    /// </summary>
+    [MaxLength(OrgOperatorRules.LegalNameMaxLength, ErrorMessage = "OrgOperatorLegalNameTooLongInput")]
+    public string? LegalName
+    {
+        get;
+        set
+        {
+            field = value;
+            LegalNameSent = true;
+        }
+    }
+
+    /// <summary>
+    /// The registered office ("sede legale") of the operator (DB-03b-a), one line of plain text, at most
+    /// <see cref="OrgOperatorRules.RegisteredOfficeMaxLength"/> characters once whitespace is collapsed. Left out = unchanged;
+    /// <c>null</c> or blank = none.
+    /// </summary>
+    [MaxLength(OrgOperatorRules.RegisteredOfficeMaxLength, ErrorMessage = "OrgOperatorRegisteredOfficeTooLongInput")]
+    public string? RegisteredOffice
+    {
+        get;
+        set
+        {
+            field = value;
+            RegisteredOfficeSent = true;
+        }
+    }
+
+    /// <summary>True when the body carries <see cref="LegalName"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool LegalNameSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="RegisteredOffice"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool RegisteredOfficeSent { get; private set; }
 }
 
 /// <summary>Result of <c>GET /api/orgs/me/settings/slug-availability</c> (A1-23).</summary>

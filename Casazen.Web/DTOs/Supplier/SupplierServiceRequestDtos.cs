@@ -136,6 +136,30 @@ public class SupplierServiceRequestDto
     /// the host or the supplier records it). <c>Manual</c> for every earlier request.
     /// </summary>
     public string PaymentMode { get; set; } = nameof(Casazen.Core.Entities.Enums.ServiceRequestPaymentMode.Manual);
+
+    /// <summary>
+    /// The request was <b>accepted automatically</b> (SP-04d): the supplier turned on the acceptance of its regular hosts, so the request was
+    /// born <c>PresoInCarico</c> with <see cref="TakenAt"/> equal to <see cref="CreatedAt"/>, and no member of the supplier took it. The
+    /// supplier can still cancel it, with a reason, until the work starts. <c>false</c> for every other request.
+    /// </summary>
+    public bool AutoAccepted { get; set; }
+
+    // ─── Phase and payment summary (SP-04e) ───
+
+    /// <summary>
+    /// Where the request is for the console, derived once by the server so the frontend repeats no rule (<see cref="SupplierRequestPhases"/>):
+    /// <c>to_answer</c> (the supplier has to answer), <c>proposal_pending</c> (it proposed another time and waits for the customer),
+    /// <c>scheduled</c>, <c>in_progress</c>, <c>completed</c> (done, not paid), <c>paid</c>, <c>rejected</c>, <c>cancelled</c>. <b>An open set</b>:
+    /// <c>quote_pending</c> (SP-04b) and the phases of the showcase's trattative and of the held payments will join it, and <c>unknown</c>
+    /// stands for a status this version does not know; show a generic wording for a value you do not know. <see cref="Status"/> is unchanged.
+    /// </summary>
+    public string Phase { get; set; } = SupplierRequestPhases.Unknown;
+
+    /// <summary>
+    /// The payment of a completed job (see <see cref="SupplierRequestPaymentDto"/>): <b>null</b> unless the request has a payment record or is
+    /// <c>Completato</c>. The same object in the inbox, in <c>today</c> and in the detail.
+    /// </summary>
+    public SupplierRequestPaymentDto? Payment { get; set; }
 }
 
 /// <summary><c>GET /api/supplier/inbox/{id}</c>: the request and its history (SU-08).</summary>
@@ -182,7 +206,11 @@ public class ServiceRequestHistoryEntryDto
     /// <summary>UTC instant of the transition.</summary>
     public DateTime At { get; set; }
 
-    /// <summary><c>Host</c>, <c>Supplier</c>, <c>System</c> (the automatic cancellation) or <c>Customer</c> (a private customer of the public showcase, SP-10).</summary>
+    /// <summary>
+    /// <c>Host</c>, <c>Supplier</c>, <c>System</c> (the automatic cancellation, or the take of a request accepted automatically, SP-04d:
+    /// <c>status</c> <c>PresoInCarico</c> with this actor is "Accettata in automatico") or <c>Customer</c> (a private customer of the
+    /// public showcase, SP-10).
+    /// </summary>
     public string Actor { get; set; } = string.Empty;
 
     /// <summary>The supplier member who took the request, when known; host members are never named.</summary>
@@ -216,7 +244,10 @@ public class SupplierTodayDto
     /// <summary>The time zone of the days: <c>Europe/Rome</c>.</summary>
     public string TimeZone { get; set; } = string.Empty;
 
-    /// <summary>The jobs of today (taken, in progress, completed or paid), the first in time first.</summary>
+    /// <summary>
+    /// The jobs of today (taken, in progress, completed or paid), the first in time first; with <c>?days=</c> (SP-04e) also the ones of the
+    /// next days, up to <see cref="DateTo"/>.
+    /// </summary>
     public IEnumerable<SupplierServiceRequestDto> Jobs { get; set; } = [];
 
     /// <summary>The first new requests waiting for the answer, the one to answer first on top.</summary>
@@ -229,9 +260,21 @@ public class SupplierTodayDto
 
     /// <summary>
     /// Average minutes from the arrival of a request to its take (<c>takenAt − createdAt</c>) over the requests taken in the
-    /// last 90 days; <c>null</c> when there are none.
+    /// last 90 days; <c>null</c> when there are none. The requests accepted automatically (<c>autoAccepted</c>, SP-04d) are left out.
     /// </summary>
     public int? AverageResponseMinutes { get; set; }
+
+    /// <summary>How many days <see cref="Jobs"/> cover from <see cref="Date"/> (SP-04e, <c>?days=</c> from 1 to 7, 1 by default).</summary>
+    public int Days { get; set; } = 1;
+
+    /// <summary>The last day <see cref="Jobs"/> cover (<c>YYYY-MM-DD</c>, Europe/Rome): <see cref="Date"/> plus <see cref="Days"/> minus one.</summary>
+    public DateOnly DateTo { get; set; }
+
+    /// <summary>
+    /// How many jobs fall on those days (SP-04e): more than the length of <see cref="Jobs"/> when the list was cut at 50 (the first in
+    /// time are the ones kept).
+    /// </summary>
+    public int JobsTotal { get; set; }
 }
 
 /// <summary>The money of the supplier's home, in cents of euro.</summary>
@@ -286,10 +329,29 @@ public class SupplierChecklistDto
     public bool FirstRequestAnswered { get; set; }
 
     /// <summary>
-    /// Whether the supplier receives payments through CasaZen. <b>Always <c>null</c> for now</b>: payments are not available yet
-    /// (SP-14, SP-15). <c>null</c> means "not available", not "no": the console does not count the step.
+    /// Whether the supplier receives payments through CasaZen (SP-16a): <c>true</c> when its Stripe account takes charges and payouts,
+    /// <c>false</c> when it does not, <b>only while the flag <c>SupplierOnlinePayments</c> is on</b>. <c>null</c> (flag off) means
+    /// "not available", not "no": the console does not count the step.
     /// </summary>
     public bool? PaymentsActive { get; set; }
+
+    /// <summary>The "Verificato" badge and what is missing for it (SP-16a): told whatever the flag <c>SupplierOnlinePayments</c> says.</summary>
+    public SupplierVerificationDto? Verification { get; set; }
+}
+
+/// <summary>
+/// The "Verificato" badge of the supplier (decision D11, SP-16a): an active profile, a Stripe account that takes charges <b>and</b> payouts,
+/// and a VAT number. No documents (SP-D2).
+/// </summary>
+public class SupplierVerificationDto
+{
+    public bool Verified { get; set; }
+
+    /// <summary>
+    /// What is missing, in this order: <c>profile_not_active</c>, <c>payments_not_enabled</c>, <c>vat_number_missing</c>. Empty when
+    /// verified. <b>An open set</b>: show a generic wording for a code you do not know.
+    /// </summary>
+    public IReadOnlyList<string> Missing { get; set; } = [];
 }
 
 /// <summary>Body of <c>POST api/supplier/inbox/accept</c> (SP-04): the new requests to take as they are, at most 20.</summary>
@@ -349,8 +411,11 @@ public static class SupplierServiceRequestMapper
     public static SupplierTodayDto ToTodayDto(SupplierToday today) => new()
     {
         Date = today.Date,
+        Days = today.Days,
+        DateTo = today.LastDate,
         TimeZone = Casazen.Core.Utilities.RomeCalendar.TimeZoneId,
         Jobs = today.Jobs.Select(view => ToDto(view)).ToList(),
+        JobsTotal = today.JobsTotal,
         NewRequests = today.NewRequests.Select(view => ToDto(view)).ToList(),
         NewRequestsTotal = today.NewRequestsTotal,
         Earnings = new SupplierTodayEarningsDto
@@ -376,6 +441,9 @@ public static class SupplierServiceRequestMapper
         ShowcasePublished = checklist.ShowcasePublished,
         FirstRequestAnswered = checklist.FirstRequestAnswered,
         PaymentsActive = checklist.PaymentsActive,
+        Verification = checklist.Verification is null
+            ? null
+            : new SupplierVerificationDto { Verified = checklist.Verification.Verified, Missing = checklist.Verification.Missing },
     };
 
     private static T Fill<T>(T dto, SupplierServiceRequestView view)
@@ -445,6 +513,234 @@ public static class SupplierServiceRequestMapper
         // The supplier reads the photos of its own requests through the shared endpoint, the same whatever the context.
         dto.WorkPhotos = ServiceRequestDtoParts.ToPhotoDtos(view.Id, view.WorkPhotos, ServiceRequestDtoParts.ShortRentBasePath);
         dto.PaymentMode = view.PaymentMode.ToString();
+        dto.AutoAccepted = view.AutoAccepted;
+        dto.Phase = view.Phase;
+        dto.Payment = view.Payment is null ? null : SupplierRequestPaymentDto.From(view.Payment);
         return dto;
     }
+}
+
+/// <summary>
+/// Where the payment of a completed job stands and what the supplier may do about it (SP-04e). It exists when the request has a payment
+/// record or is <c>Completato</c>; a completed job paid outside CasaZen has no record yet (<see cref="Id"/>, <see cref="Status"/> and the
+/// commission fields are then null and <see cref="AmountCents"/> is the total the supplier declared). The commission is the supplier's own
+/// figure: the payer never sees it. No text may promise a payout date.
+/// </summary>
+public class SupplierRequestPaymentDto
+{
+    /// <summary>The payment record; null while the job has none.</summary>
+    public Guid? Id { get; set; }
+
+    /// <summary>
+    /// The status of the record: <c>Requested</c>, <c>Processing</c>, <c>Paid</c>, <c>Failed</c>, <c>PartiallyRefunded</c>, <c>Refunded</c> or
+    /// <c>NeedsReview</c>; null while there is no record. <b>An open set</b>: the held payments of SP-15c will add values.
+    /// </summary>
+    public string? Status { get; set; }
+
+    /// <summary>What the payer pays, gross, in cents: the record's amount, else the total the supplier declared.</summary>
+    public int? AmountCents { get; set; }
+
+    /// <summary>The commission percentage the record was created with (a snapshot, never recomputed); null while there is no record.</summary>
+    public decimal? CommissionPercent { get; set; }
+
+    /// <summary>The commission CasaZen keeps, in cents (0 when none is charged, as for a payment recorded as received outside CasaZen); null while there is no record.</summary>
+    public int? CommissionCents { get; set; }
+
+    /// <summary>What the supplier receives before Stripe's own fees, in cents; null while there is no record.</summary>
+    public int? NetCents { get; set; }
+
+    public DateTime? PaidAt { get; set; }
+
+    /// <summary><c>Stripe</c> or <c>Offline</c>; null until it is paid.</summary>
+    public string? PaidVia { get; set; }
+
+    /// <summary>When the payer was first asked; null while nothing was sent.</summary>
+    public DateTime? RequestedAt { get; set; }
+
+    /// <summary>When the payer was last sent a link; the supplier can ask again a day later.</summary>
+    public DateTime? LastSentAt { get; set; }
+
+    /// <summary>Emails with a link sent so far (the request and its reminders).</summary>
+    public int SentCount { get; set; }
+
+    /// <summary>The payer is late: the payment was flagged late (<c>SupplierPayments:LateAfterDays</c> after the first request) and is still owed.</summary>
+    public bool Late { get; set; }
+
+    /// <summary>The final amount is above the quote by more than the tolerance and the host has not confirmed it yet (decision D7).</summary>
+    public bool NeedsAmountConfirmation { get; set; }
+
+    /// <summary>
+    /// The supplier may ask the payer for the payment, or remind them, now: <c>POST api/supplier/requests/{id}/payment-request</c> would not
+    /// refuse. False while the flag <c>SupplierOnlinePayments</c> is off.
+    /// </summary>
+    public bool CanRequest { get; set; }
+
+    /// <summary>
+    /// The supplier may record that it was paid outside CasaZen now: <c>POST api/supplier/requests/{id}/payment/offline</c> would not refuse
+    /// (a reason is mandatory for a request paid inside CasaZen). Also with the flag off.
+    /// </summary>
+    public bool CanRecordOffline { get; set; }
+
+    internal static SupplierRequestPaymentDto From(SupplierJobPayment payment) => new()
+    {
+        Id = payment.Id,
+        Status = payment.Status?.ToString(),
+        AmountCents = payment.AmountCents,
+        CommissionPercent = payment.CommissionPercent,
+        CommissionCents = payment.CommissionCents,
+        NetCents = payment.NetCents,
+        PaidAt = payment.PaidAt,
+        PaidVia = payment.PaidVia?.ToString(),
+        RequestedAt = payment.RequestedAt,
+        LastSentAt = payment.LastSentAt,
+        SentCount = payment.SentCount,
+        Late = payment.Late,
+        NeedsAmountConfirmation = payment.NeedsAmountConfirmation,
+        CanRequest = payment.CanRequest,
+        CanRecordOffline = payment.CanRecordOffline,
+    };
+}
+
+/// <summary>
+/// Body of <c>GET api/supplier/dashboard/overview?period=</c> (SP-04e): the three numbers of the console home (how often the supplier
+/// says yes, how long it takes to answer, what comes in) for a period and for the same number of Europe/Rome days just before it, so the
+/// console can say "better" or "worse" without a calculation of its own. Definitions: <c>docs/runbooks/suppliers.md</c> § 27.
+/// </summary>
+public class SupplierOverviewDto
+{
+    /// <summary><c>current-month</c> (the 1st to today), <c>last-30-days</c> or <c>last-3-months</c>: what was asked.</summary>
+    public string Period { get; set; } = string.Empty;
+
+    /// <summary>The time zone of the days: <c>Europe/Rome</c>.</summary>
+    public string TimeZone { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The supplier has money through CasaZen to show: the flag <c>SupplierOnlinePayments</c> is on <b>and</b> it has at least one payment.
+    /// When false the money figures are 0 and the console talks about the jobs completed ("Lavori completati"), never about "Incassi".
+    /// </summary>
+    public bool OnlinePayments { get; set; }
+
+    /// <summary>The period asked for.</summary>
+    public SupplierOverviewPeriodDto Current { get; set; } = new();
+
+    /// <summary>The same number of days just before <see cref="Current"/> (adjacent and of the same length).</summary>
+    public SupplierOverviewPeriodDto Previous { get; set; } = new();
+}
+
+/// <summary>
+/// The figures of one period of the overview. A figure that does not exist (a rate when nobody was answered, an average when nothing was
+/// taken) is <c>null</c>, never 0: the console shows a dash.
+/// </summary>
+public class SupplierOverviewPeriodDto
+{
+    /// <summary>First day (<c>YYYY-MM-DD</c>, Europe/Rome, included).</summary>
+    public DateOnly From { get; set; }
+
+    /// <summary>Last day (<c>YYYY-MM-DD</c>, Europe/Rome, included).</summary>
+    public DateOnly To { get; set; }
+
+    /// <summary>Requests that arrived in the period, whatever became of them.</summary>
+    public int Received { get; set; }
+
+    /// <summary>Requests the supplier took in the period (a request cancelled after the take is still one).</summary>
+    public int Accepted { get; set; }
+
+    /// <summary>Requests the supplier refused in the period.</summary>
+    public int Rejected { get; set; }
+
+    /// <summary>Accepted over accepted plus rejected, from 0 to 1 with four decimals; null when the supplier answered none.</summary>
+    public double? AcceptanceRate { get; set; }
+
+    /// <summary>
+    /// Average minutes from the arrival of a request to its take (<c>takenAt − createdAt</c>) over the requests taken in the period; null when
+    /// none was. The same figure as <c>GET api/supplier/today</c>, for the period; the public showcase shows the median instead. The
+    /// requests accepted automatically (<c>autoAccepted</c>, SP-04d) are left out of it, and count in <see cref="Accepted"/>.
+    /// </summary>
+    public int? AverageResponseMinutes { get; set; }
+
+    /// <summary>Jobs completed in the period (by completion date; a paid one counts as completed).</summary>
+    public int CompletedJobs { get; set; }
+
+    /// <summary>The net, in cents, of the payments paid in the period (by payment date); 0 unless <see cref="SupplierOverviewDto.OnlinePayments"/>.</summary>
+    public long PaidNetCents { get; set; }
+
+    /// <summary>The gross, in cents, of the payments paid in the period; 0 unless <see cref="SupplierOverviewDto.OnlinePayments"/>.</summary>
+    public long PaidGrossCents { get; set; }
+
+    /// <summary>The commission CasaZen kept on them, in cents; 0 unless <see cref="SupplierOverviewDto.OnlinePayments"/>.</summary>
+    public long CommissionCents { get; set; }
+
+    /// <summary>
+    /// What is still to be collected <b>now</b>, in cents: the total the supplier declared for a job paid outside CasaZen, the net of the
+    /// payment for one paid inside it. Only in <c>current</c>; null in <c>previous</c>.
+    /// </summary>
+    public long? ToCollectCents { get; set; }
+
+    /// <summary>How many jobs are still to be collected now. Only in <c>current</c>; null in <c>previous</c>.</summary>
+    public int? ToCollectJobs { get; set; }
+}
+
+/// <summary>
+/// Body of <c>GET api/supplier/inbox/counts</c> (SP-04e): the numbers on the chips of the list and on the menu, computed with the same
+/// rules as the tabs of <c>GET api/supplier/inbox</c> so a number and its list cannot disagree.
+/// </summary>
+public class SupplierInboxCountsDto
+{
+    /// <summary>Tab <c>da-rispondere</c>: new requests the supplier still has to answer.</summary>
+    public int ToAnswer { get; set; }
+
+    /// <summary>Tab <c>in-attesa</c>: requests the supplier answered with a proposed time the customer has not answered. <c>nuove</c> holds <c>toAnswer</c> plus this.</summary>
+    public int AwaitingCustomer { get; set; }
+
+    /// <summary>Tab <c>programmate</c>: taken or in progress.</summary>
+    public int Scheduled { get; set; }
+
+    /// <summary>Tab <c>da-incassare</c>: completed and not paid yet.</summary>
+    public int ToCollect { get; set; }
+
+    /// <summary>Tab <c>archivio</c>: paid, rejected or cancelled.</summary>
+    public int Archive { get; set; }
+
+    /// <summary>Payments asked for that are late and still owed.</summary>
+    public int PaymentsLate { get; set; }
+}
+
+/// <summary>Maps the read models of the console home (SP-04e) to their API DTOs.</summary>
+public static class SupplierReadModelsMapper
+{
+    public static SupplierOverviewDto ToDto(SupplierOverview overview) => new()
+    {
+        Period = SupplierKpiPeriods.OverviewToken(overview.Period),
+        TimeZone = Casazen.Core.Utilities.RomeCalendar.TimeZoneId,
+        OnlinePayments = overview.OnlinePayments,
+        Current = ToDto(overview.Current),
+        Previous = ToDto(overview.Previous),
+    };
+
+    public static SupplierInboxCountsDto ToDto(SupplierInboxCounts counts) => new()
+    {
+        ToAnswer = counts.ToAnswer,
+        AwaitingCustomer = counts.AwaitingCustomer,
+        Scheduled = counts.Scheduled,
+        ToCollect = counts.ToCollect,
+        Archive = counts.Archive,
+        PaymentsLate = counts.PaymentsLate,
+    };
+
+    private static SupplierOverviewPeriodDto ToDto(SupplierOverviewPeriod period) => new()
+    {
+        From = period.From,
+        To = period.To,
+        Received = period.Received,
+        Accepted = period.Accepted,
+        Rejected = period.Rejected,
+        AcceptanceRate = period.AcceptanceRate,
+        AverageResponseMinutes = period.AverageResponseMinutes,
+        CompletedJobs = period.CompletedJobs,
+        PaidNetCents = period.PaidNetCents,
+        PaidGrossCents = period.PaidGrossCents,
+        CommissionCents = period.CommissionCents,
+        ToCollectCents = period.ToCollectCents,
+        ToCollectJobs = period.ToCollectJobs,
+    };
 }

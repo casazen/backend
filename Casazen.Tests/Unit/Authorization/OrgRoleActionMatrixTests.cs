@@ -72,8 +72,10 @@ public class OrgRoleActionMatrixTests
         { typeof(PropertiesController), nameof(PropertiesController.GetCinCompliance), Everyone },
         { typeof(BookingsController), nameof(BookingsController.GetAll), Everyone },
         { typeof(BookingsController), nameof(BookingsController.Search), Everyone },
+        { typeof(BookingsController), nameof(BookingsController.Counts), Everyone },
         { typeof(DashboardController), nameof(DashboardController.GetKpis), Everyone },
         { typeof(DashboardController), nameof(DashboardController.GetToday), Everyone },
+        { typeof(DashboardController), nameof(DashboardController.GetOverview), Everyone },
         { typeof(DashboardController), nameof(DashboardController.GetIcalFeeds), Everyone },
         { typeof(ComplianceController), nameof(ComplianceController.GetSummary), Everyone },
         { typeof(AlloggiatiController), nameof(AlloggiatiController.GetSummary), Everyone },
@@ -83,6 +85,9 @@ public class OrgRoleActionMatrixTests
         { typeof(PaymentsController), nameof(PaymentsController.GetAll), WithMoney },
         { typeof(FiscalController), nameof(FiscalController.AnnualReport), WithMoney },
         { typeof(FiscalController), nameof(FiscalController.WithholdingReport), WithMoney },
+        { typeof(ReportsController), nameof(ReportsController.RevenueByProperty), WithMoney },
+        { typeof(ReportsController), nameof(ReportsController.OccupancyByProperty), WithMoney },
+        { typeof(ReportsController), nameof(ReportsController.BookingsByChannel), WithMoney },
         { typeof(PaymentsController), nameof(PaymentsController.Create), Operators },
         { typeof(PaymentsController), nameof(PaymentsController.Refund), Operators },
 
@@ -124,6 +129,18 @@ public class OrgRoleActionMatrixTests
         { typeof(LeasesController), nameof(LeasesController.Create), Operators },
         { typeof(LeasesController), nameof(LeasesController.TriggerRegistration), Operators },
 
+        // LR-12: the guided draft of a lease is written, and read (it carries the parties in clear), by who may create a lease; the
+        // rules of the area, which are figures and nothing personal, by who may read the leases.
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Create), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Get), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Save), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.GetReview), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.ConfirmReview), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.MarkSent), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Delete), Operators },
+        { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetRules), WithMoney },
+        { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetLandlordDefaults), Operators },
+
         // The people of the org, and the properties each of them reaches.
         { typeof(OrgMembersController), nameof(OrgMembersController.List), Team },
         { typeof(OrgMembersController), nameof(OrgMembersController.GetProperties), Team },
@@ -141,5 +158,34 @@ public class OrgRoleActionMatrixTests
         var allowed = Enum.GetValues<OrgRole>().Where(role => Allows(role, action)).Select(role => role.ToString()).Order(StringComparer.Ordinal).ToList();
 
         Assert.Equal(expectedRoles.Split(',').Order(StringComparer.Ordinal).ToList(), allowed);
+    }
+
+    /// <summary>
+    /// AM-02c (AM-D12): the property manager has a membership of the account context, so a policy of the account context could
+    /// start to let it in. Every action of the API found by reflection that asks for a permission of the account context is
+    /// checked: the property manager passes it only when the permission is the one of the trusted suppliers, whatever the
+    /// controller (so a team, billing, settings or activity endpoint added later is covered without anyone listing it).
+    /// </summary>
+    [Fact]
+    public void PropertyManager_InTheAccountContext_PassesNoAccountActionButTheTrustedSuppliers()
+    {
+        var accountPermissions = typeof(OrgMembersController).Assembly.GetTypes()
+            .Where(t => typeof(Microsoft.AspNetCore.Mvc.ControllerBase).IsAssignableFrom(t) && t is { IsAbstract: false, IsPublic: true })
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            .SelectMany(PoliciesOf)
+            .Select(CasazenPolicies.ParseContextPolicy)
+            .Where(p => p.ContextKeys.Any(AccountContext.IsAccountContext))
+            .Select(p => p.PermissionKey)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        // The team, the activity log and the other pages of the area are really found (the test is not vacuous).
+        Assert.Contains(AccountContext.Permissions.MembersManage, accountPermissions);
+        Assert.Contains(AccountContext.Permissions.ActivityRead, accountPermissions);
+
+        var held = PermissionsOf(OrgRole.PropertyManager, AccountContext.Key);
+        Assert.Equal([AccountContext.Permissions.SuppliersManage], held.ToArray());
+        foreach (var permission in accountPermissions)
+            Assert.Equal(permission == AccountContext.Permissions.SuppliersManage, held.Contains(permission));
     }
 }

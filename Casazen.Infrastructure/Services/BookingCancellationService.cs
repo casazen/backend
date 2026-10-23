@@ -9,12 +9,14 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Host cancellation of a booking with its money on Stripe (BK-02, #51, A3-05). See <see cref="IBookingCancellationService"/>.
+/// Cancellation of a booking with its money on Stripe, by the host (BK-02, #51, A3-05) or by the guest through the signed
+/// link (BK-07, DB-08h). See <see cref="IBookingCancellationService"/>.
 /// </summary>
 /// <remarks>
 /// Under an advisory lock on the booking and on each of its payments (same order as the payment refunds, so no
-/// deadlock): the refund decision is validated, the intents not paid yet are canceled on the connected account, the
-/// booking is set Cancelled and the refunds are reserved, all in one transaction. The refunds are then sent to Stripe
+/// deadlock): the booking and its payments are read again, the refund decision is validated, the intents not paid yet
+/// are canceled on the connected account, the booking is set Cancelled (and the guest's link spent, when the guest
+/// cancels) and the refunds are reserved, all in one transaction. The refunds are then sent to Stripe
 /// with their idempotency keys; one that Stripe rejects stays visible as failed and can be retried from the payment.
 /// Finally the guest gets one "booking cancelled" email (PC-07, A2-08) that includes the refund: as made when Stripe
 /// confirmed it at once (its separate "refund confirmed" email is then not sent, BK-10), as started otherwise (the
@@ -61,23 +63,37 @@ public sealed class BookingCancellationService(
         int canceledIntents;
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, locks.ToArray()))
         {
+            // Whatever the caller read before this lock may be old by now: a click that was first has cancelled the booking
+            // and refunded meanwhile. A query does not overwrite an entity the context already tracks, so the booking would
+            // still look cancellable and a refund of only part of the payment (a guest under a 50% policy) would leave the
+            // rest refundable for a second time. Read again, under the lock, from what is committed.
+            db.ChangeTracker.Clear();
+
             booking = await LoadBookingAsync(request.BookingId, cancellationToken);
             if (booking.Status == BookingStatus.Cancelled)
-                throw new DomainConflictException("booking_already_cancelled", "BookingAlreadyCancelled");
+                throw new DomainConflictException(BookingErrorCodes.AlreadyCancelled, "BookingAlreadyCancelled");
             if (!IsCancellable(booking.Status))
                 throw new DomainRuleException("booking_not_cancellable", "BookingNotCancellable");
 
             var payments = await db.Payments.Where(p => p.BookingId == booking.Id).ToListAsync(cancellationToken);
             var refunds = await LoadRefundsAsync(payments, cancellationToken);
-            var quote = BuildQuote(booking, payments, refunds);
+            var quote = BuildQuote(booking, payments, refunds, request.Initiator);
             ValidateRefundDecision(quote, request.RefundAmount);
 
             canceledIntents = await CancelUncollectedIntentsAsync(booking, payments, cancellationToken);
 
             var now = _clock.GetUtcNow().UtcDateTime;
             booking.Status = BookingStatus.Cancelled;
+            booking.CancelledAt = now;
             booking.CancellationNote = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
             booking.UpdatedAt = now;
+
+            // The guest's cancel link is spent by the cancellation that succeeds, in the same transaction: an error above
+            // leaves it usable until it expires. The hash stays, so a second click is recognised and answered with the
+            // outcome (the cancelled booking is what stops a second refund, not the link).
+            if (request.Initiator == BookingCancellationInitiator.Guest && booking.GuestCancelTokenExpiresAt > now)
+                booking.GuestCancelTokenExpiresAt = now;
+
             await db.SaveChangesAsync(cancellationToken);
 
             var remaining = request.RefundAmount ?? 0m;
@@ -108,8 +124,9 @@ public sealed class BookingCancellationService(
         }
 
         logger.LogInformation(
-            "Booking {BookingId} cancelled: {RefundCount} refund(s) of {RefundAmount} EUR, {IntentCount} intent(s) canceled",
+            "Booking {BookingId} cancelled by the {Initiator}: {RefundCount} refund(s) of {RefundAmount} EUR, {IntentCount} intent(s) canceled",
             booking.Id,
+            request.Initiator,
             reserved.Count,
             reserved.Sum(r => r.Amount),
             canceledIntents);
@@ -158,7 +175,11 @@ public sealed class BookingCancellationService(
     private static bool IsCancellable(BookingStatus status) =>
         status is BookingStatus.Pending or BookingStatus.Confirmed or BookingStatus.CheckedIn;
 
-    private BookingCancellationQuote BuildQuote(Booking booking, IReadOnlyList<Payment> payments, IReadOnlyList<PaymentRefund> refunds)
+    private BookingCancellationQuote BuildQuote(
+        Booking booking,
+        IReadOnlyList<Payment> payments,
+        IReadOnlyList<PaymentRefund> refunds,
+        BookingCancellationInitiator initiator = BookingCancellationInitiator.Host)
     {
         var stripePaid = StripePaidPayments(payments).ToList();
         var summaries = stripePaid
@@ -172,10 +193,17 @@ public sealed class BookingCancellationService(
 
         // BK-02, PO 2026-10-08: host cancellation always refunds 100% to the guest, regardless of the policy.
         // The floor evaluated from the model is kept for reference only (shown as the rule in the response).
+        var now = _clock.GetUtcNow();
         var nights = (booking.CheckOutDate.Date - booking.CheckInDate.Date).Days;
         var policy = CancellationRefundPolicy.EffectivePolicy(booking.Property, nights);
-        var floor = CancellationRefundPolicy.Evaluate(booking, policy, _clock.GetUtcNow());
-        var minimum = refundable; // host cancellation: minimum = full refundable amount
+        var floor = CancellationRefundPolicy.Evaluate(booking, policy, now);
+
+        // BK-02, BK-07: a guest who cancels themselves gets what the property's policy grants, no more than what is
+        // refundable (DB-08h: asking them for everything refundable, as for the host, refused every cancellation that
+        // the policy does not refund in full).
+        var minimum = initiator == BookingCancellationInitiator.Guest
+            ? CancellationRefundPolicy.EvaluateGuestRefund(booking, now, refundable).Amount
+            : refundable;
 
         var offlinePaid = payments
             .Where(p => PaymentRefundService.PaymentIntentIdOf(p) is null && p.Status == PaymentStatus.Completed)
@@ -209,10 +237,17 @@ public sealed class BookingCancellationService(
 
         if (refundAmount is not { } amount)
         {
-            throw new DomainRuleException(
-                "booking_cancel_refund_required",
-                "BookingCancelRefundRequired",
-                quote.RefundableAmount);
+            // A host always owes the whole refundable amount, so a missing amount is refused; a guest whose policy
+            // refunds nothing owes nothing, and no amount means no refund.
+            if (quote.MinimumRefundAmount > 0)
+            {
+                throw new DomainRuleException(
+                    "booking_cancel_refund_required",
+                    "BookingCancelRefundRequired",
+                    quote.RefundableAmount);
+            }
+
+            return;
         }
 
         if (amount < 0 || decimal.Round(amount, 2) != amount)

@@ -4,10 +4,23 @@ namespace Casazen.Core.Suppliers;
 /// The typical time a supplier takes to answer, as the public showcase may show it (SP-09). <b>Measured, never written</b>: it
 /// comes from the requests the supplier really took (<c>TakenAt − CreatedAt</c>, the same pairs as the average of
 /// <c>GET api/supplier/today</c>, SP-04), over the last <see cref="Services.SupplierEarningsSummary.ResponseWindowDays"/> days,
-/// and only once there are enough of them to mean something.
+/// and only once there are enough of them to mean something. A request accepted automatically (SP-04d) is born taken and nobody
+/// answered it: it is not one of the pairs.
 /// </summary>
 public static class SupplierResponseTimes
 {
+    /// <summary>
+    /// The <b>average</b> of <paramref name="minutes"/> (the minutes each request waited for the supplier's answer) in whole minutes,
+    /// <c>null</c> when there are none: the figure of the supplier's own home (<c>GET api/supplier/today</c>, and the overview of
+    /// SP-04e for a period). The public showcase uses the median instead (<see cref="PublicMedianMinutes"/>, SP-09): both are
+    /// documented in <c>docs/runbooks/suppliers.md</c> § 27.
+    /// </summary>
+    public static int? AverageMinutes(IReadOnlyCollection<double> minutes)
+    {
+        ArgumentNullException.ThrowIfNull(minutes);
+        return minutes.Count == 0 ? null : (int)Math.Round(minutes.Average());
+    }
+
     /// <summary>
     /// The median of <paramref name="minutes"/> (the minutes each request waited for the supplier's answer), in whole minutes
     /// (a half minute rounds up); <c>null</c> when there are fewer than <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/>:

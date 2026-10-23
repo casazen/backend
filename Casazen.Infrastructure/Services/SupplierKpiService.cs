@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
@@ -9,9 +10,18 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Supplier dashboard KPIs from <c>ServiceRequests</c> (SU-11, A4-15). The dashboard used to count the supplier jobs,
-/// which no real flow created, so a supplier with five completed requests read "0 completed".
+/// which no real flow created, so a supplier with five completed requests read "0 completed". The overview of the home (SP-04e)
+/// is in <c>SupplierKpiService.Overview.cs</c>; the payments it adds up come from <see cref="ISupplierPaymentReadModels"/>.
 /// </summary>
-public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : ISupplierKpiService
+/// <param name="db">The context.</param>
+/// <param name="timeProvider">The clock: "today" and the periods are Europe/Rome days.</param>
+/// <param name="features">The feature flags; without them the overview talks about no online payments.</param>
+/// <param name="payments">The reads of the payments; without them the overview talks about no online payments.</param>
+public partial class SupplierKpiService(
+    AppDbContext db,
+    TimeProvider timeProvider,
+    IFeatureFlags? features = null,
+    ISupplierPaymentReadModels? payments = null) : ISupplierKpiService
 {
     public async Task<SupplierServiceRequestKpis> GetKpisAsync(
         Guid supplierOrgId,
@@ -75,9 +85,7 @@ public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : IS
         // Read as pairs and averaged here, so the arithmetic on instants does not depend on the provider.
         var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-SupplierEarningsSummary.ResponseWindowDays);
         var answers = await AnswersOf(db, supplierOrgId, since).ToListAsync(cancellationToken);
-        int? averageMinutes = answers.Count == 0
-            ? null
-            : (int)Math.Round(answers.Average(answer => (answer.TakenAt - answer.CreatedAt).TotalMinutes));
+        var averageMinutes = SupplierResponseTimes.AverageMinutes(answers.Select(answer => answer.Minutes).ToList());
 
         return new SupplierEarningsSummary(
             from,
@@ -104,8 +112,35 @@ public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : IS
         var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-SupplierEarningsSummary.ResponseWindowDays);
         var answers = await RecentAnswersOf(db, supplierOrgId, since, PublicShowcaseLimits.ResponseTimeMaxSamples)
             .ToListAsync(cancellationToken);
-        return SupplierResponseTimes.PublicMedianMinutes(
-            answers.Select(answer => (answer.TakenAt - answer.CreatedAt).TotalMinutes).ToList());
+        return SupplierResponseTimes.PublicMedianMinutes(answers.Select(answer => answer.Minutes).ToList());
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, int?>> GetMedianResponseMinutesBatchAsync(
+        IReadOnlyCollection<Guid> supplierOrgIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(supplierOrgIds);
+
+        var medians = supplierOrgIds.Distinct().ToDictionary(id => id, _ => (int?)null);
+        if (medians.Count == 0)
+            return medians;
+
+        // One read for every supplier asked about: the pairs of the window, grouped here. The latest requests of each supplier
+        // make its median, as for the showcase, and the median is made on the pairs so the arithmetic on instants does not depend
+        // on the provider.
+        var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-SupplierEarningsSummary.ResponseWindowDays);
+        var answers = await AnswersOfMany(db, medians.Keys.ToList(), since).ToListAsync(cancellationToken);
+        foreach (var bySupplier in answers.GroupBy(answer => answer.SupplierOrgId))
+        {
+            var latest = bySupplier
+                .OrderByDescending(answer => answer.TakenAt)
+                .Take(PublicShowcaseLimits.ResponseTimeMaxSamples)
+                .Select(answer => (answer.TakenAt - answer.CreatedAt).TotalMinutes)
+                .ToList();
+            medians[bySupplier.Key] = SupplierResponseTimes.PublicMedianMinutes(latest);
+        }
+
+        return medians;
     }
 
     /// <summary>The jobs and the final amounts of the requests of the supplier completed (or paid) inside <c>[startUtc, endUtc)</c>.</summary>
@@ -129,29 +164,52 @@ public class SupplierKpiService(AppDbContext db, TimeProvider timeProvider) : IS
             .GroupBy(_ => 1)
             .Select(g => new AmountGroup(g.Count(), g.Sum(r => (long?)r.FinalAmountCents)));
 
-    /// <summary>When each request taken since <paramref name="sinceUtc"/> was received and taken, for the average response time.</summary>
+    /// <summary>
+    /// When each request taken since <paramref name="sinceUtc"/> was received and taken, for the average response time. A request
+    /// accepted automatically (SP-04d) is born taken, so its wait would be zero and would falsify the average: it is left out.
+    /// </summary>
     internal static IQueryable<AnswerPair> AnswersOf(AppDbContext db, Guid supplierOrgId, DateTime sinceUtc) =>
         db.ServiceRequests
             .AsNoTracking()
-            .Where(r => r.SupplierOrgId == supplierOrgId && r.TakenAt != null && r.TakenAt >= sinceUtc)
+            .Where(r => r.SupplierOrgId == supplierOrgId && !r.AutoAccepted && r.TakenAt != null && r.TakenAt >= sinceUtc)
             .Select(r => new AnswerPair(r.CreatedAt, r.TakenAt!.Value));
 
     /// <summary>
     /// The latest <paramref name="limit"/> requests of the supplier taken since <paramref name="sinceUtc"/>, when each was
-    /// received and taken: the sample of the public response time (a median needs the pairs, not a sum).
+    /// received and taken: the sample of the public response time (a median needs the pairs, not a sum). The requests accepted
+    /// automatically (SP-04d) are left out, as in <see cref="AnswersOf"/>.
     /// </summary>
     internal static IQueryable<AnswerPair> RecentAnswersOf(AppDbContext db, Guid supplierOrgId, DateTime sinceUtc, int limit) =>
         // ServiceRequest has no tenant filter (two parties, TN-2 allow-list): scoped by the supplier org explicitly.
         db.ServiceRequests
             .AsNoTracking()
-            .Where(r => r.SupplierOrgId == supplierOrgId && r.TakenAt != null && r.TakenAt >= sinceUtc)
+            .Where(r => r.SupplierOrgId == supplierOrgId && !r.AutoAccepted && r.TakenAt != null && r.TakenAt >= sinceUtc)
             .OrderByDescending(r => r.TakenAt)
             .Take(limit)
             .Select(r => new AnswerPair(r.CreatedAt, r.TakenAt!.Value));
 
+    /// <summary>
+    /// When each request taken since <paramref name="sinceUtc"/> was received and taken, for every supplier in
+    /// <paramref name="supplierOrgIds"/> at once: the sample of the response time of the supplier picker (SR-09a). The requests
+    /// accepted automatically (SP-04d) are left out, as in <see cref="RecentAnswersOf"/>: nobody answered them.
+    /// </summary>
+    internal static IQueryable<SupplierAnswerPair> AnswersOfMany(AppDbContext db, IReadOnlyCollection<Guid> supplierOrgIds, DateTime sinceUtc) =>
+        // ServiceRequest has no tenant filter (two parties, TN-2 allow-list): scoped by the supplier orgs explicitly.
+        db.ServiceRequests
+            .AsNoTracking()
+            .Where(r => supplierOrgIds.Contains(r.SupplierOrgId) && !r.AutoAccepted && r.TakenAt != null && r.TakenAt >= sinceUtc)
+            .Select(r => new SupplierAnswerPair(r.SupplierOrgId, r.CreatedAt, r.TakenAt!.Value));
+
     /// <summary>A number of requests and the sum of their final amounts (<c>null</c> when none has one).</summary>
     internal sealed record AmountGroup(int Jobs, long? Amount);
 
+    /// <summary>The moment a request of a supplier was received and the moment the supplier took it.</summary>
+    internal sealed record SupplierAnswerPair(Guid SupplierOrgId, DateTime CreatedAt, DateTime TakenAt);
+
     /// <summary>The moment a request was received and the moment the supplier took it.</summary>
-    internal sealed record AnswerPair(DateTime CreatedAt, DateTime TakenAt);
+    internal sealed record AnswerPair(DateTime CreatedAt, DateTime TakenAt)
+    {
+        /// <summary>The minutes the request waited for the answer.</summary>
+        public double Minutes => (TakenAt - CreatedAt).TotalMinutes;
+    }
 }

@@ -24,16 +24,46 @@ public sealed record SupplierClosedDay(DateOnly Date, SupplierAvailabilitySource
 /// </param>
 /// <param name="StartUtc">First instant of the work (UTC); <c>null</c> for a request that only has a day.</param>
 /// <param name="EndUtc">Instant the work ends (UTC); <c>null</c> for a request that only has a day.</param>
+/// <param name="ServiceListingId">The catalog service the request is for, when it is for one (the conflict check reads its notice and weekdays).</param>
+/// <param name="ServiceName">
+/// The name of the service at the time of the request (SP-03b, a snapshot), <c>null</c> when the request is for a category only:
+/// the calendar then shows <see cref="Category"/>. Filled only by <see cref="Services.ISupplierServiceRequestReader.ListForCalendarAsync"/>.
+/// </param>
+/// <param name="ClientLabel">
+/// Who asks, as the supplier may know it (SP-03b, decision D9): the name of the host's org for a host's request; for a private
+/// customer of the public showcase "Nome C." until the supplier takes the request, the full name after
+/// (<see cref="SupplierJobDisclosure.CustomerName"/>). Never an address, a contact or a note. Filled only by
+/// <see cref="Services.ISupplierServiceRequestReader.ListForCalendarAsync"/>.
+/// </param>
+/// <param name="Comune">The comune of the work as written (a property's city, or the place the customer wrote); the postal code and the street are not here. Filled only by <see cref="Services.ISupplierServiceRequestReader.ListForCalendarAsync"/>.</param>
+/// <param name="Source">
+/// Where the request comes from: <see cref="SupplierRequestSources.CasaZen"/> or <see cref="SupplierRequestSources.Showcase"/>. A
+/// column of the request itself: both reads fill it, so it is right wherever the record comes from (the three titles above are the only
+/// ones that need the join of the calendar).
+/// </param>
+/// <param name="HasPendingProposal">
+/// True while a time the supplier proposed has no answer (the <see cref="Phase"/> is then <c>proposal_pending</c>). Filled by both
+/// reads, like <paramref name="Source"/>.
+/// </param>
 public sealed record SupplierAgendaRequest(
     Guid Id,
     DateOnly Date,
     ServiceRequestStatus Status,
     string Category,
     DateTime? StartUtc = null,
-    DateTime? EndUtc = null)
+    DateTime? EndUtc = null,
+    Guid? ServiceListingId = null,
+    string? ServiceName = null,
+    string? ClientLabel = null,
+    string? Comune = null,
+    string Source = SupplierRequestSources.CasaZen,
+    bool HasPendingProposal = false)
 {
     /// <summary>True when the request has hours of its own (<see cref="StartUtc"/> and <see cref="EndUtc"/>).</summary>
     public bool HasHours => StartUtc is not null && EndUtc is not null;
+
+    /// <summary>The phase of the request (<see cref="SupplierRequestPhases"/>): derived in one place, never stored.</summary>
+    public string Phase => SupplierRequestPhases.Of(Status, HasPendingProposal);
 }
 
 /// <summary>
@@ -46,6 +76,30 @@ public sealed record SupplierBookingSettings(bool OnlineBookingEnabled, int Resp
 {
     /// <summary>What a supplier that never saved a setting has.</summary>
     public static SupplierBookingSettings Default { get; } = new(false, SupplierAgendaDefaults.RespondWithinMinutes);
+}
+
+/// <summary>
+/// The supplier's own settings as the console shows them (SP-16a, <c>GET/PUT api/supplier/settings</c>). A supplier that never saved a
+/// setting has the defaults of <see cref="Default"/> (a read never creates the row).
+/// </summary>
+/// <param name="OnlineBookingEnabled">
+/// Whether the public showcase takes bookings. <b>Read-only here</b>: only the showcase editor writes it (decision SP-D29).
+/// </param>
+/// <param name="AutoAcceptRegulars">The supplier accepts the requests of its regular hosts by itself (SP-04d reads it).</param>
+/// <param name="NotifyNewRequests">The supplier wants a notification for every new request (SP-16d reads it).</param>
+/// <param name="NotifyDayBeforeReminder">The supplier wants the reminder of tomorrow's jobs (SP-16d reads it).</param>
+/// <param name="NotifyPayments">The supplier wants to know when a payment arrives (SP-16d reads it; column <c>NotifyPaymentMarked</c>).</param>
+/// <param name="RespondWithinMinutes">How long a customer of the public showcase waits for the supplier's answer.</param>
+public sealed record SupplierSettingsView(
+    bool OnlineBookingEnabled,
+    bool AutoAcceptRegulars,
+    bool NotifyNewRequests,
+    bool NotifyDayBeforeReminder,
+    bool NotifyPayments,
+    int RespondWithinMinutes)
+{
+    /// <summary>What a supplier that never saved a setting has: the defaults of the <c>SupplierSettings</c> row.</summary>
+    public static SupplierSettingsView Default { get; } = new(false, false, true, true, true, SupplierAgendaDefaults.RespondWithinMinutes);
 }
 
 /// <summary>
@@ -139,10 +193,43 @@ public interface ISupplierAgendaService
     Task<SupplierBookingSettings> GetBookingSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The supplier's settings for the console (SP-16a): the switches, the time to answer and, read-only, whether the showcase takes
+    /// bookings. The defaults while the supplier never saved a setting; a read never creates the settings row. Read-only.
+    /// </summary>
+    Task<SupplierSettingsView> GetSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the five settings the console edits (SP-16a); the rest of the row stays as it is, and <b>never</b>
+    /// <c>OnlineBookingEnabled</c>: only the showcase editor turns the bookings on and off (decision SP-D29). The row is created by the
+    /// first write, under the agenda lock.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.SettingsInvalid"/> (with the fields).</exception>
+    Task<SupplierSettingsView> ReplaceSettingsAsync(Guid supplierOrgId, SupplierSettingsInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The supplier's urgent settings (SP-04c, <c>GET api/supplier/availability/urgent</c>): whether it accepts urgent requests, the
+    /// window of the day they are accepted in and its default surcharge. <see cref="SupplierUrgentSettings.Default"/> (off, 07:00 to
+    /// 22:00, no surcharge) while the supplier never saved them; a read never creates the settings row. Read-only.
+    /// </summary>
+    Task<SupplierUrgentSettings> GetUrgentAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the urgent settings (every field is needed); the rest of the settings row stays as it is. The row is created by the
+    /// first write, under the agenda lock, which every request flow takes before it plans a slot: a booking is judged on the settings
+    /// as they are saved.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.UrgentInvalid"/> (with the fields).</exception>
+    Task<SupplierUrgentSettings> ReplaceUrgentAsync(Guid supplierOrgId, SupplierUrgentInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// What the supplier's calendar shows from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both
     /// included, at most <see cref="SupplierAgendaLimits.MaxCalendarDays"/>): hours, closed days, time off, windows and the
     /// requests that have a day. Read-only.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The range is reversed, too long or too close to an end of the calendar (<see cref="SupplierAgendaRange"/>; the controller
+    /// answers 400 before).
+    /// </exception>
     Task<SupplierCalendar> GetCalendarAsync(
         Guid supplierOrgId,
         DateOnly from,

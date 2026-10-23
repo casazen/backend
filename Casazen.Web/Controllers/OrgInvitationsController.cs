@@ -1,4 +1,3 @@
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
@@ -11,13 +10,11 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The invitations of the caller's org (AM-02): invite a person with a role, list the invitations still open, send one
 /// again, withdraw it, copy its link. For the owner and the administrators (policy <see cref="CasazenPolicies.OrgMembersManage"/>,
-/// the permission <c>org.members.manage</c> of the <c>account</c> context); only the owner invites an administrator. Behind
-/// the <c>OrgTeam</c> flag: 404 while it is off. The org is the caller's own, never taken from the request.
-/// Runbook <c>docs/runbooks/org-team.md</c>.
+/// the permission <c>org.members.manage</c> of the <c>account</c> context); only the owner invites an administrator. The org
+/// is the caller's own, never taken from the request. Runbook <c>docs/runbooks/org-team.md</c>.
 /// </summary>
 [ApiController]
 [Route("api/orgs/me/invitations")]
-[FeatureGate(FeatureFlags.OrgTeam)]
 [Authorize(Policy = CasazenPolicies.OrgMembersManage)]
 public class OrgInvitationsController(
     IOrgInvitationService invitations,
@@ -27,7 +24,12 @@ public class OrgInvitationsController(
     /// Invites a person. The email goes out at once (<c>emailQueued</c> says whether it could be queued); the invitation holds
     /// a seat until it is accepted, revoked or expires. 403 <c>org_owner_required</c> (an administrator invites an
     /// administrator), 409 <c>org_seat_limit_reached</c> (no free seat on the plan), <c>org_invitation_already_pending</c>,
-    /// <c>org_member_already_member</c>, 422 <c>org_owner_not_assignable</c>, <c>org_member_area_required</c>.
+    /// <c>org_member_already_member</c>, 422 <c>org_owner_not_assignable</c>, <c>org_member_area_required</c>,
+    /// <c>org_member_scope_not_supported</c> (properties or «Solo alcuni» for a role that is not the collaborator),
+    /// <c>org_member_property_unknown</c> (a property that is not a live property of the org), 429
+    /// <c>invitation_daily_limit_reached</c> (the org already sent <c>OrgTeam:InvitationDailyLimit</c> invitation emails, 10 by default, in
+    /// the last 24 hours, the ones sent again included). A collaborator «Solo alcuni» carries its <c>propertyIds</c> (at most 500)
+    /// and gets exactly those, in the transaction of the acceptance.
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(OrgInvitationSentDto), StatusCodes.Status201Created)]
@@ -35,6 +37,7 @@ public class OrgInvitationsController(
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<OrgInvitationSentDto>> Create(
         [FromBody] CreateOrgInvitationRequest request,
         CancellationToken cancellationToken)
@@ -52,7 +55,8 @@ public class OrgInvitationsController(
                 request.Role,
                 request.Areas,
                 request.PropertyScope,
-                request.Language),
+                request.Language,
+                request.PropertyIds),
             cancellationToken);
 
         return StatusCode(StatusCodes.Status201Created, OrgInvitationSentDto.From(sent));
@@ -74,12 +78,15 @@ public class OrgInvitationsController(
     /// <summary>
     /// Sends the invitation again: a new link (the previous one, the one of the first email, stops working) and seven more
     /// days from now. An expired invitation comes back and takes a seat again. 404 <c>org_invitation_not_found</c>, 409
-    /// <c>org_invitation_not_pending</c> (accepted or revoked), <c>org_seat_limit_reached</c>, <c>org_invitation_already_pending</c>.
+    /// <c>org_invitation_not_pending</c> (accepted or revoked), <c>org_seat_limit_reached</c>, <c>org_invitation_already_pending</c>,
+    /// 429 <c>invitation_resend_too_soon</c> (one «reinvia» per invitation every <c>OrgTeam:ResendMinutes</c>, 60 by default) and
+    /// <c>invitation_daily_limit_reached</c> (the cap of the org on its invitation emails, see the creation).
     /// </summary>
     [HttpPost("{id:guid}/resend")]
     [ProducesResponseType(typeof(OrgInvitationSentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<OrgInvitationSentDto>> Resend(Guid id, CancellationToken cancellationToken)
     {
         var caller = await this.ResolveOrgTeamCallerAsync(orgContextResolver, cancellationToken);

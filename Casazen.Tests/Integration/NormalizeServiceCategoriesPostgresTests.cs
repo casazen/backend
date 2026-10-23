@@ -51,10 +51,10 @@ public class NormalizeServiceCategoriesPostgresTests : IAsyncLifetime
         await using var after = _database.CreateContext();
         // The comune is matched by its ISTAT code through the official list (SU-04).
         await ComuneTestData.ImportSampleAsync(after);
-        var found = await CreateSupplierService(after).GetActiveByComune("Roma", ServiceCategories.Cleaning);
+        var found = await CreateSupplierService(after).GetActiveByComuneAsync(ComuneTarget.FromInput("Roma"), ServiceCategories.Cleaning);
         Assert.Contains(found, sp => sp.OrgId == s.PulizieSupplier);
         Assert.DoesNotContain(found, sp => sp.OrgId == s.GardeningSupplier);
-        Assert.Contains(await CreateSupplierService(after).GetActiveByComune("Roma", ServiceCategories.Gardening), sp => sp.OrgId == s.GardeningSupplier);
+        Assert.Contains(await CreateSupplierService(after).GetActiveByComuneAsync(ComuneTarget.FromInput("Roma"), ServiceCategories.Gardening), sp => sp.OrgId == s.GardeningSupplier);
 
         // Labels mapped, duplicates removed (first occurrence order), unmapped value kept.
         Assert.Equal(new[] { "cleaning", "maintenance", "Idraulica speciale" }, await CategoriesAsync(after, s.PulizieSupplier));

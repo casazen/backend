@@ -64,12 +64,10 @@ public class PropertyModeControllerTests
     // ─── Wiring ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Controller_IsBehindTheFlagAndTheRoutesAreTheOnesOfTheTask()
+    public void Controller_RoutesAreTheOnesOfTheTask()
     {
-        var gate = typeof(PropertyModeController).GetCustomAttribute<FeatureGateAttribute>();
         var route = typeof(PropertyModeController).GetCustomAttribute<RouteAttribute>();
 
-        Assert.Equal(FeatureFlags.PropertyModeChange, gate!.Flag);
         Assert.Equal("api/properties/{propertyId:guid}/mode", route!.Template);
         Assert.Equal("preview", Template(nameof(PropertyModeController.Preview)));
         Assert.Equal("change", Template(nameof(PropertyModeController.Schedule)));

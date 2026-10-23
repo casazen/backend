@@ -21,4 +21,5 @@ public static class SupplierServiceFields
     public const string Excluded = "excluded";
     public const string PhotoUrls = "photoUrls";
     public const string SortOrder = "sortOrder";
+    public const string UrgentSurchargeCents = "urgentSurchargeCents";
 }

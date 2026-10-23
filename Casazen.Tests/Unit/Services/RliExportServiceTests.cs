@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Documents;
 using Moq;
@@ -22,7 +23,7 @@ public class RliExportServiceTests
         leases.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
         var events = new Mock<ILeaseEventRepository>();
         events.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
-        var sut = new RliExportService(leases.Object, events.Object, new SerializedPdfRenderer());
+        var sut = new RliExportService(leases.Object, events.Object, new MigraDocPdfDocumentRenderer());
 
         var result = await sut.ExportAsync(lease.Id);
 
@@ -53,7 +54,7 @@ public class RliExportServiceTests
         var events = new Mock<ILeaseEventRepository>();
         events.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
         var clock = new FixedTimeProvider(new DateTimeOffset(2026, 8, 20, 8, 0, 0, TimeSpan.Zero));
-        var sut = new RliExportService(leases.Object, events.Object, new SerializedPdfRenderer(), clock);
+        var sut = new RliExportService(leases.Object, events.Object, new MigraDocPdfDocumentRenderer(), clock);
 
         var result = await sut.ExportAsync(lease.Id);
 
@@ -69,7 +70,7 @@ public class RliExportServiceTests
         var leases = new Mock<ILeaseContractRepository>();
         leases.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
         var events = new Mock<ILeaseEventRepository>();
-        var sut = new RliExportService(leases.Object, events.Object, new SerializedPdfRenderer());
+        var sut = new RliExportService(leases.Object, events.Object, new MigraDocPdfDocumentRenderer());
 
         // Who may export is decided by the controller (TN-3); an id outside the caller's org is not found.
         Assert.Null(await sut.ExportAsync(Guid.NewGuid()));

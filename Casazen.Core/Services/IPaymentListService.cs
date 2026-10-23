@@ -17,6 +17,37 @@ public interface IPaymentListService
         HostScope scope,
         PaymentListCriteria criteria,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One page of the same list, in the same order (SR-03b): the same payments as <see cref="ListAsync"/> cut into pages of
+    /// <paramref name="pageSize"/> from page <paramref name="page"/> (1-based), with the total. The numbers are brought within the
+    /// limits (<see cref="PaymentListPage.MaxPageSize"/>, <see cref="PaymentListPage.MaxPage"/>); the order is total (newest first, the
+    /// id as the tie-break), so a payment is never on two pages nor on none. One query for the page, and a second for the total only
+    /// when the page is full or past the end.
+    /// </summary>
+    Task<PaymentListPage> ListPageAsync(
+        HostScope scope,
+        PaymentListCriteria criteria,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>A page of the payment list (SR-03b).</summary>
+/// <param name="Items">The payments of the page.</param>
+/// <param name="TotalCount">All the payments that satisfy the criteria, on every page.</param>
+/// <param name="Page">The page taken (1-based) after bringing the request within the limits.</param>
+/// <param name="PageSize">The size taken after bringing the request within the limits.</param>
+public sealed record PaymentListPage(IReadOnlyList<PaymentListItem> Items, int TotalCount, int Page, int PageSize)
+{
+    /// <summary>The page size when the caller asks for pages without saying how big (as the other lists of the host).</summary>
+    public const int DefaultPageSize = 20;
+
+    /// <summary>The most payments a page may hold.</summary>
+    public const int MaxPageSize = 100;
+
+    /// <summary>The highest page number taken: the order is fixed, a number past the end is just an empty page.</summary>
+    public const int MaxPage = 100_000;
 }
 
 /// <summary>What to look for; a null field is no filter.</summary>

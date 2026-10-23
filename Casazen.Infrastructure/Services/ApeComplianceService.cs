@@ -19,16 +19,18 @@ public sealed class ApeComplianceService(
         if (apeDocs.Count == 0)
             throw ApeComplianceException.Required();
 
+        ApeInspectionResult? failure = null;
         foreach (var ape in apeDocs)
         {
             await using var stream = await storage.OpenReadAsync(ape.StorageUrl);
             if (stream is null)
                 continue;
-            if (inspector.Inspect(stream).IsValid)
-                return;
+            var result = await inspector.InspectAsync(stream);
+            if (result.IsValid) return;
+            if (failure?.Status != ApeInspectionStatus.OcrUnavailable) failure = result;
         }
 
-        throw ApeComplianceException.InvalidContent();
+        throw failure is null ? ApeComplianceException.InvalidContent() : new ApeComplianceException(failure);
     }
 
     public async Task EnsureUploadedFileIsOfficialApeAsync(IFormFile file)
@@ -36,7 +38,8 @@ public sealed class ApeComplianceService(
         await using var buffer = new MemoryStream();
         await file.CopyToAsync(buffer);
         buffer.Position = 0;
-        if (!inspector.Inspect(buffer).IsValid)
-            throw ApeComplianceException.InvalidContent();
+        var result = await inspector.InspectAsync(buffer);
+        if (!result.IsValid)
+            throw new ApeComplianceException(result);
     }
 }

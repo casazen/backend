@@ -45,15 +45,6 @@ public class BookingService(
         CancellationToken cancellationToken = default) =>
         repository.GetByScopeAsync(scope, propertyId, guestId, cancellationToken);
 
-    public Task<(IReadOnlyList<Booking> Items, int TotalCount)> GetPagedBookingsAsync(
-        HostScope scope,
-        int page,
-        int pageSize,
-        Guid? propertyId = null,
-        Guid? guestId = null,
-        CancellationToken cancellationToken = default) =>
-        repository.GetPagedByScopeAsync(scope, page, pageSize, propertyId, guestId, cancellationToken);
-
     public async Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest)
     {
         ArgumentNullException.ThrowIfNull(booking);
@@ -71,6 +62,7 @@ public class BookingService(
         // A booking entered by the host is a confirmed stay from the start: it occupies its dates on the booking site
         // and in the iCal export, and the checkout hold expiry never cancels it (PC-01, A2-01).
         booking.Status = BookingStatus.Confirmed;
+        booking.ConfirmedAt = _clock.GetUtcNow().UtcDateTime;
         booking.Source = BookingSource.Manual;
         booking.GuestId = guest.Id;
         guest.OrgId = booking.OrgId;

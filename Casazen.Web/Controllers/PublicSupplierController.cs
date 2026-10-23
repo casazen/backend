@@ -13,7 +13,7 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Public showcase of an active supplier, behind <c>/fornitori/{slug}</c> of the web app (SU-13, A4-16), and, since SP-09, its
-/// published services, free slots and price estimate. Anonymous, rate limited, never indexable, no cookie, and nothing about a
+/// published services, free slots and price estimate. Anonymous, rate limited, JSON never indexed (the showcase page is), no cookie, and nothing about a
 /// person or about the supplier's private calendar: only what the supplier published. Runbook
 /// <c>docs/runbooks/suppliers.md</c> sections 18 and 22.
 /// </summary>
@@ -37,7 +37,7 @@ public class PublicSupplierController(
     /// <summary>
     /// The showcase of the active supplier with this slug (looked up lowercase). 404 <c>not_found</c> for an unknown slug and
     /// for a supplier that is not active (pending or suspended): the page says "does not exist" for both. The answer carries
-    /// <c>X-Robots-Tag: noindex</c>: the showcase is not indexable in v0 (as the page, see the runbook). With the flag
+    /// <c>X-Robots-Tag: noindex</c>: this JSON answer is never a page to index; the page is <c>/fornitori/{slug}</c> (crawler HTML from <c>GET api/public/seo/suppliers/{slug}</c>). With the flag
     /// <c>SupplierShowcaseBooking</c> on it also carries <c>services</c> (the published ones, with price and unit) and, once
     /// measured, <c>medianResponseMinutes</c>; with it off those two are left out and the answer is the one of SU-13.
     /// </summary>
@@ -119,7 +119,12 @@ public class PublicSupplierController(
     /// before today) and <c>days</c> (1 to 62, default 14), cut at the supplier's horizon. Each day says whether it is
     /// available and lists its slots in UTC and in Rome time; a day without a slot is just "not available", with no reason.
     /// Computed by the supplier's slot planner and cached for 30 seconds: <b>a slot shown is not a promise</b>, the booking
-    /// recomputes it. 400 <c>validation_error</c> for a missing service or a <c>days</c> outside 1 to 62.
+    /// recomputes it. With <c>urgent=true</c> (SP-04c) the urgent slots instead (<c>urgent: true</c> in the answer and in each slot):
+    /// today and tomorrow only, in the supplier's urgent window (outside its working hours too), from 30 minutes from now,
+    /// <c>bookableUntil</c> tomorrow, and no day at all for a service or a supplier that does not accept urgent requests (see
+    /// <c>urgent</c> of the service); holidays, closed days, blocks, other requests, the pause and the daily maximum still apply. A
+    /// client that does not send <c>urgent</c> gets what it always got. 400 <c>validation_error</c> for a missing service or a
+    /// <c>days</c> outside 1 to 62.
     /// </summary>
     [HttpGet("{slug}/slots")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
@@ -132,6 +137,7 @@ public class PublicSupplierController(
         [FromQuery] string? service,
         [FromQuery] DateOnly? from,
         [FromQuery] int? days,
+        [FromQuery] bool? urgent,
         CancellationToken ct)
     {
         MarkNotIndexable();
@@ -149,7 +155,7 @@ public class PublicSupplierController(
         if (supplier is null)
             return SupplierNotFound();
 
-        var slots = await showcase.GetSlotsAsync(supplier, service, from, days, ct);
+        var slots = await showcase.GetSlotsAsync(supplier, service, from, days, urgent ?? false, ct);
         return slots is null ? ServiceNotFound() : Ok(PublicSupplierMapper.ToDto(slots));
     }
 
@@ -194,7 +200,7 @@ public class PublicSupplierController(
         }
     }
 
-    /// <summary>The showcase is not indexable in v0 (D11): every answer says so, errors included.</summary>
+    /// <summary>This API is data for the page, not a page: every answer says so, errors included.</summary>
     private void MarkNotIndexable() => Response.Headers["X-Robots-Tag"] = "noindex";
 
     /// <summary>The 404 of an unknown, pending or suspended supplier: one answer for the three.</summary>

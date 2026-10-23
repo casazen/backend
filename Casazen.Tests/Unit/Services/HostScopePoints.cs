@@ -239,6 +239,41 @@ internal static class HostScopePoints
         Assert.Empty(hiddenOnly);
     }
 
+    // --- the guests and their documents (SR-04b, AM-03-FU2) --------------------------------------------
+
+    /// <summary>
+    /// A collaborator limited to one property reaches the guest of that property and not the guest of the other one: in the list, in
+    /// the lookup by id and by e-mail that the guest card, the full document number and the scan of the document are read through
+    /// (<c>GuestsController</c>), and in the check behind the GDPR rights of a guest (export with the document, erasure, consents).
+    /// The scenario gives each property a guest whose last name is the name of the property.
+    /// </summary>
+    public static async Task GuestsAsync(AppDbContext db, HostScopeWorld world)
+    {
+        var repository = new GuestRepository(db);
+        var access = new GuestAccessService(db);
+
+        var (restricted, _) = await repository.GetPageAsync(world.Restricted, null, 1, 50);
+        var (orgWide, _) = await repository.GetPageAsync(world.OrgWide, null, 1, 50);
+
+        Assert.Equal([world.Granted.Name], restricted.Select(g => g.LastName));
+        Assert.Contains(world.Granted.Name, orgWide.Select(g => g.LastName));
+        Assert.Contains(world.Hidden.Name, orgWide.Select(g => g.LastName));
+        Assert.DoesNotContain(world.OtherOrgProperty.Name, orgWide.Select(g => g.LastName));
+
+        var granted = orgWide.Single(g => g.LastName == world.Granted.Name);
+        var hidden = orgWide.Single(g => g.LastName == world.Hidden.Name);
+
+        Assert.NotNull(await repository.GetByIdInScopeAsync(world.Restricted, granted.Id));
+        Assert.True(await access.IsGuestAccessibleAsync(granted.Id, world.Restricted));
+
+        Assert.Null(await repository.GetByIdInScopeAsync(world.Restricted, hidden.Id));
+        Assert.Null(await repository.GetByEmailAsync(world.Restricted, hidden.Email));
+        Assert.False(await access.IsGuestAccessibleAsync(hidden.Id, world.Restricted));
+
+        Assert.NotNull(await repository.GetByIdInScopeAsync(world.OrgWide, hidden.Id));
+        Assert.True(await access.IsGuestAccessibleAsync(hidden.Id, world.OrgWide));
+    }
+
     /// <summary>Every point, by name, for the run that reports all the failures together (PostgreSQL in CI).</summary>
     public static IReadOnlyList<(string Name, Func<AppDbContext, HostScopeWorld, Task> Run)> All { get; } =
     [
@@ -258,5 +293,6 @@ internal static class HostScopePoints
         ("13 interventions", InterventionsAsync),
         ("13 interventions filtered on a hidden property", InterventionsFilteredOnAHiddenPropertyAsync),
         ("Alloggiati list", AlloggiatiListAsync),
+        ("Guests and their documents", GuestsAsync),
     ];
 }

@@ -56,6 +56,16 @@ public class ServiceRequest
     [MaxLength(255)]
     public string? TakenByUserId { get; set; }
 
+    /// <summary>
+    /// True when the request was born already taken (SP-04d): the supplier turned on the automatic acceptance of its regular hosts
+    /// (<see cref="SupplierSettings.AutoAcceptRegulars"/>) and the host had at least
+    /// <see cref="Casazen.Core.Options.ServiceRequestOptions.RegularHostMinJobs"/> jobs taken with it. Such a request is
+    /// <see cref="ServiceRequestStatus.PresoInCarico"/> from its creation, with <see cref="TakenAt"/> equal to it and no
+    /// <see cref="TakenByUserId"/>; the history shows the take as made by CasaZen and the supplier's response time leaves it out.
+    /// False for every other request, and for every one that exists before SP-04d.
+    /// </summary>
+    public bool AutoAccepted { get; set; }
+
     public DateTime? CompletedAt { get; set; }
 
     public DateTime? PaidAt { get; set; }

@@ -738,6 +738,7 @@ public class StripeWebhookHandler(
         booking.StripeCustomerId = setupIntent.CustomerId;
         booking.Status = BookingStatus.Confirmed;
         booking.UpdatedAt = DateTime.UtcNow;
+        booking.ConfirmedAt = booking.UpdatedAt;
         await bookingRepository.UpdateAsync(booking);
 
         logger.LogInformation("Booking {BookingId} confirmed with payment method {PaymentMethodId}", bookingId, paymentMethodId);

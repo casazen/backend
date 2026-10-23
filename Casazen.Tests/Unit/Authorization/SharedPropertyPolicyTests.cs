@@ -41,7 +41,7 @@ public class SharedPropertyPolicyTests
         "PropertiesController.UploadDocument",
         // PM-02: the mode is a field of the property core and the change goes both ways, so the landlord of a long-term
         // property must be able to bring it back to short stays (the preview lists the leases that stand in the way, and for
-        // the other direction the stays of a property he owns). Behind the flag PropertyModeChange.
+        // the other direction the stays of a property he owns).
         "PropertyModeController.Cancel",
         "PropertyModeController.GetState",
         "PropertyModeController.Preview",

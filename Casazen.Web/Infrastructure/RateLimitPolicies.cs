@@ -24,6 +24,14 @@ public static class RateLimitPolicies
     /// </summary>
     public const string PublicGuestBookingLookup = "PublicGuestBookingLookup";
 
+    /// <summary>
+    /// Opening a guest session (<c>POST api/public/guest/session</c>, DB-06a): the same proof as <see cref="PublicGuestBookingLookup"/>
+    /// (booking code + email), so the same default (10 per 5 minutes per client IP), with a budget of its own. Paired with the per-email
+    /// limit of "Le mie prenotazioni" (<see cref="GuestBookingEmailRateLimiter"/>, shared with the lookup) and a per-code limit
+    /// (<see cref="GuestSessionCodeRateLimiter"/>). Reading the booking with the token uses <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string PublicGuestSession = "PublicGuestSession";
+
     /// <summary>Guest check-in form reads (partitioned by IP and token hash).</summary>
     public const string GuestCheckIn = "GuestCheckIn";
 
@@ -67,6 +75,25 @@ public static class RateLimitPolicies
     /// 3 per hour). The check of the e-mail itself uses <see cref="PublicBookingLookup"/>.
     /// </summary>
     public const string PublicSupplierBookingCreate = "PublicSupplierBookingCreate";
+
+    /// <summary>
+    /// The guest's review of a stay (<c>POST api/public/bookings/{id}/review</c>, DB-12a): the only anonymous call that publishes text
+    /// on a public page, so it is tight (10 per 10 minutes per client IP). Opening the review link uses <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string PublicReviewSubmit = "PublicReviewSubmit";
+
+    /// <summary>
+    /// The guest writing to the host (<c>POST api/public/guest/bookings/{code}/messages</c>, DB-14a): free text that ends in an email to
+    /// the host, so it is bounded per client IP (30 per 10 minutes) and, with <see cref="GuestMessageSessionRateLimiter"/>, per guest
+    /// session and booking (20 per hour). Reading the thread uses <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string GuestMessageSend = "GuestMessageSend";
+
+    /// <summary>
+    /// The host answering a guest (<c>POST api/bookings/{id}/messages</c>, DB-14a): partitioned by <b>person</b> (the signed-in account),
+    /// since the answer ends in an email to the guest.
+    /// </summary>
+    public const string HostMessageSend = "HostMessageSend";
 
     /// <summary>
     /// What an org invitation link is for (<c>POST api/org-invitations/lookup</c>, AM-02): anonymous, a token in the body.

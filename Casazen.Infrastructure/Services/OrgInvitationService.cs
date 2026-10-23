@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -9,6 +10,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -36,12 +38,23 @@ public sealed partial class OrgInvitationService(
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
     IActivityLog activityLog,
+    IOrgPropertyAccessService propertyAccess,
+    IConfiguration configuration,
     ILogger<OrgInvitationService> logger,
     TimeProvider? timeProvider = null) : IOrgInvitationService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private DateTime Now => _clock.GetUtcNow().UtcDateTime;
+
+    /// <summary>Invitation emails an org may send in 24 hours (<c>OrgTeam:InvitationDailyLimit</c>, AM-D15); a value that is not a positive number is ignored.</summary>
+    private int DailyLimit => ReadPositive(OrgInvitationRules.DailyLimitConfigKey, OrgInvitationRules.DefaultDailyLimit);
+
+    /// <summary>Minutes between two «reinvia» of one invitation (<c>OrgTeam:ResendMinutes</c>, AM-D15); a value that is not a positive number is ignored.</summary>
+    private TimeSpan ResendWait => TimeSpan.FromMinutes(ReadPositive(OrgInvitationRules.ResendMinutesConfigKey, OrgInvitationRules.DefaultResendMinutes));
+
+    private int ReadPositive(string key, int fallback) =>
+        int.TryParse(configuration[key], NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value > 0 ? value : fallback;
 
     public async Task<OrgInvitationSent> CreateAsync(CreateOrgInvitation request, CancellationToken cancellationToken = default)
     {
@@ -50,9 +63,14 @@ public sealed partial class OrgInvitationService(
         if (request.Role == OrgRole.Owner)
             throw new DomainRuleException(OrgMembershipErrors.OwnerNotAssignable, "OrgMemberOwnerNotAssignable");
 
-        // «Solo alcuni» is the collaborator's (AM-03): refused here, not at the acceptance, where the inviter is gone.
-        if (request.PropertyScope == PropertyScope.Selected && request.Role != OrgRole.Collaborator)
+        // «Solo alcuni» (AM-03) and the properties it carries (AM-02c) are the collaborator's alone: refused here, not at the
+        // acceptance, where the inviter is gone.
+        var propertyIds = (request.PropertyIds ?? []).Distinct().Order().ToList();
+        if ((request.PropertyScope == PropertyScope.Selected && request.Role != OrgRole.Collaborator)
+            || (propertyIds.Count > 0 && request.PropertyScope != PropertyScope.Selected))
+        {
             throw new DomainRuleException(OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported");
+        }
 
         var areas = NormalizeAreas(request.Areas);
         if (areas.Count == 0)
@@ -66,6 +84,11 @@ public sealed partial class OrgInvitationService(
         var actor = await OrgTeamAccess.RequireManagerAsync(db, request.OrgId, request.ActorUserId, cancellationToken);
         if (!OrgTeamRules.CanAssign(actor.Role, request.Role))
             throw new DomainForbiddenException(OrgInvitationErrors.OwnerRequired, "OrgOwnerRequired");
+
+        // Every property is a live property of the org, and the inviter reaches it: the owner and the administrators, who are
+        // the only ones who invite (RequireManagerAsync), reach every property of their org (HostScopeResolver).
+        if (propertyIds.Count > 0)
+            await EnsurePropertiesOfTheOrgAsync(request.OrgId, propertyIds, cancellationToken);
 
         // A missing public URL is a configuration error, found before anything is saved.
         publicSiteLinks.EnsureConfigured();
@@ -99,10 +122,21 @@ public sealed partial class OrgInvitationService(
             if (await HasOpenInvitationAsync(request.OrgId, email, exceptId: null, now, cancellationToken))
                 throw new DomainConflictException(OrgInvitationErrors.AlreadyPending, "OrgInvitationAlreadyPending");
 
+            // The emails of the org are capped (AM-D15). Under the seats lock, like the check of the seat: two requests at the
+            // tenth place cannot both pass.
+            await EnsureUnderDailyLimitAsync(request.OrgId, now, cancellationToken);
             await seats.EnsureSeatAvailableAsync(request.OrgId, cancellationToken);
 
             // The line of the activity log goes in the same save as the invitation: no invitation without its line, no line without it.
+            // The properties it carries go in the same save too (AM-02c).
+            RecordSend(invitation, now);
             db.OrgInvitations.Add(invitation);
+            db.OrgInvitationProperties.AddRange(propertyIds.Select(id => new OrgInvitationProperty
+            {
+                OrgId = request.OrgId,
+                InvitationId = invitation.Id,
+                PropertyId = id,
+            }));
             activityLog.Record(OrgActivity.Of(
                 request.OrgId,
                 OrgActivityType.MemberInvited,
@@ -121,7 +155,10 @@ public sealed partial class OrgInvitationService(
             LogRedaction.MaskEmail(email));
 
         var queued = await QueueInvitationAsync(invitation, token, cancellationToken);
-        return new OrgInvitationSent(ToView(invitation, now), queued);
+        if (!queued)
+            await UndoSendAsync(invitation, previousLastSentAt: null, previousSendLog: [], cancellationToken);
+
+        return new OrgInvitationSent(ToView(invitation, now, propertyIds), queued);
     }
 
     public async Task<IReadOnlyList<OrgInvitationView>> ListAsync(Guid orgId, CancellationToken cancellationToken = default)
@@ -132,7 +169,20 @@ public sealed partial class OrgInvitationService(
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        return rows.Select(i => ToView(i, now)).ToList();
+        // The properties they carry (AM-02c), in one more query for all of them.
+        var propertiesOf = new Dictionary<Guid, IReadOnlyList<Guid>>();
+        var invitationIds = rows.Select(i => i.Id).ToList();
+        if (invitationIds.Count > 0)
+        {
+            var carried = await db.OrgInvitationProperties.IgnoreQueryFilters().AsNoTracking()
+                .Where(p => p.OrgId == orgId && invitationIds.Contains(p.InvitationId))
+                .Select(p => new { p.InvitationId, p.PropertyId })
+                .ToListAsync(cancellationToken);
+            foreach (var group in carried.GroupBy(p => p.InvitationId))
+                propertiesOf[group.Key] = group.Select(p => p.PropertyId).Order().ToList();
+        }
+
+        return rows.Select(i => ToView(i, now, propertiesOf.GetValueOrDefault(i.Id) ?? [])).ToList();
     }
 
     public async Task<OrgInvitationSent> ResendAsync(
@@ -147,6 +197,8 @@ public sealed partial class OrgInvitationService(
         var now = Now;
         var token = OrgInvitationTokens.Generate();
         OrgInvitation invitation;
+        DateTime? previousLastSentAt;
+        List<DateTime> previousSendLog;
 
         await using (var transaction = await OrgTeamAccess.BeginSeatsTransactionAsync(db, orgId, cancellationToken))
         {
@@ -155,6 +207,10 @@ public sealed partial class OrgInvitationService(
             EnsureMayHandle(actor, invitation, assigning: true);
             if (invitation.Status is OrgInvitationStatus.Accepted or OrgInvitationStatus.Revoked)
                 throw new DomainConflictException(OrgInvitationErrors.NotPending, "OrgInvitationNotPending");
+
+            // AM-D15: one «reinvia» an hour for each invitation, and the cap of the org on all of its emails.
+            EnsureResendIsNotTooSoon(invitation, now);
+            await EnsureUnderDailyLimitAsync(orgId, now, cancellationToken);
 
             // An expired invitation holds no seat: bringing it back takes one again, and must not collide with a newer
             // invitation of the same person or with the person having joined meanwhile.
@@ -168,12 +224,16 @@ public sealed partial class OrgInvitationService(
                 await seats.EnsureSeatAvailableAsync(orgId, cancellationToken);
             }
 
+            previousLastSentAt = invitation.LastSentAt;
+            previousSendLog = [.. invitation.SendLog];
+
             invitation.TokenHash = OrgInvitationTokens.Hash(token);
             invitation.Status = OrgInvitationStatus.Pending;
             invitation.ExpiresAt = now + OrgInvitationRules.Validity;
             invitation.ReminderSentAt = null;
             invitation.ClosedAt = null;
             invitation.UpdatedAt = now;
+            RecordSend(invitation, now);
             await SaveInvitationAsync(cancellationToken);
 
             if (transaction is not null)
@@ -185,7 +245,10 @@ public sealed partial class OrgInvitationService(
             invitation.Id, orgId, actorUserId, LogRedaction.MaskEmail(invitation.Email));
 
         var queued = await QueueInvitationAsync(invitation, token, cancellationToken);
-        return new OrgInvitationSent(ToView(invitation, now), queued);
+        if (!queued)
+            await UndoSendAsync(invitation, previousLastSentAt, previousSendLog, cancellationToken);
+
+        return new OrgInvitationSent(ToView(invitation, now, await PropertyIdsOfAsync(orgId, invitation.Id, cancellationToken)), queued);
     }
 
     public async Task RevokeAsync(
@@ -409,7 +472,7 @@ public sealed partial class OrgInvitationService(
         }
     }
 
-    private static OrgInvitationView ToView(OrgInvitation invitation, DateTime now) => new(
+    private static OrgInvitationView ToView(OrgInvitation invitation, DateTime now, IReadOnlyList<Guid> propertyIds) => new(
         invitation.Id,
         invitation.Email,
         invitation.Name,
@@ -422,7 +485,111 @@ public sealed partial class OrgInvitationService(
         invitation.CreatedAt,
         invitation.ExpiresAt,
         invitation.ReminderSentAt,
-        invitation.InvitedByUserId);
+        invitation.InvitedByUserId,
+        propertyIds,
+        invitation.LastSentAt);
+
+    /// <summary>
+    /// The properties an invitation carries (AM-02c), sorted; none for an ordinary one. Sorted here and not by the database, so the
+    /// order is the one of the creation and of the list (PostgreSQL orders a uuid byte by byte, .NET does not).
+    /// </summary>
+    private async Task<IReadOnlyList<Guid>> PropertyIdsOfAsync(Guid orgId, Guid invitationId, CancellationToken cancellationToken) =>
+        (await db.OrgInvitationProperties.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.OrgId == orgId && p.InvitationId == invitationId)
+            .Select(p => p.PropertyId)
+            .ToListAsync(cancellationToken))
+        .Order()
+        .ToList();
+
+    /// <summary>
+    /// 422 <see cref="OrgMembershipErrors.PropertyUnknown"/> unless every id is a live property of the org. The tenant filter is
+    /// lifted and the org explicit (the soft-delete filter stays on: a deleted property is not one), like the rest of this service.
+    /// </summary>
+    private async Task EnsurePropertiesOfTheOrgAsync(Guid orgId, IReadOnlyCollection<Guid> propertyIds, CancellationToken cancellationToken)
+    {
+        var ids = propertyIds.ToList();
+        var known = await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
+            .CountAsync(p => p.OrgId == orgId && ids.Contains(p.Id), cancellationToken);
+        if (known != ids.Count)
+            throw new DomainRuleException(OrgMembershipErrors.PropertyUnknown, "OrgMemberPropertyUnknown");
+    }
+
+    // ─── The cap on the emails (AM-02c, decision AM-D15) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Marks an email of the invitation as sent by a person's action at <paramref name="now"/> (the creation, «reinvia»): the last
+    /// send, and the list the cap of the org counts, kept to the last 24 hours. Staged; the caller saves.
+    /// </summary>
+    private static void RecordSend(OrgInvitation invitation, DateTime now)
+    {
+        var cutoff = now - OrgInvitationRules.DailyWindow;
+        invitation.LastSentAt = now;
+        invitation.SendLog = [.. invitation.SendLog.Where(sent => sent > cutoff), now];
+    }
+
+    /// <summary>
+    /// 429 <see cref="OrgInvitationErrors.DailyLimitReached"/> when the org has already sent <c>OrgTeam:InvitationDailyLimit</c> emails
+    /// of invitations (created or sent again, any state of the invitation: one revoked still counts) in the last 24 hours. Counts
+    /// the emails in the list each invitation keeps, and reads only the invitations whose last send is inside the window.
+    /// <b>The caller holds the seats lock of the org</b> and writes the send before releasing it, so two requests at the last
+    /// place cannot both pass.
+    /// </summary>
+    private async Task EnsureUnderDailyLimitAsync(Guid orgId, DateTime now, CancellationToken cancellationToken)
+    {
+        var cutoff = now - OrgInvitationRules.DailyWindow;
+        var logs = await db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
+            .Where(i => i.OrgId == orgId && i.LastSentAt >= cutoff)
+            .Select(i => i.SendLog)
+            .ToListAsync(cancellationToken);
+
+        var sent = logs.Sum(log => log.Count(at => at >= cutoff));
+        var limit = DailyLimit;
+        if (sent >= limit)
+        {
+            logger.LogInformation(
+                "Org invitation refused, the daily cap of emails is reached: orgId={OrgId} sent={Sent} limit={Limit}", orgId, sent, limit);
+            throw new DomainTooManyRequestsException(OrgInvitationErrors.DailyLimitReached, "InvitationDailyLimitReached", limit);
+        }
+    }
+
+    /// <summary>429 <see cref="OrgInvitationErrors.ResendTooSoon"/> while <c>OrgTeam:ResendMinutes</c> have not passed since the last email of the invitation; says how many minutes are left.</summary>
+    private void EnsureResendIsNotTooSoon(OrgInvitation invitation, DateTime now)
+    {
+        if (invitation.LastSentAt is not { } last)
+            return;
+
+        var left = last + ResendWait - now;
+        if (left <= TimeSpan.Zero)
+            return;
+
+        throw new DomainTooManyRequestsException(
+            OrgInvitationErrors.ResendTooSoon,
+            "InvitationResendTooSoon",
+            (int)Math.Ceiling(left.TotalMinutes));
+    }
+
+    /// <summary>
+    /// The email of an invitation could not be queued, so nothing went out: the person's allowance is given back (the last send
+    /// and the list of the cap go back to what they were), so «reinvia» can be tried again at once and the cap does not count an
+    /// email that was never sent. Best effort, after the commit: a failure is logged and leaves the allowance spent.
+    /// </summary>
+    private async Task UndoSendAsync(
+        OrgInvitation invitation,
+        DateTime? previousLastSentAt,
+        List<DateTime> previousSendLog,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            invitation.LastSentAt = previousLastSentAt;
+            invitation.SendLog = previousSendLog;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Org invitation {InvitationId}: the send that was not queued could not be taken back from the cap", invitation.Id);
+        }
+    }
 
     /// <summary>Renders and queues the invitation email (after the commit). False when it could not be queued.</summary>
     private async Task<bool> QueueInvitationAsync(OrgInvitation invitation, string token, CancellationToken cancellationToken)

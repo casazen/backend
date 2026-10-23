@@ -1,4 +1,3 @@
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
@@ -11,13 +10,12 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The people of the caller's org (AM-02): list them with the seats, change a role, deactivate, reactivate and remove. For
 /// the owner and the administrators (policy <see cref="CasazenPolicies.OrgMembersManage"/>); an administrator is in the
-/// hands of the owner only, the owner is never touched (<c>org_last_owner</c>) and nobody becomes owner. Behind the
-/// <c>OrgTeam</c> flag: 404 while it is off. <c>{id}</c> is the member row (<c>OrgMemberDto.Id</c>), not the account id.
-/// Since AM-03 also the properties a member reaches (<c>{id}/properties</c>). Runbook <c>docs/runbooks/org-team.md</c>.
+/// hands of the owner only, the owner is never touched (<c>org_last_owner</c>) and nobody becomes owner. <c>{id}</c> is the
+/// member row (<c>OrgMemberDto.Id</c>), not the account id. Since AM-03 also the properties a member reaches
+/// (<c>{id}/properties</c>). Runbook <c>docs/runbooks/org-team.md</c>.
 /// </summary>
 [ApiController]
 [Route("api/orgs/me/members")]
-[FeatureGate(FeatureFlags.OrgTeam)]
 [Authorize(Policy = CasazenPolicies.OrgMembersManage)]
 public class OrgMembersController(
     IOrgTeamService team,
@@ -105,6 +103,32 @@ public class OrgMembersController(
             return caller.Problem;
 
         var member = await team.ChangeRoleAsync(caller.OrgId, id, request.Role, caller.UserId, cancellationToken);
+        return Ok(OrgMemberDto.From(member));
+    }
+
+    /// <summary>
+    /// Sets the areas the member works in (AM-02c): <c>short-rent</c> and/or <c>long-rent</c>, at least one. Role and properties
+    /// stay as they are (a collaborator «Solo alcuni» keeps what it was given); the change is seen on the member's next request on
+    /// this API instance and within the authorization cache duration (60 s) on the others. 403 <c>org_owner_required</c> (only the
+    /// owner touches an administrator), 404 <c>org_member_not_found</c>, 409 <c>org_last_owner</c> (the owner's areas are not the
+    /// team's), 422 <c>org_member_area_required</c>.
+    /// </summary>
+    [HttpPut("{id:guid}/areas")]
+    [ProducesResponseType(typeof(OrgMemberDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OrgMemberDto>> SetAreas(
+        Guid id,
+        [FromBody] SetOrgMemberAreasRequest request,
+        CancellationToken cancellationToken)
+    {
+        var caller = await this.ResolveOrgTeamCallerAsync(orgContextResolver, cancellationToken);
+        if (caller.Problem is not null)
+            return caller.Problem;
+
+        var member = await team.SetAreasAsync(caller.OrgId, id, request.Areas ?? [], caller.UserId, cancellationToken);
         return Ok(OrgMemberDto.From(member));
     }
 

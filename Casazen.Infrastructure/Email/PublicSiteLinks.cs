@@ -130,6 +130,19 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// Page of the booking site where the guest writes the review of a stay (DB-12a, route <c>/book/:orgSlug/booking/:id/review</c>):
+    /// the page reads what it shows from <c>GET api/public/bookings/{id}/review?token=…</c> and sends the review to the same address.
+    /// Only the booking id and the signed token (no name, no address) are in the link.
+    /// </summary>
+    public string GuestReview(string orgSlug, Guid bookingId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(
+            $"/book/{Uri.EscapeDataString(orgSlug)}/booking/{bookingId:D}/review?token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
     /// Settings page of the supplier console (route <c>/app/supplier/settings</c> of the web app), where the supplier's Stripe
     /// Connect onboarding starts and ends (SP-14). The supplier has no plan or billing page, so it is not one of
     /// <see cref="BillingReturnPagePaths"/> (those are the pages of the Stripe Checkout and billing portal of the plans).
@@ -238,6 +251,9 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
 
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
+
+    /// <summary>Host console: the booking opened on its Messaggi tab (DB-14a), where the host reads the message of the guest and answers.</summary>
+    public string HostBookingMessages(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}?tab=messages");
 
     /// <summary>
     /// Host console: the page of one property in the area of its rental mode (routes <c>/app/short-rent/properties/:id</c> for

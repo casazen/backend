@@ -64,7 +64,8 @@ public class AddOrgMembershipMigrationSqlTests
         var script = Script();
 
         Assert.Contains("INSERT INTO \"AppContexts\" (\"Key\", \"DisplayName\") VALUES ('account', 'Amministrazione');", script);
-        foreach (var role in OrgRoleCatalog.SeededRoles)
+        // Role 13 (account/org_manager, AM-02c) is added by a later migration: this one seeds the roles 4 to 12.
+        foreach (var role in OrgRoleCatalog.SeededRoles.Where(r => r.Id <= 12))
         {
             Assert.Contains(
                 $"INSERT INTO \"Roles\" (\"Id\", \"ContextKey\", \"RoleKey\") VALUES ({role.Id}, '{role.ContextKey}', '{role.RoleKey}');",
@@ -144,8 +145,10 @@ public class AddOrgMembershipMigrationSqlTests
         Assert.Contains("DELETE FROM \"UserContextMemberships\" WHERE \"RoleId\" BETWEEN 4 AND 12;", down);
         Assert.Contains("DROP TABLE \"OrgMembers\";", down);
         Assert.Contains("DELETE FROM \"AppContexts\" WHERE \"Key\" = 'account';", down);
-        foreach (var role in OrgRoleCatalog.SeededRoles)
+        foreach (var role in OrgRoleCatalog.SeededRoles.Where(r => r.Id <= 12))
             Assert.Contains($"DELETE FROM \"Roles\" WHERE \"Id\" = {role.Id};", down);
+        // The role of AM-02c (13) goes with its own migration, not with this one.
+        Assert.DoesNotContain("DELETE FROM \"Roles\" WHERE \"Id\" = 13;", down);
 
         // Roles 1 to 3 stay: the rollback only removes what the migration added.
         foreach (var id in new[] { 1, 2, 3 })

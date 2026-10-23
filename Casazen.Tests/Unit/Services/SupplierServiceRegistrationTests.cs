@@ -81,10 +81,10 @@ public class SupplierServiceRegistrationTests
         var service = CreateService(db);
         var emptyOrgId = await SeedActiveSupplierAsync(db, "[]");
 
-        var found = await service.GetActiveByComune("Roma", "cleaning");
+        var found = await service.GetActiveByComuneAsync(ComuneTarget.FromInput("Roma"), "cleaning");
 
         Assert.DoesNotContain(found, sp => sp.OrgId == emptyOrgId);
-        Assert.Contains(await service.GetActiveByComune("Roma", null), sp => sp.OrgId == emptyOrgId);
+        Assert.Contains(await service.GetActiveByComuneAsync(ComuneTarget.FromInput("Roma"), null), sp => sp.OrgId == emptyOrgId);
     }
 
     [Theory]
@@ -98,7 +98,7 @@ public class SupplierServiceRegistrationTests
         var cleaningOrgId = await SeedActiveSupplierAsync(db, """["maintenance","cleaning"]""");
         var maintenanceOrgId = await SeedActiveSupplierAsync(db, """["maintenance"]""");
 
-        var found = await service.GetActiveByComune("Roma", category);
+        var found = await service.GetActiveByComuneAsync(ComuneTarget.FromInput("Roma"), category);
 
         Assert.Contains(found, sp => sp.OrgId == cleaningOrgId);
         Assert.DoesNotContain(found, sp => sp.OrgId == maintenanceOrgId);
@@ -111,7 +111,7 @@ public class SupplierServiceRegistrationTests
         var service = CreateService(db);
         await SeedActiveSupplierAsync(db, """["Pulizie"]""");
 
-        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => service.GetActiveByComune("Roma", "Pulizie"));
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => service.GetActiveByComuneAsync(ComuneTarget.FromInput("Roma"), "Pulizie"));
 
         Assert.Equal(ServiceCategories.InvalidCategoryCode, ex.Code);
     }

@@ -48,4 +48,13 @@ public static class SupplierVerification
     /// <summary><see cref="Missing"/> is empty: Active profile, payments enabled on Stripe and a VAT number.</summary>
     public static bool IsVerified(SupplierStatus status, bool canReceivePayments, string? vatNumber) =>
         Missing(status, canReceivePayments, vatNumber).Count == 0;
+
+    /// <summary>
+    /// The "Verificato" badge a host sees in the marketplace (SR-09a): the <b>profile</b> part of <see cref="IsVerified"/>, an Active
+    /// profile with a VAT number. It does not look at Stripe: a supplier that has not finished the Connect onboarding is still verified
+    /// here (the payments account is a different fact, <see cref="CanReceivePayments"/>). Only this boolean leaves the server, never
+    /// the VAT number.
+    /// </summary>
+    public static bool IsProfileVerified(SupplierStatus status, string? vatNumber) =>
+        status == SupplierStatus.Active && !string.IsNullOrWhiteSpace(vatNumber);
 }

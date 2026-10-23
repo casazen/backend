@@ -1,5 +1,4 @@
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
@@ -13,8 +12,7 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The scheduled change of rental mode of a property (PM-02, decisions D16 and D19): the owner programs the passage from
 /// short stays to long-term leases, or back, for a day, sees first what stands in the way, and can withdraw it until it
-/// happens. The property changes mode by itself at midnight of Rome (<c>property-mode-change</c> job). Behind the
-/// <see cref="FeatureFlags.PropertyModeChange"/> flag: off, every action answers 404 before anything is read. Runbook:
+/// happens. The property changes mode by itself at midnight of Rome (<c>property-mode-change</c> job). Runbook:
 /// <c>docs/runbooks/property-rental-mode.md</c>.
 /// </summary>
 /// <remarks>
@@ -31,7 +29,6 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/properties/{propertyId:guid}/mode")]
 [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
-[FeatureGate(FeatureFlags.PropertyModeChange)]
 public class PropertyModeController(
     IPropertyModeService modeService,
     IHostResourceLookup hostResources,

@@ -62,23 +62,36 @@ public sealed class PublicSupplierShowcaseService(
             return new PublicSupplierExtension([], null);
 
         // One after the other: the reads share the request's context.
-        var services = await catalog.ListPublicAsync(supplier.OrgId, cancellationToken);
+        var services = await WithUrgentAsync(supplier.OrgId, await catalog.ListPublicAsync(supplier.OrgId, cancellationToken), cancellationToken);
         var median = await kpis.GetMedianResponseMinutesAsync(supplier.OrgId, cancellationToken);
         return new PublicSupplierExtension(services, median);
     }
 
-    public Task<IReadOnlyList<SupplierPublicService>> ListServicesAsync(
+    public async Task<IReadOnlyList<SupplierPublicService>> ListServicesAsync(
         SupplierProfile supplier,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(supplier);
-        return catalog.ListPublicAsync(supplier.OrgId, cancellationToken);
+        return await WithUrgentAsync(supplier.OrgId, await catalog.ListPublicAsync(supplier.OrgId, cancellationToken), cancellationToken);
     }
 
     public async Task<SupplierPublicService?> FindServiceAsync(
         SupplierProfile supplier,
         string? serviceSlug,
         CancellationToken cancellationToken = default)
+    {
+        var service = await FindPlainServiceAsync(supplier, serviceSlug, cancellationToken);
+        return service is null ? null : await WithUrgentAsync(supplier.OrgId, service, cancellationToken);
+    }
+
+    /// <summary>
+    /// The service as the catalog has it, without the urgent terms (the supplier's settings are not read): for what does not need
+    /// them, which is every read that is not about an urgent request.
+    /// </summary>
+    private async Task<SupplierPublicService?> FindPlainServiceAsync(
+        SupplierProfile supplier,
+        string? serviceSlug,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(supplier);
 
@@ -89,33 +102,80 @@ public sealed class PublicSupplierShowcaseService(
         return await catalog.FindPublicAsync(supplier.OrgId, normalized, cancellationToken);
     }
 
+    /// <summary>
+    /// The services with the urgent terms the public gets (SP-04c, <see cref="SupplierPublicService.Urgent"/>): on only when the
+    /// service and the supplier accept urgent requests. The supplier's settings are read only when a service has its own switch on,
+    /// so a supplier that offers no urgency costs nothing more than before.
+    /// </summary>
+    private async Task<IReadOnlyList<SupplierPublicService>> WithUrgentAsync(
+        Guid supplierOrgId,
+        IReadOnlyList<SupplierPublicService> services,
+        CancellationToken cancellationToken)
+    {
+        if (!services.Any(service => service.UrgentEnabled))
+            return services;
+
+        var urgent = await agenda.GetUrgentAsync(supplierOrgId, cancellationToken);
+        return services.Select(service => service.WithUrgent(urgent)).ToList();
+    }
+
+    private async Task<SupplierPublicService> WithUrgentAsync(
+        Guid supplierOrgId,
+        SupplierPublicService service,
+        CancellationToken cancellationToken) =>
+        service.UrgentEnabled ? service.WithUrgent(await agenda.GetUrgentAsync(supplierOrgId, cancellationToken)) : service;
+
     public async Task<PublicSlots?> GetSlotsAsync(
         SupplierProfile supplier,
         string? serviceSlug,
         DateOnly? from,
         int? days,
+        bool urgent = false,
         CancellationToken cancellationToken = default)
     {
-        var service = await FindServiceAsync(supplier, serviceSlug, cancellationToken);
+        var service = await FindPlainServiceAsync(supplier, serviceSlug, cancellationToken);
         if (service is null)
             return null;
 
         var today = clock.TodayInRomeAsDateOnly();
-        var plan = await GetPlanAsync(supplier.OrgId, service, today, cancellationToken);
+        if (urgent)
+            return await GetUrgentSlotsAsync(supplier, service, today, from, days, cancellationToken);
+
+        var plan = await GetPlanAsync(supplier.OrgId, service, today, urgent: false, cancellationToken);
 
         // The window asked for, never before today; the plan itself ends at the supplier's horizon, so the window does too. A
-        // first day beyond the horizon is an empty window, not an error (and is checked before adding days to it: a made-up
-        // date must not overflow).
-        var count = Math.Clamp(days ?? PublicShowcaseLimits.SlotsDefaultDays, 1, PublicShowcaseLimits.SlotsMaxDays);
-        var first = from is { } requested && requested > today ? requested : today;
+        // first day beyond the horizon is an empty window, not an error. The supplier's own preview (SP-03b) cuts the same way.
         IReadOnlyList<PublicSlotDay> window = [];
-        if (first <= plan.BookableUntil)
-        {
-            var last = first.AddDays(count - 1);
-            window = plan.Days.Where(day => day.Date >= first && day.Date <= last).ToList();
-        }
+        if (PublicSlotWindow.RangeOf(today, plan.BookableUntil, from, days) is { } range)
+            window = plan.Days.Where(day => day.Date >= range.First && day.Date <= range.Last).ToList();
 
         return new PublicSlots(service.Slug, service.DurationMinutes ?? 0, plan.BookableUntil, window);
+    }
+
+    /// <summary>
+    /// The urgent slots of a service (SP-04c): today and tomorrow, in the supplier's urgent window, from the same planner and the
+    /// same cache as the normal ones (its own entry: the key says <c>urgent</c>). No day at all when the service or the supplier does
+    /// not accept urgent requests: there is nothing to offer, and the plan is not even asked for.
+    /// </summary>
+    private async Task<PublicSlots> GetUrgentSlotsAsync(
+        SupplierProfile supplier,
+        SupplierPublicService service,
+        DateOnly today,
+        DateOnly? from,
+        int? days,
+        CancellationToken cancellationToken)
+    {
+        var bookableUntil = today.AddDays(SupplierAgendaLimits.UrgentHorizonDays);
+
+        var offered = await WithUrgentAsync(supplier.OrgId, service, cancellationToken);
+        IReadOnlyList<PublicSlotDay> window = [];
+        if (offered.Urgent.Enabled && PublicSlotWindow.RangeOf(today, bookableUntil, from, days) is { } range)
+        {
+            var plan = await GetPlanAsync(supplier.OrgId, offered, today, urgent: true, cancellationToken);
+            window = plan.Days.Where(day => day.Date >= range.First && day.Date <= range.Last).ToList();
+        }
+
+        return new PublicSlots(service.Slug, service.DurationMinutes ?? 0, bookableUntil, window, Urgent: true);
     }
 
     public async Task<PublicQuote?> QuoteAsync(
@@ -129,7 +189,10 @@ public sealed class PublicSupplierShowcaseService(
         if (string.IsNullOrWhiteSpace(serviceSlug))
             throw SupplierQuoteErrors.InvalidFields([SupplierQuoteFields.Service]);
 
-        var service = await FindServiceAsync(supplier, serviceSlug, cancellationToken);
+        // The urgent terms (the supplier's settings) are read only for a request for an urgent slot.
+        var service = request.Urgent
+            ? await FindServiceAsync(supplier, serviceSlug, cancellationToken)
+            : await FindPlainServiceAsync(supplier, serviceSlug, cancellationToken);
         if (service is null)
             return null;
 
@@ -157,17 +220,20 @@ public sealed class PublicSupplierShowcaseService(
         Guid supplierOrgId,
         SupplierPublicService service,
         DateOnly today,
+        bool urgent,
         CancellationToken cancellationToken)
     {
-        var key = CacheKey(supplierOrgId, service, today);
+        var key = CacheKey(supplierOrgId, service, today, urgent);
         if (cache.TryGet(key, out var cached))
             return cached;
 
+        // An urgent plan covers today and tomorrow only (and never more than the supplier's horizon).
         var rules = await agenda.GetRulesAsync(supplierOrgId, cancellationToken);
-        var bookableUntil = today.AddDays(rules.HorizonDays);
+        var horizonDays = urgent ? Math.Min(rules.HorizonDays, SupplierAgendaLimits.UrgentHorizonDays) : rules.HorizonDays;
+        var bookableUntil = today.AddDays(horizonDays);
 
         IReadOnlyList<PublicSlotDay> days = [];
-        if (service.ToSlotQuery() is { } query)
+        if (service.ToSlotQuery(urgent) is { } query)
         {
             var plans = await agenda.PlanAsync(supplierOrgId, today, bookableUntil, query, cancellationToken);
             days = plans.Select(plan => new PublicSlotDay(plan.Day, plan.Slots)).ToList();
@@ -179,10 +245,13 @@ public sealed class PublicSupplierShowcaseService(
     }
 
     /// <summary>
-    /// What the plan depends on: the supplier, the service and the three terms of it the planner reads, and the day (so a plan
-    /// never outlives midnight in Rome). The rules and hours of the supplier are not in the key: a change of them reaches the
-    /// public within the cache TTL.
+    /// What the plan depends on: the supplier, the service and the three terms of it the planner reads, the day (so a plan
+    /// never outlives midnight in Rome) and whether the slots are the urgent ones (<b>another plan</b>: another window, another
+    /// notice, two days; without it in the key an urgent request would be served the normal slots, and the other way round). The
+    /// key of a normal plan is the one it always had. The rules, hours and urgent settings of the supplier are not in the key: a
+    /// change of them reaches the public within the cache TTL.
     /// </summary>
-    internal static string CacheKey(Guid supplierOrgId, SupplierPublicService service, DateOnly today) =>
-        $"{supplierOrgId:N}|{service.Slug}|{service.DurationMinutes}|{service.MinNoticeHours}|{service.WeekdaysMask}|{today:yyyyMMdd}";
+    internal static string CacheKey(Guid supplierOrgId, SupplierPublicService service, DateOnly today, bool urgent = false) =>
+        $"{supplierOrgId:N}|{service.Slug}|{service.DurationMinutes}|{service.MinNoticeHours}|{service.WeekdaysMask}|{today:yyyyMMdd}"
+        + (urgent ? "|urgent" : string.Empty);
 }
