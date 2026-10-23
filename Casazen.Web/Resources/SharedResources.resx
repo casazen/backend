@@ -2224,6 +2224,9 @@
   <data name="RentLeaseDatesInvalid" xml:space="preserve">
     <value>Le date del contratto non permettono di generare lo scadenziario.</value>
   </data>
+  <data name="RentTrackFromInvalid" xml:space="preserve">
+    <value>La data da cui tracciare i canoni non può essere successiva alla fine del contratto.</value>
+  </data>
   <data name="RentBillingDayInvalid" xml:space="preserve">
     <value>Il giorno di scadenza deve essere compreso tra {0} e {1}.</value>
   </data>
