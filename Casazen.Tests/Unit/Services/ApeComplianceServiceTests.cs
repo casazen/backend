@@ -35,7 +35,7 @@ public class ApeComplianceServiceTests
     }
 
     [Fact]
-    public async Task EnsurePropertyHasValidApeAsync_WhenPdfIsNotAnApe_ThrowsInvalidContent()
+    public async Task EnsurePropertyHasValidApeAsync_WhenTheFileIsNotReadWhole_AsksForCodeAndClass()
     {
         _docs.Setup(d => d.GetByPropertyIdAsync(PropertyId)).ReturnsAsync([ApeDoc("/fake.pdf")]);
         _storage.Setup(s => s.OpenReadAsync("/fake.pdf"))
@@ -44,7 +44,34 @@ public class ApeComplianceServiceTests
         var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
             _sut.EnsurePropertyHasValidApeAsync(PropertyId));
 
-        Assert.Equal(ApeComplianceException.InvalidContentCode, ex.Code);
+        Assert.Equal(ApeComplianceException.IdentificationRequiredCode, ex.Code);
+        Assert.Equal("ApeIdentificationRequired", ex.MessageKey);
+    }
+
+    [Fact]
+    public async Task EnsurePropertyHasValidApeAsync_WithCodeAndClassTyped_SucceedsWithoutReadingTheFile()
+    {
+        // The landlord confirmed a certificate the reader could not read whole: the typed data stand for it, nothing is read again.
+        var ape = ApeDoc("/photocopy.pdf");
+        ape.ApeCode = "1610800012345/17";
+        ape.ApeEnergyClass = "F";
+        _docs.Setup(d => d.GetByPropertyIdAsync(PropertyId)).ReturnsAsync([ape]);
+
+        await _sut.EnsurePropertyHasValidApeAsync(PropertyId);
+
+        _storage.Verify(s => s.OpenReadAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnsurePropertyHasValidApeAsync_WhenOnlyAnExpiredApe_ThrowsExpired()
+    {
+        _docs.Setup(d => d.GetByPropertyIdAsync(PropertyId)).ReturnsAsync([ApeDoc("/old.pdf")]);
+        _storage.Setup(s => s.OpenReadAsync("/old.pdf")).ReturnsAsync(new MemoryStream(ExpiredApeBytes()));
+
+        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
+            _sut.EnsurePropertyHasValidApeAsync(PropertyId));
+
+        Assert.Equal("ApeExpired", ex.MessageKey);
     }
 
     [Fact]
@@ -72,22 +99,33 @@ public class ApeComplianceServiceTests
     }
 
     [Fact]
-    public async Task EnsureUploadedFileIsOfficialApeAsync_WhenPdfIsNotAnApe_Throws()
+    public async Task CheckUploadedApeAsync_WhenPdfIsNotRecognised_KeepsItForTheLandlordToConfirm()
     {
         var file = FormFile(PdfBytes("Contratto", "Locazione uso abitativo"));
 
-        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
-            _sut.EnsureUploadedFileIsOfficialApeAsync(file));
+        var check = await _sut.CheckUploadedApeAsync(file);
 
-        Assert.Equal(ApeComplianceException.InvalidContentCode, ex.Code);
+        Assert.Equal(ApeUploadCheck.NotRecognized, check.Outcome);
     }
 
     [Fact]
-    public async Task EnsureUploadedFileIsOfficialApeAsync_WhenOfficialApe_Succeeds()
+    public async Task CheckUploadedApeAsync_WhenOfficialApe_IsVerified()
     {
         var file = FormFile(OfficialApeBytes());
 
-        await _sut.EnsureUploadedFileIsOfficialApeAsync(file);
+        var check = await _sut.CheckUploadedApeAsync(file);
+
+        Assert.Equal(ApeUploadCheck.Verified, check.Outcome);
+    }
+
+    [Fact]
+    public async Task CheckUploadedApeAsync_WhenExpired_Throws()
+    {
+        var file = FormFile(ExpiredApeBytes());
+
+        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() => _sut.CheckUploadedApeAsync(file));
+
+        Assert.Equal("ApeExpired", ex.MessageKey);
     }
 
     [Theory]
@@ -99,13 +137,14 @@ public class ApeComplianceServiceTests
         var bytes = await File.ReadAllBytesAsync(Path.Combine(System.AppContext.BaseDirectory, "Fixtures", "ape", fixture));
         var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", fixture)
         { Headers = new HeaderDictionary(), ContentType = fixture.EndsWith("pdf") ? "application/pdf" : "image/jpeg" };
-        if (valid) await _sut.EnsureUploadedFileIsOfficialApeAsync(file);
+        var check = await _sut.CheckUploadedApeAsync(file);
+        if (valid) Assert.Equal(ApeUploadCheck.Verified, check.Outcome);
         else
         {
-            var error = await Assert.ThrowsAsync<ApeComplianceException>(() => _sut.EnsureUploadedFileIsOfficialApeAsync(file));
-            Assert.Equal("ApeIncomplete", error.MessageKey);
-            Assert.Contains("Certifier", error.MissingFields);
-            Assert.Contains("ExpiryDate", error.MissingFields);
+            // Only the first page: kept, with what could not be read, for the landlord to confirm.
+            Assert.Equal(ApeUploadCheck.Incomplete, check.Outcome);
+            Assert.Contains("Certifier", check.UnreadFields);
+            Assert.Contains("ExpiryDate", check.UnreadFields);
         }
     }
 
@@ -114,7 +153,7 @@ public class ApeComplianceServiceTests
     {
         var bytes = "<html>not an image</html>"u8.ToArray();
         var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "ape.jpeg") { Headers = new HeaderDictionary(), ContentType = "image/jpeg" };
-        await Assert.ThrowsAsync<ApeComplianceException>(() => _sut.EnsureUploadedFileIsOfficialApeAsync(file));
+        await Assert.ThrowsAsync<ApeComplianceException>(() => _sut.CheckUploadedApeAsync(file));
     }
 
     private static PropertyDocument ApeDoc(string url) => new()
@@ -132,6 +171,10 @@ public class ApeComplianceServiceTests
     private static byte[] OfficialApeBytes() => PdfBytes(
         "ATTESTATO DI PRESTAZIONE ENERGETICA",
         "Classe energetica C. EPgl,nren 120.\nCodice identificativo APE 123456.\nIndirizzo Via Esempio 12.\nSoggetto certificatore Mario Esempio.\nData di emissione 01/01/2025.\nValido fino al 01/01/2035.");
+
+    private static byte[] ExpiredApeBytes() => PdfBytes(
+        "ATTESTATO DI PRESTAZIONE ENERGETICA",
+        "Classe energetica C. EPgl,nren 120.\nCodice identificativo APE 123456.\nIndirizzo Via Esempio 12.\nSoggetto certificatore Mario Esempio.\nData di emissione 01/01/2010.\nValido fino al 01/01/2020.");
 
     private static byte[] PdfBytes(string title, string body) => LiteralTextPdf.Build(title, body);
 
