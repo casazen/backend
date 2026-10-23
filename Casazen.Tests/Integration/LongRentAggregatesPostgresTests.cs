@@ -116,10 +116,12 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
         await AddLeasesAsync(3);
         var before = await CommandsPerCallAsync();
 
-        // The lease list is one statement, the register the numbers of the month + the page + the org, the agenda the leases + the
-        // installments, the overview five; the lookup of the ids one.
+        // The lease list is the one statement of the list + the one that asks which registered leases have an active rent plan (LR-01b: the
+        // stage and the next step of each row; none more for a draft-free list), the register the numbers of the month + the page + the org,
+        // the agenda the leases + the installments, the overview its five + the lease list it takes "now" from (those two); the lookup of the
+        // ids one.
         Assert.Equal(
-            new Dictionary<string, int> { ["lease list"] = 1, ["rent register"] = 3, ["deadlines"] = 2, ["overview"] = 5, ["find installments"] = 1 },
+            new Dictionary<string, int> { ["lease list"] = 2, ["rent register"] = 3, ["deadlines"] = 2, ["overview"] = 7, ["find installments"] = 1 },
             before);
 
         // Ten times the leases, each with its tenants, its schedule and twelve installments.
