@@ -30,6 +30,8 @@ public class ConcordatoFacilePurchaseTests : IAsyncLifetime
         // Arrange: Two orgs with one purchase each
         var orgA = Guid.NewGuid();
         var orgB = Guid.NewGuid();
+        var propertyA = Guid.NewGuid();
+        var propertyB = Guid.NewGuid();
         var leaseA = Guid.NewGuid();
         var leaseB = Guid.NewGuid();
         var purchaseA = Guid.NewGuid();
@@ -39,15 +41,20 @@ public class ConcordatoFacilePurchaseTests : IAsyncLifetime
         {
             await db.Database.MigrateAsync();
 
-            // Seed two orgs with leases and purchases
+            // Seed two orgs with properties, leases and purchases
             db.Orgs.AddRange(
                 new OrgEntity { Id = orgA, Name = "OrgA", Slug = "org-a", CreatedAt = DateTime.UtcNow },
                 new OrgEntity { Id = orgB, Name = "OrgB", Slug = "org-b", CreatedAt = DateTime.UtcNow }
             );
 
+            db.Properties.AddRange(
+                new Property { Id = propertyA, OrgId = orgA, Name = "PropertyA", City = "Rome", Address = "Via Roma 1", OwnerId = "auth0|owner_a" },
+                new Property { Id = propertyB, OrgId = orgB, Name = "PropertyB", City = "Milan", Address = "Via Milano 1", OwnerId = "auth0|owner_b" }
+            );
+
             db.LeaseContracts.AddRange(
-                new LeaseContract { Id = leaseA, OrgId = orgA, PropertyId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow },
-                new LeaseContract { Id = leaseB, OrgId = orgB, PropertyId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow }
+                new LeaseContract { Id = leaseA, OrgId = orgA, PropertyId = propertyA, CreatedAt = DateTime.UtcNow },
+                new LeaseContract { Id = leaseB, OrgId = orgB, PropertyId = propertyB, CreatedAt = DateTime.UtcNow }
             );
 
             db.ConcordatoFacilePurchases.AddRange(
