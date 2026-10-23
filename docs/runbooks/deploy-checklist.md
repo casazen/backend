@@ -261,6 +261,10 @@ off, **O** = optional, **PO** = a decision of the product owner with no default 
 | `OfficialReferenceData__AlloggiatiTabellePageUrl` | O | same | `https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Tabelle.aspx` | Provenance page of the Alloggiati tables. Empty uses the default | [`alloggiati.md`](alloggiati.md) |
 | `OfficialReferenceData__AlloggiatiDownloadBaseUrl` | O | same | `https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/ashx/Download.ashx` | Base URL of the four code-table downloads. Empty uses the default | [`alloggiati.md`](alloggiati.md) |
 | `OfficialReferenceData__TouristTaxSources__{n}__{IstatCode,Name,Authority,SourceUrl}` | O | same | the pilot comuni committed in `appsettings.json` | Institutional pages the job re-reads. A row without an https URL of an allowed host is ignored; a page that is not a deterministic tariff is logged and does not change stored amounts | [`tourist-tax-rates.md`](tourist-tax-rates.md) |
+| `ApeRegistry__Enabled` | O | same | `true` | Default on. `false`: the code of an APE that the file does not show legibly is no longer asked to the public CENED register of Lombardy; the landlord types it | [`documenti-multipagina.md`](documenti-multipagina.md) |
+| `ApeRegistry__CenedBaseUrl` | O | same | `https://www.dati.lombardia.it/` | Open data site of Regione Lombardia (Socrata, no key). Only https is used; empty or wrong: no register lookup | [`documenti-multipagina.md`](documenti-multipagina.md) |
+| `ApeRegistry__CenedDataset` | O | same | `bbky-sde5` | Dataset "Database CENED+2" (APE from DGR 3868/2015). Only comune and EP gl,nren are sent, never a document | [`documenti-multipagina.md`](documenti-multipagina.md) |
+| `ApeRegistry__TimeoutSeconds` | O | same | `10` | Wait for the register (1-30 s); beyond it the upload goes on without the code | [`documenti-multipagina.md`](documenti-multipagina.md) |
 
 ## 3. Local development (backend)
 
