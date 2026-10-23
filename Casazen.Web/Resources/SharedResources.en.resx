@@ -1192,6 +1192,9 @@
   <data name="LeaseStipulaLeaseNotSigned" xml:space="preserve">
     <value>The contract is not signed yet: upload the PDF signed by every party together with the signing date.</value>
   </data>
+  <data name="LeaseImportNotImported" xml:space="preserve">
+    <value>Only a contract declared as already signed outside CasaZen when the draft was created can be imported. A contract prepared in CasaZen is signed from its template.</value>
+  </data>
   <data name="DirectBookingDeferredPaymentUnavailable" xml:space="preserve">
     <value>Paying at the deadline is not available for these dates: the arrival is too close. Choose another payment method.</value>
   </data>
