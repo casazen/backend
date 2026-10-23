@@ -177,7 +177,7 @@ public class ServiceRequestsController(
             return denied;
 
         var (hostItems, hostTotal) = await serviceRequestService.ListForHostAsync(
-            scope, ServiceRequestRentalContext.ShortRent, statusFilter, propertyId, bookingId, page, pageSize, cancellationToken);
+            scope, ServiceRequestRentalContext.ShortRent, statusFilter, propertyId, bookingId, page, pageSize, cancellationToken: cancellationToken);
 
         return Ok(new ServiceRequestListResponse
         {

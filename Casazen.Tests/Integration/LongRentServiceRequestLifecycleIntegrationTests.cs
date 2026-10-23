@@ -2,7 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Infrastructure.Data;
+using Casazen.Tests.Unit.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
@@ -210,9 +214,55 @@ public class LongRentServiceRequestLifecycleIntegrationTests(CasazenWebApplicati
         Assert.Equal(ServiceRequestStatus.Richiesto, (await factory.LoadRequestAsync(id)).Status);
     }
 
+    [Fact]
+    public async Task Detail_OutsideTheScopeOfTheCaller_Returns404_AndInsideItReturnsTheRequest()
+    {
+        // LR-08a: GET {id} reads a request only inside the scope of the caller. A landlord with no org-wide role reaches the
+        // properties it created; a manager of the org reaches them all; another org, the short-rent context and an unknown id never.
+        var world = await ServiceRequestWorlds.SeedAsync(factory);
+        var stranger = await ServiceRequestWorlds.SeedAsync(factory);
+        var own = await CreateLongRentAsync(world);
+        var shortRent = await factory.CreateRequestAsync(world);
+        var colleagues = await SeedRequestOnAColleaguesPropertyAsync(world);
+        using var landlord = LandlordClient(world);
+        using var otherLandlord = LandlordClient(stranger);
+        using var manager = factory.CreateAuthenticatedClient(world.HostUserId, $"{Landlord},PropertyManager");
+
+        var read = await landlord.GetAsync($"{LongRent}/{own}");
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        Assert.Equal(own, (await read.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid());
+        Assert.Equal(HttpStatusCode.OK, (await manager.GetAsync($"{LongRent}/{colleagues}")).StatusCode);
+
+        foreach (var (client, requestId) in new[] { (landlord, colleagues), (otherLandlord, own), (landlord, shortRent), (landlord, Guid.NewGuid()) })
+        {
+            var response = await client.GetAsync($"{LongRent}/{requestId}");
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Equal("service_request_not_found", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        }
+    }
+
     // ─── helpers ───
 
     private HttpClient LandlordClient(ServiceRequestWorld world) => factory.CreateAuthenticatedClient(world.HostUserId, Landlord);
+
+    /// <summary>A long-rent request on a property of the world's org that another user created: outside the reach of a landlord with no org-wide role.</summary>
+    private async Task<Guid> SeedRequestOnAColleaguesPropertyAsync(ServiceRequestWorld world)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var property = HostScopeScenario.NewProperty(world.HostOrgId, $"auth0|sp04-colleague-{Guid.NewGuid():N}", "Casa del collega");
+        var request = new ServiceRequest
+        {
+            OrgId = world.HostOrgId,
+            PropertyId = property.Id,
+            SupplierOrgId = world.SupplierOrgId,
+            RentalContext = ServiceRequestRentalContext.LongRent,
+            Category = "cleaning",
+        };
+        db.AddRange(property, request);
+        await db.SaveChangesAsync();
+        return request.Id;
+    }
 
     private static object LongRentBody(ServiceRequestWorld world, DateTime? slot) => new
     {
