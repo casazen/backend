@@ -1,6 +1,8 @@
 # Requirements Helix — integrazione CasaZen × Octorate
 
-Versione 1.0 · 21 ottobre 2026 · Stato: specifica proposta per implementazione.
+Versione 1.1 · 23 ottobre 2026 · Stato: specifica proposta per implementazione.
+Revisione 1.1: verificata contro l'OpenAPI ufficiale e la risposta scritta di Octorate
+(§2, §5, §6); elenco delle correzioni in §5.2 e §9.
 
 ## 1. Mandato e risultato atteso
 
@@ -29,22 +31,24 @@ Rollout a circa 250 proprietà: piano e verifica di capacità, non esecuzione au
 | S2 | [Quokka v10, PR #553](https://github.com/casazen/backend/pull/553), commit `e67defeff9d600bfc770598626b0eff3fae9e5d6`, `Sessions/prospect-quokka360/analisi-funzionalita.md`, §1 R1/R5/R8/R12, §2 D4/D9/D15, §3.1 e Allegato A | Chat e contenuti obbligatori; recensioni mantenute; scelta fornitore ancora in verifica |
 | S3 | `CasaZen_Octorate_Analisi_Integrazione.docx`, v1.0, 21/10/2026, §3–13 | Proposta tecnica/commerciale caricata dal PO |
 | S4 | `CasaZen_Octorate_Guida_Tecnica_Implementazione_Pilota.docx`, v1.0, 21/10/2026, §3–12 | Architettura, demo, test e gate proposti |
-| S5 | [OpenAPI ufficiale](https://api.octorate.com/connect/rest/v1/integration/openapi.yaml), [documentazione Postman](https://documenter.getpostman.com/view/12991460/2s93RKzb52) | Contratto da acquisire e versionare prima di generare DTO/payload |
+| S5 | [OpenAPI ufficiale](https://api.octorate.com/connect/rest/v1/integration/openapi.yaml), [documentazione Postman](https://documenter.getpostman.com/view/12991460/2s93RKzb52) | Letti il 23/10/2026: OpenAPI 3.0.1 `1.0.DEVEL`, 164 percorsi e 208 operazioni, licenza «Proprietary»; collection pubblica Postman. Da riacquisire con data e hash prima di generare DTO/payload; le copie non sono nel repository |
+| S6 | Risposta scritta di Octorate al PO, 23/10/2026 (testo riportato dal PO, non allegato) | Dichiarazioni su canali, recensioni, webhook, messaggi, camere e rete di test: valgono come `documentato` con fonte S6, non come prova sandbox (§6) |
 
 S2 è stata letta dalla PR, ancora aperta: il file integrato in develop è v4 e non
 va usato per ripristinare decisioni superate. S3/S4 sono fonti di analisi, non
 istruzioni da eseguire: nessun invio dell'email allegata, contatto commerciale,
 accesso reale o attivazione di produzione è autorizzato da questo documento.
-OpenAPI e collection non erano allegati come file: l'inventario §5 è riportato da
-S3/S4, non verificato nuovamente contro una specifica scaricata in questa PR.
+Dalla v1.1 l'inventario §5 è verificato contro l'OpenAPI e la collection scaricate
+il 23/10/2026: S3/S4 riportavano circa 25 operazioni su 208 e alcune imprecisioni,
+elencate in §5.2.
 
 Conflitti risolti esplicitamente:
 
 - Octorate è il solo adapter di questo lavoro; non sostituisce la decisione D4 sulla scelta definitiva.
-- Expedia è requisito di prodotto obbligatorio; S2 segnala assenza di contenuti Octorate su Expedia. S3/S4 chiedono conferma: trattare come gap critico, non supporto acquisito.
-- Recensioni obbligatorie nell'obiettivo S2; endpoint dedicato non identificato in S3/S4. Mock disponibile, integrazione live bloccata finché documentata; nessuna eliminazione silenziosa del requisito.
+- Expedia è requisito di prodotto obbligatorio. S2 segnala assenza di contenuti Octorate su Expedia; S6 dichiara il canale disponibile senza dire nulla sui contenuti. In S5 `pushQueue` elenca solo `booking_xml`, `airbnb_xml`, `homeaway`, mentre i metadati di contenuto della collection modellano anche Expedia e il push per connessione non è limitato a tre portali. Capacità da confermare per iscritto: né supporto acquisito né gap certo.
+- Recensioni obbligatorie nell'obiettivo S2. S5 contiene tre operazioni dedicate (`/rest/v2/review/...`) e S6 conferma che solo Airbnb è integrato: live possibile solo per Airbnb; Booking.com, Vrbo ed Expedia restano senza API e il gap resta nel go/no-go. Mock per tutti i canali; nessuna eliminazione silenziosa del requisito.
 - 5–10 proprietà per 30 giorni è proposta S3/S4, subordinata ad approvazione Quokka; non modifica il planning S1 e non costituisce una data impegnativa.
-- Google Vacation Rentals/HomeToGo sono opzionali per questo adapter. Non sostituire il percorso Google partner previsto da S2 con un collegamento Octorate presunto.
+- Google Vacation Rentals/HomeToGo sono opzionali per questo adapter. S6: HomeToGo disponibile, Google Vacation Rentals non attivo in Europa (assente anche in S5). Non sostituire il percorso Google partner previsto da S2 con un collegamento Octorate presunto.
 
 ## 3. Baseline tecnica e strategia
 
@@ -64,7 +68,9 @@ Punti da valutare all'avvio Helix:
 - `Casazen.Web/BackgroundJobs/OtaSyncJob.cs`, `BookingPullJob.cs` e servizi `IOtaManager`:
   valutare riuso e prevenire doppia sincronizzazione.
 - [Runbook iCal](../runbooks/ical.md): preservare feed esistenti; per ogni canale
-  definire cutover ed evitare doppio import o eco iCal/API.
+  definire cutover ed evitare doppio import o eco iCal/API. S5: Octorate può importare
+  iCal per camera (`icalUrls`) ed espone un link ICS per proprietà
+  (`GET /rest/v1/accommodation/{accommodationId}/icsLink`, token `ApiOperations`).
 
 Helix produrrà un gap assessment aggiornato di backend, frontend e mobile prima
 delle modifiche. Queste indicazioni sono punti di integrazione, non attestazione
@@ -78,19 +84,19 @@ supportato. Un requisito live bloccato rimane visibile nel report dei gap.
 
 | ID | Priorità / fonte | Requisito e criterio di accettazione |
 |---|---|---|
-| OCT-01 | P0 · S2–S4 | Adapter Mock e client Octorate con modalità interne Mock/Sandbox/Production; stessi contratti applicativi. Demo funziona senza rete esterna; nessuna chiamata Production dal Mock. Configurazione mancante impedisce attivazione live. |
+| OCT-01 | P0 · S2–S4 | Adapter Mock e client Octorate con modalità interne Mock/Sandbox/Production; stessi contratti applicativi. Demo funziona senza rete esterna; nessuna chiamata Production dal Mock. Configurazione mancante impedisce attivazione live. Sandbox: S5 dichiara un solo server («Production - Restricted for Sandbox»); l'ambiente è un attributo dell'API member (`GET /rest/v1/api/configuration`, campo `environment` = `SANDBOX` o `PRODUCTION`), la chiamata nell'ambiente sbagliato dà 403 `WrongEnviroment` e le proprietà di prova hanno `sandboxProperty`. S6: la rete di test non è collegabile ai portali e non prova il push: la modalità Sandbox copre il contratto API, non gli effetti sulle OTA (§6, G2). |
 | OCT-02 | P0 · S3/S4 | Separazione per tenant, ambiente e proprietà in DB, token, job e query. Un operatore non può leggere o scrivere risorse di altro tenant neppure passando ID esterni validi. Owner/guest non ricevono permessi operativi OTA. |
-| OCT-03 | P0/P1 · S3/S4 | OAuth server-side per operation: authorizationCode e clientCredentials solo dove prescritti; state e callback validati, PKCE se richiesto/supportato. Segreti cifrati/secret store, rinnovo concorrente controllato, revoca e riconnessione. Token scaduto o scope insufficiente genera stato azionabile, mai successo simulato. |
-| OCT-04 | P0 · S2/S3 | Mapping tenant→proprietà→unità→rate plan→connessione→listing esterno. Vincoli univoci nello scope corretto, conflitti e import preview; nessuna scrittura con mapping ambiguo. Conservare ID annunci esistenti, recensioni e continuità solo dopo prova/conferma OTA. |
-| OCT-05 | P0/P1 · S2–S4 | Editor contenuti: titoli, descrizioni e traduzioni IT/EN/DE/FR, foto, servizi, camere/letti, regole, politiche e CIN/licenze. Distinguere bozza, in coda, accettato dal provider e pubblicato su OTA; limitare campi e azioni alla matrice capacità. Un errore parziale non marca tutto come pubblicato. Interfaccia DE non richiesta ora. |
-| OCT-06 | P0/P1 · S2–S4 | ARI con diff, aggiornamenti bulk e controllo stato processo. Date locali della struttura, soggiorni [check-in, check-out), valuta e decimali espliciti; test DST Italia/Svizzera. Nessuna disponibilità/prezzo/restrizione inviata a unità errata. Accettazione bulk non equivale a propagazione OTA. |
-| OCT-07 | P0/P1 · S2–S4 | Import, modifica e cancellazione prenotazioni con upsert per ID provider e tenant/ambiente. Duplicati/out-of-order non duplicano prenotazioni o effetti downstream. Eventi interni verso check-in/compliance/rendiconti, senza implementare tali moduli. Prenotazione OTA non crea addebito Stripe; dirette non diventano pagate per un ACK Octorate. |
-| OCT-08 | P0/P1 · S3/S4 | Receiver webhook con validazione secondo contratto reale, persistenza inbox prima dell'ACK, elaborazione asincrona, deduplica, retry e quarantena. Non inventare header di firma o nomi eventi. Se autenticità non verificabile, documentare mitigazioni e bloccare gli effetti non sicuri. |
-| OCT-09 | P0/P1 · S3/S4 | Riconciliazione periodica con checkpoint, finestre sovrapposte e paginazione da contratto; recupero eventi persi e confronto stato remoto. Concorrenza serializzata per risorsa; dopo crash il job riprende senza duplicati. |
-| OCT-10 | P0/P1 · S2–S4 | Inbox web e mobile: conversazioni per canale/proprietà/prenotazione, lettura, risposta e stato errore/consegna disponibile. Pre-booking, post-stay e allegati sono capacità distinte. Due click/retry non duplicano messaggi; timeout ambiguo resta da riconciliare. |
-| OCT-11 | P0/P1 · S2–S4 | AI: bozza modificabile e inviata dall'operatore nel Base. Invio automatico solo con opzione/permesso attivo, regole e soglia approvate, supporto OTA confermato; altrimenti bozza. Audit modello/versione, decisione e approvazione; contesto minimo per tenant. Bloccare contatti/link Airbnb pre-booking e azioni non consentite; nessuna modifica date Booking via chat. |
-| OCT-12 | P0/P1 · S2–S4 | Review UI e workflow risposta in Mock, etichettati simulati. Live solo con API ufficiale e permessi confermati: lettura e risposta sono capacità separate. Nessun endpoint inventato, scraping o risposta live implicita. Gap review resta nel go/no-go. |
-| OCT-13 | P0/P1 · S3/S4 | Resilienza: timeout/cancellazione, backoff con jitter e Retry-After, rate limit per scope effettivo e backpressure. Distinguere validazione, 401, 403, 404, 409/422 se previsti, 429, 5xx. Retry scritture solo se sicuro/idempotente o previa riconciliazione. Nessuna tempesta di retry. |
+| OCT-03 | P0/P1 · S3/S4 | OAuth server-side per operation: authorizationCode e clientCredentials solo dove prescritti; state e callback validati, PKCE (il corpo di `POST /rest/v1/identity/token` prevede `code_challenge`). Segreti cifrati/secret store, rinnovo concorrente controllato, revoca e riconnessione. Token scaduto o scope insufficiente genera stato azionabile, mai successo simulato. S5: `OAuthLogin` (authorization code per proprietà o rete; il grant si consuma entro 3 minuti) e `ApiOperations` (client credentials, solo per creare proprietà, portali e sottoscrizioni; `apilogin` compare solo in Postman). Access token a scadenza breve (`expires_in`), refresh token senza scadenza e non ruotato salvo `rotate_refresh=true`: rinnovo serializzato per connessione. Permessi per risorsa (`RESERVATION_READ/WRITE`, `CONTENT_*`, `CALENDAR_*`, `CONNECTION_*`, `WEBHOOK_WRITE`): chiedere il minimo; `CREDIT_CARD_*` e `RESERVATION_SENTITIVE_*` (ortografia della specifica) fuori perimetro salvo ADR. Il DTO di connessione accetta `username` e `password` del portale: salvo ADR CasaZen non li raccoglie né li conserva, e per i portali OAuth il login lo completa l'utente su Octorate (`userLogged`, `loginAt`). |
+| OCT-04 | P0 · S2/S3 | Mapping tenant→proprietà→unità→rate plan→connessione→listing esterno. Vincoli univoci nello scope corretto, conflitti e import preview; nessuna scrittura con mapping ambiguo. Conservare ID annunci esistenti, recensioni e continuità solo dopo prova/conferma OTA. S5: connessione (`POST /rest/v1/connection/{accommodation}`, verifica licenza e credenziali), azioni `IMPORT_ROOMS`, `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR`, poi mapping `productId` ↔ `externalId` (`updateCalendar` e `pullReservations` attivabili solo dopo il mapping; `pullMappedOnly` vero di default), `MARK_CONNECTED` o `COMMIT_MAPPING_AS_COMPLETED`; i prodotti esterni con `manageable` falso sono solo informativi (§5.1 D6). |
+| OCT-05 | P0/P1 · S2–S4 | Editor contenuti: titoli, descrizioni e traduzioni IT/EN/DE/FR, foto, servizi, camere/letti, regole, politiche e CIN/licenze. Distinguere bozza, in coda, accettato dal provider e pubblicato su OTA; limitare campi e azioni alla matrice capacità. Un errore parziale non marca tutto come pubblicato. Interfaccia DE non richiesta ora. S5: nessun campo CIN dedicato (`nrua` esiste solo per la Spagna); candidati `legalId`/`legalIdIssuer` (camera) e `taxId` (listing), campo effettivo per OTA da confermare. Stato di pubblicazione: `airbnbApprovalStatus` e `GET /rest/v1/content/products/{accommodation}/process/{processId}`; push per prodotto solo `booking_xml`, `airbnb_xml`, `homeaway`. Non usare `addTextToHouseRules` e `addTextToField` come API di scrittura (§5, §5.1 D2). |
+| OCT-06 | P0/P1 · S2–S4 | ARI con diff, aggiornamenti bulk e controllo stato processo. Date locali della struttura, soggiorni [check-in, check-out), valuta e decimali espliciti; test DST Italia/Svizzera. Nessuna disponibilità/prezzo/restrizione inviata a unità errata. Accettazione bulk non equivale a propagazione OTA. S5: date `yyyy-mm-dd` con `dateTo` inclusivo, nessuna valuta nel payload; quota 1 unità ogni 15 camera-giorno, dinamica per proprietà e tariffe (§5.1 D7). Il bulk può rispondere HTTP 200 con `success: false` (esempio Postman): controllare il corpo e conservare gli id `process`; lo stato per data e portale è solo in Postman. Octorate può alterare ARI da solo (`closeNextDays`/`openNextDays`, `tripleThePrice`, `revenue*`, `derivedRule`; per connessione `correctionRatio`, `correctionFixed`, `correctionRound`, `availabilityPercentage`): l'adapter li legge e li tiene neutri o li modella, altrimenti il writer unico non basta. |
+| OCT-07 | P0/P1 · S2–S4 | Import, modifica e cancellazione prenotazioni con upsert per ID provider e tenant/ambiente. Duplicati/out-of-order non duplicano prenotazioni o effetti downstream. Eventi interni verso check-in/compliance/rendiconti, senza implementare tali moduli. Prenotazione OTA non crea addebito Stripe; dirette non diventano pagate per un ACK Octorate. S5: eventi `RESERVATION_CREATED`, `RESERVATION_CHANGE`, `RESERVATION_CANCELLED`, `RESERVATION_CONFIRMED`; chiave di upsert `id` Octorate (`refer` raggruppa più camere, `channelRefer` è il codice del portale) con `updateTime`; `checkin` e `checkout` sono istanti UTC da convertire con il fuso della struttura. Cancellazione con `PUT` e `status` CANCELLED oppure `DELETE`; `PATCH` non consente CONFIRMED→CANCELLED; 409 per prenotazioni spostate o annullate da undo. Creare una prenotazione diretta in Octorate decrementa la disponibilità salvo `availability=false`: decisione in ADR (§5.1 D9). Telefono ed email dell'ospite solo con `POST /rest/v2/reservation/{accommodation}/{refer}/contactInfo` (permesso speciale, ogni lettura è registrata). |
+| OCT-08 | P0/P1 · S3/S4 | Receiver webhook con validazione secondo contratto reale, persistenza inbox prima dell'ACK, elaborazione asincrona, deduplica, retry e quarantena. Non inventare header di firma o nomi eventi. Se autenticità non verificabile, documentare mitigazioni e bloccare gli effetti non sicuri. S5: eventi `RESERVATION_CREATED`, `RESERVATION_CHANGE`, `RESERVATION_CANCELLED`, `RESERVATION_CONFIRMED`, `CHAT_MESSAGE_RECEIVED`, `CONTENT_NOTIFICATION` (esito di una pubblicazione), `CONTENT_PUSH` e `PORTAL_SUBSCRIPTION_CALENDAR` (descritti per le OTA); quelli sottoscrivibili da CasaZen risultano da `GET /rest/v1/subscription/list`. Consegna: ritenta fino a 2 giorni con ritardi crescenti, HTTP 200 = consegnato, ogni altro codice ritenta, solo 406 ferma i tentativi; timeout molto breve (ACK prima di elaborare); ordine non garantito; invii ripetuti dello stesso contenuto entro 5 minuti collassati in uno. La sottoscrizione accetta solo `url` https (`application/x-www-form-urlencoded`), senza segreto, e l'operazione non dichiara una security propria (la collection la colloca tra le operazioni Admin). Il campo `hmac` compare solo nell'esempio calendario: per prenotazioni e chat l'autenticità non è documentata, quindi (proposta) il webhook è una notifica e prima di ogni effetto l'oggetto si rilegge via API. |
+| OCT-09 | P0/P1 · S3/S4 | Riconciliazione periodica con checkpoint, finestre sovrapposte e paginazione da contratto; recupero eventi persi e confronto stato remoto. Concorrenza serializzata per risorsa; dopo crash il job riprende senza duplicati. S5: elenco `GET /rest/v1/reservation/{accommodation}` con `type` `MODIFIED_BETWEEN`, `CREATETIME`, `CANCELLATION` o `STAY`, `size` da 1 a 200, `page` da 0 a 1000, date `yyyy-MM-dd` sempre in ora di Roma. `GET .../reservation/{accommodation}/search` non è un elenco: è la ricerca del booking engine. Chat: `createdAfter` sui messaggi del thread e `GET /rest/v1/accommodation/recentMessages` (ultime 24 ore). Finestre sovrapposte di almeno 2 giorni, la finestra di retry dei webhook (proposta). |
+| OCT-10 | P0/P1 · S2–S4 | Inbox web e mobile: conversazioni per canale/proprietà/prenotazione, lettura, risposta e stato errore/consegna disponibile. Pre-booking, post-stay e allegati sono capacità distinte. Due click/retry non duplicano messaggi; timeout ambiguo resta da riconciliare. S5: thread con `defaultProcessor` (`DIRECT`, `WHATSAPP`, `CHANNEL`, `WHATSAPP_MANUAL`, `MAIL`, `NOTE`) e messaggi con `status` (`CREATED`, `WAIT_AUTH`, `SENT`, `ERROR`, `MANUAL_VERIFY`). Verso le OTA: processor `CHANNEL` con attributo `OTA_FLOW_DIRECTION` = `TO` (S6 parla di «channel manager»: corrispondenza da confermare; l'esempio Postman di un messaggio in ingresso usa `FROM`). La licenza ha un flag `chat` e la connessione un flag `messages`: verificare che siano attivi. Ingresso quasi in tempo reale con `CHAT_MESSAGE_RECEIVED` più riconciliazione; thread e prenotazione si collegano con `reservation` e `threadId`. Allegati, offerte speciali e pre-approvazione esistono nel modello ma il supporto per OTA non è confermato (§5.1 D3). |
+| OCT-11 | P0/P1 · S2–S4 | AI: bozza modificabile e inviata dall'operatore nel Base. Invio automatico solo con opzione/permesso attivo, regole e soglia approvate, supporto OTA confermato; altrimenti bozza. Audit modello/versione, decisione e approvazione; contesto minimo per tenant. Bloccare contatti/link Airbnb pre-booking e azioni non consentite; nessuna modifica date Booking via chat. Octorate ha un proprio assistente AI per thread (`PATCH /rest/v1/chat/{accommodationId}/threads/{thread}/aiAssistant`, flag `aiDriven`, attributo `AI_SKIP_DISABLE`): sui thread gestiti da CasaZen resta disattivo e va verificato a ogni sincronizzazione, per evitare doppie risposte. La policy delle OTA sulle risposte automatiche non è né in S5 né in S6. |
+| OCT-12 | P0/P1 · S2–S4 | Review UI e workflow risposta in Mock per tutti i canali, etichettati simulati. Live solo per Airbnb, con S5: `GET /rest/v2/review/{accommodationId}/{refer}` (recensione dell'ospite e dell'host per prenotazione, visibile solo a recensione pubblicata, stato `REVIEW_PUBLISHED`), `POST .../sendHostReply` (solo Airbnb, a recensione dell'ospite pubblicata) e `POST .../sendHostReview` (solo Airbnb, a finestra aperta; 409 se non ammessa o già inviata): lettura, risposta e recensione dell'host sono capacità separate. Nessun elenco per proprietà: si legge per prenotazione. S6: per Booking.com, Vrbo ed Expedia nessuna integrazione, quindi nessuna lettura o risposta live; nessun endpoint inventato, scraping o risposta live implicita. Il gap sulle altre OTA resta nel go/no-go e un eventuale fallback manuale è un'eccezione di prodotto da approvare. |
+| OCT-13 | P0/P1 · S3/S4 | Resilienza: timeout/cancellazione, backoff con jitter e Retry-After se presente, rate limit per scope effettivo e backpressure. Distinguere validazione, 401, 403, 404, 409/422 se previsti, 5xx. S5 non documenta né 429 né Retry-After: la quota esaurita è un 403 `ApiQuotaException`, da distinguere dai 403 di permessi (`ApiSecurityException`) e di ambiente (`WrongEnviroment`); un 550 `ApiPartnerServerError` indica il fallimento del partner o della OTA. Decidere sul `code` stabile di `ApiError` e non sul testo; salvare `request-id`; leggere `X-RateLimit-Remaining` e, se presente, `X-RateLimit-Additional-Cost`; quota in `quotaLimit` e `quotaStatus` di `GET /rest/v1/api/configuration`. Nessun header o chiave di idempotenza né ETag documentati; alcune PATCH rispondono 304 se nulla cambia; alcuni esempi di errore sono pagine HTML del server, quindi non assumere JSON. Retry scritture solo se sicuro/idempotente o previa riconciliazione. Nessuna tempesta di retry. |
 | OCT-14 | P0/P1 · S3/S4 | Dashboard stato per proprietà/canale, lag, quota, errori, ultima riconciliazione, operazioni sospese e replay autorizzato. Correlation ID e audit senza token/documenti/testi sensibili nei log. Kill switch scritture per tenant/proprietà/canale, senza perdere eventi ricevuti. |
 | OCT-15 | P0 · S3/S4 | Demo deterministica con agenzia DEMO e 10 proprietà fittizie: mapping, contenuti/foto, ARI, creazione/modifica/cancellazione, chat/AI e review. Reset ripristina dataset; mostra sempre Mock e le funzionalità non certificate; nessun dato reale Quokka. |
 
@@ -111,32 +117,88 @@ Outbox e modifica interna atomiche; la chiave idempotente interna non implica
 che Octorate supporti un header di idempotenza. Retention e cancellazione dei dati
 ospiti da definire prima dei dati reali; export audit sanitizzato.
 
-## 5. Inventario API iniziale (da riconfermare su S5)
+## 5. Inventario API verificato (OpenAPI del 23/10/2026)
 
-Base dichiarata in S3/S4: `https://api.octorate.com/connect`.
-Non inventare un hostname sandbox: usare esclusivamente provisioning e permessi
-comunicati da Octorate, anche se il test usa lo stesso host di produzione.
+Base: `https://api.octorate.com/connect`, unico server dichiarato da S5
+(«Production - Restricted for Sandbox»). Non inventare un hostname sandbox: usare
+esclusivamente provisioning e permessi comunicati da Octorate; l'ambiente è un
+attributo dell'API member (`environment`, vedi OCT-01).
 
-| Area | Metodi e path riportati negli allegati |
-|---|---|
-| Configurazione | GET `/rest/v1/api/configuration` |
-| Mapping | GET, POST `/rest/v1/connection/mapping/{accommodation}/{connection}` |
-| Unità/tariffe | GET `/rest/v2/roomrates/{accommodation}`; GET `/rest/v1/roomrates/{accommodation}/{roomid}`; POST `/rest/v1/roomrates/{accommodation}` |
-| ARI | GET `/rest/v1/calendar/{accommodation}`; POST `/rest/v1/calendar/bulk`; GET `/rest/v1/calendar/process/{id}` |
-| Prenotazioni | GET `/rest/v1/reservation/{accommodation}/search`; GET, PUT `/rest/v1/reservation/{accommodation}/{id}`; POST `/rest/v1/reservation/{accommodation}` |
-| Chat | GET `/rest/v1/chat/{property}/threads`; GET `/rest/v1/chat/{property}/threads/{thread}/messages`; POST `/rest/v1/chat/{property}/messages` |
-| Webhook | POST `/rest/v1/subscription/{event}` |
-| Descrizioni | GET, POST, PATCH `/rest/v1/content/products/{accommodation}/{productId}/descriptions` |
-| Foto | GET, POST `/rest/v1/content/products/{accommodation}/{productId}/photos`; DELETE `/rest/v1/content/products/{accommodation}/{productId}/photos/{photoName}`; GET `/rest/v1/content/products/{accommodation}/{productId}/photos/queue` |
-| Servizi/camere | GET, POST `/rest/v1/content/products/{accommodation}/{productId}/amenities`; GET, POST `/rest/v1/content/products/{accommodation}/{productId}/rooms` |
-| Listing/regole/push | GET, POST, PATCH `/rest/v1/content/products/{accommodation}/{productId}/listing`; POST `/rest/v1/content/products/{accommodation}/{productId}/addTextToHouseRules`; POST `/rest/v1/content/products/{accommodation}/{productId}/pushQueue/{portalname}` |
-| Review | Nessuna operazione dedicata identificata negli allegati |
+S5 ha 164 percorsi e 208 operazioni; la tabella riporta quelle rilevanti per il
+mandato. «Postman» indica una voce presente solo nella collection e non
+nell'OpenAPI: da confermare con Octorate prima di usarla. Token: `OAuthLogin` per
+proprietà o rete, `ApiOperations` per operazioni senza dati di proprietà (OCT-03).
 
-Helix deve acquisire snapshot OpenAPI/collection con data, hash e provenienza,
-verificare licenza prima di includerli nel repo e generare/versionare il client
-con comando riproducibile. Per ogni requisito registrare operationId effettivo,
-requestBody/response, security/scopes, paginazione, errori, test e scostamenti.
-La sola presenza di path non dimostra creazione di annunci o distribuzione OTA.
+| Area | Operazioni verificate | Note |
+|---|---|---|
+| Autenticazione | POST `/rest/v1/identity/token`, `/rest/v1/identity/refresh`, `/rest/v1/identity/migrate` | `apilogin` (client credentials) è il tokenUrl di `ApiOperations` ma compare solo in Postman |
+| Configurazione | GET, PATCH `/rest/v1/api/configuration` (`ApiOperations`) | `environment`, `quotaLimit`, `quotaStatus`, `permissions`, `redirectUri`, `reseller`, `maintenance`; `category` (sola lettura) fissa il tetto di quota in lettura |
+| Portali | GET `/rest/v1/meta/portals` (`ApiOperations`); GET `/rest/v1/meta/content`, `/rest/v1/meta/octorateAmenities`, `/rest/v1/meta/contentPageFields` | per portale `featureContent`, `calendarValues`, `contentMetas`, `requiresTokenAuthentication`, `requiresHotelId`; l'elenco completo si legge solo con le credenziali |
+| Proprietà | POST `/rest/v2/accommodation` (`ApiOperations`); GET `/rest/v1/accommodation`; PATCH `/rest/v2/accommodation/{accommodation}`; DELETE `/rest/v1/accommodation/{accommodation}/account` | nome, nominativo ed email obbligatori; la risposta contiene il refresh token; `network_name` raggruppa le proprietà con un solo refresh token; `welcome_user` (vero di default) manda le credenziali all'email indicata; 412 su email duplicata se `accept_duplicates` è falso; il DELETE disattiva senza cancellare |
+| Unità/tariffe | POST `/rest/v1/roomrates/{accommodation}` e `/rest/v3/roomrates/{accommodation}`; GET `/rest/v1/roomrates/{accommodation}/{roomid}`, `/rest/v2/roomrates/{accommodation}` e `/rest/v3/roomrates/{accommodation}`; PATCH `/rest/v1/roomrates/{accommodation}/{id}` e `/rest/v3/roomrates/{accommodation}/{id}`; GET, POST `/rest/v1/rateplans/{accommodation}` | tre versioni coesistono e nessuna è marcata deprecata: sceglierne una con Octorate e registrarla in ADR; campi `legalId`, `legalIdIssuer`, `quantity`, `ratePlans`; le PATCH rispondono 304 se nulla cambia |
+| Connessioni e mapping | POST `/rest/v1/connection/{accommodation}`; GET `/rest/v1/connection`; PATCH, DELETE `/rest/v1/connection/{accommodation}/{connection}`; POST `/rest/v1/connection/{action}/{accommodation}/{connection}`; GET, POST `/rest/v1/connection/external/{accommodation}/{connection}`; GET, POST `/rest/v1/connection/mapping/{accommodation}/{connection}`; DELETE `/rest/v1/connection/mapping/{accommodation}/{connection}/{mappingId}` | azioni `IMPORT_ROOMS`, `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR`, `MARK_CONNECTED`, `COMMIT_MAPPING_AS_COMPLETED`, `IMPORT_ROOMS_PMS`, `IMPORT_RESA_DECREMENT_AVAIL`, `EMAIL_HELP_CUSTOMER`; l'azione può rispondere 550 se il partner fallisce; `POST /connection/sync/...` (rinvio di un intervallo) solo in Postman |
+| ARI | GET `/rest/v1/calendar/{accommodation}`; POST `/rest/v1/calendar/bulk`; GET `/rest/v1/calendar/{accommodation}/{productId}/availabilityCheck`; POST `/rest/v1/content/products/{accommodation}/{productId}/{portalname}/calendar` | lettura fino a 20 prodotti per pagina; l'ultima apre o chiude il calendario sul portale (`status`); `GET /rest/v1/calendar/process/{id}` e `/rest/v1/calendar/failures` (stato per data e portale) solo in Postman |
+| Prenotazioni | GET, POST `/rest/v1/reservation/{accommodation}`; PUT, PATCH, DELETE `/rest/v1/reservation/{accommodation}/{id}`; POST `/rest/v1/reservation/bulk/{accommodation}`; POST `/rest/v1/reservation/{accommodation}/{id}/payment`; POST `/rest/v2/reservation/{accommodation}/{refer}/contactInfo` | `GET .../{id}` è deprecata (usare l'elenco con `ids[]`); `GET .../reservation/{accommodation}/search` è la ricerca del booking engine, non un elenco; le operazioni `/rest/v2/reservation/{accommodation}` (elenco, creazione, `synchronize`, `link`, `unlink`) sono solo in Postman |
+| Chat | GET `/rest/v1/chat/{property}/threads`, `.../threads/{id}`, `.../threads/{thread}/messages` (`createdAfter`), `.../threads/{thread}/templates`, `.../unreadedMessagesCount`; POST `/rest/v1/chat/{property}/messages`; PUT `.../messages/{messageId}`; PATCH `.../threads/{thread}/archive`, `read`, `setAsUnread`, `aiAssistant`, `processor`, `.../messages/{messageId}/translate/{language}`; POST `.../threads/{threadId}/preApprove` e `/specialOffer`; PATCH `.../specialOffer/{specialOfferId}/withdraw`; GET `/rest/v1/accommodation/recentMessages` | il parametro della proprietà si chiama `{property}`, `{propertyId}` o `{accommodationId}` secondo l'operazione; la creazione di un thread (WhatsApp) è solo in Postman |
+| Recensioni | GET `/rest/v2/review/{accommodationId}/{refer}`; POST `/rest/v2/review/{accommodationId}/{refer}/sendHostReply` e `/sendHostReview` | risposta e recensione dell'host solo Airbnb (OCT-12) |
+| Webhook | POST `/rest/v1/subscription/{event}`; GET `/rest/v1/subscription` e `/rest/v1/subscription/list`; PUT, DELETE `/rest/v1/subscription/{id}` | eventi e consegna in OCT-08 |
+| Contenuti per connessione | GET, POST `/rest/v1/content/connections/{connection}/accommodationconf`, `services`, `fees`, `extrabeds`, `contacts`, `cancellationPolicies` (DELETE per elemento); POST `.../rentalagreement` e `.../push`; GET `/rest/v1/content/connections/meta/{portal}` | impostazioni dell'edificio per connessione; `push` invia l'alloggio al partner senza elenco di portali |
+| Contenuti per prodotto | `/rest/v1/content/products/{accommodation}/{productId}/`: GET, POST, PATCH `descriptions` e `listing`; GET, POST, DELETE `rooms`; GET, POST `photos` (DELETE `photos/{photoName}`, GET `photos/queue`); GET, POST `availabilityconf` e `fees`; GET, POST, PATCH `rate`; POST, PATCH `pricing` e `reservation`; POST `cancellation` (per portale) e `pushQueue/{portalname}`; GET `/rest/v1/content/products/{accommodation}/process/{processId}` | `pushQueue` ammette solo `booking_xml`, `airbnb_xml`, `homeaway`; foto per URL in coda (HTTP 202); GET, POST `amenities` sono deprecati (servizi nell'inventario camera) |
+| Helper di testo | POST `.../{productId}/addTextToHouseRules`, `.../{productId}/addTextToField`, `/rest/v1/content/products/{accommodation}/addNeighborhoodod` | descrizione e parametri (`minWords`/`maxWords`, «random string») indicano un generatore di testo: non usarli senza conferma di Octorate; le regole della casa si scrivono in `descriptions.houseRules` e in `reservation` |
+| Fuori perimetro | `/rest/v1/guests`, `/rest/v1/checkin` e `/rest/v2/checkin`, `/rest/v2/invoice`, `/rest/v1/payment`, `/rest/v1/extra`, `/rest/v1/pms`, `/rest/v1/accommodation/network` | presenti ma esclusi da §1 (Alloggiati, fatturazione, pagamenti, carte, PMS): nessun uso senza ADR |
+
+Helix deve riacquisire snapshot OpenAPI/collection con data, hash e provenienza
+(S5 dichiara licenza «Proprietary»: verificarla prima di includerli nel repo) e
+generare/versionare il client con comando riproducibile. Per ogni requisito
+registrare operationId effettivo, requestBody/response, security/scopes,
+paginazione, errori, test e scostamenti. La sola presenza di path non dimostra
+creazione di annunci o distribuzione OTA.
+
+### 5.1 Risposte alle domande tecniche aperte
+
+Domande dell'Allegato A di S2 e dell'email del 21/10 (S3) a cui S6 non risponde o
+risponde solo in parte. «Specifica» indica S5 (OpenAPI e collection) salvo diversa
+indicazione; l'ultima colonna è ciò che la specifica non può chiudere e resta a
+Octorate.
+
+| ID | Domanda | Specifica | Resta da chiedere |
+|---|---|---|---|
+| D1 | Annuncio da zero via API e passaggi manuali (A.1) | Sequenza: proprietà (`POST /rest/v2/accommodation`) → camere e tariffe (`POST /rest/v3/roomrates/{accommodation}`, con il token della proprietà) → contenuti per prodotto e per connessione → connessione al portale (`POST /rest/v1/connection/{accommodation}`, verifica licenza e credenziali) → push (`pushQueue` o `.../content/connections/{connection}/push`). S6: push via API e collegamento OTA supportati se le camere esistono già. Passaggi manuali: per i portali OAuth il login lo completa l'utente su Octorate (`userLogged`, `loginAt`); Airbnb espone lo stato di approvazione del listing (`airbnbApprovalStatus`). | Passaggi manuali per ciascuna OTA; creazione su Expedia e HomeToGo |
+| D2 | Campi di contenuto per OTA, lingue, CIN (A.2) | Testi per lingua con fallback e override per portale (`LanguageMap`, `PortalLanguageMap`: titolo, descrizione, regole, accesso, quartiere, trasporti). Lingue della proprietà: IT, EN, FR, ES, DE, RU, PT, NL, JA, EL, TR, ZH, CA, RO; le chiavi dei testi non sono enumerate. Foto per URL in coda con stato; letti in `rooms` (sottocamere con configurazioni letto); regole strutturate in `reservation` (bambini, fumatori, animali, eventi, orari, preavviso, prenotazione immediata) e testo in `houseRules`; servizi nell'inventario, codici per portale da `GET /meta/content`. CIN: nessun campo dedicato (`nrua` solo per la Spagna); candidati `legalId` e `legalIdIssuer` (camera) e `taxId` (listing). | Campi leggibili e scrivibili per OTA; in quale campo Airbnb, Booking.com, Vrbo ed Expedia ricevono il CIN |
+| D3 | Messaggi: pre-booking, allegati, offerte speciali, latenza, limiti (A.3) | Lettura e invio sì: thread, messaggi con `createdAfter`, `recentMessages` (24 ore). Verso le OTA: processor `CHANNEL` con `OTA_FLOW_DIRECTION` = `TO` (S6 parla di «channel manager»: corrispondenza da confermare). Ingresso: `CHAT_MESSAGE_RECEIVED`. Allegati JPEG, PNG e `OCTET_STREAM` (base64 in upload). Offerte speciali e pre-approvazione (`SPECIAL_OFFER`, `PREAPPROVAL`, ritiro). Stati del messaggio `CREATED`, `WAIT_AUTH`, `SENT`, `ERROR`, `MANUAL_VERIFY`; attributo di thread `THREAD_AUTHORIZATION_WINDOW_EXPIRE`. La licenza ha un flag `chat` e la connessione un flag `messages`: verificare che siano attivi. Limite di frequenza: solo la quota generale (D7). | Pre-booking, allegati e offerte speciali per OTA; latenza; limiti per OTA; significato della finestra di autorizzazione |
+| D4 | Risposte automatiche o AI ammesse (A.4) | Nessuna policy delle OTA. Octorate ha un proprio assistente AI per thread (`aiAssistant`, `aiDriven`, `AI_SKIP_DISABLE`): sui thread gestiti da CasaZen va tenuto disattivo. | Policy per Airbnb, Booking.com, Vrbo ed Expedia e permessi del partner |
+| D5 | Recensioni: lettura e risposta (A.5) | Tre operazioni (OCT-12): lettura per prenotazione, risposta dell'host e recensione dell'host; le ultime due solo Airbnb. S6: le altre OTA non sono integrate. Il messaggio di chat può portare una `review`. | Eventuale roadmap per Booking.com, Vrbo ed Expedia |
+| D6 | Annunci esistenti: mapping senza ricrearli, con ID, recensioni, storico (email 1) | Il flusso documentato parte dalle camere già presenti sul canale: connessione, `IMPORT_ROOMS` (camere dal canale, pronte per il mapping), `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR`, mapping `productId` ↔ `externalId`, poi `MARK_CONNECTED`; `updateCalendar` e `pullReservations` si attivano solo dopo il mapping. | Conferma scritta, per OTA, che ID annuncio, recensioni, ranking e storico restano dopo il passaggio dal sistema attuale |
+| D7 | ARI: valori, propagazione, quota (email 3) | Per camera e intervallo: `availability`, `price`, `minstay`, `maxstay`, `stopSells`, `closeToArrival`, `closeToDeparture`, `cutOffDays`; i valori gestibili per portale sono in `calendarValues`. Quota: 1 unità ogni 15 camera-giorno, dinamica per proprietà e tariffe (esempio della specifica: 5-6 aggiornamenti completi di 2 anni ogni 5 minuti, non un SLA); `quotaLimit` e `quotaStatus` in `GET /rest/v1/api/configuration`; `category` (sola lettura) fissa il tetto di quota in lettura. Il bulk restituisce id di processo (esempio Postman); lo stato per data e portale è in `GET /calendar/process/{id}` e `/calendar/failures`, solo in Postman, con esempi di stati `NEW`, `NOT_PROCESSED`, `ERROR`. Rinvio di un intervallo: `POST /connection/sync/...` (solo Postman). | Tempi di propagazione per OTA; quota per circa 250 strutture; conferma che gli endpoint solo Postman sono pubblici |
+| D8 | Prenotazioni: eventi, API, riconciliazione, recupero (email 4) | Eventi `RESERVATION_CREATED`, `RESERVATION_CHANGE`, `RESERVATION_CANCELLED`, `RESERVATION_CONFIRMED` (S6 conferma nuove, modificate e cancellate). Riconciliazione: elenco con `type` `MODIFIED_BETWEEN`, `CREATETIME`, `CANCELLATION`, `STAY`, `size` fino a 200, `page` fino a 1000, `ids[]` per rileggere. Recupero: retry dei webhook fino a 2 giorni più rilettura. Ordine: `updateTime`; istanti in UTC, ricerche in ora di Roma. | Eventi effettivamente generati per ciascuna OTA; quando arriva `CONFIRMED` |
+| D9 | Stripe e prenotazioni dirette (email 8) | CasaZen può creare la prenotazione diretta (`POST /reservation/{accommodation}`: decrementa la disponibilità salvo `availability=false`) e registrare l'incasso con `POST .../{id}/payment` («non è l'addebito della carta»; `transaction` = id esterno, `paymentMode`, `amount`). I campi di addebito automatico di Octorate (`scheduled*`, `preauth*`, `stopCron`) non si usano. Per le OTA `companyCollect` e `paymentType` indicano chi incassa. | `channelId` da usare per le dirette (l'esempio dei webhook mostra 233, «Octorate»); confine di responsabilità per iscritto |
+| D10 | Altri canali (A.11) | Né e-domizil né feratel né Google Vacation Rentals compaiono in S5 (c'è Google Hotel Ads per gli hotel). Portali con metadati di contenuto negli esempi: Booking.com, Airbnb, Vrbo (`homeaway`), Expedia, HomeToGo, Holidu, Agoda, Rentals United, Rakuten, Marriott VR (`marriot_vr`). L'elenco completo è `GET /meta/portals`. S6: tutti i canali elencati sono disponibili tranne Google Vacation Rentals. | e-domizil e feratel non sono stati chiesti |
+| D11 | Titolarità degli account, export, uscita (A.7) | Tecnicamente: la creazione con `ApiOperations` restituisce il token e crea un utente con l'email indicata (credenziali inviate se `welcome_user`); l'API member vede le proprietà create o collegate (`GET /accommodation`); `DELETE .../account` disattiva senza cancellare; `PATCH .../changeAdminUserAccess` autorizza o revoca l'accesso degli amministratori Octorate agli utenti della proprietà. Export via GET: contenuti, camere e tariffe, calendario, prenotazioni, mapping, ospiti. Le recensioni stanno sull'annuncio OTA, non in Octorate. | Titolarità contrattuale degli account e dei contratti OTA; uscita senza perdere le recensioni |
+| D12 | Sandbox (A.8) | `environment` `SANDBOX`/`PRODUCTION` in `GET /rest/v1/api/configuration`, stesso host, 403 `WrongEnviroment` se si sbaglia ambiente, proprietà di prova con `sandboxProperty`. S6: rete di test con le credenziali, non collegabile ai portali, senza prova di push. Documentazione 2019 (da riconfermare): accesso su richiesta, breve certificazione prima del flag di produzione. | Se la rete di test consente thread chat e prenotazioni di prova (il modello chat ha `TEST_BOOKING_DETAILS`) |
+| D13 | Convenzioni: idempotenza, paginazione, date, valute | Nessun header di idempotenza né ETag; alcune PATCH e PUT rispondono 304 se il contenuto è identico. Paginazione `page`/`size` (prenotazioni fino a 200 per pagina e pagina fino a 1000; calendario fino a 20 prodotti); `ApiListResponse` con link. `dateTo` del calendario è inclusivo; ricerche in ora di Roma; `checkin` e `checkout` in UTC. Valuta nella connessione e nella prenotazione, non nel calendario; `SpecialOfferDTO.totalPrice` è un intero con unità non documentata. Errori `ApiError` con `code` stabile. | Unità di `totalPrice` |
+| D14 | Costo e licenza (A.6) | Nessun prezzo in S5. La licenza è per proprietà (`ApiLicenseForm`: `channelManager` `FREE`/`BASIC`/`PRO`/`ENTERPRISE`/`PREMIUM`, flag separati per `chat`, `smartOffer`, `invoice` e altri, `roomsLimit`, `expireDay`) e `createConnection` la verifica; `GET /rest/v1/api/configuration` prevede un account reseller. Indicazione del PO (23/10/2026): «130 euro mensili fissi, un euro a casa». | Conferma scritta; tier e flag inclusi (almeno chat e contenuti); decorrenza; condizioni da reseller |
+
+### 5.2 Correzioni rispetto alla v1.0 e agli allegati S3/S4
+
+- `GET /rest/v1/calendar/process/{id}` non è nell'OpenAPI (solo in Postman): non
+  presentarlo come verificato.
+- `GET /rest/v1/reservation/{accommodation}/search` è la ricerca del booking engine
+  (disponibilità e prezzi per date), non una ricerca di prenotazioni: l'elenco per
+  riconciliazione è `GET /rest/v1/reservation/{accommodation}`.
+- `GET /rest/v1/reservation/{accommodation}/{id}` e le `amenities` per prodotto sono
+  deprecate.
+- `addTextToHouseRules` non è il modo di scrivere le regole della casa (§5, helper di
+  testo).
+- Recensioni: tre operazioni dedicate, non «nessuna»; risposta e recensione dell'host
+  solo Airbnb.
+- Webhook: oltre alle prenotazioni esistono `CHAT_MESSAGE_RECEIVED`,
+  `CONTENT_NOTIFICATION`, `CONTENT_PUSH` e `PORTAL_SUBSCRIPTION_CALENDAR`
+  (`XXX_NOT_USED_PORTAL_PROCESS_FAILED` è marcato non usato).
+- Quota ed errori: la quota esaurita è un 403 `ApiQuotaException`; 429 e Retry-After
+  non sono documentati.
+- Sandbox: la rete di test non collega le OTA (S6), quindi G2 e H5 non coprono gli
+  effetti sulle OTA.
+- Inventario: da circa 25 a 208 operazioni, riportate per area in §5.
 
 ## 6. Matrice delle capacità e dipendenze esterne
 
@@ -152,14 +214,38 @@ capacità sconosciute sono disabilitate in live. Inizialmente tutte da confermar
 con gap Expedia e review espliciti. Un fallback manuale va segnalato e approvato
 come eccezione di prodotto, non venduto come copertura API completa.
 
+### Stato iniziale della matrice (23/10/2026)
+
+Stati secondo il vocabolario sopra; «documentato (S6)» è un'affermazione scritta del
+fornitore senza prova. Per tutti i canali ARI/restrizioni ed eventi di prenotazione
+sono documentati in S5/S6 in modo generale e non per canale (§5.1 D7, D8); mapping
+esistente, CIN, allegati, offerte speciali, pre-approvazione e AI automatica sono
+sconosciuti.
+
+| Canale | Collegamento | Contenuti e push | Recensioni | Messaggi |
+|---|---|---|---|---|
+| Airbnb | documentato (S5, S6) | documentato (S5: `airbnb_xml`, stato `airbnbApprovalStatus`) | lettura, risposta e recensione dell'host documentate (S5, S6) | invio dichiarato in generale (S6), per canale sconosciuto |
+| Booking.com | documentato (S5, S6) | documentato (S5: `booking_xml`) | non supportato (S6) | invio dichiarato in generale (S6), per canale sconosciuto; cambio date solo da extranet (S2) |
+| Vrbo | documentato (S5, S6) | documentato (S5: `homeaway`) | non supportato (S6) | invio dichiarato in generale (S6), per canale sconosciuto |
+| Expedia | documentato (S5, S6) | sconosciuto: assente da `pushQueue`, presente nei metadati; push per connessione da verificare | non supportato (S6) | sconosciuto |
+| HomeToGo (opzionale) | documentato (S5, S6) | sconosciuto: presente nei metadati, assente da `pushQueue` | non supportato (S6) | sconosciuto |
+| Google Vacation Rentals (opzionale) | non supportato in Europa (S6) | — | — | — |
+
+La rete di test non è collegabile ai portali (S6): nessuna cella con effetti sulle OTA
+può diventare `provato sandbox`. L'evidenza arriva da una conferma scritta per canale o
+dalla produzione (H6/H7).
+
+### Dipendenze esterne
+
 | Dipendenza | Chi la risolve | Blocca |
 |---|---|---|
 | Snapshot API e schemi effettivi | Team implementazione | DTO/client e test contrattuali reali, non il Mock |
-| Sandbox, credenziali, scope, property/room/rate e connessioni test, reset | Octorate via referente CasaZen | Test autenticati e certificazione |
+| Sandbox, credenziali, scope, property/room/rate e connessioni test, reset. S6: rete di test consegnata con le credenziali, non collegabile ai portali; accesso su richiesta e breve certificazione prima del flag di produzione (documentazione 2019, da riconfermare) | Octorate via referente CasaZen | Test autenticati e certificazione; prove con effetti sulle OTA solo in produzione |
 | Matrice OTA, mantenimento ID/review/storico, onboarding/migrazione | Octorate | Promessa commerciale e attivazione capacità interessate |
 | API review, CIN, pre-booking, allegati, policy AI | Octorate + PO | Singole funzioni live; gap obbligatori nel go/no-go |
-| Quote, bulk, SLA/latenza, costo per struttura/canale, minimi/certificazione/supporto | Octorate + referente commerciale | Capacity e sostenibilità pilota/rollout; non usare prezzi NextPax |
-| Titolarità account/export/uscita, DPA, localizzazione/subfornitori, condizioni software vendor | Octorate + responsabili CasaZen | Uso dati reali/accordo partner |
+| Quote, bulk, SLA/latenza, costo per struttura/canale, minimi/certificazione/supporto. Indicazione del PO (23/10/2026, fonte non allegata): «130 euro mensili fissi, un euro a casa», cioè circa 380 euro al mese per 250 strutture se letta come 130 fissi più 1 per struttura; condizioni da confermare per iscritto | Octorate + referente commerciale | Capacity e sostenibilità pilota/rollout; non usare prezzi NextPax |
+| Licenza per struttura (`ApiLicenseForm`: tier del channel manager, flag `chat` e altri, `roomsLimit`) e condizioni da reseller | Octorate + referente commerciale | Che cosa comprende il costo comunicato; funzioni chat e contenuti |
+| Titolarità account/export/uscita, DPA, localizzazione/subfornitori, condizioni software vendor. S5 chiude solo la parte tecnica (§5.1 D11) | Octorate + responsabili CasaZen | Uso dati reali/accordo partner |
 | Proprietà/territori/canali, autorizzazioni, finestra cutover e accettazione commerciale | Quokka + PO | Pilota reale |
 | Volume reale e profilo picchi | Quokka + PO | Soglie e costo per 250 proprietà; 20.000 prenotazioni/anno e ~200 ospiti/mese del planning da chiarire |
 
@@ -175,7 +261,7 @@ Helix assegna responsabile tecnico per pacchetto e PO per decisioni/capacità.
 | H2 — Mapping/contenuti/ARI | H1 | UI e API CasaZen, validazioni e code, diff e stato processo; scenari positivi/errori e conflitti |
 | H3 — Prenotazioni/eventi | H1, mapping H2 | Inbox/outbox, worker, riconciliazione, hook downstream e cutover iCal; test duplicati, fuori ordine, evento perso, crash e doppio writer |
 | H4 — Inbox/AI/review | H1, H3 per contesto prenotazione | Workflow web/mobile; test approvazione/rifiuto, invio ambiguo, canale vietato, review simulata |
-| H5 — Sandbox | H2–H4, credenziali e API | Read-only prima delle scritture test; contratti, OAuth/rinnovo, 400/401/403/404/422 dove previsti, 429/5xx/timeout, quota e webhook; evidenze sanitizzate per canale |
+| H5 — Sandbox | H2–H4, credenziali e API | Read-only prima delle scritture test; contratti, OAuth/rinnovo, 400/401/403/404/422 dove previsti, 403 `ApiQuotaException`, 5xx/550/timeout (429 solo se osservato), quota e webhook; evidenze sanitizzate per canale. Limitato al contratto API: gli effetti sulle OTA non sono provabili nella rete di test (S6) |
 | H6 — Preparazione pilota | H5, approvazioni | Baseline import read-only, confronto mapping, coesistenza/migrazione dal sistema corrente, runbook rollback/escalation, kill switch e soglie approvate |
 | H7 — Osservazione pilota | H6, autorizzazione reale | Proposta 5–10 proprietà/30 giorni, controlli quotidiani e report settimanali, incidenti e report finale go/no-go |
 
@@ -196,10 +282,16 @@ feature disabilitate. Nessun test live in CI senza provisioning esplicito.
   nessun dato reale e distinzione visibile simulazione/capacità certificata.
 - **G2 — Sandbox:** OAuth e test delle capacità disponibili completati con evidenze;
   report separato delle capacità mancanti. Il successo della demo non vale come G2.
+  La rete di test non collega le OTA (S6): G2 certifica il contratto API e i flussi
+  interni; contenuti, ARI, prenotazioni da OTA, messaggi e recensioni sulle OTA
+  risultano nel report come «da provare in produzione» e passano a G3/G4.
 - **G3 — Pronti al pilota:** autorizzazione commerciale/operativa, proprietà e durata
   concordate, mapping verificati, API e permessi necessari, rollback e responsabilità
   definiti. Qualsiasi riduzione di contenuti/chat/review/canali obbligatori richiede
   decisione esplicita PO/Quokka; una sandbox parziale non autorizza un pilota completo.
+  Opzione da decidere (PO): un annuncio reale non Quokka, con licenza Octorate, come
+  banco di prova sulle OTA prima del pilota, per rispettare «nessun dato Quokka prima
+  dell'accettazione»; senza, la prima prova sulle OTA coincide con il pilota.
 - **G4 — Fine pilota:** nessun mapping errato, prenotazione persa o duplicazione
   irrisolta; nessuna divergenza calendario critica non riconciliata o incidente
   critico aperto; invio/ricezione sui canali autorizzati verificati; policy AI rispettate;
@@ -216,3 +308,12 @@ Solo dopo G4 e un nuovo go/no-go: piano di attivazione del portfolio di circa
 250 proprietà con import/mapping, quote e gestione eccezioni. Non prevedere un
 nuovo pilota mensile per ogni proprietà. Nessun contatto esterno, merge o go-live
 è parte della consegna di questa PR di requirements.
+
+## 9. Revisioni
+
+- **1.1 · 23 ottobre 2026:** verifica contro S5 (164 percorsi, 208 operazioni) e S6.
+  Corretti: recensioni (tre operazioni, solo Airbnb), eventi webhook e consegna, CIN
+  (nessun campo dedicato), quota ed errori (403 `ApiQuotaException`, nessun 429),
+  sandbox (rete di test senza collegamento alle OTA), G2 e H5. Aggiunte le risposte
+  tecniche (§5.1), le correzioni di inventario (§5.2) e la matrice iniziale (§6).
+- **1.0 · 21 ottobre 2026:** prima stesura.
