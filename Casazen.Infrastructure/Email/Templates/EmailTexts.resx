@@ -573,6 +573,12 @@
   <data name="Push_NewBooking_Body" xml:space="preserve">
     <value>{0}: dal {1} al {2}, ospiti: {3}.</value>
   </data>
+  <data name="Push_GuestMessage_Title" xml:space="preserve">
+    <value>Nuovo messaggio da un ospite</value>
+  </data>
+  <data name="Push_GuestMessage_Body" xml:space="preserve">
+    <value>{0}: un ospite ti ha scritto.</value>
+  </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Promemoria check-out</value>
   </data>

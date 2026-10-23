@@ -2,6 +2,8 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Push;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.Infrastructure;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Casazen.Web.Extensions;
 
@@ -35,6 +37,11 @@ public static class PushServiceCollectionExtensions
         services.AddScoped<InAppNotificationJob>();
         services.AddScoped<IInAppNotificationService, InAppNotificationService>();
         services.AddScoped<InAppNotificationRetentionJob>();
+
+        // Real time: SignalR hub at /hubs/notifications (single instance, runbook). Replaces the no-op publisher that other hosts keep.
+        services.AddSignalR();
+        services.TryAddSingleton<IInAppNotificationPublisher, NoOpInAppNotificationPublisher>();
+        services.Replace(ServiceDescriptor.Singleton<IInAppNotificationPublisher, SignalRInAppNotificationPublisher>());
         return services;
     }
 }
