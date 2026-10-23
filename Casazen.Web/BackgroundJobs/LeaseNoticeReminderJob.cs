@@ -23,7 +23,7 @@ namespace Casazen.Web.BackgroundJobs;
 /// <para><b>Which leases.</b> The ones the agenda lists a <c>Notice</c> deadline for: registered and not ended (<see cref="LeaseListView.Active"/>),
 /// of a type that has a notice, with no notice recorded (<see cref="LeaseContract.NoticeOn"/>) and not ended early
 /// (<see cref="LeaseContract.TerminatedOn"/>). Never a draft, a lease still to be registered, a concluded one, a transitory one, or one
-/// whose last day has passed. The day is <see cref="LongRentDeadlineRules.NoticeDate"/> of the end of the current period
+/// whose last day has passed. The day is <see cref="LongRentDeadlineRules.NoticeDate(LeaseContractType, DateTime)"/> of the end of the current period
 /// (<see cref="LeaseContract.CurrentTermEndDate"/>): the same function and the same date as Scadenze and Panoramica, worked out nowhere
 /// else. A lease that renews by itself has a new end, so a new last day and a new set of reminders.</para>
 /// <para><b>When.</b> Thresholds, not exact days (<see cref="Thresholds"/>): 30 days before the last day, 7 days before and the day itself.
@@ -107,7 +107,7 @@ public class LeaseNoticeReminderJob(
 
     /// <summary>
     /// The ids of the leases whose last day to give notice is within the first threshold, the nearest day first. A few scalars per lease;
-    /// the last day comes from <see cref="LongRentDeadlineRules.NoticeDate"/>, which also tells the types that have none.
+    /// the last day comes from <see cref="LongRentDeadlineRules.NoticeDate(LeaseContractType, DateTime)"/>, which also tells the types that have none.
     /// </summary>
     private async Task<List<Guid>> DueLeaseIdsAsync(DateOnly today)
     {
