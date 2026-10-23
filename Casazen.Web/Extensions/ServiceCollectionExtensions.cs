@@ -367,6 +367,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
+        // The code of an APE the file does not show legibly, from the public CENED register of Lombardy (open data, no key).
+        services.AddOptions<Casazen.Core.Options.ApeRegistryOptions>()
+            .BindConfiguration(Casazen.Core.Options.ApeRegistryOptions.SectionName);
+        services.AddHttpClient<IApeRegistryLookup, Casazen.Infrastructure.External.CenedApeRegistry>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-ape-register/1.0");
+        });
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IHostResourceLookup, HostResourceLookup>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
