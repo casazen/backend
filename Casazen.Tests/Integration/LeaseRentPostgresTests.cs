@@ -158,7 +158,8 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     /// <summary>
     /// LR-04a (decisions LR-D17 and LR-D19): the rent plan of a lease that is already running starts from the month the landlord
     /// tracks it from, so no past period is born «in ritardo», and it writes to no tenant on its own until the landlord switches
-    /// the online requests on (saving the plan again keeps the day it is tracked from).
+    /// the online requests on (saving the plan again keeps the day it is tracked from, and so does the tacit renewal of the lease,
+    /// which adds the new period without bringing the skipped months back).
     /// </summary>
     [PostgresFact]
     public async Task Configure_RunningLeaseTrackedFromThisMonth_HasNoPastInstallmentAndTheJobWritesToNoTenantUntilOnlineRequestsAreOn()
@@ -195,6 +196,21 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         var request = Assert.Single(EmailsTo(TenantEmail, seeded));
         Assert.Equal(EmailTemplates.Names.RentPaymentRequest, request.Template);
         Assert.Equal(new DateOnly(2027, 4, 1), (await InstallmentAsync(LinkOf(request.Content).InstallmentId)).PeriodStart);
+
+        // The lease renews by itself (LR-14): the plan grows by the 48 months of the new period, and the six months it skipped stay away.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var lease = await db.LeaseContracts.IgnoreQueryFilters().SingleAsync(l => l.Id == seeded.LeaseId);
+            lease.CurrentTermEndDate = lease.CurrentTermEndDate.AddMonths(48);
+            await db.SaveChangesAsync();
+
+            var added = await scope.ServiceProvider.GetRequiredService<IRentBillingService>().ExtendScheduleToCurrentTermAsync(seeded.LeaseId);
+
+            Assert.Equal(48, added);
+        }
+
+        Assert.Equal(90, await CountInstallmentsAsync(seeded.LeaseId));
     }
 
     [PostgresFact]
