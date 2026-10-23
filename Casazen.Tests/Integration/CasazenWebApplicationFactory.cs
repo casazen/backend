@@ -213,9 +213,12 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             RemoveAllOf<IApeComplianceService>(services);
             var ape = new Mock<IApeComplianceService>();
             ape.Setup(s => s.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).Returns(Task.CompletedTask);
-            ape.Setup(s => s.CheckUploadedApeAsync(It.IsAny<IFormFile>()))
+            ape.Setup(s => s.CheckUploadedApeAsync(It.IsAny<IFormFile>(), It.IsAny<ApeRegistryContext?>()))
                 .ReturnsAsync(ApeUploadCheck.Passed);
             services.AddSingleton(ape.Object);
+            // The public register of the APE is never asked from a test: a suite that needs it gives its own answer.
+            RemoveAllOf<IApeRegistryLookup>(services);
+            services.AddSingleton(Mock.Of<IApeRegistryLookup>());
         });
     }
 
