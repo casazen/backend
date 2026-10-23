@@ -169,6 +169,7 @@ public class AppDbContext(
     // Long-term lease
     public DbSet<LeaseDocument> LeaseDocuments { get; set; } = null!;
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
+    public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;

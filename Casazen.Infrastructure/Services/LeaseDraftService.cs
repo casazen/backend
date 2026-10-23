@@ -85,6 +85,53 @@ public sealed class LeaseDraftService(
         return new LeaseDraftCreated(lease.Id, lease.DraftVersion, evaluation.Flow);
     }
 
+    public async Task<Guid> CreateCfDraftAsync(Guid propertyId, Guid orgId, CancellationToken cancellationToken = default)
+    {
+        // Idempotent: if a CF draft for this property already exists, return it
+        var existing = await db.LeaseContracts
+            .AsNoTracking()
+            .Where(l => l.PropertyId == propertyId
+                && l.OrgId == orgId
+                && l.Status == LeaseStatus.Draft
+                && l.IsConcordatoFacileSource)
+            .Select(l => l.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existing != default)
+        {
+            logger.LogInformation("Returning existing CF draft. LeaseId={LeaseId} PropertyId={PropertyId}", existing, propertyId);
+            return existing;
+        }
+
+        var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
+            ?? throw PropertyNotFound(propertyId);
+
+        var now = UtcNow();
+        var lease = new LeaseContract
+        {
+            PropertyId = property.Id,
+            OrgId = property.OrgId,
+            Status = LeaseStatus.Draft,
+            StartDate = LeaseDraftDefaults.PlaceholderDate,
+            EndDate = LeaseDraftDefaults.PlaceholderDate,
+            MonthlyRent = LeaseDraftDefaults.PlaceholderRent,
+            WizardMaxStep = LeaseDraftDefaults.FirstStep,
+            Origin = LeaseOrigin.Created,
+            DraftVersion = 1,
+            IsConcordatoFacileSource = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        lease.SetContractTerms(LeaseContractType.Concordato, null);
+
+        db.LeaseContracts.Add(lease);
+        db.LeaseEvents.Add(new LeaseEvent { LeaseContractId = lease.Id, EventType = LeaseEventType.Created, OccurredAt = now });
+        await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation("CF draft created. LeaseId={LeaseId} PropertyId={PropertyId} OrgId={OrgId}", lease.Id, property.Id, property.OrgId);
+        return lease.Id;
+    }
+
     public async Task<LeaseDraftView> GetAsync(Guid leaseId, CancellationToken cancellationToken = default)
     {
         var lease = await db.LeaseContracts
