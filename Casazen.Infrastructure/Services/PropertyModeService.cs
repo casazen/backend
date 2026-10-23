@@ -595,7 +595,9 @@ public sealed class PropertyModeService(
     /// <summary>
     /// The leases that are not drafts nor rejected and end on or after <paramref name="since"/>: the rule that refuses to
     /// delete a property (<c>PropertyRepository.SoftDeleteAsync</c>), asked for the day chosen instead of today, from the one
-    /// definition <see cref="LeaseOccupancy"/>. And every draft: no day frees the property from a draft, it is deleted first
+    /// definition <see cref="LeaseOccupancy"/>. The end is the one of the period the lease is in now
+    /// (<c>CurrentTermEndDate</c>, LR-14): a lease that renewed by itself holds the property until its new end, one with a notice or
+    /// ended early lets it go the day after its last day. And every draft: no day frees the property from a draft, it is deleted first
     /// (D16).
     /// </summary>
     private async Task<IReadOnlyList<PropertyModeBlocker>> LoadLongRentCandidatesAsync(
@@ -606,7 +608,7 @@ public sealed class PropertyModeService(
         var running = await db.LeaseContracts
             .AsNoTracking()
             .Where(LeaseOccupancy.RunsOnOrAfter(propertyId, RomeCalendar.StartOfDayUtc(since)))
-            .Select(l => new { l.Id, l.StartDate, l.EndDate, l.Status })
+            .Select(l => new { l.Id, l.StartDate, EndDate = l.CurrentTermEndDate, l.Status })
             .ToListAsync(cancellationToken);
         var drafts = await db.LeaseContracts
             .AsNoTracking()

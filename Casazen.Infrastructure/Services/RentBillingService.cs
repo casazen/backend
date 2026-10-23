@@ -84,8 +84,9 @@ public sealed partial class RentBillingService(
         if (!Enum.IsDefined(request.Cadence))
             throw new ArgumentOutOfRangeException(nameof(request), request.Cadence, "Unknown rent cadence");
 
+        // The plan runs to the end of the period the lease is in now: a lease that renewed by itself or was ended early (LR-14).
         var leaseStart = RomeCalendar.DateInRome(lease.StartDate);
-        var leaseEnd = RomeCalendar.DateInRome(lease.EndDate);
+        var leaseEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
         if (leaseEnd < leaseStart)
             throw new DomainRuleException(RentBillingErrorCodes.LeaseOutsidePlan, "RentLeaseDatesInvalid");
 
@@ -909,7 +910,7 @@ public sealed partial class RentBillingService(
         if (schedule is not null && RentInstallmentPlan.IsValidBillingDay(schedule.BillingDayOfMonth) && schedule.Amount > 0)
         {
             var start = RomeCalendar.DateInRome(lease.StartDate);
-            var end = RomeCalendar.DateInRome(lease.EndDate);
+            var end = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
             if (end >= start)
                 partial = RentInstallmentPlan.Build(start, end, schedule.Cadence, schedule.BillingDayOfMonth, schedule.Amount).PartialFinalPeriod;
         }

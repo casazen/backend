@@ -385,8 +385,10 @@ public partial class FiscalService(
             .Select(b => b.PropertyId)
             .ToHashSet();
 
+        // Leased in the year: the lease runs in it up to the end of the period it is in now (LR-14), so one that renewed by itself still
+        // counts after the end its contract states.
         var leasedPropertyIds = (await db.LeaseContracts.AsNoTracking()
-                .Where(l => l.OrgId == orgId && l.StartDate < yearEnd && l.EndDate >= yearStart)
+                .Where(l => l.OrgId == orgId && l.StartDate < yearEnd && l.CurrentTermEndDate >= yearStart)
                 .Select(l => l.PropertyId)
                 .Distinct()
                 .ToListAsync(cancellationToken))
