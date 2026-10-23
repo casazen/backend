@@ -61,9 +61,12 @@ public static class LeaseNeedCodes
     public const string DepositInvalid = "deposit_invalid";
     public const string DepositTooHigh = "deposit_too_high";
 
-    // Step 4 · the start date
+    // Step 4 · the start date (and, for an imported contract, the end it states)
     public const string StartMissing = "start_missing";
     public const string StartInvalid = "start_invalid";
+    public const string EndMissing = "end_missing";
+    public const string EndInvalid = "end_invalid";
+    public const string TermOutOfRange = "term_out_of_range";
 
     // Step 5 · model and attachments (the documents of the parties are checked, not copied)
     public const string PartyDocumentsDateInvalid = "party_documents_date_invalid";
