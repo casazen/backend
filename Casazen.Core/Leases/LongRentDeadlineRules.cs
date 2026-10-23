@@ -52,7 +52,11 @@ public static class LongRentDeadlineRules
     /// end of the period it renewed into (LR-14, decision D5).
     /// </summary>
     public static DateOnly? NoticeDate(LeaseContractType contractType, DateTime endDate) =>
+        NoticeDate(contractType, RomeCalendar.DateInRome(endDate));
+
+    /// <inheritdoc cref="NoticeDate(LeaseContractType, DateTime)"/>
+    public static DateOnly? NoticeDate(LeaseContractType contractType, DateOnly endDate) =>
         contractType is LeaseContractType.Libero or LeaseContractType.Concordato
-            ? RomeCalendar.DateInRome(endDate).AddMonths(-NoticeMonthsBeforeEnd)
+            ? endDate.AddMonths(-NoticeMonthsBeforeEnd)
             : null;
 }

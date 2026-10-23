@@ -79,7 +79,8 @@ public class LongRentAgendaController(
     /// The overview of the area on today's date: the leases counted by where they stand (as the views of <c>GET api/leases</c>
     /// say), the rent of the current month (expected, collected, still to come, overdue), the checklist (rent overdue,
     /// leases to register, Questura communications, leases to sign: only what has something, most urgent first, each with the
-    /// date and the lease to open) and the next deadline that is not past, within 90 days.
+    /// date and the lease to open), the next deadline that is not past, within 90 days, and <c>now</c> (LR-01b): the most urgent step of
+    /// the landlord in absolute, the same one that lease has in the lease list, or <c>null</c> when there is none.
     /// </summary>
     [HttpGet("overview")]
     [ProducesResponseType(typeof(LongRentOverview), StatusCodes.Status200OK)]

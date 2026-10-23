@@ -6,6 +6,7 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
@@ -261,7 +262,37 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
             firstOfMonth.ToString("yyyy-MM", CultureInfo.InvariantCulture),
             rents,
             checklist,
-            upcoming.Items.FirstOrDefault(d => !d.IsOverdue));
+            upcoming.Items.FirstOrDefault(d => !d.IsOverdue),
+            await NowAsync(scope, todayStored));
+    }
+
+    /// <summary>
+    /// The most urgent step for the landlord in absolute (LR-01b): the lease list of the caller, whole, with the stage and the next step it
+    /// already carries, and the best of the steps for the landlord (lowest priority, then earliest due day, then the lease id). Taken from
+    /// the list so that the overview and the list cannot say different things about the same lease, and so that it holds the leases that
+    /// <see cref="LoadLeasesAsync"/> leaves out of the agenda (a draft still being typed has a next step, and no deadline).
+    /// </summary>
+    private async Task<LongRentNow?> NowAsync(HostScope scope, DateTime todayStored)
+    {
+        var leases = await new LeaseContractRepository(db).GetSummariesAsync(scope, new LeaseListQuery(), todayStored);
+        var best = leases
+            .Where(l => l.NextStep is { Actor: LeaseNextStepActor.Landlord })
+            .OrderBy(l => l.NextStep!.Priority)
+            .ThenBy(l => l.NextStep!.DueOn is null)
+            .ThenBy(l => l.NextStep!.DueOn)
+            .ThenBy(l => l.Id)
+            .FirstOrDefault();
+
+        return best is { Stage: { } stage, NextStep: { } step }
+            ? new LongRentNow(
+                best.Id,
+                best.PropertyId,
+                best.Property?.Name ?? string.Empty,
+                best.TenantAnonymized ? null : best.TenantFirstName,
+                best.TenantAnonymized ? null : best.TenantLastName,
+                stage,
+                step)
+            : null;
     }
 
     /// <summary>The counters of the views of the lease list, from the groups (status, ended, ending soon) of the leases.</summary>
