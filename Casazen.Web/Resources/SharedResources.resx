@@ -3077,6 +3077,9 @@
   <data name="ApeOcrUnavailable" xml:space="preserve">
     <value>Il servizio OCR non è disponibile. Nessun documento è stato salvato: riprova tra poco.</value>
   </data>
+  <data name="ApeIdentificationRequired" xml:space="preserve">
+    <value>Non siamo riusciti a leggere da soli tutti i dati dell’APE della casa. Scrivi il codice identificativo e la classe energetica come sono stampati sull’attestato, poi riprova.</value>
+  </data>
   <data name="ApeField_EnergyClass" xml:space="preserve">
     <value>classe energetica</value>
   </data>
