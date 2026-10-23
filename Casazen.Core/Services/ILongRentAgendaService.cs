@@ -69,8 +69,24 @@ public sealed record LongRentChecklistItem(
     bool IsOverdue);
 
 /// <summary>
+/// The one thing the landlord should do now (LR-01b): of all the leases the caller reaches, the one whose next step is the most urgent
+/// among the steps for the landlord (<see cref="LeaseNextStepActor.Landlord"/>; lowest priority, then earliest due day, then the lease
+/// id). The tenant is the first one, by name only (D29), both names null once anonymized. <c>Step</c> is the step that lease has in the
+/// lease list: the same answer.
+/// </summary>
+public sealed record LongRentNow(
+    Guid LeaseId,
+    Guid PropertyId,
+    string PropertyName,
+    string? TenantFirstName,
+    string? TenantLastName,
+    LeaseStage Stage,
+    LeaseNextStep Step);
+
+/// <summary>
 /// The overview of the long-term area (LR-01, B2): the numbers of the area, the rent of the current month, the checklist and the
 /// next deadline. <c>NextDeadline</c> is the first one that is not past, within <see cref="LongRentDeadlineRules.DefaultWindowDays"/> days.
+/// Since LR-01b <c>Now</c> (at the end) is the most urgent step of the landlord in absolute, <c>null</c> when there is none.
 /// </summary>
 public sealed record LongRentOverview(
     DateOnly Today,
@@ -78,7 +94,8 @@ public sealed record LongRentOverview(
     string RentMonth,
     RentRegisterCounters Rents,
     IReadOnlyList<LongRentChecklistItem> Checklist,
-    LongRentDeadline? NextDeadline);
+    LongRentDeadline? NextDeadline,
+    LongRentNow? Now = null);
 
 /// <summary>
 /// The agenda and the overview of the long-term area (LR-01, B2): read side only, for the leases the caller reaches

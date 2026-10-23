@@ -258,6 +258,21 @@
   <data name="Questura_MarkDone" xml:space="preserve">
     <value>Dopo l'invio, segna la comunicazione come fatta nella pagina del contratto, con la data (e, se vuoi, la ricevuta): solo così la voce della checklist risulta completata.</value>
   </data>
+  <data name="LeaseNoticeReminder_Subject" xml:space="preserve">
+    <value>Disdetta del contratto entro il {1} — {0}</value>
+  </data>
+  <data name="LeaseNoticeReminder_Body" xml:space="preserve">
+    <value>Promemoria: l'ultimo giorno utile per dare la disdetta del contratto di locazione per &lt;strong&gt;{0}&lt;/strong&gt; è il &lt;strong&gt;{1}&lt;/strong&gt;. Giorni rimanenti: &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_BodyToday" xml:space="preserve">
+    <value>Promemoria: l'ultimo giorno utile per dare la disdetta del contratto di locazione per &lt;strong&gt;{0}&lt;/strong&gt; è &lt;strong&gt;oggi&lt;/strong&gt;, {1}.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Renewal" xml:space="preserve">
+    <value>Il periodo in corso termina il &lt;strong&gt;{0}&lt;/strong&gt;. Se nessuno dà la disdetta entro l'ultimo giorno utile, il contratto si rinnova da solo per altri &lt;strong&gt;{1} mesi&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Responsibility" xml:space="preserve">
+    <value>CasaZen calcola questo giorno dalla fine del periodo in corso: non invia la disdetta al posto tuo e non ne giudica la validità. Controlla il termine di preavviso scritto nel tuo contratto. Bozza da confermare con legale.</value>
+  </data>
   <data name="ServiceCategory_cleaning" xml:space="preserve">
     <value>Pulizie</value>
   </data>

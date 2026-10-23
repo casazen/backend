@@ -33,6 +33,9 @@ public sealed record LeasePropertyDto(Guid Id, string Name, string City);
 /// lease is in now (the lists and the deadlines read this one); <c>NoticeOn</c> and <c>NoticeFrom</c> the notice of non-renewal, if any;
 /// <c>TerminatedOn</c> the last day of a lease ended early (or recorded as concluded when the renewal was introduced);
 /// <c>RenewalMonths</c> (derived) the months it goes on for when nobody gives notice, 0 for a lease that does not renew.
+/// Since LR-01b the last two fields say where the lease stands in the path: <c>Stage</c>, one of the eight stages, and <c>NextStep</c>, the one
+/// step it is waiting for (a stable code, who does it, how urgent, the day it is due, the figures a sentence needs). Both are decided here, on
+/// the server, by <see cref="LeaseFlow"/>: a client shows them and never works them out from the other fields.
 /// </remarks>
 public sealed record LeaseSummaryDto(
     Guid Id,
@@ -61,7 +64,9 @@ public sealed record LeaseSummaryDto(
     DateTime CurrentTermEndDate = default,
     DateTime? NoticeOn = null,
     LeaseNoticeParty? NoticeFrom = null,
-    DateTime? TerminatedOn = null)
+    DateTime? TerminatedOn = null,
+    LeaseStage? Stage = null,
+    LeaseNextStep? NextStep = null)
 {
     /// <summary>Months the lease goes on for when it renews by itself (48 libero, 24 concordato); 0 for a type that does not renew.</summary>
     public int RenewalMonths => LongRentRules.RenewalMonths(ContractType) ?? 0;

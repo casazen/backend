@@ -169,7 +169,6 @@ public class AppDbContext(
     // Long-term lease
     public DbSet<LeaseDocument> LeaseDocuments { get; set; } = null!;
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
-    public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
@@ -177,6 +176,11 @@ public class AppDbContext(
     public DbSet<LeaseSigner> LeaseSigners { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
+
+    // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
+    public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
+    public DbSet<ConcordatoFacileGift> ConcordatoFacileGifts { get; set; } = null!;
+
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
     public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
@@ -667,6 +671,10 @@ public class AppDbContext(
         // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => new { e.OrgId, e.DueDate });
+
+        // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
+        modelBuilder.ApplyConfiguration(new ConcordatoFacilePurchaseConfiguration());
+        modelBuilder.ApplyConfiguration(new ConcordatoFacileGiftConfiguration());
 
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).

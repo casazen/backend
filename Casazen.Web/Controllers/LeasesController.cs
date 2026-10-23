@@ -71,7 +71,9 @@ public class LeasesController(
     /// <c>validation_error</c> for any other value); <c>q</c>, a text looked for, without regard to case, in the name, city and
     /// address of the property and in the first and last name of the tenants whose data were not anonymized (at most 100
     /// characters). Each row carries the name of its first tenant and, from the rent ledger, the next due date and what is
-    /// overdue (<see cref="LeaseSummaryDto"/>), read in the same statement as the list.
+    /// overdue (<see cref="LeaseSummaryDto"/>), read in the same statement as the list. Since LR-01b each row also carries its
+    /// <c>stage</c> (one of the eight of the path) and its <c>nextStep</c> (the one step the lease waits for), decided on the server
+    /// (<see cref="LeaseFlow"/>): a client shows them and does not work them out.
     /// </summary>
     /// <remarks>
     /// The <c>status</c> query parameter that older clients send has never filtered this list and still does not: it is not read.
