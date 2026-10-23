@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -51,8 +52,8 @@ public class LeaseDraftDeleterTests
             PropertyId = propertyId,
             Status = LeaseStatus.Draft,
             IsConcordatoFacileSource = true,
-            StartDate = new DateOnly(2026, 1, 1),
-            EndDate = new DateOnly(2029, 1, 1),
+            StartDate = new DateTime(2026, 1, 1),
+            EndDate = new DateTime(2029, 1, 1),
             MonthlyRent = 0,
             WizardMaxStep = 1,
             DraftVersion = 1,
@@ -104,8 +105,8 @@ public class LeaseDraftDeleterTests
             PropertyId = propertyId,
             Status = LeaseStatus.Draft,
             IsConcordatoFacileSource = true,
-            StartDate = new DateOnly(2026, 1, 1),
-            EndDate = new DateOnly(2029, 1, 1),
+            StartDate = new DateTime(2026, 1, 1),
+            EndDate = new DateTime(2029, 1, 1),
             MonthlyRent = 0,
             WizardMaxStep = 1,
             DraftVersion = 1,
@@ -156,8 +157,8 @@ public class LeaseDraftDeleterTests
             PropertyId = propertyId,
             Status = LeaseStatus.Draft,
             IsConcordatoFacileSource = true,
-            StartDate = new DateOnly(2026, 1, 1),
-            EndDate = new DateOnly(2029, 1, 1),
+            StartDate = new DateTime(2026, 1, 1),
+            EndDate = new DateTime(2029, 1, 1),
             MonthlyRent = 0,
             WizardMaxStep = 1,
             DraftVersion = 1,
@@ -206,8 +207,8 @@ public class LeaseDraftDeleterTests
             PropertyId = propertyId,
             Status = LeaseStatus.Draft,
             IsConcordatoFacileSource = true,
-            StartDate = new DateOnly(2026, 1, 1),
-            EndDate = new DateOnly(2029, 1, 1),
+            StartDate = new DateTime(2026, 1, 1),
+            EndDate = new DateTime(2029, 1, 1),
             MonthlyRent = 0,
             WizardMaxStep = 1,
             DraftVersion = 1,
