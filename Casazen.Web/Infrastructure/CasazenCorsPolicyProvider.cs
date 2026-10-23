@@ -18,8 +18,8 @@ public interface ICorsOriginSource
 
 /// <summary>
 /// CORS policy of the web app (FD-17, A3-29 / A9-28): only the configured origins (<see cref="CorsOriginAllowList"/>)
-/// plus whatever an <see cref="ICorsOriginSource"/> accepts. No credentials: the API authenticates with a Bearer token
-/// and uses no cookie, so a browser never has to send cookies cross-origin.
+/// plus whatever an <see cref="ICorsOriginSource"/> accepts. No credentials for the API (it authenticates with a Bearer token
+/// and uses no cookie); the SignalR hubs under <c>/hubs</c> allow them, as the SignalR client asks.
 /// </summary>
 public sealed class CasazenCorsPolicyProvider(
     CorsOriginAllowList allowList,
@@ -34,23 +34,32 @@ public sealed class CasazenCorsPolicyProvider(
 
         var origin = context.Request.Headers.Origin.ToString();
         if (string.IsNullOrEmpty(origin) || allowList.IsOriginAllowed(origin))
-            return BuildPolicy(allowList.IsOriginAllowed);
+            return BuildPolicy(allowList.IsOriginAllowed, context.Request.Path);
 
         foreach (var source in originSources)
         {
             if (await source.IsOriginAllowedAsync(origin, context.Request.Path, context.RequestAborted))
-                return BuildPolicy(candidate => string.Equals(candidate, origin, StringComparison.OrdinalIgnoreCase));
+                return BuildPolicy(candidate => string.Equals(candidate, origin, StringComparison.OrdinalIgnoreCase), context.Request.Path);
         }
 
         // Rejected origin: the policy is still evaluated, it simply emits no Access-Control-Allow-Origin.
-        return BuildPolicy(allowList.IsOriginAllowed);
+        return BuildPolicy(allowList.IsOriginAllowed, context.Request.Path);
     }
 
-    private static CorsPolicy BuildPolicy(Func<string, bool> isOriginAllowed) =>
-        new CorsPolicyBuilder()
+    private static CorsPolicy BuildPolicy(Func<string, bool> isOriginAllowed, PathString requestPath)
+    {
+        var builder = new CorsPolicyBuilder()
             .SetIsOriginAllowed(isOriginAllowed)
             .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             // Idempotency-Key: the key of a payment the host records (SR-06b); without it the browser's preflight refuses the call.
-            .WithHeaders("Authorization", "Content-Type", "Accept", "X-Requested-With", "Idempotency-Key")
-            .Build();
+            // X-SignalR-User-Agent: sent by the SignalR browser client on its negotiate request (the hubs only use it).
+            .WithHeaders("Authorization", "Content-Type", "Accept", "X-Requested-With", "Idempotency-Key", "X-SignalR-User-Agent");
+
+        // The SignalR client negotiates with credentials included by default: the hubs answer Access-Control-Allow-Credentials for the
+        // allowed origins (echoed one by one, never "*"). The API itself stays without credentials: it uses no cookie.
+        if (requestPath.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase))
+            builder.AllowCredentials();
+
+        return builder.Build();
+    }
 }

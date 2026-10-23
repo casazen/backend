@@ -407,6 +407,9 @@ if (hangfireStorage is not null)
 }
 
 app.MapControllers();
+// Real-time notifications (UI-12a): WebSockets, with server-sent events and long polling as fallbacks. Not behind response caching,
+// compression or a rate limiter (the app has none for it); the token arrives as ?access_token= (see AddCasazenAuthentication).
+app.MapHub<Casazen.Web.Hubs.NotificationsHub>(Casazen.Web.Hubs.NotificationsHub.Path);
 app.MapCasazenHealthChecks();
 
 // Log application URLs on startup

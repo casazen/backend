@@ -41,6 +41,12 @@ public interface IInAppNotificationService
     Task<int> MarkAllReadAsync(string userId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Marks as read the unread notifications of <paramref name="type"/> about <paramref name="entityId"/> (e.g. the guest messages of a
+    /// booking the host has just read) and returns how many it was. One conditional statement, same rows as the other operations.
+    /// </summary>
+    Task<int> MarkEntityReadAsync(string userId, string type, Guid entityId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes the notifications older than <see cref="InAppNotificationLimits.RetentionDays"/> days, of every user and org,
     /// read or not, and returns how many it deleted. For the recurring job; not tenant-filtered on purpose.
     /// </summary>
