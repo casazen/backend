@@ -50,6 +50,12 @@ from `IGuestSessionService.FindBookingAsync`, so a booking of another guest or s
   latest message first: `{ bookingId, bookingCode, propertyId, propertyName, guestName, checkInDate, checkOutDate, state, lastMessageAt,
   lastMessageSender, lastGuestMessagePreview, unreadCount, needsReply }`. `needsReply=true` is the «Da rispondere» of the Home: **open** threads whose
   last message is the guest's. `false` is the others; omitted is all.
+- `GET api/messages/unread` (same policy and scope) → `{ "items": [ { "bookingId", "unreadCount" } ] }`: open threads with something unread only,
+  at most 200, never any text. For the badges of the calendar and the lists.
+
+**Notifications of a new message.** Every message of the guest also queues a push and an in-app notification to the hosts of the booking
+(type `guest-message`, route `/bookings/{id}/messages`, text without guest name or message), and reading or answering the thread clears the
+caller's notifications of it; the bell is updated in real time. See [`in-app-notifications.md`](in-app-notifications.md) §§ 9-10.
 
 ## Emails (the only writes to a third party)
 
@@ -80,6 +86,5 @@ nothing. No email goes to an anonymized guest.
 
 ## Not here (deferred)
 
-Automatic answers and the keyword router, the disclosure line, emergencies, `GuestMessageDecision`, `responseTimeMinutes`, in-app / push
-notifications of a new message, the guest's unread badge, the guest's language (the emails are Italian), attachments, the "Scrivi" shortcut from the
+Automatic answers and the keyword router, the disclosure line, emergencies, `GuestMessageDecision`, `responseTimeMinutes`, the guest's unread badge, the guest's language (the emails are Italian), attachments, the "Scrivi" shortcut from the
 guests page, quick replies.
