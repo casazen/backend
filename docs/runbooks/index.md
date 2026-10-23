@@ -91,6 +91,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | [`canone-concordato.md`](canone-concordato.md) | Canone concordato: range, dati dell'accordo, tipo di contratto (LT-10, LT-13) | LT-08, LT-10, LT-13 |
 | [`long-rent-aggregates.md`](long-rent-aggregates.md) | elenco contratti con viste e ricerca, registro dei canoni con i numeri del mese e i solleciti e-mail (limite di frequenza, nota, link Stripe), scadenze e panoramica d'area, scope per immobile in SQL | LR-01 |
 | [`long-rent-lease-draft.md`](long-rent-lease-draft.md) | contratto guidato con bozza sul server: creazione con il solo immobile, salvataggio per passo con versione (409 con due schede), tappe e «cosa manca» calcolati dal server, revisione e conferma, «scaricato per la firma», eliminazione della bozza (BE-PM02-1), pulizia delle bozze abbandonate (180 giorni), dati dei locatori e regole d'area, cifratura, migrazione e rollback | LR-12 |
+| [`long-rent-lease-import.md`](long-rent-lease-import.md) | importazione di un contratto già firmato fuori da CasaZen, senza modello approvato: bozza con origine «importato», regole rilassate (APE avviso, inizio nel passato, transitorio e durata dichiarata, nessuna fascia del concordato), `POST …/import` con PDF e giorno della firma sotto il lock del contratto, copia nella sezione Documenti, cosa non parte, registrazione dichiarata dopo | LR-13 |
 
 ## SEO e siti pubblici
 

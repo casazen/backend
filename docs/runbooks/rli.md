@@ -188,6 +188,9 @@ offers self-serve: the provider path exists in the code but stays **off, with no
 5. `GET /api/leases/{id}/signed-document` streams it from the private bucket, only to a caller who may read the lease
    (tenant filter + TN-3), with `Cache-Control: private, no-store`. 404 `lease_signed_contract_not_available` before.
 6. The RLI registration (manual path above, LT-01) starts once the lease is `Signed`.
+7. A contract signed **outside CasaZen with the owner's own model** reaches the same `Signed` state without the template gate of steps 1 and 3: `POST /api/leases/{id}/import`
+   (LR-13, only for a draft created with `origin: Imported`; [`long-rent-lease-import.md`](long-rent-lease-import.md)). It records the same things as step 4 (the stipula, the
+   signers, `AllPartiesSigned` with payload `imported`) plus the event `Imported`; the registration, if it already happened, is then declared with the manual path.
 
 ### Signers (A7-16)
 

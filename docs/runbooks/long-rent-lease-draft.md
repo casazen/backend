@@ -9,7 +9,8 @@ downloaded for signature, or deletes it. The complete creation `POST /api/leases
 Code: `LeaseDraftsController`, `LongRentLeaseSetupController`; service `LeaseDraftService` (+ `LeaseDraftDeleter`,
 `LeaseDraftRetentionService`, `LongRentLandlordDefaultsService`, `LeaseConcordatoAssessor`, `LeaseDrafts/LeaseDraftProjection`); pure rules in
 `Casazen.Core/Leases/` (`LeaseDraftValues`, `LeaseDraftPatch`, `LeaseDraftRules`, `LeaseDraftProgress`, `LeaseReview`,
-`LeaseDraftFingerprint`, `LongRentRules`, `LeaseDraftCodes`); job `LeaseDraftRetentionJob`; options `LongRentLeaseOptions`.
+`LeaseDraftFingerprint`, `LongRentRules`, `LeaseDraftCodes`); job `LeaseDraftRetentionJob`; options `LongRentLeaseOptions`. The import of a contract
+signed elsewhere (LR-13) is in [`long-rent-lease-import.md`](long-rent-lease-import.md).
 
 ## 1. Endpoints
 
@@ -29,6 +30,7 @@ the caller may not handle (a collaborator limited to some properties) is **403**
 | `POST /api/leases/{id}/sent` `{ version? }` | Marks the contract as downloaded for the signature on paper (§ 6) | 200 `{ version, sentForSignatureAt, flow }`; 422 `lease_review_not_confirmed`, `lease_review_blocked`, `contract_template_not_approved`, `contract_data_missing`, `lease_sent_not_applicable` |
 | `DELETE /api/leases/{id}/sent` `{ version? }` | Takes it back | 200, same shape |
 | `DELETE /api/leases/{id}` | Deletes the draft with everything tied to it (§ 7) | 204; 409 `lease_not_deletable` |
+| `POST /api/leases/{id}/import` (multipart, `lease.create` + `lease.sign`) | Brings in a contract already signed elsewhere, from a draft of origin `Imported` (LR-13): see [`long-rent-lease-import.md`](long-rent-lease-import.md) | 200 the masked detail of the lease; 409 `lease_not_draft`, `lease_draft_conflict`; 422 `lease_import_not_imported_origin`, `lease_review_blocked`, `lease_signed_contract_invalid`, `lease_stipula_date_in_future` |
 | `GET /api/long-rent/landlord-defaults` | The landlord data the wizard fills in (§ 9) | 200 `{ firstName, lastName, fiscalCode, residence, contactEmail }`, each may be `null` |
 | `GET /api/long-rent/rules` (`lease.read`) | The figures of the area, from the constants the backend checks against (§ 9) | 200 |
 
@@ -83,8 +85,8 @@ it as it was, so a client that sends one field never wipes the others.
 |---|---|
 | 1 · Immobile | `propertyId` (a property of the org the caller may handle; chosen, never un-chosen) |
 | 2 · Parti | `landlords`, `tenants`: lists of `{ id?, firstName, lastName, fiscalCode, citizenship, residence, contactEmail }` (an entry nobody typed in is dropped; an entry keeps the `id` of an entry of **the same role**: any other `id` — unknown, of the other role, repeated — is a new entry, so an id is never in two entries; at most 10 per role) |
-| 3 · Condizioni | `contractType` (`Libero`, `Concordato`; `Transitorio` is kept and reported as not available, LR-D12), `taxRegime` (`CedolareSecca`, `Ordinario`), `monthlyRent`, `securityDeposit`, `concordato` (`sqm`, `typeAElementCount`…`qualifyingTypeDElementCount`, `isFurnished`, `stoveHeating`, `airConditioning`, `garageSqm`, `balconySqm`, `otherAppurtenanceSqm`, `privateGreenSqm`, `zoneName`, `cadastralSheet`) |
-| 4 · Durata e date | `startDate` (`yyyy-MM-dd`); the end of the first period is computed (`computed.endDate`) from the type: 48 months for the libero, 36 for the concordato |
+| 3 · Condizioni | `contractType` (`Libero`, `Concordato`; `Transitorio` is kept and reported as not available, LR-D12, **unless the contract is an imported one**, LR-13), `taxRegime` (`CedolareSecca`, `Ordinario`), `monthlyRent`, `securityDeposit`, `concordato` (`sqm`, `typeAElementCount`…`qualifyingTypeDElementCount`, `isFurnished`, `stoveHeating`, `airConditioning`, `garageSqm`, `balconySqm`, `otherAppurtenanceSqm`, `privateGreenSqm`, `zoneName`, `cadastralSheet`; an imported contract does not use them) |
+| 4 · Durata e date | `startDate` (`yyyy-MM-dd`); the end of the first period is computed (`computed.endDate`) from the type: 48 months for the libero, 36 for the concordato. **Imported contracts only** (LR-13): `endDate` (`yyyy-MM-dd`), the last day the contract states, free inside the limits of the type; the transitory type has no term of its own and needs it. A contract made in CasaZen never reads `endDate` |
 | 5 · Modello e allegati | `parties`: `[{ id, documentsVerifiedOn }]`, the day a document of each party was checked (`yyyy-MM-dd`, not after today) |
 
 **A wrong or incomplete value is not an error**: it is saved and reported in the `flow`. That includes a number too big to hold (`1e30` as
@@ -108,16 +110,19 @@ For an imported contract steps 5 and 6 are `NotApplicable` and step 7 asks for t
 | `landlord_incomplete`, `tenant_incomplete` | 2 | `index`, `fields` (`firstName`, `lastName`, `fiscalCode`, `citizenship`, `residence`, `contactEmail`) |
 | `party_fiscal_code_duplicate` | 2 | `entries: [{ role, index }]` (the same fiscal code twice in the contract: the later entries are the ones to change) |
 | `contract_type_missing` | 3 | — |
-| `lease_type_not_available` | 3 | `type` when it names a type that exists (`Transitorio`), none when it names nothing |
+| `lease_type_not_available` | 3 | `type` when it names a type that exists (`Transitorio`), none when it names nothing (the student lease is not a type of CasaZen). Never for `Transitorio` on an imported contract (LR-13) |
 | `tax_regime_missing` | 3 | — |
 | `cedolare_not_allowed_company` | 3 | — (the cedolare secca does not apply to a tenant with an 11-digit code) |
 | `rent_missing`, `rent_invalid` | 3 | — (a rent is more than 0, at most 1,000,000, with cents at most) |
-| `concordato_data_missing`, `concordato_data_invalid` | 3 | — |
-| `concordato_unavailable` | 3 | `reason` (`CanoneConcordatoReasonCodes`: no agreement data for the comune, a zone that is missing…) |
-| `rent_out_of_band` | 3 | `minMonthly`, `maxMonthly` (a rent outside a **verified** range; outside an indicative one it is only a warning of the review) |
+| `concordato_data_missing`, `concordato_data_invalid` | 3 | — (not for an imported contract: the range is not checked, LR-D13) |
+| `concordato_unavailable` | 3 | `reason` (`CanoneConcordatoReasonCodes`: no agreement data for the comune, a zone that is missing…); not for an imported contract |
+| `rent_out_of_band` | 3 | `minMonthly`, `maxMonthly` (a rent outside a **verified** range; outside an indicative one it is only a warning of the review); not for an imported contract |
 | `deposit_invalid` | 3 | — |
 | `deposit_too_high` | 3 | `maxAmount`, `maxRents` (the security deposit is at most 3 rents, `LongRentRules.DepositMaxRents`) |
 | `start_missing`, `start_invalid` | 4 | — |
+| `end_missing` | 4 | — (an imported contract of the transitory type, whose term is free, without the `endDate` it states; any other type without one follows its type) |
+| `end_invalid` | 4 | — (an imported contract: `endDate` is typed and is not a date) |
+| `term_out_of_range` | 4 | `reason` (`lease_end_before_start`, `lease_term_too_short`, `lease_term_too_long`), `type` (when the type is known), `minMonths`, `maxMonths` (the limits of the type: 48 the libero, 36 the concordato, 1 to 18 the transitory) — an imported contract whose stated term is not one its type allows |
 | `party_documents_date_invalid` | 5 | `role`, `index` |
 | `review_not_confirmed` | 6 | — |
 | `not_sent` | 7 | — (the review is confirmed, the contract was not downloaded for signature) |
@@ -151,7 +156,7 @@ order of the steps), with `counts { block, warn, info, ok }`. No personal data i
 | Severity | Codes |
 |---|---|
 | `Block` | the needs of steps 1 to 5 (same code, same step, same params): the review and the "what is left" list never disagree. For an imported contract `ape_missing` and `cadastral_missing` are `Warn` |
-| `Warn` | `property_short_mode` (the property is let for short stays, LR-D15: a warning, not a block) · `start_in_past` (`start`) · `lease_overlap` (`count`: another contract of the property, not rejected and not a draft nobody handed out for signature, in the dates of the first period; LR-D14: a warning, one can let by rooms) · `rent_outside_indicative_band` (`minMonthly`, `maxMonthly`) · `template_data_missing` (the template is approved but the draft lacks data it uses) |
+| `Warn` | `property_short_mode` (the property is let for short stays, LR-D15: a warning, not a block) · `start_in_past` (`start`; not for an imported contract, which is already in force) · `lease_overlap` (`count`: another contract of the property, not rejected and not a draft nobody handed out for signature, in the dates of the first period; LR-D14: a warning, one can let by rooms) · `rent_outside_indicative_band` (`minMonthly`, `maxMonthly`) · `template_data_missing` (the template is approved but the draft lacks data it uses) |
 | `Info` | `documents_not_verified` (`count`) · `tenant_extra_eu` (the Questura communication, LT-07) · `template_not_approved` (LR-D28: to know, not a block) |
 | `Ok` | `property_ok`, `ape_ok`, `cadastral_ok`, `landlords_ok` (`count`), `tenants_ok` (`count`), `rent_ok` (`amount`), `rent_in_band`, `deposit_ok` (`amount`, `rents`), `start_ok` (`start`, `end`, `months`) |
 
@@ -218,7 +223,8 @@ e-mail of the caller. Any field may be `null`; the residence is only known from 
 
 `GET /api/long-rent/rules` (`lease.read`) hands the screens the figures the backend applies, so **no figure of law is written in the
 interface** (LR-D29): `termMonths { Libero: 48, Concordato: 36 }`, `renewalMonths { Libero: 48, Concordato: 24 }`, `noticeMonths: 6`,
-`registrationDays: 30`, `depositMaxRents: 3`, `availableTypes: [Libero, Concordato]`. The terms, the notice and the registration deadline are the
+`registrationDays: 30`, `depositMaxRents: 3`, `availableTypes: [Libero, Concordato]` and, since LR-13, `importedTypes: [Libero, Concordato, Transitorio]`
+(what an imported contract can be) and `transitoryTermMonths { min: 1, max: 18 }` (the free term of the transitory type). The terms, the notice and the registration deadline are the
 constants the rest of the backend already uses (`LeaseContractTerms`, `LongRentDeadlineRules`, `RliRegistrationDeadline`); the deposit limit
 (3 rents) and the renewal periods are product values taken from the demo and the interview and **not verified by a lawyer**: LR-D29 makes
 that verification a condition for the production release of the area. Changing a figure is a change in `LongRentRules` and nowhere else.
@@ -305,15 +311,16 @@ Deploy **on the test environment first**; the figures of § 9 are to be confirme
 | LR-D8 (a) | The data of law of a party: name, fiscal code or VAT number, residence or registered office, citizenship; the e-mail is optional |
 | LR-D10 (a) | `sent` ("Scarica da firmare") needs the **explicit** confirmation of the review: 422 `lease_review_not_confirmed` otherwise |
 | LR-D11 (a) | A company as tenant with the cedolare secca: `cedolare_not_allowed_company`, a block of the review |
-| LR-D12 (a) | `Libero` and `Concordato` can be created; `Transitorio` and the student lease are kept as typed and reported as not available (`lease_type_not_available`); the transitory contract enters as an imported one (LR-13) |
+| LR-D12 (a) | `Libero` and `Concordato` can be created; `Transitorio` and the student lease are kept as typed and reported as not available (`lease_type_not_available`); the transitory contract enters as an imported one (LR-13: done, `long-rent-lease-import.md`) |
 | LR-D14 (a) | Overlap with another contract of the property: a warning of the review, not a block |
 | LR-D15 (a) | A property let for short stays: a warning of the review, not a block |
 | LR-D28 | A template that is not approved: `sent` answers 422 `contract_template_not_approved`, the review says it as to know |
 | LR-D29 (a) | Figures of law only on the server (`GET /api/long-rent/rules`); to be confirmed by a lawyer before the production release |
 | LR-D33 (a) | Drafts idle for 180 days are deleted, never one with a signed copy |
 
-Open: the starting dates of an incomplete draft show in the lease list until the interface shows drafts by stage; the rules specific to an
-imported contract (the transitory type allowed, relaxed APE and dates) arrive with LR-13; the renewal periods are in `LongRentRules` for LR-14.
+Open: the starting dates of an incomplete draft show in the lease list until the interface shows drafts by stage; the renewal periods are in
+`LongRentRules` for LR-14. The rules specific to an imported contract (the transitory type, the term it states, the APE and a start in the past
+relaxed, no range of a concordato) and the import itself are in [`long-rent-lease-import.md`](long-rent-lease-import.md) (LR-13).
 Known limits, not in this task: nothing caps the number of drafts an org can create (only the retention bounds them: a limit per org or a rate
 limit on `POST /api/leases/drafts` is a decision of the product owner); the fiscal reports count any lease that overlaps the tax year as
 "leased", an abandoned draft with a typed start date included, as every draft always did; every read of a concordato draft asks the
