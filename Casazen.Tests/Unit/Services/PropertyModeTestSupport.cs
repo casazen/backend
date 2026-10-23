@@ -224,11 +224,16 @@ internal sealed class PropertyModeHarness : IDisposable
         return block;
     }
 
+    /// <param name="terminatedOn">
+    /// The lease is recorded as ended on that day (LR-14): a libero lease whose period is over renews by itself unless a notice or an
+    /// early termination says otherwise, so a lease "that ended before today" is one that was concluded.
+    /// </param>
     public async Task<LeaseContract> SeedLeaseAsync(
         Property property,
         DateTime start,
         DateTime end,
-        LeaseStatus status = LeaseStatus.Registered)
+        LeaseStatus status = LeaseStatus.Registered,
+        DateTime? terminatedOn = null)
     {
         var lease = new LeaseContract
         {
@@ -238,6 +243,7 @@ internal sealed class PropertyModeHarness : IDisposable
             StartDate = start,
             EndDate = end,
             MonthlyRent = 800m,
+            TerminatedOn = terminatedOn,
         };
         Db.LeaseContracts.Add(lease);
         await Db.SaveChangesAsync();
