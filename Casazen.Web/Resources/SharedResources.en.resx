@@ -2224,6 +2224,9 @@
   <data name="RentLeaseDatesInvalid" xml:space="preserve">
     <value>The lease dates do not allow a rent schedule.</value>
   </data>
+  <data name="RentTrackFromInvalid" xml:space="preserve">
+    <value>The date to track the rents from cannot be after the end of the lease.</value>
+  </data>
   <data name="RentBillingDayInvalid" xml:space="preserve">
     <value>The due day must be between {0} and {1}.</value>
   </data>
