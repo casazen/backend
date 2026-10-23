@@ -787,6 +787,14 @@ public partial class ServiceRequestService(
             .Include(r => r.SupplierOrg)
             .FirstOrDefaultAsync(r => r.Id == id && r.SupplierOrgId == supplierOrgId, cancellationToken);
 
+    /// <summary>
+    /// The statuses of the closed view of a host (<see cref="ServiceRequestHostView.Closed"/>): the ones nothing leaves, as the state
+    /// machine says (<see cref="ServiceRequestStateMachine.IsFinal"/>), in an array the query can turn into an IN list. The open view
+    /// is every other status.
+    /// </summary>
+    private static readonly ServiceRequestStatus[] ClosedStatuses =
+        [.. Enum.GetValues<ServiceRequestStatus>().Where(ServiceRequestStateMachine.IsFinal)];
+
     public Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForHostAsync(
         HostScope scope,
         ServiceRequestRentalContext rentalContext,
@@ -795,6 +803,7 @@ public partial class ServiceRequestService(
         Guid? bookingId,
         int page,
         int pageSize,
+        ServiceRequestHostView? view = null,
         CancellationToken cancellationToken = default)
     {
         // IgnoreQueryFilters: scoped by the explicit host OrgId predicate (see GetByIdForHostAsync).
@@ -811,6 +820,11 @@ public partial class ServiceRequestService(
 
         if (status is not null)
             query = query.Where(r => r.Status == status.Value);
+
+        if (view == ServiceRequestHostView.Open)
+            query = query.Where(r => !ClosedStatuses.Contains(r.Status));
+        else if (view == ServiceRequestHostView.Closed)
+            query = query.Where(r => ClosedStatuses.Contains(r.Status));
 
         if (propertyId is not null)
             query = query.Where(r => r.PropertyId == propertyId.Value);

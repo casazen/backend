@@ -6,7 +6,8 @@ namespace Casazen.Core.Services;
 
 public interface IPropertyDocumentService
 {
-    Task<PropertyDocument> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy);
+    /// <summary>Stores a document; for an APE, also what the automatic reading found (<see cref="PropertyDocumentUpload.ApeCheck"/>).</summary>
+    Task<PropertyDocumentUpload> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy);
     Task<IEnumerable<PropertyDocument>> GetByPropertyIdAsync(Guid propertyId);
     Task<PropertyDocument?> GetDocumentAsync(Guid documentId);
     Task DeleteDocumentAsync(Guid documentId);
@@ -24,3 +25,6 @@ public interface IPropertyDocumentService
     /// </summary>
     Task<PropertyDocument> UpdateApeIdentificationAsync(PropertyDocument document, string? code, string? energyClass);
 }
+
+/// <summary>A document just stored and, for an APE, what its automatic reading found (null for any other type).</summary>
+public sealed record PropertyDocumentUpload(PropertyDocument Document, ApeUploadCheck? ApeCheck);

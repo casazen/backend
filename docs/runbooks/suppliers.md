@@ -256,7 +256,8 @@ property page sends `POST /api/long-rent/service-requests` with the property onl
 
 | Endpoint | Policy | Notes |
 |---|---|---|
-| `GET /api/long-rent/service-requests?propertyId=` | long-rent `property.read` | the long-rent requests in scope (owner or org-wide role) |
+| `GET /api/long-rent/service-requests?propertyId=&status=&view=` | long-rent `property.read` | the long-rent requests in scope (owner or org-wide role); `view=open` keeps the ones still to follow (`Richiesto`, `PresoInCarico`, `InCorso`, `Completato`), `view=closed` the ones that are over (`Pagato`, `Rifiutato`, `Annullato`, the final statuses of the state machine); no `view` or an unknown one keeps all (LR-08a) |
+| `GET /api/long-rent/service-requests/{id}` | long-rent `property.read` | one request in the same shape as the list (dates of its path and `history` included); 404 `service_request_not_found` for another org, a property outside the caller's scope or a short-rent request (LR-08a) |
 | `GET /api/long-rent/service-requests/suppliers?propertyId=&category=` | long-rent `property.read` | active suppliers of the property's comune (same answer as `GET /api/suppliers?propertyId=`) |
 | `POST /api/long-rent/service-requests` | long-rent `property.write` | body as the short-rent one, without `bookingId` |
 | `POST /api/long-rent/service-requests/{id}/mark-paid` | long-rent `property.write` | completed long-rent request only |
