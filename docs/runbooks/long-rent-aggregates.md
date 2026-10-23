@@ -204,7 +204,7 @@ Nella stessa transazione del contratto (il lock della riga del contratto e il lo
 
 ### 10.4 Il job `lease-term-renewal`
 
-Ogni ora al minuto 15 (UTC), sempre registrato. Una corsa prende una lock di sessione (due corse non si sovrappongono nemmeno fuori da Hangfire) e rinnova **un contratto alla volta**, ognuno in una transazione sotto il lock della sua riga, rileggendo le condizioni dopo il lock:
+Ogni ora al minuto 15 (UTC), sempre registrato. Una corsa prende un lock di sessione (due corse non si sovrappongono nemmeno fuori da Hangfire) e rinnova **un contratto alla volta**, ognuno in una transazione sotto il lock della sua riga, rileggendo le condizioni dopo il lock:
 
 - **si rinnova** un contratto in vigore (§ 10.2), di tipo libero o concordato, senza disdetta (`NoticeOn`) e non terminato (`TerminatedOn`), il cui `CurrentTermEndDate` è **prima di oggi** (giorno di Roma): `CurrentTermEndDate` avanza di un periodo (`LongRentRules`: 48 mesi il libero, 24 il concordato; `LeaseRenewal.NextEnd`: il giorno prima dello stesso giorno un periodo dopo, es. 31/10/2030 → 31/10/2034) e c'è un evento `TermRenewed` (payload: il nuovo ultimo giorno) per ogni periodo; al massimo 20 periodi per contratto per corsa, la corsa dopo prosegue;
 - **non si tocca mai**: un transitorio, una bozza o un contratto non firmato da tutte le parti, un rifiutato, uno con disdetta, uno terminato (anche prima del rinnovo), uno già rinnovato oltre oggi;
