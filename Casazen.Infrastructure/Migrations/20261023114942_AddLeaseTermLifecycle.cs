@@ -10,8 +10,9 @@ namespace Casazen.Infrastructure.Migrations
     {
         /// <summary>
         /// LR-14. First statement: until now the end of a lease was its <c>EndDate</c>, so the end of the period the lease is in is that
-        /// same date for every row (only the rows still at the column's starting value, so a run over leases the new code renewed changes
-        /// nothing). Second statement: <b>no retroactive renewal</b> (decision of the product owner, 17 October 2026): a signed lease of a type
+        /// same date for every row (only the rows still at the column's starting value, which the database stores as <c>-infinity</c>:
+        /// <c>DateTime.MinValue</c> of the column default, so anything before the year 2 is the starting value, and a run over leases the new
+        /// code renewed changes nothing). Second statement: <b>no retroactive renewal</b> (decision of the product owner, 17 October 2026): a signed lease of a type
         /// that renews by itself (libero 0, concordato 1; signed 3, registration pending 4, sent to the provider 5, registered 6) whose last
         /// day had already passed on the day of the migration (Europe/Rome) stays concluded, as the system always showed it. It is recorded as
         /// ended on its last day (<c>TerminatedOn</c> = <c>EndDate</c>), which is what keeps the renewal job away from it: no period is
@@ -20,7 +21,7 @@ namespace Casazen.Infrastructure.Migrations
         /// by support: the next run of the job then brings the lease forward period by period.
         /// </summary>
         public const string BackfillSql = """
-            UPDATE "LeaseContracts" SET "CurrentTermEndDate" = "EndDate" WHERE "CurrentTermEndDate" = TIMESTAMPTZ '0001-01-01 00:00:00+00';
+            UPDATE "LeaseContracts" SET "CurrentTermEndDate" = "EndDate" WHERE "CurrentTermEndDate" < TIMESTAMPTZ '0002-01-01 00:00:00+00';
             UPDATE "LeaseContracts" SET "TerminatedOn" = "EndDate"
             WHERE "TerminatedOn" IS NULL
               AND "NoticeOn" IS NULL
