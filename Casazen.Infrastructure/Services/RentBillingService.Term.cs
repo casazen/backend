@@ -46,8 +46,9 @@ public sealed partial class RentBillingService
             .ToHashSet();
 
         // Only the whole periods after the ones the plan already has: an installment that exists (paid, in flight, rewritten by the landlord)
-        // is never touched. The plan is built from the lease start with the cadence of the schedule, so the new periods continue the old ones.
-        var plan = RentInstallmentPlan.Build(start, end, schedule.Cadence, schedule.BillingDayOfMonth, schedule.Amount);
+        // is never touched. The plan is built from the lease start with the cadence of the schedule, so the new periods continue the old ones,
+        // and from the day the plan is tracked from (LR-04a): a plan that skipped the past of a lease already running never gets it back.
+        var plan = RentInstallmentPlan.Build(start, end, schedule.Cadence, schedule.BillingDayOfMonth, schedule.Amount, schedule.TrackFrom);
         var now = UtcNow;
         var added = 0;
         foreach (var installment in plan.Installments.Where(i => !existing.Contains(i.PeriodStart)))

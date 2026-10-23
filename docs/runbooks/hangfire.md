@@ -556,7 +556,9 @@ long-term leases ([stripe.md](stripe.md#recurring-rent-of-long-term-leases-lt-06
 - emails the tenants the payment link of each installment due within `RentBilling__PaymentRequestDaysBeforeDue` days
   (default 5, provisional), once: the request is recorded with the installment under the lease's advisory lock, so a
   retry, a manual trigger or a second instance never emails twice. Installments already due when the schedule was
-  generated are left to the landlord. Only active schedules of orgs whose Stripe account accepts charges.
+  generated are left to the landlord. Only active schedules of orgs whose Stripe account accepts charges, **and only
+  schedules with `OnlineRequestsEnabled`** (LR-04a, LR-D19: a plan created without `onlineRequests: true` writes to no
+  tenant; the plans that existed when the column was added are on). The flag is read again under the lease lock.
 - reads again from Stripe the installments `Processing`, in case a webhook was lost.
 - A failed installment is logged (`Rent payment request of installment … failed`) and retried at the next run; when
   no email can be queued the request is not recorded and the next run tries again.
@@ -565,6 +567,9 @@ long-term leases ([stripe.md](stripe.md#recurring-rent-of-long-term-leases-lt-06
 -- Installments requested today, and those waiting for Stripe
 SELECT "Status", count(*) FROM casazen_prod."RentLedgerEntries"
 WHERE "PaymentRequestedAt" >= date_trunc('day', now()) OR "Status" = 1 GROUP BY 1;
+
+-- Active plans, with and without online requests (LR-04a; a new plan starts with them off)
+SELECT "OnlineRequestsEnabled", count(*) FROM casazen_prod."RentSchedules" WHERE "IsActive" GROUP BY 1;
 ```
 
 ## 13. Showcase booking upkeep (SP-10)
