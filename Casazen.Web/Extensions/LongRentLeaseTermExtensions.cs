@@ -6,7 +6,8 @@ namespace Casazen.Web.Extensions;
 
 /// <summary>
 /// The end of a long-term lease in force (LR-14): the service that records a notice of non-renewal or an early termination and renews a lease
-/// by itself, and the hourly job that does the renewal. The endpoints and the job are always on, there is no flag. Runbook:
+/// by itself, and the hourly job that does the renewal, and the daily job that reminds the landlord of the last day to give notice
+/// (LR-11c-a). The endpoints and the jobs are always on, there is no flag. Runbook:
 /// <c>docs/runbooks/long-rent-aggregates.md</c> (§ 10).
 /// </summary>
 public static class LongRentLeaseTermExtensions
@@ -15,6 +16,7 @@ public static class LongRentLeaseTermExtensions
     {
         services.AddScoped<ILeaseTermService, LeaseTermService>();
         services.AddScoped<LeaseTermRenewalJob>();
+        services.AddScoped<LeaseNoticeReminderJob>();
         return services;
     }
 }

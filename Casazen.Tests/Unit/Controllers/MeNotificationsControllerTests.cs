@@ -26,6 +26,7 @@ public class MeNotificationsControllerTests
     private const string UserId = "auth0|anna";
 
     private readonly Mock<IInAppNotificationService> _service = new(MockBehavior.Strict);
+    private readonly Mock<IInAppNotificationPublisher> _publisher = new(MockBehavior.Strict);
 
     private MeNotificationsController Controller(string? sub = UserId)
     {
@@ -33,7 +34,7 @@ public class MeNotificationsControllerTests
         if (sub is not null)
             http.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", sub)], "test"));
 
-        return new MeNotificationsController(_service.Object)
+        return new MeNotificationsController(_service.Object, _publisher.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
         };
@@ -164,11 +165,13 @@ public class MeNotificationsControllerTests
     {
         var id = Guid.NewGuid();
         _service.Setup(s => s.MarkReadAsync(UserId, id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _publisher.Setup(p => p.PublishAsync(UserId, null, null, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var result = await Controller().MarkRead(id, CancellationToken.None);
 
         Assert.IsType<NoContentResult>(result);
         _service.Verify(s => s.MarkReadAsync(UserId, id, It.IsAny<CancellationToken>()), Times.Once);
+        _publisher.Verify(p => p.PublishAsync(UserId, null, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -196,11 +199,13 @@ public class MeNotificationsControllerTests
     public async Task MarkAllRead_MarksTheNotificationsOfTheCaller_204()
     {
         _service.Setup(s => s.MarkAllReadAsync(UserId, It.IsAny<CancellationToken>())).ReturnsAsync(3);
+        _publisher.Setup(p => p.PublishAsync(UserId, null, null, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var result = await Controller().MarkAllRead(CancellationToken.None);
 
         Assert.IsType<NoContentResult>(result);
         _service.Verify(s => s.MarkAllReadAsync(UserId, It.IsAny<CancellationToken>()), Times.Once);
+        _publisher.Verify(p => p.PublishAsync(UserId, null, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

@@ -27,6 +27,9 @@ public sealed class GuestMessageService(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks links,
+    IPushNotificationService pushNotifications,
+    IInAppNotificationService inAppNotifications,
+    IInAppNotificationPublisher notificationPublisher,
     ILogger<GuestMessageService> logger,
     TimeProvider? timeProvider = null) : IGuestMessageService
 {
@@ -76,6 +79,7 @@ public sealed class GuestMessageService(
                 cancellationToken);
 
         logger.LogInformation("Guest message {MessageId} written in thread {ThreadId} of booking {BookingId}", message.Id, threadId, booking.Id);
+        PushToHosts(booking, message.Id);
         await NotifyHostAsync(booking, threadId, now, cancellationToken);
         return new SentGuestMessage(message, redacted, false);
     }
@@ -148,15 +152,17 @@ public sealed class GuestMessageService(
                 cancellationToken);
 
         logger.LogInformation("Host message {MessageId} written in thread {ThreadId} of booking {BookingId}", message.Id, threadId, bookingId);
+        await ClearNotificationsAsync(bookingId, userId, cancellationToken);
         await NotifyGuestAsync(booking, threadId, now, cancellationToken);
         return new SentGuestMessage(message, false, false);
     }
 
-    public async Task<HostThreadView> MarkReadAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    public async Task<HostThreadView> MarkReadAsync(Guid bookingId, string? userId, CancellationToken cancellationToken = default)
     {
         await db.GuestThreads
             .Where(t => t.BookingId == bookingId && t.LastGuestMessageAt != null)
             .ExecuteUpdateAsync(set => set.SetProperty(t => t.HostReadAt, t => t.LastGuestMessageAt), cancellationToken);
+        await ClearNotificationsAsync(bookingId, userId, cancellationToken);
         return await GetForHostAsync(bookingId, cancellationToken);
     }
 
@@ -251,6 +257,38 @@ public sealed class GuestMessageService(
                 state == GuestThreadState.Open && NeedsReply(r.LastGuestMessageAt, r.LastHostMessageAt));
         }).ToList();
         return new HostThreadPage(items, total, page, pageSize);
+    }
+
+    public async Task<IReadOnlyList<HostUnreadThread>> ListUnreadForHostAsync(HostScope scope, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        var openFrom = RomeCalendar.TodayAt(new DateTimeOffset(Now())).AddDays(-GuestMessageRules.ClosedAfterCheckOutDays);
+
+        // Same threads as the list (direct, confirmed, in the caller's scope), only the open ones, only those with something unread.
+        var rows = await db.GuestThreads
+            .AsNoTracking()
+            .Where(t => t.OrgId == scope.OrgId
+                && t.LastGuestMessageAt != null
+                && t.Booking.Source == BookingSource.Direct
+                && (t.Booking.Status == BookingStatus.Confirmed
+                    || t.Booking.Status == BookingStatus.CheckedIn
+                    || t.Booking.Status == BookingStatus.CheckedOut)
+                && t.Booking.CheckOutDate >= openFrom)
+            .InScope(scope)
+            .Select(t => new
+            {
+                t.BookingId,
+                t.LastGuestMessageAt,
+                Unread = db.GuestMessages.Count(m => m.ThreadId == t.Id
+                    && m.Sender == GuestMessageSender.Guest
+                    && (t.HostReadAt == null || m.CreatedAt > t.HostReadAt)),
+            })
+            .Where(r => r.Unread > 0)
+            .OrderByDescending(r => r.LastGuestMessageAt)
+            .ThenBy(r => r.BookingId)
+            .Take(GuestMessageRules.UnreadThreadsMax)
+            .ToListAsync(cancellationToken);
+        return rows.Select(r => new HostUnreadThread(r.BookingId, r.Unread)).ToList();
     }
 
     private static bool NeedsReply(DateTime? lastGuestMessageAt, DateTime? lastHostMessageAt) =>
@@ -361,6 +399,49 @@ public sealed class GuestMessageService(
             .Where(m => m.ThreadId == threadId && m.IdempotencyKey == key)
             .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt))
             .FirstOrDefaultAsync(cancellationToken);
+
+    /// <summary>
+    /// The push (and, through the decorator, the in-app notification) to the hosts of the booking: one for every message of the guest,
+    /// unlike the email, which is throttled. The text names the property only, never the guest or the message. Best effort after the
+    /// message is saved: whatever goes wrong here is logged and never fails the send.
+    /// </summary>
+    private void PushToHosts(Booking booking, Guid messageId)
+    {
+        try
+        {
+            var push = EmailTemplates.GuestMessagePush(EmailTemplates.DefaultCulture, booking.Property.Name);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.GuestMessage(messageId),
+                PushAudience.BookingHosts(booking.Id),
+                new PushNotificationPayload(
+                    push.Title, push.Body, PushTypes.GuestMessage, booking.Id, PushRoutes.BookingMessages(booking.Id)));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Push about message {MessageId} of booking {BookingId} could not be prepared", messageId, booking.Id);
+        }
+    }
+
+    /// <summary>
+    /// The host read the thread (or answered it): the user's unread guest-message notifications of the booking are read too, and the
+    /// user's open sessions get the new count. Best effort, like the push: a failure is logged and never fails the call.
+    /// </summary>
+    private async Task ClearNotificationsAsync(Guid bookingId, string? userId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            return;
+
+        try
+        {
+            var cleared = await inAppNotifications.MarkEntityReadAsync(userId, PushTypes.GuestMessage, bookingId, cancellationToken);
+            if (cleared > 0)
+                await notificationPublisher.PublishAsync(userId, PushTypes.GuestMessage, bookingId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "The notifications of the messages of booking {BookingId} could not be marked as read", bookingId);
+        }
+    }
 
     /// <summary>
     /// The email to the host: «the guest wrote», without the text, at most one every ten minutes per thread. Best effort after the

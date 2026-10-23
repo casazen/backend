@@ -113,6 +113,13 @@ public static class RecurringJobsRegistration
             LeaseTermRenewalJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // LR-11c-a: the landlord is reminded of the last day to give notice of a lease (30 and 7 days before, and that day), every day.
+        recurringJobManager.AddOrUpdate<LeaseNoticeReminderJob>(
+            LeaseNoticeReminderJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            LeaseNoticeReminderJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
             job => job.ExecuteAsync(),

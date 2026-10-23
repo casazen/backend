@@ -258,6 +258,21 @@
   <data name="Questura_MarkDone" xml:space="preserve">
     <value>Once sent, mark the communication as done on the lease page, with its date (and, if you wish, the receipt): only then the checklist item is completed.</value>
   </data>
+  <data name="LeaseNoticeReminder_Subject" xml:space="preserve">
+    <value>Lease notice due by {1} — {0}</value>
+  </data>
+  <data name="LeaseNoticeReminder_Body" xml:space="preserve">
+    <value>Reminder: the last useful day to give notice of the lease for &lt;strong&gt;{0}&lt;/strong&gt; is &lt;strong&gt;{1}&lt;/strong&gt;. Days remaining: &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_BodyToday" xml:space="preserve">
+    <value>Reminder: the last useful day to give notice of the lease for &lt;strong&gt;{0}&lt;/strong&gt; is &lt;strong&gt;today&lt;/strong&gt;, {1}.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Renewal" xml:space="preserve">
+    <value>The current period ends on &lt;strong&gt;{0}&lt;/strong&gt;. If nobody gives notice by the last useful day, the lease renews by itself for another &lt;strong&gt;{1} months&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Responsibility" xml:space="preserve">
+    <value>CasaZen works this day out from the end of the current period: it does not send the notice for you and does not judge whether it is valid. Check the notice period written in your contract. Draft wording pending counsel.</value>
+  </data>
   <data name="ServiceCategory_cleaning" xml:space="preserve">
     <value>Cleaning</value>
   </data>
@@ -572,6 +587,12 @@
   </data>
   <data name="Push_NewBooking_Body" xml:space="preserve">
     <value>{0}: from {1} to {2}, guests: {3}.</value>
+  </data>
+  <data name="Push_GuestMessage_Title" xml:space="preserve">
+    <value>New message from a guest</value>
+  </data>
+  <data name="Push_GuestMessage_Body" xml:space="preserve">
+    <value>{0}: a guest wrote to you.</value>
   </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Check-out reminder</value>
