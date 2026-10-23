@@ -3,7 +3,7 @@
 Task LR-13 of the redesign wave (analysis `redesign/docs/wave/analysis/LR/`, brief `tasks/LR-13.md`; decisions LR-D2, LR-D12, LR-D13, LR-D28).
 **Backend only, no migration, no feature flag (always on).** The brief was reduced by the perimeter review: the import carries the signed
 PDF and the day of the signature; the registration is **not** part of it (it is declared afterwards, § 1). A contract signed outside CasaZen, with
-the owner's own model, enters with deadlines, rents and reminders at once. Until now it could not: every signed PDF needs an approved template of
+the owner's own model, enters with its deadlines and reminders at once (the rent plan follows, LR-04a). Until now it could not: every signed PDF needs an approved template of
 CasaZen (`LeaseSigningService`, LT-03) and the three templates are drafts (`lease-contract-templates.md`, LR-D28), so no contract in force could
 get in. The import is the **one path that does not ask for a template**; the other paths keep the gate (§ 3).
 
@@ -63,7 +63,7 @@ it asks for the permission that signs. Every seeded role that has the one has th
 
 **The gate of the models stays everywhere else** (decisions LR-D28 and D-C): `signed-document`, `contract.pdf`, `sent` and the provider signature of a contract
 made in CasaZen still answer 422 `contract_template_not_approved` while its template is not approved, and the import of such a lease is refused with 422 above, so
-the import opens **no exemption**. `LeaseImportIntegrationTests` proves it with the same PDF on both leases.
+the import opens **no exemption**. `LeaseImportIntegrationTests` proves it: the same PDF sent to the import and to `signed-document` for a lease made in CasaZen is refused by both.
 
 ## 4. What it does
 
