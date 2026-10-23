@@ -103,11 +103,8 @@ public static class ServiceCollectionExtensions
                 {
                     OnMessageReceived = context =>
                     {
-                        // WebSockets and server-sent events cannot set an Authorization header: the SignalR client sends the token
-                        // as ?access_token=. Read it for the hubs only, never for the API (a token in a URL is logged by proxies).
-                        if (context.Request.Path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase)
-                            && string.IsNullOrEmpty(context.Token)
-                            && context.Request.Query["access_token"].ToString() is { Length: > 0 } hubToken)
+                        // WebSockets and server-sent events carry the token of a SignalR connection in the query (hubs only).
+                        if (context.Request.Headers.Authorization.Count == 0 && HubAccessToken.TryRead(context.Request, out var hubToken))
                         {
                             context.Token = hubToken;
                             return Task.CompletedTask;
