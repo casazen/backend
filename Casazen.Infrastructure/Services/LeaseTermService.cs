@@ -185,9 +185,9 @@ public sealed class LeaseTermService(
             return LeaseTermRenewalRun.SkippedRun;
         }
 
-        await RepairUnsetEndsAsync(cancellationToken);
-
         var today = _clock.TodayInRome();
+        await RepairUnsetEndsAsync(today, cancellationToken);
+
         int leases = 0, periods = 0, left = 0;
         // Every lease this run looked at, renewed or not: none is read twice, so the cap of periods per lease holds for the run and one
         // that refuses (busy, a failure) cannot stop the ones behind it.
@@ -239,19 +239,33 @@ public sealed class LeaseTermService(
     /// A lease written by a server that did not know the column yet (a deploy in progress) keeps the starting value of the column, which
     /// the database stores as <c>-infinity</c>: before the end of its own contract. Nothing else puts the current end before the end of
     /// the contract without an early termination (which records <see cref="LeaseContract.TerminatedOn"/>), so those rows get the end of
-    /// the contract, the value they would have had. Idempotent; a relational database only.
+    /// the contract, the value they would have had. A lease in force whose contract had already ended when it was written is a lease that
+    /// came in over: like the ones the migration found ended it is recorded as concluded (<see cref="LeaseContract.TerminatedOn"/> = its last
+    /// day) instead of being renewed afterwards (no retroactive renewal). Idempotent; a relational database only.
     /// </summary>
-    private async Task RepairUnsetEndsAsync(CancellationToken cancellationToken)
+    private async Task RepairUnsetEndsAsync(DateTime today, CancellationToken cancellationToken)
     {
         if (!db.Database.IsRelational())
             return;
 
+        // First the ones that were already over (the same rule as the renewal says which are in force and of a renewable type), then the rest.
+        var concluded = await db.LeaseContracts
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(LeaseRenewal.DueOn(today))
+            .Where(l => l.CurrentTermEndDate < l.EndDate && l.EndDate < today)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(l => l.CurrentTermEndDate, l => l.EndDate).SetProperty(l => l.TerminatedOn, l => (DateTime?)l.EndDate),
+                cancellationToken);
         var repaired = await db.LeaseContracts
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(l => l.TerminatedOn == null && l.CurrentTermEndDate < l.EndDate)
             .ExecuteUpdateAsync(s => s.SetProperty(l => l.CurrentTermEndDate, l => l.EndDate), cancellationToken);
-        if (repaired > 0)
-            logger.LogWarning("Lease term renewal: {Leases} leases written without the end of their period were given the end of their contract", repaired);
+        if (concluded + repaired > 0)
+        {
+            logger.LogWarning(
+                "Lease term renewal: {Leases} leases written without the end of their period were given the end of their contract, {Concluded} of them already over and recorded as concluded",
+                concluded + repaired, concluded);
+        }
     }
 
     /// <summary>
