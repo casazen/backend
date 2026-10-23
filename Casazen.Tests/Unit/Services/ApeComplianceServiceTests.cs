@@ -149,6 +149,17 @@ public class ApeComplianceServiceTests
     }
 
     [Fact]
+    public async Task Upload_RealOcrOfAPhoto_GivesTheCodeAndTheClassTheContractStates()
+    {
+        var bytes = await File.ReadAllBytesAsync(Path.Combine(System.AppContext.BaseDirectory, "Fixtures", "ape", "complete.jpg"));
+        var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "complete.jpg") { Headers = new HeaderDictionary(), ContentType = "image/jpeg" };
+
+        var check = await _sut.CheckUploadedApeAsync(file);
+
+        Assert.Equal(("123456789", "F", ApeUploadCheck.FromDocument), (check.CertificateCode, check.EnergyClass, check.CodeSource));
+    }
+
+    [Fact]
     public async Task Upload_TextRenamedToJpeg_StillFails()
     {
         var bytes = "<html>not an image</html>"u8.ToArray();

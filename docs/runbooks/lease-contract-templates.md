@@ -23,6 +23,9 @@ and, for cedolare secca / regime ordinario, did not even name the parties.
 | **NotApproved**: complete, but `Approved=false` or the approval is not valid | `422 contract_template_not_approved` | same marker, full text |
 | **Approved** | PDF of the approved texts with the lease data; `422 contract_data_missing` if the template uses a datum the lease does not have | marked `ANTEPRIMA - documento non valido per la firma` (watermark `ANTEPRIMA` on every page) |
 
+- **The one exception is a contract signed outside CasaZen** (LR-13, decision LR-D28): `POST /api/leases/{id}/import` brings in the PDF the parties signed with the
+  owner's own model and needs no template, but only for a draft created as an imported contract (`origin: Imported`); a lease made in CasaZen is refused there
+  (422 `lease_import_not_imported_origin`) and keeps this gate on every path above. See [`long-rent-lease-import.md`](long-rent-lease-import.md).
 - The lease stays `Draft` on a 422: no signing session is created, no signed contract is accepted, no event is written.
   `GET /api/leases/{id}/signers` reports it in advance (`contractAvailable: false`, `contractUnavailableCode`), so the
   lease page disables download and upload and offers only the preview (LT-02).

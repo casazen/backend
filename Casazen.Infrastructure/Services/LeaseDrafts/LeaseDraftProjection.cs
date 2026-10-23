@@ -49,7 +49,31 @@ internal static class LeaseDraftProjection
             StartDate = LeaseDraftDefaults.IsPlaceholder(lease.StartDate)
                 ? null
                 : RomeCalendar.DateInRome(lease.StartDate).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            EndDate = DeclaredEnd(lease),
         };
+    }
+
+    /// <summary>
+    /// The end an imported contract states (LR-13), read back from its columns: its own end when it is not the one its type gives from
+    /// the start (then somebody typed it), otherwise nothing, so a term nobody stated goes on following the type when the start moves.
+    /// A contract made in CasaZen states none: the wizard owns its term.
+    /// </summary>
+    private static string? DeclaredEnd(LeaseContract lease)
+    {
+        if (lease.Origin != LeaseOrigin.Imported
+            || LeaseDraftDefaults.IsPlaceholder(lease.StartDate)
+            || LeaseDraftDefaults.IsPlaceholder(lease.EndDate))
+        {
+            return null;
+        }
+
+        if (LongRentRules.FirstTermMonths(lease.ContractType) is { } months
+            && LongRentRules.FirstTermEnd(lease.StartDate, months).Date == lease.EndDate.Date)
+        {
+            return null;
+        }
+
+        return RomeCalendar.DateInRome(lease.EndDate).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static LeaseDraftParty ToEntry(Party party) => new()

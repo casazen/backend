@@ -6,7 +6,22 @@ namespace Casazen.Core.Services;
 /// <summary>The landlord's choices for the rent schedule of a lease (LT-06).</summary>
 /// <param name="Amount">Installment amount; null = monthly rent of the lease times the months of the cadence.</param>
 /// <param name="BillingDayOfMonth">Due day (1-28); null = the day of the lease start (at most 28).</param>
-public sealed record ConfigureRentScheduleRequest(RentCadence Cadence, int? BillingDayOfMonth, decimal? Amount);
+/// <param name="TrackFrom">
+/// LR-04a: the day the rents are tracked from, for a lease already running. The periods that ended before it get no installment
+/// (none is born overdue); the installments that already exist are never touched or removed because of it. Null = a new plan
+/// covers the whole lease, and a plan that already has a day keeps it; a day on or before the lease start means «from the start
+/// again». After the end of the lease it is refused (<c>rent_track_from_invalid</c>).
+/// </param>
+/// <param name="OnlineRequests">
+/// LR-04a: whether the daily job emails the tenants a payment link for the installments coming due. Null = a new plan is
+/// <b>off</b> (nothing is written to a tenant unless the landlord says so), a plan that already exists keeps its choice.
+/// </param>
+public sealed record ConfigureRentScheduleRequest(
+    RentCadence Cadence,
+    int? BillingDayOfMonth,
+    decimal? Amount,
+    DateOnly? TrackFrom = null,
+    bool? OnlineRequests = null);
 
 /// <summary>An installment declared paid by the landlord outside CasaZen (bank transfer, cash…).</summary>
 public sealed record MarkRentPaidOfflineRequest(DateOnly PaidOn, string? Note);
@@ -28,13 +43,19 @@ public sealed record RentInstallmentView(
     string? FailureCode,
     DateTime? LastFailedAt);
 
-/// <summary>The rent schedule of a lease, null while the landlord has not set it up.</summary>
+/// <summary>
+/// The rent schedule of a lease, null while the landlord has not set it up. <c>TrackFrom</c>: the day the rents are tracked from
+/// (null = from the start of the lease). <c>OnlineRequestsEnabled</c>: the daily job emails the tenants the payment links
+/// (LR-04a; the landlord's own «send the link» does not depend on it).
+/// </summary>
 public sealed record RentScheduleView(
     RentCadence Cadence,
     int BillingDayOfMonth,
     decimal Amount,
     string Currency,
-    bool IsActive);
+    bool IsActive,
+    DateOnly? TrackFrom,
+    bool OnlineRequestsEnabled);
 
 /// <summary>
 /// Rent page of a lease (LT-06): the schedule, its installments and what the landlord can do.
@@ -130,6 +151,12 @@ public sealed record RentPaymentNotice(Guid InstallmentId, RentPaymentNoticeKind
 public sealed record RentCollectionRun(int RequestsSent, int Synchronized, int Errors);
 
 /// <summary>
+/// The installments cancelled because the lease ended early (LR-14), and the notices of the ones that turned out to be paid or in flight
+/// on Stripe instead (to be passed to <see cref="IRentBillingService.CompleteAsync"/> once the change is committed).
+/// </summary>
+public sealed record RentInstallmentsCancelled(int Cancelled, IReadOnlyList<RentPaymentNotice> Notices);
+
+/// <summary>
 /// Recurring rent of a long-term lease (LT-06, #269, audit A7-07): schedule generated from the lease, payment request to
 /// the tenant with a link, online payment on the landlord's Stripe connected account (state only from Stripe), offline
 /// payments declared by the landlord. Authorization of the lease is the caller's (controller); the tenant query filter
@@ -139,6 +166,11 @@ public interface IRentBillingService
 {
     Task<RentLedgerView> GetLedgerAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Sets up (or changes) the plan and brings its installments in line (LR-04a: from the day it is tracked from, with the
+    /// online requests off unless the landlord turns them on). 422 <c>rent_track_from_invalid</c> for a day after the end of the
+    /// lease; the other refusals are those of LT-06.
+    /// </summary>
     Task<RentLedgerView> ConfigureScheduleAsync(
         Guid leaseId, ConfigureRentScheduleRequest request, CancellationToken cancellationToken = default);
 
@@ -185,9 +217,27 @@ public interface IRentBillingService
 
     /// <summary>
     /// The daily <c>rent-collection</c> job: payment requests of the installments coming due, and installments in flight
-    /// read again from Stripe (lost webhook).
+    /// read again from Stripe (lost webhook). A payment request is written to the tenants <b>only for a plan whose online
+    /// requests are on</b> (<c>RentSchedule.OnlineRequestsEnabled</c>, LR-04a): a plan nobody switched on sends nothing.
     /// </summary>
     Task<RentCollectionRun> RunCollectionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Brings the installments of an active rent plan up to the end of the period the lease is in (<c>CurrentTermEndDate</c>, LR-14):
+    /// the whole periods after the last installment get theirs, with the amount, the cadence and the due day of the plan; nothing that
+    /// exists is touched. Returns how many were added; 0 without an active plan. Called by the renewal job in the transaction of the
+    /// renewal (the lock of the lease joins it); the payment requests of the new installments are the ones the daily collection job sends for
+    /// every installment of the plan, no e-mail is sent here.
+    /// </summary>
+    Task<int> ExtendScheduleToCurrentTermAsync(Guid leaseId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cancels the installments of the lease whose period <b>starts after</b> <paramref name="lastDay"/> and that are still to be
+    /// collected (scheduled or failed), after cancelling on Stripe the PaymentIntent the tenant could still pay; an installment paid or
+    /// in flight is never touched, and the one whose period contains <paramref name="lastDay"/> stays as it is (no pro rata rule is
+    /// assumed). Called when a lease is ended early (LR-14), in the transaction of the termination (the lock of the lease joins it).
+    /// </summary>
+    Task<RentInstallmentsCancelled> CancelInstallmentsAfterAsync(Guid leaseId, DateOnly lastDay, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Stable error codes of the rent endpoints (LT-06).</summary>
@@ -206,4 +256,5 @@ public static class RentBillingErrorCodes
     public const string PaidOnInvalid = "rent_paid_on_invalid";
     public const string PaymentLinkInvalid = "rent_payment_link_invalid";
     public const string LeaseOutsidePlan = "rent_lease_dates_invalid";
+    public const string TrackFromInvalid = "rent_track_from_invalid";
 }

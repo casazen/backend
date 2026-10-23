@@ -141,6 +141,12 @@ internal static class PostgresAdvisoryLocks
         RentLease = 1_206,
 
         /// <summary>
+        /// One run of the hourly tacit renewal of the long-term leases (single key, session lock held for the whole run): two runs never
+        /// renew the same lease at once, even outside Hangfire's own lock (LR-14). Each lease is then renewed under its own row lock.
+        /// </summary>
+        LeaseTermRenewalRun = 1_208,
+
+        /// <summary>
         /// Photo gallery of one property (key: property id): two uploads, deletions or reorders never read and rewrite the
         /// photo list at the same time, so no photo is lost (PC-04).
         /// </summary>

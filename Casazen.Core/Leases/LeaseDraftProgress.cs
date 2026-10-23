@@ -131,7 +131,7 @@ public static class LeaseDraftProgress
 
         var imported = input.Origin == LeaseOrigin.Imported;
         var values = input.Values;
-        var reading = LeaseDraftRules.Read(values);
+        var reading = LeaseDraftRules.Read(values, input.Origin);
 
         var needs = new List<LeaseNeed>[LeaseDraftDefaults.LastStep];
         for (var i = 0; i < needs.Length; i++)
@@ -139,8 +139,8 @@ public static class LeaseDraftProgress
 
         Property(input, imported, needs[0]);
         Parties(values, needs[1]);
-        Economics(input, reading, needs[2]);
-        Start(values, reading, needs[3]);
+        Economics(input, imported, reading, needs[2]);
+        Start(values, imported, reading, needs[3]);
         if (!imported)
             Attachments(values, input.Today, needs[4]);
 
@@ -263,7 +263,7 @@ public static class LeaseDraftProgress
 
     // ---- 3 · type, regime, rent, deposit -------------------------------------------------------------------------
 
-    private static void Economics(LeaseDraftProgressInput input, LeaseDraftReading reading, List<LeaseNeed> needs)
+    private static void Economics(LeaseDraftProgressInput input, bool imported, LeaseDraftReading reading, List<LeaseNeed> needs)
     {
         var values = input.Values;
 
@@ -289,7 +289,9 @@ public static class LeaseDraftProgress
         else if (reading.Rent is null)
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.RentInvalid));
 
-        if (reading.Type == LeaseContractType.Concordato && reading.TypeAvailable)
+        // The range of a canone concordato is checked for a contract that is going to be signed. An imported one is already signed
+        // (decision LR-D13): the unit's characteristics, the agreement data of the comune and the range do not come into it.
+        if (reading.Type == LeaseContractType.Concordato && reading.TypeAvailable && !imported)
             Concordato(input, reading, needs);
 
         if (values.SecurityDeposit is not null)
@@ -340,12 +342,54 @@ public static class LeaseDraftProgress
 
     // ---- 4 · the start date --------------------------------------------------------------------------------------
 
-    private static void Start(LeaseDraftValues values, LeaseDraftReading reading, List<LeaseNeed> needs)
+    private static void Start(LeaseDraftValues values, bool imported, LeaseDraftReading reading, List<LeaseNeed> needs)
     {
         if (LeaseDraftRules.Clean(values.StartDate) is null)
+        {
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.StartMissing));
-        else if (reading.Start is null)
+        }
+        else if (reading.Start is not { } start)
+        {
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.StartInvalid));
+        }
+        else if (imported)
+        {
+            Term(values, reading, start, needs);
+        }
+    }
+
+    /// <summary>
+    /// The term of an imported contract is the one it states (LR-13): the last day typed, inside the limits of its type
+    /// (<see cref="LeaseContractTerms.CheckTerm"/>). Without one it follows the type, except for the transitory type, which has no term
+    /// of its own. A start in the past is no problem: the contract is already in force.
+    /// </summary>
+    private static void Term(LeaseDraftValues values, LeaseDraftReading reading, DateOnly start, List<LeaseNeed> needs)
+    {
+        if (LeaseDraftRules.Clean(values.EndDate) is null)
+        {
+            if (reading.Type == LeaseContractType.Transitorio)
+                needs.Add(LeaseNeed.Of(LeaseNeedCodes.EndMissing));
+            return;
+        }
+
+        if (LeaseDraftRules.ParseDate(values.EndDate) is not { } end)
+        {
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.EndInvalid));
+            return;
+        }
+
+        var type = reading.TypeAvailable ? reading.Type : null;
+        if (LeaseContractTerms.CheckTerm(type, LeaseDraftRules.ToStoredDate(start), LeaseDraftRules.ToStoredDate(end)) is not { } problem)
+            return;
+
+        var parameters = new List<(string Key, object? Value)> { ("reason", problem.Code) };
+        if (type is { } named)
+            parameters.Add(("type", named.ToString()));
+        if (problem.MinMonths is { } min)
+            parameters.Add(("minMonths", min));
+        if (problem.MaxMonths is { } max)
+            parameters.Add(("maxMonths", max));
+        needs.Add(LeaseNeed.Of(LeaseNeedCodes.TermOutOfRange, parameters.ToArray()));
     }
 
     // ---- 5 · model and attachments -------------------------------------------------------------------------------

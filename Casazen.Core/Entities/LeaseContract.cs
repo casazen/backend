@@ -228,7 +228,8 @@ public class LeaseContract : ITenantOwned
     /// <summary>
     /// The last day of a lease that was ended before the end of its period (early termination, LR-14), which is then
     /// <see cref="CurrentTermEndDate"/> too; <c>null</c> for a lease that was not ended early. Irreversible, and it stops the renewal. It
-    /// is also what records a lease that had ended before the renewal existed as concluded (its last day is its <see cref="EndDate"/>).
+    /// is also what records as concluded a lease that was already over when CasaZen came to know it (no retroactive renewal): one that had
+    /// ended before the renewal existed, or a contract signed or imported after its last day (<see cref="LeaseRenewal.ConcludeIfEnded"/>).
     /// </summary>
     public DateTime? TerminatedOn { get; set; }
 

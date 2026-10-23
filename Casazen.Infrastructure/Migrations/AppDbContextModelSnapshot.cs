@@ -4180,8 +4180,14 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateOnly>("NextRunDate")
                         .HasColumnType("date");
 
+                    b.Property<bool>("OnlineRequestsEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("TrackFrom")
+                        .HasColumnType("date");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
