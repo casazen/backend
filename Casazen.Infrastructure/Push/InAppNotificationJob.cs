@@ -66,6 +66,7 @@ public sealed class QueuedInAppNotification
 public sealed class InAppNotificationJob(
     AppDbContext db,
     TimeProvider timeProvider,
+    IInAppNotificationPublisher publisher,
     ILogger<InAppNotificationJob> logger)
 {
     public const int MaxAttempts = 5;
@@ -119,6 +120,7 @@ public sealed class InAppNotificationJob(
         // wrapped in InvalidOperationException, which a catch of DbUpdateException alone does not see. Retry that user: the run
         // that won has committed, so the next attempt is the unique violation (23505) and is skipped.
         var written = 0;
+        var writtenUsers = new List<string>();
         foreach (var userId in toTell)
         {
             for (var attempt = 1; ; attempt++)
@@ -137,6 +139,7 @@ public sealed class InAppNotificationJob(
                 {
                     await db.SaveChangesAsync(cancellationToken);
                     written++;
+                    writtenUsers.Add(userId);
                     break;
                 }
                 catch (Exception ex) when (IsRaceOrVanishedUser(ex))
@@ -150,6 +153,19 @@ public sealed class InAppNotificationJob(
                 {
                     db.ChangeTracker.Clear();
                 }
+            }
+        }
+
+        // Real time (UI-12a): the open sessions of each user written now learn the new count. Best effort, after the rows are stored.
+        foreach (var userId in writtenUsers)
+        {
+            try
+            {
+                await publisher.PublishAsync(userId, notification.Type, notification.EntityId, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "In-app notification {Type} (key {DeliveryKey}): the real-time update failed", notification.Type, deliveryKey);
             }
         }
 

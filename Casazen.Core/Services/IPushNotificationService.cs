@@ -94,6 +94,9 @@ public static class PushDeliveryKeys
     public static string ServiceRequestRescheduled(Guid serviceRequestId, DateTime rescheduledAtUtc) =>
         $"service-request:{serviceRequestId:N}:rescheduled:{rescheduledAtUtc:yyyyMMddHHmmss}";
 
+    /// <summary>A message the guest of a direct booking wrote, to the host: one per message, so every message is one push.</summary>
+    public static string GuestMessage(Guid messageId) => $"booking-message:{messageId:N}";
+
     /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static string NewBooking(Guid bookingId) => $"booking:{bookingId:N}:new";
 
@@ -147,6 +150,9 @@ public static class PushTypes
     /// <summary>The customer of the public showcase moved a new request to another time (SP-11): pushed to the supplier org.</summary>
     public const string ServiceRequestRescheduled = "service-request-rescheduled";
     public const string NewBooking = "new-booking";
+
+    /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>
+    public const string GuestMessage = "guest-message";
     public const string GuestDataMissing = "guest-data-missing";
     public const string AlloggiatiDeadline = "alloggiati-deadline";
     public const string AlloggiatiOverdue = "alloggiati-overdue";

@@ -120,6 +120,13 @@ public static partial class EmailTemplates
             guests.ToString(culture));
     }
 
+    /// <summary>
+    /// A message from the guest of a direct booking, to the host: the property only. Neither the guest's name nor the text of
+    /// the message reach the lock screen.
+    /// </summary>
+    public static PushText GuestMessagePush(CultureInfo culture, string propertyName) =>
+        Push(culture, "Push_GuestMessage", propertyName);
+
     /// <summary>Check-out day of a stay, to the host (CO-10 stay alert).</summary>
     public static PushText CheckoutReminderPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_CheckoutReminder", propertyName);

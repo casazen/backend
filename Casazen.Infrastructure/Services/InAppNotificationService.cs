@@ -83,6 +83,17 @@ public sealed class InAppNotificationService(
             .ExecuteUpdateAsync(set => set.SetProperty(n => n.ReadAt, now), cancellationToken);
     }
 
+    public async Task<int> MarkEntityReadAsync(string userId, string type, Guid entityId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(type);
+
+        var now = Now();
+        return await OwnNotifications(userId)
+            .Where(n => n.Type == type && n.EntityId == entityId && n.ReadAt == null)
+            .ExecuteUpdateAsync(set => set.SetProperty(n => n.ReadAt, now), cancellationToken);
+    }
+
     public async Task<int> PurgeExpiredAsync(CancellationToken cancellationToken = default)
     {
         var cutoff = Now().AddDays(-InAppNotificationLimits.RetentionDays);
