@@ -130,6 +130,12 @@ public sealed record RentPaymentNotice(Guid InstallmentId, RentPaymentNoticeKind
 public sealed record RentCollectionRun(int RequestsSent, int Synchronized, int Errors);
 
 /// <summary>
+/// The installments cancelled because the lease ended early (LR-14), and the notices of the ones that turned out to be paid or in flight
+/// on Stripe instead (to be passed to <see cref="IRentBillingService.CompleteAsync"/> once the change is committed).
+/// </summary>
+public sealed record RentInstallmentsCancelled(int Cancelled, IReadOnlyList<RentPaymentNotice> Notices);
+
+/// <summary>
 /// Recurring rent of a long-term lease (LT-06, #269, audit A7-07): schedule generated from the lease, payment request to
 /// the tenant with a link, online payment on the landlord's Stripe connected account (state only from Stripe), offline
 /// payments declared by the landlord. Authorization of the lease is the caller's (controller); the tenant query filter
@@ -188,6 +194,23 @@ public interface IRentBillingService
     /// read again from Stripe (lost webhook).
     /// </summary>
     Task<RentCollectionRun> RunCollectionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Brings the installments of an active rent plan up to the end of the period the lease is in (<c>CurrentTermEndDate</c>, LR-14):
+    /// the whole periods after the last installment get theirs, with the amount, the cadence and the due day of the plan; nothing that
+    /// exists is touched. Returns how many were added; 0 without an active plan. Called by the renewal job in the transaction of the
+    /// renewal (the lock of the lease joins it); the payment requests of the new installments are the ones the daily collection job sends for
+    /// every installment of the plan, no e-mail is sent here.
+    /// </summary>
+    Task<int> ExtendScheduleToCurrentTermAsync(Guid leaseId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cancels the installments of the lease whose period <b>starts after</b> <paramref name="lastDay"/> and that are still to be
+    /// collected (scheduled or failed), after cancelling on Stripe the PaymentIntent the tenant could still pay; an installment paid or
+    /// in flight is never touched, and the one whose period contains <paramref name="lastDay"/> stays as it is (no pro rata rule is
+    /// assumed). Called when a lease is ended early (LR-14), in the transaction of the termination (the lock of the lease joins it).
+    /// </summary>
+    Task<RentInstallmentsCancelled> CancelInstallmentsAfterAsync(Guid leaseId, DateOnly lastDay, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Stable error codes of the rent endpoints (LT-06).</summary>
