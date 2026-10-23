@@ -56,6 +56,13 @@ public enum LeaseEventType
     SentRevoked,
 
     /// <summary>
+    /// The landlord brought in a contract already signed outside CasaZen (LR-13): the signed copy was uploaded with the day of the
+    /// signature and the draft of origin <c>Imported</c> became a Signed lease. Recorded together with <see cref="AllPartiesSigned"/>
+    /// (payload <c>imported</c>). No payload.
+    /// </summary>
+    Imported,
+
+    /// <summary>
     /// The landlord recorded a notice of non-renewal (LR-14): the lease will end with the current period instead of renewing by itself.
     /// Payload: <c>{landlord|tenant}:{yyyy-MM-dd}</c>, who gave it and the day it was given. No personal data.
     /// </summary>

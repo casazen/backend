@@ -1216,6 +1216,9 @@
   <data name="LeaseStipulaLeaseNotSigned" xml:space="preserve">
     <value>Il contratto non è ancora firmato: carica il PDF firmato da tutte le parti insieme alla data di stipula.</value>
   </data>
+  <data name="LeaseImportNotImported" xml:space="preserve">
+    <value>Si può importare solo un contratto dichiarato come già firmato fuori da CasaZen quando è stata creata la bozza. Un contratto preparato in CasaZen si firma dal suo modello.</value>
+  </data>
   <data name="DirectBookingDeferredPaymentUnavailable" xml:space="preserve">
     <value>Il pagamento alla scadenza non è disponibile per queste date: l'arrivo è troppo vicino. Scegli un altro metodo di pagamento.</value>
   </data>

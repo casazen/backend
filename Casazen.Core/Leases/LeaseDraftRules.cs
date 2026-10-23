@@ -188,23 +188,35 @@ public static partial class LeaseDraftRules
 
     /// <summary>
     /// The values of the contract as they are once read: each is <c>null</c> when it was not typed or is not valid (and then the
-    /// column of the lease keeps its starting value, <see cref="LeaseDraftDefaults"/>).
+    /// column of the lease keeps its starting value, <see cref="LeaseDraftDefaults"/>). An <see cref="LeaseOrigin.Imported"/> contract
+    /// is read with the rules of a contract already signed (LR-13): it can have the transitory type and the term its contract states.
     /// </summary>
-    public static LeaseDraftReading Read(LeaseDraftValues values)
+    public static LeaseDraftReading Read(LeaseDraftValues values, LeaseOrigin origin = LeaseOrigin.Created)
     {
         ArgumentNullException.ThrowIfNull(values);
 
         var type = ParseContractType(values.ContractType);
-        var typeAvailable = type is { } t && LongRentRules.IsAvailable(t);
+        var typeAvailable = type is { } t && LongRentRules.IsAvailable(t, origin);
         var start = ParseDate(values.StartDate);
         var months = typeAvailable ? LongRentRules.FirstTermMonths(type!.Value) : null;
         DateOnly? end = null;
         if (start is { } startDate)
         {
-            // The end of the first period follows the type; with no valid type yet it follows the starting type, so the two dates
-            // in the columns are always a whole first period apart.
-            var termMonths = months ?? LongRentRules.FirstTermMonths(LeaseDraftDefaults.PlaceholderType)!.Value;
-            end = DateOnly.FromDateTime(LongRentRules.FirstTermEnd(ToStoredDate(startDate), termMonths));
+            if (origin == LeaseOrigin.Imported && ParseDate(values.EndDate) is { } declared && declared > startDate)
+            {
+                // The term of a contract already signed is the one it states: the last day typed, whatever the type (the limits of the
+                // type are a need of the flow, not a reason to lose what was typed).
+                end = declared;
+                months = typeAvailable ? LeaseTerm.Between(ToStoredDate(startDate), ToStoredDate(declared))?.Months : null;
+            }
+            else
+            {
+                // The end of the first period follows the type; with no valid type yet it follows the starting type, so the two dates
+                // in the columns are always a whole first period apart (and a transitory contract without its end, which has no
+                // first period of its own, is no different).
+                var termMonths = months ?? LongRentRules.FirstTermMonths(LeaseDraftDefaults.PlaceholderType)!.Value;
+                end = DateOnly.FromDateTime(LongRentRules.FirstTermEnd(ToStoredDate(startDate), termMonths));
+            }
         }
 
         return new LeaseDraftReading(
@@ -222,7 +234,8 @@ public static partial class LeaseDraftRules
 /// <summary>
 /// The result of <see cref="LeaseDraftRules.Read"/>. <see cref="Type"/> is the type the landlord named (valid or not available),
 /// <see cref="TypeAvailable"/> says whether it can be created; <see cref="End"/> is the last day of the first period when the
-/// start is valid; <see cref="Months"/> the months of that period (null while the type is not an available one).
+/// start is valid; <see cref="Months"/> the whole months of that period (null while the type is not an available one, and while the
+/// term of an imported transitory contract is not stated).
 /// </summary>
 public sealed record LeaseDraftReading(
     LeaseContractType? Type,

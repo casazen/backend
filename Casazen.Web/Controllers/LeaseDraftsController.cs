@@ -1,9 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Casazen.Core.Authorization;
+using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
@@ -37,6 +39,9 @@ public class LeaseDraftsController(
 
     /// <summary>The values of one save: a few kilobytes at most (ten landlords and ten tenants of a few hundred characters each).</summary>
     private const long SaveRequestLimit = 256 * 1024;
+
+    /// <summary>The signed contract (at most <see cref="LeaseSigningLimits.MaxSignedContractBytes"/>) plus the other form fields.</summary>
+    private const long ImportRequestLimit = LeaseSigningLimits.MaxSignedContractBytes + 64 * 1024;
 
     /// <summary>
     /// Creates a draft with only the property: 201 with the id, the version (1) and the flow (every step to do). No APE, no
@@ -193,7 +198,72 @@ public class LeaseDraftsController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Imports a contract already signed outside CasaZen (LR-13, decisions LR-D2 and LR-D28): a PDF (checked on its content, at most
+    /// 20 MB, private bucket) and the day it was signed (not after today). The only way to a Signed lease without a contract template of
+    /// ours: <c>signed-document</c> and <c>sent</c> of a contract made in CasaZen go on answering 422
+    /// <c>contract_template_not_approved</c> until a template is approved. Only a draft created with <c>origin: Imported</c> whose
+    /// review has nothing blocking (steps 1 to 4 complete; no APE needed, no range of a concordato checked); the lease keeps its
+    /// <c>id</c>. Needs <c>lease.create</c> and <c>lease.sign</c> on the property of the lease: it records a signature. The signed PDF
+    /// is also the <c>Contract</c> document of the lease (<c>GET api/leases/{id}/documents</c>). The registration, if the contract is
+    /// already registered, is declared afterwards with <c>POST api/leases/{id}/registration/manual</c>. 409 <c>lease_not_draft</c>
+    /// (also for a second import), 409 <c>lease_draft_conflict</c> (the lease is busy: nothing was written), 422
+    /// <c>lease_import_not_imported_origin</c>, <c>lease_review_blocked</c>, <c>lease_signed_contract_invalid</c>,
+    /// <c>lease_stipula_date_in_future</c>. Multipart fields: <c>stipulaDate</c>, <c>signedContract</c>. Answers the masked detail of
+    /// the lease, as <c>signed-document</c> does.
+    /// </summary>
+    [HttpPost("{id:guid}/import")]
+    [Consumes("multipart/form-data")]
+    [Authorize(Policy = CasazenPolicies.LeaseSign)]
+    [RequestSizeLimit(ImportRequestLimit)]
+    [RequestFormLimits(MultipartBodyLengthLimit = ImportRequestLimit)]
+    [ProducesResponseType(typeof(LeaseDetailDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Import(
+        Guid id,
+        [FromForm] SignedDocumentForm form,
+        [FromServices] ILeaseSigningService signing,
+        [FromServices] ILeaseWorkflowService leases,
+        [FromServices] TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetUserId() is not { } userId)
+            return Unauthorized();
+        if (await AuthorizeLeaseToSignAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        await using (var signedContract = form.SignedContract!.OpenReadStream())
+        {
+            await signing.ImportSignedContractAsync(
+                id,
+                userId,
+                new ImportedContractDeclaration(form.StipulaDate!.Value, signedContract, form.SignedContract.Length, form.SignedContract.FileName),
+                cancellationToken);
+        }
+
+        return Ok(LeaseDtoMapper.ToDetail((await leases.GetLeaseDetailAsync(id))!, clock.TodayInRome()));
+    }
+
     // ---- authorization -------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Authorizes <c>lease.create</c> <b>and</b> <c>lease.sign</c> on the property of the lease as a row of that property (the import
+    /// records a signature, so who may only create drafts cannot use it to sign): <c>null</c> when both are allowed, otherwise the
+    /// answer (404 <c>lease_not_found</c> for a lease of another org or none, 403).
+    /// </summary>
+    private async Task<IActionResult?> AuthorizeLeaseToSignAsync(Guid leaseId, CancellationToken cancellationToken)
+    {
+        if (await drafts.FindPropertyIdAsync(leaseId, cancellationToken) is not { } propertyId)
+            return this.ApiProblem(StatusCodes.Status404NotFound, LeaseNotFoundCode, "LeaseNotFound");
+
+        var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
+        if (resource is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, LeaseNotFoundCode, "LeaseNotFound");
+
+        return await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Create)
+            && await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Sign)
+                ? null
+                : Forbid();
+    }
 
     /// <summary>
     /// Authorizes <c>lease.create</c> on the property of the lease as a row of that property: <c>null</c> when allowed, otherwise

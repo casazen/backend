@@ -165,31 +165,9 @@ public sealed class LeaseDraftService(
     /// state only while something of it cannot live there. The one place the projection is applied: a save does it, and so does the
     /// confirmation of the review when the data became complete since the last save.
     /// </summary>
-    private async Task ProjectAsync(LeaseContract lease, LeaseDraftValues values, DraftEvaluation evaluation, CancellationToken cancellationToken)
-    {
-        await RewritePartiesAsync(lease, LeaseDraftProjection.ToRows(values, lease.Id, evaluation.Input.Today), cancellationToken);
-        LeaseDraftProjection.ApplyColumns(lease, evaluation.Reading, evaluation.Concordato);
-        lease.DraftData = evaluation.Flow.DataComplete ? null : values.ToJson();
-    }
-
-    /// <summary>
-    /// Makes the rows of the parties the ones the typed values give. The rows are deleted and written again (the entry keeps its id)
-    /// in two saves, because the unique index of (lease, role, position) refuses the moment two rows swap places; both saves are
-    /// in the transaction of the caller. Nothing is written when the rows are already the right ones.
-    /// </summary>
-    private async Task RewritePartiesAsync(LeaseContract lease, List<Party> rows, CancellationToken cancellationToken)
-    {
-        if (LeaseDraftProjection.SameRows(lease.Parties, rows))
-            return;
-
-        if (lease.Parties.Count > 0)
-        {
-            db.Parties.RemoveRange(lease.Parties);
-            await db.SaveChangesAsync(cancellationToken);
-        }
-
-        db.Parties.AddRange(rows);
-    }
+    private Task ProjectAsync(LeaseContract lease, LeaseDraftValues values, DraftEvaluation evaluation, CancellationToken cancellationToken) =>
+        LeaseDraftWriter.ProjectAsync(
+            db, lease, values, evaluation.Reading, evaluation.Concordato, evaluation.Flow.DataComplete, evaluation.Input.Today, cancellationToken);
 
     // ---- the review ----------------------------------------------------------------------------------------------
 
@@ -456,12 +434,15 @@ public sealed class LeaseDraftService(
     private async Task<DraftEvaluation> EvaluateAsync(
         LeaseContract lease, LeaseDraftValues values, bool fullApeCheck, CancellationToken cancellationToken)
     {
-        var reading = LeaseDraftRules.Read(values);
+        var reading = LeaseDraftRules.Read(values, lease.Origin);
         var facts = await LoadFactsAsync(values.PropertyId, fullApeCheck, cancellationToken);
 
+        // The range of a canone concordato is for a contract that is going to be signed: an imported one is already signed, so
+        // nothing is asked of the calculator and no range is stored (decision LR-D13).
         ConcordatoAssessmentResult? concordato = null;
         LeaseDraftConcordatoOutcome? outcome = null;
-        if (facts.PropertyExists
+        if (lease.Origin != LeaseOrigin.Imported
+            && facts.PropertyExists
             && reading is { Type: LeaseContractType.Concordato, TypeAvailable: true }
             && values.Concordato is { } characteristics
             && LeaseDraftRules.IsConcordatoValid(characteristics))
