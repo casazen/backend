@@ -2299,6 +2299,12 @@
   <data name="LongRentDeadlinesTypeUnknown" xml:space="preserve">
     <value>Il tipo di scadenza non è valido: usa RliRegistration, Questura, LeaseEnd, Notice oppure Rent.</value>
   </data>
+  <data name="LongRentFiscalYearInvalid" xml:space="preserve">
+    <value>Indica un anno valido: dal 2000 all'anno in corso.</value>
+  </data>
+  <data name="LongRentFiscalFormatInvalid" xml:space="preserve">
+    <value>Il formato non è disponibile: il riepilogo si scarica in csv.</value>
+  </data>
   <data name="SupplierActivationBlocked" xml:space="preserve">
     <value>Il profilo non può essere attivato: mancano alcuni requisiti obbligatori.</value>
   </data>
