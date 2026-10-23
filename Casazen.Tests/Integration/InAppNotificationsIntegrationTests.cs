@@ -42,6 +42,30 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsync("/api/me/notifications/read-all", null)).StatusCode);
     }
 
+    // ─── Real time ───
+
+    [Fact]
+    public async Task Hub_Negotiate_WithoutAToken_Is401()
+    {
+        using var anonymous = _factory.CreateClient();
+
+        var response = await anonymous.PostAsync("/hubs/notifications/negotiate?negotiateVersion=1", null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Hub_Negotiate_WithAToken_OffersAConnection()
+    {
+        using var client = _factory.CreateAuthenticatedClient("hub-user", "PropertyOwner");
+
+        var response = await client.PostAsync("/hubs/notifications/negotiate?negotiateVersion=1", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.False(string.IsNullOrEmpty(body.RootElement.GetProperty("connectionToken").GetString()));
+    }
+
     // ─── The list and the count ───
 
     [Fact]

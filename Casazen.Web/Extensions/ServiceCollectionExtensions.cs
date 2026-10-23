@@ -103,6 +103,13 @@ public static class ServiceCollectionExtensions
                 {
                     OnMessageReceived = context =>
                     {
+                        // WebSockets and server-sent events carry the token of a SignalR connection in the query (hubs only).
+                        if (context.Request.Headers.Authorization.Count == 0 && HubAccessToken.TryRead(context.Request, out var hubToken))
+                        {
+                            context.Token = hubToken;
+                            return Task.CompletedTask;
+                        }
+
                         // The token of a guest session (DB-06a) is not a JWT: only the GuestSession scheme reads it. The sign-in
                         // of the hosts leaves it alone, so it neither tries to validate it nor logs a failure at every call.
                         if (context.Request.Headers.Authorization.ToString()

@@ -51,4 +51,21 @@ public class HostMessagesController(
             PageSize = result.PageSize,
         });
     }
+
+    /// <summary>
+    /// The open threads with messages of the guest the host has not read, one item per booking with its <c>unreadCount</c>, for the badges of
+    /// the calendar and the lists (at most 200, the latest first). Same permission and scope as the list; never the text of a message.
+    /// </summary>
+    [HttpGet("unread")]
+    [ProducesResponseType(typeof(HostUnreadThreadsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<HostUnreadThreadsDto>> Unread(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var scope = orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
+        if (scope is null)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        return Ok(HostUnreadThreadsDto.From(await messages.ListUnreadForHostAsync(scope, cancellationToken)));
+    }
 }
