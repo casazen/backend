@@ -23,7 +23,7 @@ public static class LeaseDraftPatch
     private static readonly string[] Step1Keys = ["propertyId"];
     private static readonly string[] Step2Keys = ["landlords", "tenants"];
     private static readonly string[] Step3Keys = ["contractType", "taxRegime", "monthlyRent", "securityDeposit", "concordato"];
-    private static readonly string[] Step4Keys = ["startDate"];
+    private static readonly string[] Step4Keys = ["startDate", "endDate"];
     private static readonly string[] Step5Keys = ["parties"];
 
     private static readonly string[] PartyKeys = ["id", "firstName", "lastName", "fiscalCode", "citizenship", "residence", "contactEmail"];
@@ -59,7 +59,7 @@ public static class LeaseDraftPatch
             1 => ApplyProperty(current, properties),
             2 => ApplyParties(current, properties, newId),
             3 => ApplyEconomics(current, properties),
-            4 => properties.TryGetValue("startDate", out var start) ? current with { StartDate = Text(start, "startDate") } : current,
+            4 => ApplyTerm(current, properties),
             _ => ApplyDocuments(current, properties),
         };
     }
@@ -213,6 +213,22 @@ public static class LeaseDraftPatch
             ZoneName = Optional(fields, "zoneName", "concordato"),
             CadastralSheet = Optional(fields, "cadastralSheet", "concordato"),
         };
+    }
+
+    // ---- step 4 --------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The start date and, for an imported contract, the last day of its first period. Both are kept as typed: the end is read only for
+    /// an imported contract (<see cref="LeaseDraftRules.Read"/>), so a client that sends it for a contract made in CasaZen changes nothing.
+    /// </summary>
+    private static LeaseDraftValues ApplyTerm(LeaseDraftValues current, Dictionary<string, JsonElement> properties)
+    {
+        var result = current;
+        if (properties.TryGetValue("startDate", out var start))
+            result = result with { StartDate = Text(start, "startDate") };
+        if (properties.TryGetValue("endDate", out var end))
+            result = result with { EndDate = Text(end, "endDate") };
+        return result;
     }
 
     // ---- step 5 --------------------------------------------------------------------------------------------------

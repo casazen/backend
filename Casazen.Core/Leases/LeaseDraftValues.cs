@@ -25,7 +25,7 @@ public sealed record LeaseDraftValues
     /// <summary>Step 2: the tenants, in the order entered.</summary>
     public IReadOnlyList<LeaseDraftParty> Tenants { get; init; } = [];
 
-    /// <summary>Step 3: <c>Libero</c> or <c>Concordato</c> (anything else is kept and reported as not available).</summary>
+    /// <summary>Step 3: <c>Libero</c> or <c>Concordato</c>, and <c>Transitorio</c> for an imported contract (anything else is kept and reported as not available).</summary>
     public string? ContractType { get; init; }
 
     /// <summary>Step 3: <c>CedolareSecca</c> or <c>Ordinario</c>.</summary>
@@ -42,6 +42,13 @@ public sealed record LeaseDraftValues
 
     /// <summary>Step 4: first day of the contract, <c>yyyy-MM-dd</c>; the end of the first period is computed from the type.</summary>
     public string? StartDate { get; init; }
+
+    /// <summary>
+    /// Step 4, <b>imported contracts only</b> (LR-13): the last day of the first period as the contract already signed states it,
+    /// <c>yyyy-MM-dd</c>. Without it the term follows the type (48 months for the libero, 36 for the concordato); the transitory type,
+    /// whose term is free (1 to 18 months), needs it. A contract made in CasaZen never reads it: the wizard owns its term.
+    /// </summary>
+    public string? EndDate { get; init; }
 
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {

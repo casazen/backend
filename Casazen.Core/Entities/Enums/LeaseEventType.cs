@@ -54,4 +54,11 @@ public enum LeaseEventType
     /// longer the contract. Payload: <c>withdrawn</c> or <c>review_reopened</c>.
     /// </summary>
     SentRevoked,
+
+    /// <summary>
+    /// The landlord brought in a contract already signed outside CasaZen (LR-13): the signed copy was uploaded with the day of the
+    /// signature and the draft of origin <c>Imported</c> became a Signed lease. Recorded together with <see cref="AllPartiesSigned"/>
+    /// (payload <c>imported</c>). No payload.
+    /// </summary>
+    Imported,
 }

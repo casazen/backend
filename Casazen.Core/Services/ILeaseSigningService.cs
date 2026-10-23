@@ -37,6 +37,22 @@ public interface ILeaseSigningService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Imports a contract signed outside CasaZen, with the model of the owner (LR-13, decisions LR-D2 and LR-D28): the only way a
+    /// contract gets to Signed without a template of ours, so the gate of the models (<see cref="ILeaseTemplateService.EnsureFinalContractAvailable"/>)
+    /// stays for every other path. Only a draft of origin <see cref="Entities.Enums.LeaseOrigin.Imported"/> whose review has nothing
+    /// blocking: stores the signed PDF in the private bucket (and a copy as the <c>Contract</c> document of the lease, so the
+    /// Documents section shows it), records the stipula, marks every party signed and the lease Signed, and writes the events
+    /// <c>AllPartiesSigned</c> (payload <c>imported</c>) and <c>Imported</c>. The registration is declared afterwards, with the manual
+    /// declaration that already exists. 409 <c>lease_not_draft</c>, 422 <c>lease_import_not_imported_origin</c>,
+    /// 422 <c>lease_review_blocked</c>, 422 <c>lease_signed_contract_invalid</c>, 422 <c>lease_stipula_date_in_future</c>.
+    /// </summary>
+    Task<LeaseContract> ImportSignedContractAsync(
+        Guid leaseId,
+        string userId,
+        ImportedContractDeclaration declaration,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Stipula date of a lease already signed whose signature was never recorded (older leases): fixes the RLI
     /// deadline. 409 <c>lease_stipula_already_recorded</c> when the lease has one.
     /// </summary>
@@ -74,6 +90,12 @@ public interface ILeaseSigningService
 /// <summary>What the landlord declares for an offline signature: the stipula date and the PDF signed by every party.</summary>
 public sealed record OfflineSignatureDeclaration(DateTime StipulaDate, Stream SignedContract, long SignedContractLength);
 
+/// <summary>
+/// What the landlord declares to import a contract signed elsewhere (LR-13): the day of the signature, the signed PDF and the name the
+/// file had (kept as the name of the document in the lease's Documents section when it is a sound one).
+/// </summary>
+public sealed record ImportedContractDeclaration(DateTime StipulaDate, Stream SignedContract, long SignedContractLength, string? FileName);
+
 /// <summary>The stored signed contract; the caller disposes <see cref="Content"/>.</summary>
 public sealed record SignedContractFile(Stream Content, string FileName);
 
@@ -97,4 +119,7 @@ public static class LeaseSigningErrorCodes
     public const string StipulaDateInFuture = "lease_stipula_date_in_future";
     public const string StipulaAlreadyRecorded = "lease_stipula_already_recorded";
     public const string StipulaLeaseNotSigned = "lease_stipula_lease_not_signed";
+
+    /// <summary>422: only a draft declared as an imported contract (<c>origin: Imported</c>, at creation) can be imported; a contract made in CasaZen is signed through the models (LR-D28).</summary>
+    public const string ImportNotImported = "lease_import_not_imported_origin";
 }

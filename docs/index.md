@@ -37,7 +37,7 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 - Prenotazioni e ospiti: [prenotazione diretta](runbooks/direct-booking.md), [messaggi](runbooks/guest-messages.md), [GDPR](runbooks/gdpr.md).
 - Adempimenti: [Alloggiati](runbooks/alloggiati.md), [flussi regionali](runbooks/ross1000.md), [imposta di soggiorno](runbooks/tourist-tax-rates.md).
 - Organizzazione: [persone e ruoli](runbooks/org-team.md), [fatturazione](runbooks/billing-tax.md).
-- Affitti lunghi: [bozza guidata](runbooks/long-rent-lease-draft.md), [RLI](runbooks/rli.md), [template contratti](runbooks/lease-contract-templates.md).
+- Affitti lunghi: [bozza guidata](runbooks/long-rent-lease-draft.md), [contratto già firmato](runbooks/long-rent-lease-import.md), [RLI](runbooks/rli.md), [template contratti](runbooks/lease-contract-templates.md).
 - Fornitori: [profili e richieste](runbooks/suppliers.md).
 
 Alloggiati è attualmente un flusso di preparazione e invio manuale; un obiettivo di automazione nel pilota non modifica lo stato del connettore consegnato. Verificare sempre esiti e ricevute, non soltanto la generazione di un file.
