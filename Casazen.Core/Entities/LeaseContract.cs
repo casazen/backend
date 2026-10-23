@@ -53,8 +53,28 @@ public class LeaseContract : ITenantOwned
     [Required]
     public DateTime StartDate { get; set; }
 
+    private DateTime _endDate;
+
+    /// <summary>
+    /// Last day (included) of the <b>first period</b> of the contract, as the contract states it: what the contract template, the RLI
+    /// registration and the first rent plan are written from. It does not move when the lease renews by itself or is ended early: that
+    /// is <see cref="CurrentTermEndDate"/>, and every reader that asks when the lease ends reads that one (LR-14).
+    /// </summary>
     [Required]
-    public DateTime EndDate { get; set; }
+    public DateTime EndDate
+    {
+        get => _endDate;
+        set
+        {
+            // While the lease is in its first period the current period ends where the contract ends, so a writer that knows only the
+            // contract (the guided draft, the complete creation) leaves the lease consistent. Once the lease has renewed or been ended
+            // early the two ends differ and this setter leaves the current one alone. EF fills the field, not this setter.
+            if (CurrentTermEndDate == default || CurrentTermEndDate == _endDate)
+                CurrentTermEndDate = value;
+
+            _endDate = value;
+        }
+    }
 
     [Required]
     [Column(TypeName = "decimal(18,2)")]
@@ -114,7 +134,7 @@ public class LeaseContract : ITenantOwned
 
     /// <summary>
     /// A party asked for the erasure of their data (art. 17 GDPR, LT-12): the parties are anonymized as soon as the lease
-    /// has ended (the day after <see cref="EndDate"/>), without waiting for the retention period. Never reset.
+    /// has ended (the day after <see cref="CurrentTermEndDate"/>), without waiting for the retention period. Never reset.
     /// </summary>
     public bool ErasureRequested { get; set; } = false;
 
@@ -123,7 +143,7 @@ public class LeaseContract : ITenantOwned
 
     /// <summary>
     /// When every party of the lease was anonymized (LT-12, A7-18), by an erasure request or by the retention period
-    /// <c>Gdpr:Retention:LeaseParties</c> counted from <see cref="EndDate"/>. Null while at least one party keeps its data.
+    /// <c>Gdpr:Retention:LeaseParties</c> counted from <see cref="CurrentTermEndDate"/>. Null while at least one party keeps its data.
     /// The retention end is computed on read from the configured period, never stored.
     /// </summary>
     public DateTime? PartiesAnonymizedAt { get; set; }
@@ -182,6 +202,35 @@ public class LeaseContract : ITenantOwned
 
     /// <summary>How the lease came to be in CasaZen (<see cref="LeaseOrigin"/>); fixed at creation.</summary>
     public LeaseOrigin Origin { get; set; } = LeaseOrigin.Created;
+
+    // ─── The end of the lease that is in force (LR-14) ────────────────────────────────────────────────────────────────
+    // A libero (4+4) or concordato (3+2) lease that nobody gave notice of renews by itself, so the end the contract states is only the
+    // end of its first period. The end that tells whether the lease is over, ties a property up or may be anonymized is this one. All the
+    // dates are the Europe/Rome calendar day as midnight UTC.
+
+    /// <summary>
+    /// Last day (included) of the period the lease is in now. Equal to <see cref="EndDate"/> until the lease renews by itself
+    /// (<see cref="LeaseRenewal.NextEnd"/>, the hourly job <c>lease-term-renewal</c>) or is ended early (<see cref="TerminatedOn"/>).
+    /// A lease that had already ended when the column was added keeps its end and is recorded as concluded (no retroactive renewal).
+    /// </summary>
+    public DateTime CurrentTermEndDate { get; set; }
+
+    /// <summary>
+    /// The day the landlord or the tenant gave notice that the lease will not renew (the landlord records it, with <see cref="NoticeFrom"/>
+    /// saying who gave it); <c>null</c> without a notice. While it is set the lease ends with its current period and does not renew.
+    /// CasaZen does not judge whether the notice was valid in law (decision LR-D29).
+    /// </summary>
+    public DateTime? NoticeOn { get; set; }
+
+    /// <summary>Who gave the notice of <see cref="NoticeOn"/>; <c>null</c> without a notice.</summary>
+    public LeaseNoticeParty? NoticeFrom { get; set; }
+
+    /// <summary>
+    /// The last day of a lease that was ended before the end of its period (early termination, LR-14), which is then
+    /// <see cref="CurrentTermEndDate"/> too; <c>null</c> for a lease that was not ended early. Irreversible, and it stops the renewal. It
+    /// is also what records a lease that had ended before the renewal existed as concluded (its last day is its <see cref="EndDate"/>).
+    /// </summary>
+    public DateTime? TerminatedOn { get; set; }
 
     public virtual ICollection<Party> Parties { get; set; } = [];
     public virtual ICollection<LeaseSigner> Signers { get; set; } = [];
