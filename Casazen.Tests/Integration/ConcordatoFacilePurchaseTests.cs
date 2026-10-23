@@ -41,8 +41,8 @@ public class ConcordatoFacilePurchaseTests : IAsyncLifetime
 
             // Seed two orgs with leases and purchases
             db.Orgs.AddRange(
-                new Org { Id = orgA, Name = "OrgA", Slug = "org-a", CreatedAt = DateTime.UtcNow },
-                new Org { Id = orgB, Name = "OrgB", Slug = "org-b", CreatedAt = DateTime.UtcNow }
+                new OrgEntity { Id = orgA, Name = "OrgA", Slug = "org-a", CreatedAt = DateTime.UtcNow },
+                new OrgEntity { Id = orgB, Name = "OrgB", Slug = "org-b", CreatedAt = DateTime.UtcNow }
             );
 
             db.LeaseContracts.AddRange(
@@ -108,9 +108,9 @@ public class ConcordatoFacilePurchaseTests : IAsyncLifetime
         }
     }
 
-    private class StubTenantContext : ITenantContext
+    private sealed class StubTenantContext(Guid orgId) : ITenantContext
     {
-        public StubTenantContext(Guid orgId) => OrgId = orgId;
-        public Guid OrgId { get; }
+        public Guid? OrgId { get; } = orgId;
+        public bool FilterEnabled => true;
     }
 }

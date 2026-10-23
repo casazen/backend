@@ -32,7 +32,7 @@ public class ConcordatoFacileGiftTests : IAsyncLifetime
         {
             await db.Database.MigrateAsync();
 
-            db.Orgs.Add(new Org
+            db.Orgs.Add(new OrgEntity
             {
                 Id = orgId,
                 Name = "TestOrg",
