@@ -85,7 +85,7 @@ public class PropertyDocumentServiceTests
             _service.UploadDocumentAsync(propertyId, mockFile.Object, DocumentType.CinCertificate, "user@example.com"));
 
         _mockStorageService.Verify(x => x.UploadDocumentAsync(It.IsAny<IFormFile>(), It.IsAny<Guid>()), Times.Never);
-        _mockApeCompliance.Verify(x => x.CheckUploadedApeAsync(It.IsAny<IFormFile>()), Times.Never);
+        _mockApeCompliance.Verify(x => x.CheckUploadedApeAsync(It.IsAny<IFormFile>(), It.IsAny<ApeRegistryContext?>()), Times.Never);
         _mockDocumentRepository.Verify(x => x.AddAsync(It.IsAny<PropertyDocument>()), Times.Never);
     }
 
@@ -124,7 +124,7 @@ public class PropertyDocumentServiceTests
 
         Assert.Equal("CinCertificate.png", result.Document.FileName);
         _mockStorageService.Verify(x => x.UploadDocumentAsync(file, propertyId), Times.Once);
-        _mockApeCompliance.Verify(x => x.CheckUploadedApeAsync(It.IsAny<IFormFile>()), Times.Never);
+        _mockApeCompliance.Verify(x => x.CheckUploadedApeAsync(It.IsAny<IFormFile>(), It.IsAny<ApeRegistryContext?>()), Times.Never);
     }
 
     [Fact]
@@ -218,12 +218,12 @@ public class PropertyDocumentServiceTests
         _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync("/ape.pdf");
-        _mockApeCompliance.Setup(x => x.CheckUploadedApeAsync(mockFile.Object)).ReturnsAsync(ApeUploadCheck.Passed);
+        _mockApeCompliance.Setup(x => x.CheckUploadedApeAsync(mockFile.Object, It.IsAny<ApeRegistryContext?>())).ReturnsAsync(ApeUploadCheck.Passed);
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync(saved);
 
         var result = await _service.UploadDocumentAsync(propertyId, mockFile.Object, DocumentType.Ape, "owner@example.com");
 
-        _mockApeCompliance.Verify(x => x.CheckUploadedApeAsync(mockFile.Object), Times.Once);
+        _mockApeCompliance.Verify(x => x.CheckUploadedApeAsync(mockFile.Object, It.IsAny<ApeRegistryContext?>()), Times.Once);
         Assert.Equal(ApeUploadCheck.Verified, result.ApeCheck?.Outcome);
     }
 
@@ -236,7 +236,7 @@ public class PropertyDocumentServiceTests
         _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync("/ape.pdf");
-        _mockApeCompliance.Setup(x => x.CheckUploadedApeAsync(mockFile.Object))
+        _mockApeCompliance.Setup(x => x.CheckUploadedApeAsync(mockFile.Object, It.IsAny<ApeRegistryContext?>()))
             .ReturnsAsync(new ApeUploadCheck(ApeUploadCheck.Incomplete, ["CertificateCode", "ExpiryDate"]));
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync((PropertyDocument document) => document);
 
@@ -248,6 +248,43 @@ public class PropertyDocumentServiceTests
     }
 
     [Fact]
+    public async Task UploadDocumentAsync_ApeWithCodeAndClassRead_StoresThemForTheContract()
+    {
+        // LT-10: nobody types them; the comune and the region of the property go with the file, for the register of Lombardy.
+        var propertyId = Guid.NewGuid();
+        var mockFile = CreateMockFile("ape.pdf");
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
+        _mockPropertyRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync(new Property { Id = propertyId, City = "Monza", RegionCode = "LOM" });
+        _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
+        _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync("/ape.pdf");
+        _mockApeCompliance.Setup(x => x.CheckUploadedApeAsync(mockFile.Object, new ApeRegistryContext("Monza", "LOM")))
+            .ReturnsAsync(new ApeUploadCheck(ApeUploadCheck.Verified, []) { CertificateCode = "12345000067819", EnergyClass = "f", CodeSource = ApeUploadCheck.FromRegistry });
+        _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync((PropertyDocument document) => document);
+
+        var result = await _service.UploadDocumentAsync(propertyId, mockFile.Object, DocumentType.Ape, "owner@example.com");
+
+        Assert.Equal(("12345000067819", "F"), (result.Document.ApeCode, result.Document.ApeEnergyClass));
+        Assert.True(result.Document.HasApeIdentification);
+    }
+
+    [Fact]
+    public async Task ReadApeIdentificationAsync_FillsOnlyWhatIsEmpty_NeverWhatTheLandlordTyped()
+    {
+        var propertyId = Guid.NewGuid();
+        var stored = new PropertyDocument { Id = Guid.NewGuid(), PropertyId = propertyId, DocumentType = DocumentType.Ape, StorageUrl = "/ape.pdf", ApeEnergyClass = "E" };
+        _mockStorageService.Setup(x => x.OpenReadAsync("/ape.pdf")).ReturnsAsync(new MemoryStream("%PDF-1.4"u8.ToArray()));
+        _mockApeCompliance.Setup(x => x.ReadStoredApeAsync(It.IsAny<Stream>(), It.IsAny<ApeRegistryContext?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApeUploadCheck(ApeUploadCheck.Verified, []) { CertificateCode = "12345000067819", EnergyClass = "F", CodeSource = ApeUploadCheck.FromRegistry });
+        _mockDocumentRepository.Setup(x => x.UpdateAsync(It.IsAny<PropertyDocument>())).ReturnsAsync((PropertyDocument document) => document);
+
+        var result = await _service.ReadApeIdentificationAsync(stored);
+
+        Assert.Equal(("12345000067819", "E"), (result.Document.ApeCode, result.Document.ApeEnergyClass));
+        Assert.Equal(ApeUploadCheck.FromRegistry, result.ApeCheck?.CodeSource);
+        _mockDocumentRepository.Verify(x => x.UpdateAsync(stored), Times.Once);
+    }
+
+    [Fact]
     public async Task UploadDocumentAsync_WithRefusedApe_DoesNotStoreFile()
     {
         var propertyId = Guid.NewGuid();
@@ -255,7 +292,7 @@ public class PropertyDocumentServiceTests
 
         _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
-        _mockApeCompliance.Setup(x => x.CheckUploadedApeAsync(mockFile.Object))
+        _mockApeCompliance.Setup(x => x.CheckUploadedApeAsync(mockFile.Object, It.IsAny<ApeRegistryContext?>()))
             .ThrowsAsync(new ApeComplianceException(new ApeInspectionResult(ApeInspectionStatus.Expired)));
 
         var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
