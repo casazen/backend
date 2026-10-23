@@ -1,6 +1,6 @@
 # Requisiti per Helix — integrazione ConcordatoFacile
 
-Revisione 8 · 22 ottobre 2026. Questo è l’unico documento che guida lo sviluppo e quello da fornire a Helix. Descrive il lavoro ancora necessario per il servizio CF. La [documentazione del flusso](../docs/integrations/concordatofacile/README.md) è descrittiva (percorso dell’utente, accordi con CF, risposte per CF): non aggiunge requisiti e, se differisce, vale questo testo. Sostituisce le precedenti proposte di integrazione e l’analisi di business che stava in questo file (storico in git), senza richiedere di sommarne le funzionalità.
+Revisione 9 · 23 ottobre 2026. Questo è l’unico documento che guida lo sviluppo e quello da fornire a Helix. Descrive il lavoro ancora necessario per il servizio CF. La [documentazione del flusso](../docs/integrations/concordatofacile/README.md) è descrittiva (percorso dell’utente, accordi con CF, risposte per CF): non aggiunge requisiti e, se differisce, vale questo testo. Sostituisce le precedenti proposte di integrazione e l’analisi di business che stava in questo file (storico in git), senza richiedere di sommarne le funzionalità.
 
 ## 1. Base da riusare e lavoro restante
 
@@ -12,9 +12,9 @@ Le PR [frontend #315](https://github.com/casazen/frontend/pull/315) e [backend #
 | Allegati `LeaseDocument`, API autorizzate elenco/upload/download, storage privato e isolamento OrgId | Pagina offerta, pagamento singolo 119 € IVA compresa, flag pratica omaggio biennale e bypass admin CasaZen |
 | Sezione Documenti del contratto, raggiungibile anche aprendo il contratto dalla casa | Scheda del contratto con pulsante e stato della pratica; link CF firmato dal server al clic, dopo verifica del diritto; una sola pratica per contratto |
 | Un PDF esistente oppure più foto JPEG/PNG riordinate/ruotate e unite in un solo PDF scaricabile; le foto non sono conservate separatamente | Estrazione dai documenti del contratto e popolamento delle rispettive sezioni dello stesso leaseId |
-| OCR e controlli fondamentali APE, nel distinto archivio della casa | Client stato CF v0.1, snapshot applicativo di 15 minuti e ritorno con pratica/conferma del contratto |
+| OCR e controlli fondamentali APE, nel distinto archivio della casa | Client stato CF v0.2, snapshot applicativo di 15 minuti e ritorno con pratica/conferma del contratto |
 
-Fonti: «ConcordatoFacile — specifica endpoint di stato v0.1», ottobre 2026, governa link e letture di stato; della precedente «01-technical-specification», v1.3 del 13 ottobre 2026, si riusano soltanto §2 per HMAC/vettore e le convenzioni esplicitamente richiamate dalla v0.1. Non implementare webhook, download automatico dei file, vecchi caseId/eventi, riapertura garantita o altri requisiti v1.3 superati dal nuovo flusso. CF ha confermato che per CasaZen esiste **solo il servizio completo** (attestazione e registrazione). Le differenze aperte sono riportate sotto, senza inventare accordi.
+Fonti: «ConcordatoFacile — specifica endpoint di stato v0.2», ottobre 2026 (sostituisce la v0.1), governa link e letture di stato; della precedente «01-technical-specification», v1.3 del 13 ottobre 2026, si riusano soltanto §2 per HMAC/vettore e le convenzioni esplicitamente richiamate dalla v0.2. Non implementare webhook, download automatico dei file, vecchi caseId/eventi, riapertura garantita o altri requisiti v1.3 superati dal nuovo flusso. Nella v0.2 (§1 e §5) il servizio per CasaZen è sempre la **pratica completa**, fino alla registrazione. Il profilo di lettura della sezione 6 è accettato da CF (v0.2 §4), e il 23 ottobre CF ha verificato con il codice del modulo i tre link di esempio del 22 ottobre. Le differenze aperte sono riportate sotto, senza inventare accordi.
 
 Non ricostruire pagina upload, assemblaggio foto/PDF, OCR APE o un secondo archivio. La funzione documentale multipagina è generale, non un nuovo requisito CF. Il suo riuso nell’importazione contrattuale non implica che il controllo APE sappia già estrarre i dati di un contratto. Perimetro: solo web; l’app mobile non ha schermate dei contratti long-rent e resta fuori.
 
@@ -74,7 +74,7 @@ Registro e bollo eventualmente dovuti sono esclusi. Il caricamento è effettuato
 
 Esporre comandi/letture interni, nel contesto del contratto, per prezzo e diritto, checkout e prosecuzione. I nomi sono una scelta Helix coerente con il repository. Il comando di prosecuzione autorizza sempre sul server: il frontend non decide gratuità e non deve aggirare il controllo aprendo un URL costruito da solo. Login e checkout preservano il contratto di partenza.
 
-La firma del link non sostituisce il diritto al servizio: generarne una nuova richiede sempre autorizzazione, pagamento/omaggio o bypass admin verificati sul server. La v0.1 permette comunque di compilare il modulo anche con link assente, invalido o scaduto, creando una pratica senza leaseId. Concordare con CF la riconciliazione operativa prima di addebitare/lavorare pratiche non collegate; non usarne l'esistenza o il solo abbinamento come prova del pagamento.
+La firma del link non sostituisce il diritto al servizio: generarne una nuova richiede sempre autorizzazione, pagamento/omaggio o bypass admin verificati sul server. La v0.2 permette comunque di compilare il modulo anche con link assente, invalido o scaduto, creando una pratica senza leaseId. Concordare con CF la riconciliazione operativa prima di addebitare/lavorare pratiche non collegate; non usarne l'esistenza o il solo abbinamento come prova del pagamento.
 
 ## 4. Link firmato e ritorno dalle email
 
@@ -82,7 +82,7 @@ La firma del link non sostituisce il diritto al servizio: generarne una nuova ri
 
 Comando interno autenticato e autorizzato sul contratto, preferibilmente POST, che controlla il diritto e genera al clic un link a **`https://app.concordatofacile.it/`**. Nessuna firma preparata nel browser o conservata nel checkout/email CasaZen. Il comando registra soltanto l’emissione (contratto, utente, ora; mai l’URL né la firma): serve all’audit e alla rilettura breve della sezione 6.
 
-| Parametro | Valore e regola v0.1 |
+| Parametro | Valore e regola v0.2 |
 |---|---|
 | `partner` | `casazen` |
 | `leaseId` | UUID reale della bozza, in minuscolo |
@@ -91,9 +91,9 @@ Comando interno autenticato e autorizzato sul contratto, preferibilmente POST, c
 | `comune` | Nome del comune della casa, dalla sorgente territoriale esistente |
 | `provincia` | Sigla provinciale, per esempio `MB`, dalla stessa sorgente |
 
-Firmare i **valori decodificati esatti**, poi codificare ogni valore per la query con una libreria URL. Non firmare il testo URL-encoded né normalizzare dopo la firma. Verificare il vettore pubblico della v1.3 §2, ripreso dalla v0.1; non usare la sua chiave dimostrativa in produzione. Comune/provincia non sono coperti dalla firma. CF tollera due minuti di scarto e rifiuta scadenze oltre 60 minuti: CasaZen emette sempre 15 minuti nella forma canonica. Configurazione e segreti distinti per prova/produzione, solo backend, mai nel bundle, nelle query interne, nei log o nella telemetria. Il link restituito contiene una firma temporanea: evitare log del relativo URL completo e risposte cacheabili.
+Firmare i **valori decodificati esatti**, poi codificare ogni valore per la query con una libreria URL. Non firmare il testo URL-encoded né normalizzare dopo la firma. Verificare il vettore pubblico della v1.3 §2, ripreso dalla v0.2; non usare la sua chiave dimostrativa in produzione. Comune/provincia non sono coperti dalla firma. Il comune precompila la ricerca del modulo: se non è nell'elenco di CF (oggi Seveso, comune pilota, non c'è), il modulo lo lascia scritto e l'utente prosegue con quel nome; la pratica resta legata al contratto e `comune` arriva nello stato ridotto a lettere, spazi, apostrofi, trattini e parentesi. Non è un errore da gestire in CasaZen: non cambiare il nome inviato e aprire il punto con CF (sezione 6). CF tollera due minuti di scarto e rifiuta scadenze oltre 60 minuti: CasaZen emette sempre 15 minuti nella forma canonica. Configurazione e segreti distinti per prova/produzione, solo backend, mai nel bundle, nelle query interne, nei log o nella telemetria. Il link restituito contiene una firma temporanea: evitare log del relativo URL completo e risposte cacheabili.
 
-Vettore pubblico di conformità v1.3 §2, confermato dalla v0.1 (è una fixture dimostrativa, **non una credenziale operativa**):
+Vettore pubblico di conformità v1.3 §2, confermato dalla v0.2 (è una fixture dimostrativa, **non una credenziale operativa**):
 
 ```text
 linkSecret = test_link_secret_0123456789abcdef0123456789abcdef
@@ -102,6 +102,20 @@ signature  = fa10ce472c1e3b33939e62e01a7f5f8cec10d45abc02726f691cae37bd639eea
 ```
 
 La scadenza storica serve al test puro della firma, non all'apertura live. Nel link il relativo `expiresAt` è `2026-10-13T10%3A00%3A00Z`; il messaggio HMAC mantiene i due punti decodificati. Per i link reali usare invece scadenza corrente + 15 minuti e segreto dell'ambiente fornito da CF.
+
+Altri due vettori, generati da uno script di riferimento il 22 ottobre con lo stesso segreto pubblico e verificati da CF con il codice del modulo il 23 ottobre (secondi diversi da zero; il secondo ha un comune con spazi e apostrofo):
+
+```text
+leaseId   = ea326713-1005-4c17-9f6f-37f3b6af395a
+expiresAt = 2026-10-22T16:40:19Z   (nel link: 2026-10-22T16%3A40%3A19Z)
+signature = c387fc1f3da26cd41003d5d3acb4a4d3533ae026d700bba318349a19865db367
+comune    = Seveso, provincia MB
+
+leaseId   = 62affd98-c899-449d-b08e-b64972d79bb0
+expiresAt = 2026-10-22T16:40:19Z
+signature = 04dc8390857669d00e87d6ee70b2f64437fa4ed38889720d4517d59debcf05e1
+comune    = Reggio nell'Emilia, provincia RE   (nel link: Reggio%20nell%27Emilia)
+```
 
 Non inviare `comuneIstatCode`, `returnUrl` o `theme`: CF li ignora. Aprire in navigazione normale, mai iframe; se nuova scheda usare `noopener noreferrer`. CF rimuove i parametri firmati dalla barra prima di script di terzi; non dare per questo il leaseId come autenticazione dell'utente.
 
@@ -122,7 +136,7 @@ Con errore nella lettura non interpretare «nessuna pratica»: se esiste uno sna
 
 ### Ritorno ai documenti: estendere la pagina esistente
 
-La pagina implementata oggi (in `develop`, non ancora in produzione) accetta **`https://casazen.space/app/long-rent/documents/upload?leaseId=<uuid>`**. Il bottone «Carica i dati in CasaZen» di CF porterà invece **`?practice=P-…`**, come nella v0.1, con lookup della pratica; questo supporto **non è ancora implementato**. Estendere la stessa pagina e il ritorno dal login, senza creare un altro archivio.
+La pagina implementata oggi (in `develop`, non ancora in produzione) accetta **`https://casazen.space/app/long-rent/documents/upload?leaseId=<uuid>`**. Il bottone «Carica i dati in CasaZen» di CF porterà invece **`?practice=P-…`**, come nella v0.2, con lookup della pratica; questo supporto **non è ancora implementato**. Estendere la stessa pagina e il ritorno dal login, senza creare un altro archivio.
 
 Parametro comunicato a CF: mantenere il percorso e usare soltanto `?practice=<practiceId>`. Il `leaseId` non serve nel link: arriva dal lookup della pratica o dalla scelta dell'utente, ed è comunque indispensabile per salvare gli allegati. Continuare a supportare i link esistenti con solo `?leaseId=<uuid>`, con la stessa conferma del contratto; se nella query compaiono entrambi i parametri vale `practice` e il `leaseId` della query è ignorato.
 
@@ -131,7 +145,7 @@ Parametro comunicato a CF: mantenere il percorso e usare soltanto `?practice=<pr
 - LeaseId nullo, pratica non trovata o non autorizzata, oppure lookup non disponibile (errore, timeout, 429): nessuna associazione automatica, nessun dettaglio di altri tenant. Consentire la scelta di un proprio contratto per conservare i documenti, avvisando, se la pratica risulta non collegata, che il collegamento deve essere corretto **da CF manualmente**; non introdurre un'API di scrittura CF che la specifica non offre. La scelta dell'utente non modifica il leaseId della pratica.
 - Upload e download riusano le API LeaseDocument esistenti sul leaseId selezionato. Non importare file da CF, non richiedere un altro acquisto e non fatturare in base al solo practiceId/leaseId. Non creare obbligatoriamente un legame CF al documento caricato su un contratto diverso da quello restituito.
 
-CasaZen non riceve email di pratica o finali: le comunicazioni e il bottone sono nelle email **all'utente**. Il bottone è una pagina web, non l'endpoint di stato o un'API di importazione. CF non deve accenderlo finché CasaZen non conferma, dopo il rilascio in produzione e il collaudo del ritorno con `practice`.
+CasaZen non riceve email di pratica o finali: le comunicazioni e il bottone sono nelle email **all'utente**. Il bottone è una pagina web, non l'endpoint di stato o un'API di importazione. CF lo ha già impostato su `https://casazen.space/app/long-rent/documents/upload?practice=P-…` (v0.2 §7) e lo tiene spento finché CasaZen non conferma, dopo il rilascio in produzione e il collaudo del ritorno con `practice`.
 
 ## 5. Importazione dei dati dai documenti del contratto
 
@@ -153,9 +167,9 @@ Estendere l’archivio **LeaseDocument già implementato**, conservando lo stess
 
 L’APE resta un documento della casa. Il suo OCR verifica i dati fondamentali e le date sull’intero attestato; non è una prova di autenticità nel registro regionale e non sostituisce le verifiche del partner. Non deve bloccare l’assegnazione del leaseId alla bozza minima.
 
-## 6. Stato CF v0.1: lettura e cache applicativa
+## 6. Stato CF v0.2: lettura e cache applicativa
 
-Client HTTP tipizzato backend verso **`https://stato.concordatofacile.it`**, HTTPS, TLS 1.2 o superiore. Autenticazione `Authorization: Bearer <chiave>`, separata dal segreto HMAC, distinta tra prova e produzione. Più chiavi possono coesistere per la rotazione; CF le consegna tramite Bitwarden Send a una sola apertura e password su altro canale. Non acquisire o salvare credenziali nei documenti/repository.
+Client HTTP tipizzato backend verso **`https://stato.concordatofacile.it`**, HTTPS, TLS 1.2 o superiore. Autenticazione `Authorization: Bearer <chiave>`, separata dal segreto HMAC, distinta tra prova e produzione. Più chiavi possono coesistere per la rotazione; CF le consegna al referente CasaZen per email con un Bitwarden Send a una sola apertura, quando l'endpoint di prova è pronto, e la password su un altro canale concordato a parte (v0.2 §3). Non acquisire o salvare credenziali nei documenti/repository.
 
 | Chiamata CF | Risultato |
 |---|---|
@@ -179,16 +193,16 @@ Oggetto pratica: `practiceId`, `status`, `statusChangedAt`, `submittedAt`, `comu
 
 Motivi di chiusura: `duplicate`, `withdrawn`, `not_compliant`, `other`. InProgress/AwaitingUser possono alternarsi, Suspended può riprendere; `statusChangedAt` non retrocede. Non modellare una progressione numerica irreversibile e non nascondere doppioni: elencare tutte le pratiche, distinguendo quelle chiuse per duplicazione. Valori/campi/codici sconosciuti non fanno fallire la lettura e non diventano «completata»: presentazione neutra, nessuna automazione finché la semantica non è nota.
 
-Per CasaZen CF ha confermato che esiste **solo il servizio completo**: nessuna scelta base/completo nel modulo e nessun campo servizio da richiedere all'endpoint. `Attested` è quindi un passaggio intermedio («Attestazione rilasciata, registrazione in corso»), `Registered` è l'unico finale positivo e `ClosedWithoutAttestation` il finale negativo; non dichiarare concluso il servizio prima di `Registered`. Se CF attivasse in futuro anche il servizio base per CasaZen, deve prima documentare e consegnare il campo servizio: finché non è documentato, un campo o un valore sconosciuto non diventa mai «completata». Il prezzo di vendita rimane 119 € IVA inclusa; non c'è un secondo checkout.
+Per CasaZen il servizio è sempre la **pratica completa**, fino alla registrazione (v0.2 §1 e §5): nessuna scelta base/completo nel modulo e nessun campo servizio nell'endpoint. `Attested` è quindi un passaggio intermedio («Attestazione rilasciata, registrazione in corso»), `Registered` è l'unico finale positivo e `ClosedWithoutAttestation` il finale negativo; non dichiarare concluso il servizio prima di `Registered`. Se CF attivasse in futuro altri servizi per CasaZen, la v0.2 prevede che avvisi prima e aggiunga un campo nell'endpoint: finché non è documentato, un campo o un valore sconosciuto non diventa mai «completata». Il prezzo di vendita rimane 119 € IVA inclusa; non c'è un secondo checkout.
 
 ### Chiamate CasaZen e frequenza
 
 - Esporre lettura interna autenticata nel contesto del contratto, ad esempio `GET /api/leases/{leaseId}/concordatofacile/status`, per la sezione «Stato della pratica» e per il pulsante «Accedi alla tua pratica» della scheda del contratto; non è l'URL CF né un endpoint già sviluppato. Autorizzare il contratto prima della chiamata remota e prima di leggere qualsiasi risultato memorizzato. Il lookup practice del ritorno applica i controlli della sezione 4.
-- Interrogare CF quando l'utente apre la **scheda del contratto** (che mostra «Accedi alla tua pratica» o lo stato della pratica), se lo snapshot valido è scaduto: **non più di una lettura ogni 15 minuti per leaseId**, condivisa fra schede e utenti autorizzati dell'organizzazione. Anche «Aggiorna» e ritorni ripetuti rispettano il periodo. Scelta dichiarata: niente timer browser, job periodico o polling in background, anche se CF per le pratiche aperte consiglia al massimo una lettura ogni 15 minuti.
-- **Rilettura breve dopo l'apertura del modulo.** Dopo l'emissione di un link (sezione 4), finché l'elenco non mostra una pratica, la scheda può rileggere lo stato al massimo **ogni 5 minuti per contratto, per 60 minuti dall'ultima emissione**, e solo quando l'utente apre la pagina o la rimette in primo piano; poi, o appena compare una pratica, torna il periodo di 15 minuti. Serve a far sparire il pulsante pochi minuti dopo l'invio. È una deroga dichiarata a CF nella formula del limite.
+- Interrogare CF quando l'utente apre la **scheda del contratto** (che mostra «Accedi alla tua pratica» o lo stato della pratica), se lo snapshot valido è scaduto: **non più di una lettura ogni 15 minuti per leaseId**, condivisa fra schede e utenti autorizzati dell'organizzazione. Anche «Aggiorna» e ritorni ripetuti rispettano il periodo. Niente timer browser, job periodico o polling in background: è il profilo che CF ha accettato nella v0.2 (§4), che non prevede letture in background.
+- **Rilettura breve dopo l'apertura del modulo.** Dopo l'emissione di un link (sezione 4), finché l'elenco non mostra una pratica, la scheda può rileggere lo stato al massimo **ogni 5 minuti per contratto, per 60 minuti dall'ultima emissione**, e solo quando l'utente apre la pagina o la rimette in primo piano; poi, o appena compare una pratica, torna il periodo di 15 minuti. Serve a far sparire il pulsante pochi minuti dopo l'invio. CF l'ha accettata (v0.2 §4) e fissa il limite per chiave con margine sopra questo profilo, rivedendolo sulle pratiche effettive.
 - Memorizzare l'ultimo risultato applicativo con `fetchedAt`, ambiente/OrgId/leaseId, scadenza e stato dell'ultimo tentativo; una semplice cache per istanza non basta a garantire il limite in più repliche. Usare storage applicativo e coordinamento concorrente già disponibili, senza creare un'infrastruttura dedicata. Accorpare le richieste concorrenti. Per il dettaglio di ritorno applicare lo stesso intervallo al practiceId; evitare di ricontattarlo se un elenco già valido ne contiene il risultato autorizzato.
 - CF imposta `Cache-Control: no-store`: non abilitare cache HTTP/browser/proxy. Lo snapshot è stato applicativo privato e autorizzato, non risposta pubblicamente cacheabile; mantenere no-store anche nelle risposte CasaZen. Mostrare data dell'ultimo passaggio CF e data dell'ultima verifica come informazioni distinte, con eventuale indicazione del prossimo aggiornamento.
-- Limite teorico delle sole letture elenco: **4 richieste/ora per contratto consultato continuativamente**, altrimenti zero; solo nell'ora successiva a ogni apertura del modulo, fino a **12 richieste/ora** per quel contratto (rilettura breve); sommare i lookup per practiceId degli arrivi da email. Non promettere un volume aggregato senza numero di pratiche/utenti attivi: come ordine di grandezza, 50 contratti consultati senza sosta sono al massimo 200 richieste/ora, circa 3 al minuto. Comunicare questa formula a CF perché definisca il limite partner; nessun refresh forzato lo aggira.
+- Limite teorico delle sole letture elenco: **4 richieste/ora per contratto consultato continuativamente**, altrimenti zero; solo nell'ora successiva a ogni apertura del modulo, fino a **12 richieste/ora** per quel contratto (rilettura breve); sommare i lookup per practiceId degli arrivi da email. Non promettere un volume aggregato senza numero di pratiche/utenti attivi: come ordine di grandezza, 50 contratti consultati senza sosta sono al massimo 200 richieste/ora, circa 3 al minuto. La formula è già comunicata a CF, che definisce il limite partner; nessun refresh forzato la aggira.
 
 ### Errori e integrità
 
@@ -197,7 +211,7 @@ Per CasaZen CF ha confermato che esiste **solo il servizio completo**: nessuna s
 - Non applicare un risultato con `statusChangedAt` più vecchio per la stessa pratica; distinguere assenza dalla mancata associazione e dai problemi di configurazione. In caso di `comuneDiffersFromLink=true` avvertire l'utente di verificare il contratto, senza correggere silenziosamente la casa.
 - Nessun webhook CF, evento finale con dati fiscali o download automatico dei file. Stato CF, estrazione documentale e dati attestazione/registrazione restano distinti: Registered è uno stato del partner, non una ricevuta già conservata in CasaZen. Nessun invio fiscale automatico aggiuntivo.
 
-Prima del collaudo live servono chiave endpoint di prova e casi nei vari stati; per la firma in prova la v0.1 §3 indica il vettore pubblico della sezione 4 (confermare con CF se per la prova ne esiste uno diverso); produzione usa chiave e segreto di firma diversi, forniti da CF. Chiedere URL/commutazione dell'ambiente di prova, non assumere che i prefissi delle chiavi da soli definiscano la selezione dell'ambiente. L'inquadramento privacy v1.3 R24 rimane da definire con CF prima delle pratiche reali; non dedurre ruoli privacy dall'assenza di nomi nell'endpoint.
+Prima del collaudo live servono la chiave dell'endpoint di prova e i casi nei vari stati; per la firma in prova resta il segreto del vettore pubblico della sezione 4 (v0.2 §3); produzione usa chiave e segreto di firma diversi, consegnati allo stesso modo. Chiedere URL/commutazione dell'ambiente di prova, non assumere che i prefissi delle chiavi da soli definiscano la selezione dell'ambiente. Il comune pilota Seveso non è nell'elenco comuni del modulo CF (il modulo accetta il nome scritto e la pratica resta legata al contratto): chiedere a CF se le pratiche di Seveso e degli altri comuni pilota sono lavorate normalmente e se possono entrare nell'elenco. L'inquadramento privacy v1.3 R24 rimane da definire con CF prima delle pratiche reali; non dedurre ruoli privacy dall'assenza di nomi nell'endpoint.
 
 ## 7. Accettazione e consegna
 
@@ -213,8 +227,8 @@ Prima del collaudo live servono chiave endpoint di prova e casi nei vari stati; 
 | Importazione | Dati delle tre sezioni sullo stesso leaseId, PDF consultabili, gestione incompleti/conflitti/versioni senza perdita di dati |
 | Più pagine | Riuso del PDF unificato esistente; estrazione sull’intero documento, senza conservare foto separate |
 | Permessi | Nessuna scrittura su casa/contratto altrui, nessun uso del solo propertyId, nessuna chiave CF al client |
-| Stato CF | Elenco multipratiche e dettaglio; tutti gli stati/errori v0.1; Attested intermedio e Registered unico finale positivo; snapshot condiviso 15 minuti con rilettura breve dopo l’apertura, concorrenza e 429 rispettati |
+| Stato CF | Elenco multipratiche e dettaglio; tutti gli stati/errori v0.2; Attested intermedio e Registered unico finale positivo; snapshot condiviso 15 minuti con rilettura breve dopo l’apertura, concorrenza e 429 rispettati |
 
 Verifiche, secondo il regime del processo Helix: in locale solo build, lint e typecheck; per ogni regola di denaro, dati, permessi o privacy (diritto lato server e consumo atomico dell’omaggio, bozza minima e retention, firma e scadenza del link, appartenenza di `practice`/`leaseId` all’organizzazione, importazione dei documenti) una prova minima scritta, che gira in CI insieme alle suite dei repository. Le suite esistenti di upload/download restano il controllo contro le regressioni. Nessun invio di pratiche reali o addebito live come prova.
 
-Consegna: PR con delta effettivo, verifiche eseguite e configurazione/dati CF ancora necessari. Non dichiarare attivo in produzione ciò che è soltanto implementato o in PR.
+Consegna: PR con delta effettivo, verifiche eseguite e configurazione/dati CF ancora necessari. Non dichiarare attivo in produzione ciò che è soltanto implementato o in PR. Restano da CasaZen verso CF (v0.2 §7): qualche link prodotto dal comando del server, da far verificare come i tre di esempio; la conferma del collaudo della pagina di caricamento con `practice` (fino ad allora il bottone di CF resta spento); il canale per la password delle chiavi.
