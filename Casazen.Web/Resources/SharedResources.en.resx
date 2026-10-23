@@ -450,6 +450,30 @@
   <data name="LeaseDraftValuesInvalid" xml:space="preserve">
     <value>The values sent do not have the shape this step of the draft expects.</value>
   </data>
+  <data name="LeaseNotInForce" xml:space="preserve">
+    <value>The contract is not in force: it must be signed by every party and not rejected.</value>
+  </data>
+  <data name="LeaseTypeHasNoRenewal" xml:space="preserve">
+    <value>A transitory lease ends by itself at its expiry and does not renew: there is no notice to record.</value>
+  </data>
+  <data name="LeaseNoticeAlreadyRecorded" xml:space="preserve">
+    <value>A notice is already recorded for this contract: take it back before recording another.</value>
+  </data>
+  <data name="LeaseAlreadyTerminated" xml:space="preserve">
+    <value>The contract has already ended and that cannot be undone.</value>
+  </data>
+  <data name="LeaseNoticeDateInvalid" xml:space="preserve">
+    <value>The day of the notice cannot be before the contract starts or in the future.</value>
+  </data>
+  <data name="LeaseTermAlreadyEnded" xml:space="preserve">
+    <value>The period of the contract is over: the notice recorded can no longer be taken back.</value>
+  </data>
+  <data name="LeaseTerminationDateInvalid" xml:space="preserve">
+    <value>The last day of the contract must be between the start of the contract and the end of the current period.</value>
+  </data>
+  <data name="LeaseBusy" xml:space="preserve">
+    <value>The contract is being changed by another operation right now. Try again in a moment: this change was not applied.</value>
+  </data>
   <data name="RliChecklist_contract_signed" xml:space="preserve">
     <value>Contract signed by all parties</value>
   </data>

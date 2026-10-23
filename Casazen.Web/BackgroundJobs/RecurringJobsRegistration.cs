@@ -106,6 +106,13 @@ public static class RecurringJobsRegistration
             LeaseDraftRetentionJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // LR-14: the leases whose period is over and that nobody gave notice of renew by themselves, every hour.
+        recurringJobManager.AddOrUpdate<LeaseTermRenewalJob>(
+            LeaseTermRenewalJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            LeaseTermRenewalJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
             job => job.ExecuteAsync(),
