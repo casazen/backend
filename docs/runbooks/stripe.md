@@ -555,11 +555,23 @@ settings `Casazen.Core/Services/RentCharges.cs`, API `LeaseRentController` / `Pu
    lease's monthly rent × the months of the cadence). Periods are anchored on the lease start; each installment is due on
    the first due day on or after the start of its period. A final period shorter than the cadence gets **no installment**
    (no pro rata rule is assumed): the page shows it to the landlord. The cadence cannot change once an installment is
-   paid or has a PaymentIntent.
+   paid or has a PaymentIntent. **Two optional fields (LR-04a):** `trackFrom` (`yyyy-MM-dd`, for a lease that is already
+   running): no installment is generated for a period that **ended before** that day, so nothing is born overdue; the
+   period the day falls in is the first one, the periods stay anchored on the lease start, installments that already exist
+   are never touched or deleted because of it, a day after the end of the lease is refused (422
+   `rent_track_from_invalid`) and a day on or before the lease start means «from the start». The day is stored on the plan
+   (`RentSchedules.TrackFrom`): saving the plan again without it keeps it, and the tacit renewal of the lease
+   (`ExtendScheduleToCurrentTermAsync`, LR-14) builds the new periods with it, so the past never comes back. `onlineRequests`
+   (see 2).
 2. **Payment request**: the daily job emails the tenants (every tenant party with an email, not anonymized) a personal
    link `/rent/pay/{installmentId}?token=…` `RentBilling:PaymentRequestDaysBeforeDue` days before the due date (only for
    installments that were not already due when generated; older ones: the landlord marks them paid or sends the link
-   from the page). The landlord can (re)send the link of an installment at any time; a new link replaces the previous one.
+   from the page). **Only for a plan whose online requests are on** (`RentSchedules.OnlineRequestsEnabled`, LR-04a,
+   decision LR-D19): a plan created without `onlineRequests: true` has them **off** and the job writes to no tenant (the
+   landlord's choice, never an automatic e-mail from a new plan); the plans that existed when the column was added are on,
+   as they always were. `PUT …/schedule` with `onlineRequests` true/false changes it; absent keeps the current choice. The
+   job reads the flag again under the lock of the lease before writing. The landlord can (re)send the link of an
+   installment at any time whatever the flag says; a new link replaces the previous one.
 3. **Payment**: the tenant pays on the public page with the Stripe Payment Element, **direct charge on the org's
    connected account** (like the direct checkout): `Stripe-Account` header, automatic payment methods, no application fee
    (A3-40), `metadata.kind = rent-charge`, `metadata.rentLedgerEntryId`, `leaseId`, `orgId`, idempotency key
