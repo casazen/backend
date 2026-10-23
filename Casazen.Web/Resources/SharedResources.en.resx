@@ -3080,6 +3080,9 @@
   <data name="ApeOcrUnavailable" xml:space="preserve">
     <value>OCR is unavailable. No document was saved; please retry shortly.</value>
   </data>
+  <data name="ApeIdentificationRequired" xml:space="preserve">
+    <value>We could not read all the data of the property's APE on our own. Enter the identification code and the energy class as printed on the certificate, then try again.</value>
+  </data>
   <data name="ApeField_EnergyClass" xml:space="preserve">
     <value>energy class</value>
   </data>
