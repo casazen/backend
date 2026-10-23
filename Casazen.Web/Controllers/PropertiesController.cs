@@ -870,13 +870,7 @@ public class PropertiesController(
         try
         {
             var upload = await documentService.UploadDocumentAsync(id, file, docType, userId);
-            var dto = ToDocumentDto(upload.Document);
-            if (upload.ApeCheck is { } check)
-            {
-                dto.ApeCheck = check.Outcome;
-                dto.ApeUnreadFields = [.. check.UnreadFields.Select(field => HttpContext.RequestServices.GetRequiredService<IStringLocalizer<SharedResources>>()[$"ApeField_{field}"].Value)];
-            }
-            return CreatedAtAction(nameof(GetDocuments), new { id }, dto);
+            return CreatedAtAction(nameof(GetDocuments), new { id }, ToUploadDto(upload));
         }
         catch (ApeComplianceException ex)
         {
@@ -958,6 +952,52 @@ public class PropertiesController(
 
         var updated = await documentService.UpdateApeIdentificationAsync(document, request.Code, request.EnergyClass);
         return Ok(ToDocumentDto(updated));
+    }
+
+    /// <summary>
+    /// Reads the code and the energy class of a stored APE again, from the file (OCR) and, for a code the file does not show
+    /// legibly, from the public register of the region (CENED, Lombardy): for an APE uploaded before they were read automatically.
+    /// Fills only what is empty, never a value the landlord typed. The answer is the document with <c>apeCheck</c>,
+    /// <c>apeUnreadFields</c> and <c>apeIdentificationSource</c> (<c>Document</c>, <c>Registry</c>). 422 <c>document_not_ape</c>.
+    /// </summary>
+    /// <response code="200">The document, with what was read.</response>
+    /// <response code="403">The caller may not edit this property.</response>
+    /// <response code="404">Property or document not found.</response>
+    [HttpPost("{id:guid}/documents/{docId:guid}/ape/read")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    public async Task<ActionResult<PropertyDocumentDto>> ReadApeIdentification(Guid id, Guid docId)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property == null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
+            return Forbid();
+
+        var document = await documentService.GetDocumentAsync(docId);
+        if (document == null || document.PropertyId != id)
+            return NotFound();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.ReadApe");
+
+        return Ok(ToUploadDto(await documentService.ReadApeIdentificationAsync(document)));
+    }
+
+    /// <summary>A document just stored or read again, with what the reading of an APE found (localized names of the data not read).</summary>
+    private PropertyDocumentDto ToUploadDto(PropertyDocumentUpload upload)
+    {
+        var dto = ToDocumentDto(upload.Document);
+        if (upload.ApeCheck is { } check)
+        {
+            dto.ApeCheck = check.Outcome;
+            dto.ApeUnreadFields = [.. check.UnreadFields.Select(field => HttpContext.RequestServices.GetRequiredService<IStringLocalizer<SharedResources>>()[$"ApeField_{field}"].Value)];
+            dto.ApeIdentificationSource = check.CodeSource;
+        }
+        return dto;
     }
 
     /// <summary>
