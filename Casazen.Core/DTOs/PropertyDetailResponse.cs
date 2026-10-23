@@ -85,6 +85,15 @@ public class PropertyDocumentDto
     /// call it with the bearer token; it is not a public link.
     /// </summary>
     public string DownloadUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Only in the answer of an APE upload: what the automatic reading found (<c>Verified</c>, <c>Incomplete</c>,
+    /// <c>NotRecognized</c>, <c>NotChecked</c>, see <see cref="Casazen.Core.Services.ApeUploadCheck"/>); null in every other answer.
+    /// </summary>
+    public string? ApeCheck { get; set; }
+
+    /// <summary>Only with <see cref="ApeCheck"/> <c>Incomplete</c>: the data that were not read, in words of the request language.</summary>
+    public IReadOnlyList<string>? ApeUnreadFields { get; set; }
 }
 
 public class OtaIntegrationSummaryDto

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
@@ -49,7 +50,7 @@ public class ApePhotoUploadIntegrationTests(ApePhotoWebApplicationFactory factor
         Assert.True((await new ApeDocumentInspector().InspectAsync(content)).IsValid);
     }
     [PostgresFact]
-    public async Task IncompletePhoto_ReturnsMissingFieldsAndDoesNotPersistADocument()
+    public async Task IncompletePhoto_IsKeptWithWhatWasNotRead_AndConfirmedByItsCodeAndClass()
     {
         var owner = $"auth0|ape-incomplete-{Guid.NewGuid():N}";
         var property = await factory.SeedPropertyAsync(owner);
@@ -61,13 +62,22 @@ public class ApePhotoUploadIntegrationTests(ApePhotoWebApplicationFactory factor
         form.Add(file, "file", "incomplete.jpg");
         form.Add(new StringContent("Ape"), "documentType");
         var response = await client.PostAsync($"/api/properties/{property.Id}/documents", form);
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("APE_INVALID_CONTENT", problem.RootElement.GetProperty("code").GetString());
-        Assert.Contains("certificatore", problem.RootElement.GetProperty("detail").GetString()!, StringComparison.OrdinalIgnoreCase);
+        // A real certificate the reader cannot read whole (only its first page here) is not refused any more: the landlord confirms it.
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Incomplete", json.RootElement.GetProperty("apeCheck").GetString());
+        Assert.Contains(json.RootElement.GetProperty("apeUnreadFields").EnumerateArray(),
+            field => field.GetString()!.Contains("certificatore", StringComparison.OrdinalIgnoreCase));
+        var id = json.RootElement.GetProperty("id").GetGuid();
         var documents = await client.GetAsync($"/api/properties/{property.Id}/documents");
         using var list = JsonDocument.Parse(await documents.Content.ReadAsStringAsync());
-        Assert.Equal(0, list.RootElement.GetArrayLength());
+        Assert.Equal(1, list.RootElement.GetArrayLength());
+
+        var identification = await client.PutAsJsonAsync(
+            $"/api/properties/{property.Id}/documents/{id}/ape", new { code = "1610800012345/17", energyClass = "f" });
+        Assert.Equal(HttpStatusCode.OK, identification.StatusCode);
+        using var confirmed = JsonDocument.Parse(await identification.Content.ReadAsStringAsync());
+        Assert.Equal("F", confirmed.RootElement.GetProperty("apeEnergyClass").GetString());
     }
 
 }

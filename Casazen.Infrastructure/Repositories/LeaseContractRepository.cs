@@ -55,7 +55,18 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 l.Parties.Count,
                 l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU),
                 l.CreatedAt,
-                l.UpdatedAt))
+                l.UpdatedAt,
+                null,
+                null,
+                false,
+                null,
+                0,
+                0m,
+                null,
+                l.CurrentTermEndDate,
+                l.NoticeOn,
+                l.NoticeFrom,
+                l.TerminatedOn))
             .ToListAsync();
     }
 
@@ -138,6 +149,10 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 l.RegistrationDeadline,
                 l.CreatedAt,
                 l.UpdatedAt,
+                l.CurrentTermEndDate,
+                l.NoticeOn,
+                l.NoticeFrom,
+                l.TerminatedOn,
                 PartyCount = l.Parties.Count,
                 HasExtraEUTenant = l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU),
                 // The first tenant (the order entered), by three scalar subqueries on the unique index of the parties
@@ -177,7 +192,11 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 NextRentDueDate: x.NextDueDate,
                 OverdueRentCount: x.OverdueCount,
                 OverdueRentAmount: x.OverdueAmount,
-                OverdueDays: x.OldestOverdue is { } oldest ? today.DayNumber - oldest.DayNumber : null))
+                OverdueDays: x.OldestOverdue is { } oldest ? today.DayNumber - oldest.DayNumber : null,
+                CurrentTermEndDate: x.CurrentTermEndDate,
+                NoticeOn: x.NoticeOn,
+                NoticeFrom: x.NoticeFrom,
+                TerminatedOn: x.TerminatedOn))
             .ToList();
     }
 

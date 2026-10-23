@@ -216,8 +216,8 @@ public class LongRentSqlShapeTests
         Assert.Equal(2, statements.Count);
         Assert.Contains("FROM \"LeaseContracts\"", statements[0], StringComparison.Ordinal);
         Assert.Contains("FROM \"RentLedgerEntries\"", statements[1], StringComparison.Ordinal);
-        // Only the leases that can still carry a deadline: not rejected (7), not ended.
-        Assert.Contains("l.\"Status\" <> 7 AND l.\"EndDate\" >= @", statements[0], StringComparison.Ordinal);
+        // Only the leases that can still carry a deadline: not rejected (7), not ended (the end of the period the lease is in, LR-14).
+        Assert.Contains("l.\"Status\" <> 7 AND l.\"CurrentTermEndDate\" >= @", statements[0], StringComparison.Ordinal);
         // The installments: the earliest 501 (the limit and one more, to know it was cut), by due date then id, unpaid (0, 3).
         Assert.Contains("r.\"Status\" IN (0, 3)", statements[1], StringComparison.Ordinal);
         Assert.Contains("ORDER BY r.\"DueDate\", r.\"Id\"", statements[1], StringComparison.Ordinal);

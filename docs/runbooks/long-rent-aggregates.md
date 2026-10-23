@@ -32,15 +32,17 @@ difesa in profondità e se un domani quel ruolo ricevesse `lease.read` non vedre
 ## 2. Elenco contratti (B3)
 
 `view` (assente o `All` = tutti, com'è sempre stato; valore sconosciuto = 400 `validation_error`). Le viste **non sono salvate**:
-derivano da stato e data di fine (`LeaseListViews.Predicate`, una sola espressione SQL) perché il modello reale non ha «in scadenza»
-né «terminato» (gap 04 § 4.1).
+derivano da stato e fine del periodo in corso (`LeaseListViews.Predicate`, una sola espressione SQL) perché il modello reale non ha
+«in scadenza» né «terminato» (gap 04 § 4.1). Dal task LR-14 la data letta è `CurrentTermEndDate` (la fine del periodo in cui il
+contratto si trova, che il rinnovo tacito sposta in avanti e il termine anticipato riporta indietro, § 10), non più la `EndDate` che
+il contratto dichiara.
 
 | Vista | Regola (oggi = giorno di Roma) |
 |---|---|
-| `Active` (Attivi) | `Registered` e `EndDate >= oggi` (include i contratti in scadenza) |
-| `InPreparation` (In preparazione) | ogni stato diverso da `Registered` e `Rejected`: bozza, in firma, firmato in attesa di registrazione, registrazione in corso. **Qualunque sia la data**: una bozza o un contratto firmato da registrare è lavoro da finire, e non c'è ancora l'eliminazione della bozza (B4) |
-| `Expiring` (In scadenza) | `Registered`, non terminato e `EndDate <= oggi + 6 mesi` (sottoinsieme di `Active`; il transitorio, che non ha rinnovo, è «in scadenza» per gli ultimi 6 mesi) |
-| `Ended` (Terminati) | `Registered` e `EndDate < oggi`, oppure `Rejected` (un contratto che non avrà effetto) |
+| `Active` (Attivi) | `Registered` e `CurrentTermEndDate >= oggi` (include i contratti in scadenza) |
+| `InPreparation` (In preparazione) | ogni stato diverso da `Registered` e `Rejected`: bozza, in firma, firmato in attesa di registrazione, registrazione in corso. **Qualunque sia la data**: una bozza o un contratto firmato da registrare è lavoro da finire (la bozza si elimina con `DELETE /api/leases/{id}`, LR-12) |
+| `Expiring` (In scadenza) | `Registered`, non terminato e `CurrentTermEndDate <= oggi + 6 mesi`, **oppure** con una disdetta o un termine anticipato registrati (finisce e non si rinnova), qualunque sia la fine (sottoinsieme di `Active`; il transitorio, che non ha rinnovo, è «in scadenza» per gli ultimi 6 mesi) |
+| `Ended` (Terminati) | `Registered` e `CurrentTermEndDate < oggi`, oppure `Rejected` (un contratto che non avrà effetto). Un contratto terminato prima della fine ha `CurrentTermEndDate` = il suo ultimo giorno: è terminato dal giorno dopo, come ogni contratto |
 
 Un contratto è **terminato dal giorno dopo** il suo ultimo giorno (come la retention dei dati dei conduttori,
 `LeasePartyPrivacyService.HasEnded`). Ogni contratto sta in una sola tra `InPreparation`, `Active`, `Ended`.
@@ -119,8 +121,8 @@ altro = 400 `long_rent_deadlines_range_invalid`), `type` facoltativo (`RliRegist
 |---|---|---|
 | `RliRegistration` | `min(stipula, inizio) + 30` (`RliRegistrationDeadline`, LT-04) | il contratto non è registrato (né rifiutato) e la scadenza è determinabile |
 | `Questura` | 48 ore dalla consegna (`QuesturaCommunicationDeadline`, LT-07), solo con un conduttore extra-UE | il locatore non ha dichiarato la comunicazione |
-| `LeaseEnd` | ultimo giorno del contratto registrato | non è passato |
-| `Notice` | ultimo giorno per la disdetta: **fine contratto − 6 mesi**, solo per libero (4+4) e concordato (3+2); il transitorio non ne ha | non è passato |
+| `LeaseEnd` | ultimo giorno del **periodo in corso** del contratto registrato (`CurrentTermEndDate`, LR-14: dopo un rinnovo tacito è la nuova fine) | non è passato |
+| `Notice` | ultimo giorno per la disdetta: **fine del periodo in corso − 6 mesi**, solo per libero (4+4) e concordato (3+2); il transitorio non ne ha | non è passato, e **finché non c'è una disdetta né un termine anticipato registrati** (LR-14: non resta nulla da disdire) |
 | `Rent` | scadenza di una rata `Scheduled` o `Failed` | non è pagata (il pagamento in corso non è una scadenza) |
 
 Una finestra che contiene oggi porta anche ciò che è **già passato e ancora aperto** (registrazione, Questura, rate), con
@@ -162,6 +164,42 @@ sollecitate». Rollback: `Down` toglie colonne e indice (si perde solo la cronol
 ## 9. Decisioni applicate e punti aperti
 
 - D29: nome del conduttore sì, mai codice fiscale, e-mail o cittadinanza. D30: sollecito = e-mail, con link se c'è Connect, niente SMS.
-- D8: nessuna disdetta/rinnovo/ISTAT in questa versione; le date si calcolano dalla data di fine inserita (i rinnovi non sono modellati).
+- D8: nessuna ISTAT in questa versione. Disdetta, rinnovo tacito e termine anticipato non c'erano e sono arrivati con LR-14 (§ 10): le date
+  di fine che questa pagina descrive sono ora quelle del periodo in corso.
 - Da decidere: soglia di «in scadenza» e di disdetta (6 mesi), intervallo dei solleciti (24 ore), tetto della nota (300 caratteri), scadenza
   IMU quando il dato per Comune ne avrà una.
+
+## 10. Fine effettiva del contratto: rinnovo tacito, disdetta, termine anticipato (LR-14)
+
+Task LR-14 della wave di redesign (analisi `redesign/docs/wave/analysis/LR/`, brief `tasks/LR-14.md` nella **versione ridotta** della revisione di perimetro; decisione D5 dell'intervista, LR-D29). **Solo backend, una migrazione (`AddLeaseTermLifecycle`), nessun flag (sempre acceso).** Un contratto libero (4+4) o concordato (3+2) che nessuno disdice **si rinnova da solo** e resta valido: la `EndDate` è quindi solo la fine del primo periodo che il contratto dichiara (modello, registrazione RLI, primo piano dei canoni) e **la data che dice se il contratto è finito è `CurrentTermEndDate`**, la fine del periodo in cui si trova. Il task è fuso in due PR: **LR-14-1** (questa pagina fin qui: i dati, la migrazione e i lettori della fine) e **LR-14-2** (il job del rinnovo, la disdetta e il termine anticipato, con il piano dei canoni che li segue). Codice: regole pure `LeaseRenewal` (`Casazen.Core/Leases`).
+
+### 10.1 I dati
+
+| Colonna di `LeaseContracts` | Cosa è |
+|---|---|
+| `CurrentTermEndDate` | ultimo giorno (compreso) del periodo in corso, mezzanotte UTC del giorno di Roma come ogni data di contratto. Uguale a `EndDate` finché il contratto non si rinnova o non finisce prima. Indice `(OrgId, CurrentTermEndDate)` |
+| `NoticeOn`, `NoticeFrom` (`Landlord` 0, `Tenant` 1) | il giorno della disdetta registrata e chi l'ha data; ferma il rinnovo |
+| `TerminatedOn` | l'ultimo giorno di un contratto terminato prima della fine (e allora è anche `CurrentTermEndDate`); ferma il rinnovo per sempre. Segna anche come concluso un contratto già scaduto alla migrazione (§ 10.2) |
+
+`EndDate` **non si muove mai**. Nell'entità, assegnare `EndDate` finché `CurrentTermEndDate` è ancora uguale (o non scritta) porta con sé anche questa: chi conosce solo la fine del contratto (la bozza guidata, la creazione completa) lascia il contratto coerente; dopo un rinnovo o un termine anticipato i due valori differiscono e l'assegnazione non tocca più il corrente. EF carica i campi, non passa da quel setter. `GET /api/leases` e `GET /api/leases/{id}` guadagnano in coda `currentTermEndDate`, `noticeOn`, `noticeFrom`, `terminatedOn` e `renewalMonths` (derivato: 48 libero, 24 concordato, 0 transitorio); il dettaglio anche `noticeWarning` (`notice_possibly_late` quando la disdetta è arrivata dopo «fine del periodo − 6 mesi»; CasaZen lo dice e non giudica la validità legale, LR-D29). Nessun campo esistente cambia significato.
+
+### 10.2 Migrazione, backfill e rollback
+
+Una migrazione additiva, `AddLeaseTermLifecycle` (generata con `dotnet ef`, dopo l'ultima di `develop`): quattro colonne su `LeaseContracts` e l'indice `IX_LeaseContracts_OrgId_CurrentTermEndDate`. `AddLeaseTermLifecycle.BackfillSql`:
+
+1. `CurrentTermEndDate = EndDate` per ogni riga (solo quelle ancora al valore di partenza, quindi rieseguirlo non disfa un rinnovo);
+2. **nessun rinnovo retroattivo** (decisione del PO, 17/10): un contratto di tipo libero o concordato, firmato (stati 3, 4, 5, 6), il cui ultimo giorno era già passato il giorno della migrazione (Roma) **resta «concluso»** come il sistema l'ha sempre mostrato. È registrato come terminato il suo ultimo giorno (`TerminatedOn = EndDate`), ed è questo che terrà il job del rinnovo lontano da lui: non si inventa nessun periodo e nessun evento. Se un locatore dice che uno di questi contratti è andato avanti, l'assistenza può azzerare `TerminatedOn` con una `UPDATE`. Un contratto che finisce **dopo** la migrazione, senza disdetta, si rinnoverà.
+
+**Rollback**: `Down` toglie colonne e indice; si perdono le date di disdetta, di termine anticipato e di fine corrente dei contratti rinnovati (le `EndDate` restano).
+
+### 10.3 Cosa legge la fine corrente
+
+| Lettore | Come |
+|---|---|
+| Viste dell'elenco, conteggi della panoramica, scadenze `LeaseEnd` e `Notice` (§ 2, § 5) | `CurrentTermEndDate`; `Notice` sparisce con una disdetta o un termine registrati |
+| Occupazione dell'immobile: cambio modalità (PM-02) e cancellazione dell'immobile (`LeaseOccupancy`) | un contratto rinnovato tiene l'immobile fino alla nuova fine + 1; con una disdetta o un termine anticipato lo libera dal giorno dopo l'ultimo giorno. La bozza resta un blocco |
+| Privacy dei conduttori (`LeasePartyPrivacyService`): richiesta di cancellazione, retention, «altro contratto in corso» | un contratto rinnovato non si anonimizza finché dura |
+| Promemoria Questura (`rli-deadline-reminder`), piano dei canoni (`ConfigureScheduleAsync`, periodo finale parziale), riepilogo fiscale (`FiscalService`: immobile «locato» nell'anno), avviso di sovrapposizione della revisione della bozza | la fine del periodo in corso |
+| Contratto stampato, registrazione RLI, IMU, consulenza cedolare, controllo del termine alla firma, data di consegna per la Questura | restano sulla `EndDate`: sono il primo periodo che il contratto dichiara |
+
+Finché il job del rinnovo non esiste (LR-14-2) nessun contratto si rinnova e `CurrentTermEndDate` è uguale a `EndDate` per ogni riga: le viste e le scadenze non cambiano.

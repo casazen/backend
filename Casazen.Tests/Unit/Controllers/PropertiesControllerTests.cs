@@ -1619,11 +1619,34 @@ public class PropertiesControllerTests
         };
         var mockFile = CreateMockFormFile("cin.pdf", "application/pdf", 1024);
         _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.CinCertificate, userId))
-            .ReturnsAsync(document);
+            .ReturnsAsync(new PropertyDocumentUpload(document, null));
 
         var result = await _controller.UploadDocument(propertyId, mockFile, "CinCertificate");
 
         Assert.IsType<CreatedAtActionResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UploadDocument_Ape_ReturnsWhatTheReadingFound()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+        var document = new PropertyDocument { Id = Guid.NewGuid(), PropertyId = propertyId, FileName = "ape.pdf", DocumentType = DocumentType.Ape };
+        var mockFile = CreateMockFormFile("ape.pdf", "application/pdf", 1024);
+        _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.Ape, userId))
+            .ReturnsAsync(new PropertyDocumentUpload(document, new ApeUploadCheck(ApeUploadCheck.NotRecognized, [])));
+
+        var result = await _controller.UploadDocument(propertyId, mockFile, "Ape");
+
+        var created = Assert.IsType<CreatedAtActionResult>(result.Result);
+        var dto = Assert.IsType<PropertyDocumentDto>(created.Value);
+        Assert.Equal(ApeUploadCheck.NotRecognized, dto.ApeCheck);
+        Assert.Empty(dto.ApeUnreadFields!);
     }
 
     [Fact]

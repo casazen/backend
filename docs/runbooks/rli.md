@@ -188,6 +188,9 @@ offers self-serve: the provider path exists in the code but stays **off, with no
 5. `GET /api/leases/{id}/signed-document` streams it from the private bucket, only to a caller who may read the lease
    (tenant filter + TN-3), with `Cache-Control: private, no-store`. 404 `lease_signed_contract_not_available` before.
 6. The RLI registration (manual path above, LT-01) starts once the lease is `Signed`.
+7. A contract signed **outside CasaZen with the owner's own model** reaches the same `Signed` state without the template gate of steps 1 and 3: `POST /api/leases/{id}/import`
+   (LR-13, only for a draft created with `origin: Imported`; [`long-rent-lease-import.md`](long-rent-lease-import.md)). It records the same things as step 4 (the stipula, the
+   signers, `AllPartiesSigned` with payload `imported`) plus the event `Imported`; the registration, if it already happened, is then declared with the manual path.
 
 ### Signers (A7-16)
 
@@ -448,7 +451,7 @@ The receipt is served only by `GET /api/leases/{id}/rli/questura/receipt` (`leas
 ### Reminders (same job `rli-deadline-reminder`, daily 08:00 UTC)
 
 For every lease with an extra-EU tenant, in any status except `Rejected` (**registered leases included**), not ended
-yet (`EndDate` ≥ today) and not declared. Same threshold logic as the RLI deadline: only the most urgent threshold
+yet (`CurrentTermEndDate` ≥ today, LR-14: the end of the period the lease is in) and not declared. Same threshold logic as the RLI deadline: only the most urgent threshold
 reached today, once per deadline, recorded as `DeadlineReminderSent` with payload `{threshold}:{deadline}` only when the
 email was accepted; a changed delivery date starts its own thresholds. Thresholds are a product choice:
 
@@ -478,7 +481,7 @@ Four nullable columns on `LeaseContracts`, no data change. Consequences:
 -- Active leases with an extra-EU tenant and no declared Questura communication
 SELECT l."Id", l."Status", l."StartDate", l."PropertyDeliveryDate"
 FROM casazen_prod."LeaseContracts" l
-WHERE l."Status" <> 7 AND l."QuesturaCommunicationDate" IS NULL AND l."EndDate" >= now()
+WHERE l."Status" <> 7 AND l."QuesturaCommunicationDate" IS NULL AND l."CurrentTermEndDate" >= now()
   AND EXISTS (SELECT 1 FROM casazen_prod."Parties" p
               WHERE p."LeaseContractId" = l."Id" AND p."Role" = 1 AND p."IsExtraEU");
 
