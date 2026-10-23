@@ -21,7 +21,7 @@ public class PropertyDocumentService(
     IPropertyComplianceStatusService complianceStatus,
     ILogger<PropertyDocumentService> logger) : IPropertyDocumentService
 {
-    public async Task<PropertyDocument> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy)
+    public async Task<PropertyDocumentUpload> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy)
     {
         var orgId = await propertyRepository.GetOrgIdAsync(propertyId);
         if (orgId is null)
@@ -34,6 +34,7 @@ public class PropertyDocumentService(
             throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
         }
 
+        ApeUploadCheck? apeCheck = null;
         if (documentType == DocumentType.Ape)
         {
             // Legacy APE clients also persist a PDF. Other legacy APIs keep their existing file contract;
@@ -41,7 +42,7 @@ public class PropertyDocumentService(
             file = await PhotoDocumentPdf.NormalizeAsync(file);
             if (!storageService.ValidateDocument(file))
                 throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
-            await apeCompliance.EnsureUploadedFileIsOfficialApeAsync(file);
+            apeCheck = await apeCompliance.CheckUploadedApeAsync(file);
         }
 
         var storageUrl = await storageService.UploadDocumentAsync(file, propertyId);
@@ -74,7 +75,7 @@ public class PropertyDocumentService(
         }
 
         await complianceStatus.ReevaluateAsync(propertyId);
-        return saved;
+        return new PropertyDocumentUpload(saved, apeCheck);
     }
 
     public async Task<IEnumerable<PropertyDocument>> GetByPropertyIdAsync(Guid propertyId)
