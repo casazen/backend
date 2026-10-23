@@ -112,6 +112,7 @@ public class LeaseSigningService(
             lease.DraftData = null; // the typed state of the wizard (LR-12) is only for a draft; the parties' rows are the contract's data
             lease.SignedPdfStoragePath = key;
             lease.RecordStipula(stipula);
+            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome()); // signed after its last day: concluded, never renewed (LR-14)
             lease.StipulaDeclaredByUserId = userId;
             lease.UpdatedAt = now;
             await MarkEveryPartySignedAsync(lease, LeaseSignatureMethod.Offline, lease.StipulaDate!.Value, now, cancellationToken);
@@ -225,6 +226,8 @@ public class LeaseSigningService(
             lease.DraftData = null; // the typed state of the wizard is only for a draft; the rows of the parties are the contract's data
             lease.SignedPdfStoragePath = signedKey;
             lease.RecordStipula(stipula);
+            // A contract brought in after its last day is a lease that is over: concluded, never renewed (LR-14, no retroactive renewal).
+            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome());
             lease.StipulaDeclaredByUserId = userId;
             lease.UpdatedAt = now;
             await MarkEveryPartySignedAsync(lease, LeaseSignatureMethod.Offline, lease.StipulaDate!.Value, now, cancellationToken);
@@ -671,6 +674,7 @@ public class LeaseSigningService(
             lease.Status = LeaseStatus.Signed;
             lease.SignedPdfStoragePath = key;
             lease.RecordStipula(now);
+            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome()); // signed after its last day: concluded, never renewed (LR-14)
             lease.UpdatedAt = now;
             await db.Entry(lease).Collection(l => l.Parties).LoadAsync(cancellationToken);
             await MarkEveryPartySignedAsync(lease, LeaseSignatureMethod.Provider, now, now, cancellationToken);

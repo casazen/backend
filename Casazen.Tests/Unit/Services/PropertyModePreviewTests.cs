@@ -238,9 +238,9 @@ public class PropertyModePreviewTests : IDisposable
     public async Task ToShort_LeasesThatDoNotCount_AreNotInTheWay()
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
-        // Rejected, and a lease that ended before today.
+        // Rejected, and a lease that ended before today (concluded: one that is not, renews by itself, LR-14).
         await _h.SeedLeaseAsync(property, Day(-10), Day(90), LeaseStatus.Rejected);
-        await _h.SeedLeaseAsync(property, Day(-400), Day(-5));
+        await _h.SeedLeaseAsync(property, Day(-400), Day(-5), terminatedOn: Day(-5));
         // A lease that ends today is free from tomorrow.
         await _h.SeedLeaseAsync(property, Day(-400), Day(10));
         // Another property's lease.

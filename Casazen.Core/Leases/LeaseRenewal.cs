@@ -22,6 +22,12 @@ namespace Casazen.Core.Leases;
 /// 2030 and renews for 48 months ends on 31 October 2034, one that ended on 28 February 2029 on 28 February 2033, the same rule as the end of
 /// a first period (<see cref="LongRentRules.FirstTermEnd"/>). A lease that is several periods behind (the job did not run for years) is
 /// brought forward by at most <see cref="MaxPeriodsPerRun"/> periods in a run and the next run goes on.</para>
+/// <para><b>No retroactive renewal</b> (decision of the product owner, 17 October 2026): a lease whose last day had already passed when CasaZen
+/// came to know it stays <b>concluded</b> and never renews. It is recorded with <see cref="LeaseContract.TerminatedOn"/> = its last day, the
+/// mark that also tells a reader it is over and not about to renew, at the three doors through which a lease comes in force: the migration
+/// that introduced the renewal (the leases that had ended by then), the signature (<see cref="ConcludeIfEnded"/>: a contract imported after
+/// its end, or any contract signed after its last day) and the repair at the start of each run of the job (a lease written during a deploy
+/// by a server that did not know the columns yet).</para>
 /// </remarks>
 public static class LeaseRenewal
 {
@@ -81,6 +87,21 @@ public static class LeaseRenewal
     {
         ArgumentNullException.ThrowIfNull(lease);
         return DueOn(todayInRome).Compile()(lease);
+    }
+
+    /// <summary>
+    /// Records as <b>concluded</b> a lease of a renewable type that is signed after the last day of its period (no retroactive renewal): a
+    /// contract brought into CasaZen when it was already over, typically an imported one, is not renewed by itself. It gets the mark the
+    /// migration gave to the leases that had ended when the renewal was introduced, <see cref="LeaseContract.TerminatedOn"/> = its last day,
+    /// so that nothing renews it and every reader tells it from a lease about to renew. Called where the lease becomes signed; a period that
+    /// is not over, a type that does not renew and a lease already recorded as ended are left as they are.
+    /// </summary>
+    /// <param name="todayInRome">Today's Europe/Rome calendar day as midnight UTC (<c>TimeProvider.TodayInRome()</c>).</param>
+    public static void ConcludeIfEnded(LeaseContract lease, DateTime todayInRome)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        if (lease.TerminatedOn is null && lease.CurrentTermEndDate < todayInRome && Renews(lease.ContractType))
+            lease.TerminatedOn = lease.CurrentTermEndDate;
     }
 
     /// <summary>

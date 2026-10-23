@@ -116,6 +116,8 @@ builder.Services.AddCasazenLeaseContractTemplates(builder.Configuration);
 builder.Services.AddCasazenLeaseSigning(builder.Configuration);
 // The guided draft of a lease and the retention of the abandoned drafts (LR-12)
 builder.Services.AddCasazenLongRentLeaseDrafts();
+// The end of a lease in force: the tacit renewal job, the notice of non-renewal, the early termination (LR-14)
+builder.Services.AddCasazenLongRentLeaseTerm();
 
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);

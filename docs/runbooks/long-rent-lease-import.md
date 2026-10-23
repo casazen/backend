@@ -73,7 +73,8 @@ the import opens **no exemption**. `LeaseImportIntegrationTests` proves it: the 
 3. **One transaction under the row lock of the lease**, the lock of the guided draft (`SELECT … FOR UPDATE`, `lock_timeout` 5 s): the lease is read again once
    nobody else can change it and checked again (a second request waiting for the lock finds it signed: 409); if its typed state is still only in `DraftData`
    the columns and the parties are written first, as a save would (`LeaseDraftWriter`); the term of the type is checked (`LeaseContractTerms.EnsureTerm`); then
-   `Status = Signed`, `DraftData` cleared, `SignedPdfStoragePath`, the stipula and the registration deadline (`RecordStipula`, LT-04), `StipulaDeclaredByUserId`,
+   `Status = Signed`, `DraftData` cleared, `SignedPdfStoragePath`, the stipula and the registration deadline (`RecordStipula`, LT-04), a contract whose last day
+   has already passed recorded as concluded (`LeaseRenewal.ConcludeIfEnded`, LR-14, § 6), `StipulaDeclaredByUserId`,
    every party a signer `Signed` (method `Offline`, `SignedAt` = the stipula), the document (§ 5) and two events: `AllPartiesSigned` with payload `imported` and
    `Imported` (no payload, one microsecond later so the timeline lists them always the same way).
 4. Any failure (a refusal, a lost race, a database error) **removes the two files**; nothing else changed.
@@ -105,6 +106,10 @@ signed copy is not deletable, and the Documents section has no delete.
   registered elsewhere therefore shows an overdue deadline and gets that reminder until the registration is declared (§ 1, step 4): the interface should say
   it before the import (LR-06b). Nothing reaches the tenants because of the import: the rent requests and reminders to them exist only once the user activates a rent
   plan for the lease (LR-04a makes the online request opt-in).
+- **A contract already over stays concluded** (LR-14, decision "no retroactive renewal"): a libero or concordato contract whose last day (Europe/Rome) has already
+  passed when it is imported is recorded in the same transaction as ended on that day (`TerminatedOn` = its last day, `currentTermEndDate` is the same day), so the
+  hourly job `lease-term-renewal` never renews it. One that ends today or later renews by itself at its end like any other, unless a notice is recorded
+  (`long-rent-aggregates.md` § 10). The import itself still writes only what § 4 lists.
 - The activity log of the org (AM-02b) has a closed list of types: nothing is written there (the decision is the log's, not this task's).
 
 ## 7. Concurrency

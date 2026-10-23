@@ -450,6 +450,30 @@
   <data name="LeaseDraftValuesInvalid" xml:space="preserve">
     <value>I valori inviati non hanno la forma prevista per questo passo della bozza.</value>
   </data>
+  <data name="LeaseNotInForce" xml:space="preserve">
+    <value>Il contratto non è in vigore: deve essere firmato da tutte le parti e non rifiutato.</value>
+  </data>
+  <data name="LeaseTypeHasNoRenewal" xml:space="preserve">
+    <value>Un contratto transitorio finisce da solo alla scadenza e non si rinnova: non c'è una disdetta da registrare.</value>
+  </data>
+  <data name="LeaseNoticeAlreadyRecorded" xml:space="preserve">
+    <value>Per questo contratto c'è già una disdetta registrata: toglila prima di registrarne un'altra.</value>
+  </data>
+  <data name="LeaseAlreadyTerminated" xml:space="preserve">
+    <value>Il contratto risulta già terminato e questo non si può annullare.</value>
+  </data>
+  <data name="LeaseNoticeDateInvalid" xml:space="preserve">
+    <value>Il giorno della disdetta non può essere prima dell'inizio del contratto né nel futuro.</value>
+  </data>
+  <data name="LeaseTermAlreadyEnded" xml:space="preserve">
+    <value>Il periodo del contratto è finito: la disdetta registrata non si può più togliere.</value>
+  </data>
+  <data name="LeaseTerminationDateInvalid" xml:space="preserve">
+    <value>L'ultimo giorno del contratto deve essere compreso tra l'inizio del contratto e la fine del periodo in corso.</value>
+  </data>
+  <data name="LeaseBusy" xml:space="preserve">
+    <value>Il contratto è in uso da un'altra operazione in questo momento. Riprova tra un istante: questa modifica non è stata applicata.</value>
+  </data>
   <data name="RliChecklist_contract_signed" xml:space="preserve">
     <value>Contratto firmato da tutte le parti</value>
   </data>
