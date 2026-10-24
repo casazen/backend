@@ -6,6 +6,8 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using MigraDoc.DocumentObjectModel;
+using MigraDoc.Rendering;
 using Moq;
 using Xunit;
 
@@ -197,40 +199,47 @@ public sealed class LeaseDocumentExtractionServiceTests : IDisposable
 
     private Stream CreateMockPdfWithPersonalData()
     {
-        // Create a PDF with extractable text using LiteralTextPdf (ADR-009-R4: multi-page support)
-        // MigraDoc-generated PDFs may not have text extractable by PdfPig, so we use a literal text PDF
-        // Keywords match the extraction service regex patterns (e.g., "CANONE:" not "CANONE MENSILE:")
-        var title = "CONTRATTO DI LOCAZIONE";
-        var body = @"Il presente contratto è stipulato tra:
-LOCATORE: Mario Rossi TEST
-Codice Fiscale: RSSMRA80A01F205X
+        // Create a PDF with MigraDoc using minimal format matching extraction regex patterns
+        var document = new Document();
+        var section = document.AddSection();
 
-CONDUTTORE: Giulia Bianchi TEST
-Codice Fiscale: BNCGLI85M41H501Y
+        // Use simple keywords that match the extraction service regex patterns exactly
+        section.AddParagraph("LOCATORE: Mario Rossi");
+        section.AddParagraph("CONDUTTORE: Giulia Bianchi");
+        section.AddParagraph("CANONE: 1200");
+        section.AddParagraph("DEPOSITO: 2400");
+        section.AddParagraph("INIZIO: 01/01/2026");
+        section.AddParagraph("FINE: 01/01/2027");
 
-CANONE: € 1200,00
-DEPOSITO: € 2400,00
-INIZIO: 01/01/2026
-FINE: 01/01/2027";
+        var pdfRenderer = new PdfDocumentRenderer { Document = document };
+        pdfRenderer.RenderDocument();
 
-        var pdfBytes = LiteralTextPdf.Build(title, body);
-        return new MemoryStream(pdfBytes);
+        var stream = new MemoryStream();
+        pdfRenderer.PdfDocument.Save(stream, false);
+        stream.Position = 0;
+        return stream;
     }
 
     private Stream CreateMockPdfWithConflictingData()
     {
-        // Create a PDF with data that conflicts with the existing user data
-        // Keywords match the extraction service regex patterns
-        var title = "CONTRATTO DI LOCAZIONE";
-        var body = @"LOCATORE: Paolo Verdi TEST
-CONDUTTORE: Anna Neri TEST
+        // Create a PDF with conflicting data using MigraDoc with minimal format
+        var document = new Document();
+        var section = document.AddSection();
 
-CANONE: € 1500,00
-DEPOSITO: € 3000,00
-INIZIO: 01/02/2026
-FINE: 01/02/2027";
+        // Values that conflict with the existing lease data (MonthlyRent=800, SecurityDeposit=1600)
+        section.AddParagraph("LOCATORE: Paolo Verdi");
+        section.AddParagraph("CONDUTTORE: Anna Neri");
+        section.AddParagraph("CANONE: 1500");
+        section.AddParagraph("DEPOSITO: 3000");
+        section.AddParagraph("INIZIO: 01/02/2026");
+        section.AddParagraph("FINE: 01/02/2027");
 
-        var pdfBytes = LiteralTextPdf.Build(title, body);
-        return new MemoryStream(pdfBytes);
+        var pdfRenderer = new PdfDocumentRenderer { Document = document };
+        pdfRenderer.RenderDocument();
+
+        var stream = new MemoryStream();
+        pdfRenderer.PdfDocument.Save(stream, false);
+        stream.Position = 0;
+        return stream;
     }
 }
