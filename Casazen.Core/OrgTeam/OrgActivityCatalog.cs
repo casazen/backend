@@ -151,6 +151,9 @@ public static partial class OrgActivityCatalog
         // Reserved: the trusted suppliers of the host.
         new(OrgActivityType.TrustedSupplierAdded, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: true),
         new(OrgActivityType.TrustedSupplierRemoved, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: true),
+
+        // ConcordatoFacile gift.
+        new(OrgActivityType.AdminGrantedConcordatoFacileGift, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>

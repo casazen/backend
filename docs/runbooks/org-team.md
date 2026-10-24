@@ -776,7 +776,7 @@ something **asks the administrators for access**. Backend only; the screens are 
 
 ## 30. The events (the whole perimeter)
 
-Eighteen events, **sixteen written today and two reserved** (AM-02c: the three events of the mode of a property are written since then,
+Nineteen events, **seventeen written today and two reserved** (AM-02c: the three events of the mode of a property are written since then,
 and `MemberAreasChanged` is new). The runbook, `OrgActivityCatalog` and `OrgActivityType` list the
 same ones: a test fails if they disagree, and another one if an event that is not reserved is recorded by nobody or a reserved
 one by somebody. A new event is an enum value (integers in groups of ten, never reused), an entry of the catalog, a row here and
@@ -802,6 +802,7 @@ a test; the perimeter grows row by row to about twenty-five events (decision AM-
 | `PropertyModeChanged` | 42 | the property's | the property | `fromMode`, `toMode`, `released` | AM-02c: the daily job (`ApplyDueAsync`), in the save that changes the mode: **no actor**; the area is the mode the property has entered; `released` (`1`) only when the person in charge no longer reaches the property in its new mode (section 48). A change that fails writes nothing |
 | `TrustedSupplierAdded` | 60 | `supplier` | the supplier | none | *reserved*: the trusted suppliers of the host (wave spec P10) |
 | `TrustedSupplierRemoved` | 61 | `supplier` | the supplier | none | *reserved*: same |
+| `AdminGrantedConcordatoFacileGift` | 70 | `account` | the org | none | `ConcordatoFacileAdminService.GrantGiftAsync`, in the save that creates the gift; the actor is the admin who granted it |
 
 The area is one of `account`, `short-rent`, `long-rent`, `supplier` (the keys of the contexts of the web app). A reserved event is
 **not written by anything yet**: its code and its details are fixed now so that the integers do not change when the task that builds

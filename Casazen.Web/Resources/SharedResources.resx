@@ -3137,4 +3137,16 @@
   <data name="ApeField_ExpiryDate" xml:space="preserve">
     <value>data di scadenza valida</value>
   </data>
+  <data name="ConcordatoFacileGiftAlreadyExists" xml:space="preserve">
+    <value>L'organizzazione ha già una pratica omaggio ConcordatoFacile.</value>
+  </data>
+  <data name="SubscriptionIdRequired" xml:space="preserve">
+    <value>L'ID della sottoscrizione è obbligatorio.</value>
+  </data>
+  <data name="ReasonRequired" xml:space="preserve">
+    <value>La motivazione è obbligatoria.</value>
+  </data>
+  <data name="ReasonTooLong" xml:space="preserve">
+    <value>La motivazione non può superare i 500 caratteri.</value>
+  </data>
 </root>
