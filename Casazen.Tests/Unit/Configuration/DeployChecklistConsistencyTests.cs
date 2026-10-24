@@ -60,6 +60,7 @@ public class DeployChecklistConsistencyTests
         ["Vercel"] = typeof(VercelDomainsOptions),
         ["SupplierPayments"] = typeof(SupplierPaymentsOptions),
         ["ApeRegistry"] = typeof(ApeRegistryOptions),
+        ["ConcordatoFacile"] = typeof(ConcordatoFacileOptions),
     };
 
     /// <summary>Roots whose keys are composed at runtime (no literal in the code, not in <c>appsettings.json</c>), with why.</summary>

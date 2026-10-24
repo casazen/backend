@@ -63,6 +63,7 @@ public class EndpointAuthorizationArchitectureTests
         ["ServiceRequestsController.GetById"] = "Supplier branch (RequireSupplier + linked supplier org) or host branch (PropertyRead + HostScope), each checked with IAuthorizationService inside the action.",
         ["ServiceRequestsController.Cancel"] = "SP-04: the supplier it was sent to cancels before the work starts (RequireSupplier + linked supplier org), or the host up to the work in progress (PropertyWrite + HostResource); each branch is checked with IAuthorizationService inside the action.",
         ["ServiceRequestsController.GetPhoto"] = "SP-04: a photo of the work, private file: the supplier it was sent to (RequireSupplier + linked supplier org) or the host (PropertyRead + HostScope), each checked with IAuthorizationService inside the action.",
+        ["ConcordatoFacileController.CreateCheckout"] = "NF-03: programmatic OR-authorization (RequirePropertyWrite OR RequireOrgBillingWrite) checked with IAuthorizationService inside the action: the attribute would be AND-only, but a host needs only property write and an org admin only billing write.",
     };
 
     /// <summary>
