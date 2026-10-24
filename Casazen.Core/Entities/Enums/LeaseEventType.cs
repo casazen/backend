@@ -86,6 +86,11 @@ public enum LeaseEventType
     /// </summary>
     TermRenewed,
 
+    /// A platform admin accessed ConcordatoFacile data for this lease using their admin role (AC-NF04-3), bypassing payment or gift.
+    /// Payload: JSON with <c>userId</c> of the admin. No sensitive data.
+    /// </summary>
+    ConcordatoFacileAdminAccess,
+
     /// <summary>
     /// A ConcordatoFacile gift was consumed for this lease (ADR-006-R7). No payload.
     /// </summary>

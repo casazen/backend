@@ -1,9 +1,12 @@
 using System.Security.Claims;
+using System.Text.Json;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -13,7 +16,8 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed class ConcordatoFacileAccessService(
     AppDbContext dbContext,
-    ITenantContext tenantContext) : IConcordatoFacileAccessService
+    ITenantContext tenantContext,
+    ILogger<ConcordatoFacileAccessService> logger) : IConcordatoFacileAccessService
 {
     public async Task<CfAccessResult> CheckAccessAsync(
         Guid leaseId,
@@ -23,6 +27,21 @@ public sealed class ConcordatoFacileAccessService(
         // Check 1: Platform admin (ADR-005-R8, AC-NF04-1)
         if (user.IsInRole("Admin"))
         {
+            // Audit admin access (AC-NF04-3)
+            var userId = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            await dbContext.LeaseEvents.AddAsync(new LeaseEvent
+            {
+                LeaseContractId = leaseId,
+                EventType = LeaseEventType.ConcordatoFacileAdminAccess,
+                Payload = JsonSerializer.Serialize(new { userId }),
+            }, cancellationToken);
+
+            logger.LogInformation(
+                "Admin access to ConcordatoFacile for lease {LeaseId} by user {UserId}",
+                leaseId,
+                userId);
+
             return new CfAccessResult(
                 HasAccess: true,
                 Source: CfAccessSource.Admin,
