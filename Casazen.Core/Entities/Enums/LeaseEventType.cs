@@ -85,4 +85,10 @@ public enum LeaseEventType
     /// type (48 months for the libero, 24 for the concordato). One event per period. Payload: the new last day (<c>yyyy-MM-dd</c>).
     /// </summary>
     TermRenewed,
+
+    /// <summary>
+    /// The landlord generated a signed link to access the ConcordatoFacile partner portal (ADR-007-R8).
+    /// No URL or signature is stored, only the timestamp for audit and brief refresh window (ADR-008-R9).
+    /// </summary>
+    ConcordatoFacileLinkGenerated,
 }
