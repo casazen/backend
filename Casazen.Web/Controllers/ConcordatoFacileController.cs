@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Dtos.ConcordatoFacile;
 using Casazen.Web.Infrastructure;
@@ -19,6 +20,7 @@ public class ConcordatoFacileController(
     IConcordatoFacileAccessService accessService,
     IConcordatoFacileGiftService giftService,
     IConcordatoFacileLinkService linkService,
+    IConcordatoFacileStatusCacheService statusCacheService,
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService) : ControllerBase
 {
@@ -216,5 +218,55 @@ public class ConcordatoFacileController(
         {
             return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, ex.Code, ex.MessageKey);
         }
+    }
+
+    /// <summary>
+    /// Gets cached practice status for a lease (ADR-008-R15).
+    /// Returns practices and timing metadata for frontend polling.
+    /// Requires LeaseRead policy (ADR-008-R11).
+    /// </summary>
+    /// <param name="leaseId">The lease contract ID from the route</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Status response with practices, timing, and stale flag</returns>
+    [HttpGet("status")]
+    [Authorize(Policy = CasazenPolicies.LeaseRead)]
+    [ProducesResponseType(typeof(StatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<StatusResponse>> GetStatus(
+        Guid leaseId,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "org_not_found", "NoOrganizationAssigned");
+
+        // ADR-008-R11: Authorize with LeaseRead policy before calling CF API
+        var result = await statusCacheService.GetPracticesAsync(leaseId, orgId.Value, cancellationToken);
+
+        // ADR-008-R12: Cache-Control header to prevent caching of status data
+        Response.Headers.CacheControl = "private, no-store";
+
+        return Ok(new StatusResponse
+        {
+            Practices = result.Practices.Select(p => new PracticeResponse
+            {
+                PracticeId = p.PracticeId,
+                Status = p.Status,
+                StatusChangedAt = p.StatusChangedAt,
+                SubmittedAt = p.SubmittedAt,
+                Comune = p.Comune,
+                ComuneDiffersFromLink = p.ComuneDiffersFromLink,
+                CloseReason = p.CloseReason
+            }).ToList(),
+            LastCheckedAt = result.LastCheckedAt,
+            NextUpdateAt = result.NextUpdateAt,
+            Stale = result.IsStale
+        });
     }
 }
