@@ -16,7 +16,7 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
 {
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
