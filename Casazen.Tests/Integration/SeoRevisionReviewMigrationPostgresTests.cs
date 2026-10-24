@@ -48,7 +48,7 @@ public class SeoRevisionReviewMigrationPostgresTests : IAsyncLifetime
 
         await using (var db = _database!.CreateContext())
         {
-            db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
 
             // R-09: the Milano page served "Milano: contenuto generato per affitti brevi, CIN e tassa di soggiorno."
             await InsertPageAsync(db, stubPage, "015146", published: true);

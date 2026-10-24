@@ -11,13 +11,19 @@ on:
   pull_request:
     branches: [develop, main]
 
+# A new push to a PR cancels the run of the commit it replaces. Pushes to develop/main get a group of their own (the
+# run id), so none is ever cancelled or left pending: Railway Wait for CI and verify-railway-deploy.yml need each result.
+concurrency:
+  group: ci-cd-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build & Test
     runs-on: ubuntu-latest
 
     # Integration tests run on real PostgreSQL (FD-04): each WebApplicationFactory creates its own
-    # it_<guid> database on this service, applies every EF migration and drops it afterwards.
+    # it_<guid> database on this service, a copy of a template migrated once per run, and drops it afterwards.
     # Throw-away service container: the password below is not a secret.
     services:
       postgres:
@@ -65,8 +71,25 @@ jobs:
         run: |
           dotnet test --configuration Release --no-build --verbosity minimal --maxcpucount
 
+  # Its own job, in parallel with Build & Test: it needs neither the build nor PostgreSQL.
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
       - name: Check formatting
-        run: dotnet format --verify-no-changes
+        run: dotnet format --verify-no-changes --no-restore
 
   # Deploy verification (FD-12) lives in verify-railway-deploy.yml and starts after this
   # workflow succeeds. It must not share this check suite: Railway Wait for CI waits for

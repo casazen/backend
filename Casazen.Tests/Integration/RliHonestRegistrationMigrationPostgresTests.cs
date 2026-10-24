@@ -30,7 +30,7 @@ public class RliHonestRegistrationMigrationPostgresTests : IAsyncLifetime
     public async Task RliHonestRegistration_StubAndOrphanSubmissions_BecomeFailedAndLeasesToRegister()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var s = new Seed();
         await InsertPreviousStateAsync(db, s);
 

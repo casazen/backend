@@ -188,6 +188,10 @@ off, **O** = optional, **PO** = a decision of the product owner with no default 
 | `DirectBooking__PendingTtlMinutes`, `__ConsentVersion`, `__RateLimitPermitLimit` | O | same | `30` / `2026-06-direct-checkout-v1` / `10` | Checkout hold length, consent version the public checkout must send, legacy rate-limit key | BK-21 · [`direct-booking.md`](direct-booking.md) |
 | `DirectBooking__OnSiteApprovalHours`, `__OnSiteEmailVerificationMinutes`, `__OnSiteMaxNights` | PO | same | `24` / hold TTL / `30` | Product defaults of "Paga in struttura" (PO 2026-10-08): 24h host answer, max 30 nights | BK-06 · [`direct-booking.md`](direct-booking.md) |
 | `DirectBooking__DeferredChargeMaxAttempts`, `__DeferredChargeCancelAfterDays` | PO | same | `3` / `3` | **Provisional defaults** of the deferred charge (BK-08), to be confirmed | BK-08 |
+| `ConcordatoFacile__StripePriceId` | S | per mode | `price_<id>` | Stripe Price ID for the EUR 119,00 ConcordatoFacile one-time payment (ADR-005, NF-03). Required in Production: **startup** fails without it; same mode as the secret key. Missing outside Production: the checkout answers 422 `concordato_facile_not_configured` | NF-03 · ADR-005 |
+| `ConcordatoFacile__LinkSecret` | S | per environment | `<random 32+ chars>` | Secret for generating signed links to the ConcordatoFacile portal (NF-05). Required for creating time-limited, tamper-proof URLs. Missing: the checkout may fail to generate practice access links | NF-05 · ADR-005 |
+| `ConcordatoFacile__BaseUrl` | S | per environment | `https://<web app host>` | Base URL of the web application for constructing Stripe Checkout return URLs. Required for redirecting users after payment. Missing: payment flow may fail or redirect to wrong URL | NF-03 · ADR-005 |
+| `ConcordatoFacile__StripeApiKey` | O | per mode | `sk_test_…` / `sk_live_…` | Optional Stripe API key (can also come from `Stripe__SecretKey`). When set, this specific key is used for ConcordatoFacile operations; same mode as the secret key | NF-03 · ADR-005 |
 
 ### 2.9 Legal documents and consents
 

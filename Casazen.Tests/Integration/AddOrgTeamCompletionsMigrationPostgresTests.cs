@@ -50,7 +50,7 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
     public async Task Migrate_Up_HistoricalInvitations_KeepEveryRow_WithNoSendRecorded_AndAreLeftOutOfTheCap()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var org = NewOrg();
         await LegacyOrgRows.InsertAsync(db, org);
         var pending = NewHistoricalInvitation(org.Id, "storica@example.com", OrgInvitationStatus.Pending);
@@ -154,7 +154,7 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
     public async Task Reconcile_OfAPropertyManagerWithoutTheAccountRow_GivesItTheRestrictedAccountMembership()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var (org, _) = await _kit.SeedOwnerOrgAsync();
 
         // A property manager as the team wrote it before AM-02c: the rental membership of its role and no account one. (The
@@ -188,7 +188,7 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
     public async Task Migrate_Down_DropsWhatItAdded_EvenWhenAPropertyManagerAlreadyHoldsTheRole_AndKeepsTheInvitations()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var (org, _) = await _kit.SeedOwnerOrgAsync();
         var property = await _kit.SeedPropertyAsync(org.Id, "Casa Giulia");
         await _kit.SeedMemberAsync(org.Id, "auth0|pia", OrgRole.PropertyManager, ["short-rent"]);

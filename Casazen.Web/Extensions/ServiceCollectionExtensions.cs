@@ -385,6 +385,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IHostResourceLookup, HostResourceLookup>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
+        services.AddScoped<IConcordatoFacileAdminService, ConcordatoFacileAdminService>();
         // Alloggiati Web credentials of a property: write-only, encrypted at rest (CO-14, A5-30).
         services.AddScoped<IQuesturaCredentialsService, QuesturaCredentialsService>();
 
@@ -427,6 +428,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IRentBillingService, RentBillingService>();
+        // ConcordatoFacile one-time payment (ADR-005): Stripe Checkout with validated Price ID configuration.
+        services.AddOptions<Casazen.Core.Options.ConcordatoFacileOptions>()
+            .BindConfiguration(Casazen.Core.Options.ConcordatoFacileOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.ConcordatoFacileOptions>, Casazen.Core.Options.ConcordatoFacileOptionsValidator>();
+        services.AddScoped<IConcordatoFacileCheckoutService, ConcordatoFacileCheckoutService>();
         // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
         services.AddScoped<IRentRegisterService, RentRegisterService>();
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
