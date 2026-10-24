@@ -76,6 +76,7 @@ public class ConcordatoFacileController(
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Access result with source, gift availability, and timestamps</returns>
     [HttpGet("access")]
+    [Authorize(Policy = CasazenPolicies.LeaseRead)]
     [ProducesResponseType(typeof(AccessResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
