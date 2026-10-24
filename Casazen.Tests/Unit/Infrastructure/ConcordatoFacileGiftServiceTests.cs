@@ -125,12 +125,31 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
             await db.SaveChangesAsync();
             orgId = org.Id;
 
-            // Create 5 leases (just IDs in LeaseEvents table via LeaseEvent records)
+            // Create a property for the leases
+            var property = new Property
+            {
+                OrgId = orgId,
+                Name = "Test Property",
+                City = "Rome",
+                Address = "Via Test 1",
+                OwnerId = "auth0|test_owner"
+            };
+            db.Properties.Add(property);
+            await db.SaveChangesAsync();
+
+            // Create 5 lease contracts to satisfy the FK constraint
             for (int i = 0; i < 5; i++)
             {
-                var leaseId = Guid.NewGuid();
-                leaseIds.Add(leaseId);
+                var lease = new LeaseContract
+                {
+                    OrgId = orgId,
+                    PropertyId = property.Id,
+                    CreatedAt = DateTime.UtcNow
+                };
+                db.LeaseContracts.Add(lease);
+                leaseIds.Add(lease.Id);
             }
+            await db.SaveChangesAsync();
         }
 
         await using (var db = _database.CreateContext())
@@ -191,6 +210,29 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
 
             org1Id = org1.Id;
             org2Id = org2.Id;
+
+            // Create a property for org1
+            var property = new Property
+            {
+                OrgId = org1Id,
+                Name = "Test Property",
+                City = "Rome",
+                Address = "Via Test 1",
+                OwnerId = "auth0|test_owner"
+            };
+            db.Properties.Add(property);
+            await db.SaveChangesAsync();
+
+            // Create a lease contract to satisfy the FK constraint
+            var lease = new LeaseContract
+            {
+                Id = leaseOfOrg2Id,
+                OrgId = org1Id,
+                PropertyId = property.Id,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.LeaseContracts.Add(lease);
+            await db.SaveChangesAsync();
         }
 
         await using (var db = _database.CreateContext())
