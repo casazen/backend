@@ -40,7 +40,7 @@ public sealed class LeaseDocumentExtractionService(
             var stream = await storage.OpenReadAsync(StorageBucket.Private, document.StorageKey, ct)
                 ?? throw new InvalidOperationException($"Document {documentId} storage key not found");
 
-            // Extract text using Tesseract OCR
+            // Extract text from PDF pages using PdfPig (digital PDFs with embedded text only; scanned images will return empty)
             var extractedText = await ExtractTextFromPdfAsync(stream, ct);
             if (string.IsNullOrWhiteSpace(extractedText))
             {
