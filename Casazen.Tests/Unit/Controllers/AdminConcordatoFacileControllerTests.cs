@@ -131,7 +131,7 @@ public class AdminConcordatoFacileControllerTests
         // Seed org if provided
         if (orgId.HasValue)
         {
-            db.Orgs.Add(new Org { Id = orgId.Value, Name = "Test Org", Slug = "test-org" });
+            db.Orgs.Add(new Core.Entities.Org { Id = orgId.Value, Name = "Test Org", Slug = "test-org" });
         }
 
         // Seed existing gift if provided
