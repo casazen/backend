@@ -10,6 +10,7 @@ using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
 namespace Casazen.Infrastructure.External;
@@ -28,9 +29,15 @@ public class StripeWebhookHandler(
     DeferredChargeService deferredCharges,
     ISupplierPaymentWebhookService supplierPayments,
     ILogger<StripeWebhookHandler> logger,
-    IActivityLog? activityLog = null)
+    IActivityLog? activityLog = null,
+    ConcordatoFacilePaymentHandler? concordatoFacilePayments = null)
 {
     private const string DirectBookingKind = "direct-booking";
+
+    // ConcordatoFacile one-time payment (ADR-005). Optional like the activity log, so that the existing tests keep building the
+    // handler as they always did; the container always provides it.
+    private ConcordatoFacilePaymentHandler CfPayments =>
+        concordatoFacilePayments ??= new ConcordatoFacilePaymentHandler(dbContext, NullLogger<ConcordatoFacilePaymentHandler>.Instance);
 
     public Task HandleEventAsync(Event stripeEvent) =>
         HandleEventAsync(stripeEvent, WebhookSource.Platform);
@@ -52,7 +59,13 @@ public class StripeWebhookHandler(
     {
         await using var eventTransaction = await BeginEventTransactionAsync();
 
-        if (!await TryClaimEventAsync(stripeEvent, source))
+        // A ConcordatoFacile event (ADR-005) is claimed under its own source (R5). Decided once, here: the dispatch below reuses it.
+        var cfPayment = stripeEvent.Type == "payment_intent.succeeded"
+            && IsConcordatoFacilePayment(stripeEvent.Data.Object as PaymentIntent);
+        var cfRefund = stripeEvent.Type == "charge.refunded"
+            && await IsConcordatoFacileRefundAsync(stripeEvent.Data.Object as Charge);
+
+        if (!await TryClaimEventAsync(stripeEvent, cfPayment || cfRefund ? WebhookSource.ConcordatoFacile : source))
         {
             if (eventTransaction is not null)
                 await eventTransaction.RollbackAsync();
@@ -97,6 +110,11 @@ public class StripeWebhookHandler(
                     rentNotice = await HandleRentChargeAsync(
                         (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
                     break;
+                // ConcordatoFacile one-time payment (ADR-005): BEFORE the generic payment_intent.succeeded, like rent and service charges.
+                // CF payments are identified by leaseId in metadata without a "kind" field.
+                case "payment_intent.succeeded" when cfPayment:
+                    await CfPayments.HandlePaymentIntentSucceededAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Created);
+                    break;
                 // The payment of a supplier's service (SP-15b, kind = service-charge): BEFORE the generic payment_intent.succeeded
                 // below, like the rent. Otherwise the event would be "processed" with no effect on the Connect endpoint (the generic
                 // handler drops every kind but direct-booking) or, on the platform endpoint, handed to the booking settlement.
@@ -120,13 +138,16 @@ public class StripeWebhookHandler(
                     break;
                 case "charge.refunded":
                     {
-                        // A refund of a supplier's service payment is recorded by the service payments (SP-15b); any other is a
-                        // booking payment's, as before.
-                        var serviceRefund = await HandleServiceChargeRefundedAsync(stripeEvent.Data.Object as Charge, stripeEvent.Account);
+                        // A refund of a supplier's service payment is recorded by the service payments (SP-15b); a CF refund is
+                        // handled by the CF handler (ADR-005-R7); any other is a booking payment's, as before.
+                        var charge = stripeEvent.Data.Object as Charge;
+                        var serviceRefund = await HandleServiceChargeRefundedAsync(charge, stripeEvent.Account);
                         if (serviceRefund is { Handled: true })
                             servicePaymentNotices = serviceRefund.Notices;
+                        else if (cfRefund)
+                            await CfPayments.HandleRefundAsync(charge!);
                         else
-                            succeededRefunds = await HandleChargeRefundedAsync(stripeEvent.Data.Object as Charge, source, stripeEvent.Account);
+                            succeededRefunds = await HandleChargeRefundedAsync(charge, source, stripeEvent.Account);
                         break;
                     }
                 case "refund.created":
@@ -796,6 +817,28 @@ public class StripeWebhookHandler(
         paymentIntent is not null &&
         TryGetMetadataKind(paymentIntent, out var kind) &&
         string.Equals(kind, DeferredCharges.Kind, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Checks if a PaymentIntent is for a ConcordatoFacile purchase (ADR-005).
+    /// CF payments are identified by the presence of "leaseId" in metadata (without a "kind" field).
+    /// </summary>
+    private static bool IsConcordatoFacilePayment(PaymentIntent? paymentIntent) =>
+        paymentIntent is not null &&
+        paymentIntent.Metadata is not null &&
+        paymentIntent.Metadata.ContainsKey("leaseId") &&
+        !paymentIntent.Metadata.ContainsKey("kind");
+
+    /// <summary>
+    /// Checks if a Charge refund is associated with a ConcordatoFacile purchase (ADR-005-R7).
+    /// </summary>
+    private async Task<bool> IsConcordatoFacileRefundAsync(Charge? charge)
+    {
+        if (charge is null || string.IsNullOrWhiteSpace(charge.PaymentIntentId))
+            return false;
+
+        return await dbContext.ConcordatoFacilePurchases
+            .AnyAsync(p => p.StripePaymentIntentId == charge.PaymentIntentId);
+    }
 
     /// <summary>
     /// An event of a deferred charge PaymentIntent ("Paga alla scadenza", BK-08, A3-14), from the Connect endpoint or the
