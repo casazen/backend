@@ -294,6 +294,9 @@
   <data name="PaymentNotFound" xml:space="preserve">
     <value>Payment not found</value>
   </data>
+  <data name="PracticeNotFound" xml:space="preserve">
+    <value>Practice not found</value>
+  </data>
   <data name="GiftAlreadyConsumed" xml:space="preserve">
     <value>The gift has already been used</value>
   </data>
