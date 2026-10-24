@@ -660,7 +660,81 @@ public static class ServiceCollectionExtensions
         services.AddOptions<SafeExternalHttpOptions>().BindConfiguration(SafeExternalHttpOptions.SectionName);
         services.AddSingleton<IExternalHostResolver, SystemDnsHostResolver>();
         services.AddSingleton<ISafeExternalHttpClient, SafeExternalHttpClient>();
+
+        // ConcordatoFacile status API client with Polly resilience (ADR-008-R1 through ADR-008-R5).
+        services.AddHttpClient<ConcordatoFacileApiClient>((serviceProvider, client) =>
+        {
+            var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+            var logger = serviceProvider.GetRequiredService<ILogger<ConcordatoFacileApiClient>>();
+
+            var baseUrl = configuration["ConcordatoFacile:StatusApiUrl"] ?? "https://stato.concordatofacile.it";
+            client.BaseAddress = new Uri(baseUrl);
+
+            var apiKey = configuration["ConcordatoFacile:StatusApiKey"];
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+            }
+            else
+            {
+                // Graceful degradation per ADR-008-R22: log warning but do not fail startup
+                logger.LogWarning("ConcordatoFacile:StatusApiKey not configured; CF status API disabled");
+            }
+
+            client.Timeout = TimeSpan.FromSeconds(120); // Total timeout for all retries
+        })
+        .AddPolicyHandler((serviceProvider, request) =>
+        {
+            var logger = serviceProvider.GetRequiredService<ILogger<ConcordatoFacileApiClient>>();
+            return GetCfRetryPolicy(logger);
+        })
+        .AddPolicyHandler(Policy.TimeoutAsync<HttpResponseMessage>(30))
+        .ConfigurePrimaryHttpMessageHandler(() =>
+        {
+            var handler = new SocketsHttpHandler
+            {
+                // TLS 1.2+ enforced (ADR-008-R14)
+                SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+                {
+                    EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13
+                }
+            };
+            return handler;
+        });
+
         return services;
+    }
+
+    /// <summary>
+    /// Retry policy for ConcordatoFacile API: exponential backoff (1s, 2s, 4s) for transient errors
+    /// (ADR-008-R3). Handles HTTP 5xx, HttpRequestException, TaskCanceledException, TimeoutException.
+    /// </summary>
+    private static IAsyncPolicy<HttpResponseMessage> GetCfRetryPolicy(ILogger logger)
+    {
+        return Policy
+            .Handle<HttpRequestException>()
+            .Or<TaskCanceledException>()
+            .Or<TimeoutException>()
+            .OrResult<HttpResponseMessage>(r => (int)r.StatusCode >= 500)
+            .WaitAndRetryAsync(
+                retryCount: 3,
+                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt - 1)),
+                onRetry: (outcome, timespan, retryCount, context) =>
+                {
+                    if (outcome.Exception != null)
+                    {
+                        logger.LogWarning(outcome.Exception,
+                            "CF API request failed (attempt {RetryCount}/3); retrying in {Delay}s",
+                            retryCount, timespan.TotalSeconds);
+                    }
+                    else
+                    {
+                        logger.LogWarning(
+                            "CF API returned {StatusCode} (attempt {RetryCount}/3); retrying in {Delay}s",
+                            (int)outcome.Result.StatusCode, retryCount, timespan.TotalSeconds);
+                    }
+                });
     }
 
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)
