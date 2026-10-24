@@ -106,6 +106,7 @@ For an imported contract steps 5 and 6 are `NotApplicable` and step 7 asks for t
 |---|---|---|
 | `property_missing` | 1 | — |
 | `ape_missing`, `cadastral_missing` | 1 | — (the facts about the property; they do not keep `DraftData` alive; an imported contract only gets a warning in the review) |
+| `ape_identification_missing` | 1 | — (**a contract made in CasaZen only** (LR-APE): the property has an APE but no APE document has both its code and its energy class. The three models print them (`{{ape_estremi}}`) and the reading of the certificate does not guarantee they were saved; without them the final contract would answer `422 contract_data_missing` after the review was confirmed. A fact about the property like `ape_missing` (it does not keep `DraftData` alive). The rule is the contract's — it prints the latest APE document that has both — so the review and the contract cannot disagree. A certificate that could not be read whole (`APE_IDENTIFICATION_REQUIRED`) asks for the same thing. Never for an imported contract, which prints nothing) |
 | `landlord_missing`, `tenant_missing` | 2 | — |
 | `landlord_incomplete`, `tenant_incomplete` | 2 | `index`, `fields` (`firstName`, `lastName`, `fiscalCode`, `citizenship`, `residence`, `contactEmail`) |
 | `party_fiscal_code_duplicate` | 2 | `entries: [{ role, index }]` (the same fiscal code twice in the contract: the later entries are the ones to change) |
