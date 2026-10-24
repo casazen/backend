@@ -48,18 +48,16 @@ public class ConcordatoFacilePaymentHandler(
             return;
         }
 
-        // Query purchase by StripeCheckoutSessionId (from invoice) OR StripePaymentIntentId
-        var invoiceId = paymentIntent.Invoice?.Id;
+        // Query purchase by StripePaymentIntentId (if already set, for duplicate events) OR by leaseId
         var purchase = await dbContext.ConcordatoFacilePurchases
-            .Where(p => p.StripeCheckoutSessionId == invoiceId || p.StripePaymentIntentId == paymentIntent.Id)
+            .Where(p => p.StripePaymentIntentId == paymentIntent.Id || p.LeaseContractId == leaseId)
             .FirstOrDefaultAsync();
 
         if (purchase is null)
         {
             logger.LogWarning(
-                "No ConcordatoFacilePurchase found for payment intent {PaymentIntentId} (invoice={InvoiceId}, leaseId={LeaseId})",
+                "No ConcordatoFacilePurchase found for payment intent {PaymentIntentId} (leaseId={LeaseId})",
                 paymentIntent.Id,
-                invoiceId,
                 leaseId);
             return;
         }
