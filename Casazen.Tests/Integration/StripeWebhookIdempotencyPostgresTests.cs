@@ -373,6 +373,7 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
             TestCheckoutPaymentSettlement.Create(db, paymentRepository),
             TestDeferredCharges.Create(db),
             Mock.Of<ISupplierPaymentWebhookService>(),
+            Mock.Of<Casazen.Infrastructure.External.ConcordatoFacilePaymentHandler>(),
             NullLogger<StripeWebhookHandler>.Instance);
 
     private async Task<OrgEntity> SeedOrgAsync(SubscriptionStatus status, PlanTier tier, bool withSubscription = true)
