@@ -85,4 +85,10 @@ public enum LeaseEventType
     /// type (48 months for the libero, 24 for the concordato). One event per period. Payload: the new last day (<c>yyyy-MM-dd</c>).
     /// </summary>
     TermRenewed,
+
+    /// <summary>
+    /// A platform admin accessed ConcordatoFacile data for this lease using their admin role (AC-NF04-3), bypassing payment or gift.
+    /// Payload: JSON with <c>userId</c> of the admin. No sensitive data.
+    /// </summary>
+    ConcordatoFacileAdminAccess,
 }
