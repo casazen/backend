@@ -8,7 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Stripe;
 using Xunit;
-using OrgEntity = Casazen.Core.Entities.Org;
 
 namespace Casazen.Tests.Integration;
 
@@ -42,7 +41,7 @@ public class ConcordatoFacilePaymentHandlerTests : IClassFixture<CasazenWebAppli
         var intentId = "pi_test_correct_amount";
 
         // Seed org and lease
-        db.Orgs.Add(new OrgEntity { Id = orgId, Name = "Test Org" });
+        db.Orgs.Add(new Org { Id = orgId, Name = "Test Org" });
         db.LeaseContracts.Add(new LeaseContract { Id = leaseId, OrgId = orgId });
         db.ConcordatoFacilePurchases.Add(new ConcordatoFacilePurchase
         {
@@ -93,7 +92,7 @@ public class ConcordatoFacilePaymentHandlerTests : IClassFixture<CasazenWebAppli
         var sessionId = "cs_test_wrong_amount";
 
         // Seed org and lease
-        db.Orgs.Add(new OrgEntity { Id = orgId, Name = "Test Org" });
+        db.Orgs.Add(new Org { Id = orgId, Name = "Test Org" });
         db.LeaseContracts.Add(new LeaseContract { Id = leaseId, OrgId = orgId });
         db.ConcordatoFacilePurchases.Add(new ConcordatoFacilePurchase
         {
@@ -167,7 +166,7 @@ public class ConcordatoFacilePaymentHandlerTests : IClassFixture<CasazenWebAppli
         var intentId = "pi_test_duplicate";
 
         // Seed org and lease
-        db.Orgs.Add(new OrgEntity { Id = orgId, Name = "Test Org" });
+        db.Orgs.Add(new Org { Id = orgId, Name = "Test Org" });
         db.LeaseContracts.Add(new LeaseContract { Id = leaseId, OrgId = orgId });
         db.ConcordatoFacilePurchases.Add(new ConcordatoFacilePurchase
         {
