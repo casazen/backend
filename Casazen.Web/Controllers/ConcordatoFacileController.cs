@@ -1,3 +1,4 @@
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
@@ -14,9 +15,12 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// ConcordatoFacile one-time payment and access management (ADR-005).
 /// Endpoints require lease.read OR lease.create permission in the long-rent context.
+/// The whole controller, the practice lookup of the upload page included, is behind <c>Features:ConcordatoFacile</c> (CF-FIX): with
+/// the flag off every action answers 404 before authentication. The Stripe webhooks that record a payment already made are not.
 /// </summary>
 [ApiController]
 [Route("api/leases/{leaseId:guid}/concordatofacile")]
+[FeatureGate(FeatureFlags.ConcordatoFacile)]
 [Authorize] // Base authentication; OR permission check is programmatic per ADR-005-R9
 public class ConcordatoFacileController(
     IConcordatoFacileCheckoutService checkoutService,
@@ -33,6 +37,9 @@ public class ConcordatoFacileController(
     /// Creates a Stripe Checkout session for ConcordatoFacile one-time payment (EUR 119,00).
     /// Reuses an existing pending session for the same lease if not expired (ADR-005-R1, ADR-005-R2).
     /// Requires lease.read OR lease.create permission (ADR-005-R9).
+    /// 404 <c>lease_not_found</c> when the lease does not exist or belongs to another org; 409
+    /// <c>concordatofacile_already_purchased</c> when the lease already has the access (payment or consumed gift) or has already
+    /// paid and the webhook has not arrived yet (the payment is recorded on the spot): a second session is never created.
     /// </summary>
     /// <param name="leaseId">The lease contract ID from the route</param>
     /// <param name="request">Empty request body (required for POST)</param>
@@ -43,6 +50,7 @@ public class ConcordatoFacileController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<CheckoutResponse>> CreateCheckout(
         Guid leaseId,
         [FromBody] CreateCheckoutRequest request,
