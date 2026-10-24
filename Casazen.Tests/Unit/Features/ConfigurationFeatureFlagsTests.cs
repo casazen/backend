@@ -73,6 +73,8 @@ public class ConfigurationFeatureFlagsTests
                 "SupplierRequestAutoCancel",
                 // SEO-INVITE: the call to action to sign up on the public SEO pages, off while CasaZen is on invitation.
                 "SeoSignupCta",
+                // CF-FIX: the ConcordatoFacile service, on in the test environment and off in production until the trial run is confirmed.
+                "ConcordatoFacile",
             },
             FeatureFlags.All);
     }

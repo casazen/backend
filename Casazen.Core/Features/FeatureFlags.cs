@@ -92,6 +92,16 @@ public static class FeatureFlags
     /// </summary>
     public const string SeoSignupCta = "SeoSignupCta";
 
+    /// <summary>
+    /// CF-FIX (product owner, 2026-10-25): the ConcordatoFacile service (ADR-005 to ADR-009), on in the test environment and off
+    /// in production until CasaZen confirms to ConcordatoFacile that the trial run and the privacy framework (v1.3 R24) are done.
+    /// Off: every endpoint of <c>ConcordatoFacileController</c> (checkout, access, gift, signed link, status, the practice
+    /// lookup of the upload page) and <c>POST api/leases/drafts/concordatofacile</c> answer 404, and the frontend does not show the
+    /// service. <b>Not behind it</b>: the processing of the Stripe webhooks (a payment already made is still recorded), the status
+    /// client, the startup validation of the <c>ConcordatoFacile</c> options and the gifts of the admin controller.
+    /// </summary>
+    public const string ConcordatoFacile = "ConcordatoFacile";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -103,5 +113,6 @@ public static class FeatureFlags
         SupplierOnlinePayments,
         SupplierRequestAutoCancel,
         SeoSignupCta,
+        ConcordatoFacile,
     ];
 }
