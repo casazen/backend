@@ -17,6 +17,7 @@ pagamento). Codice: `LeasesController`, `LongRentRentsController`, `LongRentAgen
 | `POST /api/long-rent/rents/reminders` | `lease.create` | Sollecito di massa (da 1 a 50 canoni, stessa nota) |
 | `GET /api/long-rent/deadlines?from=&to=&type=` | `lease.read` | Scadenze in ordine di data (§ 5) |
 | `GET /api/long-rent/overview` | `lease.read` | Numeri d'area, checklist e prossima scadenza (§ 5) |
+| `GET /api/long-rent/fiscal?year=` e `/fiscal/export?year=` | `lease.read` | Report fiscale per contratto (stima per il commercialista) e il suo CSV (§ 12) |
 
 Tutte le letture sono limitate **in SQL** all'org del chiamante e agli immobili che raggiunge: `HostScope` letto dal database
 (`IHostScopeResolver`, AM-03) e applicato con `InScope`, la stessa regola di `GET /api/leases` e di ogni altro elenco dell'host (tutta
@@ -323,3 +324,66 @@ L'elenco: l'istruzione di sempre, più **una** che chiede quali tra i contratti 
 ### 11.5 Cosa non c'è (versione ridotta)
 
 `progress` (avanzamento), i filtri `stage` e `actor`, `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+
+## 12. Report fiscale per contratto, per il commercialista (LR-11b)
+
+Una **stima** per anno e per contratto da dare al commercialista: quanto canone è maturato, quanto ne è stato incassato (secondo il registro
+dei canoni) e, per chi è in cedolare secca, la cedolare stimata. **Solo letture**: nessuna tabella, nessuna migrazione, nessun flag,
+nessuna scrittura, nessuna e-mail. Codice: `LongRentFiscalController`; servizio `LongRentFiscalReportService`; regole pure in
+`Casazen.Core/Leases/LongRentFiscalRules.cs` (le stesse per la pagina e per il file); il file in `LongRentFiscalDocuments`, scritto dallo
+scrittore comune `CsvWriter` (SR-10).
+
+### 12.1 Endpoint
+
+Entrambi `lease.read` (come il resto dell'area), limitati in SQL all'org e agli immobili che il chiamante raggiunge (`HostScope`, § 1).
+
+| Endpoint | Cosa fa |
+|---|---|
+| `GET /api/long-rent/fiscal?year=` | `{ year, generatedOn, rows[], totals }`. `year` facoltativo (default l'anno corrente a Roma); da 2000 all'anno corrente, altrimenti 400 `long_rent_fiscal_year_invalid` |
+| `GET /api/long-rent/fiscal/export?year=&format=csv` | Lo stesso, come CSV da scaricare (`casazen-stima-fiscale-affitti-lunghi-<anno>.csv`). `format` facoltativo: solo `csv`, altro 400 `long_rent_fiscal_format_invalid` |
+
+Una riga per contratto firmato da tutte le parti (`Signed`, `RegistrationPending`, `SentToProvider`, `Registered`, come il rinnovo tacito) che
+ha almeno un giorno in un mese dell'anno, **giudicato sulla fine del periodo in corso** (`currentTermEndDate`, LR-14). Campi: immobile,
+conduttore (nome e cognome, `null` se anonimizzato), tipo di contratto, regime (`taxRegime`, `null` per un concordato anteriore a LT-10),
+`startDate`, `currentTermEndDate`, `monthsInYear`, `monthlyRentEur`, `accrualEur`, `collectedEur`, `trackedFrom`, `collectedIsPartial`, `tax`,
+`notes`. Totali: contratti, competenza, incassato, cedolare stimata, quanti contratti hanno la cedolare stimata e quanti no; ogni totale è la
+somma delle righe così come sono mostrate (arrotondate al centesimo).
+
+### 12.2 Cosa dice ogni numero
+
+Ogni cifra dichiara la sua base; il file lo dice nella terza riga e la prima riga è «Stima da validare con il commercialista».
+
+- **Competenza** (`accrualEur`, per competenza): i mesi dell'anno in cui il contratto ha almeno un giorno (mesi interi) per il canone mensile del
+  contratto, fino alla fine del periodo in corso. Un contratto rinnovato da solo resta in vigore; uno terminato in anticipo si ferma al suo
+  ultimo giorno. **Non modellati**: mensilità parziali (il mese in cui si inizia o si finisce conta per intero), variazioni del canone, ISTAT.
+- **Incassato** (`collectedEur`, per cassa): la somma delle rate **pagate** (`Paid`) con `PaidOn` nell'anno, online o dichiarate dal locatore.
+  È solo ciò che sta nel registro: `trackedFrom` è il primo giorno della prima rata non annullata del contratto; se cade dopo il primo mese del
+  contratto nell'anno `collectedIsPartial` è vero e la pagina dice «registrati in CasaZen dal …» (LR-04a, «traccia da»). È `null`, non 0, quando
+  il registro non ha rate del contratto: non lo si traccia, non è che non abbia pagato. Il pagamento ricevuto nell'anno per un contratto già
+  finito prima dell'anno non è in nessuna riga (vedi LR-11b-FU4).
+- **Cedolare** (`tax.status = CedolareEstimated`): l'aliquota e la sua base (`Standard` o `ConcordatoAta`) sono quelle del consiglio fiscale del
+  contratto (`LeaseTaxAdvisory`, LT-08: stesse regole e stessi parametri `CedolareAdvisory:*`, nessuna cifra nel report), applicate alla
+  competenza dell'anno: `tax.amountEur = competenza × aliquota`. Le `notes` sono i codici del consiglio fiscale che rendono incerta la cifra
+  (comune ad alta tensione abitativa non verificato o non in elenco, comuni in emergenza non verificati, attestazione del concordato non
+  assistito, transitorio da confermare); la pagina li traduce con i testi del consiglio fiscale, il file li scrive in italiano.
+- **Regime ordinario** (`OrdinaryNotEstimated`): nessuna cifra. L'IRPEF dipende dal reddito complessivo, che CasaZen non ha (LR-D21, ridotto:
+  niente campo «altri redditi»); imposta di registro e bollo non sono stimate. **Regime non registrato** (`RegimeUnknown`, un concordato
+  anteriore a LT-10): nessuna cifra e la nota `tax_regime_unknown`, mai un'ipotesi.
+
+### 12.3 Costo, privacy e sicurezza
+
+- Quattro istruzioni al massimo, qualunque sia il numero di contratti: i contratti dell'anno (scalari più il primo conduttore), la prima rata
+  tracciata di ciascuno, il pagato dell'anno di ciascuno, e il comune ATA dei soli concordati in cedolare (uno per comune).
+- Del conduttore solo nome e cognome (D29: mai codice fiscale, e-mail o telefono); `null` una volta anonimizzato (nel file «Dati
+  anonimizzati»). Nessun log del contenuto; risposte `Cache-Control: private, no-store`; il nome del file non porta dati di persone. Il CSV passa
+  dallo scrittore comune: BOM, `;`, virgola decimale, protezione dalle formule, al massimo 10.000 righe (422 `csv_too_many_rows`).
+- Un'altra org è invisibile (filtro di tenant più `OrgId` esplicito); un utente limitato non vede i contratti degli altri immobili.
+
+### 12.4 Decisioni applicate e rimandato
+
+- Versione ridotta del revisore di perimetro: niente IRPEF aggregata né campo «altri redditi» (LR-D21, alternativa «nessuna IRPEF»), niente
+  registro e bollo, niente «Invita il commercialista» (nessuna rotta di AM-04 da cui dipendere), niente PDF. Cifre e fonti solo da
+  configurazione (LR-D29); i testi normativi li rivede il PO (D32).
+- **LR-11b-FU1** IRPEF aggregata con gli «altri redditi» (non salvati) · **FU2** registro e bollo per i contratti ordinari · **FU3** «Invita il
+  commercialista» · **FU4** i pagamenti ricevuti nell'anno per contratti finiti prima (righe con 0 mesi) · **FU5** mensilità parziali in
+  proporzione ai giorni.
