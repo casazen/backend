@@ -3140,4 +3140,13 @@
   <data name="ConcordatoFacileGiftAlreadyExists" xml:space="preserve">
     <value>The organization already has a ConcordatoFacile gift.</value>
   </data>
+  <data name="SubscriptionIdRequired" xml:space="preserve">
+    <value>The subscription ID is required.</value>
+  </data>
+  <data name="ReasonRequired" xml:space="preserve">
+    <value>The reason is required.</value>
+  </data>
+  <data name="ReasonTooLong" xml:space="preserve">
+    <value>The reason cannot exceed 500 characters.</value>
+  </data>
 </root>
