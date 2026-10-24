@@ -86,4 +86,9 @@ public enum OrgActivityType
 
     /// <summary><i>Reserved.</i> A supplier was removed from the trusted ones. Subject: the supplier.</summary>
     TrustedSupplierRemoved = 61,
+
+    // ─── ConcordatoFacile (account) ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>An admin manually granted a ConcordatoFacile gift to an org. Subject: the org. No details.</summary>
+    AdminGrantedConcordatoFacileGift = 70,
 }
