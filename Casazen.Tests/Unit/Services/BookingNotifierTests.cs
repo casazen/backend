@@ -132,6 +132,124 @@ public class BookingNotifierTests : IDisposable
         Assert.Empty(_emails.Snapshot());
     }
 
+    [Fact]
+    public async Task BookingCancelledByGuestAsync_QueuesOnePushToTheHosts_WithPropertyAndDatesOnly()
+    {
+        var bookingId = await SeedAsync(BookingStatus.Cancelled, paid: 0m);
+
+        await Notifier().BookingCancelledByGuestAsync(bookingId);
+        await Notifier().BookingCancelledByGuestAsync(bookingId);
+
+        // The key is the same for a repeated call: the queue dedupes it; the payload is what the lock screen shows.
+        Assert.All(_pushes.Queued, push =>
+        {
+            Assert.Equal(PushDeliveryKeys.BookingCancelledByGuest(bookingId), push.DeliveryKey);
+            Assert.Equal(PushAudience.BookingHosts(bookingId), push.Audience);
+            Assert.Equal(PushTypes.BookingCancelledByGuest, push.Payload.Type);
+            Assert.Equal(PushRoutes.Booking(bookingId), push.Payload.Route);
+            Assert.Equal(bookingId, push.Payload.BookingId);
+            Assert.Contains("Villa Rosa", push.Payload.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("Anna", push.Payload.Title + push.Payload.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("Verdi", push.Payload.Title + push.Payload.Body, StringComparison.Ordinal);
+        });
+        Assert.NotEmpty(_pushes.Queued);
+        Assert.Empty(_emails.Snapshot());
+    }
+
+    [Fact]
+    public async Task BookingCancelledByGuestAsync_BookingGone_QueuesNothing()
+    {
+        await Notifier().BookingCancelledByGuestAsync(Guid.NewGuid());
+
+        Assert.Empty(_pushes.Queued);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DeferredChargeNotAttemptedAsync_AndFailed_PushTheHostsOncePerKind_NextToTheEmail(bool guestAsked)
+    {
+        var bookingId = await SeedAsync(BookingStatus.Confirmed, paid: 0m);
+        var notifier = Notifier();
+
+        if (guestAsked)
+            await notifier.DeferredChargeFailedAsync(bookingId, "token", cancellationDay: null);
+        else
+            await notifier.DeferredChargeNotAttemptedAsync(bookingId);
+
+        var push = Assert.Single(_pushes.Queued);
+        Assert.Equal(PushDeliveryKeys.DeferredChargeFailed(bookingId, guestAsked), push.DeliveryKey);
+        Assert.Equal(PushTypes.DeferredChargeFailed, push.Payload.Type);
+        Assert.Equal(PushAudience.BookingHosts(bookingId), push.Audience);
+        Assert.Equal(PushRoutes.Booking(bookingId), push.Payload.Route);
+        Assert.DoesNotContain("Anna", push.Payload.Title + push.Payload.Body, StringComparison.Ordinal);
+        Assert.NotEmpty(_emails.Snapshot());
+    }
+
+    [Fact]
+    public async Task DeferredChargeCancelledAsync_PushesTheHosts_WithoutGuestName()
+    {
+        var bookingId = await SeedAsync(BookingStatus.Cancelled, paid: 0m);
+
+        await Notifier().DeferredChargeCancelledAsync(bookingId);
+
+        var push = Assert.Single(_pushes.Queued);
+        Assert.Equal(PushDeliveryKeys.DeferredChargeCancelled(bookingId), push.DeliveryKey);
+        Assert.Equal(PushTypes.DeferredChargeCancelled, push.Payload.Type);
+        Assert.Equal("Villa Rosa: dal 05/10/2026 al 08/10/2026. Le date sono di nuovo libere.", push.Payload.Body);
+        Assert.DoesNotContain("Verdi", push.Payload.Title + push.Payload.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DeferredChargeCancelledAsync_ThePushQueueThrows_TheEmailsAreStillQueued()
+    {
+        var bookingId = await SeedAsync(BookingStatus.Cancelled, paid: 0m);
+        var notifier = new BookingNotifier(
+            _db, _emails, EmailTestHelpers.Links(), new ThrowingPushQueue(), NullLogger<BookingNotifier>.Instance);
+
+        await notifier.DeferredChargeCancelledAsync(bookingId);
+
+        Assert.Equal(2, _emails.Snapshot().Count);
+    }
+
+    [Fact]
+    public async Task HostNewRequestAsync_OnSiteRequestToAnswer_PushesTheHostsNextToTheEmail_WithoutGuestName()
+    {
+        var bookingId = await SeedAsync(BookingStatus.Pending, paid: 0m);
+        var booking = await _db.Bookings.SingleAsync(b => b.Id == bookingId);
+        booking.RequestExpiresAt = DateTime.UtcNow.AddHours(24);
+        await _db.SaveChangesAsync();
+
+        await new OnSiteRequestNotifier(_db, _emails, EmailTestHelpers.Links(), NullLogger<OnSiteRequestNotifier>.Instance, _pushes)
+            .HostNewRequestAsync(bookingId);
+
+        var push = Assert.Single(_pushes.Queued);
+        Assert.Equal(PushDeliveryKeys.BookingRequest(bookingId), push.DeliveryKey);
+        Assert.Equal(PushAudience.BookingHosts(bookingId), push.Audience);
+        Assert.Equal(PushTypes.BookingRequest, push.Payload.Type);
+        Assert.Equal(PushRoutes.Booking(bookingId), push.Payload.Route);
+        Assert.Contains("Villa Rosa", push.Payload.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Anna", push.Payload.Title + push.Payload.Body, StringComparison.Ordinal);
+        Assert.Equal(EmailTemplates.Names.OnSiteRequestToHost, Assert.Single(_emails.Snapshot()).Template);
+    }
+
+    [Fact]
+    public async Task HostNewRequestAsync_WithoutADeadline_PushesNothing()
+    {
+        var bookingId = await SeedAsync(BookingStatus.Pending, paid: 0m);
+
+        await new OnSiteRequestNotifier(_db, _emails, EmailTestHelpers.Links(), NullLogger<OnSiteRequestNotifier>.Instance, _pushes)
+            .HostNewRequestAsync(bookingId);
+
+        Assert.Empty(_pushes.Queued);
+    }
+
+    private sealed class ThrowingPushQueue : IPushNotificationService
+    {
+        public bool Enqueue(string deliveryKey, PushAudience audience, PushNotificationPayload payload) =>
+            throw new InvalidOperationException("queue down");
+    }
+
     private BookingNotifier Notifier() =>
         new(_db, _emails, EmailTestHelpers.Links(), _pushes, NullLogger<BookingNotifier>.Instance);
 
