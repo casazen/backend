@@ -36,7 +36,6 @@ public class ConcordatoFacileCheckoutServiceTests
         await using var db = NewDb();
         var orgId = Guid.NewGuid();
         var leaseId = Guid.NewGuid();
-        var userId = "auth0|user123";
 
         var service = new ConcordatoFacileCheckoutService(
             db,
@@ -66,7 +65,6 @@ public class ConcordatoFacileCheckoutServiceTests
         var userOrgId = Guid.NewGuid();
         var otherOrgId = Guid.NewGuid();
         var leaseId = Guid.NewGuid();
-        var userId = "auth0|user456";
 
         var options = Options.Create(new ConcordatoFacileOptions
         {
@@ -116,7 +114,6 @@ public class ConcordatoFacileCheckoutServiceTests
         // Arrange
         var orgId = Guid.NewGuid();
         var leaseId = Guid.NewGuid();
-        var userId = "auth0|user789";
         var existingSessionId = "cs_test_existing_session";
 
         await using var db = NewDb();
