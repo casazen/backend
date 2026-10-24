@@ -110,10 +110,20 @@ public class CfStatusCacheServiceTests
         var firstResult = await service.GetPracticesAsync(leaseId, orgId);
         Assert.False(firstResult.IsStale);
 
-        // Wait for cache to expire (simulate by clearing and forcing refresh)
-        _cache.Remove($"Testing:{orgId}:{leaseId}");
+        // Manually insert expired snapshot to trigger refresh
+        var expiredSnapshot = new CfStatusSnapshot
+        {
+            OrgId = orgId,
+            Practices = practices,
+            FetchedAt = DateTime.UtcNow.AddMinutes(-20),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(-1), // Expired
+            IsStale = false,
+            LastError = null,
+            LastAttemptAt = null
+        };
+        _cache.Set($"Testing:{orgId}:{leaseId}", expiredSnapshot, new MemoryCacheEntryOptions());
 
-        // Second call fails but returns stale snapshot
+        // Second call: cache entry exists but expired, API fails
         var secondResult = await service.GetPracticesAsync(leaseId, orgId);
 
         Assert.True(secondResult.IsStale);
@@ -150,10 +160,20 @@ public class CfStatusCacheServiceTests
         var firstResult = await service.GetPracticesAsync(leaseId, orgId);
         Assert.Equal(Core.Entities.Enums.CfPracticeStatus.InProgress, firstResult.Practices[0].Status);
 
-        // Clear cache to force refresh
-        _cache.Remove($"Testing:{orgId}:{leaseId}");
+        // Manually insert expired snapshot with newer data to trigger refresh
+        var expiredSnapshot = new CfStatusSnapshot
+        {
+            OrgId = orgId,
+            Practices = newerPractices,
+            FetchedAt = DateTime.UtcNow.AddMinutes(-20),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(-1), // Expired
+            IsStale = false,
+            LastError = null,
+            LastAttemptAt = null
+        };
+        _cache.Set($"Testing:{orgId}:{leaseId}", expiredSnapshot, new MemoryCacheEntryOptions());
 
-        // Second call gets older data but keeps cached newer data
+        // Second call: cache expired, API returns older data, but keeps cached newer data
         var secondResult = await service.GetPracticesAsync(leaseId, orgId);
         Assert.Equal(Core.Entities.Enums.CfPracticeStatus.InProgress, secondResult.Practices[0].Status);
     }
