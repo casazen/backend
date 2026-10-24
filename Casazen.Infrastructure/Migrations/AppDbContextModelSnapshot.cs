@@ -1896,6 +1896,25 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DocumentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("ExtractionCompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExtractionError")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExtractionResult")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime?>("ExtractionStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ExtractionStatus")
+                        .HasColumnType("integer");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasMaxLength(240)
