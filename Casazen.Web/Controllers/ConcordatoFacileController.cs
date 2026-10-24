@@ -284,7 +284,7 @@ public class ConcordatoFacileController(
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Lease lookup result or 404 if practice not found or not accessible</returns>
     [HttpGet("/api/concordatofacile/practices/{practiceId}/lease")]
-    [Authorize]
+    [Authorize(Policy = CasazenPolicies.LeaseRead)]
     [ProducesResponseType(typeof(PracticeLookupResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

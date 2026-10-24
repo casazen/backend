@@ -118,8 +118,8 @@ public class ConcordatoFacileControllerTests
             PropertyId = property.Id,
             Status = LeaseStatus.Signed,
             FiscalRegime = FiscalRegime.CanoneConcordato,
-            StartDate = DateTime.UtcNow.Date,
-            EndDate = DateTime.UtcNow.Date.AddYears(1),
+            StartDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate = new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             MonthlyRent = 1000m
         };
         db.LeaseContracts.Add(lease);
