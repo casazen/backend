@@ -5,12 +5,14 @@ using Casazen.Core.OrgTeam;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
+using Casazen.Core.Options;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace Casazen.Infrastructure.External;
@@ -30,7 +32,9 @@ public class StripeWebhookHandler(
     ISupplierPaymentWebhookService supplierPayments,
     ILogger<StripeWebhookHandler> logger,
     IActivityLog? activityLog = null,
-    ConcordatoFacilePaymentHandler? concordatoFacilePayments = null)
+    ConcordatoFacilePaymentHandler? concordatoFacilePayments = null,
+    IConcordatoFacileGiftService? concordatoFacileGiftService = null,
+    IOptions<ConcordatoFacileOptions>? concordatoFacileOptions = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -370,6 +374,22 @@ public class StripeWebhookHandler(
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync();
         await entitlementService.SyncFromSubscriptionAsync(org.Id);
+
+        // ADR-006-R1, ADR-006-R2: Grant ConcordatoFacile gift for biennial subscriptions
+        // Only on customer.subscription.created (not updated/deleted)
+        if (eventType == "customer.subscription.created" && concordatoFacileGiftService is not null)
+        {
+            var priceId = subscription.Items?.Data?.FirstOrDefault()?.Price?.Id;
+            if (!string.IsNullOrWhiteSpace(priceId) && IsBiennialSubscriptionPrice(priceId))
+            {
+                logger.LogInformation(
+                    "Biennial subscription {SubscriptionId} detected for org {OrgId} with price {PriceId}; granting ConcordatoFacile gift",
+                    subscription.Id,
+                    org.Id,
+                    priceId);
+                await concordatoFacileGiftService.GrantGiftAsync(org.Id, subscription.Id);
+            }
+        }
     }
 
     /// <summary>
@@ -955,5 +975,21 @@ public class StripeWebhookHandler(
             payment.ProcessedAt = DateTime.UtcNow;
         payment.UpdatedAt = DateTime.UtcNow;
         await paymentRepository.UpdateAsync(payment);
+    }
+
+    /// <summary>
+    /// Checks if a Stripe Price ID is in the configured BiennialPriceIds array (ADR-006-R2).
+    /// Returns false if the configuration is not available or the array is null/empty.
+    /// </summary>
+    private bool IsBiennialSubscriptionPrice(string priceId)
+    {
+        if (concordatoFacileOptions is null)
+            return false;
+
+        var biennialPriceIds = concordatoFacileOptions.Value.BiennialPriceIds;
+        if (biennialPriceIds is null || biennialPriceIds.Length == 0)
+            return false;
+
+        return Array.Exists(biennialPriceIds, id => string.Equals(id, priceId, StringComparison.Ordinal));
     }
 }

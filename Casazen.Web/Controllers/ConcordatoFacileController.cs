@@ -17,6 +17,7 @@ namespace Casazen.Web.Controllers;
 public class ConcordatoFacileController(
     IConcordatoFacileCheckoutService checkoutService,
     IConcordatoFacileAccessService accessService,
+    IConcordatoFacileGiftService giftService,
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService) : ControllerBase
 {
@@ -112,6 +113,66 @@ public class ConcordatoFacileController(
             GiftConsumed = result.GiftConsumed,
             PurchasedAt = result.PurchasedAt,
             GiftAssignedAt = result.GiftAssignedAt
+        });
+    }
+
+    /// <summary>
+    /// Consumes a ConcordatoFacile gift for a lease (ADR-006-R4, ADR-006-R5).
+    /// Uses PostgreSQL advisory locks for atomicity (ADR-006-R4).
+    /// Re-entry for the same leaseId returns 200 OK (ADR-006-R6).
+    /// Returns 409 conflict if gift already consumed for another lease.
+    /// </summary>
+    /// <param name="leaseId">The lease contract ID from the route</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Access status or 409 conflict</returns>
+    [HttpPost("consume-gift")]
+    [Authorize(Policy = CasazenPolicies.LeaseRead)]
+    [ProducesResponseType(typeof(AccessResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<AccessResponse>> ConsumeGift(
+        Guid leaseId,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "org_not_found", "NoOrganizationAssigned");
+
+        var result = await giftService.ConsumeGiftAsync(orgId.Value, leaseId, cancellationToken);
+
+        if (result == CfGiftConsumeResult.AlreadyConsumedForOtherLease)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status409Conflict,
+                "concordatofacile_gift_already_consumed",
+                "GiftAlreadyConsumed");
+        }
+
+        // Both Success and AlreadyConsumedForThisLease return 200 OK with access state
+        var accessResult = await accessService.CheckAccessAsync(leaseId, User, cancellationToken);
+
+        var sourceString = accessResult.Source switch
+        {
+            Core.Services.CfAccessSource.Payment => "payment",
+            Core.Services.CfAccessSource.Gift => "gift",
+            Core.Services.CfAccessSource.Admin => "admin",
+            _ => null
+        };
+
+        return Ok(new AccessResponse
+        {
+            HasAccess = accessResult.HasAccess,
+            Source = sourceString,
+            GiftAvailable = accessResult.GiftAvailable,
+            GiftConsumed = accessResult.GiftConsumed,
+            PurchasedAt = accessResult.PurchasedAt,
+            GiftAssignedAt = accessResult.GiftAssignedAt
         });
     }
 }

@@ -85,4 +85,9 @@ public enum LeaseEventType
     /// type (48 months for the libero, 24 for the concordato). One event per period. Payload: the new last day (<c>yyyy-MM-dd</c>).
     /// </summary>
     TermRenewed,
+
+    /// <summary>
+    /// A ConcordatoFacile gift was consumed for this lease (ADR-006-R7). No payload.
+    /// </summary>
+    ConcordatoFacileGiftConsumed,
 }
