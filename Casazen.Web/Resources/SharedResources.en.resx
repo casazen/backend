@@ -768,6 +768,9 @@
   <data name="DocumentFileMissing" xml:space="preserve">
     <value>The file of this document is no longer available: please upload it again.</value>
   </data>
+  <data name="DocumentNotFound" xml:space="preserve">
+    <value>The requested document does not exist or is not accessible.</value>
+  </data>
   <data name="SignedUrlUnavailable" xml:space="preserve">
     <value>The configured storage cannot create signed links: download the document from the application.</value>
   </data>
@@ -918,6 +921,9 @@
   </data>
   <data name="TaxRateReducedRateInvalid" xml:space="preserve">
     <value>For the reduced rate enter both the maximum age (between the exemption age and 17) and the amount per person per night (between 0.01 and 1000 euros); fixed-amount rates only.</value>
+  </data>
+  <data name="TenantIsolationViolation" xml:space="preserve">
+    <value>Organization data isolation violation.</value>
   </data>
   <data name="PaymentNotRefundable" xml:space="preserve">
     <value>This payment cannot be refunded: only collected payments can be refunded.</value>

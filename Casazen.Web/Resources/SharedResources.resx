@@ -768,6 +768,9 @@
   <data name="DocumentFileMissing" xml:space="preserve">
     <value>Il file di questo documento non è più disponibile: caricalo di nuovo.</value>
   </data>
+  <data name="DocumentNotFound" xml:space="preserve">
+    <value>Il documento richiesto non esiste o non è accessibile.</value>
+  </data>
   <data name="SignedUrlUnavailable" xml:space="preserve">
     <value>Lo storage configurato non genera link firmati: scarica il documento dall'applicazione.</value>
   </data>
@@ -918,6 +921,9 @@
   </data>
   <data name="TaxRateReducedRateInvalid" xml:space="preserve">
     <value>Per la tariffa ridotta indica sia l'età massima (tra l'età di esenzione e 17 anni) sia l'importo per persona per notte (tra 0,01 e 1000 euro); solo per tariffe a importo fisso.</value>
+  </data>
+  <data name="TenantIsolationViolation" xml:space="preserve">
+    <value>Violazione dell'isolamento dei dati dell'organizzazione.</value>
   </data>
   <data name="PaymentNotRefundable" xml:space="preserve">
     <value>Questo pagamento non è rimborsabile: si possono rimborsare solo i pagamenti incassati.</value>
