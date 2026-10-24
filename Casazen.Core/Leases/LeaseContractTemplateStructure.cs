@@ -22,7 +22,7 @@ public static class LeaseContractPlaceholders
     /// <summary>Cadastral identification of the unit, from the property (sheet, parcel, subaltern, category, income; LT-10).</summary>
     public const string CadastralData = "dati_catastali";
 
-    /// <summary>Identification of the APE (code and energy class), from the latest APE document of the property (LT-10).</summary>
+    /// <summary>Identification of the APE (code and energy class), from the latest APE document of the property that has it (LT-10, LR-APE).</summary>
     public const string ApeData = "ape_estremi";
 
     public const string MonthlyRent = "canone_mensile";

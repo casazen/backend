@@ -60,7 +60,7 @@ internal static class LeaseDraftTestData
         StartDate = "2026-11-01",
     };
 
-    public static LeaseDraftFacts GoodFacts { get; } = new() { PropertyExists = true, HasApe = true, HasCadastralData = true };
+    public static LeaseDraftFacts GoodFacts { get; } = new() { PropertyExists = true, HasApe = true, HasApeIdentification = true, HasCadastralData = true };
 
     public static LeaseDraftProgressInput Input(
         LeaseDraftValues? values = null,

@@ -441,3 +441,11 @@ The product owner ordered the activation of the three templates `2026-11-bozza-v
   review cannot be confirmed without it ([`long-rent-lease-draft.md`](long-rent-lease-draft.md)). An imported contract is not affected:
   it has no template. A draft whose review was confirmed before this change, without a deposit, is blocked again (step 3 asks for it, and
   typing it withdraws the old confirmation).
+- **The code and the energy class of the APE are required too** (LR-APE): the three templates print `{{ape_estremi}}` ("Estremi dell'APE"),
+  which is the code and class of the **latest APE document of the property that has both** (`LeaseContractDocument.FormatApe`; a later
+  document without them does not take its place). The review used to pass with an APE the reading took for valid but whose code and
+  class were never saved, and the download then answered `422 contract_data_missing`. The guided draft therefore asks for them at step 1
+  (need `ape_identification_missing`, the same rule as the contract: some APE document of the property has both) and the review cannot be
+  confirmed without them ([`long-rent-lease-draft.md`](long-rent-lease-draft.md)). An imported contract is not affected. A draft whose
+  review was confirmed before this change on a property whose APE has no identification is blocked again (the download for signature
+  answers `422 lease_review_blocked`); once the code and class are typed on the APE, the confirmation stands.

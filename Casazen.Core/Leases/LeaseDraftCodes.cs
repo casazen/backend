@@ -38,6 +38,7 @@ public static class LeaseNeedCodes
     // Step 1 · the property
     public const string PropertyMissing = "property_missing";
     public const string ApeMissing = "ape_missing";
+    public const string ApeIdentificationMissing = "ape_identification_missing";
     public const string CadastralMissing = "cadastral_missing";
 
     // Step 2 · the parties

@@ -153,7 +153,15 @@ public class LeaseReviewTests
     [Fact]
     public void APropertyLetForShortStays_IsAWarning_NotABlock()
     {
-        var checks = Review(Input(facts: new LeaseDraftFacts { PropertyExists = true, HasApe = true, HasCadastralData = true, PropertyIsShortMode = true }));
+        var facts = new LeaseDraftFacts
+        {
+            PropertyExists = true,
+            HasApe = true,
+            HasApeIdentification = true,
+            HasCadastralData = true,
+            PropertyIsShortMode = true,
+        };
+        var checks = Review(Input(facts: facts));
 
         var warn = Check(checks, LeaseNeedCodes.PropertyShortMode);
         Assert.Equal(LeaseReviewSeverity.Warn, warn.Severity);

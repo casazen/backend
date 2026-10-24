@@ -541,6 +541,15 @@ public sealed class LeaseDraftService(
         if (property is null)
             return new LeaseDraftFacts { PropertyExists = false };
 
+        // Code and energy class of the certificates of the property: the contract prints the last one that has them (LeaseContractDocument),
+        // so the draft needs one that has them, whatever the reading of the file said (LR-APE).
+        var apes = await db.PropertyDocuments
+            .AsNoTracking()
+            .Where(d => d.PropertyId == id && d.DocumentType == DocumentType.Ape)
+            .Select(d => new { d.ApeCode, d.ApeEnergyClass })
+            .ToListAsync(cancellationToken);
+        var hasApeIdentification = apes.Any(d => PropertyDocument.IsApeIdentified(d.ApeCode, d.ApeEnergyClass));
+
         bool hasApe;
         if (fullApeCheck)
         {
@@ -549,20 +558,23 @@ public sealed class LeaseDraftService(
                 await apeCompliance.EnsurePropertyHasValidApeAsync(id);
                 hasApe = true;
             }
-            catch (ApeComplianceException)
+            catch (ApeComplianceException ex)
             {
-                hasApe = false;
+                // A certificate that is there but could not be read whole asks for its code and class: that is the need of the
+                // identification, not "the APE is missing" (there is nothing to upload).
+                hasApe = ex.Code == ApeComplianceException.IdentificationRequiredCode;
             }
         }
         else
         {
-            hasApe = await db.PropertyDocuments.AsNoTracking().AnyAsync(d => d.PropertyId == id && d.DocumentType == DocumentType.Ape, cancellationToken);
+            hasApe = apes.Count > 0;
         }
 
         return new LeaseDraftFacts
         {
             PropertyExists = true,
             HasApe = hasApe,
+            HasApeIdentification = hasApeIdentification,
             HasCadastralData = property.HasCadastralData,
             PropertyIsShortMode = property.RentalMode == RentalMode.Short,
         };

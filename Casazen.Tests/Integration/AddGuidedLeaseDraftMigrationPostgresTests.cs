@@ -95,7 +95,7 @@ public class AddGuidedLeaseDraftMigrationPostgresTests : IAsyncLifetime
             Status = lease.Status,
             WizardMaxStep = lease.WizardMaxStep,
             Values = values,
-            Facts = new LeaseDraftFacts { HasApe = true, HasCadastralData = true },
+            Facts = new LeaseDraftFacts { HasApe = true, HasApeIdentification = true, HasCadastralData = true },
             Today = new DateOnly(2026, 10, 9),
         });
 
