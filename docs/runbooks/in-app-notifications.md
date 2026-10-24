@@ -36,7 +36,7 @@ service (BookingNotifier, ServiceRequestNotifier, ShowcaseBookingNotifier, Notif
 | `Id`, `UserId` | The notification and the user who is told (`Users.Id`, the Auth0 subject). **Foreign key to `Users` `ON DELETE CASCADE`** |
 | `OrgId` | The org the event belongs to: the host org of the booking or property, or the **supplier org** for the supplier's inbox. `ITenantOwned`. **Foreign key to `Orgs` `ON DELETE CASCADE`** |
 | `Type` | A value of `PushTypes` (`new-booking`, `service-request-completed`, …), at most 64 characters |
-| `EntityId` | The **service request** for the `service-request-*` types, the **booking** for every other one; `null` if the event names none. Not a foreign key |
+| `EntityId` | The **service request** for the `service-request-*` and `service-payment-*` types, the **property** for the property types (mode change, compliance, CIN, rent), the **booking** for every other one; `null` if the event names none. Not a foreign key |
 | `DeliveryKey` | The key of the push of the same event (`PushDeliveryKeys`), at most 200 characters. Never sent to a client |
 | `CreatedAt`, `ReadAt` | UTC instants (whole microseconds). `CreatedAt` is the instant of the event (taken when the push was queued, so a late run or a retry does not move it); `ReadAt` is `NULL` while unread |
 
@@ -63,6 +63,11 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed` | hosts of the property | service request |
 | `service-request-cancelled` | the other party: the hosts of the property when the supplier cancels, the supplier org when the host or the customer of its showcase cancels; both when nobody answered in time | service request |
 | `service-request-created`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled` | the supplier org | service request |
+| `booking-request`, `booking-cancelled-by-guest`, `deferred-charge-failed`, `deferred-charge-cancelled` | hosts of the booking | booking |
+| `property-mode-change-scheduled`, `-applied`, `-failed`, `property-compliance-suspended`, `cin-deadline`, `rent-payment-received` | hosts of the property | **property** |
+| `service-payment-requested`, `-failed`, `-offline-recorded` | hosts of the property of the request | service request |
+| `service-payment-received` | the supplier org | service request |
+| `service-payment-refunded` | both: hosts of the property and the supplier org (two keys) | service request |
 
 A new value of `PushTypes` gives a notification with no change here; the client shows a generic sentence for a type it does not know.
 
@@ -174,11 +179,44 @@ route of the same screen (the links the e-mails use are built in `PublicSiteLink
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed`, `-cancelled` (host side) | service request | `/bookings/{bookingId}` when the request has a booking, else `/properties` | the service request of the host (by `entityId`) |
 | `service-request-created`, `-auto-accepted`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled`, `-cancelled` (supplier side) | service request | `/properties` | supplier inbox, `/app/supplier/inbox` (the request by `entityId`) |
 
+| `booking-request` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings?view=requests` (the booking by `entityId`) |
+| `booking-cancelled-by-guest`, `deferred-charge-failed`, `deferred-charge-cancelled` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` |
+| `property-mode-change-scheduled`, `-applied`, `-failed` | **property** | `/properties` | `/app/{short-rent\|long-rent}/properties/{propertyId}` |
+| `property-compliance-suspended`, `cin-deadline` | **property** | `/properties` | `/app/short-rent/properties/{propertyId}/activation` |
+| `rent-payment-received` | **property** | `/properties` | `/app/long-rent/properties/{propertyId}` (the lease of the property) |
+| `service-payment-requested`, `-failed`, `-offline-recorded`, `-refunded` (host side) | service request | `/properties` | the service request of the host (by `entityId`) |
+| `service-payment-received`, `-refunded` (supplier side) | service request | `/properties` | `/app/supplier/inbox` (the request by `entityId`) |
+
 Notes: an in-app row has no booking id for the `service-request-*` types (its `entityId` is the **service request**); the booking
 of the request is only in the push. A client that needs it reads the request. A type the client does not know opens the list of
 notifications. `PushRoutes.IsAppRoute` accepts `/properties`, `/bookings/{guid}`, `/bookings/{guid}/checkout` and
 `/bookings/{guid}/messages`; the mobile app must have the last one before the push is sent to its users (an old app ignores a route it
 does not know).
+
+### Audit: which events tell the app (host and supplier side)
+
+Every `IPushNotificationService.Enqueue` gives the push, the bell entry and the real-time update at once, so "covered" means "enqueues a push".
+Guest-facing mail has no app and is left out. The delivery key is stable per event; a repeated call, a retried job or a duplicate
+webhook is one push.
+
+| Event | Push before | Now |
+|---|---|---|
+| New booking confirmed without the host (payment, saved card, late payment) | yes `new-booking` | unchanged |
+| Stay alerts (guest data, Alloggiati, check-out), OTA stay to verify | yes | unchanged |
+| Guest message | no | `guest-message` (every message) |
+| Pay-at-the-property request waiting for the host | no (the code comment promised it) | `booking-request` |
+| Booking cancelled by the **guest** (own link) | no, not even an email to the host | `booking-cancelled-by-guest` |
+| Booking cancelled by the host / accepted or declined by the host | n/a (the host's own action) | none |
+| Deferred charge failed or not attempted; booking cancelled for non-payment | email only | `deferred-charge-failed`, `deferred-charge-cancelled` |
+| Pay-at-the-property request expired | guest email only | none: the host's list shows it (not an event the host must act on) |
+| Payment received / refunds of a **booking** | guest email only (the host initiates refunds; Stripe webhooks settle the booking, which is `new-booking`) | none |
+| Property mode change scheduled / applied / failed | email only | `property-mode-change-*` |
+| Property suspended for compliance; CIN deadline stages | email only | `property-compliance-suspended`, `cin-deadline` (one per property, each stage once) |
+| Rent installment paid (long rent) | email to the landlord only | `rent-payment-received`. Rent reminders and failures go to the **tenant**, who has no app |
+| Service request transitions (created, auto-accepted, taken, started, completed, rejected, cancelled, reminder, time proposed, proposal accepted / rejected, rescheduled, paid) and the showcase ones | yes (verified in `ServiceRequestNotifier` and `ShowcaseBookingNotifier`: each has type, key and audience) | unchanged |
+| Service payment: requested / reminder, failed with a new link, recorded outside CasaZen (host); received (supplier); refunded (both) | email only | `service-payment-*` |
+| Admin alerts on service payments (review, dispute) | email to the platform admins | none: not a host or supplier event |
+| OTA stay created or cancelled | the calendar shows it; only the "da verificare" case notifies | unchanged |
 
 ## 9. Real time (SignalR)
 
