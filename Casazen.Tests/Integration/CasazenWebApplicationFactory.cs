@@ -10,6 +10,7 @@ using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
 using Hangfire;
 using Hangfire.Common;
+using Hangfire.InMemory;
 using Hangfire.States;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
@@ -170,6 +171,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             // provider (docs/runbooks/ical.md).
             RemoveAllOf<IDataProtectionProvider>(services);
             services.AddSingleton<IDataProtectionProvider>(SharedDataProtectionProvider);
+
+            // Initialize Hangfire with in-memory storage for integration tests
+            // This allows services to enqueue background jobs without a real Hangfire server
+            GlobalConfiguration.Configuration.UseInMemoryStorage();
 
             RemoveService<IBackgroundJobClient>(services);
             BackgroundJobClientMock

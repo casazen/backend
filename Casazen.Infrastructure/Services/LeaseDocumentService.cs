@@ -1,6 +1,9 @@
+using System.Security.Cryptography;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.BackgroundJobs;
 using Casazen.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -41,26 +44,87 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
         if (content.Length != file.Length || !content.GetBuffer().AsSpan(0, (int)Math.Min(5, content.Length)).SequenceEqual("%PDF-"u8))
             throw InvalidPdf();
         content.Position = 0;
-        var key = StorageKeys.LeaseAttachment(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
-        await storage.PutAsync(StorageBucket.Private, key, content, "application/pdf", ct);
+
+        // Calculate SHA-256 hash for duplicate detection (ADR-009-R7)
+        string documentHash;
+        using (var sha256 = SHA256.Create())
+        {
+            var hashBytes = await sha256.ComputeHashAsync(content, ct);
+            documentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+        }
+        content.Position = 0;
+
+        // Check for duplicate document (ADR-009-R7)
+        var existingDocument = await db.LeaseDocuments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.DocumentHash == documentHash && d.LeaseContractId == lease.Id, ct);
+
+        if (existingDocument != null)
+        {
+            logger.LogInformation(
+                "Duplicate document detected: {DocumentId} matches existing document {ExistingId} for lease {LeaseId}",
+                documentHash,
+                existingDocument.Id,
+                lease.Id);
+
+            // Create a new document entry but mark it as skipped
+            content.Position = 0;
+            var key = StorageKeys.LeaseAttachment(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
+            await storage.PutAsync(StorageBucket.Private, key, content, "application/pdf", ct);
+            var duplicateDocument = new LeaseDocument
+            {
+                LeaseContractId = lease.Id,
+                OrgId = lease.OrgId,
+                Kind = kind,
+                FileName = fileName,
+                StorageKey = key,
+                UploadedBy = uploadedBy,
+                SizeBytes = content.Length,
+                DocumentHash = documentHash,
+                ExtractionStatus = LeaseDocumentExtractionStatus.Skipped,
+            };
+            try
+            {
+                db.LeaseDocuments.Add(duplicateDocument);
+                await db.SaveChangesAsync(ct);
+            }
+            catch
+            {
+                try { await storage.DeleteAsync(StorageBucket.Private, key, CancellationToken.None); }
+                catch (Exception cleanup) { logger.LogWarning(cleanup, "Could not remove orphan lease attachment {DocumentId}", duplicateDocument.Id); }
+                throw;
+            }
+            return new LeaseDocumentDto(duplicateDocument.Id, lease.Id, kind, duplicateDocument.FileName, duplicateDocument.SizeBytes, duplicateDocument.UploadedAt);
+        }
+
+        // Upload new document
+        content.Position = 0;
+        var storageKey = StorageKeys.LeaseAttachment(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
+        await storage.PutAsync(StorageBucket.Private, storageKey, content, "application/pdf", ct);
         var document = new LeaseDocument
         {
             LeaseContractId = lease.Id,
             OrgId = lease.OrgId,
             Kind = kind,
             FileName = fileName,
-            StorageKey = key,
+            StorageKey = storageKey,
             UploadedBy = uploadedBy,
             SizeBytes = content.Length,
+            DocumentHash = documentHash,
+            ExtractionStatus = LeaseDocumentExtractionStatus.Processing, // Set to Processing per ADR-009-R1
         };
         try
         {
             db.LeaseDocuments.Add(document);
             await db.SaveChangesAsync(ct);
+
+            // Enqueue extraction job (ADR-009-R1)
+            ExtractLeaseDocumentDataJob.EnqueueAsync(document.Id);
+            logger.LogInformation("Extraction job enqueued for document {DocumentId}", document.Id);
         }
         catch
         {
-            try { await storage.DeleteAsync(StorageBucket.Private, key, CancellationToken.None); }
+            try { await storage.DeleteAsync(StorageBucket.Private, storageKey, CancellationToken.None); }
             catch (Exception cleanup) { logger.LogWarning(cleanup, "Could not remove orphan lease attachment {DocumentId}", document.Id); }
             throw;
         }
