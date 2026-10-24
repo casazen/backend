@@ -6,9 +6,11 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using MigraDoc.DocumentObjectModel;
-using MigraDoc.Rendering;
 using Moq;
+using UglyToad.PdfPig.Core;
+using UglyToad.PdfPig.Fonts.Standard14Fonts;
+using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.Writer;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -197,49 +199,37 @@ public sealed class LeaseDocumentExtractionServiceTests : IDisposable
         // instead it flags conflicts and sets status to NeedsReview as required by ADR-009-R9
     }
 
-    private Stream CreateMockPdfWithPersonalData()
+    private static Stream CreateMockPdfWithPersonalData() =>
+        BuildPdf(
+            "LOCATORE: Mario Rossi",
+            "CONDUTTORE: Giulia Bianchi",
+            "CANONE: 1200",
+            "DEPOSITO: 2400",
+            "INIZIO: 01/01/2026",
+            "FINE: 01/01/2027");
+
+    private static Stream CreateMockPdfWithConflictingData() =>
+        BuildPdf(
+            "LOCATORE: Paolo Verdi",
+            "CONDUTTORE: Anna Neri",
+            "CANONE: 1500",
+            "DEPOSITO: 3000",
+            "INIZIO: 01/02/2026",
+            "FINE: 01/02/2027");
+
+    // PdfPig's builder uses the standard 14 PDF fonts, so it needs no system fonts (unlike MigraDoc).
+    private static MemoryStream BuildPdf(params string[] lines)
     {
-        // Create a PDF with MigraDoc using minimal format matching extraction regex patterns
-        var document = new Document();
-        var section = document.AddSection();
+        var builder = new PdfDocumentBuilder();
+        var font = builder.AddStandard14Font(Standard14Font.Helvetica);
+        var page = builder.AddPage(PageSize.A4);
+        var y = 780d;
+        foreach (var line in lines)
+        {
+            page.AddText(line, 12, new PdfPoint(50, y), font);
+            y -= 20;
+        }
 
-        // Use simple keywords that match the extraction service regex patterns exactly
-        section.AddParagraph("LOCATORE: Mario Rossi");
-        section.AddParagraph("CONDUTTORE: Giulia Bianchi");
-        section.AddParagraph("CANONE: 1200");
-        section.AddParagraph("DEPOSITO: 2400");
-        section.AddParagraph("INIZIO: 01/01/2026");
-        section.AddParagraph("FINE: 01/01/2027");
-
-        var pdfRenderer = new PdfDocumentRenderer { Document = document };
-        pdfRenderer.RenderDocument();
-
-        var stream = new MemoryStream();
-        pdfRenderer.PdfDocument.Save(stream, false);
-        stream.Position = 0;
-        return stream;
-    }
-
-    private Stream CreateMockPdfWithConflictingData()
-    {
-        // Create a PDF with conflicting data using MigraDoc with minimal format
-        var document = new Document();
-        var section = document.AddSection();
-
-        // Values that conflict with the existing lease data (MonthlyRent=800, SecurityDeposit=1600)
-        section.AddParagraph("LOCATORE: Paolo Verdi");
-        section.AddParagraph("CONDUTTORE: Anna Neri");
-        section.AddParagraph("CANONE: 1500");
-        section.AddParagraph("DEPOSITO: 3000");
-        section.AddParagraph("INIZIO: 01/02/2026");
-        section.AddParagraph("FINE: 01/02/2027");
-
-        var pdfRenderer = new PdfDocumentRenderer { Document = document };
-        pdfRenderer.RenderDocument();
-
-        var stream = new MemoryStream();
-        pdfRenderer.PdfDocument.Save(stream, false);
-        stream.Position = 0;
-        return stream;
+        return new MemoryStream(builder.Build());
     }
 }
