@@ -61,7 +61,7 @@ public sealed class ConcordatoFacileLinkService(
 
         if (lease is null)
         {
-            throw new DomainRuleException("lease_not_found", "The specified lease contract was not found.");
+            throw new DomainRuleException("lease_not_found", "LeaseNotFound");
         }
 
         // ADR-007-R7: Retrieve municipality from Comuni table via Property.ComuneIstatCode
@@ -69,7 +69,7 @@ public sealed class ConcordatoFacileLinkService(
         {
             throw new DomainRuleException(
                 "property_municipality_unknown",
-                "The property municipality is not set. Please select the comune from the official ISTAT list.");
+                "PropertyMunicipalityNotSet");
         }
 
         var comune = await db.Comuni
@@ -80,7 +80,7 @@ public sealed class ConcordatoFacileLinkService(
         {
             throw new DomainRuleException(
                 "property_municipality_unknown",
-                "The property municipality could not be found in the ISTAT comuni list.");
+                "PropertyMunicipalityNotInIstatList");
         }
 
         // ADR-007-R1: Calculate expiresAt = UtcNow + 15 minutes, format yyyy-MM-ddTHH:mm:ssZ

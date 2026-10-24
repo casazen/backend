@@ -1417,6 +1417,12 @@
   <data name="PropertyMinNightsInvalid" xml:space="preserve">
     <value>Il soggiorno minimo non è valido: indica da 1 a 30 notti, oppure nessun minimo.</value>
   </data>
+  <data name="PropertyMunicipalityNotInIstatList" xml:space="preserve">
+    <value>Il comune della proprietà non è stato trovato nell'elenco ISTAT dei comuni.</value>
+  </data>
+  <data name="PropertyMunicipalityNotSet" xml:space="preserve">
+    <value>Il comune della proprietà non è impostato. Selezionare il comune dall'elenco ufficiale ISTAT.</value>
+  </data>
   <data name="PropertyWeekendSurchargeRange" xml:space="preserve">
     <value>La maggiorazione del weekend deve essere tra {1} e {2} per cento.</value>
   </data>
