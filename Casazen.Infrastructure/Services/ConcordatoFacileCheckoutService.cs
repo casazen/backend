@@ -1,8 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,16 +15,25 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Creates Stripe Checkout sessions for ConcordatoFacile one-time payments (ADR-005-R1, ADR-005-R2).
-/// Reuses existing pending sessions to prevent duplicate payments.
+/// Reuses the open session of a pending purchase and never creates a second session for a lease that has already paid (CF-FIX).
+/// Requests go through <see cref="Stripe.IStripeClient"/>: the global client configured from the Stripe key, or the one passed
+/// (the tests).
 /// </summary>
 public sealed class ConcordatoFacileCheckoutService(
     AppDbContext dbContext,
     IOptions<ConcordatoFacileOptions> options,
-    ILogger<ConcordatoFacileCheckoutService> logger) : IConcordatoFacileCheckoutService
+    ILogger<ConcordatoFacileCheckoutService> logger,
+    Stripe.IStripeClient? stripeClient = null) : IConcordatoFacileCheckoutService
 {
+    /// <summary>409 code of a lease that already has the service: paid, given as a gift, or paid and not yet recorded.</summary>
+    public const string AlreadyPurchasedCode = "concordatofacile_already_purchased";
+
+    private const string AlreadyPurchasedKey = "ConcordatoFacileAlreadyPurchased";
     private const string PaymentMode = "payment";
     private const int AmountCents = 11900; // EUR 119,00
     private const string Currency = "eur";
+
+    private Stripe.IStripeClient Client => stripeClient ?? StripeConfiguration.StripeClient;
 
     public async Task<CheckoutResult> CreateCheckoutSessionAsync(
         Guid leaseId,
@@ -30,59 +41,47 @@ public sealed class ConcordatoFacileCheckoutService(
         string userId,
         CancellationToken cancellationToken = default)
     {
-        ConfigureStripeApiKey();
-
-        // Check for existing pending purchase (ADR-005-R2)
-        var existingPurchase = await dbContext.ConcordatoFacilePurchases
-            .Where(p => p.OrgId == orgId
-                && p.LeaseContractId == leaseId
-                && p.Status == ConcordatoFacilePurchaseStatus.Pending)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (existingPurchase is not null)
+        // CF-FIX: only a lease of the caller's org can be paid for. The query names the org on top of the tenant filter.
+        var leaseOfTheOrg = await dbContext.LeaseContracts
+            .AnyAsync(l => l.Id == leaseId && l.OrgId == orgId, cancellationToken);
+        if (!leaseOfTheOrg)
         {
-            // Check if session is still valid (not expired)
-            var sessionService = new SessionService();
-            try
-            {
-                var session = await sessionService.GetAsync(
-                    existingPurchase.StripeCheckoutSessionId,
-                    cancellationToken: cancellationToken);
+            throw new NotFoundException($"Lease {leaseId} not found.") { Code = "lease_not_found", MessageKey = "LeaseNotFound" };
+        }
 
-                if (session.Status == "open")
-                {
-                    logger.LogInformation(
-                        "Reusing existing checkout session {SessionId} for org {OrgId}, lease {LeaseId}",
-                        session.Id,
-                        orgId,
-                        leaseId);
+        // CF-FIX: a lease that already has the access (completed purchase or consumed gift) is never charged again, and Stripe is not called.
+        if (await HasAccessAsync(leaseId, orgId, cancellationToken))
+        {
+            logger.LogInformation("Checkout refused: lease {LeaseId} of org {OrgId} already has the ConcordatoFacile access", leaseId, orgId);
+            throw AlreadyPurchased();
+        }
 
-                    return new CheckoutResult(
-                        session.Id,
-                        session.Url ?? throw new InvalidOperationException("Stripe session URL missing"),
-                        Reused: true);
-                }
-            }
-            catch (Stripe.StripeException ex) when (ex.StripeError.Code == "resource_missing")
-            {
-                // Session no longer exists on Stripe, create a new one
-                logger.LogInformation(
-                    "Previous session {SessionId} not found on Stripe, creating new session",
-                    existingPurchase.StripeCheckoutSessionId);
-            }
+        if (stripeClient is null)
+            ConfigureStripeApiKey();
+
+        var sessions = new SessionService(Client);
+
+        // ADR-005-R2 and CF-FIX: what became of the sessions of the pending purchases decides whether to reuse one, to refuse a
+        // second payment (a session paid whose webhook has not arrived) or to open a new one.
+        var reusable = await ResolvePendingPurchasesAsync(sessions, leaseId, orgId, cancellationToken);
+        if (reusable is not null)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation(
+                "Reusing existing checkout session {SessionId} for org {OrgId}, lease {LeaseId}",
+                reusable.SessionId,
+                orgId,
+                leaseId);
+            return reusable;
         }
 
         // Create new checkout session (ADR-005-R1)
         var baseUrl = options.Value.BaseUrl ?? throw new InvalidOperationException("ConcordatoFacile:BaseUrl not configured");
         var priceId = options.Value.StripePriceId ?? throw new InvalidOperationException("ConcordatoFacile:StripePriceId not configured");
 
-        var metadata = new Dictionary<string, string>
-        {
-            ["orgId"] = orgId.ToString(),
-            ["leaseId"] = leaseId.ToString(),
-            ["userId"] = userId
-        };
-
+        // The PaymentIntent of a Checkout Session does not inherit the metadata of the session, and the webhook reads leaseId and
+        // orgId from the PaymentIntent (ConcordatoFacilePaymentHandler): they are written on both. No "kind" key: it would send the
+        // payment to another handler (StripeWebhookHandler.IsConcordatoFacilePayment recognizes a CF payment by its absence).
         var createOptions = new SessionCreateOptions
         {
             Mode = PaymentMode,
@@ -96,13 +95,16 @@ public sealed class ConcordatoFacileCheckoutService(
             },
             SuccessUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/concordatofacile?checkout=success",
             CancelUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/concordatofacile?checkout=cancelled",
-            Metadata = metadata
+            Metadata = PaymentMetadata(orgId, leaseId, userId),
+            PaymentIntentData = new SessionPaymentIntentDataOptions
+            {
+                Metadata = PaymentMetadata(orgId, leaseId, userId)
+            }
         };
 
-        var newSessionService = new SessionService();
-        var newSession = await newSessionService.CreateAsync(createOptions, cancellationToken: cancellationToken);
+        var newSession = await sessions.CreateAsync(createOptions, cancellationToken: cancellationToken);
 
-        // Insert new purchase record
+        // Insert new purchase record (the closed ones, if any, are saved with it)
         var purchase = new ConcordatoFacilePurchase
         {
             Id = Guid.NewGuid(),
@@ -129,6 +131,146 @@ public sealed class ConcordatoFacileCheckoutService(
             newSession.Url ?? throw new InvalidOperationException("Stripe checkout session URL missing"),
             Reused: false);
     }
+
+    /// <summary>
+    /// The access rule of <see cref="ConcordatoFacileAccessService"/> for a member of the org: a completed purchase of the lease or a
+    /// gift consumed for it (the platform admin's access is not a payment and does not stop a checkout).
+    /// </summary>
+    private async Task<bool> HasAccessAsync(Guid leaseId, Guid orgId, CancellationToken cancellationToken)
+    {
+        var paid = await dbContext.ConcordatoFacilePurchases
+            .AnyAsync(
+                p => p.OrgId == orgId
+                    && p.LeaseContractId == leaseId
+                    && p.Status == ConcordatoFacilePurchaseStatus.Completed,
+                cancellationToken);
+        if (paid)
+            return true;
+
+        return await dbContext.ConcordatoFacileGifts
+            .AnyAsync(g => g.OrgId == orgId && g.ConsumedForLeaseId == leaseId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Looks at the Stripe session of every pending purchase of the lease, newest first. An open session is returned to be reused;
+    /// a session that is gone or expired closes its purchase (Failed, saved with the caller's next write); a completed session ends
+    /// the checkout with the 409, because the customer has paid (or the payment is in flight) and must not pay again.
+    /// </summary>
+    private async Task<CheckoutResult?> ResolvePendingPurchasesAsync(
+        SessionService sessions,
+        Guid leaseId,
+        Guid orgId,
+        CancellationToken cancellationToken)
+    {
+        var pending = await dbContext.ConcordatoFacilePurchases
+            .Where(p => p.OrgId == orgId
+                && p.LeaseContractId == leaseId
+                && p.Status == ConcordatoFacilePurchaseStatus.Pending)
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        CheckoutResult? reusable = null;
+        foreach (var purchase in pending)
+        {
+            var session = await FindSessionAsync(sessions, purchase, cancellationToken);
+            switch (session?.Status)
+            {
+                case "open":
+                    reusable ??= new CheckoutResult(
+                        session.Id,
+                        session.Url ?? throw new InvalidOperationException("Stripe session URL missing"),
+                        Reused: true);
+                    break;
+
+                case "complete":
+                    throw await RecordCompletedSessionAsync(purchase, session, cancellationToken);
+
+                default:
+                    // Expired, unknown, or no longer on Stripe: the purchase is closed and a new one takes its place.
+                    purchase.Status = ConcordatoFacilePurchaseStatus.Failed;
+                    break;
+            }
+        }
+
+        return reusable;
+    }
+
+    private async Task<Session?> FindSessionAsync(
+        SessionService sessions,
+        ConcordatoFacilePurchase purchase,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await sessions.GetAsync(purchase.StripeCheckoutSessionId, cancellationToken: cancellationToken);
+        }
+        catch (Stripe.StripeException ex) when (ex.StripeError?.Code == "resource_missing")
+        {
+            // Session no longer exists on Stripe, a new one will be created
+            logger.LogInformation(
+                "Previous session {SessionId} not found on Stripe, closing purchase {PurchaseId}",
+                purchase.StripeCheckoutSessionId,
+                purchase.Id);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A completed session: when it is paid for exactly the price of the service the purchase is completed now (the same transition
+    /// as <see cref="ConcordatoFacilePaymentHandler.HandlePaymentIntentSucceededAsync"/>; the webhook that arrives later finds it
+    /// completed and does nothing). A session completed but not yet paid is a payment in flight (delayed payment method), and a
+    /// payment of another amount is an error for the operators: in both cases the customer is not charged a second time.
+    /// </summary>
+    private async Task<DomainConflictException> RecordCompletedSessionAsync(
+        ConcordatoFacilePurchase purchase,
+        Session session,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(session.PaymentStatus, "paid", StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Checkout session {SessionId} of purchase {PurchaseId} is complete but not paid yet ({PaymentStatus}): no new session",
+                session.Id,
+                purchase.Id,
+                session.PaymentStatus);
+        }
+        else if (session.AmountTotal != ConcordatoFacilePaymentHandler.PriceCents
+            || !string.Equals(session.Currency, ConcordatoFacilePaymentHandler.Currency, StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogError(
+                "Checkout session {SessionId} of purchase {PurchaseId} was paid with the wrong amount ({Amount} {PaymentCurrency}, expected {PriceCents} {ExpectedCurrency}): access NOT granted, no new session",
+                session.Id,
+                purchase.Id,
+                session.AmountTotal,
+                session.Currency,
+                ConcordatoFacilePaymentHandler.PriceCents,
+                ConcordatoFacilePaymentHandler.Currency);
+        }
+        else
+        {
+            purchase.Status = ConcordatoFacilePurchaseStatus.Completed;
+            purchase.PaidAt = DateTime.UtcNow;
+            purchase.StripePaymentIntentId = session.PaymentIntentId;
+            logger.LogWarning(
+                "Checkout session {SessionId} is paid but the webhook has not arrived: purchase {PurchaseId} completed from the session (payment intent {PaymentIntentId})",
+                session.Id,
+                purchase.Id,
+                session.PaymentIntentId);
+        }
+
+        // Also saves the purchases closed earlier in the same pass.
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return AlreadyPurchased();
+    }
+
+    private static DomainConflictException AlreadyPurchased() => new(AlreadyPurchasedCode, AlreadyPurchasedKey);
+
+    private static Dictionary<string, string> PaymentMetadata(Guid orgId, Guid leaseId, string userId) => new()
+    {
+        ["orgId"] = orgId.ToString(),
+        ["leaseId"] = leaseId.ToString(),
+        ["userId"] = userId
+    };
 
     private void ConfigureStripeApiKey()
     {
