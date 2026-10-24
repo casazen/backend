@@ -70,6 +70,24 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
                 "Configure the Stripe Price IDs for biennial subscriptions that grant a ConcordatoFacile gift.");
         }
 
+        // ADR-007-R3: LinkSecret is required in Production (can come from env var or config)
+        var linkSecret = Environment.GetEnvironmentVariable("CONCORDATOFACILE_LINK_SECRET")
+            ?? options.LinkSecret;
+
+        if (IsProductionEnvironment() && string.IsNullOrWhiteSpace(linkSecret))
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:LinkSecret is required in Production. " +
+                "Set CONCORDATOFACILE_LINK_SECRET environment variable or configure ConcordatoFacile:LinkSecret.");
+        }
+
+        // ADR-007-R4: LinkSecret must be >= 32 characters
+        if (!string.IsNullOrWhiteSpace(linkSecret) && linkSecret.Length < 32)
+        {
+            failures.Add(
+                "ConcordatoFacile link secret must be at least 32 characters.");
+        }
+
         return failures.Count == 0
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);
