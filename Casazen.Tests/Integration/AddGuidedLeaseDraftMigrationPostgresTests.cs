@@ -100,12 +100,13 @@ public class AddGuidedLeaseDraftMigrationPostgresTests : IAsyncLifetime
         });
 
         // The property, the dates and the model need nothing and the landlord has been through them: done. The parties lack the
-        // residence the guided draft asks for, and the tax regime was never asked by the form of the time: those two are to do.
+        // residence the guided draft asks for, and the tax regime was never asked by the form of the time, nor was the deposit
+        // required (LR-DEP: a contract made in CasaZen prints it): those two are to do.
         Assert.Equal(
             ["Done", "Todo", "Todo", "Done", "Done"],
             Enumerable.Range(1, 5).Select(step => flow[step].State.ToString()));
         Assert.Equal(["landlord_incomplete", "tenant_incomplete"], flow[2].Needs.Select(n => n.Code));
-        Assert.Equal(["tax_regime_missing"], flow[3].Needs.Select(n => n.Code));
+        Assert.Equal(["tax_regime_missing", "deposit_missing"], flow[3].Needs.Select(n => n.Code));
         Assert.Equal("2026-11-01", values.StartDate);
         Assert.Equal(800m, values.MonthlyRent);
     }

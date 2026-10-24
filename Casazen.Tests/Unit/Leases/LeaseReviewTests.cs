@@ -279,7 +279,7 @@ public class LeaseReviewTests
         Assert.Equal(
             [
                 LeaseNeedCodes.LandlordMissing, LeaseNeedCodes.TenantMissing, LeaseNeedCodes.ContractTypeMissing,
-                LeaseNeedCodes.TaxRegimeMissing, LeaseNeedCodes.RentMissing, LeaseNeedCodes.StartMissing,
+                LeaseNeedCodes.TaxRegimeMissing, LeaseNeedCodes.RentMissing, LeaseNeedCodes.DepositMissing, LeaseNeedCodes.StartMissing,
             ],
             Codes(checks, LeaseReviewSeverity.Block));
         Assert.Equal([LeaseNeedCodes.PropertyOk, LeaseNeedCodes.ApeOk, LeaseNeedCodes.CadastralOk], Codes(checks, LeaseReviewSeverity.Ok));
