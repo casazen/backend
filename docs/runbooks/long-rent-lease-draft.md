@@ -85,7 +85,7 @@ it as it was, so a client that sends one field never wipes the others.
 |---|---|
 | 1 · Immobile | `propertyId` (a property of the org the caller may handle; chosen, never un-chosen) |
 | 2 · Parti | `landlords`, `tenants`: lists of `{ id?, firstName, lastName, fiscalCode, citizenship, residence, contactEmail }` (an entry nobody typed in is dropped; an entry keeps the `id` of an entry of **the same role**: any other `id` — unknown, of the other role, repeated — is a new entry, so an id is never in two entries; at most 10 per role) |
-| 3 · Condizioni | `contractType` (`Libero`, `Concordato`; `Transitorio` is kept and reported as not available, LR-D12, **unless the contract is an imported one**, LR-13), `taxRegime` (`CedolareSecca`, `Ordinario`), `monthlyRent`, `securityDeposit`, `concordato` (`sqm`, `typeAElementCount`…`qualifyingTypeDElementCount`, `isFurnished`, `stoveHeating`, `airConditioning`, `garageSqm`, `balconySqm`, `otherAppurtenanceSqm`, `privateGreenSqm`, `zoneName`, `cadastralSheet`; an imported contract does not use them) |
+| 3 · Condizioni | `contractType` (`Libero`, `Concordato`; `Transitorio` is kept and reported as not available, LR-D12, **unless the contract is an imported one**, LR-13), `taxRegime` (`CedolareSecca`, `Ordinario`), `monthlyRent`, `securityDeposit` (required of a contract made in CasaZen, `0` if none; optional of an imported one), `concordato` (`sqm`, `typeAElementCount`…`qualifyingTypeDElementCount`, `isFurnished`, `stoveHeating`, `airConditioning`, `garageSqm`, `balconySqm`, `otherAppurtenanceSqm`, `privateGreenSqm`, `zoneName`, `cadastralSheet`; an imported contract does not use them) |
 | 4 · Durata e date | `startDate` (`yyyy-MM-dd`); the end of the first period is computed (`computed.endDate`) from the type: 48 months for the libero, 36 for the concordato. **Imported contracts only** (LR-13): `endDate` (`yyyy-MM-dd`), the last day the contract states, free inside the limits of the type; the transitory type has no term of its own and needs it. A contract made in CasaZen never reads `endDate` |
 | 5 · Modello e allegati | `parties`: `[{ id, documentsVerifiedOn }]`, the day a document of each party was checked (`yyyy-MM-dd`, not after today) |
 
@@ -117,6 +117,7 @@ For an imported contract steps 5 and 6 are `NotApplicable` and step 7 asks for t
 | `concordato_data_missing`, `concordato_data_invalid` | 3 | — (not for an imported contract: the range is not checked, LR-D13) |
 | `concordato_unavailable` | 3 | `reason` (`CanoneConcordatoReasonCodes`: no agreement data for the comune, a zone that is missing…); not for an imported contract |
 | `rent_out_of_band` | 3 | `minMonthly`, `maxMonthly` (a rent outside a **verified** range; outside an indicative one it is only a warning of the review); not for an imported contract |
+| `deposit_missing` | 3 | — (**a contract made in CasaZen only** (LR-DEP): the model prints the security deposit, so it has to be typed — `0` is a valid answer, "none"; without it the final contract would answer `422 contract_data_missing` after the review was confirmed. Never for an imported contract, whose deposit stays optional) |
 | `deposit_invalid` | 3 | — |
 | `deposit_too_high` | 3 | `maxAmount`, `maxRents` (the security deposit is at most 3 rents, `LongRentRules.DepositMaxRents`) |
 | `start_missing`, `start_invalid` | 4 | — |

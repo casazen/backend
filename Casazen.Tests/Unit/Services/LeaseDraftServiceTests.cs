@@ -428,6 +428,31 @@ public class LeaseDraftServiceTests
     }
 
     [Fact]
+    public async Task Confirm_ADraftMadeInCasazenWithoutItsDeposit_IsBlocked_ZeroIsAnAnswer_AnImportedOneIsNotAskedForIt()
+    {
+        using var h = await NewAsync();
+        var (created, version) = await h.CompleteAsync();
+
+        // The model of the contract prints the deposit: left empty, the review cannot be confirmed (LR-DEP).
+        var cleared = await h.SaveAsync(created.Id, version, 3, """{"securityDeposit":null}""");
+        Assert.Equal([LeaseNeedCodes.DepositMissing], Needs(cleared.Flow, 3));
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => h.Service.ConfirmReviewAsync(created.Id, cleared.Version));
+        Assert.Equal("lease_review_blocked", error.Code);
+        Assert.Null((await h.LoadAsync(created.Id)).ReviewConfirmedAt);
+
+        // "0 if there is none" is an answer.
+        var none = await h.SaveAsync(created.Id, cleared.Version, 3, """{"securityDeposit":0}""");
+        Assert.Empty(Needs(none.Flow, 3));
+        Assert.NotNull((await h.Service.ConfirmReviewAsync(created.Id, none.Version)).ReviewConfirmedAt);
+
+        // A contract already signed prints nothing: its deposit stays optional.
+        var imported = await h.CreateAsync(LeaseOrigin.Imported);
+        var parties = await h.SaveAsync(imported.Id, imported.Version, 2, ValidParties);
+        var terms = await h.SaveAsync(imported.Id, parties.Version, 3, """{"contractType":"Libero","taxRegime":"CedolareSecca","monthlyRent":900}""");
+        Assert.Empty(Needs(terms.Flow, 3));
+    }
+
+    [Fact]
     public async Task Confirm_ACompleteDraft_SavesTheMomentTheImpressionAndTheEvent()
     {
         using var h = await NewAsync();

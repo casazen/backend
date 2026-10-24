@@ -294,6 +294,12 @@ public static class LeaseDraftProgress
         if (reading.Type == LeaseContractType.Concordato && reading.TypeAvailable && !imported)
             Concordato(input, reading, needs);
 
+        // The model of a contract made in CasaZen states the deposit (the {{deposito_cauzionale}} of its "Deposito cauzionale" article), so
+        // it has to be typed, and 0 is an answer ("none"). Without it the final contract would answer 422 contract_data_missing after the
+        // review was confirmed. An imported contract is already signed and prints nothing: its deposit stays optional (LR-DEP).
+        if (values.SecurityDeposit is null && !imported)
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.DepositMissing));
+
         if (values.SecurityDeposit is not null)
         {
             if (reading.Deposit is null)

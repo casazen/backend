@@ -58,6 +58,7 @@ public static class LeaseNeedCodes
     public const string ConcordatoDataInvalid = "concordato_data_invalid";
     public const string ConcordatoUnavailable = "concordato_unavailable";
     public const string RentOutOfBand = "rent_out_of_band";
+    public const string DepositMissing = "deposit_missing";
     public const string DepositInvalid = "deposit_invalid";
     public const string DepositTooHigh = "deposit_too_high";
 

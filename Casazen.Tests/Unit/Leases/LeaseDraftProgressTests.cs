@@ -58,7 +58,7 @@ public class LeaseDraftProgressTests
         Assert.Equal(LeaseStepState.Done, flow[1].State);
         Assert.Equal([LeaseNeedCodes.LandlordMissing, LeaseNeedCodes.TenantMissing], NeedCodes(flow, 2));
         Assert.Equal(
-            [LeaseNeedCodes.ContractTypeMissing, LeaseNeedCodes.TaxRegimeMissing, LeaseNeedCodes.RentMissing],
+            [LeaseNeedCodes.ContractTypeMissing, LeaseNeedCodes.TaxRegimeMissing, LeaseNeedCodes.RentMissing, LeaseNeedCodes.DepositMissing],
             NeedCodes(flow, 3));
         Assert.Equal([LeaseNeedCodes.StartMissing], NeedCodes(flow, 4));
         Assert.Equal(LeaseStepState.Todo, flow[5].State);

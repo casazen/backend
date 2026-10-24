@@ -234,5 +234,5 @@ internal sealed class LeaseDraftHarness : IDisposable
             });
 
     public static readonly string ConcordatoStep3 =
-        """{"contractType":"Concordato","taxRegime":"CedolareSecca","monthlyRent":900,"concordato":{"sqm":70,"typeAElementCount":2}}""";
+        """{"contractType":"Concordato","taxRegime":"CedolareSecca","monthlyRent":900,"securityDeposit":1800,"concordato":{"sqm":70,"typeAElementCount":2}}""";
 }
