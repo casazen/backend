@@ -294,6 +294,9 @@
   <data name="PaymentNotFound" xml:space="preserve">
     <value>Pagamento non trovato</value>
   </data>
+  <data name="PracticeNotFound" xml:space="preserve">
+    <value>Pratica non trovata</value>
+  </data>
   <data name="GiftAlreadyConsumed" xml:space="preserve">
     <value>La pratica omaggio è già stata utilizzata</value>
   </data>
