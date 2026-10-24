@@ -6,8 +6,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using MigraDoc.DocumentObjectModel;
-using MigraDoc.Rendering;
 using Moq;
 using Xunit;
 
@@ -198,62 +196,38 @@ public sealed class LeaseDocumentExtractionServiceTests : IDisposable
 
     private Stream CreateMockPdfWithPersonalData()
     {
-        // Create a proper multi-page PDF with personal data using MigraDoc (ADR-009-R4: multi-page support)
-        var document = new Document();
+        // Create a PDF with extractable text using LiteralTextPdf (ADR-009-R4: multi-page support)
+        // MigraDoc-generated PDFs may not have text extractable by PdfPig, so we use a literal text PDF
+        var title = "CONTRATTO DI LOCAZIONE";
+        var body = @"Il presente contratto è stipulato tra:
+LOCATORE: Mario Rossi TEST
+Codice Fiscale: RSSMRA80A01F205X
 
-        // Page 1: Contract header and landlord
-        var page1 = document.AddSection();
-        page1.AddParagraph("CONTRATTO DI LOCAZIONE").Format.Font.Bold = true;
-        page1.AddParagraph();
-        page1.AddParagraph("Il presente contratto è stipulato tra:");
-        page1.AddParagraph("LOCATORE: Mario Rossi TEST");
-        page1.AddParagraph("Codice Fiscale: RSSMRA80A01F205X");
+CONDUTTORE: Giulia Bianchi TEST
+Codice Fiscale: BNCGLI85M41H501Y
 
-        // Page 2: Tenant
-        var page2 = document.AddSection();
-        page2.AddParagraph("CONDUTTORE: Giulia Bianchi TEST");
-        page2.AddParagraph("Codice Fiscale: BNCGLI85M41H501Y");
+CANONE MENSILE: € 1200,00
+DEPOSITO CAUZIONALE: € 2400,00
+INIZIO: 01/01/2026
+FINE: 01/01/2027";
 
-        // Page 3: Financial and date details
-        var page3 = document.AddSection();
-        page3.AddParagraph("CANONE MENSILE: € 1200,00");
-        page3.AddParagraph("DEPOSITO CAUZIONALE: € 2400,00");
-        page3.AddParagraph("INIZIO: 01/01/2026");
-        page3.AddParagraph("FINE: 01/01/2027");
-
-        // Render to PDF bytes
-        var pdfRenderer = new PdfDocumentRenderer { Document = document };
-        pdfRenderer.RenderDocument();
-
-        var stream = new MemoryStream();
-        pdfRenderer.PdfDocument.Save(stream, false);
-        stream.Position = 0;
-        return stream;
+        var pdfBytes = LiteralTextPdf.Build(title, body);
+        return new MemoryStream(pdfBytes);
     }
 
     private Stream CreateMockPdfWithConflictingData()
     {
-        // Create a proper PDF with data that conflicts with the existing user data
-        var document = new Document();
-        var section = document.AddSection();
+        // Create a PDF with data that conflicts with the existing user data
+        var title = "CONTRATTO DI LOCAZIONE";
+        var body = @"LOCATORE: Paolo Verdi TEST
+CONDUTTORE: Anna Neri TEST
 
-        section.AddParagraph("CONTRATTO DI LOCAZIONE").Format.Font.Bold = true;
-        section.AddParagraph();
-        section.AddParagraph("LOCATORE: Paolo Verdi TEST");
-        section.AddParagraph("CONDUTTORE: Anna Neri TEST");
-        section.AddParagraph();
-        section.AddParagraph("CANONE MENSILE: € 1500,00");
-        section.AddParagraph("DEPOSITO CAUZIONALE: € 3000,00");
-        section.AddParagraph("INIZIO: 01/02/2026");
-        section.AddParagraph("FINE: 01/02/2027");
+CANONE MENSILE: € 1500,00
+DEPOSITO CAUZIONALE: € 3000,00
+INIZIO: 01/02/2026
+FINE: 01/02/2027";
 
-        // Render to PDF bytes
-        var pdfRenderer = new PdfDocumentRenderer { Document = document };
-        pdfRenderer.RenderDocument();
-
-        var stream = new MemoryStream();
-        pdfRenderer.PdfDocument.Save(stream, false);
-        stream.Position = 0;
-        return stream;
+        var pdfBytes = LiteralTextPdf.Build(title, body);
+        return new MemoryStream(pdfBytes);
     }
 }
