@@ -116,8 +116,8 @@ public class ConcordatoFacileControllerTests
             Id = leaseId,
             OrgId = otherOrgId, // Different org!
             PropertyId = property.Id,
-            Status = LeaseStatus.Active,
-            FiscalRegime = FiscalRegime.CedenteSecAbitatoreContrattoConcordato,
+            Status = LeaseStatus.Signed,
+            FiscalRegime = FiscalRegime.CanoneConcordato,
             StartDate = DateTime.UtcNow.Date,
             EndDate = DateTime.UtcNow.Date.AddYears(1),
             MonthlyRent = 1000m
