@@ -39,7 +39,7 @@ public class ConcordatoFacilePurchaseTests : IAsyncLifetime
 
         await using (var db = _database!.CreateContext())
         {
-            await db.Database.MigrateAsync();
+            await _database!.MigrateEmptyToAsync();
 
             // Seed two orgs with properties, leases and purchases
             db.Orgs.AddRange(

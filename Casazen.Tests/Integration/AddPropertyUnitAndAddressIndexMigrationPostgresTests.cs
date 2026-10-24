@@ -33,7 +33,7 @@ public class AddPropertyUnitAndAddressIndexMigrationPostgresTests : IAsyncLifeti
     public async Task AddPropertyUnitAndAddressIndex_ExistingRows_KeepsEveryPropertyAndMarksOnlyTheLaterDuplicates()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var s = new Seed();
         await InsertPreviousStateAsync(db, s);
 
@@ -68,7 +68,7 @@ public class AddPropertyUnitAndAddressIndexMigrationPostgresTests : IAsyncLifeti
     public async Task AddPropertyUnitAndAddressIndex_Coordinates_KeepsValidValuesAndResetsTheOnesThatCannotExist()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var s = new Seed();
         await InsertPreviousStateAsync(db, s);
 
@@ -89,7 +89,7 @@ public class AddPropertyUnitAndAddressIndexMigrationPostgresTests : IAsyncLifeti
     public async Task AddPropertyUnitAndAddressIndex_AfterMigrating_TheIndexEnforcesTheAddressPerOrgAndUnit()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var s = new Seed();
         await InsertPreviousStateAsync(db, s);
         await db.Database.MigrateAsync();

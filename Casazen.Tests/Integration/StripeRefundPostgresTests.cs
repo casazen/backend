@@ -40,9 +40,7 @@ public class StripeRefundPostgresTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _database = await PostgresTestDatabase.CreateAsync();
-        await using var db = NewContext();
-        await db.Database.MigrateAsync();
+        _database = await PostgresTestDatabase.CreateMigratedAsync();
 
         _emails
             .Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), EmailTemplates.Names.GuestRefundConfirmed))

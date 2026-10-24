@@ -42,9 +42,7 @@ public class GuestBookingCancellationPostgresTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _database = await PostgresTestDatabase.CreateAsync();
-        await using var db = NewContext();
-        await db.Database.MigrateAsync();
+        _database = await PostgresTestDatabase.CreateMigratedAsync();
 
         _stripe
             .Setup(s => s.CreateRefundAsync(It.IsAny<StripeRefundCreateRequest>(), It.IsAny<CancellationToken>()))

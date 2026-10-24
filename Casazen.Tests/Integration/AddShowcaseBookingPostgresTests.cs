@@ -45,7 +45,7 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
     public async Task Migration_AppliesAndRevertsOnARealDatabase()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         Assert.Equal(NewColumns.Length, await CountColumnsAsync(db));
         Assert.Equal(2, await CountTablesAsync(db));
         Assert.Equal("YES", await IsNullableAsync(db, "PropertyId"));
@@ -87,7 +87,7 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
     public async Task Migration_TheRequestsOfTheHostsThatExistBefore_KeepTheirMeaning()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var (hostOrg, property, supplierOrg) = await SeedHostParentsAsync(db);
         var shortRent = Guid.NewGuid();
         var longRent = Guid.NewGuid();
@@ -357,7 +357,7 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
     public async Task Index_TheRemindersAndTheCustomerAreIndexed()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
 
         var customer = await db.Database
             .SqlQuery<string>($"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE indexname = 'IX_ServiceRequests_CustomerId'")
@@ -416,7 +416,7 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
     private async Task<Parents> MigratedWithParentsAsync()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var (hostOrg, property, supplierOrg) = await SeedHostParentsAsync(db);
         return new Parents(hostOrg, property, supplierOrg);
     }

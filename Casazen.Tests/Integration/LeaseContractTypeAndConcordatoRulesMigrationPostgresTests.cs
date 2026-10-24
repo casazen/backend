@@ -31,7 +31,7 @@ public class LeaseContractTypeAndConcordatoRulesMigrationPostgresTests : IAsyncL
     public async Task Migrate_ExistingLeases_SetsContractTypeAndTaxRegimeFromTheLegacyValue()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var org = Guid.NewGuid();
         var property = Guid.NewGuid();
         var (cedolare, ordinario, concordato) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
@@ -76,7 +76,7 @@ public class LeaseContractTypeAndConcordatoRulesMigrationPostgresTests : IAsyncL
     public async Task Migrate_FreshDatabase_HoldsExactlyTheCurrentMbReferenceData()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
 
         var stored = await db.TerritorialRentAgreements.AsNoTracking()
             .Include(a => a.Bands)

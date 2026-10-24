@@ -42,7 +42,7 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
     public async Task Migration_AppliesAndRevertsOnARealDatabase()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         Assert.Equal(NewColumns.Length, await CountColumnsAsync(db));
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
 
@@ -59,7 +59,7 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
     public async Task ARowWrittenWithoutTheNewColumns_GetsTheirDefaults()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var (hostOrg, property, supplierOrg) = await SeedParentsAsync(db);
         var id = Guid.NewGuid();
 
@@ -207,7 +207,7 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
     public async Task Index_TheRequestsOfASupplierAreIndexedByTheirTime()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
 
         var definition = await db.Database
             .SqlQuery<string>($"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE indexname = 'IX_ServiceRequests_SupplierOrgId_ScheduledStartUtc'")
@@ -246,7 +246,7 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
     private async Task<Parents> MigratedWithParentsAsync()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var (hostOrg, property, supplierOrg) = await SeedParentsAsync(db);
         return new Parents(hostOrg, property, supplierOrg);
     }
