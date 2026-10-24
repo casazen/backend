@@ -14,7 +14,7 @@ public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<Concordato
     /// <summary>
     /// Get all practices for a lease. Returns empty list when lease has no practices (ADR-008-R6).
     /// </summary>
-    public async Task<List<PracticeDto>> GetPracticesByLeaseIdAsync(Guid leaseId, CancellationToken cancellationToken = default)
+    public virtual async Task<List<PracticeDto>> GetPracticesByLeaseIdAsync(Guid leaseId, CancellationToken cancellationToken = default)
     {
         var requestUri = $"/v1/leases/{leaseId}/practices";
 
@@ -39,7 +39,7 @@ public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<Concordato
     /// <summary>
     /// Get a practice by ID. Returns null when practice is not found (404) (ADR-008).
     /// </summary>
-    public async Task<PracticeDto?> GetPracticeAsync(string practiceId, CancellationToken cancellationToken = default)
+    public virtual async Task<PracticeDto?> GetPracticeAsync(string practiceId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(practiceId);
 
