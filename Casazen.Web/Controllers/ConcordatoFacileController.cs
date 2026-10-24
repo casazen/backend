@@ -1,10 +1,13 @@
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Dtos.ConcordatoFacile;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
@@ -21,6 +24,8 @@ public class ConcordatoFacileController(
     IConcordatoFacileGiftService giftService,
     IConcordatoFacileLinkService linkService,
     IConcordatoFacileStatusCacheService statusCacheService,
+    ConcordatoFacileApiClient apiClient,
+    AppDbContext db,
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService) : ControllerBase
 {
@@ -267,6 +272,81 @@ public class ConcordatoFacileController(
             LastCheckedAt = result.LastCheckedAt,
             NextUpdateAt = result.NextUpdateAt,
             Stale = result.IsStale
+        });
+    }
+
+    /// <summary>
+    /// Looks up which lease a practice belongs to (NF-06).
+    /// Used when returning from the ConcordatoFacile partner portal with a practice parameter.
+    /// Validates practice ID format and verifies tenant isolation.
+    /// </summary>
+    /// <param name="practiceId">ConcordatoFacile practice identifier (format: P-[0-9A-Fa-f]{16})</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Lease lookup result or 404 if practice not found or not accessible</returns>
+    [HttpGet("/api/concordatofacile/practices/{practiceId}/lease")]
+    [Authorize]
+    [ProducesResponseType(typeof(PracticeLookupResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PracticeLookupResponse>> LookupPractice(
+        string practiceId,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        // Validate practiceId format: ^P-[0-9A-Fa-f]{16}$ (case-insensitive)
+        if (!System.Text.RegularExpressions.Regex.IsMatch(practiceId, @"^P-[0-9A-Fa-f]{16}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            return this.ApiProblem(StatusCodes.Status404NotFound, "practice_not_found", "PracticeNotFound");
+        }
+
+        // Get practice from CF API
+        var practice = await apiClient.GetPracticeAsync(practiceId, cancellationToken);
+
+        if (practice is null)
+        {
+            return this.ApiProblem(StatusCodes.Status404NotFound, "practice_not_found", "PracticeNotFound");
+        }
+
+        // If leaseId is null, return manualSelectionRequired
+        if (practice.LeaseId is null)
+        {
+            return Ok(new PracticeLookupResponse
+            {
+                LeaseId = null,
+                PracticeId = practice.PracticeId,
+                Status = null,
+                ManualSelectionRequired = true
+            });
+        }
+
+        // Verify tenant isolation: LeaseContract.OrgId must match user's OrgId
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+        {
+            return this.ApiProblem(StatusCodes.Status404NotFound, "practice_not_found", "PracticeNotFound");
+        }
+
+        var lease = await db.LeaseContracts
+            .Where(l => l.Id == practice.LeaseId.Value)
+            .Select(l => new { l.OrgId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (lease is null || lease.OrgId != orgId.Value)
+        {
+            // Don't reveal existence - return 404
+            return this.ApiProblem(StatusCodes.Status404NotFound, "practice_not_found", "PracticeNotFound");
+        }
+
+        // Authorized - return lease info with status
+        return Ok(new PracticeLookupResponse
+        {
+            LeaseId = practice.LeaseId.Value.ToString(),
+            PracticeId = practice.PracticeId,
+            Status = practice.Status,
+            ManualSelectionRequired = false
         });
     }
 }

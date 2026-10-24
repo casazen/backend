@@ -1,5 +1,9 @@
 using System.Security.Claims;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
@@ -8,6 +12,7 @@ using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
@@ -24,12 +29,22 @@ public class ConcordatoFacileControllerTests
     private readonly Mock<IConcordatoFacileGiftService> _mockGiftService = new();
     private readonly Mock<IConcordatoFacileLinkService> _mockLinkService = new();
     private readonly Mock<IConcordatoFacileStatusCacheService> _mockStatusCacheService = new();
+    private readonly Mock<ConcordatoFacileApiClient> _mockApiClient;
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver = new();
     private readonly Mock<IAuthorizationService> _mockAuthorizationService = new();
 
     private static readonly Guid TestLeaseId = Guid.NewGuid();
     private static readonly Guid TestOrgId = Guid.NewGuid();
     private const string TestUserId = "auth0|test_user";
+
+    public ConcordatoFacileControllerTests()
+    {
+        // Mock the API client with null parameters since it's abstract for testing
+        _mockApiClient = new Mock<ConcordatoFacileApiClient>(
+            MockBehavior.Strict,
+            null!,
+            null!);
+    }
 
     /// <summary>
     /// Proves ADR-008-R11: GetStatus requires LeaseRead permission.
@@ -67,15 +82,99 @@ public class ConcordatoFacileControllerTests
         Assert.Equal(CasazenPolicies.LeaseRead, authorizeAttr.Policy);
     }
 
-    private ConcordatoFacileController CreateController() =>
-        new(
+    /// <summary>
+    /// Proves tenant isolation (NF-06 AC-NF06-2): PracticeLookup returns 404 when the practice's lease
+    /// belongs to a different org, preventing cross-tenant data leakage.
+    /// </summary>
+    [Fact]
+    public async Task PracticeLookup_OtherOrgLease_Returns404()
+    {
+        // Arrange
+        var db = CreateInMemoryDbContext();
+        var controller = CreateController(db);
+        SetUser(controller, TestUserId);
+
+        var userOrgId = Guid.NewGuid();
+        var otherOrgId = Guid.NewGuid();
+        var leaseId = Guid.NewGuid();
+        var practiceId = "P-1234567890ABCDEF";
+
+        // Create a property and lease belonging to a DIFFERENT org
+        var property = new Property
+        {
+            Id = Guid.NewGuid(),
+            OrgId = otherOrgId,
+            Name = "Test Property",
+            Address = "Test Address",
+            City = "Test City",
+            PostalCode = "12345"
+        };
+        db.Properties.Add(property);
+
+        var lease = new LeaseContract
+        {
+            Id = leaseId,
+            OrgId = otherOrgId, // Different org!
+            PropertyId = property.Id,
+            Status = LeaseStatus.Active,
+            FiscalRegime = FiscalRegime.CedenteSecAbitatoreContrattoConcordato,
+            StartDate = DateTime.UtcNow.Date,
+            EndDate = DateTime.UtcNow.Date.AddYears(1),
+            MonthlyRent = 1000m
+        };
+        db.LeaseContracts.Add(lease);
+        await db.SaveChangesAsync();
+
+        // Mock API client to return a practice with the leaseId
+        _mockApiClient
+            .Setup(c => c.GetPracticeAsync(practiceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PracticeDto
+            {
+                PracticeId = practiceId,
+                LeaseId = leaseId,
+                Status = CfPracticeStatus.InProgress,
+                StatusChangedAt = DateTime.UtcNow
+            });
+
+        // Mock org resolver to return the user's org (different from lease's org)
+        _mockOrgContextResolver
+            .Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userOrgId);
+
+        // Act
+        var result = await controller.LookupPractice(practiceId, CancellationToken.None);
+
+        // Assert
+        // Should return 404 to not reveal existence of the practice/lease to other org
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+    }
+
+    private ConcordatoFacileController CreateController(AppDbContext? db = null)
+    {
+        // Create an in-memory database if not provided
+        var dbContext = db ?? CreateInMemoryDbContext();
+
+        return new ConcordatoFacileController(
             _mockCheckoutService.Object,
             _mockAccessService.Object,
             _mockGiftService.Object,
             _mockLinkService.Object,
             _mockStatusCacheService.Object,
+            _mockApiClient.Object,
+            dbContext,
             _mockOrgContextResolver.Object,
             _mockAuthorizationService.Object);
+    }
+
+    private static AppDbContext CreateInMemoryDbContext()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        return new AppDbContext(options);
+    }
 
     private static void SetUser(ConcordatoFacileController controller, string userId)
     {
