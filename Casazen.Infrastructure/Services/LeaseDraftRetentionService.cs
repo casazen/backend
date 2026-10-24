@@ -114,7 +114,7 @@ public sealed class LeaseDraftRetentionService(
             var lease = await deleter.WithChildren()
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken);
-            if (lease is null || lease.UpdatedAt >= cutoff || !LeaseDraftDeleter.IsDeletable(lease))
+            if (lease is null || lease.UpdatedAt >= cutoff || !await deleter.IsDeletableAsync(lease, cancellationToken))
                 return false;
 
             files = await deleter.DeleteAsync(lease, cancellationToken);

@@ -32,6 +32,14 @@ public interface ILeaseDraftService
     Task<LeaseDraftCreated> CreateAsync(Guid propertyId, LeaseOrigin origin, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Creates a minimal ConcordatoFacile draft (ADR-004): PropertyId, OrgId, ContractType=Concordato, IsConcordatoFacileSource=true,
+    /// other required fields from <see cref="LeaseDraftDefaults"/> (MonthlyRent=0, StartDate=PlaceholderDate). Idempotent: if a CF
+    /// draft for the same property already exists in Draft status, returns the existing one. <see cref="NotFoundException"/> 404
+    /// <c>property_not_found</c> when the property is not visible.
+    /// </summary>
+    Task<Guid> CreateCfDraftAsync(Guid propertyId, Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every value of the draft, not masked, with its version and its flow. Only for a lease that is a draft:
     /// <see cref="NotFoundException"/> 404 <c>lease_not_draft</c> for any other (the masked detail of every lease is
     /// <c>GET api/leases/{id}</c>).

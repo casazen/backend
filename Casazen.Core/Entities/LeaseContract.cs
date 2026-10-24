@@ -203,6 +203,13 @@ public class LeaseContract : ITenantOwned
     /// <summary>How the lease came to be in CasaZen (<see cref="LeaseOrigin"/>); fixed at creation.</summary>
     public LeaseOrigin Origin { get; set; } = LeaseOrigin.Created;
 
+    /// <summary>
+    /// Marks a draft created for the ConcordatoFacile flow (ADR-004): it complements <see cref="ContractType"/> (Concordato) and
+    /// <see cref="Origin"/>. True only for minimal drafts created through the CF payment entry point. Protects the draft from automatic
+    /// deletion while a CF purchase is pending or completed.
+    /// </summary>
+    public bool IsConcordatoFacileSource { get; set; } = false;
+
     // ─── The end of the lease that is in force (LR-14) ────────────────────────────────────────────────────────────────
     // A libero (4+4) or concordato (3+2) lease that nobody gave notice of renews by itself, so the end the contract states is only the
     // end of its first period. The end that tells whether the lease is over, ties a property up or may be anonymized is this one. All the
