@@ -16,6 +16,7 @@ namespace Casazen.Web.Controllers;
 [Authorize] // Base authentication; OR permission check is programmatic per ADR-005-R9
 public class ConcordatoFacileController(
     IConcordatoFacileCheckoutService checkoutService,
+    IConcordatoFacileAccessService accessService,
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService) : ControllerBase
 {
@@ -63,6 +64,53 @@ public class ConcordatoFacileController(
         {
             SessionId = result.SessionId,
             SessionUrl = result.SessionUrl
+        });
+    }
+
+    /// <summary>
+    /// Checks ConcordatoFacile access for a lease (ADR-005-R8).
+    /// Returns access status, source (payment/gift/admin), and gift availability.
+    /// Verifies server-side state only, never trusts client state or URL params.
+    /// </summary>
+    /// <param name="leaseId">The lease contract ID from the route</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Access result with source, gift availability, and timestamps</returns>
+    [HttpGet("access")]
+    [ProducesResponseType(typeof(AccessResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<AccessResponse>> GetAccess(
+        Guid leaseId,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        // ADR-005-R8: Authorize with LeaseRead policy
+        var hasLeaseRead = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.LeaseRead)).Succeeded;
+
+        if (!hasLeaseRead)
+            return Forbid();
+
+        var result = await accessService.CheckAccessAsync(leaseId, User, cancellationToken);
+
+        var sourceString = result.Source switch
+        {
+            Core.Services.CfAccessSource.Payment => "payment",
+            Core.Services.CfAccessSource.Gift => "gift",
+            Core.Services.CfAccessSource.Admin => "admin",
+            _ => null
+        };
+
+        return Ok(new AccessResponse
+        {
+            HasAccess = result.HasAccess,
+            Source = sourceString,
+            GiftAvailable = result.GiftAvailable,
+            GiftConsumed = result.GiftConsumed,
+            PurchasedAt = result.PurchasedAt,
+            GiftAssignedAt = result.GiftAssignedAt
         });
     }
 }
