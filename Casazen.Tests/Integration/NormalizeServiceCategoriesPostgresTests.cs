@@ -43,7 +43,7 @@ public class NormalizeServiceCategoriesPostgresTests : IAsyncLifetime
         var s = new Seed();
         await using (var db = _database!.CreateContext())
         {
-            db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
             await InsertPreSu03StateAsync(db, s);
             await db.Database.MigrateAsync();
         }
@@ -86,7 +86,7 @@ public class NormalizeServiceCategoriesPostgresTests : IAsyncLifetime
         var s = new Seed();
         await using (var db = _database!.CreateContext())
         {
-            db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
             await InsertPreSu03StateAsync(db, s);
             await db.Database.MigrateAsync();
         }

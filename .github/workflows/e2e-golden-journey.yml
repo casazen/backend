@@ -15,6 +15,11 @@ on:
     - cron: '30 3 * * *'
   workflow_dispatch:
 
+# A new push to a PR cancels the run of the commit it replaces; every other run has a group of its own.
+concurrency:
+  group: e2e-gj-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   gj-l3:
     name: Golden Journey L3
@@ -97,7 +102,9 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          npx playwright install --with-deps chromium
+          # No --with-deps: the ubuntu-latest image already has every library Chromium needs; --with-deps only added
+          # fonts from the apt mirror, which at times took 10 minutes to download (~45 kB/s).
+          npx playwright install chromium
       - name: Golden Journey L3 (stack up, suite, stack down)
         working-directory: frontend
         run: bash e2e/stack/ci-run.sh

@@ -53,7 +53,7 @@ public class AddComuniIstatMigrationPostgresTests : IAsyncLifetime
 
         await using (var db = _database!.CreateContext())
         {
-            db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
 
             // The pages the SEO bootstrap generated with the registry's codes.
             await InsertPageAsync(db, torinoGuide, "010025", "affitti-brevi/piemonte/torino", pageType: 0);
@@ -107,7 +107,7 @@ public class AddComuniIstatMigrationPostgresTests : IAsyncLifetime
     {
         // The codes written in the migration are checked against rows copied verbatim from the official ISTAT file.
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         await ComuneTestData.ImportSampleAsync(db);
 
         var official = await db.Comuni.AsNoTracking()
@@ -124,7 +124,7 @@ public class AddComuniIstatMigrationPostgresTests : IAsyncLifetime
     public async Task Migration_NewColumns_AreNullableAndTheSupplierCodesStartAsAnEmptyList()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
 
         var columns = await db.Database
             .SqlQuery<ColumnInfo>($"""

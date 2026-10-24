@@ -129,7 +129,7 @@ public class AddRentRegisterAndRemindersMigrationPostgresTests : IAsyncLifetime
     private async Task<Seed> MigrateToTheMigrationWithInstallmentsAsync()
     {
         await using var db = _database!.CreateContext();
-        await db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
 
         var created = new DateTime(2026, 7, 1, 8, 30, 0, DateTimeKind.Utc);
         var org = new OrgEntity { Name = "Casa Rossi", Slug = $"casa-rossi-{Guid.NewGuid():N}", DisplayName = "Casa Rossi", ContactEmail = "info@casarossi.example", IsActive = true };
