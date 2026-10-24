@@ -1793,6 +1793,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("FiscalRegime")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("IsConcordatoFacileSource")
+                        .HasColumnType("boolean");
+
                     b.Property<decimal>("MonthlyRent")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");

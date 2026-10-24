@@ -9,6 +9,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
+using Casazen.Web.Dtos.Leases;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
@@ -33,6 +34,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.LeaseRead)]
 public class LeasesController(
     ILeaseWorkflowService leaseService,
+    ILeaseDraftService leaseDraftService,
     IComuneImuNotificationService imuNotification,
     ICedolareAdvisoryService cedolareAdvisory,
     IRliExportService rliExport,
@@ -184,6 +186,36 @@ public class LeasesController(
         {
             return ApeProblem(ex);
         }
+    }
+
+    /// <summary>
+    /// Create a minimal ConcordatoFacile draft (ADR-004): only PropertyId, OrgId, ContractType=Concordato and
+    /// IsConcordatoFacileSource=true, other required fields from <see cref="LeaseDraftDefaults"/>. Idempotent: if a CF
+    /// draft for the property already exists in Draft status, returns the existing one. Needs <c>lease.create</c> policy.
+    /// </summary>
+    [HttpPost("drafts/concordatofacile")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    public async Task<IActionResult> CreateCfDraft([FromBody] CreateCfDraftRequest dto)
+    {
+        if (GetOwnerId() is null) return Unauthorized();
+
+        var property = await hostResources.ForPropertyAsync(dto.PropertyId, HttpContext.RequestAborted);
+        if (property is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, PropertyNotFoundCode, "PropertyNotFound");
+        if (!await authorizationService.IsAuthorizedAsync(User, property, LeaseOperations.Create))
+            return Forbid();
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null) return Unauthorized();
+
+        var leaseId = await leaseDraftService.CreateCfDraftAsync(dto.PropertyId, orgId.Value, HttpContext.RequestAborted);
+
+        return Ok(new
+        {
+            id = leaseId,
+            propertyId = dto.PropertyId,
+            status = "Draft"
+        });
     }
 
     /// <summary>

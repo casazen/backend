@@ -27,7 +27,7 @@ public class LeaseDocumentsControllerTests
         auth.Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object>(), It.IsAny<IEnumerable<IAuthorizationRequirement>>()))
             .ReturnsAsync(AuthorizationResult.Failed());
         var documents = new Mock<ILeaseDocumentService>();
-        var controller = new LeasesController(workflow.Object, Mock.Of<IComuneImuNotificationService>(), Mock.Of<ICedolareAdvisoryService>(),
+        var controller = new LeasesController(workflow.Object, Mock.Of<ILeaseDraftService>(), Mock.Of<IComuneImuNotificationService>(), Mock.Of<ICedolareAdvisoryService>(),
             Mock.Of<IRliExportService>(), Mock.Of<IRliChecklistService>(), Mock.Of<IHostResourceLookup>(), auth.Object,
             Mock.Of<IOrgContextResolver>(), Mock.Of<IHostScopeResolver>(), Mock.Of<IStringLocalizer<SharedResources>>())
         { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() } };
