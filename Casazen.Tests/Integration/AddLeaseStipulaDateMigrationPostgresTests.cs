@@ -29,7 +29,7 @@ public class AddLeaseStipulaDateMigrationPostgresTests : IAsyncLifetime
     public async Task AddLeaseStipulaDate_ExistingLeases_BackfillsStipulaAndCorrectsDeadline()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var s = new Seed();
         await InsertPreviousStateAsync(db, s);
 

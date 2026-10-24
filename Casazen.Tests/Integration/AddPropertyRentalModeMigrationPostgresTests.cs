@@ -159,7 +159,7 @@ public class AddPropertyRentalModeMigrationPostgresTests : IAsyncLifetime
         List<DryRunSummary> summary;
         await using (var db = _database!.CreateContext())
         {
-            db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
             await SeedAsync(db, s);
 
             // The dry run runs BEFORE the migration, on the database as it is.
@@ -253,7 +253,7 @@ public class AddPropertyRentalModeMigrationPostgresTests : IAsyncLifetime
     private async Task MigrateWithSeedAsync(Seed s)
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         await SeedAsync(db, s);
         await db.Database.MigrateAsync();
     }

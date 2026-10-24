@@ -116,7 +116,7 @@ public class AddGuidedLeaseDraftMigrationPostgresTests : IAsyncLifetime
         var s = new Seed();
         await using var db = _database!.CreateContext();
         var migrator = db.GetService<IMigrator>();
-        migrator.Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         await SeedOrgAndPropertyAsync(db, s);
         migrator.Migrate(ThisMigration(db));
 
@@ -232,7 +232,7 @@ public class AddGuidedLeaseDraftMigrationPostgresTests : IAsyncLifetime
     private async Task MigrateWithSeedAsync(Seed s)
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         await SeedOrgAndPropertyAsync(db, s);
 
         await InsertLeaseAsync(db, s, s.Draft, LeaseStatus.Draft);

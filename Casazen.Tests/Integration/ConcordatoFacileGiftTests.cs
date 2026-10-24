@@ -30,7 +30,7 @@ public class ConcordatoFacileGiftTests : IAsyncLifetime
 
         await using (var db = _database!.CreateContext())
         {
-            await db.Database.MigrateAsync();
+            await _database!.MigrateEmptyToAsync();
 
             db.Orgs.Add(new OrgEntity
             {

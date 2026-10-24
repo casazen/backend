@@ -122,12 +122,7 @@ public class DataProtectionKeyPersistenceTests
         return services.BuildServiceProvider();
     }
 
-    private static async Task<PostgresTestDatabase> CreateMigratedDatabaseAsync()
-    {
-        var database = await PostgresTestDatabase.CreateAsync("dp");
-        database.MigrateToLatest();
-        return database;
-    }
+    private static Task<PostgresTestDatabase> CreateMigratedDatabaseAsync() => PostgresTestDatabase.CreateMigratedAsync("dp");
 
     private static async Task<List<string>> ReadKeyXmlAsync(PostgresTestDatabase database)
     {

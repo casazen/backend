@@ -33,9 +33,7 @@ public class OrgActivityPostgresTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _database = await PostgresTestDatabase.CreateAsync();
-        await using (var db = _database.CreateContext())
-            await db.Database.MigrateAsync();
+        _database = await PostgresTestDatabase.CreateMigratedAsync();
 
         _kit = new OrgInvitationTestKit(() => _database.CreateContext());
     }
