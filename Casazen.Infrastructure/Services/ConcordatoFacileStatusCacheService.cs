@@ -121,9 +121,12 @@ public sealed class ConcordatoFacileStatusCacheService(
                 // ADR-008-R8: On error, retain last valid snapshot as stale
                 if (snapshot is not null)
                 {
-                    snapshot.IsStale = true;
-                    snapshot.LastError = ex.Message;
-                    snapshot.LastAttemptAt = DateTime.UtcNow;
+                    snapshot = snapshot with
+                    {
+                        IsStale = true,
+                        LastError = ex.Message,
+                        LastAttemptAt = DateTime.UtcNow
+                    };
 
                     // Keep the stale snapshot in cache
                     memoryCache.Set(cacheKey, snapshot, new MemoryCacheEntryOptions
