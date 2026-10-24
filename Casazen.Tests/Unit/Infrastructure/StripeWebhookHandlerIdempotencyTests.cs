@@ -165,6 +165,7 @@ public class StripeWebhookHandlerIdempotencyTests
             TestCheckoutPaymentSettlement.Create(db, paymentRepository),
             TestDeferredCharges.Create(db),
             Mock.Of<ISupplierPaymentWebhookService>(),
+            Mock.Of<Casazen.Infrastructure.External.ConcordatoFacilePaymentHandler>(),
             NullLogger<StripeWebhookHandler>.Instance);
 
     private static Event DirectBookingSucceededEvent(string eventId, string paymentIntentId) =>

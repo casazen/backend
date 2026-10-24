@@ -247,6 +247,7 @@ public class StripeWebhookSubscriptionStateTests
             TestCheckoutPaymentSettlement.Create(_db),
             TestDeferredCharges.Create(_db),
             Mock.Of<ISupplierPaymentWebhookService>(),
+            Mock.Of<Casazen.Infrastructure.External.ConcordatoFacilePaymentHandler>(),
             NullLogger<StripeWebhookHandler>.Instance);
         await handler.HandleEventAsync(stripeEvent, WebhookSource.Platform);
         _db.ChangeTracker.Clear();

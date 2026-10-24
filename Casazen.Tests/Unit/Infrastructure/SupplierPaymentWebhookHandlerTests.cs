@@ -44,6 +44,7 @@ public class SupplierPaymentWebhookHandlerTests
             TestCheckoutPaymentSettlement.Create(s.Db),
             TestDeferredCharges.Create(s.Db),
             servicePayments ?? s.Payments,
+            Mock.Of<Casazen.Infrastructure.External.ConcordatoFacilePaymentHandler>(),
             NullLogger<StripeWebhookHandler>.Instance);
 
     private static Event PaymentIntentEvent(

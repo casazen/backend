@@ -404,6 +404,7 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
                 configuration: configuration),
             TestDeferredCharges.Create(db),
             Mock.Of<ISupplierPaymentWebhookService>(),
+            Mock.Of<Casazen.Infrastructure.External.ConcordatoFacilePaymentHandler>(),
             NullLogger<StripeWebhookHandler>.Instance);
         await handler.HandleEventAsync(stripeEvent, source);
     }
