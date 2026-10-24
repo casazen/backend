@@ -128,13 +128,14 @@ public class StripeWebhookHandler(
                     {
                         // A refund of a supplier's service payment is recorded by the service payments (SP-15b); a CF refund is
                         // handled by the CF handler (ADR-005-R7); any other is a booking payment's, as before.
-                        var serviceRefund = await HandleServiceChargeRefundedAsync(stripeEvent.Data.Object as Charge, stripeEvent.Account);
+                        var charge = stripeEvent.Data.Object as Charge;
+                        var serviceRefund = await HandleServiceChargeRefundedAsync(charge, stripeEvent.Account);
                         if (serviceRefund is { Handled: true })
                             servicePaymentNotices = serviceRefund.Notices;
-                        else if (await IsConcordatoFacileRefundAsync(stripeEvent.Data.Object as Charge))
-                            await concordatoFacilePayments.HandleRefundAsync(stripeEvent.Data.Object as Charge);
+                        else if (await IsConcordatoFacileRefundAsync(charge))
+                            await concordatoFacilePayments.HandleRefundAsync(charge!);
                         else
-                            succeededRefunds = await HandleChargeRefundedAsync(stripeEvent.Data.Object as Charge, source, stripeEvent.Account);
+                            succeededRefunds = await HandleChargeRefundedAsync(charge, source, stripeEvent.Account);
                         break;
                     }
                 case "refund.created":

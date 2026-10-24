@@ -27,7 +27,7 @@ public class ConcordatoFacilePaymentHandler(
         // ADR-005-R4: Verify amount == 11900 AND currency == "eur"
         if (paymentIntent.Amount != 11900 || !string.Equals(paymentIntent.Currency, "eur", StringComparison.OrdinalIgnoreCase))
         {
-            var leaseId = paymentIntent.Metadata?.TryGetValue("leaseId", out var leaseIdRaw) == true ? leaseIdRaw : "unknown";
+            var leaseIdForLog = paymentIntent.Metadata?.TryGetValue("leaseId", out var leaseIdRaw) == true ? leaseIdRaw : "unknown";
             var orgId = paymentIntent.Metadata?.TryGetValue("orgId", out var orgIdRaw) == true ? orgIdRaw : "unknown";
 
             logger.LogError(
@@ -36,7 +36,7 @@ public class ConcordatoFacilePaymentHandler(
                 paymentIntent.Amount,
                 paymentIntent.Currency,
                 orgId,
-                leaseId);
+                leaseIdForLog);
             return;
         }
 
@@ -49,7 +49,7 @@ public class ConcordatoFacilePaymentHandler(
         }
 
         // Query purchase by StripeCheckoutSessionId (from invoice) OR StripePaymentIntentId
-        var invoiceId = paymentIntent.InvoiceId;
+        var invoiceId = paymentIntent.Invoice?.Id;
         var purchase = await dbContext.ConcordatoFacilePurchases
             .Where(p => p.StripeCheckoutSessionId == invoiceId || p.StripePaymentIntentId == paymentIntent.Id)
             .FirstOrDefaultAsync();
