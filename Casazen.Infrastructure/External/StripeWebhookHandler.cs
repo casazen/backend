@@ -27,6 +27,7 @@ public class StripeWebhookHandler(
     CheckoutPaymentSettlementService checkoutPayments,
     DeferredChargeService deferredCharges,
     ISupplierPaymentWebhookService supplierPayments,
+    ConcordatoFacilePaymentHandler concordatoFacilePayments,
     ILogger<StripeWebhookHandler> logger,
     IActivityLog? activityLog = null)
 {
@@ -97,6 +98,11 @@ public class StripeWebhookHandler(
                     rentNotice = await HandleRentChargeAsync(
                         (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
                     break;
+                // ConcordatoFacile one-time payment (ADR-005): BEFORE the generic payment_intent.succeeded, like rent and service charges.
+                // CF payments are identified by leaseId in metadata without a "kind" field.
+                case "payment_intent.succeeded" when IsConcordatoFacilePayment(stripeEvent.Data.Object as PaymentIntent):
+                    await concordatoFacilePayments.HandlePaymentIntentSucceededAsync((PaymentIntent)stripeEvent.Data.Object);
+                    break;
                 // The payment of a supplier's service (SP-15b, kind = service-charge): BEFORE the generic payment_intent.succeeded
                 // below, like the rent. Otherwise the event would be "processed" with no effect on the Connect endpoint (the generic
                 // handler drops every kind but direct-booking) or, on the platform endpoint, handed to the booking settlement.
@@ -120,11 +126,13 @@ public class StripeWebhookHandler(
                     break;
                 case "charge.refunded":
                     {
-                        // A refund of a supplier's service payment is recorded by the service payments (SP-15b); any other is a
-                        // booking payment's, as before.
+                        // A refund of a supplier's service payment is recorded by the service payments (SP-15b); a CF refund is
+                        // handled by the CF handler (ADR-005-R7); any other is a booking payment's, as before.
                         var serviceRefund = await HandleServiceChargeRefundedAsync(stripeEvent.Data.Object as Charge, stripeEvent.Account);
                         if (serviceRefund is { Handled: true })
                             servicePaymentNotices = serviceRefund.Notices;
+                        else if (await IsConcordatoFacileRefundAsync(stripeEvent.Data.Object as Charge))
+                            await concordatoFacilePayments.HandleRefundAsync(stripeEvent.Data.Object as Charge);
                         else
                             succeededRefunds = await HandleChargeRefundedAsync(stripeEvent.Data.Object as Charge, source, stripeEvent.Account);
                         break;
@@ -796,6 +804,28 @@ public class StripeWebhookHandler(
         paymentIntent is not null &&
         TryGetMetadataKind(paymentIntent, out var kind) &&
         string.Equals(kind, DeferredCharges.Kind, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Checks if a PaymentIntent is for a ConcordatoFacile purchase (ADR-005).
+    /// CF payments are identified by the presence of "leaseId" in metadata (without a "kind" field).
+    /// </summary>
+    private static bool IsConcordatoFacilePayment(PaymentIntent? paymentIntent) =>
+        paymentIntent is not null &&
+        paymentIntent.Metadata is not null &&
+        paymentIntent.Metadata.ContainsKey("leaseId") &&
+        !paymentIntent.Metadata.ContainsKey("kind");
+
+    /// <summary>
+    /// Checks if a Charge refund is associated with a ConcordatoFacile purchase (ADR-005-R7).
+    /// </summary>
+    private async Task<bool> IsConcordatoFacileRefundAsync(Charge? charge)
+    {
+        if (charge is null || string.IsNullOrWhiteSpace(charge.PaymentIntentId))
+            return false;
+
+        return await dbContext.ConcordatoFacilePurchases
+            .AnyAsync(p => p.StripePaymentIntentId == charge.PaymentIntentId);
+    }
 
     /// <summary>
     /// An event of a deferred charge PaymentIntent ("Paga alla scadenza", BK-08, A3-14), from the Connect endpoint or the
