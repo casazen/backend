@@ -1,123 +1,230 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
-using Casazen.Tests.Shared;
+using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Npgsql;
 using Xunit;
 
-namespace Casazen.Tests.Unit.Infrastructure;
+namespace Casazen.Tests.Integration;
 
 /// <summary>
 /// Tests for ConcordatoFacile gift service (ADR-006).
 /// </summary>
 public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
 {
-    private readonly PostgresTestDatabase _testDb = new();
-    private AppDbContext _dbContext = null!;
-    private ConcordatoFacileGiftService _service = null!;
+    private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync()
-    {
-        await _testDb.InitializeAsync();
-        _dbContext = _testDb.CreateContext();
-        _service = new ConcordatoFacileGiftService(_dbContext, NullLogger<ConcordatoFacileGiftService>.Instance);
-    }
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
 
     public async Task DisposeAsync()
     {
-        await _dbContext.DisposeAsync();
-        await _testDb.DisposeAsync();
+        if (_database is not null)
+            await _database.DisposeAsync();
     }
 
     [PostgresFact]
     public async Task GrantGiftAsync_NewGift_CreatesGiftWithAvailableStatus()
     {
         // Arrange
-        var org = await CreateOrgAsync();
+        Guid orgId;
+        await using (var db = _database!.CreateContext())
+        {
+            var org = new OrgEntity
+            {
+                Name = $"Test Org {Guid.NewGuid()}",
+                Slug = $"test-org-{Guid.NewGuid():N}",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.Orgs.Add(org);
+            await db.SaveChangesAsync();
+            orgId = org.Id;
+        }
+
         var subscriptionId = "sub_test_biennial";
 
         // Act
-        await _service.GrantGiftAsync(org.Id, subscriptionId);
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.GrantGiftAsync(orgId, subscriptionId);
+        }
 
         // Assert
-        var gift = await _dbContext.ConcordatoFacileGifts
-            .FirstOrDefaultAsync(g => g.OrgId == org.Id);
+        await using (var db = _database.CreateContext())
+        {
+            var gift = await db.ConcordatoFacileGifts
+                .FirstOrDefaultAsync(g => g.OrgId == orgId);
 
-        Assert.NotNull(gift);
-        Assert.Equal(org.Id, gift.OrgId);
-        Assert.Equal(subscriptionId, gift.GrantedBySubscriptionId);
-        Assert.Equal(ConcordatoFacileGiftStatus.Available, gift.Status);
-        Assert.Null(gift.ConsumedAt);
-        Assert.Null(gift.ConsumedForLeaseId);
+            Assert.NotNull(gift);
+            Assert.Equal(orgId, gift.OrgId);
+            Assert.Equal(subscriptionId, gift.GrantedBySubscriptionId);
+            Assert.Equal(ConcordatoFacileGiftStatus.Available, gift.Status);
+            Assert.Null(gift.ConsumedAt);
+            Assert.Null(gift.ConsumedForLeaseId);
+        }
     }
 
     [PostgresFact]
     public async Task GrantGiftAsync_GiftAlreadyExists_IsIdempotent()
     {
         // Arrange
-        var org = await CreateOrgAsync();
+        Guid orgId;
+        await using (var db = _database!.CreateContext())
+        {
+            var org = new OrgEntity { Name = "Test", Slug = $"test-{Guid.NewGuid():N}", CreatedAt = DateTime.UtcNow };
+            db.Orgs.Add(org);
+            await db.SaveChangesAsync();
+            orgId = org.Id;
+        }
+
         var firstSubscriptionId = "sub_first";
         var secondSubscriptionId = "sub_second";
 
-        await _service.GrantGiftAsync(org.Id, firstSubscriptionId);
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.GrantGiftAsync(orgId, firstSubscriptionId);
+        }
 
         // Act
-        await _service.GrantGiftAsync(org.Id, secondSubscriptionId);
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.GrantGiftAsync(orgId, secondSubscriptionId);
+        }
 
         // Assert
-        var gifts = await _dbContext.ConcordatoFacileGifts
-            .Where(g => g.OrgId == org.Id)
-            .ToListAsync();
+        await using (var db = _database.CreateContext())
+        {
+            var gifts = await db.ConcordatoFacileGifts
+                .Where(g => g.OrgId == orgId)
+                .ToListAsync();
 
-        Assert.Single(gifts);
-        Assert.Equal(firstSubscriptionId, gifts[0].GrantedBySubscriptionId);
+            Assert.Single(gifts);
+            Assert.Equal(firstSubscriptionId, gifts[0].GrantedBySubscriptionId);
+        }
     }
 
     [PostgresFact]
     public async Task ConsumeGiftAsync_AvailableGift_ConsumesSuccessfully()
     {
         // Arrange
-        var org = await CreateOrgAsync();
-        var lease = await CreateLeaseAsync(org.Id);
-        await _service.GrantGiftAsync(org.Id, "sub_test");
+        Guid orgId, leaseId;
+        await using (var db = _database!.CreateContext())
+        {
+            var org = new OrgEntity { Name = "Test", Slug = $"test-{Guid.NewGuid():N}", CreatedAt = DateTime.UtcNow };
+            db.Orgs.Add(org);
+
+            var property = new Property
+            {
+                OrgId = org.Id,
+                Name = "Test Property",
+                Address = "Test",
+                City = "Test",
+                PostalCode = "12345",
+                Country = "IT",
+                Bedrooms = 1,
+                Bathrooms = 1,
+                MaxGuests = 2,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.Properties.Add(property);
+
+            var lease = new LeaseContract
+            {
+                OrgId = org.Id,
+                PropertyId = property.Id,
+                LeaseType = LeaseType.Concordato,
+                Status = LeaseStatus.Draft,
+                StartDate = DateTime.UtcNow.AddDays(30),
+                EndDate = DateTime.UtcNow.AddMonths(24),
+                MonthlyRent = 500m,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.LeaseContracts.Add(lease);
+            await db.SaveChangesAsync();
+
+            orgId = org.Id;
+            leaseId = lease.Id;
+        }
+
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.GrantGiftAsync(orgId, "sub_test");
+        }
 
         // Act
-        var result = await _service.ConsumeGiftAsync(org.Id, lease.Id);
+        CfGiftConsumeResult result;
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            result = await service.ConsumeGiftAsync(orgId, leaseId);
+        }
 
         // Assert
         Assert.Equal(CfGiftConsumeResult.Success, result);
 
-        var gift = await _dbContext.ConcordatoFacileGifts
-            .FirstAsync(g => g.OrgId == org.Id);
+        await using (var db = _database.CreateContext())
+        {
+            var gift = await db.ConcordatoFacileGifts.FirstAsync(g => g.OrgId == orgId);
 
-        Assert.Equal(ConcordatoFacileGiftStatus.Consumed, gift.Status);
-        Assert.Equal(lease.Id, gift.ConsumedForLeaseId);
-        Assert.NotNull(gift.ConsumedAt);
+            Assert.Equal(ConcordatoFacileGiftStatus.Consumed, gift.Status);
+            Assert.Equal(leaseId, gift.ConsumedForLeaseId);
+            Assert.NotNull(gift.ConsumedAt);
 
-        // Verify LeaseEvent was recorded (ADR-006-R7)
-        var leaseEvent = await _dbContext.LeaseEvents
-            .FirstOrDefaultAsync(e => e.LeaseContractId == lease.Id
-                && e.EventType == LeaseEventType.ConcordatoFacileGiftConsumed);
+            // Verify LeaseEvent was recorded (ADR-006-R7)
+            var leaseEvent = await db.LeaseEvents
+                .FirstOrDefaultAsync(e => e.LeaseContractId == leaseId
+                    && e.EventType == LeaseEventType.ConcordatoFacileGiftConsumed);
 
-        Assert.NotNull(leaseEvent);
+            Assert.NotNull(leaseEvent);
+        }
     }
 
     [PostgresFact]
     public async Task ConsumeGiftAsync_SameLeaseIdTwice_ReturnsAlreadyConsumedForThisLease()
     {
         // Arrange
-        var org = await CreateOrgAsync();
-        var lease = await CreateLeaseAsync(org.Id);
-        await _service.GrantGiftAsync(org.Id, "sub_test");
+        Guid orgId, leaseId;
+        await using (var db = _database!.CreateContext())
+        {
+            var org = new OrgEntity { Name = "Test", Slug = $"test-{Guid.NewGuid():N}", CreatedAt = DateTime.UtcNow };
+            db.Orgs.Add(org);
 
-        await _service.ConsumeGiftAsync(org.Id, lease.Id);
+            var property = new Property { OrgId = org.Id, Name = "Test", Address = "Test", City = "Test", PostalCode = "12345", Country = "IT", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, CreatedAt = DateTime.UtcNow };
+            db.Properties.Add(property);
+
+            var lease = new LeaseContract { OrgId = org.Id, PropertyId = property.Id, LeaseType = LeaseType.Concordato, Status = LeaseStatus.Draft, StartDate = DateTime.UtcNow.AddDays(30), EndDate = DateTime.UtcNow.AddMonths(24), MonthlyRent = 500m, CreatedAt = DateTime.UtcNow };
+            db.LeaseContracts.Add(lease);
+            await db.SaveChangesAsync();
+
+            orgId = org.Id;
+            leaseId = lease.Id;
+        }
+
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.GrantGiftAsync(orgId, "sub_test");
+        }
+
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.ConsumeGiftAsync(orgId, leaseId);
+        }
 
         // Act - second consumption for same lease (re-entry)
-        var result = await _service.ConsumeGiftAsync(org.Id, lease.Id);
+        CfGiftConsumeResult result;
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            result = await service.ConsumeGiftAsync(orgId, leaseId);
+        }
 
         // Assert
         Assert.Equal(CfGiftConsumeResult.AlreadyConsumedForThisLease, result);
@@ -127,15 +234,47 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
     public async Task ConsumeGiftAsync_DifferentLeaseId_ReturnsAlreadyConsumedForOtherLease()
     {
         // Arrange
-        var org = await CreateOrgAsync();
-        var firstLease = await CreateLeaseAsync(org.Id);
-        var secondLease = await CreateLeaseAsync(org.Id);
-        await _service.GrantGiftAsync(org.Id, "sub_test");
+        Guid orgId, firstLeaseId, secondLeaseId;
+        await using (var db = _database!.CreateContext())
+        {
+            var org = new OrgEntity { Name = "Test", Slug = $"test-{Guid.NewGuid():N}", CreatedAt = DateTime.UtcNow };
+            db.Orgs.Add(org);
 
-        await _service.ConsumeGiftAsync(org.Id, firstLease.Id);
+            var property = new Property { OrgId = org.Id, Name = "Test", Address = "Test", City = "Test", PostalCode = "12345", Country = "IT", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, CreatedAt = DateTime.UtcNow };
+            db.Properties.Add(property);
+
+            var firstLease = new LeaseContract { OrgId = org.Id, PropertyId = property.Id, LeaseType = LeaseType.Concordato, Status = LeaseStatus.Draft, StartDate = DateTime.UtcNow.AddDays(30), EndDate = DateTime.UtcNow.AddMonths(24), MonthlyRent = 500m, CreatedAt = DateTime.UtcNow };
+            db.LeaseContracts.Add(firstLease);
+
+            var secondLease = new LeaseContract { OrgId = org.Id, PropertyId = property.Id, LeaseType = LeaseType.Concordato, Status = LeaseStatus.Draft, StartDate = DateTime.UtcNow.AddDays(60), EndDate = DateTime.UtcNow.AddMonths(24), MonthlyRent = 500m, CreatedAt = DateTime.UtcNow };
+            db.LeaseContracts.Add(secondLease);
+
+            await db.SaveChangesAsync();
+
+            orgId = org.Id;
+            firstLeaseId = firstLease.Id;
+            secondLeaseId = secondLease.Id;
+        }
+
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.GrantGiftAsync(orgId, "sub_test");
+        }
+
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.ConsumeGiftAsync(orgId, firstLeaseId);
+        }
 
         // Act - try to consume for different lease
-        var result = await _service.ConsumeGiftAsync(org.Id, secondLease.Id);
+        CfGiftConsumeResult result;
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            result = await service.ConsumeGiftAsync(orgId, secondLeaseId);
+        }
 
         // Assert
         Assert.Equal(CfGiftConsumeResult.AlreadyConsumedForOtherLease, result);
@@ -149,21 +288,41 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
     public async Task ConsumeGift_ConcurrentRequests_OnlyOneSucceeds()
     {
         // Arrange
-        var org = await CreateOrgAsync();
-        var leases = new List<LeaseContract>();
-        for (int i = 0; i < 5; i++)
+        Guid orgId;
+        var leaseIds = new List<Guid>();
+
+        await using (var db = _database!.CreateContext())
         {
-            leases.Add(await CreateLeaseAsync(org.Id));
+            var org = new OrgEntity { Name = "Test", Slug = $"test-{Guid.NewGuid():N}", CreatedAt = DateTime.UtcNow };
+            db.Orgs.Add(org);
+
+            var property = new Property { OrgId = org.Id, Name = "Test", Address = "Test", City = "Test", PostalCode = "12345", Country = "IT", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, CreatedAt = DateTime.UtcNow };
+            db.Properties.Add(property);
+
+            for (int i = 0; i < 5; i++)
+            {
+                var lease = new LeaseContract { OrgId = org.Id, PropertyId = property.Id, LeaseType = LeaseType.Concordato, Status = LeaseStatus.Draft, StartDate = DateTime.UtcNow.AddDays(30 + i), EndDate = DateTime.UtcNow.AddMonths(24), MonthlyRent = 500m, CreatedAt = DateTime.UtcNow };
+                db.LeaseContracts.Add(lease);
+                leaseIds.Add(lease.Id);
+            }
+
+            await db.SaveChangesAsync();
+            orgId = org.Id;
         }
-        await _service.GrantGiftAsync(org.Id, "sub_test_concurrent");
+
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.GrantGiftAsync(orgId, "sub_test_concurrent");
+        }
 
         // Act - 5 concurrent consumption attempts for different leases
-        var tasks = leases.Select(lease =>
+        var tasks = leaseIds.Select(leaseId =>
             Task.Run(async () =>
             {
-                await using var context = _testDb.CreateContext();
+                await using var context = _database.CreateContext();
                 var service = new ConcordatoFacileGiftService(context, NullLogger<ConcordatoFacileGiftService>.Instance);
-                return await service.ConsumeGiftAsync(org.Id, lease.Id);
+                return await service.ConsumeGiftAsync(orgId, leaseId);
             })).ToArray();
 
         var results = await Task.WhenAll(tasks);
@@ -176,12 +335,14 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
         Assert.Equal(4, failureCount);
 
         // Verify the gift is consumed for exactly one lease
-        var gift = await _dbContext.ConcordatoFacileGifts
-            .FirstAsync(g => g.OrgId == org.Id);
+        await using (var db = _database.CreateContext())
+        {
+            var gift = await db.ConcordatoFacileGifts.FirstAsync(g => g.OrgId == orgId);
 
-        Assert.Equal(ConcordatoFacileGiftStatus.Consumed, gift.Status);
-        Assert.NotNull(gift.ConsumedForLeaseId);
-        Assert.Contains(gift.ConsumedForLeaseId.Value, leases.Select(l => l.Id));
+            Assert.Equal(ConcordatoFacileGiftStatus.Consumed, gift.Status);
+            Assert.NotNull(gift.ConsumedForLeaseId);
+            Assert.Contains(gift.ConsumedForLeaseId.Value, leaseIds);
+        }
     }
 
     /// <summary>
@@ -192,75 +353,51 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
     public async Task ConsumeGift_OrgIdMismatch_Fails()
     {
         // Arrange
-        var org1 = await CreateOrgAsync();
-        var org2 = await CreateOrgAsync();
-        var leaseOfOrg2 = await CreateLeaseAsync(org2.Id);
+        Guid org1Id, org2Id, leaseOfOrg2Id;
+        await using (var db = _database!.CreateContext())
+        {
+            var org1 = new OrgEntity { Name = "Org1", Slug = $"org1-{Guid.NewGuid():N}", CreatedAt = DateTime.UtcNow };
+            var org2 = new OrgEntity { Name = "Org2", Slug = $"org2-{Guid.NewGuid():N}", CreatedAt = DateTime.UtcNow };
+            db.Orgs.Add(org1);
+            db.Orgs.Add(org2);
 
-        await _service.GrantGiftAsync(org1.Id, "sub_org1");
+            var property2 = new Property { OrgId = org2.Id, Name = "Test", Address = "Test", City = "Test", PostalCode = "12345", Country = "IT", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, CreatedAt = DateTime.UtcNow };
+            db.Properties.Add(property2);
+
+            var leaseOfOrg2 = new LeaseContract { OrgId = org2.Id, PropertyId = property2.Id, LeaseType = LeaseType.Concordato, Status = LeaseStatus.Draft, StartDate = DateTime.UtcNow.AddDays(30), EndDate = DateTime.UtcNow.AddMonths(24), MonthlyRent = 500m, CreatedAt = DateTime.UtcNow };
+            db.LeaseContracts.Add(leaseOfOrg2);
+
+            await db.SaveChangesAsync();
+
+            org1Id = org1.Id;
+            org2Id = org2.Id;
+            leaseOfOrg2Id = leaseOfOrg2.Id;
+        }
+
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            await service.GrantGiftAsync(org1Id, "sub_org1");
+        }
 
         // Act - try to consume org1's gift for org2's lease
-        var result = await _service.ConsumeGiftAsync(org1.Id, leaseOfOrg2.Id);
+        CfGiftConsumeResult result;
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+            result = await service.ConsumeGiftAsync(org1Id, leaseOfOrg2Id);
+        }
 
         // Assert - should fail because the lease belongs to a different org
         // The gift remains available for org1
         Assert.Equal(CfGiftConsumeResult.AlreadyConsumedForOtherLease, result);
 
-        var gift = await _dbContext.ConcordatoFacileGifts
-            .FirstAsync(g => g.OrgId == org1.Id);
-
-        Assert.Equal(ConcordatoFacileGiftStatus.Available, gift.Status);
-        Assert.Null(gift.ConsumedForLeaseId);
-    }
-
-    private async Task<Org> CreateOrgAsync()
-    {
-        var org = new Org
+        await using (var db = _database.CreateContext())
         {
-            Name = $"Test Org {Guid.NewGuid()}",
-            Slug = $"test-org-{Guid.NewGuid():N}",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+            var gift = await db.ConcordatoFacileGifts.FirstAsync(g => g.OrgId == org1Id);
 
-        _dbContext.Orgs.Add(org);
-        await _dbContext.SaveChangesAsync();
-        return org;
-    }
-
-    private async Task<LeaseContract> CreateLeaseAsync(Guid orgId)
-    {
-        // Create a minimal property
-        var property = new Property
-        {
-            OrgId = orgId,
-            Name = $"Test Property {Guid.NewGuid()}",
-            Address = "Test Address",
-            City = "Test City",
-            PostalCode = "12345",
-            Country = "IT",
-            Bedrooms = 1,
-            Bathrooms = 1,
-            MaxGuests = 2,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        _dbContext.Properties.Add(property);
-
-        var lease = new LeaseContract
-        {
-            OrgId = orgId,
-            PropertyId = property.Id,
-            LeaseType = LeaseType.Concordato,
-            Status = LeaseStatus.Draft,
-            StartDate = DateTime.UtcNow.AddDays(30),
-            EndDate = DateTime.UtcNow.AddDays(30).AddMonths(24),
-            MonthlyRent = 500m,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        _dbContext.LeaseContracts.Add(lease);
-        await _dbContext.SaveChangesAsync();
-        return lease;
+            Assert.Equal(ConcordatoFacileGiftStatus.Available, gift.Status);
+            Assert.Null(gift.ConsumedForLeaseId);
+        }
     }
 }
