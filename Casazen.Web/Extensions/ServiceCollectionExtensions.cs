@@ -435,6 +435,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.ConcordatoFacileOptions>, Casazen.Core.Options.ConcordatoFacileOptionsValidator>();
         services.AddScoped<IConcordatoFacileCheckoutService, ConcordatoFacileCheckoutService>();
         services.AddScoped<IConcordatoFacileAccessService, ConcordatoFacileAccessService>();
+        services.AddScoped<IConcordatoFacileGiftService, ConcordatoFacileGiftService>();
         // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
         services.AddScoped<IRentRegisterService, RentRegisterService>();
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();

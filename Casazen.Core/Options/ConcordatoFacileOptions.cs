@@ -34,6 +34,12 @@ public class ConcordatoFacileOptions
     /// Stripe API key (optional, can also come from environment variable STRIPE_SECRET_KEY).
     /// </summary>
     public string? StripeApiKey { get; set; }
+
+    /// <summary>
+    /// Stripe Price IDs for biennial subscriptions that grant a ConcordatoFacile gift (ADR-006-R1, ADR-006-R2).
+    /// Required in Production (ADR-006-R8). Example: ["price_123abc", "price_456def"]
+    /// </summary>
+    public string[]? BiennialPriceIds { get; set; }
 }
 
 /// <summary>
@@ -54,6 +60,14 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
             failures.Add(
                 $"{ConcordatoFacileOptions.SectionName}:StripePriceId is required in Production. " +
                 "Configure the Stripe Price ID for the ConcordatoFacile one-time payment.");
+        }
+
+        // BiennialPriceIds is required in Production (ADR-006-R8)
+        if (IsProductionEnvironment() && (options.BiennialPriceIds is null || options.BiennialPriceIds.Length == 0))
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:BiennialPriceIds is required in Production. " +
+                "Configure the Stripe Price IDs for biennial subscriptions that grant a ConcordatoFacile gift.");
         }
 
         return failures.Count == 0
