@@ -1,6 +1,6 @@
 using Casazen.Infrastructure.External;
 
-namespace Casazen.Core.Services;
+namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Cached practice status retrieval for ConcordatoFacile with 15-minute expiry and request coalescing (ADR-008-R7 through ADR-008-R10).
