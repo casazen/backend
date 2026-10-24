@@ -300,6 +300,9 @@
   <data name="GiftAlreadyConsumed" xml:space="preserve">
     <value>La pratica omaggio è già stata utilizzata</value>
   </data>
+  <data name="ConcordatoFacileAlreadyPurchased" xml:space="preserve">
+    <value>Per questo contratto il servizio ConcordatoFacile risulta già pagato o attivato: non serve pagare di nuovo. Se l'accesso non compare subito, riprova tra qualche istante.</value>
+  </data>
   <data name="GuestNotFound" xml:space="preserve">
     <value>Ospite non trovato</value>
   </data>

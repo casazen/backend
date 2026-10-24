@@ -300,6 +300,9 @@
   <data name="GiftAlreadyConsumed" xml:space="preserve">
     <value>The gift has already been used</value>
   </data>
+  <data name="ConcordatoFacileAlreadyPurchased" xml:space="preserve">
+    <value>ConcordatoFacile is already paid for or activated on this contract: there is no need to pay again. If the access does not show up right away, try again in a moment.</value>
+  </data>
   <data name="GuestNotFound" xml:space="preserve">
     <value>Guest not found</value>
   </data>
