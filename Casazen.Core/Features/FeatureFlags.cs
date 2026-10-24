@@ -92,6 +92,15 @@ public static class FeatureFlags
     /// </summary>
     public const string SeoSignupCta = "SeoSignupCta";
 
+    /// <summary>
+    /// E01/F01/US01 (ADR-010): B2B agency tier features including property owner registry, owner portal access,
+    /// monthly statements, withholding tax management, wire transfers, invoicing, internal staff activities,
+    /// and trusted supplier management. Off (default): <c>agency.*</c> policies return 403 feature_requires_agency_tier,
+    /// agency endpoints return 404, and frontend B2B routes are hidden. Gates all features requiring
+    /// <c>Org.PlanTier == PlanTier.Agency</c>.
+    /// </summary>
+    public const string AgencyTier = "AgencyTier";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -103,5 +112,6 @@ public static class FeatureFlags
         SupplierOnlinePayments,
         SupplierRequestAutoCancel,
         SeoSignupCta,
+        AgencyTier,
     ];
 }

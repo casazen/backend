@@ -8,5 +8,6 @@ public enum PlanTier
 {
     Starter,
     Pro,
-    Scale
+    Scale,
+    Agency
 }
