@@ -6,6 +6,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -46,7 +47,8 @@ public class ConcordatoFacileAccessServiceTests
         await db.SaveChangesAsync();
 
         var tenantContext = new TestTenantContext(orgId);
-        var service = new ConcordatoFacileAccessService(db, tenantContext);
+        var logger = NullLogger<ConcordatoFacileAccessService>.Instance;
+        var service = new ConcordatoFacileAccessService(db, tenantContext, logger);
         var user = new ClaimsPrincipal();
 
         // Act: Check access with pending payment
@@ -106,7 +108,8 @@ public class ConcordatoFacileAccessServiceTests
 
         // Act: User from org B tries to check access
         var tenantContextOrgB = new TestTenantContext(orgB);
-        var service = new ConcordatoFacileAccessService(db, tenantContextOrgB);
+        var logger = NullLogger<ConcordatoFacileAccessService>.Instance;
+        var service = new ConcordatoFacileAccessService(db, tenantContextOrgB, logger);
         var user = new ClaimsPrincipal();
 
         var result = await service.CheckAccessAsync(leaseId, user);
@@ -132,12 +135,14 @@ public class ConcordatoFacileAccessServiceTests
 
         await using var db = NewDb();
         var tenantContext = new TestTenantContext(orgId);
-        var service = new ConcordatoFacileAccessService(db, tenantContext);
+        var logger = NullLogger<ConcordatoFacileAccessService>.Instance;
+        var service = new ConcordatoFacileAccessService(db, tenantContext, logger);
 
         // Create a user with Admin role
         var identity = new ClaimsIdentity(new[]
         {
-            new Claim(ClaimTypes.Role, "Admin")
+            new Claim(ClaimTypes.Role, "Admin"),
+            new Claim("sub", "admin-user-123")
         });
         var user = new ClaimsPrincipal(identity);
 
@@ -179,7 +184,8 @@ public class ConcordatoFacileAccessServiceTests
         await db.SaveChangesAsync();
 
         var tenantContext = new TestTenantContext(orgId);
-        var service = new ConcordatoFacileAccessService(db, tenantContext);
+        var logger = NullLogger<ConcordatoFacileAccessService>.Instance;
+        var service = new ConcordatoFacileAccessService(db, tenantContext, logger);
         var user = new ClaimsPrincipal();
 
         // Act
@@ -220,7 +226,8 @@ public class ConcordatoFacileAccessServiceTests
         await db.SaveChangesAsync();
 
         var tenantContext = new TestTenantContext(orgId);
-        var service = new ConcordatoFacileAccessService(db, tenantContext);
+        var logger = NullLogger<ConcordatoFacileAccessService>.Instance;
+        var service = new ConcordatoFacileAccessService(db, tenantContext, logger);
         var user = new ClaimsPrincipal();
 
         // Act
@@ -230,6 +237,72 @@ public class ConcordatoFacileAccessServiceTests
         Assert.False(result.HasAccess);
         Assert.Equal(CfAccessSource.None, result.Source);
         Assert.True(result.GiftAvailable);
+    }
+
+    /// <summary>
+    /// PROOF TEST: Money rule - admin access bypass does NOT consume the org's available gift (AC-NF04-3).
+    /// Admin access is recorded as audit but doesn't affect the gift inventory.
+    /// </summary>
+    [Fact]
+    public async Task AdminAccess_DoesNotConsumeOrgGift()
+    {
+        // Arrange
+        var orgId = Guid.NewGuid();
+        var leaseId = Guid.NewGuid();
+
+        await using var db = NewDb();
+
+        // Create an available gift for the org
+        var availableGift = new ConcordatoFacileGift
+        {
+            Id = Guid.NewGuid(),
+            OrgId = orgId,
+            GrantedBySubscriptionId = "sub_test_789",
+            GrantedAt = DateTime.UtcNow,
+            ConsumedAt = null,
+            ConsumedForLeaseId = null,
+            Status = ConcordatoFacileGiftStatus.Available
+        };
+
+        db.ConcordatoFacileGifts.Add(availableGift);
+        await db.SaveChangesAsync();
+
+        var tenantContext = new TestTenantContext(orgId);
+        var logger = NullLogger<ConcordatoFacileAccessService>.Instance;
+        var service = new ConcordatoFacileAccessService(db, tenantContext, logger);
+
+        // Create admin user
+        var identity = new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.Role, "Admin"),
+            new Claim("sub", "admin-user-456")
+        });
+        var adminUser = new ClaimsPrincipal(identity);
+
+        // Act: Admin accesses CF for the lease
+        var result = await service.CheckAccessAsync(leaseId, adminUser);
+        await db.SaveChangesAsync(); // Persist the LeaseEvent
+
+        // Assert: Admin has access via admin role
+        Assert.True(result.HasAccess);
+        Assert.Equal(CfAccessSource.Admin, result.Source);
+
+        // PROOF: Gift remains unconsumed (money rule)
+        var giftAfter = await db.ConcordatoFacileGifts.FindAsync(availableGift.Id);
+        Assert.NotNull(giftAfter);
+        Assert.Equal(ConcordatoFacileGiftStatus.Available, giftAfter.Status);
+        Assert.Null(giftAfter.ConsumedForLeaseId);
+        Assert.Null(giftAfter.ConsumedAt);
+
+        // Verify audit event was recorded (AC-NF04-3)
+        var auditEvent = await db.LeaseEvents
+            .FirstOrDefaultAsync(e => e.LeaseContractId == leaseId
+                && e.EventType == LeaseEventType.ConcordatoFacileAdminAccess);
+        Assert.NotNull(auditEvent);
+        Assert.Contains("admin-user-456", auditEvent.Payload);
+
+        // PROOF: Admin bypass doesn't consume the gift, allowing the org to use it for other leases.
+        // If the service incorrectly consumed the gift on admin access, this test would fail.
     }
 
     private static AppDbContext NewDb()
