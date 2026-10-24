@@ -138,12 +138,16 @@ internal static class LeaseFlowReader
             .ToDictionary(p => p.Id);
 
         // Like the guided draft, the existence of the certificate is enough here: the one that was uploaded was recognised as official.
-        var withApe = (await db.PropertyDocuments
-                .AsNoTracking()
-                .Where(d => d.DocumentType == DocumentType.Ape && propertyIds.Contains(d.PropertyId))
-                .Select(d => d.PropertyId)
-                .Distinct()
-                .ToListAsync(cancellationToken))
+        // And, as in the draft, one of them must have its code and energy class: the contract prints them (LR-APE).
+        var apes = await db.PropertyDocuments
+            .AsNoTracking()
+            .Where(d => d.DocumentType == DocumentType.Ape && propertyIds.Contains(d.PropertyId))
+            .Select(d => new { d.PropertyId, d.ApeCode, d.ApeEnergyClass })
+            .ToListAsync(cancellationToken);
+        var withApe = apes.Select(d => d.PropertyId).ToHashSet();
+        var withApeIdentification = apes
+            .Where(d => PropertyDocument.IsApeIdentified(d.ApeCode, d.ApeEnergyClass))
+            .Select(d => d.PropertyId)
             .ToHashSet();
 
         foreach (var lease in drafts)
@@ -153,6 +157,7 @@ internal static class LeaseFlowReader
                 {
                     PropertyExists = true,
                     HasApe = withApe.Contains(lease.PropertyId),
+                    HasApeIdentification = withApeIdentification.Contains(lease.PropertyId),
                     HasCadastralData = new Property
                     {
                         CadastralSheet = property.CadastralSheet,

@@ -46,7 +46,10 @@ public class LeaseDraftFactory : CasazenWebApplicationFactory
         });
     }
 
-    /// <summary>A property of the org, long-term, with its energy certificate and its cadastral data: nothing is missing at step 1.</summary>
+    /// <summary>
+    /// A property of the org, long-term, with its energy certificate (with the code and the class the contract prints, LR-APE) and its
+    /// cadastral data: nothing is missing at step 1.
+    /// </summary>
     public async Task MakeReadyAsync(Guid propertyId, bool ape = true, bool cadastre = true, RentalMode mode = RentalMode.Long)
     {
         await using var scope = Services.CreateAsyncScope();
@@ -71,6 +74,8 @@ public class LeaseDraftFactory : CasazenWebApplicationFactory
                 StorageUrl = $"properties/{propertyId}/documents/ape.pdf",
                 DocumentType = DocumentType.Ape,
                 UploadedBy = property.OwnerId,
+                ApeCode = "1510800012345",
+                ApeEnergyClass = "C",
             });
         }
 

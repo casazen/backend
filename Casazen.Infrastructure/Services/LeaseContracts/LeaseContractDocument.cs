@@ -52,7 +52,7 @@ internal static class LeaseContractDocument
     /// <summary>
     /// Value of every placeholder for <paramref name="lease"/>; null when the lease has no such data. Cadastral data come
     /// from the property (sheet, parcel, category and income; subaltern when present), the APE identification from the
-    /// latest APE document of the property (code and energy class, LT-10), the security deposit from the lease.
+    /// latest APE document of the property that has it (code and energy class, LT-10), the security deposit from the lease.
     /// </summary>
     public static IReadOnlyDictionary<string, string?> ResolveData(LeaseContract lease)
     {
@@ -237,18 +237,19 @@ internal static class LeaseContractDocument
     }
 
     /// <summary>
-    /// Code and energy class of the latest APE document of the property; null when there is none or its identification
-    /// was not entered (the contract then waits for it).
+    /// Code and energy class of the latest APE document of the property that has them (a later one without them does not take its
+    /// place: the review of the draft asks for one that has them, <c>ape_identification_missing</c>, and this is the same rule); null
+    /// when no APE document has them (the contract then waits for them).
     /// </summary>
     private static string? FormatApe(Property? property)
     {
         var ape = property?.PropertyDocuments?
-            .Where(d => d.DocumentType == DocumentType.Ape)
+            .Where(d => d.DocumentType == DocumentType.Ape && d.HasApeIdentification)
             .OrderByDescending(d => d.UploadedAt)
             .FirstOrDefault();
-        return ape is { HasApeIdentification: true }
-            ? $"codice {ape.ApeCode!.Trim()}, classe energetica {ape.ApeEnergyClass!.Trim()}"
-            : null;
+        return ape is null
+            ? null
+            : $"codice {ape.ApeCode!.Trim()}, classe energetica {ape.ApeEnergyClass!.Trim()}";
     }
 
     private static string FormatAmount(decimal amount) => amount.ToString("N2", ItalianNumbers);

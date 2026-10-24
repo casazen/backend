@@ -5,6 +5,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services.LeaseContracts;
 using Casazen.Tests.Unit.Leases;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -450,6 +451,56 @@ public class LeaseDraftServiceTests
         var parties = await h.SaveAsync(imported.Id, imported.Version, 2, ValidParties);
         var terms = await h.SaveAsync(imported.Id, parties.Version, 3, """{"contractType":"Libero","taxRegime":"CedolareSecca","monthlyRent":900}""");
         Assert.Empty(Needs(terms.Flow, 3));
+    }
+
+    [Fact]
+    public async Task Confirm_ADraftMadeInCasazenNeedsTheCodeAndClassOfItsApe_TheContractPrintsTheLastIdentifiedOne_AnImportedOneIsNotAsked()
+    {
+        using var h = await NewAsync();
+        var (created, version) = await h.CompleteAsync();
+
+        // An APE the reading takes for valid (the mock) whose code and class were never saved: the model prints them, so the review
+        // cannot be confirmed (LR-APE). It used to pass and end in 422 contract_data_missing at the download for signature.
+        await h.SetApeIdentificationAsync(null, null);
+        var saved = await h.SaveAsync(created.Id, version, 1, $$"""{"propertyId":"{{h.PropertyId}}"}""");
+        Assert.Equal([LeaseNeedCodes.ApeIdentificationMissing], Needs(saved.Flow, 1));
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => h.Service.ConfirmReviewAsync(created.Id, saved.Version));
+        Assert.Equal("lease_review_blocked", error.Code);
+        var review = await h.Service.GetReviewAsync(created.Id);
+        Assert.Equal(LeaseReviewSeverity.Block, Assert.Single(review.Checks, c => c.Code == LeaseNeedCodes.ApeIdentificationMissing).Severity);
+        Assert.DoesNotContain(review.Checks, c => c.Code is LeaseNeedCodes.ApeOk or LeaseNeedCodes.ApeMissing);
+
+        // A certificate the reading could not take whole asks for the same thing: its code and class, not another upload.
+        h.Ape.Setup(a => a.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).ThrowsAsync(ApeComplianceException.IdentificationRequired());
+        var unreadable = await h.Service.GetReviewAsync(created.Id);
+        Assert.Equal([LeaseNeedCodes.ApeIdentificationMissing], unreadable.Checks.Where(c => c.Severity == LeaseReviewSeverity.Block).Select(c => c.Code));
+        h.Ape.Setup(a => a.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).Returns(Task.CompletedTask);
+
+        // A contract already signed prints nothing: its APE is not asked for.
+        var imported = await h.CreateAsync(LeaseOrigin.Imported);
+        Assert.Empty(Needs(imported.Flow, 1));
+
+        // With the code and the class on the document the review can be confirmed.
+        await h.SetApeIdentificationAsync(LeaseDraftHarness.SeededApeCode, LeaseDraftHarness.SeededApeEnergyClass);
+        Assert.NotNull((await h.Service.ConfirmReviewAsync(created.Id, saved.Version)).ReviewConfirmedAt);
+
+        // The contract prints the last APE that has them: a later one that has not does not take its place.
+        await using var db = h.SecondContext();
+        db.PropertyDocuments.Add(new PropertyDocument
+        {
+            PropertyId = h.PropertyId,
+            OrgId = h.OrgId,
+            FileName = "newer.pdf",
+            StorageUrl = "properties/newer.pdf",
+            DocumentType = DocumentType.Ape,
+            UploadedBy = LeaseDraftHarness.OwnerId,
+            UploadedAt = DateTime.UtcNow.AddDays(1),
+        });
+        await db.SaveChangesAsync();
+        var lease = await db.LeaseContracts.Include(l => l.Property).ThenInclude(p => p.PropertyDocuments).SingleAsync(l => l.Id == created.Id);
+        Assert.Equal(
+            $"codice {LeaseDraftHarness.SeededApeCode}, classe energetica {LeaseDraftHarness.SeededApeEnergyClass}",
+            LeaseContractDocument.ResolveData(lease)[LeaseContractPlaceholders.ApeData]);
     }
 
     [Fact]

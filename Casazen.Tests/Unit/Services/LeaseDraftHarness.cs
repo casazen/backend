@@ -132,6 +132,7 @@ internal sealed class LeaseDraftHarness : IDisposable
         Db.Properties.Add(property);
         if (withApe)
         {
+            // With the code and the class the contract prints (LR-APE): the review asks for them.
             Db.PropertyDocuments.Add(new PropertyDocument
             {
                 PropertyId = property.Id,
@@ -140,12 +141,28 @@ internal sealed class LeaseDraftHarness : IDisposable
                 StorageUrl = $"properties/{property.Id}/documents/ape.pdf",
                 DocumentType = DocumentType.Ape,
                 UploadedBy = OwnerId,
+                ApeCode = SeededApeCode,
+                ApeEnergyClass = SeededApeEnergyClass,
             });
         }
 
         await Db.SaveChangesAsync();
         Db.ChangeTracker.Clear();
         return property;
+    }
+
+    public const string SeededApeCode = "1510800012345";
+
+    public const string SeededApeEnergyClass = "C";
+
+    /// <summary>The code and the class of the APE of the property of the org as they are saved (<c>null</c>: the reading did not leave them).</summary>
+    public async Task SetApeIdentificationAsync(string? code, string? energyClass)
+    {
+        await using var db = SecondContext();
+        var ape = await db.PropertyDocuments.SingleAsync(d => d.PropertyId == PropertyId && d.DocumentType == DocumentType.Ape);
+        ape.ApeCode = code;
+        ape.ApeEnergyClass = energyClass;
+        await db.SaveChangesAsync();
     }
 
     // ---- shortcuts -----------------------------------------------------------------------------------------------

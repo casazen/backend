@@ -94,7 +94,7 @@ public static class LeaseReview
         if (values.PropertyId is not null && input.Facts.PropertyExists)
         {
             Add(LeaseNeedCodes.PropertyOk, LeaseReviewSeverity.Ok, 1);
-            if (!blocked.Contains(LeaseNeedCodes.ApeMissing) && input.Facts.HasApe)
+            if (!blocked.Contains(LeaseNeedCodes.ApeMissing) && !blocked.Contains(LeaseNeedCodes.ApeIdentificationMissing) && input.Facts.HasApe)
                 Add(LeaseNeedCodes.ApeOk, LeaseReviewSeverity.Ok, 1);
             if (!blocked.Contains(LeaseNeedCodes.CadastralMissing) && input.Facts.HasCadastralData)
                 Add(LeaseNeedCodes.CadastralOk, LeaseReviewSeverity.Ok, 1);

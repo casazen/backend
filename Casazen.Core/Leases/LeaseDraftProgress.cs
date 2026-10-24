@@ -61,6 +61,13 @@ public sealed record LeaseDraftFacts
     /// <summary>The property has an energy certificate (APE) that is valid.</summary>
     public bool HasApe { get; init; }
 
+    /// <summary>
+    /// At least one APE document of the property has its code and energy class (<c>PropertyDocument.HasApeIdentification</c>): what the
+    /// contract prints, which the reading of the certificate does not guarantee. The same rule as the contract's, so the review and the
+    /// final contract cannot disagree (LR-APE). Asked only of a contract made in CasaZen.
+    /// </summary>
+    public bool HasApeIdentification { get; init; }
+
     /// <summary>Sheet, parcel, category and income of the property are known (the subaltern is optional).</summary>
     public bool HasCadastralData { get; init; }
 
@@ -123,7 +130,8 @@ public sealed record LeaseDraftProgressInput
 public static class LeaseDraftProgress
 {
     /// <summary>The needs that are about the property and not about the values: they do not keep <c>DraftData</c> alive.</summary>
-    private static readonly HashSet<string> PropertyFacts = [LeaseNeedCodes.ApeMissing, LeaseNeedCodes.CadastralMissing];
+    private static readonly HashSet<string> PropertyFacts =
+        [LeaseNeedCodes.ApeMissing, LeaseNeedCodes.ApeIdentificationMissing, LeaseNeedCodes.CadastralMissing];
 
     public static LeaseDraftFlow Compute(LeaseDraftProgressInput input)
     {
@@ -208,8 +216,14 @@ public static class LeaseDraftProgress
         if (imported)
             return;
 
+        // The model of a contract made in CasaZen prints the code and the energy class of the APE ({{ape_estremi}}), and the reading of the
+        // certificate does not leave them on the document: without them the final contract would answer 422 contract_data_missing after the
+        // review was confirmed. An APE that is there but has neither is a need of its own, so that the interface points at where they are
+        // read or typed (LR-APE).
         if (!input.Facts.HasApe)
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.ApeMissing));
+        else if (!input.Facts.HasApeIdentification)
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.ApeIdentificationMissing));
         if (!input.Facts.HasCadastralData)
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.CadastralMissing));
     }
