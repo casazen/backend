@@ -42,9 +42,8 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _database = await PostgresTestDatabase.CreateAsync();
+        _database = await PostgresTestDatabase.CreateMigratedAsync();
         await using var db = _database.CreateContext();
-        await db.Database.MigrateAsync();
         var org = new OrgEntity { Name = "Casa Rossi", Slug = $"casa-rossi-{Guid.NewGuid():N}", DisplayName = "Casa Rossi", ContactEmail = "info@casarossi.example", IsActive = true };
         db.Orgs.Add(org);
         await db.SaveChangesAsync();

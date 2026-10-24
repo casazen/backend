@@ -35,10 +35,9 @@ public class HostOverviewPostgresTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _database = await PostgresTestDatabase.CreateAsync();
+        _database = await PostgresTestDatabase.CreateMigratedAsync();
         await using (var db = _database.CreateContext())
         {
-            await db.Database.MigrateAsync();
             _pg = await HostScopeScenario.SeedAsync(db);
             await HostOverviewScenario.AddAsync(db, _pg);
         }

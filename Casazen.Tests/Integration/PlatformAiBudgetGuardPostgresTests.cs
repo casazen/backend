@@ -104,12 +104,7 @@ public class PlatformAiBudgetGuardPostgresTests
     private static PlatformAiBudgetGuard CreateGuard(Casazen.Infrastructure.Data.AppDbContext db) =>
         new(db, new FixedTimeProvider(Now), NullLogger<PlatformAiBudgetGuard>.Instance);
 
-    private static async Task<PostgresTestDatabase> CreateMigratedDatabaseAsync()
-    {
-        var database = await PostgresTestDatabase.CreateAsync("aibudget");
-        database.MigrateToLatest();
-        return database;
-    }
+    private static Task<PostgresTestDatabase> CreateMigratedDatabaseAsync() => PostgresTestDatabase.CreateMigratedAsync("aibudget");
 
     private static async Task SeedBudgetAsync(PostgresTestDatabase database, long cap, long used, DateTime lastReset)
     {

@@ -41,8 +41,7 @@ public sealed class LegacyFileMigrationServiceTests : IAsyncLifetime
 
         if (PostgresTestServer.IsAvailable)
         {
-            _database = await PostgresTestDatabase.CreateAsync("legacy");
-            _database.MigrateToLatest();
+            _database = await PostgresTestDatabase.CreateMigratedAsync("legacy");
         }
     }
 

@@ -73,7 +73,7 @@ public sealed class SeasonalSuggestionsPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task RegenerateSuggestionsAsync_ConcurrentRunsOnPostgres_KeepOneRowPerDate()
     {
-        _database!.MigrateToLatest();
+        await _database!.MigrateEmptyToAsync();
         Guid propertyId;
         await using (var seed = _database.CreateContext())
         {

@@ -31,7 +31,7 @@ public class LeaseMultiplePartiesMigrationPostgresTests : IAsyncLifetime
     public async Task LeaseMultipleParties_ExistingLeases_BackfillsPositionsAndNormalizesFiscalCodes()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var (single, twoLandlords) = await SeedLeasesAsync(db);
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO "Parties" ("Id", "LeaseContractId", "Role", "FirstName", "LastName", "FiscalCode", "Citizenship", "ContactEmail", "IsExtraEU")
