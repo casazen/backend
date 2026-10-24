@@ -91,4 +91,10 @@ public enum LeaseEventType
     /// Payload: JSON with <c>userId</c> of the admin. No sensitive data.
     /// </summary>
     ConcordatoFacileAdminAccess,
+
+    /// <summary>
+    /// The landlord generated a signed link to access the ConcordatoFacile partner portal (ADR-007-R8).
+    /// No URL or signature is stored, only the timestamp for audit and brief refresh window (ADR-008-R9).
+    /// </summary>
+    ConcordatoFacileLinkGenerated,
 }
