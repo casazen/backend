@@ -96,6 +96,7 @@ builder.Services.AddCasazenPush(builder.Configuration);
 builder.Services.AddCasazenFileStorage(builder.Configuration);
 builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
+builder.Services.AddScoped<ConcordatoFacilePaymentHandler>();
 builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
 builder.Services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
 // The supplier's Connect account on top of the same onboarding (SP-14): status, links and "Verificato"; no payment yet (SP-15).
