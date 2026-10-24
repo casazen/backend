@@ -192,8 +192,10 @@ public class LeasesController(
     /// Create a minimal ConcordatoFacile draft (ADR-004): only PropertyId, OrgId, ContractType=Concordato and
     /// IsConcordatoFacileSource=true, other required fields from <see cref="LeaseDraftDefaults"/>. Idempotent: if a CF
     /// draft for the property already exists in Draft status, returns the existing one. Needs <c>lease.create</c> policy.
+    /// Behind <c>Features:ConcordatoFacile</c> (CF-FIX): 404 while the flag is off, like the rest of the ConcordatoFacile service.
     /// </summary>
     [HttpPost("drafts/concordatofacile")]
+    [FeatureGate(FeatureFlags.ConcordatoFacile)]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<IActionResult> CreateCfDraft([FromBody] CreateCfDraftRequest dto)
     {
