@@ -362,7 +362,8 @@ product and new entries in `LeaseContractPlaceholders` (task proposed in the PR:
 
 **Approving.** A lawyer reviews this exact text (the PDF of the preview and the file). Even when nothing changes,
 publish the reviewed text as a **new version** without "bozza" in its name and without the draft notice, and then follow
-"Approving a template" above; never set `Approved=true` on `2026-11-bozza-v1`.
+"Approving a template" above; never set `Approved=true` on `2026-11-bozza-v1` (replaced on 2026-10-24 by the product owner's order:
+see [Attivazione (2026-10-24)](#attivazione-2026-10-24)).
 
 ### Points for the lawyer, first
 
@@ -419,3 +420,24 @@ lease with complete data has the `BOZZA` watermark on every page, no `[TESTO DEL
 `[DATO MANCANTE: …]`; the final contract still answers 422; numbering, internal references and the list of the clauses
 approved in writing agree; no example datum (email, IBAN, amount) slipped in where the product has none; the reference
 drafts exist in `docs/legal-drafts/leases/`.
+
+## Attivazione (2026-10-24)
+
+The product owner ordered the activation of the three templates `2026-11-bozza-v1` (`CedolareSecca`, `RegimeOrdinario`,
+`CanoneConcordato`); the legal opinions were obtained. This replaces the line "never set `Approved=true` on `2026-11-bozza-v1`" of
+[Bozze 2026-11](#bozze-2026-11-draft-templates-task-lg-02).
+
+- **Only with environment variables on the hosts.** For each regime, on the API host of the environment (test, then production):
+  `LeaseTemplates__Variants__<Regime>__VersionId=2026-11-bozza-v1`, `LeaseTemplates__Variants__<Regime>__Approved=true` and
+  `LeaseTemplates__Variants__<Regime>__ApprovalReference=<who approved: opinion or protocol number>` (and/or `…__ApprovedAt=<YYYY-MM-DD>`),
+  then redeploy (the files are read once per process). The repository cannot approve them: `LeaseTemplateDraftsTests` fails if any
+  `appsettings*.json` names a version or sets `Approved=true`. A wrong value stops the startup ("Startup validation"): Railway keeps the
+  previous deployment.
+- **Rollback:** `LeaseTemplates__Variants__<Regime>__Approved=false` and redeploy. The final contract answers
+  `422 contract_template_not_approved` again and the preview goes back to `BOZZA`.
+- **From then on the security deposit is a required datum of every contract made in CasaZen** (LR-DEP): the three templates print
+  `{{deposito_cauzionale}}` in the "Deposito cauzionale" article, so `contract.pdf` and `POST …/sent` answer `422 contract_data_missing` for
+  a lease without one. The guided draft therefore asks for it at step 3 (need `deposit_missing`; `0` is a valid answer, "none") and the
+  review cannot be confirmed without it ([`long-rent-lease-draft.md`](long-rent-lease-draft.md)). An imported contract is not affected:
+  it has no template. A draft whose review was confirmed before this change, without a deposit, is blocked again (step 3 asks for it, and
+  typing it withdraws the old confirmation).
