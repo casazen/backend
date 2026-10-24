@@ -3137,4 +3137,7 @@
   <data name="ApeField_ExpiryDate" xml:space="preserve">
     <value>valid expiry date</value>
   </data>
+  <data name="ConcordatoFacileGiftAlreadyExists" xml:space="preserve">
+    <value>The organization already has a ConcordatoFacile gift.</value>
+  </data>
 </root>
