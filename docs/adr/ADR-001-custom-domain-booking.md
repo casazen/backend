@@ -1,6 +1,6 @@
 # ADR-001: Custom domain and subdomain booking resolution
 
-**Status:** Accepted (Fase 0 spike)  
+**Status:** Accepted (amended 2026-10-24)  
 **Date:** 2026-06-19  
 **Issue:** #288  
 **Informs:** `spec-custom-domain-booking` (US-024, Fase 1)
@@ -71,3 +71,46 @@ Document only. Optional staging test: configure one `test-org.casazen.it` subdom
 
 - Fase 1 requires EF migration on `Org`, new `resolve-host` endpoint, Vercel middleware, and onboarding PLG step for host mode selection.
 - Custom domain for supplier orgs deferred to Fase 2.
+
+## Amendment 2026-10-24 (run R20261024-1925)
+
+**Why:** NF-02 adds Swiss property support with CHF currency. Properties need country and currency fields. Direct booking for CHF properties is deferred per D-02.
+
+**Decision delta:**
+
+### Property Country and Currency Fields
+
+Add to Property entity:
+- `Country` varchar(2) non-null default 'IT' (ISO 3166-1 alpha-2)
+- `Currency` varchar(3) non-null default 'EUR' (ISO 4217)
+
+### Swiss Municipality Table
+
+For Swiss properties (Country = 'CH'):
+- `SwissMunicipality` table (CantonCode, MunicipalityCode, OfficialName) for city lookup
+- Similar to Comuni table for Italian properties (ADR-007)
+
+### CHF Direct Booking Deferred
+
+Per D-02, direct booking for CHF properties is not supported in phase 1:
+- `POST /api/bookings` for CHF property returns 501 `currency_not_supported`
+- Manual booking and iCal sync work normally
+- Future phase: multi-currency Stripe Connect setup
+
+### Resolve-Host Extension
+
+`GET /api/public/resolve-host` response includes:
+- `property.currency` in branding response for multi-currency display
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-001-R7 | P0 | Property MUST add Country varchar(2) non-null default 'IT', Currency varchar(3) non-null default 'EUR' |
+| ADR-001-R8 | P0 | Migration MUST backfill all existing Property rows to Country='IT', Currency='EUR' |
+| ADR-001-R9 | P0 | SwissMunicipality table (CantonCode, MunicipalityCode, OfficialName) for CH property city lookup |
+| ADR-001-R10 | P0 | Direct booking for CHF properties MUST return 501 `currency_not_supported` in phase 1 (deferred per D-02) |
+| ADR-001-R11 | P1 | GET /api/public/resolve-host MUST include property.currency in branding response for multi-currency display |
+
+**Consequences delta:**
+- Backend: Property.Country + Property.Currency fields, SwissMunicipality migration, direct booking validation
+- Frontend: Country selector in property form, currency display
+- Multi-currency bookings without conversion deferred (totals per currency, no exchange rates)

@@ -1,6 +1,6 @@
 # ADR-009: ConcordatoFacile Document Extraction Pipeline
 
-**Status:** Accepted  
+**Status:** Accepted (amended 2026-10-24)  
 **Date:** 2026-10-23  
 **Issue:** none (run R20261023-1107)  
 **Informs:** NF-07 (ConcordatoFacile document extraction)
@@ -135,3 +135,85 @@ Conflicts flagged in `ExtractionResult.conflicts`, document set to `NeedsReview`
 - Backend: Document upload returns `{id, extractionStatus: 'Pending'}`
 - Backend: Document list includes extraction metadata
 - Frontend: Displays status badges, refetches on page mount
+
+## Amendment 2026-10-24 (run R20261024-1925)
+
+**Why:** NF-10 extends document extraction from lease contracts to ID documents (passport, ID card, residence permit) for guest check-in. MRZ reading and check digit validation required.
+
+**Decision delta:**
+
+### ID Document Support
+
+Extend OCR pipeline for identity documents:
+- Passport (TD-3 MRZ)
+- ID card (TD-1 MRZ)
+- Residence permit
+
+### MRZ Reading
+
+Machine Readable Zone extraction per ICAO 9303:
+- Use PassportEye (Apache-2.0) or Tesseract with MRZ-specific patterns
+- Extract: Name, Surname, DOB, Nationality, Document Number, Expiration Date
+
+### Check Digit Validation
+
+ICAO 9303 mod-10 weighted sum:
+- Validate document number check digit
+- Validate DOB check digit
+- Validate expiration check digit
+- Flag invalid documents for manual review
+
+### DocumentImage Entity
+
+For guest check-in documents:
+
+```csharp
+public class DocumentImage : ITenantOwned
+{
+    public Guid Id { get; set; }
+    public Guid OrgId { get; set; }
+    public Guid GuestId { get; set; }
+    public Guid BookingId { get; set; }
+    public string FrontImageUrl { get; set; }  // Encrypted
+    public string BackImageUrl { get; set; }  // Encrypted, nullable
+    public DateTime UploadedAt { get; set; }
+    public DateTime? ProcessedAt { get; set; }
+    public DateTime? DeletedAt { get; set; }
+}
+```
+
+### Ticino Zero Retention
+
+Per ADR-013, Ticino properties (Property.CantonCode == "TI"):
+- Process in-memory only
+- NEVER write DocumentImage row
+- Comply with RL 942.120 art. 6
+
+### Alloggiati Receipt Deletion Trigger
+
+When Alloggiati receipt received (ADR-015 integration):
+- Enqueue `DocumentDeletionJob(documentId)`
+- Delete DocumentImage row + object storage
+- Per D-07 requirement
+
+### Extraction Populates StayGuest
+
+Extracted data populates StayGuest fields:
+- DocumentType, DocumentNumber, IssuePlace, Nationality, DOB, ExpirationDate
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-009-R21 | P0 | DocumentImage table (GuestId, BookingId, FrontImageUrl encrypted, BackImageUrl encrypted nullable, UploadedAt, ProcessedAt, DeletedAt, ITenantOwned) for ID documents |
+| ADR-009-R22 | P0 | MRZ extraction MUST support passport (TD-3), ID card (TD-1), residence permit, output Name/Surname/DOB/Nationality/DocumentNumber/ExpirationDate |
+| ADR-009-R23 | P0 | Check digit validation MUST use ICAO 9303 algorithm (mod-10 weighted sum), flag invalid documents for manual review |
+| ADR-009-R24 | P0 | Ticino properties (Property.CantonCode == "TI") MUST process in-memory only, NEVER write DocumentImage row per RL 942.120 art. 6 |
+| ADR-009-R25 | P0 | Alloggiati receipt arrival MUST enqueue DocumentDeletionJob, delete DocumentImage row + object storage per D-07 |
+| ADR-009-R26 | P0 | OCR library MUST be PassportEye (Apache-2.0) or Tesseract (Apache-2.0), license verified before use |
+| ADR-009-R27 | P0 | Extraction result MUST populate StayGuest fields (DocumentType, DocumentNumber, IssuePlace, Nationality, DOB, ExpirationDate) |
+| ADR-009-R28 | P1 | Manual entry always possible (guest can skip OCR, fill form directly) |
+
+**Consequences delta:**
+- Backend: DocumentImage entity + encryption, MRZ extraction service, check digit validation, Ticino in-memory processing, Alloggiati receipt deletion trigger
+- Frontend: Document upload UI in check-in, extracted data review screen
+- Tests: MRZ proof test with ICAO 9303 test vectors, Ticino in-memory proof test
+- License: PassportEye Apache-2.0, Tesseract Apache-2.0 verified
