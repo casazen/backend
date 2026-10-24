@@ -159,9 +159,14 @@ public class AdminConcordatoFacileControllerTests
                 });
             });
 
+        // Create the real service that will be used by the controller
+        var serviceLogger = new Mock<ILogger<Casazen.Infrastructure.Services.ConcordatoFacileAdminService>>();
+        var concordatoFacileService = new Casazen.Infrastructure.Services.ConcordatoFacileAdminService(
+            db, activityLog.Object, serviceLogger.Object);
+
         var logger = new Mock<ILogger<AdminConcordatoFacileController>>();
 
-        var controller = new AdminConcordatoFacileController(db, activityLog.Object, logger.Object)
+        var controller = new AdminConcordatoFacileController(db, concordatoFacileService, logger.Object)
         {
             ControllerContext = new ControllerContext
             {

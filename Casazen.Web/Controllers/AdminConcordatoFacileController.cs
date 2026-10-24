@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -18,7 +19,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.AdminOnly)]
 public class AdminConcordatoFacileController(
     AppDbContext db,
-    IActivityLog activityLog,
+    IConcordatoFacileAdminService concordatoFacileService,
     ILogger<AdminConcordatoFacileController> logger) : ControllerBase
 {
     /// <summary>Manually grant a ConcordatoFacile gift to an organization with a biennial subscription.</summary>
@@ -39,46 +40,19 @@ public class AdminConcordatoFacileController(
         if (!await db.Orgs.AnyAsync(o => o.Id == orgId))
             return NotFound();
 
-        // Check if org already has a gift
-        var existingGift = await db.ConcordatoFacileGifts
-            .FirstOrDefaultAsync(g => g.OrgId == orgId);
-
-        if (existingGift is not null)
+        try
         {
-            logger.LogWarning(
-                "Admin {UserId} attempted to grant gift to org {OrgId} which already has gift {GiftId}",
-                userId, orgId, existingGift.Id);
-            return this.ApiProblem(
-                StatusCodes.Status409Conflict,
-                "concordatofacile_gift_already_exists",
-                "ConcordatoFacileGiftAlreadyExists");
+            var giftId = await concordatoFacileService.GrantGiftAsync(orgId, request.SubscriptionId, userId);
+
+            logger.LogInformation(
+                "Admin {UserId} granted ConcordatoFacile gift {GiftId} to org {OrgId} for subscription {SubscriptionId}. Reason: {Reason}",
+                userId, giftId, orgId, request.SubscriptionId, request.Reason);
+
+            return Created($"/api/admin/orgs/{orgId}/concordatofacile/gift", new { giftId });
         }
-
-        // Create the gift
-        var gift = new ConcordatoFacileGift
+        catch (DomainConflictException ex)
         {
-            OrgId = orgId,
-            GrantedBySubscriptionId = request.SubscriptionId,
-            GrantedAt = DateTime.UtcNow,
-            Status = ConcordatoFacileGiftStatus.Available
-        };
-
-        db.ConcordatoFacileGifts.Add(gift);
-
-        // Record activity log
-        activityLog.Record(new OrgActivity(
-            OrgId: orgId,
-            Type: OrgActivityType.AdminGrantedConcordatoFacileGift,
-            ActorUserId: userId,
-            SubjectId: orgId.ToString()
-        ));
-
-        await db.SaveChangesAsync();
-
-        logger.LogInformation(
-            "Admin {UserId} granted ConcordatoFacile gift {GiftId} to org {OrgId} for subscription {SubscriptionId}. Reason: {Reason}",
-            userId, gift.Id, orgId, request.SubscriptionId, request.Reason);
-
-        return Created($"/api/admin/orgs/{orgId}/concordatofacile/gift", new { giftId = gift.Id });
+            return this.ApiProblem(StatusCodes.Status409Conflict, ex.Code, ex.MessageKey);
+        }
     }
 }

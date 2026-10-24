@@ -385,6 +385,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IHostResourceLookup, HostResourceLookup>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
+        services.AddScoped<IConcordatoFacileAdminService, ConcordatoFacileAdminService>();
         // Alloggiati Web credentials of a property: write-only, encrypted at rest (CO-14, A5-30).
         services.AddScoped<IQuesturaCredentialsService, QuesturaCredentialsService>();
 

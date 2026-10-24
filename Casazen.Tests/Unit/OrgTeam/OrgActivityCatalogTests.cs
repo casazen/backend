@@ -39,6 +39,7 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.PropertyModeChanged, 42)]
     [InlineData(OrgActivityType.TrustedSupplierAdded, 60)]
     [InlineData(OrgActivityType.TrustedSupplierRemoved, 61)]
+    [InlineData(OrgActivityType.AdminGrantedConcordatoFacileGift, 70)]
     public void Type_TheIntegerOfEveryEvent_IsPinned(OrgActivityType type, int value)
     {
         // The value is what the database holds: reordering or reusing it would rewrite history.
@@ -48,7 +49,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(18, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(19, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]
