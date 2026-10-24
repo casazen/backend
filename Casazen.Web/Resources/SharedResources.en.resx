@@ -1417,6 +1417,12 @@
   <data name="PropertyMinNightsInvalid" xml:space="preserve">
     <value>The minimum stay is not valid: use 1 to 30 nights, or no minimum.</value>
   </data>
+  <data name="PropertyMunicipalityNotInIstatList" xml:space="preserve">
+    <value>The property municipality could not be found in the ISTAT comuni list.</value>
+  </data>
+  <data name="PropertyMunicipalityNotSet" xml:space="preserve">
+    <value>The property municipality is not set. Please select the comune from the official ISTAT list.</value>
+  </data>
   <data name="PropertyWeekendSurchargeRange" xml:space="preserve">
     <value>The weekend surcharge must be between {1} and {2} percent.</value>
   </data>

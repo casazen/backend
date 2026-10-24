@@ -18,6 +18,7 @@ public class ConcordatoFacileController(
     IConcordatoFacileCheckoutService checkoutService,
     IConcordatoFacileAccessService accessService,
     IConcordatoFacileGiftService giftService,
+    IConcordatoFacileLinkService linkService,
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService) : ControllerBase
 {
@@ -174,5 +175,46 @@ public class ConcordatoFacileController(
             PurchasedAt = accessResult.PurchasedAt,
             GiftAssignedAt = accessResult.GiftAssignedAt
         });
+    }
+
+    /// <summary>
+    /// Generates a signed link to the ConcordatoFacile partner portal (ADR-007).
+    /// Link expires in 15 minutes and includes HMAC-SHA256 signature.
+    /// Requires LeaseCreate policy (write-level action) and verified access.
+    /// </summary>
+    /// <param name="leaseId">The lease contract ID from the route</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Signed URL to open in a new tab with Cache-Control: private, no-store header</returns>
+    [HttpPost("link")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    [ProducesResponseType(typeof(LinkResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<LinkResponse>> GenerateLink(
+        Guid leaseId,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        try
+        {
+            var result = await linkService.GenerateSignedLinkAsync(leaseId, User, cancellationToken);
+
+            // ADR-007-R11: Set Cache-Control header to prevent caching of temporary signed URL
+            Response.Headers.CacheControl = "private, no-store";
+
+            return Ok(new LinkResponse { Url = result.Url });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (Core.Exceptions.DomainRuleException ex) when (ex.Code == "property_municipality_unknown")
+        {
+            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, ex.Code, ex.MessageKey);
+        }
     }
 }
