@@ -1605,4 +1605,100 @@
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>You receive this email because the host replied to you. We send at most one every 10 minutes per conversation.</value>
   </data>
+  <data name="Push_BookingRequest_Title" xml:space="preserve">
+    <value>New booking request</value>
+  </data>
+  <data name="Push_BookingRequest_Body" xml:space="preserve">
+    <value>{0}: from {1} to {2}, guests: {3}. Reply before the deadline.</value>
+  </data>
+  <data name="Push_BookingCancelledByGuest_Title" xml:space="preserve">
+    <value>Booking cancelled by the guest</value>
+  </data>
+  <data name="Push_BookingCancelledByGuest_Body" xml:space="preserve">
+    <value>{0}: from {1} to {2}.</value>
+  </data>
+  <data name="Push_DeferredChargeFailed_Title" xml:space="preserve">
+    <value>Booking payment failed</value>
+  </data>
+  <data name="Push_DeferredChargeFailed_Body" xml:space="preserve">
+    <value>{0}: from {1} to {2}. The charge did not go through.</value>
+  </data>
+  <data name="Push_DeferredChargeCancelled_Title" xml:space="preserve">
+    <value>Booking cancelled, not paid</value>
+  </data>
+  <data name="Push_DeferredChargeCancelled_Body" xml:space="preserve">
+    <value>{0}: from {1} to {2}. The dates are free again.</value>
+  </data>
+  <data name="Push_PropertyModeChangeScheduled_Title" xml:space="preserve">
+    <value>Mode change scheduled</value>
+  </data>
+  <data name="Push_PropertyModeChangeScheduled_Body" xml:space="preserve">
+    <value>{0}: the change of rental mode was scheduled.</value>
+  </data>
+  <data name="Push_PropertyModeChangeApplied_Title" xml:space="preserve">
+    <value>Mode change applied</value>
+  </data>
+  <data name="Push_PropertyModeChangeApplied_Body" xml:space="preserve">
+    <value>{0}: the rental mode of the property was changed.</value>
+  </data>
+  <data name="Push_PropertyModeChangeFailed_Title" xml:space="preserve">
+    <value>Mode change failed</value>
+  </data>
+  <data name="Push_PropertyModeChangeFailed_Body" xml:space="preserve">
+    <value>{0}: the change of rental mode was not applied.</value>
+  </data>
+  <data name="Push_PropertyComplianceSuspended_Title" xml:space="preserve">
+    <value>Property suspended</value>
+  </data>
+  <data name="Push_PropertyComplianceSuspended_Body" xml:space="preserve">
+    <value>{0}: complete the compliance requirements to reactivate it.</value>
+  </data>
+  <data name="Push_CinDeadline_Title" xml:space="preserve">
+    <value>CIN deadline</value>
+  </data>
+  <data name="Push_CinDeadline_Body" xml:space="preserve">
+    <value>{0}: the CIN is due by {1}.</value>
+  </data>
+  <data name="Push_RentPaymentReceived_Title" xml:space="preserve">
+    <value>Rent received</value>
+  </data>
+  <data name="Push_RentPaymentReceived_Body" xml:space="preserve">
+    <value>{0}: a rent installment was paid.</value>
+  </data>
+  <data name="Push_ServicePaymentRequested_Title" xml:space="preserve">
+    <value>Service payment due</value>
+  </data>
+  <data name="Push_ServicePaymentRequested_Body" xml:space="preserve">
+    <value>{0}: a service payment is due.</value>
+  </data>
+  <data name="Push_ServicePaymentFailed_Title" xml:space="preserve">
+    <value>Service payment failed</value>
+  </data>
+  <data name="Push_ServicePaymentFailed_Body" xml:space="preserve">
+    <value>{0}: the payment did not go through, you have a new link.</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Title" xml:space="preserve">
+    <value>Payment received</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Body" xml:space="preserve">
+    <value>{0}: you received the payment of a service.</value>
+  </data>
+  <data name="Push_ServicePaymentRefunded_Title" xml:space="preserve">
+    <value>Service payment refunded</value>
+  </data>
+  <data name="Push_ServicePaymentRefunded_Body" xml:space="preserve">
+    <value>{0}: a service payment was refunded.</value>
+  </data>
+  <data name="Push_ServicePaymentOfflineRecorded_Title" xml:space="preserve">
+    <value>Payment recorded outside CasaZen</value>
+  </data>
+  <data name="Push_ServicePaymentOfflineRecorded_Body" xml:space="preserve">
+    <value>{0}: the supplier recorded a payment received outside CasaZen.</value>
+  </data>
+  <data name="Push_CinReminder_Title" xml:space="preserve">
+    <value>CIN reminder</value>
+  </data>
+  <data name="Push_CinReminder_Body" xml:space="preserve">
+    <value>{0}: remember to enter the CIN.</value>
+  </data>
 </root>

@@ -486,6 +486,17 @@ public sealed partial class SupplierPaymentService
             return false;
 
         var context = await ReadContextAsync(payment, cancellationToken);
+        if (context.PropertyId != Guid.Empty)
+        {
+            PushPayment(
+                PushDeliveryKeys.ServicePaymentFailed(payment.Id, payment.SentCount, payment.LastSentAt),
+                PushAudience.PropertyHosts(context.PropertyId),
+                PushTypes.ServicePaymentFailed,
+                "Push_ServicePaymentFailed",
+                context,
+                payment.ServiceRequestId);
+        }
+
         var validUntil = ValidUntil(payment) ?? Now().AddDays(options.Value.PaymentLinkValidityDays);
         return emailQueue.Enqueue(
             recipient,

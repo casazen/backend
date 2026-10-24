@@ -136,6 +136,8 @@ public sealed class BookingCancellationService(
             submitted.Add(await refundService.SubmitAsync(refund, throwOnTransientFailure: false, cancellationToken, notifyGuest: false));
 
         await NotifyGuestAsync(booking.Id, submitted, cancellationToken);
+        if (request.Initiator == BookingCancellationInitiator.Guest)
+            await notifier.BookingCancelledByGuestAsync(booking.Id, cancellationToken);
         return new BookingCancellationResult(booking, submitted, canceledIntents);
     }
 

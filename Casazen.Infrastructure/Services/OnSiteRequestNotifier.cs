@@ -1,6 +1,8 @@
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -17,7 +19,8 @@ public sealed class OnSiteRequestNotifier(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks links,
-    ILogger<OnSiteRequestNotifier> logger)
+    ILogger<OnSiteRequestNotifier> logger,
+    IPushNotificationService? pushNotifications = null)
 {
     /// <summary>To the guest: request received, confirm the email with <paramref name="token"/> by <c>RequestExpiresAt</c>.</summary>
     public Task RequestReceivedAsync(Guid bookingId, string token, CancellationToken cancellationToken = default) =>
@@ -44,6 +47,14 @@ public sealed class OnSiteRequestNotifier(
         {
             if (data.RequestExpiresAt is not { } answerBy)
                 return null;
+
+            // The same event reaches the hosts' devices: property, dates and guests, no guest name. Best effort, once per booking.
+            BestEffortPush.Enqueue(pushNotifications, logger, PushDeliveryKeys.BookingRequest(data.BookingId), PushAudience.BookingHosts(data.BookingId), () =>
+            {
+                var push = EmailTemplates.BookingRequestPush(
+                    EmailTemplates.DefaultCulture, data.PropertyName, data.CheckInDate, data.CheckOutDate, data.NumberOfGuests);
+                return new PushNotificationPayload(push.Title, push.Body, PushTypes.BookingRequest, data.BookingId, PushRoutes.Booking(data.BookingId));
+            });
 
             var content = EmailTemplates.OnSiteRequestToHost(
                 EmailTemplates.DefaultCulture,

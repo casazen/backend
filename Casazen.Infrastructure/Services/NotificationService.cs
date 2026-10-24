@@ -3,6 +3,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -122,6 +123,9 @@ public class NotificationService(
         var complianceUrl = links.IsConfigured ? links.HostCinCompliance() : null;
         var email = EmailTemplates.CinDeadlineAlert(EmailTemplates.DefaultCulture, alert.Deadline, propertyNames, complianceUrl);
 
+        // The hosts' devices hear of the same stage, one push per property (the email lists them all); best effort.
+        await PushCinDeadlineAsync(alert, propertyIds, cancellationToken);
+
         // Delivered by EmailDeliveryJob (retries on transient provider errors); a missing address or provider is logged
         // by the queue.
         if (emailQueue.Enqueue(contactEmail, email, EmailTemplates.Names.CinDeadlineAlert))
@@ -183,6 +187,36 @@ public class NotificationService(
         {
             logger.LogWarning(
                 "OTA stay review push of booking {BookingId} not queued (org {OrgId})", booking.Id, booking.OrgId);
+        }
+    }
+
+    private async Task PushCinDeadlineAsync(CinDeadlineAlert alert, Guid[] propertyIds, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var properties = await db.Properties
+                .AsNoTracking()
+                .Where(p => p.OrgId == alert.OrgId && propertyIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.Name })
+                .ToListAsync(cancellationToken);
+            foreach (var property in properties)
+            {
+                BestEffortPush.Enqueue(
+                    pushNotifications,
+                    logger,
+                    PushDeliveryKeys.CinDeadline(property.Id, alert.Deadline.Deadline, alert.Deadline.DaysUntilDeadline),
+                    PushAudience.PropertyHosts(property.Id),
+                    () =>
+                    {
+                        var push = EmailTemplates.CinDeadlinePush(EmailTemplates.DefaultCulture, property.Name, alert.Deadline.Deadline);
+                        return new PushNotificationPayload(
+                            push.Title, push.Body, PushTypes.CinDeadline, BookingId: null, PushRoutes.Properties, PropertyId: property.Id);
+                    });
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "CIN deadline pushes of org {OrgId} could not be prepared", alert.OrgId);
         }
     }
 
@@ -254,6 +288,24 @@ public class NotificationService(
                     links.IsConfigured ? links.HostProperty(change.PropertyId, change.FromMode) : null)),
             _ => throw new ArgumentOutOfRangeException(nameof(notice), notice.Kind, "Unknown property mode notice"),
         };
+
+        var (stage, pushType) = notice.Kind switch
+        {
+            PropertyModeNoticeKind.Scheduled => ("Scheduled", PushTypes.PropertyModeChangeScheduled),
+            PropertyModeNoticeKind.Applied => ("Applied", PushTypes.PropertyModeChangeApplied),
+            _ => ("Failed", PushTypes.PropertyModeChangeFailed),
+        };
+        BestEffortPush.Enqueue(
+            pushNotifications,
+            logger,
+            PushDeliveryKeys.PropertyModeChange(notice.ChangeId, stage.ToLowerInvariant()),
+            PushAudience.PropertyHosts(change.PropertyId),
+            () =>
+            {
+                var push = EmailTemplates.PropertyModeChangePush(EmailTemplates.DefaultCulture, stage, change.PropertyName);
+                return new PushNotificationPayload(
+                    push.Title, push.Body, pushType, BookingId: null, PushRoutes.Properties, PropertyId: change.PropertyId);
+            });
 
         // Delivered by EmailDeliveryJob (retries on transient provider errors); a missing address or provider is logged by
         // the queue.

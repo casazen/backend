@@ -61,6 +61,15 @@ public sealed partial class SupplierPaymentService
     /// <summary>The receipt to the supplier: price gross, the commission, the net. The net is before Stripe's own fees and nothing is said about the payout.</summary>
     private async Task SendReceiptAsync(ServiceRequestPayment payment, CancellationToken cancellationToken)
     {
+        // The supplier's devices hear of the payment even when the org has no email address.
+        PushPayment(
+            PushDeliveryKeys.ServicePaymentReceived(payment.Id),
+            PushAudience.SupplierOrg(payment.SupplierOrgId),
+            PushTypes.ServicePaymentReceived,
+            "Push_ServicePaymentReceived",
+            await ReadContextAsync(payment, cancellationToken),
+            payment.ServiceRequestId);
+
         var recipient = await ReadSupplierEmailAsync(payment.SupplierOrgId, cancellationToken);
         if (string.IsNullOrWhiteSpace(recipient))
         {
@@ -129,6 +138,25 @@ public sealed partial class SupplierPaymentService
                     EmailTemplates.DefaultCulture, context.SupplierName, context.ServiceName, context.PropertyName, refund.AmountCents),
                 EmailTemplates.Names.ServicePaymentRefundedPayer);
         }
+
+        if (context.PropertyId != Guid.Empty)
+        {
+            PushPayment(
+                PushDeliveryKeys.ServicePaymentRefunded(refundId, toSupplier: false),
+                PushAudience.PropertyHosts(context.PropertyId),
+                PushTypes.ServicePaymentRefunded,
+                "Push_ServicePaymentRefunded",
+                context,
+                payment.ServiceRequestId);
+        }
+
+        PushPayment(
+            PushDeliveryKeys.ServicePaymentRefunded(refundId, toSupplier: true),
+            PushAudience.SupplierOrg(payment.SupplierOrgId),
+            PushTypes.ServicePaymentRefunded,
+            "Push_ServicePaymentRefunded",
+            context,
+            payment.ServiceRequestId);
 
         var supplier = await ReadSupplierEmailAsync(payment.SupplierOrgId, cancellationToken);
         if (!string.IsNullOrWhiteSpace(supplier))

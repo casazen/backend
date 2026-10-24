@@ -8,6 +8,7 @@ using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
@@ -46,7 +47,8 @@ public sealed partial class SupplierPaymentService(
     IConfiguration configuration,
     ISupplierPaymentJobScheduler jobScheduler,
     ILogger<SupplierPaymentService> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IPushNotificationService? pushNotifications = null)
     : ISupplierPaymentService, ISupplierPaymentWebhookService, ISupplierPaymentJobService, ISupplierPaymentRefundService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -57,7 +59,26 @@ public sealed partial class SupplierPaymentService(
     private sealed record SupplierState(string? AccountId, bool CanReceivePayments, string Name);
 
     /// <summary>What the emails and the payment page name: the supplier, the work and the property.</summary>
-    private sealed record PaymentContext(string SupplierName, string ServiceName, string PropertyName, DateTime? CompletedAt);
+    private sealed record PaymentContext(string SupplierName, string ServiceName, string PropertyName, DateTime? CompletedAt, Guid PropertyId);
+
+    /// <summary>
+    /// The push that follows an email of a service payment, to the hosts of the property of the request (the payer) or to the supplier
+    /// org: the property only, never the supplier, the amount or a name. The entity of the notification is the service request.
+    /// Best effort: a failure is logged and never undoes the payment.
+    /// </summary>
+    private void PushPayment(
+        string deliveryKey,
+        PushAudience audience,
+        string type,
+        string textPrefix,
+        PaymentContext context,
+        Guid serviceRequestId) =>
+        BestEffortPush.Enqueue(pushNotifications, logger, deliveryKey, audience, () =>
+        {
+            var push = EmailTemplates.ServicePaymentPush(EmailTemplates.DefaultCulture, textPrefix, context.PropertyName);
+            return new PushNotificationPayload(
+                push.Title, push.Body, type, BookingId: null, PushRoutes.Properties, serviceRequestId);
+        });
 
     // ─── Mode and plan ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -289,7 +310,7 @@ public sealed partial class SupplierPaymentService(
         var serviceName = !string.IsNullOrWhiteSpace(request?.ServiceNameSnapshot)
             ? request.ServiceNameSnapshot
             : EmailTemplates.ServiceCategoryLabel(EmailTemplates.DefaultCulture, request?.Category ?? string.Empty);
-        return new PaymentContext(supplier.Name, serviceName, propertyName, request?.CompletedAt);
+        return new PaymentContext(supplier.Name, serviceName, propertyName, request?.CompletedAt, request?.PropertyId ?? Guid.Empty);
     }
 
     // ─── The link ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -357,6 +378,17 @@ public sealed partial class SupplierPaymentService(
             return false;
 
         var context = await ReadContextAsync(payment, cancellationToken);
+        if (context.PropertyId != Guid.Empty)
+        {
+            PushPayment(
+                PushDeliveryKeys.ServicePaymentRequested(payment.Id, payment.SentCount, payment.LastSentAt),
+                PushAudience.PropertyHosts(context.PropertyId),
+                PushTypes.ServicePaymentRequested,
+                "Push_ServicePaymentRequested",
+                context,
+                payment.ServiceRequestId);
+        }
+
         var validUntil = ValidUntil(payment) ?? Now().AddDays(options.Value.PaymentLinkValidityDays);
         var url = links.ServicePayment(payment.Id, token);
 

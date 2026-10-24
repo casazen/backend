@@ -256,11 +256,22 @@ public sealed partial class SupplierPaymentService
     {
         try
         {
+            var context = await ReadContextAsync(payment, cancellationToken);
+            if (context.PropertyId != Guid.Empty)
+            {
+                PushPayment(
+                    PushDeliveryKeys.ServicePaymentOfflineRecorded(payment.Id),
+                    PushAudience.PropertyHosts(context.PropertyId),
+                    PushTypes.ServicePaymentOfflineRecorded,
+                    "Push_ServicePaymentOfflineRecorded",
+                    context,
+                    request.Id);
+            }
+
             var recipient = await ReadPayerEmailAsync(payment.PayerOrgId, cancellationToken);
             if (string.IsNullOrWhiteSpace(recipient))
                 return;
 
-            var context = await ReadContextAsync(payment, cancellationToken);
             emailQueue.Enqueue(
                 recipient,
                 EmailTemplates.ServicePaymentOfflineRecorded(

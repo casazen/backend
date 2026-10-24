@@ -25,7 +25,7 @@ public sealed class QueuedInAppNotification
     /// <summary>A value of <c>PushTypes</c>.</summary>
     public string Type { get; set; } = string.Empty;
 
-    /// <summary>The service request for the <c>service-request-*</c> types, else the booking; <c>null</c> when there is none.</summary>
+    /// <summary>The service request for the <c>service-request-*</c> and <c>service-payment-*</c> types, else the booking, else the property; <c>null</c> when there is none.</summary>
     public Guid? EntityId { get; set; }
 
     /// <summary>UTC instant of the event (when the push was queued), so a late run or a retry does not move it.</summary>
@@ -38,7 +38,7 @@ public sealed class QueuedInAppNotification
         AudienceKind = audience.Kind,
         AudienceId = audience.Id,
         Type = payload.Type,
-        EntityId = payload.ServiceRequestId ?? payload.BookingId,
+        EntityId = payload.ServiceRequestId ?? payload.BookingId ?? payload.PropertyId,
         OccurredAt = UtcDateTime.Normalize(occurredAtUtc),
     };
 }

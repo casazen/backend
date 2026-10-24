@@ -7,6 +7,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -36,7 +37,8 @@ public class PropertyComplianceStatusService(
     PublicSiteLinks links,
     IOptions<ComplianceOptions> complianceOptions,
     ILogger<PropertyComplianceStatusService> logger,
-    TimeProvider? timeProvider = null) : IPropertyComplianceStatusService
+    TimeProvider? timeProvider = null,
+    IPushNotificationService? pushNotifications = null) : IPropertyComplianceStatusService
 {
     private const string RunLockKey = "property-compliance-check";
 
@@ -372,6 +374,19 @@ public class PropertyComplianceStatusService(
                 property.Name,
                 incomplete.Select(s => s.Id).ToList(),
                 activationUrl);
+
+            // The hosts' devices hear of the suspension too (property only); best effort, once per property and day.
+            BestEffortPush.Enqueue(
+                pushNotifications,
+                logger,
+                PushDeliveryKeys.PropertyComplianceSuspended(property.Id, _clock.GetUtcNow().UtcDateTime),
+                PushAudience.PropertyHosts(property.Id),
+                () =>
+                {
+                    var push = EmailTemplates.PropertyComplianceSuspendedPush(EmailTemplates.DefaultCulture, property.Name);
+                    return new PushNotificationPayload(
+                        push.Title, push.Body, PushTypes.PropertyComplianceSuspended, BookingId: null, PushRoutes.Properties, PropertyId: property.Id);
+                });
 
             if (emailQueue.Enqueue(contactEmail, email, EmailTemplates.Names.PropertyComplianceSuspended))
                 return true;

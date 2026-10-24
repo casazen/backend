@@ -7,13 +7,15 @@ namespace Casazen.Core.Services;
 /// opens (<see cref="Route"/>, built with <see cref="PushRoutes"/>) and the ids the app may use.
 /// </summary>
 /// <param name="Type">Kind of push (<see cref="PushTypes"/>), sent as <c>data.type</c> and used in the logs.</param>
+/// <param name="PropertyId">The property an event is about when it has no booking and no service request (mode change, compliance, rent); it becomes the entity of the in-app notification then.</param>
 public sealed record PushNotificationPayload(
     string Title,
     string Body,
     string Type,
     Guid? BookingId,
     string Route,
-    Guid? ServiceRequestId = null);
+    Guid? ServiceRequestId = null,
+    Guid? PropertyId = null);
 
 /// <summary>Who receives a push. Resolved into devices by the delivery job at send time, never inside the request.</summary>
 public enum PushAudienceKind
@@ -113,6 +115,57 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string OtaStayReview(Guid bookingId, OtaStayReviewReason reason, DateTime? channelCheckIn, DateTime? channelCheckOut) =>
         $"ota-stay-review:{bookingId:N}:{reason}:{channelCheckIn:yyyyMMdd}:{channelCheckOut:yyyyMMdd}";
+
+    /// <summary>A pay-at-the-property request waits for the host's answer (the guest confirmed the email), to the hosts of the booking.</summary>
+    public static string BookingRequest(Guid bookingId) => $"booking:{bookingId:N}:request";
+
+    /// <summary>The guest cancelled the booking with their own link, to the hosts of the booking.</summary>
+    public static string BookingCancelledByGuest(Guid bookingId) => $"booking:{bookingId:N}:cancelled-by-guest";
+
+    /// <summary>The deferred charge of a booking failed ("guest asked to pay") or could not be attempted at all; one push per booking and kind.</summary>
+    public static string DeferredChargeFailed(Guid bookingId, bool guestAsked) =>
+        $"booking:{bookingId:N}:deferred-charge-failed:{(guestAsked ? "guest-asked" : "not-attempted")}";
+
+    /// <summary>The system cancelled a booking whose deferred charge was never paid.</summary>
+    public static string DeferredChargeCancelled(Guid bookingId) => $"booking:{bookingId:N}:deferred-charge-cancelled";
+
+    /// <summary>A change of rental mode of a property reached <paramref name="stage"/> (<c>scheduled</c>, <c>applied</c>, <c>failed</c>); each change reaches each stage once.</summary>
+    public static string PropertyModeChange(Guid changeId, string stage) => $"property-mode-change:{changeId:N}:{stage}";
+
+    /// <summary>A property was suspended for missing compliance requirements; a property suspended again another day is another event.</summary>
+    public static string PropertyComplianceSuspended(Guid propertyId, DateTime suspendedOnUtc) =>
+        $"property-compliance:{propertyId:N}:suspended:{suspendedOnUtc:yyyyMMdd}";
+
+    /// <summary>
+    /// One stage of the CIN alert of a property (CO-20): the deadline and the days left are part of the key, so each stage of the
+    /// sequence is told once and a moved deadline starts a new one. <c>none</c> stands for the reminder of a property with no deadline.
+    /// </summary>
+    public static string CinDeadline(Guid propertyId, DateOnly? deadline, int? daysUntilDeadline) =>
+        $"cin-deadline:{propertyId:N}:{(deadline is { } d ? d.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture) : "none")}:{daysUntilDeadline?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}";
+
+    /// <summary>A rent installment was paid, to the hosts of the property.</summary>
+    public static string RentPaymentReceived(Guid installmentId) => $"rent:{installmentId:N}:received";
+
+    /// <summary>
+    /// The payment request (or reminder) of a service reached the payer: <paramref name="sentCount"/> and the instant of the last
+    /// sending identify the sending, so a retried job is one push and the next reminder is another.
+    /// </summary>
+    public static string ServicePaymentRequested(Guid paymentId, int sentCount, DateTime? lastSentAtUtc) =>
+        $"service-payment:{paymentId:N}:requested:{sentCount}:{lastSentAtUtc:yyyyMMddHHmmss}";
+
+    /// <summary>A service payment failed after it was accepted and the payer got a new link; keyed like <see cref="ServicePaymentRequested"/>.</summary>
+    public static string ServicePaymentFailed(Guid paymentId, int sentCount, DateTime? lastSentAtUtc) =>
+        $"service-payment:{paymentId:N}:failed:{sentCount}:{lastSentAtUtc:yyyyMMddHHmmss}";
+
+    /// <summary>A service was paid online, to the supplier.</summary>
+    public static string ServicePaymentReceived(Guid paymentId) => $"service-payment:{paymentId:N}:received";
+
+    /// <summary>A refund of a service payment succeeded, to the payer's hosts or to the supplier (two audiences, two keys).</summary>
+    public static string ServicePaymentRefunded(Guid refundId, bool toSupplier) =>
+        $"service-payment-refund:{refundId:N}:{(toSupplier ? "supplier" : "host")}";
+
+    /// <summary>The supplier recorded a payment received outside CasaZen, to the payer's hosts.</summary>
+    public static string ServicePaymentOfflineRecorded(Guid paymentId) => $"service-payment:{paymentId:N}:offline-recorded";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -150,6 +203,51 @@ public static class PushTypes
     /// <summary>The customer of the public showcase moved a new request to another time (SP-11): pushed to the supplier org.</summary>
     public const string ServiceRequestRescheduled = "service-request-rescheduled";
     public const string NewBooking = "new-booking";
+
+    /// <summary>A pay-at-the-property request waits for the host's answer (entity: booking).</summary>
+    public const string BookingRequest = "booking-request";
+
+    /// <summary>The guest cancelled the booking with their own link (entity: booking).</summary>
+    public const string BookingCancelledByGuest = "booking-cancelled-by-guest";
+
+    /// <summary>The deferred charge failed or could not be attempted: the host handles the payment with the guest (entity: booking).</summary>
+    public const string DeferredChargeFailed = "deferred-charge-failed";
+
+    /// <summary>The system cancelled a booking whose deferred charge was never paid (entity: booking).</summary>
+    public const string DeferredChargeCancelled = "deferred-charge-cancelled";
+
+    /// <summary>A change of rental mode was scheduled (entity: property).</summary>
+    public const string PropertyModeChangeScheduled = "property-mode-change-scheduled";
+
+    /// <summary>A change of rental mode was applied (entity: property).</summary>
+    public const string PropertyModeChangeApplied = "property-mode-change-applied";
+
+    /// <summary>A change of rental mode could not be applied (entity: property).</summary>
+    public const string PropertyModeChangeFailed = "property-mode-change-failed";
+
+    /// <summary>A property was suspended for missing compliance requirements (entity: property).</summary>
+    public const string PropertyComplianceSuspended = "property-compliance-suspended";
+
+    /// <summary>The CIN deadline of a property is near (entity: property).</summary>
+    public const string CinDeadline = "cin-deadline";
+
+    /// <summary>A rent installment was paid (entity: property of the lease).</summary>
+    public const string RentPaymentReceived = "rent-payment-received";
+
+    /// <summary>A service payment is requested from the host, first request or reminder (entity: service request).</summary>
+    public const string ServicePaymentRequested = "service-payment-requested";
+
+    /// <summary>A service payment failed and the host got a new link (entity: service request).</summary>
+    public const string ServicePaymentFailed = "service-payment-failed";
+
+    /// <summary>A service was paid online: pushed to the supplier org (entity: service request).</summary>
+    public const string ServicePaymentReceived = "service-payment-received";
+
+    /// <summary>A service payment was refunded: pushed to the host and to the supplier (entity: service request).</summary>
+    public const string ServicePaymentRefunded = "service-payment-refunded";
+
+    /// <summary>The supplier recorded a payment received outside CasaZen (entity: service request).</summary>
+    public const string ServicePaymentOfflineRecorded = "service-payment-offline-recorded";
 
     /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>
     public const string GuestMessage = "guest-message";

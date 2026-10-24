@@ -8,6 +8,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Push;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -46,7 +47,8 @@ public sealed partial class RentBillingService(
     PublicSiteLinks links,
     IConfiguration configuration,
     ILogger<RentBillingService> logger,
-    TimeProvider? timeProvider = null) : IRentBillingService
+    TimeProvider? timeProvider = null,
+    IPushNotificationService? pushNotifications = null) : IRentBillingService
 {
     private const decimal MaxInstallmentAmount = 1_000_000m;
     private const int MaxNoteLength = 500;
@@ -535,6 +537,20 @@ public sealed partial class RentBillingService(
                     links.HostLease(entry.LeaseContractId));
                 foreach (var landlord in Recipients(entry.LeaseContract, PartyRole.Landlord))
                     emailQueue.Enqueue(landlord.ContactEmail, content, EmailTemplates.Names.RentPaymentReceived);
+
+                // The hosts of the property hear of it on their devices too: property only, no tenant and no amount.
+                var propertyId = entry.LeaseContract.PropertyId;
+                BestEffortPush.Enqueue(
+                    pushNotifications,
+                    logger,
+                    PushDeliveryKeys.RentPaymentReceived(entry.Id),
+                    PushAudience.PropertyHosts(propertyId),
+                    () =>
+                    {
+                        var push = EmailTemplates.RentPaymentReceivedPush(EmailTemplates.DefaultCulture, propertyName);
+                        return new PushNotificationPayload(
+                            push.Title, push.Body, PushTypes.RentPaymentReceived, BookingId: null, PushRoutes.Properties, PropertyId: propertyId);
+                    });
                 return;
             }
 

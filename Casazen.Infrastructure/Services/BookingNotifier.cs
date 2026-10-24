@@ -1,8 +1,10 @@
+using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -184,9 +186,11 @@ public sealed class BookingNotifier(
                 $"{data.GuestFirstName} {data.GuestLastName}".Trim(),
                 data.Summary,
                 links.HostBooking(data.BookingId)));
+        PushToHosts(data, PushDeliveryKeys.DeferredChargeCancelled(data.BookingId), PushTypes.DeferredChargeCancelled, EmailTemplates.DeferredChargeCancelledPush);
     }
 
-    private void AlertHostOfFailedDeferredCharge(BookingEmailData data, bool guestAsked, DateTime? cancelOnDay) =>
+    private void AlertHostOfFailedDeferredCharge(BookingEmailData data, bool guestAsked, DateTime? cancelOnDay)
+    {
         QueueToHost(data, EmailTemplates.Names.HostDeferredChargeFailed, () =>
             EmailTemplates.HostDeferredChargeFailed(
                 EmailTemplates.DefaultCulture,
@@ -195,6 +199,31 @@ public sealed class BookingNotifier(
                 guestAsked,
                 cancelOnDay,
                 links.HostBooking(data.BookingId)));
+        PushToHosts(data, PushDeliveryKeys.DeferredChargeFailed(data.BookingId, guestAsked), PushTypes.DeferredChargeFailed, EmailTemplates.DeferredChargeFailedPush);
+    }
+
+    /// <summary>
+    /// The guest cancelled the booking with their own link: the hosts are told (the guest's own email is
+    /// <see cref="BookingCancelledByHostAsync"/>'s). Property and dates only, no guest name. Best effort after the cancellation is saved.
+    /// </summary>
+    public async Task BookingCancelledByGuestAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    {
+        var data = await TryLoadAsync(bookingId, "Cancellation by the guest", cancellationToken);
+        if (data is not null)
+            PushToHosts(data, PushDeliveryKeys.BookingCancelledByGuest(bookingId), PushTypes.BookingCancelledByGuest, EmailTemplates.BookingCancelledByGuestPush);
+    }
+
+    /// <summary>A push to the hosts of the booking about its property and dates (no guest name); best effort, keyed by the event.</summary>
+    private void PushToHosts(
+        BookingEmailData data,
+        string deliveryKey,
+        string type,
+        Func<CultureInfo, string, DateTime, DateTime, PushText> text) =>
+        BestEffortPush.Enqueue(pushNotifications, logger, deliveryKey, PushAudience.BookingHosts(data.BookingId), () =>
+        {
+            var push = text(EmailTemplates.DefaultCulture, data.Summary.PropertyName, data.Summary.CheckInDate, data.Summary.CheckOutDate);
+            return new PushNotificationPayload(push.Title, push.Body, type, data.BookingId, PushRoutes.Booking(data.BookingId));
+        });
 
     private async Task<BookingEmailData?> TryLoadAsync(Guid bookingId, string what, CancellationToken cancellationToken)
     {
