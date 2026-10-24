@@ -1,120 +1,138 @@
-using Stripe;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Npgsql;
+using Stripe;
 
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// Handles Stripe webhook events for ConcordatoFacile one-time payments (ADR-005).
+/// Applies the Stripe events of the ConcordatoFacile one-time payment to <see cref="ConcordatoFacilePurchase"/> (ADR-005).
+/// <see cref="StripeWebhookHandler"/> has already verified the signature, claimed the event in <c>ProcessedStripeEvents</c>
+/// (source <see cref="WebhookSource.ConcordatoFacile"/>, ADR-005-R5/R6) and opened the transaction these updates share: a
+/// duplicate delivery never gets here, and a failure rolls the claim back so Stripe's retry processes the event again.
 /// </summary>
 public class ConcordatoFacilePaymentHandler(
     AppDbContext dbContext,
     ILogger<ConcordatoFacilePaymentHandler> logger)
 {
+    /// <summary>The price of the service: EUR 119,00 (ADR-005-R4).</summary>
+    public const long PriceCents = 11900;
+
+    /// <summary>The only currency of the service (ADR-005-R4).</summary>
+    public const string Currency = "eur";
+
     /// <summary>
-    /// Processes payment_intent.succeeded for CF purchases (ADR-005-R4, ADR-005-R5, ADR-005-R6).
-    /// Verifies amount/currency, updates purchase status, and claims the event for idempotency.
+    /// <c>payment_intent.succeeded</c> of a CF purchase (ADR-005-R4, R5): the payment grants access only when it is exactly
+    /// <see cref="PriceCents"/> in <see cref="Currency"/>. <paramref name="paidAt"/> is the time of the event (an async
+    /// payment method settles days after the PaymentIntent was created); without it the PaymentIntent's own time is used.
     /// </summary>
-    public async Task HandlePaymentIntentSucceededAsync(PaymentIntent paymentIntent)
+    public async Task HandlePaymentIntentSucceededAsync(PaymentIntent paymentIntent, DateTime? paidAt = null)
     {
-        if (paymentIntent is null)
-            return;
+        var metadata = paymentIntent.Metadata;
+        var leaseRaw = metadata is not null && metadata.TryGetValue("leaseId", out var leaseValue) ? leaseValue : null;
+        var orgRaw = metadata is not null && metadata.TryGetValue("orgId", out var orgValue) ? orgValue : null;
 
-        // ADR-005-R4: Verify amount == 11900 AND currency == "eur"
-        if (paymentIntent.Amount != 11900 || !string.Equals(paymentIntent.Currency, "eur", StringComparison.OrdinalIgnoreCase))
+        // ADR-005-R4: the amount and the currency are checked before anything is granted; a mismatch is an error for the operators.
+        if (paymentIntent.Amount != PriceCents || !string.Equals(paymentIntent.Currency, Currency, StringComparison.OrdinalIgnoreCase))
         {
-            var leaseIdForLog = paymentIntent.Metadata?.TryGetValue("leaseId", out var leaseIdRaw) == true ? leaseIdRaw : "unknown";
-            var orgId = paymentIntent.Metadata?.TryGetValue("orgId", out var orgIdRaw) == true ? orgIdRaw : "unknown";
-
             logger.LogError(
-                "ConcordatoFacile payment intent {PaymentIntentId} has wrong amount ({Amount} {Currency}) for orgId={OrgId}, leaseId={LeaseId}: access NOT granted",
+                "ConcordatoFacile payment intent {PaymentIntentId} has the wrong amount ({Amount} {PaymentCurrency}, expected {PriceCents} {ExpectedCurrency}) for orgId={OrgId}, leaseId={LeaseId}: access NOT granted",
                 paymentIntent.Id,
                 paymentIntent.Amount,
                 paymentIntent.Currency,
-                orgId,
-                leaseIdForLog);
+                PriceCents,
+                Currency,
+                orgRaw ?? "unknown",
+                leaseRaw ?? "unknown");
             return;
         }
 
-        // Extract leaseId from metadata
-        if (paymentIntent.Metadata?.TryGetValue("leaseId", out var leaseIdValue) != true ||
-            !Guid.TryParse(leaseIdValue, out var leaseId))
+        if (!Guid.TryParse(leaseRaw, out var leaseId))
         {
-            logger.LogWarning("ConcordatoFacile payment intent {PaymentIntentId} has no valid leaseId in metadata", paymentIntent.Id);
+            logger.LogWarning("ConcordatoFacile payment intent {PaymentIntentId} has no valid leaseId in its metadata", paymentIntent.Id);
             return;
         }
 
-        // Query purchase by StripePaymentIntentId (if already set, for duplicate events) OR by leaseId
-        var purchase = await dbContext.ConcordatoFacilePurchases
-            .Where(p => p.StripePaymentIntentId == paymentIntent.Id || p.LeaseContractId == leaseId)
-            .FirstOrDefaultAsync();
-
+        var purchase = await FindPurchaseAsync(paymentIntent.Id, leaseId);
         if (purchase is null)
         {
             logger.LogWarning(
-                "No ConcordatoFacilePurchase found for payment intent {PaymentIntentId} (leaseId={LeaseId})",
+                "No open ConcordatoFacilePurchase for payment intent {PaymentIntentId} (leaseId={LeaseId})",
                 paymentIntent.Id,
                 leaseId);
             return;
         }
 
-        // ADR-005-R5: Update purchase status and payment intent ID
-        purchase.Status = ConcordatoFacilePurchaseStatus.Completed;
-        purchase.PaidAt = paymentIntent.Created.Year >= 2000
-            ? DateTime.SpecifyKind(paymentIntent.Created, DateTimeKind.Utc)
-            : DateTime.UtcNow;
-        purchase.StripePaymentIntentId = paymentIntent.Id;
-
-        try
+        // The tenant of the payment (when the checkout wrote it) must be the tenant of the purchase.
+        if (Guid.TryParse(orgRaw, out var orgId) && orgId != purchase.OrgId)
         {
-            await dbContext.SaveChangesAsync();
-            logger.LogInformation(
-                "ConcordatoFacile purchase {PurchaseId} completed for lease {LeaseId} (payment intent {PaymentIntentId})",
+            logger.LogError(
+                "ConcordatoFacile payment intent {PaymentIntentId} names org {OrgId} but the purchase {PurchaseId} belongs to org {PurchaseOrgId}: access NOT granted",
+                paymentIntent.Id,
+                orgId,
                 purchase.Id,
-                leaseId,
-                paymentIntent.Id);
+                purchase.OrgId);
+            return;
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+
+        if (purchase.Status == ConcordatoFacilePurchaseStatus.Completed)
         {
-            // ADR-005-R6: Duplicate event caught via ProcessedStripeEvent unique constraint
-            // (the main handler's TryClaimEventAsync already did this, but we treat it as idempotent success)
             logger.LogInformation(
-                "Duplicate event for ConcordatoFacile payment intent {PaymentIntentId}: treated as idempotent success",
+                "ConcordatoFacile purchase {PurchaseId} is already completed (payment intent {PaymentIntentId}): nothing to do",
+                purchase.Id,
                 paymentIntent.Id);
+            return;
         }
+
+        // ADR-005-R5: Completed, PaidAt, and the PaymentIntent that the purchase did not know until now.
+        purchase.Status = ConcordatoFacilePurchaseStatus.Completed;
+        purchase.PaidAt = ToUtc(paidAt ?? paymentIntent.Created);
+        purchase.StripePaymentIntentId = paymentIntent.Id;
+        await dbContext.SaveChangesAsync();
+
+        logger.LogInformation(
+            "ConcordatoFacile purchase {PurchaseId} completed for lease {LeaseId} (payment intent {PaymentIntentId})",
+            purchase.Id,
+            leaseId,
+            paymentIntent.Id);
     }
 
     /// <summary>
-    /// Processes charge.refunded for CF purchases (ADR-005-R7).
-    /// Updates purchase status to Refunded without deleting CF data.
+    /// <c>charge.refunded</c> of a CF purchase (ADR-005-R7): a full refund marks the purchase Refunded. The practice and the
+    /// documents of the lease are never touched here, and a partial refund leaves the status alone.
     /// </summary>
     public async Task HandleRefundAsync(Charge charge)
     {
-        if (charge is null || string.IsNullOrWhiteSpace(charge.PaymentIntentId))
+        if (string.IsNullOrWhiteSpace(charge.PaymentIntentId))
             return;
 
-        // Query purchase by StripePaymentIntentId
         var purchase = await dbContext.ConcordatoFacilePurchases
-            .Where(p => p.StripePaymentIntentId == charge.PaymentIntentId)
-            .FirstOrDefaultAsync();
-
+            .FirstOrDefaultAsync(p => p.StripePaymentIntentId == charge.PaymentIntentId);
         if (purchase is null)
         {
             logger.LogInformation(
-                "No ConcordatoFacilePurchase found for refund charge {ChargeId} (payment intent {PaymentIntentId})",
+                "No ConcordatoFacilePurchase for the refunded charge {ChargeId} (payment intent {PaymentIntentId})",
                 charge.Id,
                 charge.PaymentIntentId);
             return;
         }
 
-        // ADR-005-R7: Update status to Refunded, do NOT delete ConcordatoFacilePractice or LeaseDocuments
+        if (!charge.Refunded)
+        {
+            logger.LogInformation(
+                "Partial refund of the charge {ChargeId} of ConcordatoFacile purchase {PurchaseId}: status unchanged",
+                charge.Id,
+                purchase.Id);
+            return;
+        }
+
+        if (purchase.Status == ConcordatoFacilePurchaseStatus.Refunded)
+            return;
+
         purchase.Status = ConcordatoFacilePurchaseStatus.Refunded;
         purchase.RefundedAt = DateTime.UtcNow;
-
         await dbContext.SaveChangesAsync();
 
         logger.LogInformation(
@@ -123,4 +141,25 @@ public class ConcordatoFacilePaymentHandler(
             purchase.LeaseContractId,
             charge.PaymentIntentId);
     }
+
+    /// <summary>
+    /// The purchase a payment settles: the one already bound to the PaymentIntent, else the newest open one of the lease
+    /// (Pending, or Failed when the customer paid on retry); a lease can also carry an earlier refunded purchase.
+    /// </summary>
+    private async Task<ConcordatoFacilePurchase?> FindPurchaseAsync(string paymentIntentId, Guid leaseId)
+    {
+        var bound = await dbContext.ConcordatoFacilePurchases
+            .FirstOrDefaultAsync(p => p.StripePaymentIntentId == paymentIntentId);
+        if (bound is not null)
+            return bound;
+
+        return await dbContext.ConcordatoFacilePurchases
+            .Where(p => p.LeaseContractId == leaseId
+                && (p.Status == ConcordatoFacilePurchaseStatus.Pending || p.Status == ConcordatoFacilePurchaseStatus.Failed))
+            .OrderByDescending(p => p.CreatedAt)
+            .FirstOrDefaultAsync();
+    }
+
+    private static DateTime ToUtc(DateTime value) =>
+        value == default ? DateTime.UtcNow : DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }

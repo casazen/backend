@@ -221,7 +221,6 @@ public class StripeRefundPostgresTests : IAsyncLifetime
             TestCheckoutPaymentSettlement.Create(db, stripe: _stripe.Object, emails: _emails.Object),
             TestDeferredCharges.Create(db, stripe: _stripe.Object, emails: _emails.Object),
             Mock.Of<ISupplierPaymentWebhookService>(),
-            Mock.Of<Casazen.Infrastructure.External.ConcordatoFacilePaymentHandler>(),
             NullLogger<StripeWebhookHandler>.Instance);
         await handler.HandleEventAsync(stripeEvent, source);
     }

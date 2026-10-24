@@ -331,7 +331,6 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
             TestCheckoutPaymentSettlement.Create(db, stripe: _stripe, emails: _emails, configuration: configuration),
             TestDeferredCharges.Create(db, _stripe, _emails, configuration, Clock(0)),
             Mock.Of<ISupplierPaymentWebhookService>(),
-            Mock.Of<Casazen.Infrastructure.External.ConcordatoFacilePaymentHandler>(),
             NullLogger<StripeWebhookHandler>.Instance);
         await handler.HandleEventAsync(stripeEvent, source);
     }
