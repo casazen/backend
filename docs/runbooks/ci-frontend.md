@@ -5,7 +5,7 @@ Workflows in `casazen/frontend/.github/workflows/` (task FD-01, audit defects A9
 | Workflow | Job (check name) | Trigger | Gate |
 |---|---|---|---|
 | `ci.yml` | `Lint, typecheck, unit tests, build` | PR and push to `develop` / `main` | **Required**: `npm ci`, `npm run lint` (0 errors), `npm run typecheck`, `npm run knip` (dead code), `npm test` (vitest), `npm run build` |
-| `e2e.yml` | `E2E L2 (demo)` | PR, push `develop` / `main`, nightly | Playwright L2 demo suite (`page.route` mocks) |
+| `e2e.yml` | `E2E L2 (demo)` | PR, push `develop` / `main`, nightly | Playwright L2 demo suite (`page.route` mocks), split in three parallel jobs `E2E L2 (demo) shard n/3` (`--shard`); `E2E L2 (demo)` fails unless all three pass |
 | `e2e.yml` | `E2E staging smoke + GJ` | push `develop`, nightly, manual | L3 against the Railway test API; skipped with a warning when `E2E_AUTH0_EMAIL` is not set |
 | `e2e-golden-journey.yml` | `GJ web suite` | PR, push `develop` / `main`, nightly | Golden Journey L2 demo shell checks (mocks); no `continue-on-error`, no placeholder jobs |
 | `e2e-golden-journey.yml` | `GJ L3 (UI, ephemeral stack)` | PR, push `develop` / `main`, nightly, manual | **The Golden Journey gate** (FN-03): admin, host, supplier (phone, F1-F2) and guest driven from the UI against a real backend + throw-away PostgreSQL + mock IdP/mail; Stripe test mode with the secrets, otherwise that variant is SKIPPED loudly. [golden-journey-l3.md](golden-journey-l3.md) |

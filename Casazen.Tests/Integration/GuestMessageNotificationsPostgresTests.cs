@@ -38,9 +38,7 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _database = await PostgresTestDatabase.CreateAsync();
-        await using var db = _database.CreateContext();
-        await db.Database.MigrateAsync();
+        _database = await PostgresTestDatabase.CreateMigratedAsync();
         _email.Setup(e => e.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>())).Returns(true);
         _push.Setup(p => p.Enqueue(It.IsAny<string>(), It.IsAny<PushAudience>(), It.IsAny<PushNotificationPayload>())).Returns(true);
     }

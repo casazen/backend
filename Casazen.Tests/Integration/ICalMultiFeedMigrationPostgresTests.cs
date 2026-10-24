@@ -39,7 +39,7 @@ public class ICalMultiFeedMigrationPostgresTests : IAsyncLifetime
         await using (var db = _database!.CreateContext())
         {
             var migrator = db.GetService<IMigrator>();
-            migrator.Migrate(PreviousMigration(db));
+            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
             await InsertPrePc11StateAsync(db);
             await db.Database.MigrateAsync();
             Assert.Empty(await db.Database.GetPendingMigrationsAsync());

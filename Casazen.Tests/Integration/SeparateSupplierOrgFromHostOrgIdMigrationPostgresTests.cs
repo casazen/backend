@@ -20,9 +20,7 @@ public class SeparateSupplierOrgFromHostOrgIdMigrationPostgresTests : IAsyncLife
 
     public async Task InitializeAsync()
     {
-        _database = await PostgresTestDatabase.CreateAsync("pl05");
-        await using var db = NewContext();
-        await db.Database.MigrateAsync();
+        _database = await PostgresTestDatabase.CreateMigratedAsync("pl05");
     }
 
     public async Task DisposeAsync()
