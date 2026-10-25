@@ -79,7 +79,7 @@ public class VerificationController(
         var success = await verificationService.RequestNewPhotoAsync(bookingId);
 
         if (!success)
-            return NotFound(new { error = "no_session_or_email", message = "Booking has no active session or guest has no email" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, "no_session_or_email", "VerificationNoSessionOrEmail");
 
         logger.LogInformation("User {UserId} requested new photo for booking {BookingId}", userId, bookingId);
         return Ok();
@@ -103,7 +103,7 @@ public class VerificationController(
             return Unauthorized();
 
         if (!request.Outcome && string.IsNullOrWhiteSpace(request.Note))
-            return BadRequest(new { error = "note_required", message = "Note is required when rejecting verification" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "note_required", "VerificationNoteRequired");
 
         try
         {
@@ -113,7 +113,7 @@ public class VerificationController(
                 request.Note);
 
             if (!success)
-                return NotFound(new { error = "no_pending_verification", message = "Booking has no pending verification" });
+                return this.ApiProblem(StatusCodes.Status404NotFound, "no_pending_verification", "VerificationNoPending");
 
             logger.LogInformation(
                 "User {UserId} recorded verification for booking {BookingId}: outcome={Outcome}",
@@ -123,7 +123,8 @@ public class VerificationController(
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { error = "invalid_request", message = ex.Message });
+            logger.LogWarning(ex, "Invalid verification request for booking {BookingId}", bookingId);
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_request", "VerificationInvalidRequest");
         }
     }
 
@@ -144,14 +145,14 @@ public class VerificationController(
             return Unauthorized();
 
         if (string.IsNullOrWhiteSpace(request.Reason))
-            return BadRequest(new { error = "reason_required", message = "Rejection reason is required" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "reason_required", "VerificationReasonRequired");
 
         try
         {
             var success = await verificationService.RejectVerificationAsync(bookingId, request.Reason);
 
             if (!success)
-                return NotFound(new { error = "no_pending_verification", message = "Booking has no pending verification" });
+                return this.ApiProblem(StatusCodes.Status404NotFound, "no_pending_verification", "VerificationNoPending");
 
             logger.LogInformation(
                 "User {UserId} rejected verification for booking {BookingId}: reason={Reason}",
@@ -161,7 +162,8 @@ public class VerificationController(
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { error = "invalid_request", message = ex.Message });
+            logger.LogWarning(ex, "Invalid verification request for booking {BookingId}", bookingId);
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_request", "VerificationInvalidRequest");
         }
     }
 
