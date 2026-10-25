@@ -3231,7 +3231,7 @@
     <value>data di scadenza valida</value>
   </data>
   <data name="ConcordatoFacileGiftAlreadyExists" xml:space="preserve">
-    <value>L'organizzazione ha già una pratica omaggio ConcordatoFacile.</value>
+    <value>L'organizzazione ha già una pratica omaggio per la creazione guidata del contratto.</value>
   </data>
   <data name="SubscriptionIdRequired" xml:space="preserve">
     <value>L'ID della sottoscrizione è obbligatorio.</value>

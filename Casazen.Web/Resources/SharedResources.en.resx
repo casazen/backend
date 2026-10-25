@@ -3231,7 +3231,7 @@
     <value>valid expiry date</value>
   </data>
   <data name="ConcordatoFacileGiftAlreadyExists" xml:space="preserve">
-    <value>The organization already has a ConcordatoFacile gift.</value>
+    <value>The organization already has a complimentary practice for the guided creation of the contract.</value>
   </data>
   <data name="SubscriptionIdRequired" xml:space="preserve">
     <value>The subscription ID is required.</value>
