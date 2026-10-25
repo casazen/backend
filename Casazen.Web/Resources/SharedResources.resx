@@ -1219,6 +1219,15 @@
   <data name="CheckInDateOfBirthInFuture" xml:space="preserve">
     <value>La data di nascita non può essere nel futuro.</value>
   </data>
+  <data name="CheckInBiometricDocumentPhotoRequired" xml:space="preserve">
+    <value>La foto del documento è obbligatoria per la verifica biometrica.</value>
+  </data>
+  <data name="CheckInBiometricMaxAttemptsReached" xml:space="preserve">
+    <value>Numero massimo di tentativi di verifica biometrica raggiunto.</value>
+  </data>
+  <data name="CheckInBiometricMinorExcluded" xml:space="preserve">
+    <value>La verifica biometrica non è disponibile per i minorenni.</value>
+  </data>
   <data name="CheckInProvinceInvalid" xml:space="preserve">
     <value>Inserisci la sigla della provincia di due lettere (es. RM).</value>
   </data>
@@ -1237,8 +1246,20 @@
   <data name="CheckInDocumentRequired" xml:space="preserve">
     <value>Il file del documento è obbligatorio.</value>
   </data>
+  <data name="CheckInDocumentPhotoTypeUnsupported" xml:space="preserve">
+    <value>La foto del documento deve essere JPEG o PNG.</value>
+  </data>
   <data name="CheckInDocumentTypeUnsupported" xml:space="preserve">
     <value>Sono supportati solo immagini JPEG e PNG.</value>
+  </data>
+  <data name="CheckInSelfieProcessingFailed" xml:space="preserve">
+    <value>Elaborazione del selfie non riuscita. Riprova.</value>
+  </data>
+  <data name="CheckInSelfieRequired" xml:space="preserve">
+    <value>Il selfie è obbligatorio per la verifica biometrica.</value>
+  </data>
+  <data name="CheckInSelfieTypeUnsupported" xml:space="preserve">
+    <value>Il selfie deve essere JPEG o PNG.</value>
   </data>
   <data name="AlloggiatiCodeListUnknown" xml:space="preserve">
     <value>Elenco di codici sconosciuto: usa comuni, stati, documenti o luoghi.</value>
