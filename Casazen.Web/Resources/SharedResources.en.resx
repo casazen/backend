@@ -1744,6 +1744,9 @@
   <data name="OtaStayTotalPriceInvalid" xml:space="preserve">
     <value>The amount cannot be negative.</value>
   </data>
+  <data name="OwnerIbanMissing" xml:space="preserve">
+    <value>The property owner does not have a registered IBAN.</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days or period=Next30Days.</value>
   </data>
