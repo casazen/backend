@@ -8,6 +8,13 @@ namespace Casazen.Infrastructure.External;
 public interface IConcordatoFacileApiClient
 {
     /// <summary>
+    /// Whether the status can be read at all (CF-BE). The HTTP client of the real status API can only when the status API key is configured
+    /// (without it ConcordatoFacile answers 401 to everything): the status cache then does not ask and answers "not available". The
+    /// simulated client reads a table of the application and needs no key: always true.
+    /// </summary>
+    bool IsConfigured { get; }
+
+    /// <summary>
     /// The practices of a lease, newest first and at most 20 (<c>GET /v1/leases/{leaseId}/practices</c>); an empty list for a lease with
     /// no practice. Any other answer throws: the caller keeps its last valid snapshot as stale and must not take an error for an empty list.
     /// </summary>

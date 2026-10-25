@@ -13,7 +13,8 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// ConcordatoFacile one-time payment and access management (ADR-005).
-/// Endpoints require lease.read OR lease.create permission in the long-rent context.
+/// Reading (access, status) requires lease.read in the long-rent context; the actions that write (privacy acceptance, gift, signed link)
+/// require lease.create; the checkout accepts either.
 /// The whole controller, the practice lookup of the upload page included, is behind <c>Features:ConcordatoFacile</c> (CF-FIX): with
 /// the flag off every action answers 404 before authentication. The Stripe webhooks that record a payment already made are not.
 /// </summary>
@@ -26,6 +27,7 @@ public class ConcordatoFacileController(
     IConcordatoFacileAccessService accessService,
     IConcordatoFacileGiftService giftService,
     IConcordatoFacileLinkService linkService,
+    IConcordatoFacilePrivacyService privacyService,
     IConcordatoFacileStatusCacheService statusCacheService,
     AppDbContext db,
     IOrgContextResolver orgContextResolver,
@@ -109,25 +111,43 @@ public class ConcordatoFacileController(
         if (!hasLeaseRead)
             return Forbid();
 
-        var result = await accessService.CheckAccessAsync(leaseId, User, cancellationToken);
+        // The org of the caller, to say what the lease has on the privacy notice and on the form: none when the caller has no org.
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
 
-        var sourceString = result.Source switch
-        {
-            Core.Services.CfAccessSource.Payment => "payment",
-            Core.Services.CfAccessSource.Gift => "gift",
-            Core.Services.CfAccessSource.Admin => "admin",
-            _ => null
-        };
+        return Ok(await BuildAccessResponseAsync(leaseId, orgId, cancellationToken));
+    }
 
-        return Ok(new AccessResponse
-        {
-            HasAccess = result.HasAccess,
-            Source = sourceString,
-            GiftAvailable = result.GiftAvailable,
-            GiftConsumed = result.GiftConsumed,
-            PurchasedAt = result.PurchasedAt,
-            GiftAssignedAt = result.GiftAssignedAt
-        });
+    /// <summary>
+    /// Records that the person accepted the current privacy notice for this lease (CF-BE): it comes before the guided contract form, and
+    /// without it <c>POST …/link</c> answers 409 <c>concordatofacile_privacy_not_accepted</c>, for the platform admin too. The acceptance is
+    /// an event of the lease with the version of the notice (no personal data) and holds for that version. Idempotent: when the current
+    /// version is already accepted no second event is written. Requires lease.create (it writes). 404 <c>lease_not_found</c> when the lease
+    /// does not exist or belongs to another org.
+    /// </summary>
+    /// <param name="leaseId">The lease contract ID from the route</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The access state of the lease, with the privacy fields up to date</returns>
+    [HttpPost("privacy-acceptance")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    [ProducesResponseType(typeof(AccessResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AccessResponse>> AcceptPrivacy(
+        Guid leaseId,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "org_not_found", "NoOrganizationAssigned");
+
+        await privacyService.AcceptAsync(leaseId, orgId.Value, cancellationToken);
+
+        return Ok(await BuildAccessResponseAsync(leaseId, orgId, cancellationToken));
     }
 
     /// <summary>
@@ -136,12 +156,13 @@ public class ConcordatoFacileController(
     /// Re-entry for the same leaseId returns 200 OK (ADR-006-R6).
     /// Returns 409 conflict if gift already consumed for another lease.
     /// 404 <c>lease_not_found</c> when the lease does not exist or belongs to another org: the gift is not touched (CF-FIX2).
+    /// Requires lease.create like the signed link: it writes, so a read-only role (the accountant) gets 403 and the gift is not spent (CF-BE).
     /// </summary>
     /// <param name="leaseId">The lease contract ID from the route</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Access status or 409 conflict</returns>
     [HttpPost("consume-gift")]
-    [Authorize(Policy = CasazenPolicies.LeaseRead)]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     [ProducesResponseType(typeof(AccessResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -170,31 +191,15 @@ public class ConcordatoFacileController(
         }
 
         // Both Success and AlreadyConsumedForThisLease return 200 OK with access state
-        var accessResult = await accessService.CheckAccessAsync(leaseId, User, cancellationToken);
-
-        var sourceString = accessResult.Source switch
-        {
-            Core.Services.CfAccessSource.Payment => "payment",
-            Core.Services.CfAccessSource.Gift => "gift",
-            Core.Services.CfAccessSource.Admin => "admin",
-            _ => null
-        };
-
-        return Ok(new AccessResponse
-        {
-            HasAccess = accessResult.HasAccess,
-            Source = sourceString,
-            GiftAvailable = accessResult.GiftAvailable,
-            GiftConsumed = accessResult.GiftConsumed,
-            PurchasedAt = accessResult.PurchasedAt,
-            GiftAssignedAt = accessResult.GiftAssignedAt
-        });
+        return Ok(await BuildAccessResponseAsync(leaseId, orgId, cancellationToken));
     }
 
     /// <summary>
     /// Generates a signed link to the ConcordatoFacile partner portal (ADR-007).
     /// Link expires in 15 minutes and includes HMAC-SHA256 signature.
     /// Requires LeaseCreate policy (write-level action) and verified access.
+    /// 409 <c>concordatofacile_privacy_not_accepted</c> when the current privacy notice is not accepted for the lease (CF-BE): nothing is
+    /// signed and no event is written; it holds for the platform admin too (the bypass is about the payment, not about the privacy).
     /// </summary>
     /// <param name="leaseId">The lease contract ID from the route</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -204,6 +209,7 @@ public class ConcordatoFacileController(
     [ProducesResponseType(typeof(LinkResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<LinkResponse>> GenerateLink(
         Guid leaseId,
@@ -238,6 +244,9 @@ public class ConcordatoFacileController(
     /// Requires LeaseRead policy (ADR-008-R11).
     /// 404 <c>lease_not_found</c> when the lease does not exist or belongs to another org, before the cache is read and before
     /// ConcordatoFacile is asked (CF-FIX2, ADR-008-R11).
+    /// Always a 200 for the lease of the org (CF-BE): when the status API cannot be read and there is no snapshot (the key is not
+    /// configured, or ConcordatoFacile fails) the answer is <c>available: false</c>, no practices, <c>stale: true</c>,
+    /// <c>lastCheckedAt: null</c> and <c>nextUpdateAt</c> five minutes ahead, and ConcordatoFacile is not asked again before then.
     /// </summary>
     /// <param name="leaseId">The lease contract ID from the route</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -282,7 +291,8 @@ public class ConcordatoFacileController(
             }).ToList(),
             LastCheckedAt = result.LastCheckedAt,
             NextUpdateAt = result.NextUpdateAt,
-            Stale = result.IsStale
+            Stale = result.IsStale,
+            Available = result.IsAvailable
         });
     }
 
@@ -360,5 +370,38 @@ public class ConcordatoFacileController(
             Status = practice.Status,
             ManualSelectionRequired = false
         });
+    }
+
+    /// <summary>
+    /// The access state of the lease for the caller, with what the lease has on the privacy notice and on the form (CF-BE). The privacy
+    /// fields are read for the lease of the caller's org only: another org's lease, or a caller without an org, shows none.
+    /// </summary>
+    private async Task<AccessResponse> BuildAccessResponseAsync(Guid leaseId, Guid? orgId, CancellationToken cancellationToken)
+    {
+        var access = await accessService.CheckAccessAsync(leaseId, User, cancellationToken);
+        var privacy = orgId is Guid org
+            ? await privacyService.GetStateAsync(leaseId, org, cancellationToken)
+            : CfPrivacyState.None;
+
+        var sourceString = access.Source switch
+        {
+            Core.Services.CfAccessSource.Payment => "payment",
+            Core.Services.CfAccessSource.Gift => "gift",
+            Core.Services.CfAccessSource.Admin => "admin",
+            _ => null
+        };
+
+        return new AccessResponse
+        {
+            HasAccess = access.HasAccess,
+            Source = sourceString,
+            GiftAvailable = access.GiftAvailable,
+            GiftConsumed = access.GiftConsumed,
+            PurchasedAt = access.PurchasedAt,
+            GiftAssignedAt = access.GiftAssignedAt,
+            PrivacyAccepted = privacy.Accepted,
+            PrivacyAcceptedAt = privacy.AcceptedAt,
+            LinkOpenedAt = privacy.LinkOpenedAt
+        };
     }
 }

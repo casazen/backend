@@ -17,14 +17,19 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>
 /// Generates HMAC-SHA256 signed links to the ConcordatoFacile partner portal (ADR-007).
 /// Links expire in 15 minutes and include lease identification and municipality data.
+/// The link is made only for a lease whose current privacy notice was accepted (CF-BE): the platform admin's bypass is about the payment,
+/// not about the privacy. The clock can be passed, so that the vector of the specification is checked on this very service.
 /// </summary>
 public sealed class ConcordatoFacileLinkService(
     AppDbContext db,
     IConcordatoFacileAccessService accessService,
+    IConcordatoFacilePrivacyService privacyService,
     IOptions<ConcordatoFacileOptions> options,
-    ILogger<ConcordatoFacileLinkService> logger) : IConcordatoFacileLinkService
+    ILogger<ConcordatoFacileLinkService> logger,
+    TimeProvider? timeProvider = null) : IConcordatoFacileLinkService
 {
     private readonly byte[] _secretKey = GetSecretKey(options);
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private static byte[] GetSecretKey(IOptions<ConcordatoFacileOptions> options)
     {
@@ -53,6 +58,10 @@ public sealed class ConcordatoFacileLinkService(
             throw new UnauthorizedAccessException(
                 $"User does not have ConcordatoFacile access for lease {leaseId}.");
         }
+
+        // CF-BE: the form opens only after the current privacy notice is accepted for the lease, for the admin too. 409
+        // concordatofacile_privacy_not_accepted; nothing is signed and no event is written before this point.
+        await privacyService.EnsureAcceptedAsync(leaseId, cancellationToken);
 
         // Load lease with property
         var lease = await db.LeaseContracts
@@ -84,7 +93,8 @@ public sealed class ConcordatoFacileLinkService(
         }
 
         // ADR-007-R1: Calculate expiresAt = UtcNow + 15 minutes, format yyyy-MM-ddTHH:mm:ssZ
-        var expiresAt = DateTime.UtcNow.AddMinutes(15).ToString("yyyy-MM-ddTHH:mm:ssZ");
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var expiresAt = now.AddMinutes(15).ToString("yyyy-MM-ddTHH:mm:ssZ");
 
         // ADR-007-R1, ADR-007-R2: Compute HMAC-SHA256 signature
         var signature = ComputeHmacSignature(leaseId, expiresAt);
@@ -97,16 +107,17 @@ public sealed class ConcordatoFacileLinkService(
         {
             LeaseContractId = leaseId,
             EventType = LeaseEventType.ConcordatoFacileLinkGenerated,
-            OccurredAt = DateTime.UtcNow
+            OccurredAt = now
         });
 
         await db.SaveChangesAsync(cancellationToken);
 
-        // ADR-007-R5: Log generation without secret, signature, or full URL
+        // ADR-007-R5: Log generation without secret, signature, or full URL. The caller is named by the subject of its token (an opaque
+        // id), never by its display name, which can be an e-mail address (CF-BE: no personal data in the logs).
         logger.LogInformation(
             "Generated ConcordatoFacile link for lease {LeaseId} by user {UserId}",
             leaseId,
-            user.Identity?.Name ?? "unknown");
+            user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "unknown");
 
         return new CfLinkResult(url);
     }

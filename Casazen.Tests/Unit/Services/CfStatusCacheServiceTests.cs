@@ -4,9 +4,11 @@ using Casazen.Core.Exceptions;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -29,9 +31,101 @@ public class CfStatusCacheServiceTests
     public CfStatusCacheServiceTests()
     {
         _apiClientMock = new Mock<ConcordatoFacileApiClient>(null!, null!);
+
+        // The key is configured unless a test says it is not (CF-BE).
+        _apiClientMock.SetupGet(c => c.IsConfigured).Returns(true);
         _cache = new MemoryCache(new MemoryCacheOptions());
         _environmentMock = new Mock<IHostEnvironment>();
         _environmentMock.Setup(e => e.EnvironmentName).Returns("Testing");
+    }
+
+    /// <summary>
+    /// CF-BE, the PROOF test of the status without a key (the case of the test and production environments until ConcordatoFacile delivers
+    /// the key): the answer is not an error but "not available" (no practices, stale, never checked, the next read in five minutes),
+    /// ConcordatoFacile is not asked, not even at the following opening of the page, and the log has ONE warning, not an error, that names
+    /// the setting and no value.
+    /// </summary>
+    [Fact]
+    public async Task GetPractices_NoStatusApiKey_IsNotAvailable_CfIsNeverAsked_AndTheLogHasOneWarning()
+    {
+        var leaseId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        _apiClientMock.SetupGet(c => c.IsConfigured).Returns(false);
+        await using var db = await CreateInMemoryDbAsync();
+        await SeedLeaseAsync(db, orgId, leaseId);
+        var log = new CapturingLogger<ConcordatoFacileStatusCacheService>();
+        var service = CreateService(db, log);
+
+        var first = await service.GetPracticesAsync(leaseId, orgId);
+        var second = await service.GetPracticesAsync(leaseId, orgId);
+
+        foreach (var result in new[] { first, second })
+        {
+            Assert.False(result.IsAvailable);
+            Assert.True(result.IsStale);
+            Assert.Empty(result.Practices);
+            Assert.Null(result.LastCheckedAt);
+            Assert.InRange(result.NextUpdateAt - DateTime.UtcNow, TimeSpan.FromMinutes(4), TimeSpan.FromMinutes(5));
+        }
+
+        _apiClientMock.Verify(c => c.GetPracticesByLeaseIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        var warning = Assert.Single(log.Entries);
+        Assert.Equal(LogLevel.Warning, warning.Level);
+        Assert.Contains("ConcordatoFacile:StatusApiKey not configured", warning.Message);
+    }
+
+    /// <summary>
+    /// CF-BE (closes CF-FIX2-FU1): a first read that fails, with no snapshot to fall back on, is not a 500 and is not tried again at every
+    /// opening: the outcome "not available" is kept five minutes under the same key, so ConcordatoFacile (and its three attempts) is asked once.
+    /// </summary>
+    [Fact]
+    public async Task GetPractices_FirstReadFailsWithNoSnapshot_IsNotAvailable_AndCfIsAskedOnceInFiveMinutes()
+    {
+        var leaseId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        await using var db = await CreateInMemoryDbAsync();
+        await SeedLeaseAsync(db, orgId, leaseId);
+        _apiClientMock.Setup(c => c.GetPracticesByLeaseIdAsync(leaseId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("CF API unavailable"));
+        var service = CreateService(db);
+
+        var first = await service.GetPracticesAsync(leaseId, orgId);
+        var second = await service.GetPracticesAsync(leaseId, orgId);
+
+        Assert.False(first.IsAvailable);
+        Assert.False(second.IsAvailable);
+        Assert.True(second.IsStale);
+        Assert.Empty(second.Practices);
+        Assert.Null(second.LastCheckedAt);
+        _apiClientMock.Verify(c => c.GetPracticesByLeaseIdAsync(leaseId, It.IsAny<CancellationToken>()), Times.Once);
+
+        // Five minutes later the memory is gone and ConcordatoFacile is asked again, and a good answer is available again.
+        _cache.Set($"Testing:{orgId}:{leaseId}", ExpiredNotAvailable(orgId), new MemoryCacheEntryOptions());
+        _apiClientMock.Setup(c => c.GetPracticesByLeaseIdAsync(leaseId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PracticeDto>
+            {
+                new() { PracticeId = PracticeId, Status = CfPracticeStatus.Received, StatusChangedAt = DateTime.UtcNow }
+            });
+
+        var recovered = await service.GetPracticesAsync(leaseId, orgId);
+
+        Assert.True(recovered.IsAvailable);
+        Assert.False(recovered.IsStale);
+        Assert.Single(recovered.Practices);
+        Assert.NotNull(recovered.LastCheckedAt);
+    }
+
+    [Fact]
+    public async Task GetPractice_NoStatusApiKey_IsNull_AndCfIsNotAsked()
+    {
+        _apiClientMock.SetupGet(c => c.IsConfigured).Returns(false);
+        await using var db = await CreateInMemoryDbAsync();
+        var service = CreateService(db);
+
+        var practice = await service.GetPracticeAsync(PracticeId);
+
+        Assert.Null(practice);
+        _apiClientMock.Verify(c => c.GetPracticeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     /// <summary>
@@ -229,15 +323,30 @@ public class CfStatusCacheServiceTests
         _apiClientMock.Verify(c => c.GetPracticeAsync(PracticeId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    private ConcordatoFacileStatusCacheService CreateService(AppDbContext db)
+    private ConcordatoFacileStatusCacheService CreateService(
+        AppDbContext db,
+        ILogger<ConcordatoFacileStatusCacheService>? logger = null)
     {
         return new ConcordatoFacileStatusCacheService(
             _cache,
             _apiClientMock.Object,
             db,
             _environmentMock.Object,
-            NullLogger<ConcordatoFacileStatusCacheService>.Instance);
+            logger ?? NullLogger<ConcordatoFacileStatusCacheService>.Instance);
     }
+
+    /// <summary>The memory of a failed read whose five minutes are over.</summary>
+    private static CfStatusSnapshot ExpiredNotAvailable(Guid orgId) => new()
+    {
+        OrgId = orgId,
+        Practices = [],
+        FetchedAt = null,
+        ExpiresAt = DateTime.UtcNow.AddMinutes(-1),
+        IsStale = true,
+        IsAvailable = false,
+        LastError = "CF API unavailable",
+        LastAttemptAt = DateTime.UtcNow.AddMinutes(-6)
+    };
 
     /// <summary>A snapshot whose time has come, as it is 15 minutes after it was read.</summary>
     private static CfStatusSnapshot ExpiredSnapshot(Guid orgId, List<PracticeDto> practices) => new()

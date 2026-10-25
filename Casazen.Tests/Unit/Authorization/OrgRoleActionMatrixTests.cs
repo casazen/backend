@@ -142,6 +142,14 @@ public class OrgRoleActionMatrixTests
         { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetRules), WithMoney },
         { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetLandlordDefaults), Operators },
 
+        // CF-BE: the guided contract. What writes (the privacy acceptance, the gift of the plan, the signed link to the form) asks for
+        // lease.create like the draft, so the accountant, who only reads, cannot spend the gift of the org; the state is read with lease.read.
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.AcceptPrivacy), Operators },
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.ConsumeGift), Operators },
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.GenerateLink), Operators },
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.GetAccess), WithMoney },
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.GetStatus), WithMoney },
+
         // The people of the org, and the properties each of them reaches.
         { typeof(OrgMembersController), nameof(OrgMembersController.List), Team },
         { typeof(OrgMembersController), nameof(OrgMembersController.GetProperties), Team },

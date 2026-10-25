@@ -11,14 +11,23 @@ public class StatusResponse
     /// <summary>List of practices for the lease</summary>
     public required IReadOnlyList<PracticeResponse> Practices { get; set; }
 
-    /// <summary>When the backend last checked the CF API (ISO8601)</summary>
-    public required DateTime LastCheckedAt { get; set; }
+    /// <summary>
+    /// When the backend last read the CF API successfully (ISO8601); null when it never has (the status API is not available, CF-BE).
+    /// </summary>
+    public required DateTime? LastCheckedAt { get; set; }
 
     /// <summary>When the frontend should poll again (ISO8601)</summary>
     public required DateTime NextUpdateAt { get; set; }
 
     /// <summary>Whether the snapshot is stale due to CF API error</summary>
     public required bool Stale { get; set; }
+
+    /// <summary>
+    /// Whether the practices come from ConcordatoFacile: true with a successful read or a valid snapshot (stale or not); false when the
+    /// status API cannot be read and there is no snapshot, with the key missing or with ConcordatoFacile failing. The answer is still a
+    /// 200, with no practices, <c>stale: true</c> and <c>lastCheckedAt: null</c>: an unreadable status is never "no practice" (CF-BE).
+    /// </summary>
+    public required bool Available { get; set; }
 }
 
 /// <summary>

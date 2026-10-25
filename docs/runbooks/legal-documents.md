@@ -347,6 +347,35 @@ changes (a new bullet needs a new version).
 | Secrets in environment variables, no start without the encryption certificate | [`storage.md`](storage.md) § 4 | The startup log line of `encryption.md` § 3 |
 | Retention job and erasure tools | [`gdpr.md`](gdpr.md) | `gdpr.md` § 6 |
 
+### 5.7 Privacy notice 2026-10-v2 (task CF-BE): ConcordatoFacile as a recipient
+
+> **Bozza redatta da un agente AI su incarico del PO: richiede revisione di un legale prima dell'uso in produzione.**
+
+On the product owner's order (2026-10-25: ConcordatoFacile named in the privacy legal texts, never in the app) the privacy notice has a **new
+version**, `2026-10-v2` (`Casazen.Web/LegalDocuments/privacy/2026-10-v2.{it,en}.html`). `2026-10-v1` is not edited: it is the proof of what was
+accepted. What changes, in both languages: 3.5 (the record of the acceptance per lease before the form), a new 4.4 (the contract that
+ConcordatoFacile hands over is treated like any other document of the lease: read on our own systems, no external service, no AI), one row in the
+purposes table of section 5 and a new 6.3 (the recipient: only the lease id, the comune and the province go in the signed link, opened after the
+acceptance; what is written in the form goes straight to ConcordatoFacile; only the practice number, the comune, the status and the dates come
+back; EEA; no other purpose). The old 6.3 and 6.4 are now 6.4 and 6.5.
+
+**Default framing (point R24 of the specification: the agreement with ConcordatoFacile is not concluded).** ConcordatoFacile is an **independent
+controller** for what is written in its form, not a subprocessor: it is not in `LegalSubprocessorCatalog` (`/legale/sub-responsabili`) and not in
+the DPA (whose art. 6.2 already covers the recipients the Holder chooses with the functions of the Service). If the agreement makes it a
+**processor**: change in the notice the two sentences of 6.3 that say «come titolare autonomo» (it: "as an independent controller") and «non
+agisce per nostro conto e non è un nostro sub-responsabile» (it: "does not act on our behalf and is not one of our subprocessors"), add it to the
+catalogue of subprocessors (§ 3, "Changing the list") and to the DPA (art. 1.2 and 8), each as a new version.
+
+**Activation (the deploy does not do it).** Like the `2026-10-v1` drafts it is activated per environment, test first: Railway
+`Legal__Documents__Privacy__Version=2026-10-v2` and `Legal__Documents__Privacy__EffectiveAt=<date in force>`, with the company variables of
+[5.2](#52-variables) set so that the text is published (`GET /api/legal/privacy?lang=it` → `available: true`). The default of `appsettings.json`
+stays `2026-06-v1`; a test guards it. **Effect on the hosts:** from that moment every host whose organization accepted the previous privacy
+version is sent to the consents step and must accept this one ([5.3](#53-activation-and-what-the-hosts-see), `onboarding-consents.md`); the Terms
+and the DPA keep their versions, so nothing else is asked. Tell the hosts first (ToS 15.1). **The acceptance before the form** is another thing:
+`POST /api/leases/{id}/concordatofacile/privacy-acceptance` records, per lease, the version configured at that moment (lease event
+`ConcordatoFacilePrivacyAccepted`, payload `{ "policyVersion": … }`, no personal data), and the signed link answers 409
+`concordatofacile_privacy_not_accepted` without an acceptance of the **current** version: after the activation the form asks for it again.
+
 ## 6. Fail-closed, health check and startup log (decision D9)
 
 A document is **published** when a file exists for its configured version **and** every value its placeholders need is
@@ -373,3 +402,6 @@ tables, links and tokens; every file starts with the draft notice as a comment t
 named in the texts (the list is dynamic); only verified statutes are cited; the default versions do not activate the
 drafts; the proposed notices respect Reg. 2019/1150; the version, not the data, decides the re-acceptance; the `legal`
 health check is healthy/degraded as described; the endpoints serve the drafts and stay "in preparation" without data.
+`LegalPrivacyNoticeV2Tests` (CF-BE): the `2026-10-v2` privacy notice names ConcordatoFacile in both languages (the `2026-10-v1` files and the DPA do
+not), has the same sections and numbering in Italian and English, carries the draft notice, is published with the controller's data and, when its
+version is activated, asks the hosts to accept the privacy again and nothing else.

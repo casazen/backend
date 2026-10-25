@@ -15,6 +15,9 @@ public sealed class SimulatedConcordatoFacileApiClient(AppDbContext db) : IConco
 {
     private const int MaxPracticesOfALease = 20;
 
+    /// <summary>Always: the simulator reads a table of the application, there is no key to configure (CF-BE: the status cache asks).</summary>
+    public bool IsConfigured => true;
+
     public async Task<List<PracticeDto>> GetPracticesByLeaseIdAsync(Guid leaseId, CancellationToken cancellationToken = default)
     {
         var practices = await db.CfSimulatedPractices
