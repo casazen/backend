@@ -28,11 +28,14 @@ public class TrustedSuppliersController(
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<InviteSupplierResponse>> InviteSupplier([FromBody] InviteSupplierRequestDto request)
     {
-        var orgId = orgContextResolver.GetOrgId(User);
-        var actorUserId = User.GetUserId();
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return Unauthorized();
+
+        var actorUserId = User.GetUserId() ?? string.Empty;
 
         var result = await trustedSupplierService.InviteSupplierAsync(
-            orgId,
+            orgId.Value,
             new InviteSupplierRequest(request.Email, request.PropertyIds ?? new List<Guid>()),
             actorUserId);
 
@@ -48,9 +51,11 @@ public class TrustedSuppliersController(
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<List<TrustedSupplierDto>>> GetTrustedSuppliers()
     {
-        var orgId = orgContextResolver.GetOrgId(User);
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return Unauthorized();
 
-        var suppliers = await trustedSupplierService.GetTrustedSuppliersAsync(orgId);
+        var suppliers = await trustedSupplierService.GetTrustedSuppliersAsync(orgId.Value);
 
         var dtos = suppliers.Select(s => new TrustedSupplierDto
         {
@@ -76,10 +81,13 @@ public class TrustedSuppliersController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateVisibility(Guid id, [FromBody] UpdateVisibilityRequest request)
     {
-        var orgId = orgContextResolver.GetOrgId(User);
-        var actorUserId = User.GetUserId();
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return Unauthorized();
 
-        await trustedSupplierService.UpdateMarketplaceVisibilityAsync(orgId, id, request.Visible, actorUserId);
+        var actorUserId = User.GetUserId() ?? string.Empty;
+
+        await trustedSupplierService.UpdateMarketplaceVisibilityAsync(orgId.Value, id, request.Visible, actorUserId);
 
         return NoContent();
     }
@@ -94,10 +102,13 @@ public class TrustedSuppliersController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveTrustedSupplier(Guid id)
     {
-        var orgId = orgContextResolver.GetOrgId(User);
-        var actorUserId = User.GetUserId();
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return Unauthorized();
 
-        await trustedSupplierService.RemoveTrustedSupplierAsync(orgId, id, actorUserId);
+        var actorUserId = User.GetUserId() ?? string.Empty;
+
+        await trustedSupplierService.RemoveTrustedSupplierAsync(orgId.Value, id, actorUserId);
 
         return NoContent();
     }
