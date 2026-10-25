@@ -3236,4 +3236,7 @@
   <data name="tier_insufficient" xml:space="preserve">
     <value>Piano insufficiente per questa operazione</value>
   </data>
+  <data name="TrustedSupplierNotFound" xml:space="preserve">
+    <value>Fornitore di fiducia non trovato</value>
+  </data>
 </root>
