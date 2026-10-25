@@ -209,4 +209,10 @@ public static class DirectBookingErrorCodes
     /// so it is not offered (<c>marketingConsentVersion</c> of the public org is null) and not accepted either.
     /// </summary>
     public const string MarketingConsentUnavailable = "direct_booking_marketing_consent_unavailable";
+
+    /// <summary>
+    /// 501: direct bookings not supported for properties with non-EUR currency (ADR-001-R10, deferred per D-02).
+    /// Multi-currency bookings require Stripe Connect multi-currency setup.
+    /// </summary>
+    public const string CurrencyNotSupported = "currency_not_supported";
 }

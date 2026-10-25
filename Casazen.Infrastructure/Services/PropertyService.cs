@@ -85,6 +85,7 @@ public class PropertyService(
         property.CinCode = CinFormat.Normalize(property.CinCode);
         NormalizeLocation(property);
         NormalizeStayRules(property);
+        ApplyCountryDefaults(property);
         property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
         await EnsureCancellationPolicyExistsAsync(property);
         try
@@ -105,6 +106,9 @@ public class PropertyService(
         property.CinCode = CinFormat.Normalize(property.CinCode);
         NormalizeLocation(property);
         NormalizeStayRules(property);
+        // Country/Currency are not yet updateable via UpdatePropertyRequest, so don't apply defaults on update.
+        // This preserves existing timezone values (PATCH semantics, A2-04).
+        // When Country becomes updateable, ApplyCountryDefaults should only run when country is being changed.
         if (!string.IsNullOrWhiteSpace(property.Slug))
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
@@ -158,6 +162,32 @@ public class PropertyService(
             throw new DomainRuleException(PropertyStayRules.WeekendSurchargeInvalidCode, "PropertyWeekendSurchargeInvalid");
 
         property.WeekendSurchargePercent = PropertyStayRules.NormalizeWeekendSurcharge(property.WeekendSurchargePercent);
+    }
+
+    /// <summary>
+    /// Derives currency and timezone from country code (ADR-001-R7): IT -> EUR, Europe/Rome; CH -> CHF, Europe/Zurich.
+    /// Ensures the country is stored in uppercase.
+    /// </summary>
+    private static void ApplyCountryDefaults(Property property)
+    {
+        property.Country = property.Country?.ToUpperInvariant() ?? "IT";
+
+        switch (property.Country)
+        {
+            case "IT":
+                property.Currency = "EUR";
+                property.Timezone = "Europe/Rome";
+                break;
+            case "CH":
+                property.Currency = "CHF";
+                property.Timezone = "Europe/Zurich";
+                break;
+            default:
+                // Unknown country defaults to IT
+                property.Currency = "EUR";
+                property.Timezone = "Europe/Rome";
+                break;
+        }
     }
 
     /// <summary>
