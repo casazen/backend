@@ -66,14 +66,22 @@ public class ConcordatoFacileFeatureFlagTests(CasazenWebApplicationFactory facto
     }
 }
 
-/// <summary>The default integration host with <c>Features:ConcordatoFacile=true</c>: a signed-in user reaches the service through the endpoints.</summary>
+/// <summary>
+/// The default integration host with <c>Features:ConcordatoFacile=true</c>: a signed-in user reaches the service through the endpoints. The
+/// controller takes the link service in its constructor and that one refuses to be built without the link secret (every real environment
+/// has it), so the host gets one, as <see cref="CfSimulatorFactory"/> does.
+/// </summary>
 public sealed class ConcordatoFacileEnabledFactory : CasazenWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         builder.ConfigureAppConfiguration((_, config) =>
-            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:ConcordatoFacile"] = "true" }));
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Features:ConcordatoFacile"] = "true",
+                ["ConcordatoFacile:LinkSecret"] = "cf-checkout-body-test-link-secret-0123456789abcdef",
+            }));
     }
 }
 
