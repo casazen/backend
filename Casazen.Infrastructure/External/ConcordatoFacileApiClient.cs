@@ -12,7 +12,7 @@ namespace Casazen.Infrastructure.External;
 /// array that ADR-008-R6 describes.
 /// Registered with retry policy (exponential backoff: 1s, 2s, 4s) and timeout policy (30s per attempt).
 /// </summary>
-public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<ConcordatoFacileApiClient> logger)
+public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<ConcordatoFacileApiClient> logger) : IConcordatoFacileApiClient
 {
     /// <summary>
     /// Whether the status API key is configured, that is whether the client sends <c>Authorization: Bearer</c> (the registration in

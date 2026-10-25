@@ -18,6 +18,7 @@ using Casazen.Core.Options;
 using Casazen.Infrastructure.OfficialData;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Infrastructure.Services.CfSimulator;
 using Casazen.Infrastructure.Services.ICal;
 using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
@@ -361,6 +362,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IStayAlertService, StayAlertService>();
+        // Approval queue for items requiring human decision before taking effect (NF-06)
+        services.AddScoped<IApprovalQueueService, ApprovalQueueService>();
         // CIN deadline (CO-20, runbook cin-format.md): optional date, validated at startup; daily host alert.
         services.AddOptions<Casazen.Core.Options.CinOptions>()
             .BindConfiguration(Casazen.Core.Options.CinOptions.SectionName)
@@ -455,6 +458,16 @@ public static class ServiceCollectionExtensions
         // The practices of a lease and the lookup of a practice, read from the ConcordatoFacile status API and kept in memory (ADR-008). The
         // controller of the module takes it in its constructor: without this registration every one of its actions fails (CF-FIX2).
         services.AddScoped<IConcordatoFacileStatusCacheService, ConcordatoFacileStatusCacheService>();
+        // The simulated module and status API of the test environment (CF-SIM, docs/runbooks/concordatofacile-simulator.md). The status
+        // cache reads the practices from IConcordatoFacileApiClient: the HTTP client of the real status API, except with
+        // ConcordatoFacile:FormMode=Simulated, which the startup refuses in Production. Chosen when the client is asked for, not when the
+        // application is built, like every other read of these options.
+        services.AddScoped<ICfSimulatorService, CfSimulatorService>();
+        services.AddScoped<SimulatedConcordatoFacileApiClient>();
+        services.AddScoped<IConcordatoFacileApiClient>(provider =>
+            provider.GetRequiredService<IOptions<ConcordatoFacileOptions>>().Value.FormMode == ConcordatoFacileFormMode.Simulated
+                ? provider.GetRequiredService<SimulatedConcordatoFacileApiClient>()
+                : provider.GetRequiredService<ConcordatoFacileApiClient>());
         // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
         services.AddScoped<IRentRegisterService, RentRegisterService>();
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();

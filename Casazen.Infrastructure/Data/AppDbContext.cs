@@ -120,6 +120,12 @@ public class AppDbContext(
     public DbSet<SupplierServiceListing> SupplierServiceListings { get; set; } = null!;
 
     /// <summary>
+    /// Trusted supplier relationships for agency tier orgs (NF-21, ADR-020): an agency's preferred suppliers
+    /// with manual payment mode, 0% commission, and statement integration.
+    /// </summary>
+    public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
+
+    /// <summary>
     /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
     /// keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list): only <c>SupplierAgendaService</c>
     /// (and the supplier repair) reads and writes them, always with an explicit <c>OrgId</c> predicate.
@@ -176,6 +182,9 @@ public class AppDbContext(
     // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
     public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
 
+    // Approval queue for items requiring human decision before taking effect (NF-06)
+    public DbSet<ApprovalQueueItem> ApprovalQueueItems { get; set; } = null!;
+
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
     public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
@@ -197,6 +206,9 @@ public class AppDbContext(
     // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
     public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
     public DbSet<ConcordatoFacileGift> ConcordatoFacileGifts { get; set; } = null!;
+
+    // Practices of the simulated ConcordatoFacile module: test environments only (CF-SIM)
+    public DbSet<CfSimulatedPractice> CfSimulatedPractices { get; set; } = null!;
 
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
@@ -701,6 +713,7 @@ public class AppDbContext(
         // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
         modelBuilder.ApplyConfiguration(new ConcordatoFacilePurchaseConfiguration());
         modelBuilder.ApplyConfiguration(new ConcordatoFacileGiftConfiguration());
+        modelBuilder.ApplyConfiguration(new CfSimulatedPracticeConfiguration());
 
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).

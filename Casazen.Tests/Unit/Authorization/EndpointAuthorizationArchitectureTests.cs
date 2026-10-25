@@ -57,6 +57,7 @@ public class EndpointAuthorizationArchitectureTests
         ["TouristTaxRatesController.GetById"] = "Platform reference data, see GetAll.",
         ["TouristTaxRatesController.GetByCity"] = "Platform reference data, see GetAll.",
         ["ServiceCategoriesController.GetAll"] = "Fixed catalog of service category codes (SU-03) used by suppliers, hosts and admins alike; no tenant data.",
+        ["IndexNowController.NotifyUrls"] = "NF-25: internal endpoint called by the platform when org or property content changes (published, updated, activated) to notify search engines via IndexNow protocol; queues URLs for background submission, no tenant data returned.",
 
         // Endpoints shared by two roles: the action evaluates the policy of the branch it takes.
         ["ServiceRequestsController.List"] = "Host list (PropertyRead + HostScope) or supplier inbox with view=supplier (RequireSupplier), each checked with IAuthorizationService inside the action.",

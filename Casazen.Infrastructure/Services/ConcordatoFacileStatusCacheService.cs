@@ -1,41 +1,60 @@
 using System.Collections.Concurrent;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// CF status cache service with 15-minute expiry and request coalescing (ADR-008-R7 through ADR-008-R10, ADR-008-R14).
-/// It also keeps the answer of the lookup of a single practice for 15 minutes (<see cref="GetPracticeAsync"/>).
+/// It also keeps the answer of the lookup of a single practice for 15 minutes (<see cref="GetPracticeAsync"/>). With the simulated module
+/// of the test environment (<c>ConcordatoFacile:FormMode=Simulated</c>, CF-SIM) every one of these times is the same few seconds
+/// (<c>ConcordatoFacile:Simulator:StatusTtlSeconds</c>), because whoever tries the round would otherwise wait minutes to see a state.
 /// <para>
 /// A status that cannot be read is not an error for the caller (CF-BE, closes CF-FIX2-FU1 and CF-FIX2-FU2): with the status API key
-/// not configured ConcordatoFacile is not asked at all, and when it fails with no snapshot to fall back on, the outcome "not available" is
+/// not configured ConcordatoFacile is not asked at all (<see cref="IConcordatoFacileApiClient.IsConfigured"/>: the real client without a
+/// key; the simulated one is always configured), and when it fails with no snapshot to fall back on, the outcome "not available" is
 /// kept for five minutes in the same cache, under the same key (environment, org, lease), so the next openings do not ask it again. The
 /// answer is then <c>IsAvailable: false</c>, no practices, stale, never checked: an unreadable status is never "no practice".
 /// </para>
 /// </summary>
 public sealed class ConcordatoFacileStatusCacheService(
     IMemoryCache memoryCache,
-    ConcordatoFacileApiClient apiClient,
+    IConcordatoFacileApiClient apiClient,
     AppDbContext db,
     IHostEnvironment environment,
-    ILogger<ConcordatoFacileStatusCacheService> logger) : IConcordatoFacileStatusCacheService
+    ILogger<ConcordatoFacileStatusCacheService> logger,
+    IOptions<ConcordatoFacileOptions>? options = null) : IConcordatoFacileStatusCacheService
 {
-    private static readonly TimeSpan NormalExpiry = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan BriefRefreshExpiry = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan RealNormalExpiry = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan RealBriefRefreshExpiry = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan BriefRefreshWindow = TimeSpan.FromHours(1);
 
     // CF-FIX2: after a failed read the stale snapshot is served for this long before ConcordatoFacile is asked again. CF-BE: the same
     // five minutes for the outcome "not available" when there is no snapshot.
-    private static readonly TimeSpan AfterErrorExpiry = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan RealAfterErrorExpiry = TimeSpan.FromMinutes(5);
 
     // CF-FIX2: a practice ConcordatoFacile does not know yet (the form was sent seconds ago) is asked again soon, not in 15 minutes.
-    private static readonly TimeSpan PracticeNotFoundExpiry = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan RealPracticeNotFoundExpiry = TimeSpan.FromMinutes(1);
+
+    // CF-SIM: the one time of the simulated module, null with the real one.
+    private readonly TimeSpan? _simulatedExpiry = options?.Value is { FormMode: ConcordatoFacileFormMode.Simulated } simulated
+        ? TimeSpan.FromSeconds(simulated.Simulator.StatusTtlSeconds)
+        : null;
+
+    private TimeSpan NormalExpiry => _simulatedExpiry ?? RealNormalExpiry;
+
+    private TimeSpan BriefRefreshExpiry => _simulatedExpiry ?? RealBriefRefreshExpiry;
+
+    private TimeSpan AfterErrorExpiry => _simulatedExpiry ?? RealAfterErrorExpiry;
+
+    private TimeSpan PracticeNotFoundExpiry => _simulatedExpiry ?? RealPracticeNotFoundExpiry;
 
     // The status API key is a secret handed over by ConcordatoFacile: the log line says which setting is missing, never a value.
     private const string KeyMissingMessage = "ConcordatoFacile:StatusApiKey not configured; CF status API disabled";

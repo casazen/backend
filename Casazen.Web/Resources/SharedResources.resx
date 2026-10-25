@@ -84,6 +84,12 @@
   <data name="InternalServerErrorDetail" xml:space="preserve">
     <value>Si è verificato un errore imprevisto. Riprova più tardi.</value>
   </data>
+  <data name="IndexNowNotConfigured" xml:space="preserve">
+    <value>Il servizio IndexNow non è configurato.</value>
+  </data>
+  <data name="IndexNowNoUrlsProvided" xml:space="preserve">
+    <value>Nessun URL fornito per la notifica IndexNow.</value>
+  </data>
   <data name="ValidationError" xml:space="preserve">
     <value>Uno o più errori di validazione.</value>
   </data>
@@ -3238,5 +3244,17 @@
   </data>
   <data name="tier_insufficient" xml:space="preserve">
     <value>Piano insufficiente per questa operazione</value>
+  </data>
+  <data name="TrustedSupplierNotFound" xml:space="preserve">
+    <value>Fornitore di fiducia non trovato</value>
+  </data>
+  <data name="ApprovalItemNotFound" xml:space="preserve">
+    <value>Elemento da approvare non trovato</value>
+  </data>
+  <data name="OrgContextRequired" xml:space="preserve">
+    <value>Contesto organizzazione richiesto</value>
+  </data>
+  <data name="UserIdMissing" xml:space="preserve">
+    <value>Identificativo utente mancante</value>
   </data>
 </root>
