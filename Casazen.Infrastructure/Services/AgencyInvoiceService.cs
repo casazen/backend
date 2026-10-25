@@ -74,48 +74,85 @@ public sealed class AgencyInvoiceService(AppDbContext db) : IAgencyInvoiceServic
             throw new DomainRuleException("org_missing_registered_office", "OrgMissingRegisteredOffice");
         }
 
-        // Get next invoice number for this agency (per-agency sequential numbering, ADR-019-R4)
-        // Use row lock to ensure no gaps and no duplicates
-        var series = statement.Year.ToString(); // Default series is the year
-        var nextNumber = await GetNextInvoiceNumberAsync(statement.OrgId, series, cancellationToken);
+        // Use serializable transaction to ensure atomic number assignment and invoice creation (Issue #4 fix)
+        // Transaction must encompass BOTH number retrieval AND invoice save to prevent gaps and duplicates
+        using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
-        // Calculate invoice amounts
-        var taxableBase = statement.Commission; // Commission is the taxable base
-        var vatRate = 22.00m; // Default VAT rate (should come from org configuration in full implementation)
-        var vatAmount = Math.Round(taxableBase * vatRate / 100m, 2, MidpointRounding.ToEven);
-
-        // Stamp duty: €2 if taxable base > €77.47 and VAT is 0
-        var stampDuty = vatRate == 0m && taxableBase > StampDutyThreshold ? StampDutyAmount : 0m;
-
-        var total = taxableBase + vatAmount + stampDuty;
-
-        // Create invoice (without XML first, then generate XML and update)
-        var invoice = new AgencyInvoice
+        try
         {
-            OrgId = statement.OrgId,
-            OwnerId = statement.PropertyOwnerId,
-            InvoiceNumber = nextNumber.ToString(),
-            Series = series,
-            Month = statement.Month,
-            Year = statement.Year,
-            TaxableBase = taxableBase,
-            VatRate = vatRate,
-            VatAmount = vatAmount,
-            VatExemptionCode = vatRate == 0m ? "N2.2" : null, // Example exemption code when VAT is 0
-            StampDuty = stampDuty,
-            Total = total,
-            Status = InvoiceStatus.ToBeIssuedManually, // Phase 1: no provider, manual issuance (ADR-019-R7)
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+            var series = statement.Year.ToString(); // Default series is the year
 
-        // Generate and assign XML
-        invoice.FatturapaXml = GenerateFatturaPaXml(statement, invoice);
+            // Get the highest invoice number for this org/series
+            var lastInvoice = await db.Set<AgencyInvoice>()
+                .Where(i => i.OrgId == statement.OrgId && i.Series == series)
+                .OrderByDescending(i => i.InvoiceNumber)
+                .FirstOrDefaultAsync(cancellationToken);
 
-        db.Set<AgencyInvoice>().Add(invoice);
-        await db.SaveChangesAsync(cancellationToken);
+            int nextNumber;
+            if (lastInvoice is null)
+            {
+                nextNumber = 1; // First invoice
+            }
+            else
+            {
+                // Parse the invoice number and increment
+                if (int.TryParse(lastInvoice.InvoiceNumber, out var lastNumber))
+                {
+                    nextNumber = lastNumber + 1;
+                }
+                else
+                {
+                    // If parsing fails, start from 1 (shouldn't happen with our numbering scheme)
+                    nextNumber = 1;
+                }
+            }
 
-        return new InvoiceGenerationResult(invoice, null);
+            // Calculate invoice amounts
+            var taxableBase = statement.Commission; // Commission is the taxable base
+            var vatRate = 22.00m; // Default VAT rate (should come from org configuration in full implementation)
+            var vatAmount = Math.Round(taxableBase * vatRate / 100m, 2, MidpointRounding.ToEven);
+
+            // Stamp duty: €2 if taxable base > €77.47 and VAT is 0
+            var stampDuty = vatRate == 0m && taxableBase > StampDutyThreshold ? StampDutyAmount : 0m;
+
+            var total = taxableBase + vatAmount + stampDuty;
+
+            // Create invoice
+            var invoice = new AgencyInvoice
+            {
+                OrgId = statement.OrgId,
+                OwnerId = statement.PropertyOwnerId,
+                InvoiceNumber = nextNumber.ToString(),
+                Series = series,
+                Month = statement.Month,
+                Year = statement.Year,
+                TaxableBase = taxableBase,
+                VatRate = vatRate,
+                VatAmount = vatAmount,
+                VatExemptionCode = vatRate == 0m ? "N2.2" : null, // Example exemption code when VAT is 0
+                StampDuty = stampDuty,
+                Total = total,
+                Status = InvoiceStatus.ToBeIssuedManually, // Phase 1: no provider, manual issuance (ADR-019-R7)
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Generate and assign XML
+            invoice.FatturapaXml = GenerateFatturaPaXml(statement, invoice);
+
+            db.Set<AgencyInvoice>().Add(invoice);
+            await db.SaveChangesAsync(cancellationToken);
+
+            // Commit the transaction - both number retrieval and save are now atomic
+            await transaction.CommitAsync(cancellationToken);
+
+            return new InvoiceGenerationResult(invoice, null);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     /// <inheritdoc />
@@ -161,52 +198,6 @@ public sealed class AgencyInvoiceService(AppDbContext db) : IAgencyInvoiceServic
         return GenerateInvoicePdf(invoice);
     }
 
-    /// <summary>
-    /// Gets the next sequential invoice number for the agency/series combination (ADR-019-R4).
-    /// Uses serializable transaction to ensure no gaps and no duplicates (fixes Issue #4).
-    /// </summary>
-    private async Task<int> GetNextInvoiceNumberAsync(Guid orgId, string series, CancellationToken cancellationToken)
-    {
-        // Use serializable isolation level to prevent concurrent invoice number assignment
-        using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
-
-        try
-        {
-            // Get the highest invoice number for this org/series with row lock
-            var lastInvoice = await db.Set<AgencyInvoice>()
-                .Where(i => i.OrgId == orgId && i.Series == series)
-                .OrderByDescending(i => i.InvoiceNumber)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            int nextNumber;
-            if (lastInvoice is null)
-            {
-                nextNumber = 1; // First invoice
-            }
-            else
-            {
-                // Parse the invoice number and increment
-                if (int.TryParse(lastInvoice.InvoiceNumber, out var lastNumber))
-                {
-                    nextNumber = lastNumber + 1;
-                }
-                else
-                {
-                    // If parsing fails, start from 1 (shouldn't happen with our numbering scheme)
-                    nextNumber = 1;
-                }
-            }
-
-            // Commit the transaction to release the lock
-            await transaction.CommitAsync(cancellationToken);
-            return nextNumber;
-        }
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
-    }
 
     /// <summary>
     /// Generates FatturaPA XML content (ADR-019-R6).
