@@ -56,4 +56,5 @@ public static class TestDataEntities
     public const string Guest = "Guest";
     public const string Booking = "Booking";
     public const string HostInvite = "HostInviteRecord";
+    public const string PropertyOwner = "PropertyOwner";
 }
