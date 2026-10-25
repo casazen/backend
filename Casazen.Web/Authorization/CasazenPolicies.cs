@@ -123,17 +123,14 @@ public static class CasazenPolicies
     public const string LeaseSign = LongRent + "lease.sign";
     public const string LeaseRegister = LongRent + "lease.register";
 
-    /// <summary>Agency tier B2B policies (ADR-010): all require <c>Org.PlanTier == PlanTier.Agency</c>. Internal until endpoints use them.</summary>
+    /// <summary>Agency tier B2B policies (ADR-010, ADR-012): all require <c>Org.PlanTier == PlanTier.Agency</c>.</summary>
     private const string Agency = "RequireAgencyTier:";
 
-    /// <summary>Invite and remove property owners (agency B2B).</summary>
-    internal const string AgencyOwnerManage = Agency + "agency.owner.manage";
+    /// <summary>View property owner list and details (agency B2B, ADR-012).</summary>
+    public const string AgencyOwnerView = Agency + "agency.owner.view";
 
-    /// <summary>View property owner list and details (agency B2B).</summary>
-    internal const string AgencyOwnerView = Agency + "agency.owner.view";
-
-    /// <summary>View full IBAN of property owners (requires audit log, agency B2B).</summary>
-    internal const string AgencyOwnerFinancialRead = Agency + "agency.owner.financial.read";
+    /// <summary>View full IBAN of property owners (requires audit log, agency B2B, ADR-012-R3).</summary>
+    public const string AgencyOwnerFinancialRead = Agency + "agency.owner.financial.read";
 
     /// <summary>Create, edit and publish monthly statements (agency B2B).</summary>
     internal const string AgencyStatementManage = Agency + "agency.statement.manage";
@@ -189,8 +186,12 @@ public static class CasazenPolicies
         OrgMembersManage, OrgActivityRead,
     ];
 
-    /// <summary>The agency tier policies registered at startup (ADR-010). Empty until endpoints use them (infrastructure only).</summary>
-    public static IReadOnlyList<string> AgencyPolicies { get; } = [];
+    /// <summary>The agency tier policies registered at startup (ADR-010, ADR-012).</summary>
+    public static IReadOnlyList<string> AgencyPolicies { get; } =
+    [
+        AgencyOwnerView,
+        AgencyOwnerFinancialRead,
+    ];
 
     /// <summary>
     /// Splits a context policy name into its contexts and permission: <c>RequireContext:short-rent:property.read</c>

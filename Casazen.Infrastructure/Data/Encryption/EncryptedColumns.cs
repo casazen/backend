@@ -109,6 +109,11 @@ public static class EncryptedColumns
             nameof(PropertyQuesturaCredentials.Username),
             nameof(PropertyQuesturaCredentials.Password),
             nameof(PropertyQuesturaCredentials.WsKey)),
+        // ADR-012: property owner financial data (IBAN and fiscal code).
+        new EncryptedEntity<PropertyOwner>(
+            PropertyOwnerEncryptionPurpose.Purpose,
+            nameof(PropertyOwner.Iban),
+            nameof(PropertyOwner.FiscalCode)),
         // SP-10: the private customers of the suppliers and the booking that waits for their e-mail check.
         new EncryptedEntity<ServiceCustomer>(
             ServiceCustomerPurpose,

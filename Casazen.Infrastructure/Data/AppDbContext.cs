@@ -48,6 +48,7 @@ public class AppDbContext(
     /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
     public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
+    public DbSet<PropertyOwner> PropertyOwners { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
