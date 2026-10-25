@@ -149,6 +149,26 @@ public class LeasesController(
         return File(document.Content, "application/pdf", document.FileName);
     }
 
+    /// <summary>
+    /// What the receipt of a registration says (CF-DOCS-REAL): the PDF the person uploaded as a document of kind <c>Registration</c>, read
+    /// in process (no OCR), with the code, the date, the office, the figures and the town the Agenzia delle Entrate wrote, and the codes of what
+    /// disagrees with the lease. The screen of the declaration fills in the number and the date from it for the person to check: this read
+    /// declares nothing. 404 <c>document_not_found</c> for any document that is not a receipt of this lease.
+    /// </summary>
+    [HttpGet("{id:guid}/documents/{documentId:guid}/reading")]
+    [ProducesResponseType(typeof(LeaseDocumentReadingDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetDocumentReading(Guid id, Guid documentId,
+        [FromServices] ILeaseDocumentReadingService readings, CancellationToken ct)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null) return denied;
+        var reading = await readings.ReadAsync(id, documentId, ct);
+        if (reading is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "document_not_found", "DocumentNotFound");
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(reading);
+    }
+
     /// <summary>Create a new lease contract draft.</summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
