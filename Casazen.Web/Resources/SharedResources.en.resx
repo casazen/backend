@@ -117,6 +117,9 @@
   <data name="RateLimitedDetail" xml:space="preserve">
     <value>Too many requests in a short time. Try again in {0} seconds.</value>
   </data>
+  <data name="shares_not_hundred" xml:space="preserve">
+    <value>Ownership shares must sum to 100%</value>
+  </data>
   <data name="ServiceUnavailable" xml:space="preserve">
     <value>Service unavailable</value>
   </data>
