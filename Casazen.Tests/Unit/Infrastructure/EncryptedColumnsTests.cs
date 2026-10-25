@@ -17,6 +17,8 @@ public class EncryptedColumnsTests
         Assert.Equal(
             new[]
             {
+                "DocumentImage.BackImageUrl:Casazen.DocumentImage",
+                "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
                 "Guest.DocumentIssuingCountry:Casazen.Guest.Document",
                 "Guest.DocumentNumber:Casazen.Guest.Document",
                 // LR-12: the values a landlord typed in the wizard and kept in the draft, and the residence of a party of a lease.
