@@ -225,7 +225,9 @@ public class LeaseQuesturaCommunicationIntegrationTests
         using var ownerClient = LandlordClient(owner);
         var leaseId = await DriveToSignedAsync(ownerClient, property.Id, tenantCitizenship: "US");
         (await MarkDoneAsync(ownerClient, leaseId, "2026-09-24", ReceiptPdf)).EnsureSuccessStatusCode();
-        var otherLeaseId = await DriveToSignedAsync(ownerClient, property.Id, tenantCitizenship: "US");
+        // The second lease of the same property takes the four years that follow the first: two leases cannot cover the same days (LR-OVERLAP).
+        var otherLeaseId = await DriveToSignedAsync(
+            ownerClient, property.Id, tenantCitizenship: "US", startDate: "2030-09-23T00:00:00Z", endDate: "2034-09-22T00:00:00Z");
 
         using var outsiderClient = LandlordClient(outsider);
         var markDone = await MarkDoneAsync(outsiderClient, otherLeaseId, "2026-09-24", ReceiptPdf);
@@ -288,15 +290,20 @@ public class LeaseQuesturaCommunicationIntegrationTests
         return await client.PostAsync($"/api/leases/{leaseId}/rli/questura/mark-done", form);
     }
 
-    private static async Task<Guid> DriveToSignedAsync(HttpClient client, Guid propertyId, string tenantCitizenship)
+    private static async Task<Guid> DriveToSignedAsync(
+        HttpClient client,
+        Guid propertyId,
+        string tenantCitizenship,
+        string startDate = "2026-09-23T00:00:00Z",
+        string endDate = "2030-09-22T00:00:00Z")
     {
         var create = await client.PostAsJsonAsync("/api/leases", new
         {
             propertyId,
             contractType = "Libero",
             taxRegime = "CedolareSecca",
-            startDate = "2026-09-23T00:00:00Z",
-            endDate = "2030-09-22T00:00:00Z",
+            startDate,
+            endDate,
             monthlyRent = 900m,
             parties = new object[]
             {
