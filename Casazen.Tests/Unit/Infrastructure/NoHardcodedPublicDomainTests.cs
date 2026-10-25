@@ -22,6 +22,11 @@ public class NoHardcodedPublicDomainTests
         "https://casazen.app/roles",
         "https://casazen.app/email",
         "https://casazen.app/name",
+        // Owner portal custom claims (ADR-011-R7)
+        "https://casazen.app/context",
+        "https://casazen.app/owner_id",
+        "https://casazen.app/agency_ids",
+        "https://casazen.app/owned_property_ids",
     ];
 
     /// <summary>

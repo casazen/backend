@@ -233,6 +233,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthorizationHandler, HostResourceAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OrgBillingAdminAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, AgencyTierAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, OwnerPortalAuthorizationHandler>();
 
         // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
         var builder = services.AddAuthorizationBuilder()

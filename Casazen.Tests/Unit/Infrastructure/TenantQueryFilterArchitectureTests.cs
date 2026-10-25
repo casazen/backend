@@ -27,6 +27,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(AppContextEntity)] = "Global catalog of application contexts (seeded reference data).",
         [typeof(Role)] = "Global role catalog (seeded reference data).",
         [typeof(RolePermission)] = "Global permission catalog (seeded reference data).",
+        [typeof(OwnerUser)] = "Property owner users (ADR-011): cross-organization entities representing natural persons who own properties managed by multiple agencies (different orgs). Each OwnerUser can be linked to properties across multiple organizations. A tenant filter would incorrectly scope them to a single agency org, breaking the owner portal's ability to show properties across all agencies that manage their real estate.",
 
         // Platform reference data and platform-wide state.
         [typeof(TouristTaxRate)] = "Platform reference data: tourist tax rates per comune, managed by admins and read by every org.",
