@@ -163,6 +163,12 @@ public static class CasazenPolicies
     public const string AgencyOwnerManage = Agency + "agency.owner.manage";
 
     /// <summary>
+    /// Owner portal access (ADR-011): checks JWT claim context=owner_portal and resolves OwnerUserId.
+    /// MUST NOT include host roles. Enforced on every owner portal endpoint.
+    /// </summary>
+    public const string OwnerPortal = "OwnerPortal";
+
+    /// <summary>
     /// Invite, change, deactivate, reactivate and remove the people of the caller's org (AM-02): the permission
     /// <c>org.members.manage</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody
     /// else. Like the host contexts it waits for the onboarding and the consents. What each of them may do to whom
