@@ -179,12 +179,12 @@ public class PublicGuestCheckInController(
 
         // Validate file
         if (document == null || document.Length == 0)
-            return BadRequest(new { error = "Document file is required." });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "document_required", "CheckInDocumentRequired");
 
         // Validate content type (images only)
         var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png" };
         if (!allowedTypes.Contains(document.ContentType.ToLowerInvariant()))
-            return BadRequest(new { error = "Only JPEG and PNG images are supported." });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "document_type_unsupported", "CheckInDocumentTypeUnsupported");
 
         try
         {
@@ -269,7 +269,7 @@ public class PublicGuestCheckInController(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error processing document upload for session {SessionId}", session.Id);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = "Document processing failed." });
+            return this.ApiProblem(StatusCodes.Status500InternalServerError, "document_processing_failed", "CheckInDocumentProcessingFailed");
         }
     }
 }
