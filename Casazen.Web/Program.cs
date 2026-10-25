@@ -115,6 +115,8 @@ builder.Services.AddScoped<ITrustedSupplierService, TrustedSupplierService>();
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
 builder.Services.AddScoped<ILeaseDocumentService, LeaseDocumentService>();
 builder.Services.AddScoped<ILeaseDocumentExtractionService, LeaseDocumentExtractionService>();
+// The values of the receipt of a registration, read from the PDF when the person asks (CF-DOCS-REAL)
+builder.Services.AddScoped<ILeaseDocumentReadingService, LeaseDocumentReadingService>();
 // The text of a contract document, read on the server: the text the PDF carries, OCR for a scan or a photo (NL-DOCS)
 builder.Services.AddSingleton<IContractTextReader, ContractTextReader>();
 // Contract templates: final PDF only from a complete, lawyer-approved template (LT-03, A7-03)

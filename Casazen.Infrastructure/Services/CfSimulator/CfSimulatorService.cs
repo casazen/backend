@@ -8,6 +8,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Documents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -141,13 +142,20 @@ public sealed partial class CfSimulatorService(
         var today = timeProvider.TodayInRomeAsDateOnly();
         var (content, name) = kind switch
         {
-            CfSimulatorDocumentKind.Contract => (CfSimulatorDocuments.Contract(house, today), "contratto-esempio"),
+            CfSimulatorDocumentKind.Contract => (CfSimulatorDocuments.ContractWithAttestation(house, today), "contratto-con-attestazione-esempio"),
             CfSimulatorDocumentKind.Attestation => (CfSimulatorDocuments.Attestation(house, practice.PracticeId, today), "attestazione-esempio"),
             CfSimulatorDocumentKind.Receipt => (CfSimulatorDocuments.Receipt(house, practice.PracticeId, today), "ricevuta-registrazione-esempio"),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown sample document."),
         };
 
-        return new CfSimulatorDocument(pdfRenderer.Render(content), $"{name}-{practice.PracticeId}.pdf");
+        var pdf = pdfRenderer.Render(content);
+
+        // The contract comes as the real service sends it: a scan (pictures of the pages, no text), so the reading on the test environment is the
+        // OCR's. Where the tools to make the pictures are not installed the PDF with its text goes out: it reads all the same, without OCR.
+        if (kind == CfSimulatorDocumentKind.Contract)
+            pdf = await ScannedPdf.FromAsync(pdf, cancellationToken) ?? pdf;
+
+        return new CfSimulatorDocument(pdf, $"{name}-{practice.PracticeId}.pdf");
     }
 
     /// <summary>The practice, only when the number is well formed and the token is its own (the same <c>null</c> for every other case).</summary>
@@ -169,7 +177,7 @@ public sealed partial class CfSimulatorService(
     private async Task<CfSimulatorHouse> HouseOfAsync(CfSimulatedPractice practice, CancellationToken cancellationToken)
     {
         if (practice.LeaseId is not { } leaseId)
-            return CfSimulatorHouse.Generic(practice.Comune);
+            return CfSimulatorHouse.Generic(practice.Comune, practice.Provincia);
 
         // The endpoint is anonymous: no tenant filter applies, and the lease is the one of the signed link the practice was born from.
         var property = await (
@@ -179,17 +187,22 @@ public sealed partial class CfSimulatorService(
                 select new { house.Address, house.City, house.PostalCode, house.ComuneIstatCode })
             .FirstOrDefaultAsync(cancellationToken);
         if (property is null)
-            return CfSimulatorHouse.Generic(practice.Comune);
+            return CfSimulatorHouse.Generic(practice.Comune, practice.Provincia);
 
-        var comune = string.IsNullOrWhiteSpace(property.ComuneIstatCode)
+        var found = string.IsNullOrWhiteSpace(property.ComuneIstatCode)
             ? null
             : await db.Comuni
                 .Where(c => c.IstatCode == property.ComuneIstatCode)
-                .Select(c => c.Name)
+                .Select(c => new { c.Name, c.ProvinceCode })
                 .FirstOrDefaultAsync(cancellationToken);
 
         var city = property.City.Trim();
-        return new CfSimulatorHouse(property.Address.Trim(), city, property.PostalCode.Trim(), string.IsNullOrWhiteSpace(comune) ? city : comune);
+        return new CfSimulatorHouse(
+            property.Address.Trim(),
+            city,
+            property.PostalCode.Trim(),
+            string.IsNullOrWhiteSpace(found?.Name) ? city : found.Name,
+            found?.ProvinceCode ?? string.Empty);
     }
 
     /// <summary>The key of the signature: the same secret that signs the links (the variable wins over the configuration, as in the link service).</summary>

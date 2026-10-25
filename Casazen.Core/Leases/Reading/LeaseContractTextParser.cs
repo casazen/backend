@@ -73,7 +73,7 @@ public static partial class LeaseContractTextParser
     private static partial Regex ManySpaces();
 
     /// <summary>One line: a single space between words, the quotes and dashes of the typography brought to the plain ones, the blanks of a form (dots, underscores) gone.</summary>
-    private static string Flatten(string text)
+    internal static string Flatten(string text)
     {
         var builder = new StringBuilder(text.Length);
         var lastWasSpace = true;
@@ -179,11 +179,15 @@ public static partial class LeaseContractTextParser
     /// The first label that has one wins, or the last when <paramref name="last"/> (the signature is at the end).
     /// </summary>
     private static FoundDate? DateAfter(
-        string flat, IReadOnlyList<FoundDate> dates, Regex label, bool last = false, bool loose = false, int maxGap = 45)
+        string flat, IReadOnlyList<FoundDate> dates, Regex label, bool last = false, bool loose = false, int maxGap = 45, Func<string, int, bool>? skip = null)
     {
         FoundDate? chosen = null;
         foreach (Match match in label.Matches(flat))
         {
+            // A label that is not the one looked for ("mediante passaporto … con scadenza 03/03/2030" is not the end of the lease).
+            if (skip is not null && skip(flat, match.Index))
+                continue;
+
             var from = match.Index + match.Length;
             foreach (var date in dates)
             {
@@ -204,6 +208,20 @@ public static partial class LeaseContractTextParser
         }
 
         return chosen;
+    }
+
+    // The documents a contract describes and that expire: the identity document of the tenant, the energy certificate of the house.
+    [GeneratedRegex(
+        @"\b(?:passaporto|permesso\s+di\s+soggiorno|carta\s+d.\s?identit\w*|documento\s+(?:di\s+)?(?:identit\w*|riconoscimento)|patente|prestazione\s+energetica|attestato\s+di\s+prestazione|certificat\w+\s+energetic\w*|a\.?\s?p\.?\s?e\.?)\b",
+        Options,
+        Timeout)]
+    private static partial Regex DocumentWord();
+
+    /// <summary>Whether the label at <paramref name="index"/> closes the description of a document ("…con scadenza 03/03/2030"), looking back at the words just before it.</summary>
+    private static bool ExpiresADocument(string flat, int index)
+    {
+        var before = flat[Math.Max(0, index - 170)..index];
+        return DocumentWord().IsMatch(before);
     }
 
     // ---- the first period: start, end, length -----------------------------------------------------------------------------
@@ -231,7 +249,7 @@ public static partial class LeaseContractTextParser
     private static Period ReadPeriod(string flat, IReadOnlyList<FoundDate> dates)
     {
         var start = DateAfter(flat, dates, StartLabel());
-        var end = DateAfter(flat, dates, EndLabel());
+        var end = DateAfter(flat, dates, EndLabel(), skip: ExpiresADocument);
         var startConfidence = 92;
         var endConfidence = 92;
 
@@ -340,20 +358,38 @@ public static partial class LeaseContractTextParser
     [GeneratedRegex(@"\bdata\s+di\s+(?:stipula|stipulazione|sottoscrizione)\b|\b(?:stipulat[oa]|concluso|redatto)\s+(?:in\s+data|il)\b", Options, Timeout)]
     private static partial Regex StipulaLabel();
 
-    [GeneratedRegex(@"\b(?:letto,?\s+confermato\s+e\s+sottoscritto|sottoscritto\s+(?:in|a)\s+\p{L}[\p{L}' ]{1,30}\s+il|luogo\s+e\s+data)", Options, Timeout)]
+    [GeneratedRegex(@"\b(?:letto,?\s+(?:confermato|approvato)\s+e\s+sottoscritto|sottoscritto\s+(?:in|a)\s+\p{L}[\p{L}' ]{1,30}\s+il|luogo\s+e\s+data)", Options, Timeout)]
     private static partial Regex SignatureLabel();
 
     [GeneratedRegex(@"\b(?:li|l\u00ec|addi|add\u00ec)\b[,.:]?\s*$", Options, Timeout)]
     private static partial Regex LiBefore();
+
+    [GeneratedRegex(@"\baccordo\b[^.;]{0,140}$", Options, Timeout)]
+    private static partial Regex AgreementBefore();
+
+    private static bool IsAgreementDate(string flat, int index) => AgreementBefore().IsMatch(flat[Math.Max(0, index - 160)..index]);
+
+    [GeneratedRegex(
+        @"\bletto,?\s+(?:confermato|approvato)\s+e\s+sottoscritto\b.{0,70}?\bli\W{0,3}(?<d>\d{1,2})\s?[/.\-]\s?(?<m>\d{1,2})\s?[/.\-]\s?(?<y>\d{2})(?![\d/.\-])",
+        Options,
+        Timeout)]
+    private static partial Regex SignedShortDate();
 
     private static ReadValue<DateOnly>? ReadStipulaDate(string flat, IReadOnlyList<FoundDate> dates)
     {
         if (DateAfter(flat, dates, StipulaLabel(), last: true) is { } labelled)
             return new ReadValue<DateOnly>(labelled.Date, 88);
 
-        // The signature block at the end: "Letto, confermato e sottoscritto. Milano, li 15/10/2026".
-        if (DateAfter(flat, dates, SignatureLabel(), last: true, loose: true, maxGap: 70) is { } signature)
+        // The signature block at the end: "Letto, confermato e sottoscritto. Milano, li 15/10/2026" ("l'Accordo … sottoscritto in Milano il 20 maggio 2025" is not it).
+        if (DateAfter(flat, dates, SignatureLabel(), last: true, loose: true, maxGap: 70, skip: IsAgreementDate) is { } signature)
             return new ReadValue<DateOnly>(signature.Date, 80);
+
+        // "Letto, approvato e sottoscritto. Bollate, li 19-9-26": a year of two digits, as the parties write it by hand.
+        if (SignedShortDate().Match(flat) is { Success: true } shortDate
+            && ReadingText.Date($"{shortDate.Groups["d"].Value}/{shortDate.Groups["m"].Value}/{shortDate.Groups["y"].Value}") is { } shortDay)
+        {
+            return new ReadValue<DateOnly>(shortDay, 72);
+        }
 
         // "Milano, li 15 ottobre 2026": the last date written after "li" is the signature's.
         FoundDate? afterLi = null;
