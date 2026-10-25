@@ -276,13 +276,18 @@ public class LeaseDraftRulesTests
     }
 
     [Fact]
-    public void Read_ATransitoryType_IsNamedButNotAvailable_AndHasNoMonths()
+    public void Read_ATransitoryType_IsAvailable_ButHasNoMonthsUntilItsLandlordTypesTheEnd()
     {
-        var reading = LeaseDraftRules.Read(LeaseDraftTestData.Complete() with { ContractType = "Transitorio" });
+        var withoutEnd = LeaseDraftRules.Read(LeaseDraftTestData.Complete() with { ContractType = "Transitorio" });
+        var withEnd = LeaseDraftRules.Read(LeaseDraftTestData.Complete() with { ContractType = "Transitorio", EndDate = "2027-04-30" });
 
-        Assert.Equal(LeaseContractType.Transitorio, reading.Type);
-        Assert.False(reading.TypeAvailable);
-        Assert.Null(reading.Months);
+        Assert.Equal(LeaseContractType.Transitorio, withoutEnd.Type);
+        Assert.True(withoutEnd.TypeAvailable);
+        Assert.Null(withoutEnd.Months);
+        // The term of a transitory contract is the one its landlord types (TR); the libero and the concordato never read the end.
+        Assert.Equal(new DateOnly(2027, 4, 30), withEnd.End);
+        Assert.Equal(6, withEnd.Months);
+        Assert.Equal(new DateOnly(2030, 10, 31), LeaseDraftRules.Read(LeaseDraftTestData.Complete() with { EndDate = "2027-04-30" }).End);
     }
 
     [Fact]

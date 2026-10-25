@@ -29,8 +29,8 @@ The guided draft it builds on is in [`long-rent-lease-draft.md`](long-rent-lease
 |---|---|---|
 | Energy certificate (APE) and cadastral data of the property | missing = **warning** of the review (`ape_missing`, `cadastral_missing`), never a block (since LR-12) | block |
 | Start date in the past | allowed, and not even a warning | warning `start_in_past` |
-| Type | `Libero`, `Concordato` and **`Transitorio`**. The student lease is not a type of CasaZen: `lease_type_not_available` (no `type` in the params) | `Libero`, `Concordato`; `Transitorio` is `lease_type_not_available` |
-| Term | the one the contract states: `endDate` (step 4, `yyyy-MM-dd`), **inside the limits of the type** (libero from 48 months, concordato from 36, transitory 1 to 18, `LeaseContractTerms.CheckTerm`). Without `endDate` the term follows the type (48 or 36 months from the start); the transitory type has none of its own and needs it | the term of the type, always (`endDate` is not read) |
+| Type | `Libero`, `Concordato` and **`Transitorio`**. The student lease is not a type of CasaZen: `lease_type_not_available` (no `type` in the params) | `Libero`, `Concordato` and, since TR, `Transitorio` (with the official model and its own needs: [`long-rent-lease-draft.md`](long-rent-lease-draft.md) § 17) |
+| Term | the one the contract states: `endDate` (step 4, `yyyy-MM-dd`), **inside the limits of the type** (libero from 48 months, concordato from 36, transitory 1 to 18, `LeaseContractTerms.CheckTerm`). Without `endDate` the term follows the type (48 or 36 months from the start); the transitory type has none of its own and needs it | the term of the type for the libero and the concordato (`endDate` is not read); the transitory type, like an imported contract, states its own end from 1 to 18 months |
 | Canone concordato | **no range, no characteristics**: the unit's data, the agreement data of the comune and the rent range are not asked, not checked and not stored (`LeaseConcordatoAssessment` stays empty) | range computed by the server; a rent outside a verified range blocks |
 | Contract template, review, "downloaded for signature" | not applicable (`lease_review_not_applicable`, `lease_sent_not_applicable`) | needed |
 
@@ -134,7 +134,7 @@ previous code reads them like any signed lease. If the previous code must not me
 | Decision | Applied |
 |---|---|
 | LR-D2 | A contract signed outside enters with the data of the wizard (steps 1 to 4), the signed PDF and the day of the signature; **no model required**. The registration is not part of the import (reduced scope): the manual declaration that exists |
-| LR-D12 (a) | The transitory type enters only as an imported contract; the student lease does not exist and is refused with `lease_type_not_available` |
+| LR-D12 (a) | The transitory type entered only as an imported contract (since TR it can also be made in CasaZen); the student lease does not exist and is refused with `lease_type_not_available` |
 | LR-D13 (a) | A concordato imported has **no check of the range** |
 | LR-D28 | The gate of the models stays for every contract made in CasaZen; the import is the way for contracts in force |
 
