@@ -51,6 +51,13 @@ public class CalendarBlock : ITenantOwned
     /// <summary>Why the host closed the dates (PC-09): set on a <see cref="CalendarBlockSource.Manual"/> block only.</summary>
     public CalendarBlockReason? ManualReason { get; set; }
 
+    /// <summary>
+    /// ISO 4217 currency code (e.g. "EUR", "CHF") for imported blocks with non-EUR currency (ADR-002-R9, NF-02).
+    /// Null for blocks without explicit currency, defaults to Property.Currency at read time.
+    /// </summary>
+    [MaxLength(3)]
+    public string? Currency { get; set; }
+
     public DateTime? LastSyncedAt { get; set; }
 
     /// <summary>

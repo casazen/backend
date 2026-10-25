@@ -12,7 +12,8 @@ namespace Casazen.Infrastructure.Services.ICal;
 /// <param name="Uid">Stable identifier of the stay or block: the same at every download, so the OTAs update the event
 /// instead of adding a new one.</param>
 /// <param name="Summary">Neutral text shown by the calendars ("Occupato"), never a name, email or note.</param>
-public sealed record ICalFeedEvent(string Uid, DateOnly StartDate, DateOnly EndDate, string Summary);
+/// <param name="Currency">ISO 4217 currency code (e.g. "CHF"); null for EUR or when not specified (ADR-002-R7, NF-02).</param>
+public sealed record ICalFeedEvent(string Uid, DateOnly StartDate, DateOnly EndDate, string Summary, string? Currency = null);
 
 /// <summary>
 /// Writes the public availability feed of a property (RFC 5545, Ical.Net per ADR-002). Every event is all-day
@@ -39,13 +40,21 @@ public static class ICalFeedWriter
             if (string.IsNullOrWhiteSpace(feedEvent.Uid) || string.IsNullOrWhiteSpace(feedEvent.Summary))
                 throw new ArgumentException("Every exported event needs a stable UID and a summary.", nameof(events));
 
-            calendar.Events.Add(new CalendarEvent
+            var calendarEvent = new CalendarEvent
             {
                 Uid = feedEvent.Uid,
                 Summary = feedEvent.Summary,
                 Start = DateValue(feedEvent.StartDate),
                 End = DateValue(feedEvent.EndDate),
-            });
+            };
+
+            // Add X-CURRENCY custom property for non-EUR bookings (ADR-002-R7)
+            if (!string.IsNullOrWhiteSpace(feedEvent.Currency) && !string.Equals(feedEvent.Currency, "EUR", StringComparison.OrdinalIgnoreCase))
+            {
+                calendarEvent.AddProperty("X-CURRENCY", feedEvent.Currency);
+            }
+
+            calendar.Events.Add(calendarEvent);
         }
 
         return new CalendarSerializer().SerializeToString(calendar)!;
