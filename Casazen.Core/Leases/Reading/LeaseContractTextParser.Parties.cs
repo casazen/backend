@@ -107,7 +107,7 @@ public static partial class LeaseContractTextParser
     {
         var lower = word.ToLowerInvariant();
         return lower.StartsWith("locatari", StringComparison.Ordinal) || lower.StartsWith("conduttor", StringComparison.Ordinal)
-            || lower.StartsWith("inquilin", StringComparison.Ordinal)
+            || lower.StartsWith("conduttric", StringComparison.Ordinal) || lower.StartsWith("inquilin", StringComparison.Ordinal)
                 ? PartyRole.Tenant
                 : PartyRole.Landlord;
     }
