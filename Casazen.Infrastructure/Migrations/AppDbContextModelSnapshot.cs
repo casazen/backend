@@ -2818,6 +2818,56 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OtaSyncLogs");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerMandate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("CleaningFlatRate")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal>("CommissionPercent")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EffectiveUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("LinenFlatRate")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<string>("MandatePdfUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("MonthlyFrequency")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("PassthroughPaymentFees")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("PropertyOwnershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("WithholdingTreatment")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyOwnershipId");
+
+                    b.ToTable("OwnerMandates");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.Party", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7924,6 +7974,25 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerMandate", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.PropertyOwnership", "PropertyOwnership")
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Org");
+
+                    b.Navigation("PropertyOwnership");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.Party", b =>
