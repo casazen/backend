@@ -47,13 +47,12 @@ public static class SwissMunicipalitySeed
 
     /// <summary>
     /// Deletes Swiss municipalities. Called by the migration Down method.
+    /// Uses raw SQL to avoid EF model resolution issues when rolling back through this migration
+    /// from earlier model snapshots where SwissMunicipality doesn't exist yet.
     /// </summary>
     public static void Delete(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.DeleteData(
-            table: "SwissMunicipalities",
-            keyColumn: "MunicipalityCode",
-            keyValues: BuildMunicipalities().Select(m => m.MunicipalityCode).Cast<object>().ToArray());
+        migrationBuilder.Sql("DELETE FROM \"SwissMunicipalities\";");
     }
 
     /// <summary>
