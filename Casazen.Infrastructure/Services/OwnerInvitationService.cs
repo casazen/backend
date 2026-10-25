@@ -47,10 +47,13 @@ public class OwnerInvitationService(
 
         // Check rate limit: count invitations sent in the last 24 hours across all invitations in this org
         var yesterday = DateTime.UtcNow.AddDays(-1);
-        var recentInvitationCount = await dbContext.OwnerInvitations
+        var allOrgInvitations = await dbContext.OwnerInvitations
             .Where(i => i.OrgId == orgId)
-            .Where(i => i.SendLog.Any(d => d > yesterday))
-            .SumAsync(i => i.SendLog.Count(d => d > yesterday), cancellationToken);
+            .ToListAsync(cancellationToken);
+
+        var recentInvitationCount = allOrgInvitations
+            .SelectMany(i => i.SendLog)
+            .Count(d => d > yesterday);
 
         if (recentInvitationCount >= MaxInvitationsPerDay)
         {
