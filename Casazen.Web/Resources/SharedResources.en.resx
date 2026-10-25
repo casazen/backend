@@ -505,7 +505,10 @@
     <value>The period of the contract is over: the notice recorded can no longer be taken back.</value>
   </data>
   <data name="LeaseTerminationDateInvalid" xml:space="preserve">
-    <value>The last day of the contract must be between the start of the contract and the end of the current period.</value>
+    <value>The last day of the contract must come after the start of the contract and no later than the end of the current period: from {0:d MMM yyyy} to {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseTerminationNotStarted" xml:space="preserve">
+    <value>The contract has not started yet, so it cannot be ended early. To cancel it you need a consensual termination, to be communicated to the Agenzia delle Entrate within {0} days.</value>
   </data>
   <data name="LeaseBusy" xml:space="preserve">
     <value>The contract is being changed by another operation right now. Try again in a moment: this change was not applied.</value>
