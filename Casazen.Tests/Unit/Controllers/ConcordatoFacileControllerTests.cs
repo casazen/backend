@@ -28,6 +28,7 @@ public class ConcordatoFacileControllerTests
     private readonly Mock<IConcordatoFacileAccessService> _mockAccessService = new();
     private readonly Mock<IConcordatoFacileGiftService> _mockGiftService = new();
     private readonly Mock<IConcordatoFacileLinkService> _mockLinkService = new();
+    private readonly Mock<IConcordatoFacilePrivacyService> _mockPrivacyService = new();
     private readonly Mock<IConcordatoFacileStatusCacheService> _mockStatusCacheService = new();
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver = new();
     private readonly Mock<IAuthorizationService> _mockAuthorizationService = new();
@@ -150,6 +151,7 @@ public class ConcordatoFacileControllerTests
             _mockAccessService.Object,
             _mockGiftService.Object,
             _mockLinkService.Object,
+            _mockPrivacyService.Object,
             _mockStatusCacheService.Object,
             dbContext,
             _mockOrgContextResolver.Object,

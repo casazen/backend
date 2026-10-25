@@ -661,6 +661,59 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("CancellationPolicies");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.CfSimulatedPractice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CloseReason")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Comune")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ControlTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("LeaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PracticeId")
+                        .IsRequired()
+                        .HasMaxLength(18)
+                        .HasColumnType("character varying(18)");
+
+                    b.Property<string>("Provincia")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("StatusChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PracticeId")
+                        .IsUnique();
+
+                    b.HasIndex("LeaseId", "SubmittedAt");
+
+                    b.ToTable("cf_simulated_practices", t =>
+                        {
+                            t.HasComment("solo per ambienti di prova: pratiche del modulo simulato di ConcordatoFacile (ConcordatoFacile:FormMode=Simulated); vuota e inerte con FormMode=Real, la sola modalita di produzione");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
                 {
                     b.Property<Guid>("Id")

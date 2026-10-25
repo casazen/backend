@@ -12,8 +12,15 @@ namespace Casazen.Infrastructure.External;
 /// array that ADR-008-R6 describes.
 /// Registered with retry policy (exponential backoff: 1s, 2s, 4s) and timeout policy (30s per attempt).
 /// </summary>
-public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<ConcordatoFacileApiClient> logger)
+public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<ConcordatoFacileApiClient> logger) : IConcordatoFacileApiClient
 {
+    /// <summary>
+    /// Whether the status API key is configured, that is whether the client sends <c>Authorization: Bearer</c> (the registration in
+    /// <c>ServiceCollectionExtensions</c> sets the header from <c>ConcordatoFacile:StatusApiKey</c> and sets none without it). Without the
+    /// key ConcordatoFacile answers 401 to every read, so the callers do not ask: the status is then "not available" (CF-BE).
+    /// </summary>
+    public virtual bool IsConfigured => httpClient.DefaultRequestHeaders.Authorization is not null;
+
     /// <summary>
     /// The practices of a lease, newest first (v0.2 §4, <c>GET /v1/leases/{leaseId}/practices</c>). The body is an object
     /// <c>{ "leaseId": ..., "practices": [...] }</c>, also when the list is empty: a lease with no practices, unknown to ConcordatoFacile or

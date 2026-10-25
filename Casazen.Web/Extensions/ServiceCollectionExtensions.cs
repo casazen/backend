@@ -18,6 +18,7 @@ using Casazen.Core.Options;
 using Casazen.Infrastructure.OfficialData;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Infrastructure.Services.CfSimulator;
 using Casazen.Infrastructure.Services.ICal;
 using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
@@ -452,9 +453,21 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConcordatoFacileAccessService, ConcordatoFacileAccessService>();
         services.AddScoped<IConcordatoFacileGiftService, ConcordatoFacileGiftService>();
         services.AddScoped<IConcordatoFacileLinkService, ConcordatoFacileLinkService>();
+        // The privacy notice accepted for a lease before the guided form is opened; the signed link and the controller take it (CF-BE).
+        services.AddScoped<IConcordatoFacilePrivacyService, ConcordatoFacilePrivacyService>();
         // The practices of a lease and the lookup of a practice, read from the ConcordatoFacile status API and kept in memory (ADR-008). The
         // controller of the module takes it in its constructor: without this registration every one of its actions fails (CF-FIX2).
         services.AddScoped<IConcordatoFacileStatusCacheService, ConcordatoFacileStatusCacheService>();
+        // The simulated module and status API of the test environment (CF-SIM, docs/runbooks/concordatofacile-simulator.md). The status
+        // cache reads the practices from IConcordatoFacileApiClient: the HTTP client of the real status API, except with
+        // ConcordatoFacile:FormMode=Simulated, which the startup refuses in Production. Chosen when the client is asked for, not when the
+        // application is built, like every other read of these options.
+        services.AddScoped<ICfSimulatorService, CfSimulatorService>();
+        services.AddScoped<SimulatedConcordatoFacileApiClient>();
+        services.AddScoped<IConcordatoFacileApiClient>(provider =>
+            provider.GetRequiredService<IOptions<ConcordatoFacileOptions>>().Value.FormMode == ConcordatoFacileFormMode.Simulated
+                ? provider.GetRequiredService<SimulatedConcordatoFacileApiClient>()
+                : provider.GetRequiredService<ConcordatoFacileApiClient>());
         // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
         services.AddScoped<IRentRegisterService, RentRegisterService>();
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
@@ -688,21 +701,18 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ConcordatoFacileApiClient>((serviceProvider, client) =>
         {
             var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-            var logger = serviceProvider.GetRequiredService<ILogger<ConcordatoFacileApiClient>>();
 
             var baseUrl = configuration["ConcordatoFacile:StatusApiUrl"] ?? "https://stato.concordatofacile.it";
             client.BaseAddress = new Uri(baseUrl);
 
+            // Without the key no header is set and ConcordatoFacileApiClient.IsConfigured is false: the status service does not ask
+            // ConcordatoFacile and says once (CF-BE) that the key is missing. This delegate runs at every creation of the client, so it
+            // must not log: it used to warn at every request that reached the controller, checkout and access included.
             var apiKey = configuration["ConcordatoFacile:StatusApiKey"];
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
                 client.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-            }
-            else
-            {
-                // Graceful degradation per ADR-008-R22: log warning but do not fail startup
-                logger.LogWarning("ConcordatoFacile:StatusApiKey not configured; CF status API disabled");
             }
 
             client.Timeout = TimeSpan.FromSeconds(120); // Total timeout for all retries
