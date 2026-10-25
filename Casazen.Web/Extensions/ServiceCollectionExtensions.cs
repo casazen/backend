@@ -361,6 +361,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IStayAlertService, StayAlertService>();
+        // Approval queue for items requiring human decision before taking effect (NF-06)
+        services.AddScoped<IApprovalQueueService, ApprovalQueueService>();
         // CIN deadline (CO-20, runbook cin-format.md): optional date, validated at startup; daily host alert.
         services.AddOptions<Casazen.Core.Options.CinOptions>()
             .BindConfiguration(Casazen.Core.Options.CinOptions.SectionName)
