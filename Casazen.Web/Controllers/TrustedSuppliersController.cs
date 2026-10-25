@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Trusted supplier management for agency tier orgs (NF-21, ADR-020).
+/// Trusted supplier management for agency tier orgs (NF-21, ADR-010).
 /// All endpoints require Agency tier.
 /// </summary>
 [ApiController]

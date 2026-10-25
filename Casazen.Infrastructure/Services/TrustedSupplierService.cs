@@ -63,7 +63,8 @@ public sealed class TrustedSupplierService(
         {
             throw new NotFoundException($"Trusted supplier {trustedSupplierId} not found for org {orgId}")
             {
-                Code = "trusted_supplier_not_found"
+                Code = "trusted_supplier_not_found",
+                MessageKey = "TrustedSupplierNotFound"
             };
         }
 
@@ -84,7 +85,8 @@ public sealed class TrustedSupplierService(
         {
             throw new NotFoundException($"Trusted supplier {trustedSupplierId} not found for org {orgId}")
             {
-                Code = "trusted_supplier_not_found"
+                Code = "trusted_supplier_not_found",
+                MessageKey = "TrustedSupplierNotFound"
             };
         }
 

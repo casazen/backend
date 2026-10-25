@@ -5,7 +5,7 @@ using Casazen.Core.Multitenancy;
 namespace Casazen.Core.Entities;
 
 /// <summary>
-/// Trusted supplier relationship for agency tier (ADR-020): an agency's preferred supplier
+/// Trusted supplier relationship for agency tier (ADR-010, NF-21): an agency's preferred supplier
 /// for service work. Trusted suppliers work with PaymentMode.Manual and 0% commission,
 /// and the approved amount flows to the owner statement (NF-17).
 /// </summary>

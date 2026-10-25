@@ -3212,4 +3212,7 @@
   <data name="tier_insufficient" xml:space="preserve">
     <value>Insufficient tier for this operation</value>
   </data>
+  <data name="TrustedSupplierNotFound" xml:space="preserve">
+    <value>Trusted supplier not found</value>
+  </data>
 </root>
