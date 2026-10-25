@@ -159,6 +159,9 @@ public static class CasazenPolicies
     /// <summary>Manage trusted suppliers (agency B2B).</summary>
     internal const string AgencySupplierManage = Agency + "agency.supplier.manage";
 
+    /// <summary>Invite and manage property owners (agency B2B, ADR-011-R4).</summary>
+    public const string AgencyOwnerManage = Agency + "agency.owner.manage";
+
     /// <summary>
     /// Invite, change, deactivate, reactivate and remove the people of the caller's org (AM-02): the permission
     /// <c>org.members.manage</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody
@@ -198,6 +201,7 @@ public static class CasazenPolicies
     [
         AgencyOwnerView,
         AgencyOwnerFinancialRead,
+        AgencyOwnerManage,
         AgencyActivityManage,
         AgencySupplierManage,
     ];

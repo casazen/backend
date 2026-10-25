@@ -1816,6 +1816,27 @@
   <data name="OwnerIbanMissing" xml:space="preserve">
     <value>The property owner does not have a registered IBAN.</value>
   </data>
+  <data name="OwnerInvitationDailyLimitReached" xml:space="preserve">
+    <value>Daily invitation limit reached: maximum {0} invitations per organization every 24 hours.</value>
+  </data>
+  <data name="OwnerInvitationInvalid" xml:space="preserve">
+    <value>Invalid or expired invitation.</value>
+  </data>
+  <data name="OwnerInvitationUsed" xml:space="preserve">
+    <value>This invitation has already been accepted.</value>
+  </data>
+  <data name="OwnerInvitationRevoked" xml:space="preserve">
+    <value>This invitation has been revoked.</value>
+  </data>
+  <data name="OwnerInvitationExpired" xml:space="preserve">
+    <value>This invitation has expired.</value>
+  </data>
+  <data name="OwnerInvitationEmailMismatch" xml:space="preserve">
+    <value>Your account email does not match the invitation email.</value>
+  </data>
+  <data name="PropertyOwnerNotFound" xml:space="preserve">
+    <value>Property owner not found.</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days or period=Next30Days.</value>
   </data>
@@ -3280,6 +3301,18 @@
   </data>
   <data name="UserIdMissing" xml:space="preserve">
     <value>User ID missing</value>
+  </data>
+  <data name="Only approved campaigns can be scheduled" xml:space="preserve">
+    <value>Only approved campaigns can be scheduled.</value>
+  </data>
+  <data name="Only draft campaigns can be submitted for approval" xml:space="preserve">
+    <value>Only draft campaigns can be submitted for approval.</value>
+  </data>
+  <data name="Scheduled time must be in the future" xml:space="preserve">
+    <value>Scheduled time must be in the future.</value>
+  </data>
+  <data name="Segment condition JSON is invalid" xml:space="preserve">
+    <value>Segment condition JSON is invalid.</value>
   </data>
   <data name="VerificationNoSessionOrEmail" xml:space="preserve">
     <value>The booking has no active check-in session or the guest has no email address</value>

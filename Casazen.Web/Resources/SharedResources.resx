@@ -1816,6 +1816,27 @@
   <data name="OwnerIbanMissing" xml:space="preserve">
     <value>Il proprietario non ha un IBAN registrato.</value>
   </data>
+  <data name="OwnerInvitationDailyLimitReached" xml:space="preserve">
+    <value>Limite giornaliero di inviti raggiunto: massimo {0} inviti per organizzazione ogni 24 ore.</value>
+  </data>
+  <data name="OwnerInvitationInvalid" xml:space="preserve">
+    <value>Invito non valido o scaduto.</value>
+  </data>
+  <data name="OwnerInvitationUsed" xml:space="preserve">
+    <value>Questo invito è già stato accettato.</value>
+  </data>
+  <data name="OwnerInvitationRevoked" xml:space="preserve">
+    <value>Questo invito è stato revocato.</value>
+  </data>
+  <data name="OwnerInvitationExpired" xml:space="preserve">
+    <value>Questo invito è scaduto.</value>
+  </data>
+  <data name="OwnerInvitationEmailMismatch" xml:space="preserve">
+    <value>L'email del tuo account non corrisponde all'email dell'invito.</value>
+  </data>
+  <data name="PropertyOwnerNotFound" xml:space="preserve">
+    <value>Proprietario non trovato.</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, period=Last30Days oppure period=Next30Days.</value>
   </data>
@@ -3280,6 +3301,18 @@
   </data>
   <data name="UserIdMissing" xml:space="preserve">
     <value>Identificativo utente mancante</value>
+  </data>
+  <data name="Only approved campaigns can be scheduled" xml:space="preserve">
+    <value>Solo le campagne approvate possono essere pianificate</value>
+  </data>
+  <data name="Only draft campaigns can be submitted for approval" xml:space="preserve">
+    <value>Solo le campagne in bozza possono essere inviate per approvazione</value>
+  </data>
+  <data name="Scheduled time must be in the future" xml:space="preserve">
+    <value>L'orario pianificato deve essere nel futuro</value>
+  </data>
+  <data name="Segment condition JSON is invalid" xml:space="preserve">
+    <value>La condizione JSON del segmento non è valida</value>
   </data>
   <data name="VerificationNoSessionOrEmail" xml:space="preserve">
     <value>La prenotazione non ha una sessione di check-in attiva oppure l'ospite non ha un indirizzo e-mail</value>

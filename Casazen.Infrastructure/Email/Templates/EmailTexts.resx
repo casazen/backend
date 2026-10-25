@@ -1341,6 +1341,24 @@
   <data name="OrgInvitationExpired_Cta" xml:space="preserve">
     <value>Apri Persone e permessi</value>
   </data>
+  <data name="OwnerInvitation_Subject" xml:space="preserve">
+    <value>Invito al portale proprietari di {0}</value>
+  </data>
+  <data name="OwnerInvitation_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="OwnerInvitation_Body" xml:space="preserve">
+    <value>Sei stato invitato ad accedere al portale proprietari di &lt;strong&gt;{0}&lt;/strong&gt; su CasaZen. Potrai visualizzare il calendario delle prenotazioni, i riepiloghi degli incassi e le tue fatture.</value>
+  </data>
+  <data name="OwnerInvitation_Cta" xml:space="preserve">
+    <value>Accetta l'invito</value>
+  </data>
+  <data name="OwnerInvitation_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OwnerInvitation_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana).</value>
+  </data>
   <data name="OrgAccessRequest_Subject" xml:space="preserve">
     <value>{0} chiede di accedere a «{1}»</value>
   </data>
