@@ -5,6 +5,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
+using Casazen.Core.Leases.Reading;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -465,6 +466,44 @@ public sealed class LeaseDraftService(
 
         await deleter.DeleteFilesAsync(files);
         logger.LogInformation("Lease draft deleted. LeaseId={LeaseId} Files={Files}", leaseId, files.Count);
+    }
+
+    // ---- filled from the contract the owner uploaded (NL-DOCS) ----------------------------------------------------
+
+    public async Task<LeaseDraftFillResult> ApplyContractReadingAsync(
+        Guid leaseId, LeaseContractReading reading, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reading);
+
+        // The same road as a save: the row lock, the lease read after it, the evaluation of the values and the one writer of the columns
+        // and the parties. What is read is merged into the values as they are NOW, under the lock: nothing typed since the reading started is lost.
+        await using var transaction = await BeginLockedAsync(leaseId, cancellationToken);
+        var lease = await LoadForUpdateAsync(leaseId, includeProperty: false, cancellationToken);
+        EnsureDraftForUpdate(lease);
+        if (lease.Origin != LeaseOrigin.Imported)
+            return new LeaseDraftFillResult(false, false, lease.DraftVersion, []);
+
+        var fill = LeaseDraftContractFill.Merge(LeaseDraftProjection.ReadValues(lease), reading, lease.Origin, Guid.NewGuid);
+        if (fill.Changed)
+        {
+            var evaluation = await EvaluateAsync(lease, fill.Values, fullApeCheck: false, cancellationToken);
+            await ProjectAsync(lease, fill.Values, evaluation, cancellationToken);
+            lease.DraftVersion++;
+            lease.UpdatedAt = UtcNow();
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Lease draft filled from a contract document. LeaseId={LeaseId} Version={Version} Read={Read} Conflicts={Conflicts} Unusable={Unusable}",
+            lease.Id,
+            lease.DraftVersion,
+            fill.Fields.Count(f => f.State == FieldReadingState.Read),
+            fill.Fields.Count(f => f.State == FieldReadingState.Conflict),
+            fill.Fields.Count(f => f.State == FieldReadingState.Unusable));
+        return new LeaseDraftFillResult(true, fill.Changed, lease.DraftVersion, fill.Fields);
     }
 
     // ---- evaluation ----------------------------------------------------------------------------------------------
