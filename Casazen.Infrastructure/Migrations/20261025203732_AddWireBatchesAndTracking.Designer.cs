@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261025191318_AddWireBatchesAndTracking")]
+    [Migration("20261025203732_AddWireBatchesAndTracking")]
     partial class AddWireBatchesAndTracking
     {
         /// <inheritdoc />
