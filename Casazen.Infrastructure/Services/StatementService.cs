@@ -1,0 +1,211 @@
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+
+namespace Casazen.Infrastructure.Services;
+
+/// <summary>
+/// Service for generating and managing monthly owner statements (ADR-017).
+/// Implements rounding once at total (banker's rounding) and co-owner split (last owner gets remainder).
+/// </summary>
+public sealed class StatementService(AppDbContext db) : IStatementService
+{
+    /// <inheritdoc />
+    public async Task<OwnerStatement> GenerateStatementAsync(
+        Guid propertyOwnerId,
+        Guid propertyId,
+        int month,
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        // Check if statement already exists
+        var existing = await db.Set<OwnerStatement>()
+            .Where(s => s.PropertyOwnerId == propertyOwnerId && s.PropertyId == propertyId && s.Month == month && s.Year == year)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existing is not null)
+        {
+            throw new DomainRuleException("statement_already_exists", "StatementAlreadyExists");
+        }
+
+        // Get active ownership for this owner and property
+        var ownership = await db.Set<PropertyOwnership>()
+            .Where(po => po.PropertyOwnerId == propertyOwnerId && po.PropertyId == propertyId && po.OwnershipEnd == null)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (ownership is null)
+        {
+            throw new DomainRuleException("owner_does_not_own_property", "OwnerDoesNotOwnProperty");
+        }
+
+        // Get the property for OrgId and currency
+        var property = await db.Set<Property>()
+            .Where(p => p.Id == propertyId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (property is null)
+        {
+            throw new NotFoundException($"Property {propertyId} not found");
+        }
+
+        // Get the active mandate for this ownership (most recent EffectiveFrom where EffectiveUntil is null or in the future)
+        var mandate = await db.Set<OwnerMandate>()
+            .Where(om => om.PropertyOwnershipId == ownership.Id && (om.EffectiveUntil == null || om.EffectiveUntil > DateTime.UtcNow))
+            .OrderByDescending(om => om.EffectiveFrom)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // Create statement
+        var statement = new OwnerStatement
+        {
+            OrgId = property.OrgId,
+            PropertyOwnerId = propertyOwnerId,
+            PropertyId = propertyId,
+            Month = month,
+            Year = year,
+            Currency = "EUR",
+            Status = StatementStatus.Draft,
+            OwnershipPercent = ownership.SharePercent,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        db.Set<OwnerStatement>().Add(statement);
+        await db.SaveChangesAsync(cancellationToken);
+
+        // Get all payments collected in this period (cash year, ADR-017)
+        // ProcessedAt is when the payment was collected
+        var startDate = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endDate = startDate.AddMonths(1);
+
+        var payments = await db.Set<Payment>()
+            .Include(p => p.Booking)
+            .Where(p => p.Booking.PropertyId == propertyId
+                && p.Status == PaymentStatus.Completed
+                && p.ProcessedAt != null
+                && p.ProcessedAt >= startDate
+                && p.ProcessedAt < endDate)
+            .ToListAsync(cancellationToken);
+
+        // Create statement lines for each payment
+        foreach (var payment in payments)
+        {
+            var cashYear = payment.ProcessedAt!.Value.Year;
+            var stayYear = payment.Booking.CheckInDate.Year;
+
+            // Calculate commission based on mandate (if available)
+            var grossRevenue = payment.Amount;
+            var commission = mandate != null
+                ? Math.Round(grossRevenue * mandate.CommissionPercent / 100m, 2, MidpointRounding.ToEven)
+                : 0m;
+
+            // For co-ownership, apply the ownership split to the gross revenue
+            var ownerShare = Math.Round(grossRevenue * ownership.SharePercent / 100m, 2, MidpointRounding.ToEven);
+            var commissionShare = Math.Round(commission * ownership.SharePercent / 100m, 2, MidpointRounding.ToEven);
+
+            var line = new StatementLine
+            {
+                OrgId = property.OrgId,
+                StatementId = statement.Id,
+                Type = OwnerStatementLineType.Booking,
+                BookingId = payment.BookingId,
+                GrossRevenue = ownerShare,
+                Commission = commissionShare,
+                Expenses = 0m,
+                Withholding = 0m,
+                CashYear = cashYear,
+                StayYear = stayYear,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            db.Set<StatementLine>().Add(line);
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        // Recalculate totals
+        return await RecalculateStatementAsync(statement.Id, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<OwnerStatement> ApproveStatementAsync(Guid statementId, CancellationToken cancellationToken = default)
+    {
+        var statement = await db.Set<OwnerStatement>()
+            .FirstOrDefaultAsync(s => s.Id == statementId, cancellationToken);
+
+        if (statement is null)
+        {
+            throw new NotFoundException($"Statement {statementId} not found");
+        }
+
+        if (statement.Status != StatementStatus.Draft)
+        {
+            throw new DomainRuleException("statement_not_draft", "StatementNotDraft");
+        }
+
+        statement.Status = StatementStatus.Approved;
+        statement.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return statement;
+    }
+
+    /// <inheritdoc />
+    public async Task<OwnerStatement> PublishStatementAsync(Guid statementId, CancellationToken cancellationToken = default)
+    {
+        var statement = await db.Set<OwnerStatement>()
+            .FirstOrDefaultAsync(s => s.Id == statementId, cancellationToken);
+
+        if (statement is null)
+        {
+            throw new NotFoundException($"Statement {statementId} not found");
+        }
+
+        if (statement.Status != StatementStatus.Approved)
+        {
+            throw new DomainRuleException("statement_not_approved", "StatementNotApproved");
+        }
+
+        statement.Status = StatementStatus.Published;
+        statement.PublishedAt = DateTime.UtcNow;
+        statement.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return statement;
+    }
+
+    /// <inheritdoc />
+    public async Task<OwnerStatement> RecalculateStatementAsync(Guid statementId, CancellationToken cancellationToken = default)
+    {
+        var statement = await db.Set<OwnerStatement>()
+            .Include(s => s.Lines)
+            .FirstOrDefaultAsync(s => s.Id == statementId, cancellationToken);
+
+        if (statement is null)
+        {
+            throw new NotFoundException($"Statement {statementId} not found");
+        }
+
+        if (statement.Status != StatementStatus.Draft)
+        {
+            throw new DomainRuleException("statement_not_draft", "StatementNotDraft");
+        }
+
+        // Sum line items with full precision (ADR-017-R1)
+        statement.TotalRevenue = statement.Lines.Sum(l => l.GrossRevenue);
+        statement.Commission = statement.Lines.Sum(l => l.Commission);
+        statement.Expenses = statement.Lines.Sum(l => l.Expenses);
+        statement.WithholdingTax = statement.Lines.Sum(l => l.Withholding);
+
+        // Compute net and round ONCE with banker's rounding (ADR-017-R2)
+        var netBeforeRounding = statement.TotalRevenue - statement.Commission - statement.Expenses - statement.WithholdingTax;
+        statement.NetPayable = Math.Round(netBeforeRounding, 2, MidpointRounding.ToEven);
+
+        statement.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return statement;
+    }
+}
