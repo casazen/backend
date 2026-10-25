@@ -52,6 +52,7 @@ public class AppDbContext(
     public DbSet<PropertyOwnership> PropertyOwnerships { get; set; } = null!;
     public DbSet<OwnerUser> OwnerUsers { get; set; } = null!;
     public DbSet<OwnerMandate> OwnerMandates { get; set; } = null!;
+    public DbSet<OwnerInvitation> OwnerInvitations { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;

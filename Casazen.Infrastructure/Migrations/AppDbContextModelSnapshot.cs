@@ -3254,6 +3254,65 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OtaSyncLogs");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InvitedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<DateTime>>("SendLog")
+                        .IsRequired()
+                        .HasColumnType("timestamp with time zone[]");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyOwnerId");
+
+                    b.ToTable("OwnerInvitations");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OwnerMandate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8693,6 +8752,17 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerInvitation", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", "PropertyOwner")
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PropertyOwner");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OwnerMandate", b =>
