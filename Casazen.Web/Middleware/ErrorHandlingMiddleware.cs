@@ -80,6 +80,12 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
                     _ => StatusCodes.Status422UnprocessableEntity,
                 };
                 problem = ApiProblemDetails.Create(context, status, domain.Code, domain.MessageKey, domain.MessageArgs);
+                foreach (var (name, value) in domain.Extensions)
+                {
+                    if (name is not (ApiProblemDetails.CodeExtension or ApiProblemDetails.TraceIdExtension))
+                        problem.Extensions[name] = value;
+                }
+
                 LogRejected(context, exception, status, domain.Code);
                 break;
 

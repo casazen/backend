@@ -510,6 +510,9 @@
   <data name="LeaseBusy" xml:space="preserve">
     <value>The contract is being changed by another operation right now. Try again in a moment: this change was not applied.</value>
   </data>
+  <data name="LeasePeriodOverlaps" xml:space="preserve">
+    <value>This property already has a lease from {0:d MMM yyyy} to {1:d MMM yyyy}. Two leases cannot cover the same days: open the existing one or change the dates.</value>
+  </data>
   <data name="RliChecklist_contract_signed" xml:space="preserve">
     <value>Contract signed by all parties</value>
   </data>
