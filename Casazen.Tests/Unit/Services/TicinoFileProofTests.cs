@@ -47,7 +47,7 @@ public class TicinoFileProofTests
             OrgId = orgA,
             PropertyId = propertyA.Id,
             Type = "Police",
-            ReportDate = DateTime.UtcNow.Date,
+            ReportDate = new DateTime(2026, 10, 25, 0, 0, 0, DateTimeKind.Utc),
             Reference = "TI-A-20261025",
             UploadedFileHash = "abc123",
         };
@@ -58,7 +58,7 @@ public class TicinoFileProofTests
             OrgId = orgB,
             PropertyId = propertyB.Id,
             Type = "Police",
-            ReportDate = DateTime.UtcNow.Date,
+            ReportDate = new DateTime(2026, 10, 25, 0, 0, 0, DateTimeKind.Utc),
             Reference = "TI-B-20261025",
             UploadedFileHash = "def456",
         };
