@@ -3170,4 +3170,10 @@
   <data name="ReasonTooLong" xml:space="preserve">
     <value>The reason cannot exceed 500 characters.</value>
   </data>
+  <data name="feature_requires_agency_tier" xml:space="preserve">
+    <value>This feature requires Agency tier</value>
+  </data>
+  <data name="tier_insufficient" xml:space="preserve">
+    <value>Insufficient tier for this operation</value>
+  </data>
 </root>

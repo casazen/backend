@@ -3170,4 +3170,10 @@
   <data name="ReasonTooLong" xml:space="preserve">
     <value>La motivazione non può superare i 500 caratteri.</value>
   </data>
+  <data name="feature_requires_agency_tier" xml:space="preserve">
+    <value>Questa funzionalità richiede il piano Agency</value>
+  </data>
+  <data name="tier_insufficient" xml:space="preserve">
+    <value>Piano insufficiente per questa operazione</value>
+  </data>
 </root>
