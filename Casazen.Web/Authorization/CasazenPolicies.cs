@@ -126,9 +126,6 @@ public static class CasazenPolicies
     /// <summary>Agency tier B2B policies (ADR-010, ADR-012): all require <c>Org.PlanTier == PlanTier.Agency</c>.</summary>
     private const string Agency = "RequireAgencyTier:";
 
-    /// <summary>Invite and remove property owners (agency B2B).</summary>
-    public const string AgencyOwnerManage = Agency + "agency.owner.manage";
-
     /// <summary>View property owner list and details (agency B2B, ADR-012).</summary>
     public const string AgencyOwnerView = Agency + "agency.owner.view";
 
