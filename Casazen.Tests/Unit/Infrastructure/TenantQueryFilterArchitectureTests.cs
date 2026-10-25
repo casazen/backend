@@ -27,6 +27,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(AppContextEntity)] = "Global catalog of application contexts (seeded reference data).",
         [typeof(Role)] = "Global role catalog (seeded reference data).",
         [typeof(RolePermission)] = "Global permission catalog (seeded reference data).",
+        [typeof(OwnerUser)] = "Property owner users (ADR-011): cross-organization entities representing natural persons who own properties managed by multiple agencies (different orgs). Each OwnerUser can be linked to properties across multiple organizations. A tenant filter would incorrectly scope them to a single agency org, breaking the owner portal's ability to show properties across all agencies that manage their real estate.",
 
         // Platform reference data and platform-wide state.
         [typeof(TouristTaxRate)] = "Platform reference data: tourist tax rates per comune, managed by admins and read by every org.",
@@ -55,6 +56,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(ComuneOfficialProfile)] = "Platform reference data: official MEF tourist-tax profile of a comune (ISTAT code), the same for every org.",
         [typeof(ComuneOfficialProfileVersion)] = "Platform reference data: versioned MEF acts of a comune; history is never tenant-scoped.",
         [typeof(SwissMunicipality)] = "Platform reference data: the official BFS/OFS/UST list of Swiss municipalities, the same for every org, loaded only from the official source (seed or admin import) and read by every org for Swiss properties (Country = 'CH').",
+        [typeof(CfSimulatedPractice)] = "Test environments only (CF-SIM): the practices of the simulated ConcordatoFacile module, which is an outside service's data and not an org's. Written and read only by CfSimulatorService behind the anonymous api/cf-simulator endpoints (404 unless ConcordatoFacile:FormMode=Simulated, which production refuses at startup) and by SimulatedConcordatoFacileApiClient; no personal data, empty and inert with FormMode=Real.",
 
         // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
         [typeof(ServiceRequest)] = "Two parties: host OrgId and supplier SupplierOrgId, and since SP-10 a third kind of request, from the supplier's public showcase, whose OrgId is the supplier org itself and whose customer is a private person with no account (ServiceRequestRentalContext.Showcase, PropertyId and BookingId null, CK_ServiceRequests_Context). A host-org filter would hide the request from the supplier who takes, completes or rejects it, would give a showcase request to no one, and host matching counts supplier load across orgs. Every query scopes explicitly by OrgId or SupplierOrgId (ServiceRequestService, ServiceRequestRepository); the host reads also filter on the rental context, so they never reach a showcase request even when the supplier org is also a host org.",

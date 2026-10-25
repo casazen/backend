@@ -130,17 +130,82 @@ public class RliRegistrationService(
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentNullException.ThrowIfNull(declaration);
 
-        var code = NormalizeRegistrationCode(declaration.RegistrationCode);
-        var registrationDate = declaration.RegistrationDate.Date;
-        if (registrationDate > _clock.TodayInRome())
-            throw new DomainRuleException(RliRegistrationErrorCodes.RegistrationDateInFuture, "RliRegistrationDateInFuture");
+        var (code, registrationDate) = CheckDeclared(declaration.RegistrationCode, declaration.RegistrationDate);
 
         await using var receipt = await ReadPdfAsync(declaration.Receipt, declaration.ReceiptLength, cancellationToken)
-            ?? throw new DomainRuleException(RliRegistrationErrorCodes.ReceiptInvalid, "RliReceiptInvalid", RliRegistrationLimits.MaxReceiptBytes / (1024 * 1024));
+            ?? throw ReceiptInvalid();
 
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
         EnsureCanRegister(lease, lease.Registration);
 
+        return await RecordManualRegistrationAsync(lease, userId, code, registrationDate, receipt, cancellationToken);
+    }
+
+    public async Task<LeaseRegistration> DeclareManualRegistrationFromDocumentAsync(
+        Guid leaseId,
+        string userId,
+        ManualRegistrationDocumentDeclaration declaration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentNullException.ThrowIfNull(declaration);
+
+        var (code, registrationDate) = CheckDeclared(declaration.RegistrationCode, declaration.RegistrationDate);
+
+        var lease = await LoadLeaseAsync(leaseId, cancellationToken);
+
+        // The document has to be a registration document of THIS lease and of its org (stated here, not left to the filter of the request):
+        // the receipt of another lease, another org's, a document of another kind, or none, are all the same «not there», and the bucket
+        // is not opened for them.
+        var document = await db.LeaseDocuments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    d => d.Id == declaration.ReceiptDocumentId
+                        && d.LeaseContractId == lease.Id
+                        && d.OrgId == lease.OrgId
+                        && d.Kind == LeaseDocumentKind.Registration,
+                    cancellationToken)
+            ?? throw DocumentNotFound();
+
+        EnsureCanRegister(lease, lease.Registration);
+
+        await using var stored = await storage.OpenReadAsync(StorageBucket.Private, document.StorageKey, cancellationToken)
+            ?? throw DocumentNotFound();
+        await using var receipt = await ReadPdfAsync(stored, document.SizeBytes, cancellationToken)
+            ?? throw ReceiptInvalid();
+
+        return await RecordManualRegistrationAsync(lease, userId, code, registrationDate, receipt, cancellationToken);
+    }
+
+    /// <summary>The number or protocol and the date of a declaration, checked: 422 <c>rli_registration_code_invalid</c> / <c>rli_registration_date_in_future</c>.</summary>
+    private (string Code, DateTime Date) CheckDeclared(string? registrationCode, DateTime registrationDate)
+    {
+        var code = NormalizeRegistrationCode(registrationCode);
+        var day = registrationDate.Date;
+        if (day > _clock.TodayInRome())
+            throw new DomainRuleException(RliRegistrationErrorCodes.RegistrationDateInFuture, "RliRegistrationDateInFuture");
+        return (code, day);
+    }
+
+    private static DomainRuleException ReceiptInvalid() =>
+        new(RliRegistrationErrorCodes.ReceiptInvalid, "RliReceiptInvalid", RliRegistrationLimits.MaxReceiptBytes / (1024 * 1024));
+
+    private static NotFoundException DocumentNotFound() =>
+        new("Lease document not found") { Code = "document_not_found", MessageKey = "DocumentNotFound" };
+
+    /// <summary>
+    /// The one write of a declared registration, for a receipt sent now and for one already among the documents: the receipt (a PDF that was
+    /// read and checked) goes to the private bucket under <b>its own key</b>, then one transaction under the row lock records the registration
+    /// and the lease Registered.
+    /// </summary>
+    private async Task<LeaseRegistration> RecordManualRegistrationAsync(
+        LeaseContract lease,
+        string userId,
+        string code,
+        DateTime registrationDate,
+        MemoryStream receipt,
+        CancellationToken cancellationToken)
+    {
         // Receipt first, in the private bucket: a failed upload changes nothing; a failed database update removes it.
         var receiptKey = StorageKeys.LeaseRegistrationReceipt(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
         await storage.PutAsync(StorageBucket.Private, receiptKey, receipt, PdfContentType, cancellationToken);

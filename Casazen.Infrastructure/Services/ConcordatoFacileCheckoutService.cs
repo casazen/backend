@@ -18,12 +18,19 @@ namespace Casazen.Infrastructure.Services;
 /// Reuses the open session of a pending purchase and never creates a second session for a lease that has already paid (CF-FIX).
 /// Requests go through <see cref="Stripe.IStripeClient"/>: the global client configured from the Stripe key, or the one passed
 /// (the tests).
+/// <para>
+/// CF-BE: the checkouts of one lease run one at a time under a PostgreSQL advisory lock (<c>pg_advisory_xact_lock</c>, held across the Stripe
+/// calls like the checkout of the plans), so two clicks on "pay" at once open one Session and write one pending purchase: the second request
+/// finds the first and reuses it (CF-FIX-FU3). The Session is created with an explicit expiry
+/// (<see cref="ConcordatoFacilePurchaseRules.CheckoutSessionLifetime"/>), after which its purchase counts as closed.
+/// </para>
 /// </summary>
 public sealed class ConcordatoFacileCheckoutService(
     AppDbContext dbContext,
     IOptions<ConcordatoFacileOptions> options,
     ILogger<ConcordatoFacileCheckoutService> logger,
-    Stripe.IStripeClient? stripeClient = null) : IConcordatoFacileCheckoutService
+    Stripe.IStripeClient? stripeClient = null,
+    TimeProvider? timeProvider = null) : IConcordatoFacileCheckoutService
 {
     /// <summary>409 code of a lease that already has the service: paid, given as a gift, or paid and not yet recorded.</summary>
     public const string AlreadyPurchasedCode = "concordatofacile_already_purchased";
@@ -32,6 +39,8 @@ public sealed class ConcordatoFacileCheckoutService(
     private const string PaymentMode = "payment";
     private const int AmountCents = 11900; // EUR 119,00
     private const string Currency = "eur";
+
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private Stripe.IStripeClient Client => stripeClient ?? StripeConfiguration.StripeClient;
 
@@ -44,6 +53,39 @@ public sealed class ConcordatoFacileCheckoutService(
         // CF-FIX: only a lease of the caller's org can be paid for (404 lease_not_found otherwise, the rule shared with the status and the gift).
         await dbContext.EnsureLeaseOfOrgAsync(leaseId, orgId, cancellationToken);
 
+        // CF-BE (CF-FIX-FU3): one checkout of the lease at a time. The lock is held until the commit, Stripe calls included: the request
+        // that waits then sees the purchase (and the open Session) of the one before it and reuses it. Outside PostgreSQL there is no lock.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            dbContext,
+            cancellationToken,
+            (PostgresAdvisoryLocks.Scope.ConcordatoFacileCheckout, leaseId.ToString("N")));
+
+        CheckoutResult result;
+        try
+        {
+            result = await CheckoutUnderLockAsync(leaseId, orgId, userId, cancellationToken);
+        }
+        catch (DomainConflictException)
+        {
+            // A 409 is an answer, not a failure: what was saved before it stays (a purchase completed from its paid Session, the
+            // purchases closed on the way).
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            throw;
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        return result;
+    }
+
+    private async Task<CheckoutResult> CheckoutUnderLockAsync(
+        Guid leaseId,
+        Guid orgId,
+        string userId,
+        CancellationToken cancellationToken)
+    {
         // CF-FIX: a lease that already has the access (completed purchase or consumed gift) is never charged again, and Stripe is not called.
         if (await HasAccessAsync(leaseId, orgId, cancellationToken))
         {
@@ -77,9 +119,14 @@ public sealed class ConcordatoFacileCheckoutService(
         // The PaymentIntent of a Checkout Session does not inherit the metadata of the session, and the webhook reads leaseId and
         // orgId from the PaymentIntent (ConcordatoFacilePaymentHandler): they are written on both. No "kind" key: it would send the
         // payment to another handler (StripeWebhookHandler.IsConcordatoFacilePayment recognizes a CF payment by its absence).
+        //
+        // CF-BE: the expiry is set here, not left to Stripe's default of 24 hours (it accepts 30 minutes to 24 hours): a purchase whose
+        // Session has expired is a purchase nobody will pay, and ConcordatoFacilePurchaseRules closes it after this time and a margin.
+        var now = _clock.GetUtcNow().UtcDateTime;
         var createOptions = new SessionCreateOptions
         {
             Mode = PaymentMode,
+            ExpiresAt = now.Add(ConcordatoFacilePurchaseRules.CheckoutSessionLifetime),
             LineItems = new List<SessionLineItemOptions>
             {
                 new()
@@ -88,8 +135,10 @@ public sealed class ConcordatoFacileCheckoutService(
                     Quantity = 1
                 }
             },
-            SuccessUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/concordatofacile?checkout=success",
-            CancelUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/concordatofacile?checkout=cancelled",
+            // CF-END: the page of the guided route (the old address, which the frontend keeps only as a redirect for the Sessions already
+            // created, named the supplier in the address bar).
+            SuccessUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/guided-contract?checkout=success",
+            CancelUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/guided-contract?checkout=cancelled",
             Metadata = PaymentMetadata(orgId, leaseId, userId),
             PaymentIntentData = new SessionPaymentIntentDataOptions
             {
@@ -109,7 +158,7 @@ public sealed class ConcordatoFacileCheckoutService(
             AmountCents = AmountCents,
             Currency = Currency,
             Status = ConcordatoFacilePurchaseStatus.Pending,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = now
         };
 
         dbContext.ConcordatoFacilePurchases.Add(purchase);

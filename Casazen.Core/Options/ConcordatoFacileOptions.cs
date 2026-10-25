@@ -40,6 +40,46 @@ public class ConcordatoFacileOptions
     /// Required in Production (ADR-006-R8). Example: ["price_123abc", "price_456def"]
     /// </summary>
     public string[]? BiennialPriceIds { get; set; }
+
+    /// <summary>
+    /// Where the signed link of the module leads (CF-SIM). <see cref="ConcordatoFacileFormMode.Real"/> (the default, and the only mode
+    /// of production): the real module of ConcordatoFacile, <c>https://app.concordatofacile.it/</c>.
+    /// <see cref="ConcordatoFacileFormMode.Simulated"/>: for the test environment only, while ConcordatoFacile has no environment of its
+    /// own to try the whole round; the link opens the simulated module <c>{BaseUrl}/guided-form</c> of the web app, the status of the
+    /// practices is read from the table <c>cf_simulated_practices</c> and the endpoints <c>api/cf-simulator/*</c> answer. It is refused
+    /// at startup in Production (<see cref="ConcordatoFacileOptionsValidator"/>).
+    /// </summary>
+    public ConcordatoFacileFormMode FormMode { get; set; } = ConcordatoFacileFormMode.Real;
+
+    /// <summary>
+    /// The address of the real module of ConcordatoFacile (CF-URL). Unset (the default, and the only value allowed in Production):
+    /// <c>https://app.concordatofacile.it/</c>, as the specification v0.2 §2 says. ConcordatoFacile prepares a module of its own to try
+    /// the whole round from the test environment, which accepts the links signed with the test secret of the specification, at an address
+    /// it gives to CasaZen: that address is set here on the test environment only, an absolute <c>https</c> address without query or
+    /// fragment (the signed parameters are appended to it). Ignored with <see cref="ConcordatoFacileFormMode.Simulated"/>. Refused at
+    /// startup in Production (<see cref="ConcordatoFacileOptionsValidator"/>).
+    /// </summary>
+    public string? FormUrl { get; set; }
+
+    /// <summary>Settings of the simulated module and status API (CF-SIM); read only with <see cref="ConcordatoFacileFormMode.Simulated"/>.</summary>
+    public ConcordatoFacileSimulatorOptions Simulator { get; set; } = new();
+}
+
+/// <summary>How the signed link of ConcordatoFacile is served (<see cref="ConcordatoFacileOptions.FormMode"/>).</summary>
+public enum ConcordatoFacileFormMode
+{
+    /// <summary>The real module and status API of ConcordatoFacile. The only mode allowed in Production.</summary>
+    Real = 0,
+
+    /// <summary>A simulation of both, for the test environment only (CF-SIM). Never in Production.</summary>
+    Simulated = 1,
+}
+
+/// <summary>Settings of the simulator of ConcordatoFacile (CF-SIM): nothing here has an effect with <see cref="ConcordatoFacileFormMode.Real"/>.</summary>
+public class ConcordatoFacileSimulatorOptions
+{
+    /// <summary>How long (seconds) the cache of the status keeps what it read from the simulator, so that a person who changes a state sees it at once.</summary>
+    public int StatusTtlSeconds { get; set; } = 5;
 }
 
 /// <summary>
@@ -88,9 +128,73 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
                 "ConcordatoFacile link secret must be at least 32 characters.");
         }
 
+        if (options.FormMode == ConcordatoFacileFormMode.Simulated)
+            AddSimulatorFailures(options, failures);
+
+        if (!string.IsNullOrWhiteSpace(options.FormUrl))
+            AddFormUrlFailures(options.FormUrl, failures);
+
         return failures.Count == 0
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);
+    }
+
+    /// <summary>
+    /// CF-SIM: the simulator of the module and of the status API stands in for ConcordatoFacile, so it must never run where the real one
+    /// has to be reached. The test environment of Railway runs as <c>Staging</c> and production as <c>Production</c> (docs/INFRA.md,
+    /// docs/runbooks/deploy-checklist.md), and the startup refuses a live Stripe key outside Production and a test one inside it
+    /// (<c>BillingConfiguration</c>): <c>Simulated</c> under <c>Production</c> stops the startup here, and an environment renamed to get
+    /// around this one could not run with the live keys of production.
+    /// </summary>
+    private void AddSimulatorFailures(ConcordatoFacileOptions options, List<string> failures)
+    {
+        if (environment.IsProduction())
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:FormMode=Simulated is allowed only in test environments, never when " +
+                "ASPNETCORE_ENVIRONMENT is Production: the simulator stands in for ConcordatoFacile, which production must always reach. " +
+                $"Remove {ConcordatoFacileOptions.SectionName}__FormMode or set it to Real.");
+        }
+
+        // The signed link of the simulated module is an address of the CasaZen web app: without it there is nowhere to send the person.
+        if (!Uri.TryCreate(options.BaseUrl?.Trim(), UriKind.Absolute, out var baseUrl)
+            || (baseUrl.Scheme != Uri.UriSchemeHttps && baseUrl.Scheme != Uri.UriSchemeHttp))
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:BaseUrl (the address of the CasaZen web app, https://<host>) is required with " +
+                "FormMode=Simulated: the simulated module is its page /guided-form.");
+        }
+
+        if (options.Simulator is null || options.Simulator.StatusTtlSeconds is < 1 or > 3600)
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:Simulator:StatusTtlSeconds must be between 1 and 3600 seconds.");
+        }
+    }
+
+    /// <summary>
+    /// CF-URL: production always opens the real module of ConcordatoFacile, so another address is refused there; elsewhere it is the test
+    /// module that ConcordatoFacile gives to CasaZen, and it must be an absolute https address without query or fragment, because the
+    /// signed parameters are appended to it.
+    /// </summary>
+    private void AddFormUrlFailures(string formUrl, List<string> failures)
+    {
+        if (environment.IsProduction())
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:FormUrl is allowed only in test environments, never when ASPNETCORE_ENVIRONMENT " +
+                $"is Production: production always opens the real module of ConcordatoFacile. Remove {ConcordatoFacileOptions.SectionName}__FormUrl.");
+        }
+
+        if (!Uri.TryCreate(formUrl.Trim(), UriKind.Absolute, out var address)
+            || address.Scheme != Uri.UriSchemeHttps
+            || !string.IsNullOrEmpty(address.Query)
+            || !string.IsNullOrEmpty(address.Fragment))
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:FormUrl must be an absolute https address without query or fragment " +
+                "(for example https://test.example/).");
+        }
     }
 
     private bool IsProductionEnvironment() =>

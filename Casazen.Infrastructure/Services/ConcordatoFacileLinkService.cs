@@ -17,14 +17,19 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>
 /// Generates HMAC-SHA256 signed links to the ConcordatoFacile partner portal (ADR-007).
 /// Links expire in 15 minutes and include lease identification and municipality data.
+/// The link is made only for a lease whose current privacy notice was accepted (CF-BE): the platform admin's bypass is about the payment,
+/// not about the privacy. The clock can be passed, so that the vector of the specification is checked on this very service.
 /// </summary>
 public sealed class ConcordatoFacileLinkService(
     AppDbContext db,
     IConcordatoFacileAccessService accessService,
+    IConcordatoFacilePrivacyService privacyService,
     IOptions<ConcordatoFacileOptions> options,
-    ILogger<ConcordatoFacileLinkService> logger) : IConcordatoFacileLinkService
+    ILogger<ConcordatoFacileLinkService> logger,
+    TimeProvider? timeProvider = null) : IConcordatoFacileLinkService
 {
     private readonly byte[] _secretKey = GetSecretKey(options);
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private static byte[] GetSecretKey(IOptions<ConcordatoFacileOptions> options)
     {
@@ -53,6 +58,10 @@ public sealed class ConcordatoFacileLinkService(
             throw new UnauthorizedAccessException(
                 $"User does not have ConcordatoFacile access for lease {leaseId}.");
         }
+
+        // CF-BE: the form opens only after the current privacy notice is accepted for the lease, for the admin too. 409
+        // concordatofacile_privacy_not_accepted; nothing is signed and no event is written before this point.
+        await privacyService.EnsureAcceptedAsync(leaseId, cancellationToken);
 
         // Load lease with property
         var lease = await db.LeaseContracts
@@ -84,29 +93,31 @@ public sealed class ConcordatoFacileLinkService(
         }
 
         // ADR-007-R1: Calculate expiresAt = UtcNow + 15 minutes, format yyyy-MM-ddTHH:mm:ssZ
-        var expiresAt = DateTime.UtcNow.AddMinutes(15).ToString("yyyy-MM-ddTHH:mm:ssZ");
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var expiresAt = now.AddMinutes(15).ToString("yyyy-MM-ddTHH:mm:ssZ");
 
         // ADR-007-R1, ADR-007-R2: Compute HMAC-SHA256 signature
         var signature = ComputeHmacSignature(leaseId, expiresAt);
 
         // ADR-007-R6: Build URL with URL-encoded parameters (encoding AFTER signature calculation)
-        var url = BuildSignedUrl(leaseId, expiresAt, signature, comune.Name, comune.ProvinceCode);
+        var url = BuildSignedUrl(FormBaseUrl(options.Value), leaseId, expiresAt, signature, comune.Name, comune.ProvinceCode);
 
         // ADR-007-R8: Record LeaseEvent (NO URL or signature in payload)
         db.LeaseEvents.Add(new LeaseEvent
         {
             LeaseContractId = leaseId,
             EventType = LeaseEventType.ConcordatoFacileLinkGenerated,
-            OccurredAt = DateTime.UtcNow
+            OccurredAt = now
         });
 
         await db.SaveChangesAsync(cancellationToken);
 
-        // ADR-007-R5: Log generation without secret, signature, or full URL
+        // ADR-007-R5: Log generation without secret, signature, or full URL. The caller is named by the subject of its token (an opaque
+        // id), never by its display name, which can be an e-mail address (CF-BE: no personal data in the logs).
         logger.LogInformation(
             "Generated ConcordatoFacile link for lease {LeaseId} by user {UserId}",
             leaseId,
-            user.Identity?.Name ?? "unknown");
+            user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "unknown");
 
         return new CfLinkResult(url);
     }
@@ -124,18 +135,44 @@ public sealed class ConcordatoFacileLinkService(
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
+    /// <summary>The real module of ConcordatoFacile (specification v0.2 §2: "Sempre https://app.concordatofacile.it/").</summary>
+    private const string RealFormUrl = "https://app.concordatofacile.it/";
+
+    /// <summary>
+    /// The address the link opens. Always the real module of ConcordatoFacile, <c>https://app.concordatofacile.it/</c> (specification
+    /// v0.2 §2: "Sempre https://app.concordatofacile.it/"), except (a) with <c>FormMode=Simulated</c> (CF-SIM, test environment only): the
+    /// page <c>/guided-form</c> of the web app, which plays the module, without a trailing slash, and (b) with <c>FormUrl</c> (CF-URL, test
+    /// environment only, refused in Production): the test module that ConcordatoFacile prepares for CasaZen. The parameters and the
+    /// signature are the same in every case, so the signing code stays the code that ConcordatoFacile verifies.
+    /// </summary>
+    private static string FormBaseUrl(ConcordatoFacileOptions concordatoFacile)
+    {
+        if (concordatoFacile.FormMode != ConcordatoFacileFormMode.Simulated)
+        {
+            return string.IsNullOrWhiteSpace(concordatoFacile.FormUrl) ? RealFormUrl : concordatoFacile.FormUrl.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(concordatoFacile.BaseUrl))
+        {
+            throw new InvalidOperationException(
+                "ConcordatoFacile:BaseUrl (the address of the web app) is required with ConcordatoFacile:FormMode=Simulated.");
+        }
+
+        return $"{concordatoFacile.BaseUrl.Trim().TrimEnd('/')}/guided-form";
+    }
+
     /// <summary>
     /// Builds the signed URL per ADR-007-R6.
     /// Each parameter value is URL-encoded individually AFTER signature calculation.
     /// </summary>
     private static string BuildSignedUrl(
+        string baseUrl,
         Guid leaseId,
         string expiresAt,
         string signature,
         string comuneName,
         string provinciaCode)
     {
-        var baseUrl = "https://app.concordatofacile.it/";
         var queryParams = new[]
         {
             $"partner={HttpUtility.UrlEncode("casazen")}",

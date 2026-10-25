@@ -1,5 +1,9 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.DTOs.CheckIn;
 using Casazen.Web.Infrastructure;
@@ -7,7 +11,9 @@ using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
+using System.Text.Json;
 
 namespace Casazen.Web.Controllers;
 
@@ -24,6 +30,9 @@ public class PublicGuestCheckInController(
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IMrzExtractionService mrzService,
     IDocumentOcrService ocrService,
+    IBiometricVerificationService biometricService,
+    AppDbContext dbContext,
+    TimeProvider timeProvider,
     IStringLocalizer<SharedResources> localizer,
     ILogger<PublicGuestCheckInController> logger) : ControllerBase
 {
@@ -270,6 +279,203 @@ public class PublicGuestCheckInController(
         {
             logger.LogError(ex, "Error processing document upload for session {SessionId}", session.Id);
             return this.ApiProblem(StatusCodes.Status500InternalServerError, "document_processing_failed", "CheckInDocumentProcessingFailed");
+        }
+    }
+
+    /// <summary>
+    /// Uploads selfie for biometric verification (NF-11, ADR-013).
+    /// Runs synchronously (NOT Hangfire) per ADR-013-R1 and returns outcome within 3s.
+    /// All image processing is in-memory only with immediate deletion (ADR-013-R2).
+    /// Max 3 attempts per session, then auto-escalates to operator queue (ADR-013-R5).
+    /// Minors (DOB &lt; 18 years) are excluded from biometric verification (ADR-013-R9).
+    /// </summary>
+    [HttpPost("{token}/selfie")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    [RequestSizeLimit(10_000_000)] // 10 MB max
+    public async Task<ActionResult<SelfieUploadResponse>> UploadSelfie(
+        string token,
+        [FromForm] IFormFile selfie,
+        [FromForm] IFormFile? documentPhoto = null)
+    {
+        // Validate session exists and is not completed
+        var session = await checkInService.GetSessionByTokenAsync(token);
+
+        if (session is null)
+            return NotFound();
+
+        if (session.IsCompleted)
+            return this.ApiProblem(
+                StatusCodes.Status409Conflict,
+                "checkin_already_completed",
+                "CheckInAlreadyCompleted");
+
+        // Load booking with guest for minor check
+        var booking = await dbContext.Bookings
+            .Include(b => b.Guest)
+            .FirstOrDefaultAsync(b => b.Id == session.BookingId);
+
+        if (booking is null)
+            return NotFound();
+
+        // Validate files
+        if (selfie == null || selfie.Length == 0)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "selfie_required", "CheckInSelfieRequired");
+
+        // Validate content types (images only)
+        var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png" };
+        if (!allowedTypes.Contains(selfie.ContentType.ToLowerInvariant()))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "selfie_type_unsupported", "CheckInSelfieTypeUnsupported");
+
+        // ADR-013-R9: Minors (DOB < 18 years) excluded from biometric verification
+        var guestDateOfBirth = booking.Guest?.DateOfBirth;
+        if (guestDateOfBirth.HasValue)
+        {
+            var today = timeProvider.TodayInRomeAsDateOnly();
+            var dob = DateOnly.FromDateTime(guestDateOfBirth.Value);
+            var age = today.Year - dob.Year;
+            if (dob > today.AddYears(-age))
+                age--;
+
+            if (age < 18)
+            {
+                logger.LogWarning(
+                    "Biometric verification rejected for minor guest (age {Age}) in session {SessionId}",
+                    age, session.Id);
+
+                return this.ApiProblem(
+                    StatusCodes.Status400BadRequest,
+                    "biometric_minor_excluded",
+                    "CheckInBiometricMinorExcluded");
+            }
+        }
+
+        // ADR-013-R5: Check max attempts (3)
+        const int maxAttempts = 3;
+        if (session.BiometricAttempts >= maxAttempts)
+        {
+            return Ok(new SelfieUploadResponse
+            {
+                Outcome = BiometricOutcome.Escalate.ToString(),
+                Attempts = session.BiometricAttempts,
+                MaxAttempts = maxAttempts,
+                AutoEscalated = true,
+                MessageKey = "CheckInBiometricMaxAttemptsReached",
+            });
+        }
+
+        try
+        {
+            // ADR-013-R1: Process synchronously (NOT Hangfire), return outcome within 3s
+            // ADR-013-R2: In-memory only processing, deleted in finally blocks inside the service
+
+            BiometricVerificationResult? verificationResult = null;
+
+            // For now, we need a document photo to compare against
+            // In a real scenario, this would come from a previously uploaded document
+            if (documentPhoto == null || documentPhoto.Length == 0)
+            {
+                // Placeholder: In production, we'd retrieve the document photo from previous upload
+                // For now, return escalate if no document photo is provided
+                logger.LogWarning(
+                    "No document photo provided for biometric verification in session {SessionId}",
+                    session.Id);
+
+                session.BiometricAttempts++;
+                session.BiometricOutcome = BiometricOutcome.Escalate;
+                session.UpdatedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+
+                return Ok(new SelfieUploadResponse
+                {
+                    Outcome = BiometricOutcome.Escalate.ToString(),
+                    Attempts = session.BiometricAttempts,
+                    MaxAttempts = maxAttempts,
+                    AutoEscalated = false,
+                    MessageKey = "CheckInBiometricDocumentPhotoRequired",
+                });
+            }
+
+            // Validate document photo content type
+            if (!allowedTypes.Contains(documentPhoto.ContentType.ToLowerInvariant()))
+                return this.ApiProblem(StatusCodes.Status400BadRequest, "document_photo_type_unsupported", "CheckInDocumentPhotoTypeUnsupported");
+
+            // Process biometric verification
+            using var selfieStream = selfie.OpenReadStream();
+            using var documentPhotoStream = documentPhoto.OpenReadStream();
+
+            // Configurable thresholds (placeholder values, should come from configuration or BiometricSettings)
+            const double acceptThreshold = 0.85;
+            const double escalateThreshold = 0.70;
+
+            verificationResult = await biometricService.VerifyAsync(
+                selfieStream,
+                documentPhotoStream,
+                acceptThreshold,
+                escalateThreshold,
+                HttpContext.RequestAborted);
+
+            // Update session
+            session.BiometricAttempts++;
+            session.BiometricOutcome = verificationResult.Outcome;
+            session.UpdatedAt = DateTime.UtcNow;
+
+            // ADR-013-R5: Auto-escalate after max attempts
+            var autoEscalated = session.BiometricAttempts >= maxAttempts &&
+                               verificationResult.Outcome != BiometricOutcome.Accept;
+
+            if (autoEscalated)
+            {
+                session.BiometricOutcome = BiometricOutcome.Escalate;
+            }
+
+            // ADR-013-R3: Create BiometricVerificationLog (NO images, embeddings, or PII per ADR-013-R2)
+            var log = new BiometricVerificationLog
+            {
+                OrgId = session.OrgId,
+                BookingId = session.BookingId,
+                GuestId = booking.GuestId,
+                Outcome = session.BiometricOutcome ?? BiometricOutcome.Reject,
+                Attempts = session.BiometricAttempts,
+                ModelName = verificationResult.ModelName,
+                ModelVersion = verificationResult.ModelVersion,
+                ThresholdsJson = JsonSerializer.Serialize(new
+                {
+                    AcceptThreshold = acceptThreshold,
+                    EscalateThreshold = escalateThreshold,
+                    Similarity = verificationResult.Similarity,
+                    IsLive = verificationResult.IsLive,
+                }),
+                CreatedAt = DateTime.UtcNow,
+            };
+
+            dbContext.BiometricVerificationLogs.Add(log);
+            await dbContext.SaveChangesAsync();
+
+            logger.LogInformation(
+                "Biometric verification completed for session {SessionId}: outcome={Outcome}, attempts={Attempts}/{Max}, similarity={Similarity}",
+                session.Id, verificationResult.Outcome, session.BiometricAttempts, maxAttempts, verificationResult.Similarity);
+
+            var messageKey = verificationResult.Outcome switch
+            {
+                BiometricOutcome.Accept => "CheckInBiometricAccepted",
+                BiometricOutcome.Escalate => autoEscalated ? "CheckInBiometricMaxAttemptsReached" : "CheckInBiometricEscalated",
+                BiometricOutcome.Reject => session.BiometricAttempts >= maxAttempts ? "CheckInBiometricMaxAttemptsReached" : "CheckInBiometricRejected",
+                _ => "CheckInBiometricEscalated",
+            };
+
+            return Ok(new SelfieUploadResponse
+            {
+                Outcome = session.BiometricOutcome?.ToString() ?? BiometricOutcome.Escalate.ToString(),
+                Attempts = session.BiometricAttempts,
+                MaxAttempts = maxAttempts,
+                AutoEscalated = autoEscalated,
+                MessageKey = messageKey,
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error processing selfie upload for session {SessionId}", session.Id);
+            return this.ApiProblem(StatusCodes.Status500InternalServerError, "selfie_processing_failed", "CheckInSelfieProcessingFailed");
         }
     }
 }

@@ -50,6 +50,7 @@ public class AppDbContext(
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<PropertyOwner> PropertyOwners { get; set; } = null!;
     public DbSet<PropertyOwnership> PropertyOwnerships { get; set; } = null!;
+    public DbSet<OwnerUser> OwnerUsers { get; set; } = null!;
     public DbSet<OwnerMandate> OwnerMandates { get; set; } = null!;
     public DbSet<OwnerStatement> OwnerStatements { get; set; } = null!;
     public DbSet<StatementLine> StatementLines { get; set; } = null!;
@@ -126,6 +127,12 @@ public class AppDbContext(
     /// with manual payment mode, 0% commission, and statement integration.
     /// </summary>
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
+
+    /// <summary>
+    /// Internal activities performed by staff on properties (NF-22): cleaning, maintenance, check-in assistance.
+    /// Staff sees only activities within their perimeter (PropertyMemberAccess).
+    /// </summary>
+    public DbSet<InternalActivity> InternalActivities { get; set; } = null!;
 
     /// <summary>
     /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
@@ -208,6 +215,9 @@ public class AppDbContext(
     // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
     public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
     public DbSet<ConcordatoFacileGift> ConcordatoFacileGifts { get; set; } = null!;
+
+    // Practices of the simulated ConcordatoFacile module: test environments only (CF-SIM)
+    public DbSet<CfSimulatedPractice> CfSimulatedPractices { get; set; } = null!;
 
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
@@ -712,6 +722,7 @@ public class AppDbContext(
         // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
         modelBuilder.ApplyConfiguration(new ConcordatoFacilePurchaseConfiguration());
         modelBuilder.ApplyConfiguration(new ConcordatoFacileGiftConfiguration());
+        modelBuilder.ApplyConfiguration(new CfSimulatedPracticeConfiguration());
 
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).

@@ -15,8 +15,14 @@ namespace Casazen.Infrastructure.Services;
 /// (<see cref="LeaseDraftService"/>) and by the retention job (<see cref="LeaseDraftRetentionService"/>), so they cannot disagree
 /// about what may be deleted.
 /// </summary>
-public sealed class LeaseDraftDeleter(AppDbContext db, IFileStorage storage, ILogger<LeaseDraftDeleter> logger)
+public sealed class LeaseDraftDeleter(
+    AppDbContext db,
+    IFileStorage storage,
+    ILogger<LeaseDraftDeleter> logger,
+    TimeProvider? timeProvider = null)
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     /// <summary>The lease with every child the delete has to take with it (EF cascades what is loaded; the database cascades the rest).</summary>
     public IQueryable<LeaseContract> WithChildren() =>
         db.LeaseContracts
@@ -34,21 +40,23 @@ public sealed class LeaseDraftDeleter(AppDbContext db, IFileStorage storage, ILo
 
     /// <summary>
     /// The one rule of what may be deleted, for the deletion the landlord asks for and for the retention job (CF-IMPORT): a draft with
-    /// nothing that makes it a contract (<see cref="IsDeletable"/>) and without a ConcordatoFacile purchase that is pending or completed
-    /// (ADR-004). A purchase that failed never charged anything and does not keep the draft. The rule looks at the purchases of the lease,
-    /// not at the mark of the draft, so a draft made before the mark existed is protected as well.
+    /// nothing that makes it a contract (<see cref="IsDeletable"/>) and without a ConcordatoFacile purchase that is open: pending (in its
+    /// time), completed or refunded (ADR-004). A purchase that failed never charged anything and does not keep the draft, and neither does
+    /// one still pending after its Checkout Session expired and a margin (<see cref="ConcordatoFacilePurchaseRules"/>, CF-BE): the
+    /// customer did not come back, the session is gone, the purchase is closed. The rule looks at the purchases of the lease, not at the
+    /// mark of the draft, so a draft made before the mark existed is protected as well.
     /// </summary>
     public async Task<bool> IsDeletableAsync(LeaseContract lease, CancellationToken cancellationToken = default)
     {
         if (!IsDeletable(lease))
             return false;
 
-        var hasPurchase = await db.Set<ConcordatoFacilePurchase>()
-            .AnyAsync(
-                p => p.LeaseContractId == lease.Id && p.Status != ConcordatoFacilePurchaseStatus.Failed,
-                cancellationToken);
+        var hasOpenPurchase = await db.Set<ConcordatoFacilePurchase>()
+            .Where(p => p.LeaseContractId == lease.Id)
+            .Where(ConcordatoFacilePurchaseRules.IsOpen(_clock.GetUtcNow().UtcDateTime))
+            .AnyAsync(cancellationToken);
 
-        return !hasPurchase;
+        return !hasOpenPurchase;
     }
 
     /// <summary>
@@ -77,6 +85,19 @@ public sealed class LeaseDraftDeleter(AppDbContext db, IFileStorage storage, ILo
             .Where(a => a.LeaseContractId == lease.Id)
             .ToListAsync(cancellationToken);
         db.LeaseRegistrationAuthorizations.RemoveRange(authorizations);
+
+        // CF-BE: the closed ConcordatoFacile purchases tied to the lease (checkouts that failed or expired, never paid) go with it. The key
+        // from a purchase to its lease is Restrict, so on PostgreSQL they must be removed or the database would refuse the delete of a
+        // draft the rule has just allowed. Only the closed ones: if a checkout opened a purchase after the rule was asked, it stays and
+        // that key stops the delete (409) instead of erasing the record of a session that can still be paid.
+        var isOpen = ConcordatoFacilePurchaseRules.IsOpen(_clock.GetUtcNow().UtcDateTime).Compile();
+        var closedPurchases = (await db.Set<ConcordatoFacilePurchase>()
+                .Where(p => p.LeaseContractId == lease.Id)
+                .ToListAsync(cancellationToken))
+            .Where(p => !isOpen(p))
+            .ToList();
+        db.Set<ConcordatoFacilePurchase>().RemoveRange(closedPurchases);
+
         db.LeaseContracts.Remove(lease);
         try
         {

@@ -30,6 +30,13 @@ public class PropertyOwnership : ITenantOwned
     public virtual PropertyOwner PropertyOwner { get; set; } = null!;
 
     /// <summary>
+    /// Links to OwnerUser for owner portal access (ADR-011-R1). Nullable because not all
+    /// PropertyOwnership entries have been invited to the portal yet.
+    /// </summary>
+    public Guid? OwnerUserId { get; set; }
+    public virtual OwnerUser? OwnerUser { get; set; }
+
+    /// <summary>
     /// Ownership share as a percentage (0.00 to 100.00). Stored as decimal(5,2) in PostgreSQL.
     /// The sum of shares for a PropertyId MUST equal 100.00 (ADR-012-R4).
     /// </summary>
