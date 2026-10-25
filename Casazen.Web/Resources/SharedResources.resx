@@ -3308,6 +3308,9 @@
   <data name="StatementAlreadyExists" xml:space="preserve">
     <value>Esiste già un rendiconto per questo proprietario, proprietà e periodo</value>
   </data>
+  <data name="F24AlreadyExists" xml:space="preserve">
+    <value>L'F24 per questo periodo esiste già</value>
+  </data>
   <data name="MixedCommissionCoOwnershipNotSupported" xml:space="preserve">
     <value>Rendiconti multi-proprietario con commissioni diverse non sono supportati</value>
   </data>
