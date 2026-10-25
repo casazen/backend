@@ -1210,6 +1210,15 @@
   <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
     <value>Il numero del documento può contenere solo lettere e cifre, al massimo {0}.</value>
   </data>
+  <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
+    <value>Elaborazione del documento non riuscita. Riprova o inserisci i dati manualmente.</value>
+  </data>
+  <data name="CheckInDocumentRequired" xml:space="preserve">
+    <value>Il file del documento è obbligatorio.</value>
+  </data>
+  <data name="CheckInDocumentTypeUnsupported" xml:space="preserve">
+    <value>Sono supportati solo immagini JPEG e PNG.</value>
+  </data>
   <data name="AlloggiatiCodeListUnknown" xml:space="preserve">
     <value>Elenco di codici sconosciuto: usa comuni, stati, documenti o luoghi.</value>
   </data>

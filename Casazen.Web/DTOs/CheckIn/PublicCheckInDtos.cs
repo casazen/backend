@@ -275,3 +275,44 @@ public class CheckInSessionStatusResponse
                 CanIssueLink = bookingEligible && !session.IsCompleted,
             };
 }
+
+/// <summary>
+/// Response from document upload endpoint with extracted fields for guest confirmation (NF-10, ADR-009-R22).
+/// </summary>
+public class DocumentUploadResponse
+{
+    /// <summary>True if extraction succeeded (MRZ or OCR).</summary>
+    public bool Success { get; set; }
+
+    /// <summary>Extraction method used (MRZ, OCR, or None).</summary>
+    public string ExtractionMethod { get; set; } = string.Empty;
+
+    /// <summary>Extracted fields for guest confirmation.</summary>
+    public ExtractedDocumentFields? Fields { get; set; }
+
+    /// <summary>Confidence score (0.0 to 1.0) of the extraction.</summary>
+    public double Confidence { get; set; }
+
+    /// <summary>True if check digits are valid (MRZ only, ADR-009-R23).</summary>
+    public bool? CheckDigitsValid { get; set; }
+
+    /// <summary>True if manual review is suggested (low confidence or invalid check digits).</summary>
+    public bool RequiresManualReview { get; set; }
+}
+
+/// <summary>
+/// Extracted document fields from MRZ or OCR (NF-10).
+/// </summary>
+public class ExtractedDocumentFields
+{
+    public string? DocumentType { get; set; }
+    public string? Surname { get; set; }
+    public string? GivenNames { get; set; }
+    public string? FullName { get; set; }
+    public string? DocumentNumber { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? Nationality { get; set; }
+    public DateTime? ExpirationDate { get; set; }
+    public string? Sex { get; set; }
+    public string? IssuingState { get; set; }
+}

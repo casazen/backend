@@ -50,17 +50,19 @@ public class ICalExportService
     /// is left out. Events are ordered by date, then UID.
     /// </summary>
     /// <param name="busySummary">SUMMARY of every event, localized by the caller ("Occupato" / "Booked").</param>
-    public string BuildPropertyFeed(IEnumerable<Booking> bookings, IEnumerable<CalendarBlock> blocks, string busySummary)
+    /// <param name="propertyCurrency">ISO 4217 currency code of the property (e.g. "EUR", "CHF"); null defaults to "EUR" (ADR-002-R7, NF-02).</param>
+    public string BuildPropertyFeed(IEnumerable<Booking> bookings, IEnumerable<CalendarBlock> blocks, string busySummary, string? propertyCurrency = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(busySummary);
 
+        var currency = string.IsNullOrWhiteSpace(propertyCurrency) ? "EUR" : propertyCurrency;
         var events = new List<ICalFeedEvent>();
 
         foreach (var booking in bookings.Where(b => b.Status != BookingStatus.Cancelled).Where(ExportsBookingCompiled))
-            AddEvent(events, BookingUid(booking.Id), booking.CheckInDate, booking.CheckOutDate, busySummary);
+            AddEvent(events, BookingUid(booking.Id), booking.CheckInDate, booking.CheckOutDate, busySummary, currency);
 
         foreach (var block in blocks.Where(ExportsBlockCompiled))
-            AddEvent(events, BlockUid(block.Id), block.StartUtc, block.EndUtc, busySummary);
+            AddEvent(events, BlockUid(block.Id), block.StartUtc, block.EndUtc, busySummary, currency);
 
         return ICalFeedWriter.Write(events
             .OrderBy(e => e.StartDate)
@@ -74,11 +76,11 @@ public class ICalExportService
     public static string BlockUid(Guid blockId) => $"block-{blockId}";
 
     // Nights are calendar dates, as in PropertyOccupancy: [start date, end date).
-    private static void AddEvent(List<ICalFeedEvent> events, string uid, DateTime start, DateTime end, string summary)
+    private static void AddEvent(List<ICalFeedEvent> events, string uid, DateTime start, DateTime end, string summary, string currency)
     {
         var startDate = DateOnly.FromDateTime(start.Date);
         var endDate = DateOnly.FromDateTime(end.Date);
         if (endDate > startDate)
-            events.Add(new ICalFeedEvent(uid, startDate, endDate, summary));
+            events.Add(new ICalFeedEvent(uid, startDate, endDate, summary, currency));
     }
 }
