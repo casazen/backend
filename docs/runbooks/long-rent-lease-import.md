@@ -43,7 +43,7 @@ Three needs of step 4 exist for this: `end_missing` (transitory without `endDate
 ## 3. The endpoint
 
 `POST /api/leases/{id}/import`, `multipart/form-data`: `stipulaDate` (a day, **not after today** in Rome) and `signedContract` (a PDF: the content is
-checked, `%PDF-`, at most 20 MB). Answers **200 with the masked detail of the lease** (the same body as `signed-document`): `status` `Signed`, `origin`
+checked, `%PDF-`, at most 20 MB; or, instead of the file, `contractDocumentId`, the id of the contract document already uploaded to the draft: § 11). Answers **200 with the masked detail of the lease** (the same body as `signed-document`): `status` `Signed`, `origin`
 `Imported`, `hasSignedPdf`, `stipulaDate`, `registrationDeadline`, and in `events` `AllPartiesSigned` and `Imported`.
 
 **Who may call it**: `lease.create` **and** `lease.sign` on the property of the lease, as a row of that property (TN-3, AM-03): another org's lease is
@@ -138,7 +138,7 @@ previous code reads them like any signed lease. If the previous code must not me
 | LR-D13 (a) | A concordato imported has **no check of the range** |
 | LR-D28 | The gate of the models stays for every contract made in CasaZen; the import is the way for contracts in force |
 
-Not here (on purpose): the registration inside the import (declare it afterwards), reading the PDF (OCR), importing many files at once, inviting the tenant, a rent plan
+Not here (on purpose): the registration inside the import (declare it afterwards), importing many files at once, inviting the tenant, a rent plan
 (LR-04a), editing a contract already signed (LR-14), a "delete document" in the Documents section, and a flag (the endpoint is always on).
 
 ## 10. After the deploy: what to check
@@ -148,3 +148,18 @@ Not here (on purpose): the registration inside the import (declare it afterwards
 - The same call on a lease created without `origin` answers 422 `lease_import_not_imported_origin` and the lease is unchanged.
 - A 500 on the import is not expected: look in the logs for `Signed contract imported` (success) and `Lease busy: the import was refused` (a lost race, with the id of the lease).
 - Orphan files: a request that fails after the upload removes its files; one that could not be removed is logged as `Could not delete an orphan signed contract from the private bucket`.
+
+## 11. With the PDF already uploaded (NL-DOCS)
+
+When the owner gave the signed contract to be read ([`lease-document-extraction.md`](lease-document-extraction.md)), it is already in the private bucket as a `Contract` document of the draft, and
+the final import does not ask for the file again. The multipart form of `POST /api/leases/{id}/import` has `stipulaDate` and **exactly one** of:
+
+- `signedContract`: the file, as before (§ 3);
+- `contractDocumentId`: the id of a document of kind `Contract` of **this lease** (`GET /api/leases/{id}/draft/reading` gives it as `contractDocumentId`). It survives a reload of the page: it is in the database.
+
+Both or neither: **400** `validation_error`. A document that is not a contract document of this lease and of its org (another lease's, an attestation, another org's, or no document at all): **404** `document_not_found`, nothing written.
+The org is stated in the query, not left to the filter of the request. Who may call it, the other errors and the order of the checks are those of § 3.
+
+What it does is § 4 with one difference: the document keeps its own file and stays the `Contract` document of the Documents section; only the signed copy of the lease is new, a copy of its bytes under the key of the signed contract
+(**two keys, one owner each**, § 5), and no second `LeaseDocument` is added. The PDF is checked as a file sent now (`%PDF-`, at most 20 MB). The day of the signature the contract states, if it states one, is in the reading
+(`stipulaDate`): the screen proposes it and the person confirms it; without it the person types it.

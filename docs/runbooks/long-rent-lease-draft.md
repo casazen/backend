@@ -31,6 +31,7 @@ the caller may not handle (a collaborator limited to some properties) is **403**
 | `DELETE /api/leases/{id}/sent` `{ version? }` | Takes it back | 200, same shape |
 | `DELETE /api/leases/{id}` | Deletes the draft with everything tied to it (§ 7) | 204; 409 `lease_not_deletable` |
 | `POST /api/leases/{id}/import` (multipart, `lease.create` + `lease.sign`) | Brings in a contract already signed elsewhere, from a draft of origin `Imported` (LR-13): see [`long-rent-lease-import.md`](long-rent-lease-import.md) | 200 the masked detail of the lease; 409 `lease_not_draft`, `lease_draft_conflict`; 422 `lease_import_not_imported_origin`, `lease_review_blocked`, `lease_signed_contract_invalid`, `lease_stipula_date_in_future` |
+| `GET /api/leases/{id}/draft/reading` | How far the reading of the contract the owner uploaded has got (NL-DOCS, § 16): the contract documents with their status, what was read and what became of each value, the day of the signature, the document the import can use | 200 `{ state, documents, fields, stipulaDate, contractDocumentId }`; 404 `lease_not_found`; `no-store` |
 | `GET /api/long-rent/landlord-defaults` | The landlord data the wizard fills in (§ 9) | 200 `{ firstName, lastName, fiscalCode, residence, contactEmail }`, each may be `null` |
 | `GET /api/long-rent/rules` (`lease.read`) | The figures of the area, from the constants the backend checks against (§ 9) | 200 |
 
@@ -323,7 +324,50 @@ Deploy **on the test environment first**; the figures of § 9 are to be confirme
 Open: the starting dates of an incomplete draft show in the lease list until the interface shows drafts by stage; the renewal periods are in
 `LongRentRules` for LR-14. The rules specific to an imported contract (the transitory type, the term it states, the APE and a start in the past
 relaxed, no range of a concordato) and the import itself are in [`long-rent-lease-import.md`](long-rent-lease-import.md) (LR-13).
+The contract the owner already has can fill an imported draft by being read: § 16 (NL-DOCS).
 Known limits, not in this task: nothing caps the number of drafts an org can create (only the retention bounds them: a limit per org or a rate
 limit on `POST /api/leases/drafts` is a decision of the product owner); the fiscal reports count any lease that overlaps the tax year as
 "leased", an abandoned draft with a typed start date included, as every draft always did; every read of a concordato draft asks the
 calculator of the range, which loads the property (a cache is a follow-up if the screens read it often).
+
+## 16. Filled from the contract the owner uploaded (NL-DOCS)
+
+«Ho già i documenti»: the owner uploads the signed contract and CasaZen reads it on the server, asking only what is missing. The reading itself (the
+text of a digital PDF or an OCR of a scan, the parser, the limits) is [`lease-document-extraction.md`](lease-document-extraction.md); this is how its values
+enter the draft. **Only an imported draft is filled**; a contract made in CasaZen, a signed one and a ConcordatoFacile draft go on as before.
+
+1. `POST /api/leases/drafts { propertyId, origin: "Imported" }`, then, if the type was chosen at the start, `PATCH` step 3 `{ contractType }`: a value the person chose,
+   which the reading never replaces (the contract that says another type is flagged).
+2. `POST /api/leases/{id}/documents` (multipart `file`, `kind=Contract`, `lease.create`): the PDF, or a single photo that the server turns into a one-page PDF
+   (the browser joins several photos in one PDF before it sends them). The upload answers at once with the document; `ExtractLeaseDocumentDataJob` (Hangfire) reads it.
+3. `GET /api/leases/{id}/draft/reading` every few seconds while `state` is `Reading`; then `GET …/draft` again (the version moved one up) and the wizard opens on the first step that
+   has something missing. A reading that fails (`state` `Failed`, the document's `error`: `unreadable`, `ocr_unavailable`, `no_text`, `nothing_found`, `file_missing`) leaves the draft as it was: the wizard by hand, and the
+   uploaded PDF is still the one the final import uses (§ 11 of [`long-rent-lease-import.md`](long-rent-lease-import.md)).
+
+**The write is a save**: `ILeaseDraftService.ApplyContractReadingAsync` takes the row lock of the lease (§ 4), reads the typed values as they are now, merges what was read
+(`LeaseDraftContractFill`, pure), evaluates the result like any save and writes it with the one writer of the columns and the parties (`LeaseDraftWriter`), one version up. Nothing is lost
+if the person typed while the document was being read: the merge is on the values under the lock.
+
+| For each value read | What happens | State in `fields[]` |
+|---|---|---|
+| The draft has nothing there | It is written; the screen marks it «letto dal contratto — controlla» | `Read` |
+| The draft has the same value (typed, or chosen at the start) | Nothing | `Agrees` |
+| The draft has **another** value | **Never overwritten**; the screen says the contract reports another | `Conflict` |
+| The rules of the draft refuse it (a deposit above 3 rents, an end the type does not allow, a rent that is not an amount, the same fiscal code on both sides) | Not written; the field stays missing and is asked | `Unusable` |
+| A person of the contract, the draft has people in that role already | Not added (it may be the wrong contract); an entry with the same fiscal code, or without one and the same name, is completed; an empty role gets the person | `Conflict` / `Read` |
+
+`fields[]` carries `field` (`contractType`, `taxRegime`, `monthlyRent`, `securityDeposit`, `startDate`, `endDate`, `property` — the address of the contract against the property chosen —, and for a person
+`fiscalCode`, `firstName`, `lastName`, `residence`, `citizenship`, `party`), `partyId` (the id of the entry of the draft) and `role`, `state`, `confidence` and `derived` (worked out: the monthly rent from the annual one, a deposit from
+«N mensilità»). **Never a value**: the values read are in the draft, which is encrypted at rest. `stipulaDate` is the one date the reading keeps (the day of the signature, which is not a draft value).
+The end of the first period is written only when the contract states another one than its type gives (or the type has none: the transitory one); a rent given by the year only is divided by 12.
+
+The step the person is on and `WizardMaxStep` are **not touched**: a step with something read is still walked through («Avanti»), and the screen opens on the first step with something missing, or on the import.
+`ExtractionStatus` of the document: `Completed` (something read, nothing contradicts what was typed), `NeedsReview` (a `Conflict` somewhere), `Failed` with a code, `Skipped` (not a contract document, a
+duplicate of a file already uploaded, or the draft was imported or deleted meanwhile).
+
+**Privacy**: `LeaseDocument.ExtractionResult` holds the field names, the ids of the entries, the states and the confidence, and the day of the signature: no name, fiscal code, address or amount. The logs
+carry ids and counts. A draft that is deleted (by the owner, or by the retention job of § 8) now takes its documents with it: the rows and, after the commit, the files in the private bucket
+(`LeaseDraftDeleter`): the contract uploaded to be read is personal data like the draft itself. If the retention of the abandoned drafts matters for the size of the bucket, note that a draft idle for
+`LongRentLease:DraftRetentionDays` days is deleted with its PDF.
+
+Not here: companies, nationalities other than the Italian one, the unit's data, a rent that changes over the years (`NL-DOCS-FU1…FU5`, see the extraction runbook).
