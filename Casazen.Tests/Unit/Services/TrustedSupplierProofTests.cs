@@ -141,14 +141,11 @@ public class TrustedSupplierProofTests
 /// </summary>
 internal sealed class TestTenantContext : ITenantContext
 {
-    private readonly Guid _orgId;
-
     public TestTenantContext(Guid orgId)
     {
-        _orgId = orgId;
+        OrgId = orgId;
     }
 
-    public Guid GetOrgId() => _orgId;
-
-    public Guid? TryGetOrgId() => _orgId;
+    public Guid? OrgId { get; }
+    public bool FilterEnabled => false;
 }
