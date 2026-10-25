@@ -288,27 +288,26 @@ public class NotificationService(
         var propertyName = booking.Property.Name;
         var bookingUrl = links.IsConfigured ? links.HostBooking(booking.Id) : null;
 
-        // TODO: Create email template for verification required alert (NF-12)
-        // For now, we'll log that the email would be sent
-        logger.LogInformation(
-            "Verification required alert for booking {BookingId} would be sent to {Email} (template not yet implemented)",
-            booking.Id,
-            booking.Org?.ContactEmail);
+        // Send email to org contact address (AC-NF12-1)
+        var email = EmailTemplates.HostVerificationRequired(culture, guestName, propertyName, booking.CheckInDate, bookingUrl);
+
+        if (!emailQueue.Enqueue(booking.Org?.ContactEmail, email, EmailTemplates.Names.VerificationRequired))
+        {
+            logger.LogWarning(
+                "Verification required email of booking {BookingId} not queued (org {OrgId})",
+                booking.Id,
+                booking.OrgId);
+        }
 
         // Send push notification to property hosts (AC-NF12-1)
-        var push = new PushNotificationPayload(
-            Title: "Verifica biometrica richiesta",
-            Body: $"La prenotazione di {guestName} richiede verifica manuale",
-            Type: PushTypes.VerificationRequired,
-            BookingId: booking.Id,
-            Route: PushRoutes.Booking(booking.Id));
+        var push = EmailTemplates.VerificationRequiredPush(culture, guestName, propertyName);
 
         var deliveryKey = PushDeliveryKeys.VerificationRequired(booking.Id);
 
         if (!pushNotifications.Enqueue(
                 deliveryKey,
                 PushAudience.PropertyHosts(booking.PropertyId),
-                push))
+                new PushNotificationPayload(push.Title, push.Body, PushTypes.VerificationRequired, booking.Id, PushRoutes.Booking(booking.Id))))
         {
             logger.LogWarning(
                 "Verification required push of booking {BookingId} not queued (org {OrgId})",

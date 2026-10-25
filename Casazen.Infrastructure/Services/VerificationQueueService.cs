@@ -3,6 +3,8 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -14,6 +16,9 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public class VerificationQueueService(
     AppDbContext db,
+    IEmailQueue emailQueue,
+    PublicSiteLinks links,
+    IGuestCheckInService guestCheckInService,
     ILogger<VerificationQueueService> logger,
     TimeProvider? timeProvider = null) : IVerificationQueueService
 {
@@ -85,6 +90,8 @@ public class VerificationQueueService(
         var session = await db.GuestCheckInSessions
             .Include(s => s.Booking)
                 .ThenInclude(b => b.Guest)
+            .Include(s => s.Booking)
+                .ThenInclude(b => b.Property)
             .Where(s => s.BookingId == bookingId)
             .OrderByDescending(s => s.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
@@ -95,28 +102,49 @@ public class VerificationQueueService(
             return false;
         }
 
-        var guest = session.Booking.Guest;
+        var booking = session.Booking;
+        var guest = booking.Guest;
         if (string.IsNullOrWhiteSpace(guest.Email))
         {
             logger.LogWarning("Guest {GuestId} of booking {BookingId} has no email address", guest.Id, bookingId);
             return false;
         }
 
-        // Generate a new check-in link by extending the session expiry
-        var now = UtcNow();
-        session.ExpiresAt = now.AddDays(7); // Extend validity by 7 days
-        session.UpdatedAt = now;
-        session.Status = GuestCheckInSessionStatus.Inviato;
+        // Generate a new check-in link by issuing a new session (invalidates the old one)
+        var newLink = await guestCheckInService.IssueLinkAsync(bookingId, booking.OrgId);
 
-        await db.SaveChangesAsync(cancellationToken);
+        // Send email to guest with the new check-in link (AC-NF12-5)
+        if (!links.IsConfigured)
+        {
+            logger.LogWarning(
+                "Cannot send new photo request email for booking {BookingId}: public site URL not configured",
+                bookingId);
+            return false;
+        }
 
-        // TODO: Queue email with the check-in link (NF-12)
-        // The email template should include instructions for taking a new selfie
-        // This will be implemented when the email templates are extended
+        var checkInLink = links.GuestCheckIn(newLink.Token);
+        var guestName = $"{guest.FirstName} {guest.LastName}".Trim();
+        var propertyName = booking.Property.Name;
+        var culture = EmailTemplates.DefaultCulture;
+
+        var email = EmailTemplates.GuestNewPhotoRequest(
+            culture,
+            guestName,
+            propertyName,
+            booking.CheckInDate,
+            checkInLink);
+
+        if (!emailQueue.Enqueue(guest.Email, email, EmailTemplates.Names.GuestNewPhotoRequest))
+        {
+            logger.LogWarning(
+                "New photo request email for booking {BookingId} not queued",
+                bookingId);
+            return false;
+        }
 
         logger.LogInformation(
-            "Requested new photo for booking {BookingId}, extended session {SessionId} expiry to {ExpiresAt}",
-            bookingId, session.Id, session.ExpiresAt);
+            "Requested new photo for booking {BookingId}, new session {SessionId} issued, email queued to {Email}",
+            bookingId, newLink.SessionId, guest.Email);
 
         return true;
     }
