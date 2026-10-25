@@ -108,6 +108,8 @@ builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
 builder.Services.AddCasazenAiProvider(builder.Configuration);
+// Agency tier B2B services
+builder.Services.AddScoped<ITrustedSupplierService, TrustedSupplierService>();
 // Lease services
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
 builder.Services.AddScoped<ILeaseDocumentService, LeaseDocumentService>();
