@@ -30,6 +30,7 @@ internal static class LeaseDraftWriter
     {
         await RewritePartiesAsync(db, lease, LeaseDraftProjection.ToRows(values, lease.Id, today), cancellationToken);
         LeaseDraftProjection.ApplyColumns(lease, reading, concordato);
+        LeaseDraftProjection.ApplyTransitoryNeed(lease, values, reading);
         lease.DraftData = dataComplete ? null : values.ToJson();
     }
 

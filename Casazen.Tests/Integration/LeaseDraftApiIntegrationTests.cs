@@ -240,7 +240,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         var s2 = await PatchAsync(client, id, version, 2, """
             {"landlords":[{"firstName":"Mario","lastName":"Rossi","fiscalCode":"NOT-A-CODE","citizenship":"IT","residence":"Bari"}],"tenants":[{"firstName":"Giulia"}]}
             """);
-        var s3 = await PatchAsync(client, id, s2.GetProperty("version").GetInt32(), 3, """{"contractType":"Transitorio","monthlyRent":-50,"securityDeposit":99}""");
+        var s3 = await PatchAsync(client, id, s2.GetProperty("version").GetInt32(), 3, """{"contractType":"Studenti","monthlyRent":-50,"securityDeposit":99}""");
         var s4 = await PatchAsync(client, id, s3.GetProperty("version").GetInt32(), 4, """{"startDate":"next spring"}""");
 
         var flow = s4.GetProperty("flow");
@@ -746,7 +746,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         Assert.Equal(6, rules.GetProperty("noticeMonths").GetInt32());
         Assert.Equal(30, rules.GetProperty("registrationDays").GetInt32());
         Assert.Equal(3, rules.GetProperty("depositMaxRents").GetInt32());
-        Assert.Equal(["Libero", "Concordato"], rules.GetProperty("availableTypes").EnumerateArray().Select(t => t.GetString()));
+        Assert.Equal(["Libero", "Concordato", "Transitorio"], rules.GetProperty("availableTypes").EnumerateArray().Select(t => t.GetString()));
     }
 }
 

@@ -1871,6 +1871,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("TerminatedOn")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("TransitoryDocumentation")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TransitoryNeed")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("TransitoryParty")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 

@@ -47,7 +47,19 @@ internal static class LeaseContractDocument
         [LeaseContractPlaceholders.StartDate] = "Decorrenza",
         [LeaseContractPlaceholders.EndDate] = "Scadenza",
         [LeaseContractPlaceholders.Term] = "Durata",
+        [LeaseContractPlaceholders.TransitoryParty] = "Chi ha l'esigenza (locatore o conduttore)",
+        [LeaseContractPlaceholders.TransitoryNeed] = "Esigenza di transitorietà",
+        [LeaseContractPlaceholders.TransitoryDocumentation] = "Documentazione dell'esigenza",
+        [LeaseContractPlaceholders.DepositPayment] = "Versamento del deposito cauzionale",
+        [LeaseContractPlaceholders.DepositMonths] = "Deposito cauzionale (mensilità del canone)",
     };
+
+    /// <summary>
+    /// What art. 2 of the transitory model says is attached when the term does not last more than 30 days: the model asks for the documents
+    /// "in caso di durata superiore a 30 giorni" (D.M. 16/01/2017 art. 2 c. 4), so for a shorter contract the blank is told as none.
+    /// </summary>
+    internal static readonly string NoDocumentationNeeded =
+        $"nessuno, trattandosi di un contratto di durata non superiore a {LeaseContractTerms.TransitorioDocumentationAfterDays} giorni";
 
     /// <summary>
     /// Value of every placeholder for <paramref name="lease"/>; null when the lease has no such data. Cadastral data come
@@ -69,9 +81,21 @@ internal static class LeaseContractDocument
             [LeaseContractPlaceholders.MonthlyRent] = lease.MonthlyRent > 0 ? FormatAmount(lease.MonthlyRent) : null,
             [LeaseContractPlaceholders.AnnualRent] = lease.MonthlyRent > 0 ? FormatAmount(lease.MonthlyRent * 12) : null,
             [LeaseContractPlaceholders.SecurityDeposit] = lease.SecurityDeposit is { } deposit ? FormatAmount(deposit) : null,
+            [LeaseContractPlaceholders.DepositPayment] = lease.SecurityDeposit is null ? null : lease.SecurityDeposit > 0 ? "versa" : "non versa",
+            [LeaseContractPlaceholders.DepositMonths] = lease.SecurityDeposit is null || lease.MonthlyRent <= 0
+                ? null
+                : FormatMonthlyRents(lease.SecurityDeposit.Value / lease.MonthlyRent),
             [LeaseContractPlaceholders.StartDate] = hasDates ? FormatDate(lease.StartDate) : null,
             [LeaseContractPlaceholders.EndDate] = hasDates ? FormatDate(lease.EndDate) : null,
             [LeaseContractPlaceholders.Term] = hasDates && term is { } t && (t.Months > 0 || t.Days > 0) ? t.ToItalianText() : null,
+            [LeaseContractPlaceholders.TransitoryParty] = lease.TransitoryParty switch
+            {
+                PartyRole.Landlord => "locatore",
+                PartyRole.Tenant => "conduttore",
+                _ => null,
+            },
+            [LeaseContractPlaceholders.TransitoryNeed] = FormatFreeText(lease.TransitoryNeed),
+            [LeaseContractPlaceholders.TransitoryDocumentation] = TransitoryDocumentation(lease, hasDates),
         };
     }
 
@@ -90,11 +114,13 @@ internal static class LeaseContractDocument
     public static PdfDocumentContent BuildFinalDocument(LeaseContractTemplateState state, IReadOnlyDictionary<string, string?> data)
     {
         var blocks = new List<PdfBlock>();
+        static string NoValue(string missing) => throw new InvalidOperationException(
+            $"Placeholder {missing} has no value: check MissingData before building the final contract.");
+
         foreach (var section in state.Sections)
         {
-            blocks.Add(new PdfHeading(Heading(state.Regime, section)));
-            blocks.AddRange(PdfBlocks.FromPlainText(Fill(section.Text, data, missing => throw new InvalidOperationException(
-                $"Placeholder {missing} has no value: check MissingData before building the final contract."))));
+            blocks.Add(new PdfHeading(Heading(state.Variant, section, data, NoValue)));
+            blocks.AddRange(PdfBlocks.FromPlainText(Fill(section.Text, data, NoValue)));
         }
 
         return new PdfDocumentContent(state.Title!, blocks);
@@ -107,19 +133,21 @@ internal static class LeaseContractDocument
     /// </summary>
     public static PdfDocumentContent BuildPreviewDocument(LeaseContractTemplateState state, IReadOnlyDictionary<string, string?> data)
     {
+        static string Missing(string name) => $"[DATO MANCANTE: {name}]";
+
         var marker = state.IsApproved ? ApprovedPreviewMarker : DraftMarker;
         var status = new List<string>
         {
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"Modello: {state.Regime}, versione {state.VersionId ?? "nessuna"}, stato: {StatusLabel(state.Status)}."),
+                $"Modello: {state.Variant}, versione {state.VersionId ?? "nessuna"}, stato: {StatusLabel(state.Status)}."),
         };
         if (state.MissingSections.Count > 0)
             status.Add($"Sezioni senza testo: {string.Join(", ", state.MissingSections)}.");
         if (state.Status == LeaseContractTemplateStatus.Incomplete && state.Issues.Count > 0)
             status.Add($"Problemi di formato del modello: {state.Issues.Count} (dettagli nei log dell'API).");
 
-        var required = LeaseContractTemplateStructure.RequiredSections(state.Regime);
+        var required = LeaseContractTemplateStructure.RequiredSections(state.Variant);
         var missingData = state.Sections.SelectMany(s => s.Placeholders)
             .Concat(required.Where(d => state.Sections.All(s => s.Id != d.Id)).SelectMany(d => d.DataPlaceholders))
             .Distinct(StringComparer.Ordinal)
@@ -136,7 +164,7 @@ internal static class LeaseContractDocument
 
         foreach (var section in state.Sections)
         {
-            blocks.Add(new PdfHeading(Heading(state.Regime, section), Level: 3));
+            blocks.Add(new PdfHeading(Heading(state.Variant, section, data, Missing), Level: 3));
             if (section.Text.Length == 0)
             {
                 var definition = required.FirstOrDefault(d => d.Id == section.Id);
@@ -144,7 +172,7 @@ internal static class LeaseContractDocument
             }
             else
             {
-                blocks.AddRange(PdfBlocks.FromPlainText(Fill(section.Text, data, missing => $"[DATO MANCANTE: {missing}]")));
+                blocks.AddRange(PdfBlocks.FromPlainText(Fill(section.Text, data, Missing)));
             }
         }
 
@@ -173,10 +201,18 @@ internal static class LeaseContractDocument
         return new PdfParagraph(string.Join('\n', lines));
     }
 
-    private static string Heading(FiscalRegime regime, LeaseContractTemplateSection section) =>
-        section.Heading
-        ?? LeaseContractTemplateStructure.RequiredSections(regime).FirstOrDefault(d => d.Id == section.Id)?.DefaultHeading
-        ?? section.Id;
+    /// <summary>
+    /// The heading of a section: the one of the file, or the default of the checklist. It can carry data like the text (the transitory
+    /// model's art. 2 is "Esigenza del {{esigenza_parte}}": the landlord or the tenant, as the lease says).
+    /// </summary>
+    private static string Heading(
+        LeaseTemplateVariant variant, LeaseContractTemplateSection section, IReadOnlyDictionary<string, string?> data, Func<string, string> onMissing) =>
+        Fill(
+            section.Heading
+            ?? LeaseContractTemplateStructure.RequiredSections(variant).FirstOrDefault(d => d.Id == section.Id)?.DefaultHeading
+            ?? section.Id,
+            data,
+            onMissing);
 
     private static string Fill(string text, IReadOnlyDictionary<string, string?> data, Func<string, string> onMissing) =>
         LeaseContractTemplateParser.PlaceholderPattern().Replace(text, match =>
@@ -253,6 +289,38 @@ internal static class LeaseContractDocument
     }
 
     private static string FormatAmount(decimal amount) => amount.ToString("N2", ItalianNumbers);
+
+    /// <summary>The deposit in monthly rents as a person writes it: "2", "1,5", "0,83" (two decimals at most).</summary>
+    private static string FormatMonthlyRents(decimal rents) =>
+        decimal.Round(rents, 2, MidpointRounding.AwayFromZero).ToString("0.##", ItalianNumbers);
+
+    /// <summary>
+    /// A text the landlord typed, as it goes into a sentence of the contract: on one line, without the full stop that would meet the comma
+    /// or the full stop the sentence already has; null when there is none.
+    /// </summary>
+    private static string? FormatFreeText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var oneLine = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).TrimEnd('.', ',', ';', ':');
+        return oneLine.Length == 0 ? null : oneLine;
+    }
+
+    /// <summary>
+    /// The documentation of the need of a transitory contract: the text typed when the term lasts more than 30 days, when the model
+    /// asks for it, otherwise <see cref="NoDocumentationNeeded"/>; null for every other type. A transitory contract without dates has
+    /// no term to judge, and the dates are missing before this is.
+    /// </summary>
+    private static string? TransitoryDocumentation(LeaseContract lease, bool hasDates)
+    {
+        if (lease.ContractType != LeaseContractType.Transitorio || !hasDates)
+            return null;
+
+        return LeaseContractTerms.TransitoryNeedsDocumentation(lease.StartDate, lease.EndDate)
+            ? FormatFreeText(lease.TransitoryDocumentation)
+            : NoDocumentationNeeded;
+    }
 
     private static string FormatDate(DateTime date) => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
 

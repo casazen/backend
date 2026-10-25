@@ -25,7 +25,10 @@ public class LongRentRulesTests
         Assert.Equal(30, rules.RegistrationDays);
         Assert.Equal(RliRegistrationDeadline.DaysFromStipulaOrStart, rules.RegistrationDays);
         Assert.Equal(3, rules.DepositMaxRents);
-        Assert.Equal(["Libero", "Concordato"], rules.AvailableTypes);
+        Assert.Equal(["Libero", "Concordato", "Transitorio"], rules.AvailableTypes);
+        Assert.Equal(30, rules.TransitoryDocumentationAfterDays);
+        Assert.Equal(LeaseContractTerms.TransitorioDocumentationAfterDays, rules.TransitoryDocumentationAfterDays);
+        Assert.Equal(10_000, rules.TransitoryBandFromInhabitants);
     }
 
     [Fact]
@@ -42,17 +45,29 @@ public class LongRentRulesTests
         Assert.Equal(6, root.GetProperty("noticeMonths").GetInt32());
         Assert.Equal(30, root.GetProperty("registrationDays").GetInt32());
         Assert.Equal(3, root.GetProperty("depositMaxRents").GetInt32());
-        Assert.Equal(["Libero", "Concordato"], root.GetProperty("availableTypes").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["Libero", "Concordato", "Transitorio"], root.GetProperty("availableTypes").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(1, root.GetProperty("transitoryTermMonths").GetProperty("min").GetInt32());
+        Assert.Equal(18, root.GetProperty("transitoryTermMonths").GetProperty("max").GetInt32());
+        Assert.Equal(30, root.GetProperty("transitoryDocumentationAfterDays").GetInt32());
     }
 
     [Theory]
-    [InlineData(LeaseContractType.Libero, true)]
-    [InlineData(LeaseContractType.Concordato, true)]
-    [InlineData(LeaseContractType.Transitorio, false)] // enters only as an imported contract (LR-13)
-    public void OnlyTheLiberoAndTheConcordato_CanBeCreated(LeaseContractType type, bool available)
+    [InlineData(LeaseContractType.Libero)]
+    [InlineData(LeaseContractType.Concordato)]
+    [InlineData(LeaseContractType.Transitorio)] // TR: made in CasaZen with the Allegato B, as well as brought in already signed (LR-13)
+    public void TheLiberoTheConcordatoAndTheTransitory_CanBeCreated(LeaseContractType type)
     {
-        Assert.Equal(available, LongRentRules.IsAvailable(type));
-        Assert.Equal(available, LongRentRules.FirstTermMonths(type) is not null);
+        Assert.True(LongRentRules.IsAvailable(type));
+        Assert.True(LongRentRules.IsAvailable(type, LeaseOrigin.Created));
+        Assert.True(LongRentRules.IsAvailable(type, LeaseOrigin.Imported));
+    }
+
+    [Fact]
+    public void OnlyTheLiberoAndTheConcordato_HaveAFirstPeriodOfTheirType_TheTransitoryStatesItsOwn()
+    {
+        Assert.Equal(48, LongRentRules.FirstTermMonths(LeaseContractType.Libero));
+        Assert.Equal(36, LongRentRules.FirstTermMonths(LeaseContractType.Concordato));
+        Assert.Null(LongRentRules.FirstTermMonths(LeaseContractType.Transitorio));
     }
 
     [Theory]

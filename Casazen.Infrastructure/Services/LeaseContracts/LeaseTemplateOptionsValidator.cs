@@ -37,11 +37,11 @@ public sealed class LeaseTemplateOptionsValidator(IHostEnvironment environment) 
                 continue;
 
             var prefix = $"LeaseTemplates:Variants:{key}";
-            var regimeName = Enum.GetNames<FiscalRegime>()
+            var variantName = Enum.GetNames<LeaseTemplateVariant>()
                 .FirstOrDefault(n => string.Equals(n, key, StringComparison.OrdinalIgnoreCase));
-            if (regimeName is null)
+            if (variantName is null)
             {
-                failures.Add($"{prefix}: '{key}' is not a fiscal regime ({string.Join(", ", Enum.GetNames<FiscalRegime>())}). See {Runbook}.");
+                failures.Add($"{prefix}: '{key}' is not a template variant ({string.Join(", ", Enum.GetNames<LeaseTemplateVariant>())}). See {Runbook}.");
                 continue;
             }
 
@@ -52,7 +52,7 @@ public sealed class LeaseTemplateOptionsValidator(IHostEnvironment environment) 
                 continue;
             }
 
-            var state = LeaseContractTemplateCatalog.Load(Enum.Parse<FiscalRegime>(regimeName), options, contentRootPath);
+            var state = LeaseContractTemplateCatalog.Load(Enum.Parse<LeaseTemplateVariant>(variantName), options, contentRootPath);
             if (!state.IsApproved)
             {
                 failures.Add(

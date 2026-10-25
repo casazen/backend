@@ -66,6 +66,13 @@ public static class EncryptedColumns
     public const string LeasePartyPurpose = "Casazen.LeaseParty";
 
     /// <summary>
+    /// Purpose of the need of a transitory lease (TR): <see cref="LeaseContract.TransitoryNeed"/> and <see cref="LeaseContract.TransitoryDocumentation"/>,
+    /// the reason the landlord or the tenant gives for the short term and the papers that prove it. Free text that can say why a person moves
+    /// house; printed in the contract, never searched. Never change it.
+    /// </summary>
+    public const string LeaseTransitoryNeedPurpose = "Casazen.LeaseContract.TransitoryNeed";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -126,6 +133,11 @@ public static class EncryptedColumns
         new EncryptedEntity<Party>(
             LeasePartyPurpose,
             nameof(Party.Residence)),
+        // TR: the need of a transitory lease and its documentation.
+        new EncryptedEntity<LeaseContract>(
+            LeaseTransitoryNeedPurpose,
+            nameof(LeaseContract.TransitoryNeed),
+            nameof(LeaseContract.TransitoryDocumentation)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

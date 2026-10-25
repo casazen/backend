@@ -109,6 +109,12 @@ public static class LeaseReview
             Add(LeaseNeedCodes.TenantsOk, LeaseReviewSeverity.Ok, 2, ("count", values.Tenants.Count));
 
         // 3 · type, regime, rent, deposit
+        // The rent of a transitory contract in a municipality of more than 10,000 inhabitants has to be inside the bands of the territorial
+        // agreement, or the contract falls back to a 4+4 (D.M. 16/01/2017 art. 2 c. 2 and c. 6). CasaZen knows neither the inhabitants of the
+        // municipality nor the agreement and has no calculator for the bands (TR-FU1): it tells the landlord to check it, it does not block.
+        if (!imported && reading is { Type: LeaseContractType.Transitorio, TypeAvailable: true })
+            Add(LeaseNeedCodes.TransitoryRentBandToCheck, LeaseReviewSeverity.Info, 3, ("inhabitants", LeaseContractTerms.TransitorioBandFromInhabitants));
+
         if (reading.Rent is { } rent)
         {
             Add(LeaseNeedCodes.RentOk, LeaseReviewSeverity.Ok, 3, ("amount", rent));
