@@ -3341,6 +3341,12 @@
   <data name="InvoiceNotFinalized" xml:space="preserve">
     <value>La fattura è ancora in bozza: completala prima di scaricare XML o PDF</value>
   </data>
+  <data name="OrgMissingTaxCodes" xml:space="preserve">
+    <value>L'organizzazione deve avere almeno un codice fiscale o partita IVA per emettere fatture elettroniche</value>
+  </data>
+  <data name="OrgMissingRegisteredOffice" xml:space="preserve">
+    <value>L'organizzazione deve avere la sede legale configurata per emettere fatture elettroniche</value>
+  </data>
   <data name="Only approved campaigns can be scheduled" xml:space="preserve">
     <value>Solo le campagne approvate possono essere pianificate</value>
   </data>

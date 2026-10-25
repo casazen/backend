@@ -35,6 +35,7 @@ public static class DemoShowcaseCatalog
         public const string HostInviteUsed = "host-invite-used";
         public const string HostInviteExpired = "host-invite-expired";
         public const string PropertyOwnerAgency = "property-owner-agency";
+        public const string AgencyInvoiceIssued = "agency-invoice-issued";
         public const string CampaignDraft = "campaign-draft";
         public const string CampaignApproved = "campaign-approved";
         public const string CampaignSent = "campaign-sent";
@@ -54,6 +55,7 @@ public static class DemoShowcaseCatalog
         Scenario.HostInviteUsed,
         Scenario.HostInviteExpired,
         Scenario.PropertyOwnerAgency,
+        Scenario.AgencyInvoiceIssued,
         Scenario.CampaignDraft,
         Scenario.CampaignApproved,
         Scenario.CampaignSent,

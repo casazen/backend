@@ -12,6 +12,7 @@ namespace Casazen.Core.Entities;
 /// Per-agency numbering with series and no gaps enforced by unique index and row lock.
 /// </summary>
 [Table("AgencyInvoices")]
+[Index(nameof(OrgId), nameof(Series), nameof(InvoiceNumber), IsUnique = true)]
 public class AgencyInvoice : ITenantOwned
 {
     [Key]

@@ -3341,6 +3341,12 @@
   <data name="InvoiceNotFinalized" xml:space="preserve">
     <value>The invoice is still in draft: finalize it before downloading XML or PDF</value>
   </data>
+  <data name="OrgMissingTaxCodes" xml:space="preserve">
+    <value>The organization must have at least a fiscal code or VAT number to issue electronic invoices</value>
+  </data>
+  <data name="OrgMissingRegisteredOffice" xml:space="preserve">
+    <value>The organization must have a registered office configured to issue electronic invoices</value>
+  </data>
   <data name="Only approved campaigns can be scheduled" xml:space="preserve">
     <value>Only approved campaigns can be scheduled.</value>
   </data>
