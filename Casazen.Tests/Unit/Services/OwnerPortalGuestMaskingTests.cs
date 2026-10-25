@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -93,7 +94,7 @@ public class OwnerPortalGuestMaskingTests : IAsyncLifetime
             FirstName = "Mario",
             LastName = "Rossi",
             Email = SensitiveGuestEmail,
-            Phone = SensitiveGuestPhone,
+            PhoneNumber = SensitiveGuestPhone,
             CreatedAt = DateTime.UtcNow
         };
 
