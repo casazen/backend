@@ -61,9 +61,10 @@ public sealed class TrustedSupplierService(
 
         if (trustedSupplier == null)
         {
-            throw new DomainNotFoundException(
-                "trusted_supplier_not_found",
-                $"Trusted supplier {trustedSupplierId} not found for org {orgId}");
+            throw new NotFoundException($"Trusted supplier {trustedSupplierId} not found for org {orgId}")
+            {
+                Code = "trusted_supplier_not_found"
+            };
         }
 
         trustedSupplier.VisibleInMarketplace = visible;
@@ -81,9 +82,10 @@ public sealed class TrustedSupplierService(
 
         if (trustedSupplier == null)
         {
-            throw new DomainNotFoundException(
-                "trusted_supplier_not_found",
-                $"Trusted supplier {trustedSupplierId} not found for org {orgId}");
+            throw new NotFoundException($"Trusted supplier {trustedSupplierId} not found for org {orgId}")
+            {
+                Code = "trusted_supplier_not_found"
+            };
         }
 
         db.TrustedSuppliers.Remove(trustedSupplier);
