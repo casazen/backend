@@ -73,6 +73,12 @@ public static class EncryptedColumns
     public const string LeaseTransitoryNeedPurpose = "Casazen.LeaseContract.TransitoryNeed";
 
     /// <summary>
+    /// Purpose of the identity document image URLs (NF-10, ADR-009-R21): <see cref="DocumentImage.FrontImageUrl"/> and
+    /// <see cref="DocumentImage.BackImageUrl"/>. Never stored for Ticino properties per ADR-013-R6. Never change it.
+    /// </summary>
+    public const string DocumentImagePurpose = "Casazen.DocumentImage";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -143,6 +149,11 @@ public static class EncryptedColumns
             LeaseTransitoryNeedPurpose,
             nameof(LeaseContract.TransitoryNeed),
             nameof(LeaseContract.TransitoryDocumentation)),
+        // NF-10: identity document image URLs for OCR (ADR-009-R21, ADR-013-R3).
+        new EncryptedEntity<DocumentImage>(
+            DocumentImagePurpose,
+            nameof(DocumentImage.FrontImageUrl),
+            nameof(DocumentImage.BackImageUrl)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>
