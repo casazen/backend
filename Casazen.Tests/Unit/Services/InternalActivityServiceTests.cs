@@ -39,7 +39,7 @@ public class InternalActivityServiceTests
         await using var db = NewDb();
         var service = Service(db);
 
-        var org = new Org { Id = Guid.NewGuid(), Name = "Test Agency", PlanTier = PlanTier.Agency };
+        var org = new OrgEntity { Id = Guid.NewGuid(), Name = "Test Agency", PlanTier = PlanTier.Agency };
         db.Orgs.Add(org);
 
         // Two properties: one granted to staff, one hidden
@@ -50,7 +50,7 @@ public class InternalActivityServiceTests
             Name = "Granted Property",
             OwnerId = OwnerId,
             IsActive = true,
-            RentalMode = RentalMode.ShortRent
+            RentalMode = RentalMode.Short
         };
         var hiddenProperty = new Property
         {
@@ -59,7 +59,7 @@ public class InternalActivityServiceTests
             Name = "Hidden Property",
             OwnerId = OwnerId,
             IsActive = true,
-            RentalMode = RentalMode.ShortRent
+            RentalMode = RentalMode.Short
         };
         db.Properties.AddRange(grantedProperty, hiddenProperty);
 
@@ -99,7 +99,7 @@ public class InternalActivityServiceTests
             OrgId: org.Id,
             OwnerId: null,
             GrantedToUserId: StaffUserId,
-            GrantedMode: RentalMode.ShortRent);
+            GrantedMode: RentalMode.Short);
 
         var visibleActivities = await service.GetActivitiesAsync(restrictedScope);
 
@@ -132,7 +132,7 @@ public class InternalActivityServiceTests
         await using var db = NewDb();
         var service = Service(db);
 
-        var org = new Org { Id = Guid.NewGuid(), Name = "Test Org", PlanTier = PlanTier.Agency };
+        var org = new OrgEntity { Id = Guid.NewGuid(), Name = "Test Org", PlanTier = PlanTier.Agency };
         db.Orgs.Add(org);
 
         var property = new Property
@@ -142,7 +142,7 @@ public class InternalActivityServiceTests
             Name = "Test Property",
             OwnerId = OwnerId,
             IsActive = true,
-            RentalMode = RentalMode.ShortRent
+            RentalMode = RentalMode.Short
         };
         db.Properties.Add(property);
         await db.SaveChangesAsync();
@@ -172,7 +172,7 @@ public class InternalActivityServiceTests
         await using var db = NewDb();
         var service = Service(db);
 
-        var org = new Org { Id = Guid.NewGuid(), Name = "Test Org", PlanTier = PlanTier.Agency };
+        var org = new OrgEntity { Id = Guid.NewGuid(), Name = "Test Org", PlanTier = PlanTier.Agency };
         db.Orgs.Add(org);
 
         var property = new Property
@@ -182,7 +182,7 @@ public class InternalActivityServiceTests
             Name = "Test Property",
             OwnerId = OwnerId,
             IsActive = true,
-            RentalMode = RentalMode.ShortRent
+            RentalMode = RentalMode.Short
         };
         db.Properties.Add(property);
         await db.SaveChangesAsync();
@@ -209,7 +209,7 @@ public class InternalActivityServiceTests
         await using var db = NewDb();
         var service = Service(db);
 
-        var org = new Org { Id = Guid.NewGuid(), Name = "Test Org", PlanTier = PlanTier.Agency };
+        var org = new OrgEntity { Id = Guid.NewGuid(), Name = "Test Org", PlanTier = PlanTier.Agency };
         db.Orgs.Add(org);
 
         var property = new Property
@@ -219,7 +219,7 @@ public class InternalActivityServiceTests
             Name = "Test Property",
             OwnerId = OwnerId,
             IsActive = true,
-            RentalMode = RentalMode.ShortRent
+            RentalMode = RentalMode.Short
         };
         db.Properties.Add(property);
 
@@ -240,7 +240,7 @@ public class InternalActivityServiceTests
         await service.CreateActivityAsync(property.Id, "auth0|other-staff", "Maintenance", DateTime.UtcNow.AddDays(2));
 
         // Act
-        var scope = new HostScope(org.Id, null, StaffUserId, RentalMode.ShortRent);
+        var scope = new HostScope(org.Id, null, StaffUserId, RentalMode.Short);
         var myActivities = await service.GetMyActivitiesAsync(scope, StaffUserId);
 
         // Assert
