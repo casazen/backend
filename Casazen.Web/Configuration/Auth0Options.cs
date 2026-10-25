@@ -19,10 +19,11 @@ public sealed class Auth0Options
     public string? Audience { get; set; }
 
     /// <summary>
-    /// Custom claim namespace for Auth0 custom claims (ADR-011-R7). Must match the Auth0 Action configuration.
-    /// Defaults to the standard CasaZen namespace. Can be overridden for testing.
+    /// Optional override of the namespace of the owner portal custom claims (ADR-011-R7), for tests. Empty: the claims are
+    /// read under the names the Auth0 Action writes (<c>OwnerPortalClaims</c>); the namespace must match the Action,
+    /// whatever domain the web app is on, so no default is written here (decision D3).
     /// </summary>
-    public string CustomClaimNamespace { get; set; } = "https://casazen.app";
+    public string? CustomClaimNamespace { get; set; }
 
     public string? ManagementClientId { get; set; }
 

@@ -16,7 +16,7 @@ public sealed class OwnerPortalRequirement : IAuthorizationRequirement;
 /// </summary>
 public class OwnerPortalAuthorizationHandler : AuthorizationHandler<OwnerPortalRequirement>
 {
-    private readonly string _customClaimNamespace;
+    private readonly string? _customClaimNamespace;
 
     public OwnerPortalAuthorizationHandler(IOptions<Auth0Options> auth0Options)
     {
@@ -31,12 +31,12 @@ public class OwnerPortalAuthorizationHandler : AuthorizationHandler<OwnerPortalR
             return Task.CompletedTask;
 
         // Check for context=owner_portal claim (ADR-011-R5)
-        var contextClaim = context.User.FindFirstValue($"{_customClaimNamespace}/context");
+        var contextClaim = context.User.FindFirstValue(OwnerPortalClaims.Type(_customClaimNamespace, OwnerPortalClaims.Context, "context"));
         if (contextClaim != "owner_portal")
             return Task.CompletedTask;
 
         // Verify owner_id claim exists (ADR-011-R7)
-        var ownerIdClaim = context.User.FindFirstValue($"{_customClaimNamespace}/owner_id");
+        var ownerIdClaim = context.User.FindFirstValue(OwnerPortalClaims.Type(_customClaimNamespace, OwnerPortalClaims.OwnerId, "owner_id"));
         if (string.IsNullOrWhiteSpace(ownerIdClaim) || !Guid.TryParse(ownerIdClaim, out _))
             return Task.CompletedTask;
 
@@ -58,23 +58,40 @@ public class OwnerPortalAuthorizationHandler : AuthorizationHandler<OwnerPortalR
 }
 
 /// <summary>
+/// The owner portal custom claims that the Auth0 Action adds to the tokens (ADR-011-R7, runbook auth0.md). The full
+/// names are the claim namespaces of the Action, not addresses of a site: they are the ones listed in
+/// <c>NoHardcodedPublicDomainTests</c>, like the role, email and name claims.
+/// </summary>
+public static class OwnerPortalClaims
+{
+    public const string Context = "https://casazen.app/context";
+    public const string OwnerId = "https://casazen.app/owner_id";
+    public const string AgencyIds = "https://casazen.app/agency_ids";
+    public const string OwnedPropertyIds = "https://casazen.app/owned_property_ids";
+
+    /// <summary>
+    /// The claim type to read: the documented full name, or <c>{override}/{name}</c> when a namespace override is
+    /// configured (tests, <see cref="Casazen.Web.Configuration.Auth0Options.CustomClaimNamespace"/>).
+    /// </summary>
+    public static string Type(string? customClaimNamespace, string documentedClaim, string name) =>
+        string.IsNullOrWhiteSpace(customClaimNamespace) ? documentedClaim : $"{customClaimNamespace}/{name}";
+}
+
+/// <summary>
 /// Extensions to read owner portal claims from ClaimsPrincipal (ADR-011-R7).
-/// Uses the standard CasaZen Auth0 custom claim namespace by default.
+/// Read the claims under their documented names (<see cref="OwnerPortalClaims"/>) unless a namespace is passed.
 /// </summary>
 public static class OwnerPortalPrincipalExtensions
 {
-    private const string DefaultClaimNamespace = "https://casazen.app";
-
     /// <summary>
     /// Gets the OwnerUserId from the JWT (ADR-011-R7). Returns null if not an owner portal context.
     /// </summary>
     /// <param name="user">The claims principal to read from.</param>
-    /// <param name="customClaimNamespace">The Auth0 custom claim namespace. Defaults to the standard CasaZen namespace.</param>
+    /// <param name="customClaimNamespace">An Auth0 custom claim namespace to use instead of the documented claim names.</param>
     public static Guid? GetOwnerUserId(this ClaimsPrincipal user, string? customClaimNamespace = null)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var ns = customClaimNamespace ?? DefaultClaimNamespace;
-        var ownerIdClaim = user.FindFirstValue($"{ns}/owner_id");
+        var ownerIdClaim = user.FindFirstValue(OwnerPortalClaims.Type(customClaimNamespace, OwnerPortalClaims.OwnerId, "owner_id"));
         return Guid.TryParse(ownerIdClaim, out var ownerId) ? ownerId : null;
     }
 
@@ -82,12 +99,11 @@ public static class OwnerPortalPrincipalExtensions
     /// Gets the agency IDs from the JWT (ADR-011-R7). Returns empty list if not an owner portal context.
     /// </summary>
     /// <param name="user">The claims principal to read from.</param>
-    /// <param name="customClaimNamespace">The Auth0 custom claim namespace. Defaults to the standard CasaZen namespace.</param>
+    /// <param name="customClaimNamespace">An Auth0 custom claim namespace to use instead of the documented claim names.</param>
     public static IReadOnlyList<Guid> GetOwnerAgencyIds(this ClaimsPrincipal user, string? customClaimNamespace = null)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var ns = customClaimNamespace ?? DefaultClaimNamespace;
-        var agencyIdsClaim = user.FindFirstValue($"{ns}/agency_ids");
+        var agencyIdsClaim = user.FindFirstValue(OwnerPortalClaims.Type(customClaimNamespace, OwnerPortalClaims.AgencyIds, "agency_ids"));
         if (string.IsNullOrWhiteSpace(agencyIdsClaim))
             return Array.Empty<Guid>();
 
@@ -122,12 +138,11 @@ public static class OwnerPortalPrincipalExtensions
     /// Gets the owned property IDs from the JWT (ADR-011-R7). Returns empty list if not an owner portal context.
     /// </summary>
     /// <param name="user">The claims principal to read from.</param>
-    /// <param name="customClaimNamespace">The Auth0 custom claim namespace. Defaults to the standard CasaZen namespace.</param>
+    /// <param name="customClaimNamespace">An Auth0 custom claim namespace to use instead of the documented claim names.</param>
     public static IReadOnlyList<Guid> GetOwnedPropertyIds(this ClaimsPrincipal user, string? customClaimNamespace = null)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var ns = customClaimNamespace ?? DefaultClaimNamespace;
-        var propertyIdsClaim = user.FindFirstValue($"{ns}/owned_property_ids");
+        var propertyIdsClaim = user.FindFirstValue(OwnerPortalClaims.Type(customClaimNamespace, OwnerPortalClaims.OwnedPropertyIds, "owned_property_ids"));
         if (string.IsNullOrWhiteSpace(propertyIdsClaim))
             return Array.Empty<Guid>();
 
