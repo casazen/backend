@@ -4,6 +4,10 @@ Task LT-10 (difetti A7-10, A7-11, A7-12, A7-13, A7-23) e LT-13 (dati normativi s
 e IMU solo per contratti concordato, A7-24). Fonti e classi (U/D/T): `.claude/context/regulations/canone_concordato.md`,
 sezioni "Accordi verificati (2026-09)" e "Cosa ha cambiato LT-10".
 
+Questo runbook riguarda le **regole del canone concordato** (range, dati dell'accordo, tipo di contratto), non il servizio
+che prepara e registra il contratto con ConcordatoFacile: quel processo è descritto soltanto in
+`docs/integrations/concordatofacile/README.md` (requisiti in `Sessions/business-analysis-canone-concordato.md`).
+
 ## Cosa fa il codice
 
 | Punto | Comportamento |
@@ -61,6 +65,7 @@ comune o accordo.
 ## Decisioni aperte (product owner)
 
 - Comune senza dati (`Missing`): bloccare la creazione del concordato (oggi) o consentirla con un avviso come per `Partial`?
-- Transitorio: esigenze transitorie da documentare e canone nelle fasce dell'accordo non modellati; nessun modello di
-  contratto.
+- Transitorio: dal task TR (25 ottobre 2026) il wizard chiede l'esigenza transitoria e il termine e c'è il modello ufficiale
+  (Allegato B del D.M. 16/01/2017) come bozza non approvata (`lease-contract-templates.md`); resta non modellato il canone
+  nelle fasce dell'accordo per i comuni oltre 10.000 abitanti (TR-FU1).
 - Punti D dell'accordo MB elencati in `canone_concordato.md` ("Dubbi rimasti").

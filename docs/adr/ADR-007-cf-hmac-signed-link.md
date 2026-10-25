@@ -1,9 +1,18 @@
 # ADR-007: ConcordatoFacile HMAC Signed Link Generation
 
-**Status:** Accepted (amended 2026-10-24)  
+**Status:** Superseded come riferimento del processo ConcordatoFacile (25 ottobre 2026; era Accepted, amended 2026-10-24)  
 **Date:** 2026-10-23  
 **Issue:** none (run R20261023-1107)  
 **Informs:** NF-05 (ConcordatoFacile HMAC signed link)
+
+> **SUPERATO come riferimento del processo ConcordatoFacile (25 ottobre 2026).** Superato dal documento `docs/integrations/concordatofacile/README.md`: non usare come riferimento. Il file resta nel repository perché i commenti del codice e dei test citano gli identificativi delle sue regole (`ADR-007-Rn`): sono etichette, non requisiti validi. I fatti sul processo sono in quel documento, i requisiti in `Sessions/business-analysis-canone-concordato.md`.
+>
+> Punti che non valgono più o non sono attuati:
+>
+> - Il segreto `linkSecret` **non lo genera CasaZen: lo genera CF** (R3 dice solo dove si legge); per la prova vale il segreto pubblico del vettore, e il modulo di produzione di CF rifiuta il segreto di prova. CF ignora `comuneIstatCode`, `returnUrl` e `theme` (v0.2): il link ha sei parametri.
+> - R7 e R9: nel codice il comune viene da `Property.ComuneIstatCode` e dalla tabella `Comuni` (`Name`, `ProvinceCode`); i nomi `CityIstatCode` e `OfficialName` non sono quelli del codice.
+> - R14 (avviso quando lo stato non si legge e non c'è uno snapshot) non è mostrato (debito CF-DOC-FU4).
+> - L'**emendamento del 24 ottobre** (R17–R23: conferma con doppio opt-in, disiscrizione, QR) riguarda altri link firmati e non fa parte del processo CF; il «segreto condiviso» `SIGNED_LINK_SECRET` **non vale per il link CF**, il cui segreto lo genera CF.
 
 ## Context
 

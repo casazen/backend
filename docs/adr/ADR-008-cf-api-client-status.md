@@ -1,9 +1,19 @@
 # ADR-008: ConcordatoFacile API Client and Status Display
 
-**Status:** Accepted  
+**Status:** Superseded come riferimento del processo ConcordatoFacile (25 ottobre 2026; era Accepted)  
 **Date:** 2026-10-23  
 **Issue:** none (run R20261023-1107)  
 **Informs:** NF-06, NF-08 (ConcordatoFacile practice lookup and status polling)
+
+> **SUPERATO come riferimento del processo ConcordatoFacile (25 ottobre 2026).** Superato dal documento `docs/integrations/concordatofacile/README.md`: non usare come riferimento. Il file resta nel repository perché i commenti del codice e dei test citano gli identificativi delle sue regole (`ADR-008-Rn`): sono etichette, non requisiti validi. I fatti sul processo sono in quel documento, i requisiti in `Sessions/business-analysis-canone-concordato.md`.
+>
+> Punti che non valgono più o sono sbagliati:
+>
+> - R2: la variabile è `ConcordatoFacile__StatusApiKey` (non `CONCORDATOFACILE_API_KEY`, che nessun codice legge) e la sua assenza non ferma l'avvio: l'API di stato resta spenta con un avviso nel log.
+> - R6: la risposta dell'elenco di CF è l'oggetto `{ leaseId, practices }`, non un array; anche `comuneDiffersFromLink` può essere `null` (specifica CF v0.2). Il codice oggi segue la regola sbagliata: correzione in corso (task CF-FIX2).
+> - R11: manca il controllo che il contratto sia dell'organizzazione del chiamante (correzione in corso).
+> - R22: senza chiave ogni lettura fallisce; non si restituisce un elenco vuoto (un errore non è mai «nessuna pratica»).
+> - Il lookup per `practiceId` non è in cache e dopo un errore lo snapshot non aggiornato è riletto subito (correzione in corso). Il resto (client con Polly, cache di 15 minuti con rilettura breve di 5, stati, badge) descrive ciò che il codice fa.
 
 ## Context
 

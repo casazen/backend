@@ -1,9 +1,17 @@
 # ADR-006: ConcordatoFacile Biennial Subscription Gift
 
-**Status:** Accepted  
+**Status:** Superseded come riferimento del processo ConcordatoFacile (25 ottobre 2026; era Accepted)  
 **Date:** 2026-10-23  
 **Issue:** none (run R20261023-1107)  
 **Informs:** NF-03 (ConcordatoFacile biennial subscription gift)
+
+> **SUPERATO come riferimento del processo ConcordatoFacile (25 ottobre 2026).** Superato dal documento `docs/integrations/concordatofacile/README.md`: non usare come riferimento. Il file resta nel repository perché i commenti del codice e dei test citano gli identificativi delle sue regole (`ADR-006-Rn`): sono etichette, non requisiti validi. I fatti sul processo sono in quel documento, i requisiti in `Sessions/business-analysis-canone-concordato.md`.
+>
+> Punti che non valgono più o non sono attuati:
+>
+> - R8: la validazione di avvio vale in Production e in ogni ambiente che non sia Development o Testing.
+> - Q-A03: il piano a 24 mesi non è ancora in vendita (task BIENNIAL); il regalo si assegna a ogni `customer.subscription.created` con un Price di `BiennialPriceIds`, senza controllare che la sottoscrizione sia `active` o `trialing`.
+> - R4–R6 sono attuati (lock consultivo), ma manca il controllo che il contratto sia dell'organizzazione (ADR-004-R6, in correzione nel task CF-FIX2).
 
 ## Context
 

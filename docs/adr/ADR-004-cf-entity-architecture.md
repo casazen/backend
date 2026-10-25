@@ -1,9 +1,16 @@
 # ADR-004: ConcordatoFacile Entity Architecture
 
-**Status:** Accepted  
+**Status:** Superseded come riferimento del processo ConcordatoFacile (25 ottobre 2026; era Accepted)  
 **Date:** 2026-10-23  
 **Issue:** none (run R20261023-1107)  
 **Informs:** NF-01, NF-02, NF-03, NF-05, NF-08 (ConcordatoFacile integration)
+
+> **SUPERATO come riferimento del processo ConcordatoFacile (25 ottobre 2026).** Superato dal documento `docs/integrations/concordatofacile/README.md`: non usare come riferimento. Il file resta nel repository perché i commenti del codice e dei test citano gli identificativi delle sue regole (`ADR-004-Rn`): sono etichette, non requisiti validi. I fatti sul processo sono in quel documento, i requisiti in `Sessions/business-analysis-canone-concordato.md`.
+>
+> Punti che non valgono più o non sono attuati:
+>
+> - Entità e indici (R1–R5) sono attuati (`ConcordatoFacilePurchases`, `ConcordatoFacileGifts`); lo snapshot di stato resta nella memoria del processo e non ha una tabella.
+> - R6 (consumare l'omaggio solo per un contratto dell'organizzazione) **non è attuata**: la correzione è in corso (task CF-FIX2).
 
 ## Context
 
