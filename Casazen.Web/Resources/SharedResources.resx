@@ -3302,6 +3302,27 @@
   <data name="UserIdMissing" xml:space="preserve">
     <value>Identificativo utente mancante</value>
   </data>
+  <data name="OwnerDoesNotOwnProperty" xml:space="preserve">
+    <value>Il proprietario non possiede questa proprietà</value>
+  </data>
+  <data name="StatementAlreadyExists" xml:space="preserve">
+    <value>Esiste già un rendiconto per questo proprietario, proprietà e periodo</value>
+  </data>
+  <data name="MixedCommissionCoOwnershipNotSupported" xml:space="preserve">
+    <value>Rendiconti multi-proprietario con commissioni diverse non sono supportati</value>
+  </data>
+  <data name="StatementNotApproved" xml:space="preserve">
+    <value>Il rendiconto non è nello stato Approvato</value>
+  </data>
+  <data name="StatementNotDraft" xml:space="preserve">
+    <value>Il rendiconto non è nello stato Bozza</value>
+  </data>
+  <data name="StatementCsvExportNotImplemented" xml:space="preserve">
+    <value>Esportazione CSV dei rendiconti non ancora disponibile</value>
+  </data>
+  <data name="StatementPdfExportNotImplemented" xml:space="preserve">
+    <value>Esportazione PDF dei rendiconti non ancora disponibile</value>
+  </data>
   <data name="Only approved campaigns can be scheduled" xml:space="preserve">
     <value>Solo le campagne approvate possono essere pianificate</value>
   </data>

@@ -3302,6 +3302,27 @@
   <data name="UserIdMissing" xml:space="preserve">
     <value>User ID missing</value>
   </data>
+  <data name="OwnerDoesNotOwnProperty" xml:space="preserve">
+    <value>The owner does not own this property</value>
+  </data>
+  <data name="StatementAlreadyExists" xml:space="preserve">
+    <value>A statement already exists for this owner, property, and period</value>
+  </data>
+  <data name="MixedCommissionCoOwnershipNotSupported" xml:space="preserve">
+    <value>Co-owner statements with different commission rates are not supported</value>
+  </data>
+  <data name="StatementNotApproved" xml:space="preserve">
+    <value>The statement is not in Approved status</value>
+  </data>
+  <data name="StatementNotDraft" xml:space="preserve">
+    <value>The statement is not in Draft status</value>
+  </data>
+  <data name="StatementCsvExportNotImplemented" xml:space="preserve">
+    <value>CSV export for statements not yet available</value>
+  </data>
+  <data name="StatementPdfExportNotImplemented" xml:space="preserve">
+    <value>PDF export for statements not yet available</value>
+  </data>
   <data name="Only approved campaigns can be scheduled" xml:space="preserve">
     <value>Only approved campaigns can be scheduled.</value>
   </data>
