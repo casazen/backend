@@ -3287,6 +3287,9 @@
   <data name="StatementAlreadyExists" xml:space="preserve">
     <value>Esiste già un rendiconto per questo proprietario, proprietà e periodo</value>
   </data>
+  <data name="MixedCommissionCoOwnershipNotSupported" xml:space="preserve">
+    <value>Rendiconti multi-proprietario con commissioni diverse non sono supportati</value>
+  </data>
   <data name="StatementNotApproved" xml:space="preserve">
     <value>Il rendiconto non è nello stato Approvato</value>
   </data>

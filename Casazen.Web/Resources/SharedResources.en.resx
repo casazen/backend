@@ -3287,6 +3287,9 @@
   <data name="StatementAlreadyExists" xml:space="preserve">
     <value>A statement already exists for this owner, property, and period</value>
   </data>
+  <data name="MixedCommissionCoOwnershipNotSupported" xml:space="preserve">
+    <value>Co-owner statements with different commission rates are not supported</value>
+  </data>
   <data name="StatementNotApproved" xml:space="preserve">
     <value>The statement is not in Approved status</value>
   </data>

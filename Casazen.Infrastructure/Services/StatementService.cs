@@ -57,6 +57,30 @@ public sealed class StatementService(AppDbContext db) : IStatementService
             .OrderByDescending(om => om.EffectiveFrom)
             .FirstOrDefaultAsync(cancellationToken);
 
+        // For co-ownership: ensure all co-owners have the same commission rate (ADR-017-R4 requirement)
+        // Mixed commission rates would break the "last owner gets remainder" logic
+        var allOwnerships = await db.Set<PropertyOwnership>()
+            .Where(po => po.PropertyId == propertyId && po.OwnershipEnd == null)
+            .ToListAsync(cancellationToken);
+
+        if (allOwnerships.Count > 1)
+        {
+            var commissionRates = new List<decimal?>();
+            foreach (var own in allOwnerships)
+            {
+                var m = await db.Set<OwnerMandate>()
+                    .Where(om => om.PropertyOwnershipId == own.Id && (om.EffectiveUntil == null || om.EffectiveUntil > DateTime.UtcNow))
+                    .OrderByDescending(om => om.EffectiveFrom)
+                    .FirstOrDefaultAsync(cancellationToken);
+                commissionRates.Add(m?.CommissionPercent);
+            }
+
+            if (commissionRates.Distinct().Count() > 1)
+            {
+                throw new DomainRuleException("mixed_commission_coownership_not_supported", "MixedCommissionCoOwnershipNotSupported");
+            }
+        }
+
         // Create statement
         var statement = new OwnerStatement
         {
