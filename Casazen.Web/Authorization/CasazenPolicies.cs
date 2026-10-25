@@ -210,6 +210,11 @@ public static class CasazenPolicies
         AgencyOwnerManage,
         AgencyActivityManage,
         AgencySupplierManage,
+        AgencyStatementManage,
+        AgencyStatementView,
+        AgencyInvoiceManage,
+        AgencyWithholdingManage,
+        AgencyWireManage,
     ];
 
     /// <summary>
