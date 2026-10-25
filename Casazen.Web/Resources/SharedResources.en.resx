@@ -3308,6 +3308,12 @@
   <data name="StatementAlreadyExists" xml:space="preserve">
     <value>A statement already exists for this owner, property, and period</value>
   </data>
+  <data name="F24AlreadyExists" xml:space="preserve">
+    <value>F24 for this period already exists</value>
+  </data>
+  <data name="F24NotFound" xml:space="preserve">
+    <value>F24 not found for the requested period</value>
+  </data>
   <data name="MixedCommissionCoOwnershipNotSupported" xml:space="preserve">
     <value>Co-owner statements with different commission rates are not supported</value>
   </data>

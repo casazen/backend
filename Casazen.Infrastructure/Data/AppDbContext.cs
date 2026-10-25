@@ -54,6 +54,8 @@ public class AppDbContext(
     public DbSet<OwnerMandate> OwnerMandates { get; set; } = null!;
     public DbSet<OwnerStatement> OwnerStatements { get; set; } = null!;
     public DbSet<StatementLine> StatementLines { get; set; } = null!;
+    public DbSet<WithholdingLog> WithholdingLogs { get; set; } = null!;
+    public DbSet<F24Record> F24Records { get; set; } = null!;
     public DbSet<OwnerInvitation> OwnerInvitations { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
