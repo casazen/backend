@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261025001436_AddLeaseTransitoryNeed")]
+    [Migration("20261025003613_AddLeaseTransitoryNeed")]
     partial class AddLeaseTransitoryNeed
     {
         /// <inheritdoc />
