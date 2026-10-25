@@ -199,6 +199,7 @@ public class AppDbContext(
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
     public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
     public DbSet<MarketingConsentRecord> MarketingConsentRecords { get; set; } = null!;
+    public DbSet<SuppressionListEntry> SuppressionListEntries { get; set; } = null!;
 
     // CRM guest profiles for marketing and segmentation (NF-23, ADR-021)
     public DbSet<GuestCrmProfile> GuestCrmProfiles { get; set; } = null!;
