@@ -189,14 +189,8 @@ public static class CasazenPolicies
         OrgMembersManage, OrgActivityRead,
     ];
 
-    /// <summary>The agency tier policies registered at startup (ADR-010).</summary>
-    public static IReadOnlyList<string> AgencyPolicies { get; } =
-    [
-        AgencyOwnerManage, AgencyOwnerView, AgencyOwnerFinancialRead,
-        AgencyStatementManage, AgencyStatementView,
-        AgencyInvoiceManage, AgencyWithholdingManage, AgencyWireManage,
-        AgencyActivityManage, AgencySupplierManage,
-    ];
+    /// <summary>The agency tier policies registered at startup (ADR-010). Empty until endpoints use them (infrastructure only).</summary>
+    public static IReadOnlyList<string> AgencyPolicies { get; } = [];
 
     /// <summary>
     /// Splits a context policy name into its contexts and permission: <c>RequireContext:short-rent:property.read</c>
