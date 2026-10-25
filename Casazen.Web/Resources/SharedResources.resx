@@ -3266,4 +3266,10 @@
   <data name="StatementNotDraft" xml:space="preserve">
     <value>Il rendiconto non è nello stato Bozza</value>
   </data>
+  <data name="StatementCsvExportNotImplemented" xml:space="preserve">
+    <value>Esportazione CSV dei rendiconti non ancora disponibile</value>
+  </data>
+  <data name="StatementPdfExportNotImplemented" xml:space="preserve">
+    <value>Esportazione PDF dei rendiconti non ancora disponibile</value>
+  </data>
 </root>

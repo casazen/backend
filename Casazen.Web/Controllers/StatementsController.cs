@@ -22,6 +22,10 @@ public class StatementsController(
     IOrgContextResolver orgContextResolver,
     ILogger<StatementsController> logger) : ControllerBase
 {
+    // Error codes for statement operations (snake_case, stable)
+    private const string PdfExportNotImplemented = "statement_pdf_export_not_implemented";
+    private const string CsvExportNotImplemented = "statement_csv_export_not_implemented";
+
     /// <summary>
     /// List of owner statements for the caller's agency org. Ordered by year/month descending.
     /// Optionally filtered by property owner and/or property.
@@ -191,7 +195,10 @@ public class StatementsController(
         // TODO: Implement PDF generation (e.g., with QuestPDF)
         // For now, return 501 Not Implemented
         await Task.CompletedTask;
-        return StatusCode(StatusCodes.Status501NotImplemented, "PDF export not yet implemented");
+        return this.ApiProblem(
+            StatusCodes.Status501NotImplemented,
+            PdfExportNotImplemented,
+            "StatementPdfExportNotImplemented");
     }
 
     /// <summary>
@@ -212,7 +219,10 @@ public class StatementsController(
         // TODO: Implement CSV generation
         // For now, return 501 Not Implemented
         await Task.CompletedTask;
-        return StatusCode(StatusCodes.Status501NotImplemented, "CSV export not yet implemented");
+        return this.ApiProblem(
+            StatusCodes.Status501NotImplemented,
+            CsvExportNotImplemented,
+            "StatementCsvExportNotImplemented");
     }
 }
 

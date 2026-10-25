@@ -3266,4 +3266,10 @@
   <data name="StatementNotDraft" xml:space="preserve">
     <value>The statement is not in Draft status</value>
   </data>
+  <data name="StatementCsvExportNotImplemented" xml:space="preserve">
+    <value>CSV export for statements not yet available</value>
+  </data>
+  <data name="StatementPdfExportNotImplemented" xml:space="preserve">
+    <value>PDF export for statements not yet available</value>
+  </data>
 </root>
