@@ -71,6 +71,45 @@ public sealed class LeaseImportFromDocumentTests
         Assert.Null(untouched.SignedPdfStoragePath);
     }
 
+    /// <summary>
+    /// DATA RULE PROOF (CF-IMPORT): the draft of «Parto da zero» is an <b>imported</b> concordato marked for the partner, whose dates and rent
+    /// are missing (not values); once filled with what the contract CF delivers states, the contract uploaded to it imports: it is
+    /// <c>Signed</c> and still marked as the partner's.
+    /// </summary>
+    [Fact]
+    public async Task AConcordatoFacileDraft_IsImportedWithTheContractTheyDeliver_AndStaysMarkedAsTheirs()
+    {
+        using var harness = await new LeaseDraftHarness().SeedAsync();
+
+        var draft = await harness.Service.CreateCfDraftAsync(harness.PropertyId, harness.OrgId);
+
+        Assert.Equal(draft, await harness.Service.CreateCfDraftAsync(harness.PropertyId, harness.OrgId)); // one draft per property
+        var started = await harness.Service.GetAsync(draft);
+        Assert.Equal(LeaseOrigin.Imported, started.Origin);
+        Assert.Equal(nameof(LeaseContractType.Concordato), started.Values.ContractType);
+        Assert.Null(started.Values.StartDate);
+        Assert.Null(started.Values.MonthlyRent);
+        Assert.NotEmpty(started.Flow[2].Needs); // the parties are asked
+        Assert.NotEmpty(started.Flow[4].Needs); // and the start of the contract: the starting date of the column is no date
+
+        var version = (await harness.SaveAsync(draft, started.Version, 2, """
+            {"landlords":[{"firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501U","citizenship":"IT","residence":"Bari, via Sparano 1"}],
+             "tenants":[{"firstName":"Giulia","lastName":"Verdi","fiscalCode":"VRDGLI85B02F205A","citizenship":"IT","residence":"Bari, via Argiro 7"}]}
+            """)).Version;
+        version = (await harness.SaveAsync(draft, version, 3, """{"contractType":"Concordato","taxRegime":"CedolareSecca","monthlyRent":700}""")).Version;
+        await harness.SaveAsync(draft, version, 4, """{"startDate":"2026-01-15"}""");
+        var document = await AddContractDocumentAsync(harness, draft);
+        ServePdf(harness);
+
+        var signed = await CreateSigning(harness).ImportSignedContractFromDocumentAsync(
+            draft, "auth0|owner", new ImportedDocumentDeclaration(new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc), document.Id));
+
+        Assert.Equal(LeaseStatus.Signed, signed.Status);
+        Assert.True(signed.IsConcordatoFacileSource);
+        Assert.Equal(LeaseContractType.Concordato, signed.ContractType);
+        Assert.Equal(700m, signed.MonthlyRent);
+    }
+
     // ---- helpers ---------------------------------------------------------------------------------------------------------
 
     /// <summary>An imported draft with everything the first four steps ask, a contract that started in January (already in force).</summary>

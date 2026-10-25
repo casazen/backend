@@ -48,7 +48,7 @@ draft moved on. Every other status of an error is the usual RFC 7807 problem wit
 | `lease_review_not_confirmed` | 422 | `sent` before the review is confirmed |
 | `lease_review_not_applicable` | 422 | An imported contract has no review (it is already signed) |
 | `lease_sent_not_applicable` | 422 | An imported contract is never downloaded for signature |
-| `lease_not_deletable` | 409 | Not a draft, or a signed copy, or a rent plan exists |
+| `lease_not_deletable` | 409 | Not a draft, or a signed copy, or a rent plan, or a ConcordatoFacile purchase (pending, completed or refunded) exists |
 | `lease_parties_too_many` | 422 | More than 10 landlords or 10 tenants |
 | `validation_error` | 400 | The request is not shaped like the step's (§ 3): never about a value that is merely wrong |
 | `lease_not_found`, `property_not_found` | 404 | Not visible to the caller's org |
@@ -192,7 +192,8 @@ payload `withdrawn`; `review_reopened` when a change withdrew the review).
 ## 7. Deleting a draft (closes BE-PM02-1)
 
 `DELETE /api/leases/{id}` removes the lease with its parties, signers, events, registration, authorizations and the files in the private
-bucket (the Questura receipt, a registration receipt). **Only** a lease in status `Draft`, **without a signed copy and without a rent plan**:
+bucket (the Questura receipt, a registration receipt). **Only** a lease in status `Draft`, **without a signed copy, without a rent plan and
+without a ConcordatoFacile purchase that was not a failure** (the draft of a contract paid for stays: `LeaseDraftDeleter.IsDeletableAsync`, CF-IMPORT):
 anything else is 409 `lease_not_deletable` (so is a record that refers to the lease and was added after this code). It is the deletion PM-02
 asks for (`property_mode_blocked_by_draft_lease`, "the draft must be deleted first"): with the only draft of a property gone, the property can
 change mode again. The files are deleted after the commit; one that cannot be deleted is logged without any personal data and left.
@@ -202,8 +203,8 @@ change mode again. The files are deleted after the commit; one that cannot be de
 
 A draft holds the names, fiscal codes and residences of people and is not kept for ever. The job deletes, with their parties, events and
 files, the drafts **nobody changed for `LongRentLease:DraftRetentionDays` days** (default **180**, whole number from 1 to 3650: another value
-makes the **startup fail**, `LongRentLeaseOptionsValidator`). A draft with a signed copy, a rent plan, or that is not a draft any more is never
-deleted. Every day at 03:50 UTC (`LeaseDraftRetentionJob.Cron`), after the GDPR retention (03:00) and the other retention jobs; **always
+makes the **startup fail**, `LongRentLeaseOptionsValidator`). A draft with a signed copy, a rent plan, a ConcordatoFacile purchase that was not a
+failure, or that is not a draft any more is never deleted (the rule of § 7). Every day at 03:50 UTC (`LeaseDraftRetentionJob.Cron`), after the GDPR retention (03:00) and the other retention jobs; **always
 registered** (the retention of personal data does not depend on a switch).
 
 - **Idempotent**: it deletes what matches, a second run finds nothing. Each draft is deleted in a transaction of its own under the row lock
@@ -316,7 +317,7 @@ Deploy **on the test environment first**; the figures of § 9 are to be confirme
 - `lease-draft-retention` is in the recurring jobs (34 with every flag on, 29 with the defaults); the first run logs how many drafts it deleted.
 - A save that answers **409** is the normal answer to two tabs; one that answers **500** is not (look for `Lease draft` in the logs, which
   carry the id of the lease and no data).
-- A draft that cannot be deleted by the landlord (409 `lease_not_deletable`) has a signed copy or a rent plan: it is a contract now.
+- A draft that cannot be deleted by the landlord (409 `lease_not_deletable`) has a signed copy, a rent plan or a ConcordatoFacile purchase that was not a failure: it is a contract now.
 - `sent` answering 422 `contract_template_not_approved` is the honest answer while the templates are drafts; it goes away when the product
   owner approves them (`lease-contract-templates.md`).
 - To clean by hand: `DELETE /api/leases/{id}` as the owner; never `DELETE FROM "LeaseContracts"` (the signers, the registration and the
@@ -350,7 +351,10 @@ calculator of the range, which loads the property (a cache is a follow-up if the
 
 «Ho già i documenti»: the owner uploads the signed contract and CasaZen reads it on the server, asking only what is missing. The reading itself (the
 text of a digital PDF or an OCR of a scan, the parser, the limits) is [`lease-document-extraction.md`](lease-document-extraction.md); this is how its values
-enter the draft. **Only an imported draft is filled**; a contract made in CasaZen, a signed one and a ConcordatoFacile draft go on as before.
+enter the draft. **Only an imported draft is filled**; a contract made in CasaZen and a signed one go on as before. **The ConcordatoFacile draft is an
+imported draft** (CF-IMPORT): `POST /api/leases/drafts/concordatofacile` creates it with `origin: Imported`, `contractType: Concordato` and `IsConcordatoFacileSource`
+(the contract is written and signed by the partner outside our models), and the contract the partner delivers, uploaded to it as a `Contract` document, is read and
+imported like any other (steps 2 to 3 below, then `POST /api/leases/{id}/import` with `contractDocumentId`; the mark stays on the signed lease).
 
 1. `POST /api/leases/drafts { propertyId, origin: "Imported" }`, then, if the type was chosen at the start, `PATCH` step 3 `{ contractType }`: a value the person chose,
    which the reading never replaces (the contract that says another type is flagged).

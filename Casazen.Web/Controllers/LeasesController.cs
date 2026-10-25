@@ -190,8 +190,9 @@ public class LeasesController(
 
     /// <summary>
     /// Create a minimal ConcordatoFacile draft (ADR-004): only PropertyId, OrgId, ContractType=Concordato and
-    /// IsConcordatoFacileSource=true, other required fields from <see cref="LeaseDraftDefaults"/>. Idempotent: if a CF
-    /// draft for the property already exists in Draft status, returns the existing one. Needs <c>lease.create</c> policy.
+    /// IsConcordatoFacileSource=true, other required fields from <see cref="LeaseDraftDefaults"/>. It is an imported draft
+    /// (<c>origin: Imported</c>, CF-IMPORT): the contract the partner delivers is imported into it with <c>POST api/leases/{id}/import</c>.
+    /// Idempotent: if a CF draft for the property already exists in Draft status, returns the existing one. Needs <c>lease.create</c> policy.
     /// Behind <c>Features:ConcordatoFacile</c> (CF-FIX): 404 while the flag is off, like the rest of the ConcordatoFacile service.
     /// </summary>
     [HttpPost("drafts/concordatofacile")]
