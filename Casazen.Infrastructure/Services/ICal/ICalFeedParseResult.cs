@@ -30,6 +30,7 @@ namespace Casazen.Infrastructure.Services.ICal;
 /// True for an occurrence of a series (<c>RRULE</c>/<c>RDATE</c>) or an instance replaced by an override of one
 /// (<c>RECURRENCE-ID</c>): the answer about a free-looking event is one per series, not one per occurrence.
 /// </param>
+/// <param name="Currency">ISO 4217 currency code from X-CURRENCY custom property; null when not present (ADR-002-R8, NF-02).</param>
 public sealed record ICalOccurrence(
     string? Uid,
     string? Summary,
@@ -39,7 +40,8 @@ public sealed record ICalOccurrence(
     DateTime StartUtc,
     DateTime EndUtc,
     bool IsAllDay,
-    bool IsRecurring = false)
+    bool IsRecurring = false,
+    string? Currency = null)
 {
     public bool HasNights => EndDate > StartDate;
 

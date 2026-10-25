@@ -510,6 +510,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
                     b.Property<DateTime>("EndUtc")
                         .HasColumnType("timestamp with time zone");
 

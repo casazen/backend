@@ -11,11 +11,13 @@ namespace Casazen.Infrastructure.Services.ICal;
 /// A calendar block read from a property feed: the nights [<see cref="StartUtc"/>, <see cref="EndUtc"/>) as midnight
 /// UTC of their Europe/Rome dates (the storage convention of date-only values), with a key unique within the feed.
 /// </summary>
+/// <param name="Currency">ISO 4217 currency code; defaulted to Property.Currency when X-CURRENCY absent (ADR-002-R8, NF-02).</param>
 public sealed record ParsedCalendarBlock(
     string ExternalUid,
     DateTime StartUtc,
     DateTime EndUtc,
-    string? Summary);
+    string? Summary,
+    string? Currency = null);
 
 /// <summary>The blocks of a property feed and how many duplicate entries were merged into them.</summary>
 public sealed record PropertyICalBlocks(IReadOnlyList<ParsedCalendarBlock> Blocks, int MergedDuplicates);
@@ -91,13 +93,15 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
     /// Property blocks: the occurrences that cover at least one night, each with a key that fits
     /// <see cref="CalendarBlock.ExternalUid"/> and is unique in the feed (A2-12).
     /// </summary>
+    /// <param name="propertyCurrency">Property's currency to default when X-CURRENCY absent; null defaults to "EUR" (ADR-002-R8, NF-02).</param>
     /// <remarks>
     /// The key is the UID, or a hash of dates and summary when the event has none. A UID that yields several ranges
     /// (a recurring series, or the same UID repeated by a broken feed) gets one key per start date
     /// (<c>UID#yyyyMMdd</c>) and none of its nights is dropped; identical repetitions are merged. A key longer than
     /// the column is replaced by its SHA-256. The summary is cut to <see cref="CalendarBlock.SummaryMaxLength"/>.
+    /// Currency defaults to <paramref name="propertyCurrency"/> when not present in the event (ADR-002-R8).
     /// </remarks>
-    public static PropertyICalBlocks ToPropertyBlocks(IEnumerable<ICalOccurrence> occurrences)
+    public static PropertyICalBlocks ToPropertyBlocks(IEnumerable<ICalOccurrence> occurrences, string? propertyCurrency = null)
     {
         var candidates = new List<(string Key, ICalOccurrence Occurrence)>();
         foreach (var group in occurrences.Where(o => o.HasNights).GroupBy(o => o.Uid ?? ContentKey(o), StringComparer.Ordinal))
@@ -119,10 +123,11 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
                 .Select(sameStart => ($"{group.Key}#{sameStart.Key:yyyyMMdd}", sameStart.MaxBy(o => o.EndDate)!)));
         }
 
+        var defaultCurrency = string.IsNullOrWhiteSpace(propertyCurrency) ? "EUR" : propertyCurrency;
         var blocks = candidates
             .Select(c => (Key: FitKey(c.Key), c.Occurrence))
             .GroupBy(c => c.Key, StringComparer.Ordinal)
-            .Select(g => ToBlock(g.Key, g.First().Occurrence))
+            .Select(g => ToBlock(g.Key, g.First().Occurrence, defaultCurrency))
             .ToList();
 
         return new PropertyICalBlocks(blocks, occurrences.Count(o => o.HasNights) - blocks.Count);
@@ -273,12 +278,13 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
             && occurrence.EndUtc == RomeCalendar.StartOfDayUtc(end);
     }
 
-    private static ParsedCalendarBlock ToBlock(string key, ICalOccurrence occurrence) =>
+    private static ParsedCalendarBlock ToBlock(string key, ICalOccurrence occurrence, string defaultCurrency) =>
         new(
             key,
             occurrence.StartDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             occurrence.EndDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-            Truncate(occurrence.Summary, CalendarBlock.SummaryMaxLength));
+            Truncate(occurrence.Summary, CalendarBlock.SummaryMaxLength),
+            occurrence.Currency ?? defaultCurrency);
 
     // Stable key of an event without UID: the same event gets the same key at every sync.
     private static string ContentKey(ICalOccurrence occurrence) =>
