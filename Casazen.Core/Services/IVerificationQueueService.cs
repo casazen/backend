@@ -18,27 +18,31 @@ public interface IVerificationQueueService
 
     /// <summary>
     /// Request a new selfie photo from the guest (AC-NF12-5): generates a signed link and queues an email with
-    /// <see cref="IEmailService"/>. False when the booking has no active check-in session or the guest has no email.
+    /// <see cref="IEmailService"/>. False when the booking is outside <paramref name="scope"/>, has no active check-in
+    /// session or the guest has no email.
     /// </summary>
-    Task<bool> RequestNewPhotoAsync(Guid bookingId, CancellationToken cancellationToken = default);
+    Task<bool> RequestNewPhotoAsync(Guid bookingId, Authorization.HostScope scope, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Record the operator's manual verification decision (AC-NF12-6): <paramref name="outcome"/> is true for
     /// acceptance, false for rejection. <paramref name="note"/> is the operator's reason (optional for acceptance,
-    /// required for rejection). Returns false when the booking has no pending verification.
+    /// required for rejection). Returns false when the booking is outside <paramref name="scope"/> (TN-3) or has no
+    /// pending verification.
     /// </summary>
     Task<bool> RecordManualVerificationAsync(
         Guid bookingId,
+        Authorization.HostScope scope,
         bool outcome,
         string? note,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reject the guest's check-in (AC-NF12-7): marks the verification as rejected with <paramref name="reason"/>.
-    /// Returns false when the booking has no pending verification.
+    /// Returns false when the booking is outside <paramref name="scope"/> (TN-3) or has no pending verification.
     /// </summary>
     Task<bool> RejectVerificationAsync(
         Guid bookingId,
+        Authorization.HostScope scope,
         string reason,
         CancellationToken cancellationToken = default);
 }

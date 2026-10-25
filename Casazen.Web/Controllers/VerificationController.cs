@@ -36,11 +36,7 @@ public class VerificationController(
         if (userId == null)
             return Unauthorized();
 
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync();
-        if (orgId == null)
-            return Unauthorized();
-
-        var scope = await hostScopeResolver.ResolveAsync(userId, GetJwtRoles(), orgId.Value);
+        var scope = await ResolveScopeAsync(userId);
         if (scope == null)
             return Unauthorized();
 
@@ -64,7 +60,7 @@ public class VerificationController(
     /// <summary>
     /// Request a new selfie photo from the guest (AC-NF12-5).
     /// Generates a signed link and queues an email to the guest.
-    /// Returns 404 when the booking has no active session or the guest has no email.
+    /// Returns 404 when the booking is outside the caller scope, has no active session or the guest has no email.
     /// </summary>
     [HttpPost("{bookingId:guid}/request-photo")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -76,7 +72,11 @@ public class VerificationController(
         if (userId == null)
             return Unauthorized();
 
-        var success = await verificationService.RequestNewPhotoAsync(bookingId);
+        var scope = await ResolveScopeAsync(userId);
+        if (scope == null)
+            return Unauthorized();
+
+        var success = await verificationService.RequestNewPhotoAsync(bookingId, scope);
 
         if (!success)
             return this.ApiProblem(StatusCodes.Status404NotFound, "no_session_or_email", "VerificationNoSessionOrEmail");
@@ -89,7 +89,7 @@ public class VerificationController(
     /// Record manual verification decision (AC-NF12-6).
     /// <paramref name="request.Outcome"/> is true for acceptance, false for rejection.
     /// <paramref name="request.Note"/> is required for rejection, optional for acceptance.
-    /// Returns 404 when the booking has no pending verification.
+    /// Returns 404 when the booking is outside the caller scope or has no pending verification.
     /// </summary>
     [HttpPost("{bookingId:guid}/verify")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -102,6 +102,10 @@ public class VerificationController(
         if (userId == null)
             return Unauthorized();
 
+        var scope = await ResolveScopeAsync(userId);
+        if (scope == null)
+            return Unauthorized();
+
         if (!request.Outcome && string.IsNullOrWhiteSpace(request.Note))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "note_required", "VerificationNoteRequired");
 
@@ -109,6 +113,7 @@ public class VerificationController(
         {
             var success = await verificationService.RecordManualVerificationAsync(
                 bookingId,
+                scope,
                 request.Outcome,
                 request.Note);
 
@@ -131,7 +136,7 @@ public class VerificationController(
     /// <summary>
     /// Reject the guest's check-in (AC-NF12-7).
     /// Marks the verification as rejected with <paramref name="request.Reason"/> and prevents further attempts.
-    /// Returns 404 when the booking has no pending verification.
+    /// Returns 404 when the booking is outside the caller scope or has no pending verification.
     /// </summary>
     [HttpPost("{bookingId:guid}/reject")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -144,12 +149,16 @@ public class VerificationController(
         if (userId == null)
             return Unauthorized();
 
+        var scope = await ResolveScopeAsync(userId);
+        if (scope == null)
+            return Unauthorized();
+
         if (string.IsNullOrWhiteSpace(request.Reason))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "reason_required", "VerificationReasonRequired");
 
         try
         {
-            var success = await verificationService.RejectVerificationAsync(bookingId, request.Reason);
+            var success = await verificationService.RejectVerificationAsync(bookingId, scope, request.Reason);
 
             if (!success)
                 return this.ApiProblem(StatusCodes.Status404NotFound, "no_pending_verification", "VerificationNoPending");
@@ -165,6 +174,13 @@ public class VerificationController(
             logger.LogWarning(ex, "Invalid verification request for booking {BookingId}", bookingId);
             return this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_request", "VerificationInvalidRequest");
         }
+    }
+
+    /// <summary>The caller reach on host data (TN-3), null when the caller has no org.</summary>
+    private async Task<HostScope?> ResolveScopeAsync(string userId)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync();
+        return orgId == null ? null : await hostScopeResolver.ResolveAsync(userId, GetJwtRoles(), orgId.Value);
     }
 
     private string? GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);

@@ -37,7 +37,7 @@ public class VerificationQueueService(
         CancellationToken cancellationToken = default)
     {
         var query = from session in db.GuestCheckInSessions
-                    join booking in db.Bookings on session.BookingId equals booking.Id
+                    join booking in db.Bookings.InScope(scope) on session.BookingId equals booking.Id
                     join property in db.Properties on booking.PropertyId equals property.Id
                     join guest in db.Guests on booking.GuestId equals guest.Id
                     where session.BiometricOutcome == BiometricOutcome.Escalate
@@ -57,13 +57,7 @@ public class VerificationQueueService(
                         session.UpdatedAt,
                     };
 
-        // Apply HostScope filtering (AC-NF12-3)
-        // Use InScope extension method that already handles the different scope types
-        query = query.Where(v => db.Bookings
-            .Where(b => b.Id == v.Id)
-            .InScope(scope)
-            .Any());
-
+        // AC-NF12-3: the bookings joined above are the ones of the caller scope (InScope handles the scope shapes)
         var results = await query
             .OrderBy(v => v.CheckInDate)
             .ToListAsync(cancellationToken);
@@ -85,9 +79,9 @@ public class VerificationQueueService(
     /// Request a new selfie from the guest by sending an email with a check-in link (AC-NF12-5).
     /// Returns false when the booking has no active session or the guest has no email.
     /// </summary>
-    public async Task<bool> RequestNewPhotoAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    public async Task<bool> RequestNewPhotoAsync(Guid bookingId, HostScope scope, CancellationToken cancellationToken = default)
     {
-        var session = await db.GuestCheckInSessions
+        var session = await SessionsInScope(scope)
             .Include(s => s.Booking)
                 .ThenInclude(b => b.Guest)
             .Include(s => s.Booking)
@@ -98,7 +92,7 @@ public class VerificationQueueService(
 
         if (session == null)
         {
-            logger.LogWarning("No check-in session found for booking {BookingId}", bookingId);
+            logger.LogWarning("No check-in session found in the caller scope for booking {BookingId}", bookingId);
             return false;
         }
 
@@ -155,11 +149,12 @@ public class VerificationQueueService(
     /// </summary>
     public async Task<bool> RecordManualVerificationAsync(
         Guid bookingId,
+        HostScope scope,
         bool outcome,
         string? note,
         CancellationToken cancellationToken = default)
     {
-        var session = await db.GuestCheckInSessions
+        var session = await SessionsInScope(scope)
             .Include(s => s.Booking)
                 .ThenInclude(b => b.Property)
             .Where(s => s.BookingId == bookingId
@@ -202,6 +197,7 @@ public class VerificationQueueService(
     /// </summary>
     public async Task<bool> RejectVerificationAsync(
         Guid bookingId,
+        HostScope scope,
         string reason,
         CancellationToken cancellationToken = default)
     {
@@ -210,7 +206,7 @@ public class VerificationQueueService(
             throw new ArgumentException("Rejection reason is required", nameof(reason));
         }
 
-        var session = await db.GuestCheckInSessions
+        var session = await SessionsInScope(scope)
             .Where(s => s.BookingId == bookingId
                 && (s.BiometricOutcome == BiometricOutcome.Escalate || s.BiometricAttempts >= 3))
             .OrderByDescending(s => s.CreatedAt)
@@ -236,6 +232,18 @@ public class VerificationQueueService(
         return true;
     }
 
+
+    /// <summary>
+    /// The check-in sessions of the bookings that the caller scope reaches (TN-3). The decision endpoints receive only
+    /// a booking id, so this is what stops a collaborator limited to some properties from acting on the guest of another
+    /// property of the same org.
+    /// </summary>
+    private IQueryable<GuestCheckInSession> SessionsInScope(HostScope scope)
+    {
+        // a query of its own, not InScope inside the lambda: InScope is not a LINQ operator, EF translates this as one EXISTS
+        var bookings = db.Bookings.InScope(scope);
+        return db.GuestCheckInSessions.Where(s => bookings.Any(b => b.Id == s.BookingId));
+    }
 
     private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;
 }
