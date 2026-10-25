@@ -41,9 +41,12 @@ public class PracticeResponse
     /// <summary>Municipality associated with the practice by the partner</summary>
     public string? Comune { get; set; }
 
-    /// <summary>Whether the municipality differs from the lease property municipality</summary>
+    /// <summary>
+    /// Whether the municipality differs from the lease property municipality. ConcordatoFacile also says "unknown" (null: the link named no
+    /// comune); there is nothing to warn about then and it is sent as false, so the contract with the frontend stays a boolean.
+    /// </summary>
     public bool ComuneDiffersFromLink { get; set; }
 
-    /// <summary>Reason for closure, if the practice is closed</summary>
+    /// <summary>Reason for closure, if the practice is closed (duplicate, withdrawn, not_compliant, other)</summary>
     public string? CloseReason { get; set; }
 }

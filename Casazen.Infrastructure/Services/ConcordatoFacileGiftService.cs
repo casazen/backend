@@ -58,6 +58,10 @@ public sealed class ConcordatoFacileGiftService(
         Guid leaseId,
         CancellationToken cancellationToken = default)
     {
+        // CF-FIX2: the gift is spent only on a lease of the org. A lease that does not exist or is another org's is a 404 lease_not_found,
+        // before the transaction and before anything is written.
+        await dbContext.EnsureLeaseOfOrgAsync(leaseId, orgId, cancellationToken);
+
         // ADR-006-R4: Acquire PostgreSQL advisory lock for atomicity
         // The lock key is the org ID to serialize gift consumption for the same org
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
