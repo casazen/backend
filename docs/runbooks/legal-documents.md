@@ -357,7 +357,9 @@ accepted. What changes, in both languages: 3.5 (the record of the acceptance per
 ConcordatoFacile hands over is treated like any other document of the lease: read on our own systems, no external service, no AI), one row in the
 purposes table of section 5 and a new 6.3 (the recipient: only the lease id, the comune and the province go in the signed link, opened after the
 acceptance; what is written in the form goes straight to ConcordatoFacile; only the practice number, the comune, the status and the dates come
-back; EEA; no other purpose). The old 6.3 and 6.4 are now 6.4 and 6.5.
+back; the supplier's own notice, linked, governs its providers, the transfers outside the EEA, its AI tools and the retention). The old 6.3 and 6.4 are now 6.4 and 6.5.
+
+**Checked against the supplier's own notice (25/10/2026).** The product owner gave the notice of Confproprietà – Confederazione della Proprietà Edilizia, the entity behind ConcordatoFacile.it (version 4.14 of 29/09/2026, `https://legal.concordatofacile.it`; tax code 94117210636, Via Armando Diaz 8, 80134 Napoli). It confirms the framing (the entity calls itself the controller of its activities) but not the first draft's sentence «EEA, no other purpose»: it uses providers in the United States (under the Data Privacy Framework or standard contractual clauses) and AI tools to read the uploaded documents and prepare the drafts, and it keeps data of the procedure up to 24 months (contracts up to 10 years). Paragraph 6.3 therefore names the legal entity, links to its notice and no longer states where its data is processed or that it is used for no other purpose. **The lawyer who approved the first text must read the new 6.3 again before the activation** (it is one paragraph). The consent of the supplier's own form (its checkboxes, art. 31 of its notice) is collected inside its module, not by CasaZen.
 
 **Default framing (point R24 of the specification: the agreement with ConcordatoFacile is not concluded).** ConcordatoFacile is an **independent
 controller** for what is written in its form, not a subprocessor: it is not in `LegalSubprocessorCatalog` (`/legale/sub-responsabili`) and not in

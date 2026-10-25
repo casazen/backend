@@ -38,6 +38,28 @@ public class LegalPrivacyNoticeV2Tests
             File.ReadAllText(Path.Combine(LegalTextFixtures.ShippedRoot(), "dpa", $"{LegalTextFixtures.DraftVersion}.{language}.html")));
     }
 
+    /// <summary>
+    /// The supplier's own notice (Confproprietà, version 4.14 of 29/09/2026, given by the product owner on 25/10) is what ours must not
+    /// contradict: it is the controller of what is written in its form, it uses providers in the United States and tools of artificial
+    /// intelligence to read the documents. So paragraph 6.3 names the legal entity, links to its notice and does not state that its data
+    /// stays in the European Economic Area or is used for no other purpose, which its notice does not confirm.
+    /// </summary>
+    [Theory]
+    [InlineData("it")]
+    [InlineData("en")]
+    public void V2_Paragraph63_NamesTheSupplierEntity_AndMakesNoClaimItsNoticeDoesNotConfirm(string language)
+    {
+        var raw = ReadRaw(V2, language);
+        var paragraph = Regex.Match(raw, @"<p><strong>6\.3</strong>.*?</p>", RegexOptions.Singleline).Value;
+
+        Assert.False(string.IsNullOrEmpty(paragraph));
+        Assert.Contains("Confproprietà – Confederazione della Proprietà Edilizia", paragraph);
+        Assert.Contains("94117210636", paragraph);
+        Assert.Contains("href=\"https://legal.concordatofacile.it\"", paragraph);
+        Assert.DoesNotContain(language == "it" ? "trattati nello Spazio economico europeo" : "processed in the European Economic Area", paragraph);
+        Assert.DoesNotContain(language == "it" ? "non sono usati per altri scopi" : "not used for any other purpose", paragraph);
+    }
+
     [Fact]
     public void V2_ItalianAndEnglish_HaveTheSameSections_NumberedWithoutGaps()
     {
