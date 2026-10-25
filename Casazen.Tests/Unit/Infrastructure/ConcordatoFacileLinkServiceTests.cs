@@ -100,6 +100,33 @@ public class ConcordatoFacileLinkServiceTests
     }
 
     /// <summary>
+    /// CF-URL: with <c>FormUrl</c> set (the test module that ConcordatoFacile prepares for the test environment) the link opens that
+    /// address, with the same parameters and the same signature; without it the real module, as the test above proves.
+    /// </summary>
+    [Fact]
+    public async Task GenerateLink_WithAFormUrl_OpensThatAddressWithTheSameSignature()
+    {
+        var orgId = Guid.NewGuid();
+        var leaseId = Guid.Parse(VectorLeaseId);
+        await using var db = NewDb();
+        await SeedLeaseAsync(db, orgId, leaseId, comune: SeedComune("035033", "Reggio nell'Emilia", "RE"));
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 13, 9, 45, 0, TimeSpan.Zero));
+        var service = new ConcordatoFacileLinkService(
+            db,
+            AccessGranted(leaseId),
+            PrivacyAccepted(),
+            Options.Create(new ConcordatoFacileOptions { LinkSecret = VectorSecret, FormUrl = " https://test-module.example/ " }),
+            NullLogger<ConcordatoFacileLinkService>.Instance,
+            clock);
+
+        var link = await service.GenerateSignedLinkAsync(leaseId, new ClaimsPrincipal());
+
+        Assert.StartsWith("https://test-module.example/?partner=casazen", link.Url, StringComparison.Ordinal);
+        Assert.Contains($"&signature={VectorSignature}", link.Url, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// PROOF TEST: Permission rule - user without ConcordatoFacile access must NOT get a link (ADR-007-R10).
     /// Access check must happen BEFORE signature generation.
     /// </summary>

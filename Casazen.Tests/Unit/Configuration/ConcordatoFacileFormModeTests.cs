@@ -53,6 +53,46 @@ public class ConcordatoFacileFormModeTests
     }
 
     [Fact]
+    public void Validate_FormUrlInProduction_StopsTheStartup()
+    {
+        var options = Configured(ConcordatoFacileFormMode.Real);
+        options.FormUrl = "https://test.example/";
+
+        var result = Validate("Production", options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure => failure.Contains("FormUrl", StringComparison.Ordinal)
+            && failure.Contains("Production", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Staging")]
+    [InlineData("Development")]
+    public void Validate_FormUrlInATestEnvironment_Passes(string environmentName)
+    {
+        var options = Configured(ConcordatoFacileFormMode.Real);
+        options.FormUrl = "https://test.example/";
+
+        Assert.True(Validate(environmentName, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData("http://test.example/")]
+    [InlineData("test.example")]
+    [InlineData("https://test.example/?a=b")]
+    [InlineData("https://test.example/#top")]
+    public void Validate_FormUrlNotAnAbsoluteHttpsAddressWithoutQuery_StopsTheStartup(string formUrl)
+    {
+        var options = Configured(ConcordatoFacileFormMode.Real);
+        options.FormUrl = formUrl;
+
+        var result = Validate("Staging", options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure => failure.Contains("FormUrl", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Validate_SimulatedWithoutTheAddressOfTheWebApp_StopsTheStartup()
     {
         var result = Validate("Staging", Configured(ConcordatoFacileFormMode.Simulated, baseUrl: null));

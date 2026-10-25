@@ -135,16 +135,22 @@ public sealed class ConcordatoFacileLinkService(
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
+    /// <summary>The real module of ConcordatoFacile (specification v0.2 §2: "Sempre https://app.concordatofacile.it/").</summary>
+    private const string RealFormUrl = "https://app.concordatofacile.it/";
+
     /// <summary>
     /// The address the link opens. Always the real module of ConcordatoFacile, <c>https://app.concordatofacile.it/</c> (specification
-    /// v0.2 §2: "Sempre https://app.concordatofacile.it/"), except with <c>FormMode=Simulated</c> (CF-SIM, test environment only): the
-    /// page <c>/guided-form</c> of the web app, which plays the module, without a trailing slash. The parameters and the signature are the
-    /// same in both cases, so the signing code stays the code that ConcordatoFacile verifies.
+    /// v0.2 §2: "Sempre https://app.concordatofacile.it/"), except (a) with <c>FormMode=Simulated</c> (CF-SIM, test environment only): the
+    /// page <c>/guided-form</c> of the web app, which plays the module, without a trailing slash, and (b) with <c>FormUrl</c> (CF-URL, test
+    /// environment only, refused in Production): the test module that ConcordatoFacile prepares for CasaZen. The parameters and the
+    /// signature are the same in every case, so the signing code stays the code that ConcordatoFacile verifies.
     /// </summary>
     private static string FormBaseUrl(ConcordatoFacileOptions concordatoFacile)
     {
         if (concordatoFacile.FormMode != ConcordatoFacileFormMode.Simulated)
-            return "https://app.concordatofacile.it/";
+        {
+            return string.IsNullOrWhiteSpace(concordatoFacile.FormUrl) ? RealFormUrl : concordatoFacile.FormUrl.Trim();
+        }
 
         if (string.IsNullOrWhiteSpace(concordatoFacile.BaseUrl))
         {
