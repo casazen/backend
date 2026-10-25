@@ -24,7 +24,24 @@ namespace Casazen.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SuppressionListEntries", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SuppressionListEntries_Orgs_OrgId",
+                        column: x => x.OrgId,
+                        principalTable: "Orgs",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SuppressionListEntries_OrgId",
+                table: "SuppressionListEntries",
+                column: "OrgId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SuppressionListEntries_OrgId_EmailHash",
+                table: "SuppressionListEntries",
+                columns: new[] { "OrgId", "EmailHash" },
+                unique: true);
         }
 
         /// <inheritdoc />

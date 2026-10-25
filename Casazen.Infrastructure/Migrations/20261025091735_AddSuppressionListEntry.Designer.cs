@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261025084942_AddSuppressionListEntry")]
+    [Migration("20261025091735_AddSuppressionListEntry")]
     partial class AddSuppressionListEntry
     {
         /// <inheritdoc />
@@ -7195,6 +7195,11 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("OrgId", "EmailHash")
+                        .IsUnique();
+
                     b.ToTable("SuppressionListEntries");
                 });
 
@@ -9150,6 +9155,15 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SuppressionListEntry", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.TerritorialAgreementSignatory", b =>
