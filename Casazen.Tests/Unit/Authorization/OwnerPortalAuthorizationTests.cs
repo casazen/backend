@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Casazen.Web.Authorization;
+using Casazen.Web.Configuration;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
@@ -11,6 +13,14 @@ namespace Casazen.Tests.Unit.Authorization;
 /// </summary>
 public class OwnerPortalAuthorizationTests
 {
+    private static OwnerPortalAuthorizationHandler CreateHandler()
+    {
+        var auth0Options = Options.Create(new Auth0Options
+        {
+            CustomClaimNamespace = "https://casazen.app"
+        });
+        return new OwnerPortalAuthorizationHandler(auth0Options);
+    }
     /// <summary>
     /// Proof test: OwnerPortal_OwnerA_CannotSeeOwnerBData
     /// Verifies that the owner portal policy enforces proper JWT claim validation,
@@ -25,13 +35,13 @@ public class OwnerPortalAuthorizationTests
 
         // Act & Assert: Owner A with valid context=owner_portal claim succeeds
         var contextOwnerA = CreateOwnerContext(ownerAId, "owner_portal");
-        var handlerA = new OwnerPortalAuthorizationHandler();
+        var handlerA = CreateHandler();
         await handlerA.HandleAsync(contextOwnerA);
         Assert.True(contextOwnerA.HasSucceeded, "Owner A should be authorized with valid owner_portal context");
 
         // Act & Assert: Owner B with valid context=owner_portal claim also succeeds
         var contextOwnerB = CreateOwnerContext(ownerBId, "owner_portal");
-        var handlerB = new OwnerPortalAuthorizationHandler();
+        var handlerB = CreateHandler();
         await handlerB.HandleAsync(contextOwnerB);
         Assert.True(contextOwnerB.HasSucceeded, "Owner B should be authorized with valid owner_portal context");
 
@@ -51,7 +61,7 @@ public class OwnerPortalAuthorizationTests
         var context = CreateOwnerContext(ownerId, "host_console");
 
         // Act
-        var handler = new OwnerPortalAuthorizationHandler();
+        var handler = CreateHandler();
         await handler.HandleAsync(context);
 
         // Assert
@@ -78,7 +88,7 @@ public class OwnerPortalAuthorizationTests
             null);
 
         // Act
-        var handler = new OwnerPortalAuthorizationHandler();
+        var handler = CreateHandler();
         await handler.HandleAsync(context);
 
         // Assert
@@ -110,7 +120,7 @@ public class OwnerPortalAuthorizationTests
             null);
 
         // Act
-        var handler = new OwnerPortalAuthorizationHandler();
+        var handler = CreateHandler();
         await handler.HandleAsync(context);
 
         // Assert
@@ -136,7 +146,7 @@ public class OwnerPortalAuthorizationTests
             null);
 
         // Act
-        var handler = new OwnerPortalAuthorizationHandler();
+        var handler = CreateHandler();
         await handler.HandleAsync(context);
 
         // Assert
@@ -154,7 +164,7 @@ public class OwnerPortalAuthorizationTests
             null);
 
         // Act
-        var handler = new OwnerPortalAuthorizationHandler();
+        var handler = CreateHandler();
         await handler.HandleAsync(context);
 
         // Assert

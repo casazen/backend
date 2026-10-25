@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using Casazen.Web.Configuration;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Authorization;
 
@@ -14,6 +16,13 @@ public sealed class OwnerPortalRequirement : IAuthorizationRequirement;
 /// </summary>
 public class OwnerPortalAuthorizationHandler : AuthorizationHandler<OwnerPortalRequirement>
 {
+    private readonly string _customClaimNamespace;
+
+    public OwnerPortalAuthorizationHandler(IOptions<Auth0Options> auth0Options)
+    {
+        _customClaimNamespace = auth0Options.Value.CustomClaimNamespace;
+    }
+
     protected override Task HandleRequirementAsync(
         AuthorizationHandlerContext context,
         OwnerPortalRequirement requirement)
@@ -22,12 +31,12 @@ public class OwnerPortalAuthorizationHandler : AuthorizationHandler<OwnerPortalR
             return Task.CompletedTask;
 
         // Check for context=owner_portal claim (ADR-011-R5)
-        var contextClaim = context.User.FindFirstValue("https://casazen.app/context");
+        var contextClaim = context.User.FindFirstValue($"{_customClaimNamespace}/context");
         if (contextClaim != "owner_portal")
             return Task.CompletedTask;
 
         // Verify owner_id claim exists (ADR-011-R7)
-        var ownerIdClaim = context.User.FindFirstValue("https://casazen.app/owner_id");
+        var ownerIdClaim = context.User.FindFirstValue($"{_customClaimNamespace}/owner_id");
         if (string.IsNullOrWhiteSpace(ownerIdClaim) || !Guid.TryParse(ownerIdClaim, out _))
             return Task.CompletedTask;
 
@@ -49,27 +58,32 @@ public class OwnerPortalAuthorizationHandler : AuthorizationHandler<OwnerPortalR
 }
 
 /// <summary>
-/// Extensions to read owner portal claims from ClaimsPrincipal.
+/// Extensions to read owner portal claims from ClaimsPrincipal (ADR-011-R7).
+/// The claim namespace defaults to <c>https://casazen.app</c> but can be overridden for testing.
 /// </summary>
 public static class OwnerPortalPrincipalExtensions
 {
+    private const string DefaultClaimNamespace = "https://casazen.app";
+
     /// <summary>
     /// Gets the OwnerUserId from the JWT (ADR-011-R7). Returns null if not an owner portal context.
     /// </summary>
-    public static Guid? GetOwnerUserId(this ClaimsPrincipal user)
+    public static Guid? GetOwnerUserId(this ClaimsPrincipal user, string? customClaimNamespace = null)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var ownerIdClaim = user.FindFirstValue("https://casazen.app/owner_id");
+        var ns = customClaimNamespace ?? DefaultClaimNamespace;
+        var ownerIdClaim = user.FindFirstValue($"{ns}/owner_id");
         return Guid.TryParse(ownerIdClaim, out var ownerId) ? ownerId : null;
     }
 
     /// <summary>
     /// Gets the agency IDs from the JWT (ADR-011-R7). Returns empty list if not an owner portal context.
     /// </summary>
-    public static IReadOnlyList<Guid> GetOwnerAgencyIds(this ClaimsPrincipal user)
+    public static IReadOnlyList<Guid> GetOwnerAgencyIds(this ClaimsPrincipal user, string? customClaimNamespace = null)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var agencyIdsClaim = user.FindFirstValue("https://casazen.app/agency_ids");
+        var ns = customClaimNamespace ?? DefaultClaimNamespace;
+        var agencyIdsClaim = user.FindFirstValue($"{ns}/agency_ids");
         if (string.IsNullOrWhiteSpace(agencyIdsClaim))
             return Array.Empty<Guid>();
 
@@ -103,10 +117,11 @@ public static class OwnerPortalPrincipalExtensions
     /// <summary>
     /// Gets the owned property IDs from the JWT (ADR-011-R7). Returns empty list if not an owner portal context.
     /// </summary>
-    public static IReadOnlyList<Guid> GetOwnedPropertyIds(this ClaimsPrincipal user)
+    public static IReadOnlyList<Guid> GetOwnedPropertyIds(this ClaimsPrincipal user, string? customClaimNamespace = null)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var propertyIdsClaim = user.FindFirstValue("https://casazen.app/owned_property_ids");
+        var ns = customClaimNamespace ?? DefaultClaimNamespace;
+        var propertyIdsClaim = user.FindFirstValue($"{ns}/owned_property_ids");
         if (string.IsNullOrWhiteSpace(propertyIdsClaim))
             return Array.Empty<Guid>();
 

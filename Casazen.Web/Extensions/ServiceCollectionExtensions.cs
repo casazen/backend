@@ -245,10 +245,7 @@ public static class ServiceCollectionExtensions
             .AddPolicy(CasazenPolicies.GuestSession, policy => policy
                 .AddAuthenticationSchemes(GuestSessionDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
-                .RequireClaim(GuestSessionDefaults.OrgIdClaim))
-            // Property owner portal (ADR-011-R5): JWT with context=owner_portal claim, no host roles
-            .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
-                policy.Requirements.Add(new OwnerPortalRequirement()));
+                .RequireClaim(GuestSessionDefaults.OrgIdClaim));
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {

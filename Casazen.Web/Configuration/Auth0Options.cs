@@ -18,6 +18,12 @@ public sealed class Auth0Options
     /// <summary>API identifier expected in the <c>aud</c> claim.</summary>
     public string? Audience { get; set; }
 
+    /// <summary>
+    /// Custom claim namespace for Auth0 custom claims (ADR-011-R7). Defaults to <c>https://casazen.app</c>.
+    /// Custom claims use this as a prefix (e.g., <c>https://casazen.app/context</c>, <c>https://casazen.app/owner_id</c>).
+    /// </summary>
+    public string CustomClaimNamespace { get; set; } = "https://casazen.app";
+
     public string? ManagementClientId { get; set; }
 
     public string? ManagementClientSecret { get; set; }
