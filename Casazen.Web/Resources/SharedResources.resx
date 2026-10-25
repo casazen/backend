@@ -2506,6 +2506,9 @@
   <data name="EmailMissing" xml:space="preserve">
     <value>L'email è obbligatoria.</value>
   </data>
+  <data name="EmailHashMissing" xml:space="preserve">
+    <value>Il parametro email_hash è obbligatorio</value>
+  </data>
   <data name="PhoneRequired" xml:space="preserve">
     <value>Il telefono è obbligatorio.</value>
   </data>
@@ -2613,6 +2616,9 @@
   </data>
   <data name="OrgAccessDenied" xml:space="preserve">
     <value>Accesso negato a questa organizzazione.</value>
+  </data>
+  <data name="OrgIdMissing" xml:space="preserve">
+    <value>Il parametro org_id è obbligatorio</value>
   </data>
   <data name="ApeRequired" xml:space="preserve">
     <value>Prima di creare un contratto di locazione serve il documento APE.</value>

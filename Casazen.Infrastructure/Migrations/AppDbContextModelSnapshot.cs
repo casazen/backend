@@ -7172,47 +7172,36 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.SwissComplianceReceipt", b =>
+            modelBuilder.Entity("Casazen.Core.Entities.SuppressionListEntry", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTime>("AddedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PropertyId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Reference")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<DateTime>("ReportDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTime>("UploadedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UploadedFileHash")
+                    b.Property<string>("EmailHash")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("PropertyId");
+                    b.HasIndex("OrgId");
 
-                    b.ToTable("SwissComplianceReceipts");
+                    b.HasIndex("OrgId", "EmailHash")
+                        .IsUnique();
+
+                    b.ToTable("SuppressionListEntries");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SwissMunicipality", b =>
@@ -9169,15 +9158,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("SupplierProfile");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.SwissComplianceReceipt", b =>
+            modelBuilder.Entity("Casazen.Core.Entities.SuppressionListEntry", b =>
                 {
-                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                    b.HasOne("Casazen.Core.Entities.Org", null)
                         .WithMany()
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Property");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.TerritorialAgreementSignatory", b =>

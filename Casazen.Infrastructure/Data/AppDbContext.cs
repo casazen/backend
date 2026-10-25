@@ -202,6 +202,7 @@ public class AppDbContext(
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
     public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
     public DbSet<MarketingConsentRecord> MarketingConsentRecords { get; set; } = null!;
+    public DbSet<SuppressionListEntry> SuppressionListEntries { get; set; } = null!;
 
     // CRM guest profiles for marketing and segmentation (NF-23, ADR-021)
     public DbSet<GuestCrmProfile> GuestCrmProfiles { get; set; } = null!;
@@ -314,6 +315,9 @@ public class AppDbContext(
 
         // CO-15: audit of the operations on guest data; no foreign key to the guest, so it outlives a removed guest.
         modelBuilder.ApplyConfiguration(new GuestPrivacyAuditEntryConfiguration());
+
+        // NF-05: marketing suppression list with SHA-256 blind index for one-click unsubscribe (ADR-007-R18, R22).
+        modelBuilder.ApplyConfiguration(new SuppressionListEntryConfiguration());
 
         // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
         // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
