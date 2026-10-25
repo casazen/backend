@@ -250,6 +250,8 @@ off, **O** = optional, **PO** = a decision of the product owner with no default 
 | `Ai__ApiKey`, `Ai__Model`, `Ai__OpenAiBaseUrl`, `Ai__AnthropicBaseUrl`, `Ai__MaxCompletionTokens`, `Ai__WebSearchMaxTokens` | O | only with an AI provider | secret | Provider endpoint, model and token caps | FD-21 |
 | `Ai__Subprocessor__{Name,Purpose,Entity,Region,TransferMechanism,Website,Source}` | PO | only with an AI provider | committed DeepSeek facts | How the active provider appears in the subprocessor list; the transfer basis is left to the product owner | FD-21, PL14-SUBP · [`ai.md`](ai.md) |
 | `Expo__AccessToken` | O | per environment | `<token>` | Secret, only if "Enhanced Security for Push Notifications" is on in the Expo project; without it a push answered 401 is marked failed | MO-04 · [`mobile-release.md`](mobile-release.md) § 9.7 |
+| `IndexNow__ApiKey` | O | same | — | API key for IndexNow protocol to notify search engines (Bing, Yandex) about URL changes when org or property content is published/updated. Empty: the endpoint logs a warning and answers 400. Must be published at the public site root (`https://example.com/{ApiKey}.txt` containing the key) for verification | NF-25 |
+| `IndexNow__SubmitUrl` | O | same | `https://api.indexnow.org/indexnow` | IndexNow submission endpoint (Bing's endpoint forwards to other engines); defaults to the standard endpoint. Read only when `IndexNow__ApiKey` is set | NF-25 |
 
 ### 2.12 Other
 

@@ -84,6 +84,12 @@
   <data name="InternalServerErrorDetail" xml:space="preserve">
     <value>An unexpected error occurred. Please try again later.</value>
   </data>
+  <data name="IndexNowNotConfigured" xml:space="preserve">
+    <value>IndexNow service is not configured.</value>
+  </data>
+  <data name="IndexNowNoUrlsProvided" xml:space="preserve">
+    <value>No URLs provided for IndexNow notification.</value>
+  </data>
   <data name="ValidationError" xml:space="preserve">
     <value>One or more validation errors occurred.</value>
   </data>
@@ -3238,5 +3244,14 @@
   </data>
   <data name="TrustedSupplierNotFound" xml:space="preserve">
     <value>Trusted supplier not found</value>
+  </data>
+  <data name="ApprovalItemNotFound" xml:space="preserve">
+    <value>Approval item not found</value>
+  </data>
+  <data name="OrgContextRequired" xml:space="preserve">
+    <value>Organization context required</value>
+  </data>
+  <data name="UserIdMissing" xml:space="preserve">
+    <value>User ID missing</value>
   </data>
 </root>

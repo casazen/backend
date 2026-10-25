@@ -182,6 +182,9 @@ public class AppDbContext(
     // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
     public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
 
+    // Approval queue for items requiring human decision before taking effect (NF-06)
+    public DbSet<ApprovalQueueItem> ApprovalQueueItems { get; set; } = null!;
+
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
     public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
