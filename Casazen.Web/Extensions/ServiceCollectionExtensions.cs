@@ -397,6 +397,9 @@ public static class ServiceCollectionExtensions
         // NF-24: Marketing campaigns and guest segmentation (ADR-014).
         services.AddScoped<IConditionEvaluator, ConditionEvaluator>();
         services.AddScoped<ICampaignService, CampaignService>();
+        // NF-26: Automation routines (ADR-022).
+        services.AddScoped<IRoutineService, RoutineService>();
+        services.AddScoped<RoutineEventDispatcher>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
