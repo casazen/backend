@@ -12,7 +12,7 @@ namespace Casazen.Infrastructure.External;
 /// array that ADR-008-R6 describes.
 /// Registered with retry policy (exponential backoff: 1s, 2s, 4s) and timeout policy (30s per attempt).
 /// </summary>
-public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<ConcordatoFacileApiClient> logger)
+public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<ConcordatoFacileApiClient> logger) : IConcordatoFacileApiClient
 {
     /// <summary>
     /// The practices of a lease, newest first (v0.2 §4, <c>GET /v1/leases/{leaseId}/practices</c>). The body is an object

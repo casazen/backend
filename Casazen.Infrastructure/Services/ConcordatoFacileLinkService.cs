@@ -90,7 +90,7 @@ public sealed class ConcordatoFacileLinkService(
         var signature = ComputeHmacSignature(leaseId, expiresAt);
 
         // ADR-007-R6: Build URL with URL-encoded parameters (encoding AFTER signature calculation)
-        var url = BuildSignedUrl(leaseId, expiresAt, signature, comune.Name, comune.ProvinceCode);
+        var url = BuildSignedUrl(FormBaseUrl(options.Value), leaseId, expiresAt, signature, comune.Name, comune.ProvinceCode);
 
         // ADR-007-R8: Record LeaseEvent (NO URL or signature in payload)
         db.LeaseEvents.Add(new LeaseEvent
@@ -125,17 +125,37 @@ public sealed class ConcordatoFacileLinkService(
     }
 
     /// <summary>
+    /// The address the link opens. Always the real module of ConcordatoFacile, <c>https://app.concordatofacile.it/</c> (specification
+    /// v0.2 §2: "Sempre https://app.concordatofacile.it/"), except with <c>FormMode=Simulated</c> (CF-SIM, test environment only): the
+    /// page <c>/guided-form</c> of the web app, which plays the module, without a trailing slash. The parameters and the signature are the
+    /// same in both cases, so the signing code stays the code that ConcordatoFacile verifies.
+    /// </summary>
+    private static string FormBaseUrl(ConcordatoFacileOptions concordatoFacile)
+    {
+        if (concordatoFacile.FormMode != ConcordatoFacileFormMode.Simulated)
+            return "https://app.concordatofacile.it/";
+
+        if (string.IsNullOrWhiteSpace(concordatoFacile.BaseUrl))
+        {
+            throw new InvalidOperationException(
+                "ConcordatoFacile:BaseUrl (the address of the web app) is required with ConcordatoFacile:FormMode=Simulated.");
+        }
+
+        return $"{concordatoFacile.BaseUrl.Trim().TrimEnd('/')}/guided-form";
+    }
+
+    /// <summary>
     /// Builds the signed URL per ADR-007-R6.
     /// Each parameter value is URL-encoded individually AFTER signature calculation.
     /// </summary>
     private static string BuildSignedUrl(
+        string baseUrl,
         Guid leaseId,
         string expiresAt,
         string signature,
         string comuneName,
         string provinciaCode)
     {
-        var baseUrl = "https://app.concordatofacile.it/";
         var queryParams = new[]
         {
             $"partner={HttpUtility.UrlEncode("casazen")}",
