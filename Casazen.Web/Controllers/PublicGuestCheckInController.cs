@@ -22,6 +22,8 @@ public class PublicGuestCheckInController(
     IGuestCheckInService checkInService,
     IAlloggiatiCodeTableService codeTableService,
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
+    IMrzExtractionService mrzService,
+    IDocumentOcrService ocrService,
     IStringLocalizer<SharedResources> localizer,
     ILogger<PublicGuestCheckInController> logger) : ControllerBase
 {
@@ -150,5 +152,124 @@ public class PublicGuestCheckInController(
             result.BookingId, result.SessionId);
 
         return Ok(new { sessionId = result.SessionId, message = "Check-in completed." });
+    }
+
+    /// <summary>
+    /// Uploads identity document image and extracts data via MRZ or OCR (NF-10, ADR-009-R22).
+    /// Returns extracted fields for guest confirmation. Does NOT store the image (Ticino compliance,
+    /// ADR-013-R6). Supports passport (TD-3), ID card (TD-1), and residence permit.
+    /// </summary>
+    [HttpPost("{token}/document")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    [RequestSizeLimit(10_000_000)] // 10 MB max
+    public async Task<ActionResult<DocumentUploadResponse>> UploadDocument(
+        string token,
+        [FromForm] IFormFile document)
+    {
+        // Validate session exists and is not completed
+        var session = await checkInService.GetSessionByTokenAsync(token);
+        if (session is null)
+            return NotFound();
+
+        if (session.IsCompleted)
+            return this.ApiProblem(
+                StatusCodes.Status409Conflict,
+                "checkin_already_completed",
+                "CheckInAlreadyCompleted");
+
+        // Validate file
+        if (document == null || document.Length == 0)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "document_required", "CheckInDocumentRequired");
+
+        // Validate content type (images only)
+        var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png" };
+        if (!allowedTypes.Contains(document.ContentType.ToLowerInvariant()))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "document_type_unsupported", "CheckInDocumentTypeUnsupported");
+
+        try
+        {
+            // Process in-memory only (ADR-013-R6: Ticino zero retention, ADR-013-R2: never written to disk)
+            using var imageStream = document.OpenReadStream();
+
+            // Try MRZ extraction first (ADR-009-R22, ADR-013-R10)
+            var mrzResult = await mrzService.ExtractAsync(imageStream, HttpContext.RequestAborted);
+
+            if (mrzResult != null)
+            {
+                logger.LogInformation(
+                    "MRZ extraction succeeded for session {SessionId}, confidence {Confidence}",
+                    session.Id, mrzResult.Confidence);
+
+                var response = new DocumentUploadResponse
+                {
+                    Success = true,
+                    ExtractionMethod = "MRZ",
+                    Confidence = mrzResult.Confidence,
+                    CheckDigitsValid = mrzResult.CheckDigitsValid,
+                    RequiresManualReview = !mrzResult.CheckDigitsValid || mrzResult.Confidence < 0.80,
+                    Fields = new ExtractedDocumentFields
+                    {
+                        DocumentType = mrzResult.DocumentType,
+                        Surname = mrzResult.Surname,
+                        GivenNames = mrzResult.GivenNames,
+                        DocumentNumber = mrzResult.DocumentNumber,
+                        DateOfBirth = mrzResult.DateOfBirth,
+                        Nationality = mrzResult.Nationality,
+                        ExpirationDate = mrzResult.ExpirationDate,
+                        Sex = mrzResult.Sex,
+                        IssuingState = mrzResult.IssuingState,
+                    }
+                };
+
+                return Ok(response);
+            }
+
+            // MRZ failed or not present, try OCR fallback (AC-NF10-2, ADR-009-R22)
+            imageStream.Position = 0; // Reset stream for OCR
+            var ocrResult = await ocrService.ExtractAsync(imageStream, HttpContext.RequestAborted);
+
+            if (ocrResult != null)
+            {
+                logger.LogInformation(
+                    "OCR extraction succeeded for session {SessionId}, confidence {Confidence}",
+                    session.Id, ocrResult.Confidence);
+
+                var response = new DocumentUploadResponse
+                {
+                    Success = true,
+                    ExtractionMethod = "OCR",
+                    Confidence = ocrResult.Confidence,
+                    CheckDigitsValid = null, // OCR has no check digits
+                    RequiresManualReview = ocrResult.Confidence < 0.80,
+                    Fields = new ExtractedDocumentFields
+                    {
+                        FullName = ocrResult.FullName,
+                        DocumentNumber = ocrResult.DocumentNumber,
+                        DateOfBirth = ocrResult.DateOfBirth,
+                        Nationality = ocrResult.Nationality,
+                        ExpirationDate = ocrResult.ExpirationDate,
+                        Sex = ocrResult.Sex,
+                    }
+                };
+
+                return Ok(response);
+            }
+
+            // Both MRZ and OCR failed
+            logger.LogWarning("Document extraction failed (MRZ and OCR) for session {SessionId}", session.Id);
+
+            return Ok(new DocumentUploadResponse
+            {
+                Success = false,
+                ExtractionMethod = "None",
+                Confidence = 0.0,
+                RequiresManualReview = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error processing document upload for session {SessionId}", session.Id);
+            return this.ApiProblem(StatusCodes.Status500InternalServerError, "document_processing_failed", "CheckInDocumentProcessingFailed");
+        }
     }
 }
