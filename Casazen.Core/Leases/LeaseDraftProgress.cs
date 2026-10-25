@@ -287,10 +287,21 @@ public static class LeaseDraftProgress
         }
         else if (!reading.TypeAvailable)
         {
-            // The type exists (the transitory lease) or names nothing: kept as typed, never applied to the contract (decision D27).
+            // The type exists but is not one that can be created here, or names nothing (the student lease): kept as typed, never applied
+            // to the contract (decision D27).
             needs.Add(reading.Type is { } type
                 ? LeaseNeed.Of(LeaseNeedCodes.LeaseTypeNotAvailable, ("type", type.ToString()))
                 : LeaseNeed.Of(LeaseNeedCodes.LeaseTypeNotAvailable));
+        }
+
+        // A transitory contract made in CasaZen states the need that justifies its short term, who has it and what it is (D.M. 16/01/2017
+        // art. 2 c. 4; art. 2 of the Allegato B, which the contract prints). One already signed prints nothing of its own (TR).
+        if (reading is { Type: LeaseContractType.Transitorio, TypeAvailable: true } && !imported)
+        {
+            if (LeaseDraftRules.ParseNeedParty(values.TransitoryParty) is null)
+                needs.Add(LeaseNeed.Of(LeaseNeedCodes.TransitoryPartyMissing));
+            if (LeaseDraftRules.Clean(values.TransitoryNeed) is null)
+                needs.Add(LeaseNeed.Of(LeaseNeedCodes.TransitoryNeedMissing));
         }
 
         if (reading.TaxRegime is null)
@@ -372,16 +383,39 @@ public static class LeaseDraftProgress
         {
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.StartInvalid));
         }
-        else if (imported)
+        else if (imported || reading is { Type: LeaseContractType.Transitorio, TypeAvailable: true })
         {
+            var before = needs.Count;
             Term(values, reading, start, needs);
+
+            // A transitory contract of more than 30 days proves its need with documentation (art. 2 c. 4): asked here, with the term that
+            // decides it, once the term is a good one. A contract signed elsewhere prints nothing of it.
+            if (!imported && needs.Count == before && reading.End is { } end)
+                Documentation(values, start, end, needs);
         }
+    }
+
+    /// <summary>
+    /// The documentation of the need of a transitory contract made in CasaZen: asked when the term lasts more than
+    /// <see cref="LeaseContractTerms.TransitorioDocumentationAfterDays"/> days, at most
+    /// <see cref="LeaseDraftRules.TransitoryDocumentationMaxLength"/> characters when typed (TR).
+    /// </summary>
+    private static void Documentation(LeaseDraftValues values, DateOnly start, DateOnly end, List<LeaseNeed> needs)
+    {
+        if (!LeaseContractTerms.TransitoryNeedsDocumentation(LeaseDraftRules.ToStoredDate(start), LeaseDraftRules.ToStoredDate(end)))
+            return;
+
+        if (LeaseDraftRules.Clean(values.TransitoryDocumentation) is not { } documentation)
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.TransitoryDocumentationMissing));
+        else if (documentation.Length > LeaseDraftRules.TransitoryDocumentationMaxLength)
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.TransitoryDocumentationTooLong, ("maxLength", LeaseDraftRules.TransitoryDocumentationMaxLength)));
     }
 
     /// <summary>
     /// The term of an imported contract is the one it states (LR-13): the last day typed, inside the limits of its type
     /// (<see cref="LeaseContractTerms.CheckTerm"/>). Without one it follows the type, except for the transitory type, which has no term
-    /// of its own. A start in the past is no problem: the contract is already in force.
+    /// of its own and asks for it. A start in the past is no problem: the contract is already in force. A transitory contract made in
+    /// CasaZen is read the same way (TR): it states its end, from 1 to 18 months after the start.
     /// </summary>
     private static void Term(LeaseDraftValues values, LeaseDraftReading reading, DateOnly start, List<LeaseNeed> needs)
     {

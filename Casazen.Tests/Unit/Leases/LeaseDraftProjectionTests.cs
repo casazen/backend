@@ -54,8 +54,8 @@ public class LeaseDraftProjectionTests
         var lease = NewLease();
         LeaseDraftProjection.ApplyColumns(lease, LeaseDraftRules.Read(Complete()), null);
 
-        // The landlord clears the rent, the start and the deposit, and types a type that cannot be created.
-        var cleared = Complete() with { MonthlyRent = null, SecurityDeposit = null, StartDate = "", ContractType = "Transitorio", TaxRegime = null };
+        // The landlord clears the rent, the start and the deposit, and types a type that CasaZen does not have.
+        var cleared = Complete() with { MonthlyRent = null, SecurityDeposit = null, StartDate = "", ContractType = "Studenti", TaxRegime = null };
         LeaseDraftProjection.ApplyColumns(lease, LeaseDraftRules.Read(cleared), null);
 
         Assert.Equal(LeaseDraftDefaults.PlaceholderType, lease.ContractType);
@@ -76,13 +76,13 @@ public class LeaseDraftProjectionTests
     };
 
     [Fact]
-    public void ApplyColumns_ALeaseThatAlreadyIsTransitory_KeepsItsTypeAndItsEnd_TheFirstSaveOfAnyStepDoesNotTurnItIntoALibero()
+    public void ApplyColumns_ATransitoryLease_HasTheEndItsLandlordTyped_NotTheOneOfAType()
     {
-        // Made by the old form, which accepted the transitory type: the wizard cannot offer it (the flow says so), but saving the
-        // documents of a party must not change the contract type, and with it the term, under the landlord's hands.
+        // The term of a transitory contract is free from 1 to 18 months (TR): the end typed goes to the column, and saving the documents
+        // of a party never turns the contract into a libero of four years under the landlord's hands.
         var lease = ATransitoryLease();
         lease.SetContractTerms(LeaseContractType.Transitorio, LeaseTaxRegime.CedolareSecca);
-        var typed = Complete() with { ContractType = "Transitorio", MonthlyRent = 800m };
+        var typed = Complete() with { ContractType = "Transitorio", MonthlyRent = 800m, EndDate = "2027-04-30" };
 
         LeaseDraftProjection.ApplyColumns(lease, LeaseDraftRules.Read(typed), null);
 
@@ -92,7 +92,7 @@ public class LeaseDraftProjectionTests
     }
 
     [Fact]
-    public void ApplyColumns_ATransitoryLeaseWhoseStartChanges_LosesTheEndItHad_TheWizardCannotComputeOne()
+    public void ApplyColumns_ATransitoryLeaseWithoutAnEndTyped_TakesTheTermOfTheStartingType_SoItCannotBeSignedBeforeTheEndIsTyped()
     {
         var lease = ATransitoryLease();
         lease.SetContractTerms(LeaseContractType.Transitorio, LeaseTaxRegime.CedolareSecca);
@@ -102,7 +102,7 @@ public class LeaseDraftProjectionTests
 
         Assert.Equal(LeaseContractType.Transitorio, lease.ContractType);
         Assert.Equal(new DateTime(2026, 12, 1, 0, 0, 0, DateTimeKind.Utc), lease.StartDate);
-        // The term of the starting type: more than a transitory lease can last, so it cannot be signed until the landlord chooses a type.
+        // The term of the starting type: more than a transitory lease can last, and the flow asks for the end (end_missing).
         Assert.Equal(new DateTime(2030, 11, 30, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
     }
 

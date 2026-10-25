@@ -19,7 +19,8 @@ public sealed record ParsedLeaseContractTemplate(
 /// ## section_id | Heading (optional)
 /// Clause text with {{placeholder}}...
 /// </code>
-/// Whole-line <c>&lt;!-- ... --&gt;</c> comments are ignored. Nothing is invented: a section without text stays empty.
+/// Whole-line <c>&lt;!-- ... --&gt;</c> comments are ignored. Nothing is invented: a section without text stays empty. The heading of a
+/// section can carry placeholders like its text (the title cannot).
 /// </summary>
 public static partial class LeaseContractTemplateParser
 {
@@ -47,7 +48,8 @@ public static partial class LeaseContractTemplateParser
             if (sections.Any(s => s.Id == currentId))
                 errors.Add($"section '{currentId}' appears more than once");
             else
-                sections.Add(new LeaseContractTemplateSection(currentId, currentHeading, text, ReadPlaceholders(currentId, text, errors)));
+                sections.Add(new LeaseContractTemplateSection(
+                    currentId, currentHeading, text, ReadPlaceholders(currentId, currentHeading is null ? text : $"{currentHeading}\n{text}", errors)));
 
             buffer.Clear();
         }
