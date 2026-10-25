@@ -42,9 +42,13 @@ public class ConcordatoFacileController(
     /// paid and the webhook has not arrived yet (the payment is recorded on the spot): a second session is never created.
     /// </summary>
     /// <param name="leaseId">The lease contract ID from the route</param>
-    /// <param name="request">Empty request body (required for POST)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Checkout session ID and URL to redirect the user to Stripe</returns>
+    /// <remarks>
+    /// The request has no body: everything it needs (the lease, the org, the user) comes from the route and the token. The action used to
+    /// bind an empty <c>[FromBody]</c> class, and a POST without a body and without a Content-Type was refused with 415 before the action
+    /// ran; with no body parameter any POST is accepted, with or without <c>{}</c>.
+    /// </remarks>
     [HttpPost("checkout")]
     [ProducesResponseType(typeof(CheckoutResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -53,7 +57,6 @@ public class ConcordatoFacileController(
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<CheckoutResponse>> CreateCheckout(
         Guid leaseId,
-        [FromBody] CreateCheckoutRequest request,
         CancellationToken cancellationToken)
     {
         var userId = User.GetUserId();
