@@ -3,6 +3,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Leases.Reading;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.BackgroundJobs;
 using Casazen.Infrastructure.Data;
@@ -17,10 +18,85 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
 {
     public const long MaxBytes = 20 * 1024 * 1024;
 
-    public async Task<IReadOnlyList<LeaseDocumentDto>> ListAsync(Guid leaseId, CancellationToken ct = default) =>
-        await db.LeaseDocuments.AsNoTracking().Where(d => d.LeaseContractId == leaseId)
+    public async Task<IReadOnlyList<LeaseDocumentDto>> ListAsync(Guid leaseId, CancellationToken ct = default)
+    {
+        var rows = await db.LeaseDocuments.AsNoTracking().Where(d => d.LeaseContractId == leaseId)
             .OrderByDescending(d => d.UploadedAt).ThenBy(d => d.Id)
-            .Select(d => new LeaseDocumentDto(d.Id, d.LeaseContractId, d.Kind, d.FileName, d.SizeBytes, d.UploadedAt)).ToListAsync(ct);
+            .Select(d => new { d.Id, d.LeaseContractId, d.Kind, d.FileName, d.SizeBytes, d.UploadedAt, d.ExtractionResult })
+            .ToListAsync(ct);
+
+        // What the reading found of the pages of a contract: the sections only (the attestation inside the file is not asked for again).
+        return rows
+            .Select(d =>
+            {
+                var read = d.Kind == LeaseDocumentKind.Contract ? ReadSections(d.ExtractionResult) : SectionsRead.None;
+                return new LeaseDocumentDto(
+                    d.Id, d.LeaseContractId, d.Kind, d.FileName, d.SizeBytes, d.UploadedAt,
+                    read.Sections, read.ContainsAttestation, read.ContainsCalculationSheet);
+            })
+            .ToList();
+    }
+
+    /// <summary>The sections and the warnings found in the result kept with a document; nothing when the result is not one that has them.</summary>
+    private sealed record SectionsRead(
+        IReadOnlyList<LeaseDocumentSectionDto> Sections,
+        bool ContainsAttestation,
+        bool ContainsCalculationSheet,
+        IReadOnlyList<LeaseReadingWarningDto> Warnings)
+    {
+        public static readonly SectionsRead None = new([], false, false, []);
+    }
+
+    private static SectionsRead ReadSections(string? extractionResult)
+    {
+        if (string.IsNullOrEmpty(extractionResult))
+            return SectionsRead.None;
+
+        try
+        {
+            using var result = JsonDocument.Parse(extractionResult);
+            var root = result.RootElement;
+            var sections = new List<LeaseDocumentSectionDto>();
+            if (root.TryGetProperty("sections", out var list) && list.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in list.EnumerateArray())
+                {
+                    if (item.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String
+                        && item.TryGetProperty("firstPage", out var first) && first.TryGetInt32(out var firstPage)
+                        && item.TryGetProperty("lastPage", out var last) && last.TryGetInt32(out var lastPage))
+                    {
+                        sections.Add(new LeaseDocumentSectionDto(kind.GetString()!, firstPage, lastPage));
+                    }
+                }
+            }
+
+            var warnings = new List<LeaseReadingWarningDto>();
+            if (root.TryGetProperty("warnings", out var found) && found.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in found.EnumerateArray())
+                {
+                    if (!item.TryGetProperty("code", out var code) || code.ValueKind != JsonValueKind.String)
+                        continue;
+
+                    List<int>? pages = null;
+                    if (item.TryGetProperty("pages", out var affected) && affected.ValueKind == JsonValueKind.Array)
+                        pages = affected.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out _)).Select(p => p.GetInt32()).ToList();
+                    warnings.Add(new LeaseReadingWarningDto(code.GetString()!, pages));
+                }
+            }
+
+            return new SectionsRead(
+                sections,
+                sections.Any(s => s.Kind == DocumentSectionKinds.Attestation),
+                sections.Any(s => s.Kind == DocumentSectionKinds.CalculationSheet),
+                warnings);
+        }
+        catch (JsonException)
+        {
+            // A result written by the first pipeline, or by hand: there is nothing in it for the screen.
+            return SectionsRead.None;
+        }
+    }
 
     public async Task<LeaseDocumentDto> UploadAsync(Guid leaseId, IFormFile file, LeaseDocumentKind kind, string uploadedBy, CancellationToken ct = default)
     {
@@ -197,7 +273,13 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
 
         return new LeaseReadingDto(
             state,
-            documents.Select(d => new LeaseReadingDocumentDto(d.Id, d.FileName, d.ExtractionStatus, d.ExtractionError)).ToList(),
+            documents.Select(d =>
+            {
+                var read = ReadSections(d.ExtractionResult);
+                return new LeaseReadingDocumentDto(
+                    d.Id, d.FileName, d.ExtractionStatus, d.ExtractionError,
+                    read.Sections, read.ContainsAttestation, read.ContainsCalculationSheet, read.Warnings);
+            }).ToList(),
             fields.Values.ToList(),
             stipulaDate,
             documents.Count > 0 ? documents[0].Id : null);
