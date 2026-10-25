@@ -117,6 +117,12 @@ public class AppDbContext(
     public DbSet<SupplierServiceListing> SupplierServiceListings { get; set; } = null!;
 
     /// <summary>
+    /// Trusted supplier relationships for agency tier orgs (NF-21, ADR-020): an agency's preferred suppliers
+    /// with manual payment mode, 0% commission, and statement integration.
+    /// </summary>
+    public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
+
+    /// <summary>
     /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
     /// keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list): only <c>SupplierAgendaService</c>
     /// (and the supplier repair) reads and writes them, always with an explicit <c>OrgId</c> predicate.
