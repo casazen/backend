@@ -68,8 +68,12 @@ public class StripeWebhookHandler(
             && IsConcordatoFacilePayment(stripeEvent.Data.Object as PaymentIntent);
         var cfRefund = stripeEvent.Type == "charge.refunded"
             && await IsConcordatoFacileRefundAsync(stripeEvent.Data.Object as Charge);
+        // CF-BE: a payment of the service that failed or whose PaymentIntent was canceled. It closes the purchase only when the Checkout
+        // Session cannot succeed any more (ConcordatoFacilePaymentHandler.HandlePaymentNotCompletedAsync).
+        var cfPaymentEnded = stripeEvent.Type is "payment_intent.payment_failed" or "payment_intent.canceled"
+            && IsConcordatoFacilePayment(stripeEvent.Data.Object as PaymentIntent);
 
-        if (!await TryClaimEventAsync(stripeEvent, cfPayment || cfRefund ? WebhookSource.ConcordatoFacile : source))
+        if (!await TryClaimEventAsync(stripeEvent, cfPayment || cfRefund || cfPaymentEnded ? WebhookSource.ConcordatoFacile : source))
         {
             if (eventTransaction is not null)
                 await eventTransaction.RollbackAsync();
@@ -118,6 +122,11 @@ public class StripeWebhookHandler(
                 // CF payments are identified by leaseId in metadata without a "kind" field.
                 case "payment_intent.succeeded" when cfPayment:
                     await CfPayments.HandlePaymentIntentSucceededAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Created);
+                    break;
+                // The same payments when they fail or are canceled (CF-BE): BEFORE the generic failure below, which knows nothing of them.
+                case "payment_intent.payment_failed" when cfPaymentEnded:
+                case "payment_intent.canceled" when cfPaymentEnded:
+                    await CfPayments.HandlePaymentNotCompletedAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type);
                     break;
                 // The payment of a supplier's service (SP-15b, kind = service-charge): BEFORE the generic payment_intent.succeeded
                 // below, like the rent. Otherwise the event would be "processed" with no effect on the Connect endpoint (the generic

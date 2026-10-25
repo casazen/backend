@@ -48,7 +48,7 @@ draft moved on. Every other status of an error is the usual RFC 7807 problem wit
 | `lease_review_not_confirmed` | 422 | `sent` before the review is confirmed |
 | `lease_review_not_applicable` | 422 | An imported contract has no review (it is already signed) |
 | `lease_sent_not_applicable` | 422 | An imported contract is never downloaded for signature |
-| `lease_not_deletable` | 409 | Not a draft, or a signed copy, or a rent plan, or a ConcordatoFacile purchase (pending, completed or refunded) exists |
+| `lease_not_deletable` | 409 | Not a draft, or a signed copy, or a rent plan, or an open ConcordatoFacile purchase exists (pending within the life of its Checkout Session, completed or refunded; § 7) |
 | `lease_parties_too_many` | 422 | More than 10 landlords or 10 tenants |
 | `validation_error` | 400 | The request is not shaped like the step's (§ 3): never about a value that is merely wrong |
 | `lease_not_found`, `property_not_found` | 404 | Not visible to the caller's org |
@@ -193,8 +193,12 @@ payload `withdrawn`; `review_reopened` when a change withdrew the review).
 
 `DELETE /api/leases/{id}` removes the lease with its parties, signers, events, registration, authorizations and the files in the private
 bucket (the Questura receipt, a registration receipt). **Only** a lease in status `Draft`, **without a signed copy, without a rent plan and
-without a ConcordatoFacile purchase that was not a failure** (the draft of a contract paid for stays: `LeaseDraftDeleter.IsDeletableAsync`, CF-IMPORT):
-anything else is 409 `lease_not_deletable` (so is a record that refers to the lease and was added after this code). It is the deletion PM-02
+without an open ConcordatoFacile purchase** (the draft of a contract paid for stays: `LeaseDraftDeleter.IsDeletableAsync`, CF-IMPORT):
+anything else is 409 `lease_not_deletable` (so is a record that refers to the lease and was added after this code). A purchase is **open** when it is
+completed, refunded, or pending within the life of its Checkout Session (2 hours, set at its creation) plus 10 minutes
+(`ConcordatoFacilePurchaseRules`, CF-BE): a purchase that failed, or that is still pending after that (the customer never came back, the Session is
+over), is **closed**, does not keep the draft, and goes with it when the draft is deleted (on PostgreSQL the key from a purchase to its lease is
+`Restrict`, so the closed ones are removed with the lease, and an open one stops the delete). It is the deletion PM-02
 asks for (`property_mode_blocked_by_draft_lease`, "the draft must be deleted first"): with the only draft of a property gone, the property can
 change mode again. The files are deleted after the commit; one that cannot be deleted is logged without any personal data and left.
 `LeaseDraftDeleter` is the one place that knows what a draft is made of; the retention job uses it too.
@@ -203,8 +207,8 @@ change mode again. The files are deleted after the commit; one that cannot be de
 
 A draft holds the names, fiscal codes and residences of people and is not kept for ever. The job deletes, with their parties, events and
 files, the drafts **nobody changed for `LongRentLease:DraftRetentionDays` days** (default **180**, whole number from 1 to 3650: another value
-makes the **startup fail**, `LongRentLeaseOptionsValidator`). A draft with a signed copy, a rent plan, a ConcordatoFacile purchase that was not a
-failure, or that is not a draft any more is never deleted (the rule of § 7). Every day at 03:50 UTC (`LeaseDraftRetentionJob.Cron`), after the GDPR retention (03:00) and the other retention jobs; **always
+makes the **startup fail**, `LongRentLeaseOptionsValidator`). A draft with a signed copy, a rent plan, an open ConcordatoFacile purchase (§ 7), or that
+is not a draft any more is never deleted (the rule of § 7). Every day at 03:50 UTC (`LeaseDraftRetentionJob.Cron`), after the GDPR retention (03:00) and the other retention jobs; **always
 registered** (the retention of personal data does not depend on a switch).
 
 - **Idempotent**: it deletes what matches, a second run finds nothing. Each draft is deleted in a transaction of its own under the row lock
@@ -317,7 +321,7 @@ Deploy **on the test environment first**; the figures of § 9 are to be confirme
 - `lease-draft-retention` is in the recurring jobs (34 with every flag on, 29 with the defaults); the first run logs how many drafts it deleted.
 - A save that answers **409** is the normal answer to two tabs; one that answers **500** is not (look for `Lease draft` in the logs, which
   carry the id of the lease and no data).
-- A draft that cannot be deleted by the landlord (409 `lease_not_deletable`) has a signed copy, a rent plan or a ConcordatoFacile purchase that was not a failure: it is a contract now.
+- A draft that cannot be deleted by the landlord (409 `lease_not_deletable`) has a signed copy, a rent plan or an open ConcordatoFacile purchase (completed, refunded, or pending within the life of its Checkout Session; § 7): it is a contract now.
 - `sent` answering 422 `contract_template_not_approved` is the honest answer while the templates are drafts; it goes away when the product
   owner approves them (`lease-contract-templates.md`).
 - To clean by hand: `DELETE /api/leases/{id}` as the owner; never `DELETE FROM "LeaseContracts"` (the signers, the registration and the
