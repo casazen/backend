@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -35,18 +36,17 @@ public class OtrTaxService(AppDbContext context) : IOtrTaxService
             : null;
 
         if (municipality?.CantonCode != TicinoCantonCode)
-            throw new DomainRuleException($"Property {propertyId} is not in canton Ticino")
-            {
-                Code = "property_not_in_ticino",
-                MessageKey = "PropertyNotInTicino"
-            };
+            throw new DomainRuleException(
+                "property_not_in_ticino",
+                "PropertyNotInTicino",
+                propertyId);
 
         // Get overnight stays for the period
         var stays = await context.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
             .Where(b => b.PropertyId == propertyId
-                && b.Status == Entities.Enums.BookingStatus.Confirmed
+                && b.Status == BookingStatus.Confirmed
                 && b.CheckInDate < endDate
                 && b.CheckOutDate > startDate)
             .ToListAsync(cancellationToken);

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -36,11 +37,10 @@ public class TicinoNotificationService(AppDbContext context) : ITicinoNotificati
             : null;
 
         if (municipality?.CantonCode != TicinoCantonCode)
-            throw new DomainRuleException($"Property {propertyId} is not in canton Ticino")
-            {
-                Code = "property_not_in_ticino",
-                MessageKey = "PropertyNotInTicino"
-            };
+            throw new DomainRuleException(
+                "property_not_in_ticino",
+                "PropertyNotInTicino",
+                propertyId);
 
         // Get overnight stays for the report date
         var reportDateOnly = DateOnly.FromDateTime(reportDate);
@@ -49,7 +49,7 @@ public class TicinoNotificationService(AppDbContext context) : ITicinoNotificati
             .Include(b => b.Guest)
             .Include(b => b.Property)
             .Where(b => b.PropertyId == propertyId
-                && b.Status == Entities.Enums.BookingStatus.Confirmed
+                && b.Status == BookingStatus.Confirmed
                 && DateOnly.FromDateTime(b.CheckInDate) <= reportDateOnly
                 && DateOnly.FromDateTime(b.CheckOutDate) > reportDateOnly)
             .ToListAsync(cancellationToken);
