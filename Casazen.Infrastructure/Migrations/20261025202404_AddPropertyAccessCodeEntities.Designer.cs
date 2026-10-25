@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261025201348_AddPropertyAccessCodeEntities")]
+    [Migration("20261025202404_AddPropertyAccessCodeEntities")]
     partial class AddPropertyAccessCodeEntities
     {
         /// <inheritdoc />
