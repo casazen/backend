@@ -47,6 +47,7 @@ public class InvoiceProofTests
             HasPartitaIva = true,
             PartitaIvaNumber = "12345678901",
             FiscalCode = "IT12345678901",
+            RegisteredOffice = "Via Roma 1, 00100 Roma (RM)",
             CreatedAt = DateTime.UtcNow
         };
 
@@ -221,6 +222,7 @@ public class InvoiceProofTests
             HasPartitaIva = true,
             PartitaIvaNumber = "12345678901",
             FiscalCode = "IT12345678901",
+            RegisteredOffice = "Via Roma 1, 00100 Roma (RM)",
             CreatedAt = DateTime.UtcNow
         };
 
