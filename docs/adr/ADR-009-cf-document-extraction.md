@@ -1,9 +1,18 @@
 # ADR-009: ConcordatoFacile Document Extraction Pipeline
 
-**Status:** Accepted (amended 2026-10-24)  
+**Status:** Superseded come riferimento del processo ConcordatoFacile (25 ottobre 2026; era Accepted, amended 2026-10-24)  
 **Date:** 2026-10-23  
 **Issue:** none (run R20261023-1107)  
 **Informs:** NF-07 (ConcordatoFacile document extraction)
+
+> **SUPERATO come riferimento del processo ConcordatoFacile (25 ottobre 2026).** Superato dal documento `docs/integrations/concordatofacile/README.md`: non usare come riferimento. Il file resta nel repository perché i commenti del codice e dei test citano gli identificativi delle sue regole (`ADR-009-Rn`): sono etichette, non requisiti validi. I fatti sul processo sono in quel documento, i requisiti in `Sessions/business-analysis-canone-concordato.md`.
+>
+> Punti che non valgono più o non sono attuati:
+>
+> - R1–R20 descrivono la prima pipeline (regole di coerenza sul canone entro il ±50%, `ExtractionResult` con i valori letti). Per le bozze «Importato» è **sostituita** dal task NL-DOCS: lettura locale con PdfPig e Tesseract, parser con codice fiscale validato, si compila solo ciò che è vuoto, `ExtractionResult` senza valori personali, nessun servizio esterno né LLM (`docs/runbooks/lease-document-extraction.md`). Per ogni altra locazione resta la prima pipeline.
+> - R10 (nessun contenuto dei documenti nei log) vale ancora.
+> - R18 (endpoint `confirm-extraction` e `retry-extraction`) non esiste.
+> - L'**emendamento del 24 ottobre** (R21–R28: documenti d'identità degli ospiti, MRZ, Ticino) è un altro tema: non fa parte del processo CF e non è descritto nel documento di processo.
 
 ## Context
 

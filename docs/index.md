@@ -14,6 +14,7 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 | Configurare o diagnosticare una funzione | [Indice runbook](runbooks/index.md) |
 | Preparare un deploy | [Checklist](runbooks/deploy-checklist.md), [health check](runbooks/health-checks.md), [infrastruttura](INFRA.md) |
 | Seguire il pilota Quokka | [Planning](../Sessions/PLANNING.md), poi i [requisiti della fase 1 in sviluppo](../Sessions/prospect-quokka360/requisiti-fase1-helix.md) |
+| Capire, configurare o provare il servizio ConcordatoFacile | [Processo CF: unico riferimento](integrations/concordatofacile/README.md), poi i [requisiti](../Sessions/business-analysis-canone-concordato.md) |
 
 ## Struttura
 
@@ -26,7 +27,7 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 | [INFRA.md](INFRA.md) | Infrastruttura e ambienti; le sezioni Railway sono storiche, hosting in revisione: [analisi](runbooks/free-hosting-analysis.md) |
 | [runbooks/](runbooks/index.md) | Procedure per funzionalità, configurazione, migrazioni, verifica e rollback |
 | `adr/` | Decisioni architetturali; [modello ADR](adr/ADR-000-TEMPLATE.md) |
-| `integrations/` | Specifiche di integrazione: una specifica non prova che il connettore sia implementato |
+| `integrations/` | Specifiche di integrazione: una specifica non prova che il connettore sia implementato. Per ConcordatoFacile vale solo il [documento di processo](integrations/concordatofacile/README.md) (le specifiche della cartella `da-inviare/` sono superate) |
 | `legal/`, `legal-drafts/` | Materiale legale e bozze; conservare lo stato di approvazione indicato nei documenti |
 | [AUTH0_SETUP.md](AUTH0_SETUP.md) | Setup Auth0; completare con il [runbook operativo](runbooks/auth0.md) |
 | [FRONTEND-TECHNICAL.md](FRONTEND-TECHNICAL.md), [FRONTEND-PROJECT.md](FRONTEND-PROJECT.md) | Indirizzamento alla documentazione mantenuta nel repository frontend |

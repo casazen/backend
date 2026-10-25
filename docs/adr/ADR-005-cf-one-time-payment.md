@@ -1,9 +1,18 @@
 # ADR-005: ConcordatoFacile One-time Payment Model
 
-**Status:** Accepted  
+**Status:** Superseded come riferimento del processo ConcordatoFacile (25 ottobre 2026; era Accepted)  
 **Date:** 2026-10-23  
 **Issue:** none (run R20261023-1107)  
 **Informs:** NF-02 (ConcordatoFacile one-time payment)
+
+> **SUPERATO come riferimento del processo ConcordatoFacile (25 ottobre 2026).** Superato dal documento `docs/integrations/concordatofacile/README.md`: non usare come riferimento. Il file resta nel repository perché i commenti del codice e dei test citano gli identificativi delle sue regole (`ADR-005-Rn`): sono etichette, non requisiti validi. I fatti sul processo sono in quel documento, i requisiti in `Sessions/business-analysis-canone-concordato.md`.
+>
+> Punti che non valgono più o non sono attuati:
+>
+> - R1: i metadati sono `orgId`, `leaseId` e `userId`, scritti sulla sessione **e** sul PaymentIntent (`payment_intent_data`), mai con una chiave `kind` (CF-FIX, backend #602).
+> - R7: si gestisce solo `charge.refunded` con rimborso totale (acquisto `Refunded`); `payment_intent.payment_failed` per CF e `RefundedAmountCents` non sono attuati (debito CF-FIX-FU2).
+> - R10: la validazione di avvio vale in Production e in ogni ambiente che non sia Development o Testing.
+> - Dopo l'ADR: 404 `lease_not_found` e 409 `concordatofacile_already_purchased` prima di chiamare Stripe, sessione `complete` e `paid` recuperata subito, interruttore `Features:ConcordatoFacile` (CF-FIX): vedi il §4 del documento di processo.
 
 ## Context
 

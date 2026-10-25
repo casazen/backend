@@ -1,3 +1,7 @@
+# SUPERATO. Superato dal documento docs/integrations/concordatofacile/README.md: non usare come riferimento.
+# Contratto della specifica v1.3 (modello a webhook) che CasaZen propose a ConcordatoFacile il 13 ottobre 2026 e che la
+# "specifica endpoint di stato v0.2" di CF ha sostituito: l'endpoint dei webhook descritto qui non esiste e non si implementa.
+# Valgono soltanto il vettore di prova della firma del link e le convenzioni richiamate dalla v0.2 (vedi 01-technical-specification.md).
 openapi: 3.0.3
 info:
   title: CasaZen - ConcordatoFacile integration
