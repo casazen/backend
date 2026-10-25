@@ -227,6 +227,10 @@ public class AppDbContext(
     // CRM guest profiles for marketing and segmentation (NF-23, ADR-021)
     public DbSet<GuestCrmProfile> GuestCrmProfiles { get; set; } = null!;
 
+    // Marketing campaigns and segments (NF-24, ADR-014)
+    public DbSet<GuestSegment> GuestSegments { get; set; } = null!;
+    public DbSet<Campaign> Campaigns { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;

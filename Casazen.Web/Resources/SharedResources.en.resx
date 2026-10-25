@@ -3302,4 +3302,16 @@
   <data name="UserIdMissing" xml:space="preserve">
     <value>User ID missing</value>
   </data>
+  <data name="Only approved campaigns can be scheduled" xml:space="preserve">
+    <value>Only approved campaigns can be scheduled.</value>
+  </data>
+  <data name="Only draft campaigns can be submitted for approval" xml:space="preserve">
+    <value>Only draft campaigns can be submitted for approval.</value>
+  </data>
+  <data name="Scheduled time must be in the future" xml:space="preserve">
+    <value>Scheduled time must be in the future.</value>
+  </data>
+  <data name="Segment condition JSON is invalid" xml:space="preserve">
+    <value>Segment condition JSON is invalid.</value>
+  </data>
 </root>
