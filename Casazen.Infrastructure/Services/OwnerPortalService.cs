@@ -46,7 +46,7 @@ public sealed class OwnerPortalService(AppDbContext db, TimeProvider timeProvide
                     .Count(b => b.PropertyId == p.Id && b.Status != BookingStatus.Cancelled),
                 TotalRevenue = db.Set<Booking>()
                     .Where(b => b.PropertyId == p.Id && b.Status != BookingStatus.Cancelled)
-                    .Sum(b => (decimal?)b.TotalAmount) ?? 0m,
+                    .Sum(b => (decimal?)b.TotalPrice) ?? 0m,
                 OccupancyRate = 0.0, // Placeholder for occupancy calculation
                 RecentBookings = db.Set<Booking>()
                     .Where(b => b.PropertyId == p.Id && b.Status != BookingStatus.Cancelled)
@@ -58,7 +58,7 @@ public sealed class OwnerPortalService(AppDbContext db, TimeProvider timeProvide
                         CheckInDate = b.CheckInDate,
                         CheckOutDate = b.CheckOutDate,
                         Channel = b.Source.ToString(),
-                        TotalAmount = b.TotalAmount,
+                        TotalAmount = b.TotalPrice,
                         Status = b.Status
                         // Guest data masked: no names, emails, phones per ADR-011-R3
                     })

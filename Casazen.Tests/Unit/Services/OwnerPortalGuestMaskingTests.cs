@@ -107,7 +107,7 @@ public class OwnerPortalGuestMaskingTests : IAsyncLifetime
             CheckOutDate = DateTime.UtcNow.AddDays(15),
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Manual,
-            TotalAmount = 500.00m,
+            TotalPrice = 500.00m,
             CreatedAt = DateTime.UtcNow
         };
         _bookingId = booking.Id;
