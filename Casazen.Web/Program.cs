@@ -203,6 +203,8 @@ builder.Services.Configure<BookingsOptions>(
     builder.Configuration.GetSection(BookingsOptions.SectionName));
 builder.Services.Configure<SeoEventOptions>(
     builder.Configuration.GetSection(SeoEventOptions.SectionName));
+builder.Services.Configure<Casazen.Web.Controllers.IndexNowOptions>(
+    builder.Configuration.GetSection("IndexNow"));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.PublicHostOptions.SectionName));
 // Vercel Domains API (BK-17): the token and the project of the web app, set by the product owner (D9).
