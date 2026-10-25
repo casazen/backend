@@ -1,5 +1,6 @@
 using Casazen.Core.Features;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Jobs;
 using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -196,6 +197,13 @@ public static class RecurringJobsRegistration
             InAppNotificationRetentionJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             InAppNotificationRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // NF-06: approval queue items pending for >7 days are expired every night.
+        recurringJobManager.AddOrUpdate<ApprovalExpirationJob>(
+            ApprovalExpirationJob.RecurringJobId,
+            job => job.ProcessExpirationsAsync(CancellationToken.None),
+            ApprovalExpirationJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         // CO-06: nightly compliance check of every published property (suspends the ones that lost a requirement).

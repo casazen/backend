@@ -10,12 +10,15 @@ namespace Casazen.Infrastructure.Jobs;
 /// Daily job to expire approval queue items older than 7 days (NF-06, AC-NF06-5).
 /// Moves items from Pending to Expired status.
 /// </summary>
+[DisableConcurrentExecution(timeoutInSeconds: 600)]
 public class ApprovalExpirationJob(
     AppDbContext db,
     TimeProvider timeProvider,
     ILogger<ApprovalExpirationJob> logger)
 {
     public const int MaxAttempts = 3;
+    public const string RecurringJobId = "approval-expiration";
+    public const string Cron = "0 4 * * *"; // Daily at 04:00 UTC
 
     /// <summary>
     /// Process pending approval items and expire those past their expiration date.
