@@ -198,6 +198,9 @@ public class AppDbContext(
     public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
     public DbSet<ConcordatoFacileGift> ConcordatoFacileGifts { get; set; } = null!;
 
+    // Practices of the simulated ConcordatoFacile module: test environments only (CF-SIM)
+    public DbSet<CfSimulatedPractice> CfSimulatedPractices { get; set; } = null!;
+
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
     public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
@@ -701,6 +704,7 @@ public class AppDbContext(
         // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
         modelBuilder.ApplyConfiguration(new ConcordatoFacilePurchaseConfiguration());
         modelBuilder.ApplyConfiguration(new ConcordatoFacileGiftConfiguration());
+        modelBuilder.ApplyConfiguration(new CfSimulatedPracticeConfiguration());
 
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).
