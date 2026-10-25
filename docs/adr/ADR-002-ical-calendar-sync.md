@@ -1,6 +1,6 @@
 # ADR-002: iCal import/export and sync job
 
-**Status:** Accepted (Fase 0 spike)  
+**Status:** Accepted (amended 2026-10-24)  
 **Date:** 2026-06-19  
 **Issue:** #289  
 **Informs:** `spec-ical-calendar-sync` (US-018, Fase 1)
@@ -83,3 +83,57 @@ PoC code lives in `Casazen.Tests/Spikes/ICalParserSpikeTests.cs` (Fase 1 impleme
 
 - Fase 1: EF migration, Hangfire job, property settings UI, calendar UI legend.
 - Failed imports surface Italian error in host console; do not block direct bookings.
+
+## Amendment 2026-10-24 (run R20261024-1925)
+
+**Why:** NF-02 adds multi-currency properties (EUR, CHF). iCal feeds must handle property currency in exports and imports.
+
+**Decision delta:**
+
+### Export Feed Currency
+
+Export feed VEVENT includes custom X-CURRENCY property per RFC 5545:
+
+```ics
+BEGIN:VEVENT
+DTSTART:20261201T140000Z
+DTEND:20261208T100000Z
+SUMMARY:Blocked
+X-CURRENCY:CHF
+END:VEVENT
+```
+
+### Import Feed Currency
+
+When importing OTA iCal:
+- If feed includes currency indicator, preserve it
+- If absent, default to Property.Currency
+
+### CalendarBlock Currency
+
+Add currency field for imported blocks:
+
+```csharp
+CalendarBlock {
+    // ... existing fields ...
+    Currency varchar(3) nullable  // For imported blocks with non-EUR currency
+}
+```
+
+### Multi-Currency Calendar View
+
+Calendar UI groups blocks by currency:
+- No conversion between currencies
+- Display separate totals per currency
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-002-R7 | P0 | Export feed MUST include X-CURRENCY property in VEVENT for non-EUR bookings (e.g., `X-CURRENCY:CHF`) |
+| ADR-002-R8 | P0 | Import feed (OTA iCal) MUST preserve currency if present, default to Property.Currency if absent |
+| ADR-002-R9 | P0 | CalendarBlock MUST add Currency varchar(3) column for imported blocks with non-EUR currency |
+| ADR-002-R10 | P1 | Multi-currency calendar view MUST group blocks by currency, no conversion (display separate totals) |
+
+**Consequences delta:**
+- Backend: iCal export includes X-CURRENCY, import preserves or defaults currency, CalendarBlock.Currency field
+- Frontend: Calendar view groups by currency
+- X-CURRENCY is non-standard but RFC 5545 allows X- properties; unlikely to break OTA parsers
