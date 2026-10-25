@@ -102,6 +102,9 @@ public class ConcordatoFacileCheckoutServiceTests
         // One payment, with the price of the configuration.
         Assert.Equal("payment", options.Mode);
         Assert.Equal(PriceId, Assert.Single(options.LineItems).Price);
+        // CF-END: the person comes back to the page of the guided route, whose address names nobody (not the old one that named the supplier).
+        Assert.Equal($"https://app.casazen.it/app/long-rent/leases/{LeaseId}/guided-contract?checkout=success", options.SuccessUrl);
+        Assert.Equal($"https://app.casazen.it/app/long-rent/leases/{LeaseId}/guided-contract?checkout=cancelled", options.CancelUrl);
         var purchase = await Db().ConcordatoFacilePurchases.SingleAsync();
         Assert.Equal(ConcordatoFacilePurchaseStatus.Pending, purchase.Status);
         Assert.Equal(NewSessionId, purchase.StripeCheckoutSessionId);

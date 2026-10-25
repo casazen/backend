@@ -275,3 +275,66 @@ public class CheckInSessionStatusResponse
                 CanIssueLink = bookingEligible && !session.IsCompleted,
             };
 }
+
+/// <summary>
+/// Response from document upload endpoint with extracted fields for guest confirmation (NF-10, ADR-009-R22).
+/// </summary>
+public class DocumentUploadResponse
+{
+    /// <summary>True if extraction succeeded (MRZ or OCR).</summary>
+    public bool Success { get; set; }
+
+    /// <summary>Extraction method used (MRZ, OCR, or None).</summary>
+    public string ExtractionMethod { get; set; } = string.Empty;
+
+    /// <summary>Extracted fields for guest confirmation.</summary>
+    public ExtractedDocumentFields? Fields { get; set; }
+
+    /// <summary>Confidence score (0.0 to 1.0) of the extraction.</summary>
+    public double Confidence { get; set; }
+
+    /// <summary>True if check digits are valid (MRZ only, ADR-009-R23).</summary>
+    public bool? CheckDigitsValid { get; set; }
+
+    /// <summary>True if manual review is suggested (low confidence or invalid check digits).</summary>
+    public bool RequiresManualReview { get; set; }
+}
+
+/// <summary>
+/// Extracted document fields from MRZ or OCR (NF-10).
+/// </summary>
+public class ExtractedDocumentFields
+{
+    public string? DocumentType { get; set; }
+    public string? Surname { get; set; }
+    public string? GivenNames { get; set; }
+    public string? FullName { get; set; }
+    public string? DocumentNumber { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? Nationality { get; set; }
+    public DateTime? ExpirationDate { get; set; }
+    public string? Sex { get; set; }
+    public string? IssuingState { get; set; }
+}
+
+/// <summary>
+/// Response from selfie upload endpoint with biometric verification outcome (NF-11, ADR-013).
+/// NEVER includes image data or embeddings per ADR-013-R2 (immediate deletion guarantee).
+/// </summary>
+public class SelfieUploadResponse
+{
+    /// <summary>Biometric verification outcome: Accept, Escalate, or Reject (ADR-013-R4).</summary>
+    public string Outcome { get; set; } = string.Empty;
+
+    /// <summary>Number of attempts made in this session (max 3 per ADR-013-R5).</summary>
+    public int Attempts { get; set; }
+
+    /// <summary>Maximum attempts allowed.</summary>
+    public int MaxAttempts { get; set; }
+
+    /// <summary>True if max attempts reached and session auto-escalated to operator queue (ADR-013-R5).</summary>
+    public bool AutoEscalated { get; set; }
+
+    /// <summary>Message key for localized feedback to the guest.</summary>
+    public string? MessageKey { get; set; }
+}

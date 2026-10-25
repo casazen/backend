@@ -23,4 +23,16 @@ public class AccessResponse
 
     /// <summary>When the gift was granted (ISO8601), if access is via gift</summary>
     public DateTime? GiftAssignedAt { get; set; }
+
+    /// <summary>
+    /// Whether the current version of the privacy notice was accepted for this lease. It comes before the form: without it the signed
+    /// link answers 409 <c>concordatofacile_privacy_not_accepted</c>, whatever the source of the access (CF-BE).
+    /// </summary>
+    public bool PrivacyAccepted { get; set; }
+
+    /// <summary>When the current version of the privacy notice was accepted for this lease (ISO8601); null when it was not.</summary>
+    public DateTime? PrivacyAcceptedAt { get; set; }
+
+    /// <summary>When the signed link of the form was last made, that is when the form was last opened (ISO8601); null when never (CF-BE).</summary>
+    public DateTime? LinkOpenedAt { get; set; }
 }

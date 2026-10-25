@@ -464,10 +464,13 @@ public class LeasesController(
     }
 
     /// <summary>
-    /// Manual registration (LT-01, default path, D15): the landlord filed the contract on the official channel of the
-    /// Agenzia delle Entrate and declares the registration number or protocol, its date and the receipt PDF (private
-    /// bucket, FD-07). Only now the lease becomes Registered. Multipart fields: <c>registrationCode</c>,
-    /// <c>registrationDate</c>, <c>receipt</c>.
+    /// Manual registration (LT-01, default path, D15): the contract was registered on the official channel of the
+    /// Agenzia delle Entrate (by the landlord, or for a contract made with the guided service by the service) and the landlord declares the
+    /// registration number or protocol, its date and the receipt PDF (private bucket, FD-07). Only now the lease becomes Registered.
+    /// Multipart fields: <c>registrationCode</c>, <c>registrationDate</c> and the receipt, either <c>receipt</c> (the file sent now) or
+    /// <c>receiptDocumentId</c> (a <c>Registration</c> document already uploaded to this lease, CF-END: 404 <c>document_not_found</c> for
+    /// any other, nothing read), exactly one of the two (400 <c>validation_error</c> otherwise). The receipt of the registration is a file
+    /// of its own, also when it comes from a document.
     /// </summary>
     [HttpPost("{id:guid}/registration/manual")]
     [Consumes("multipart/form-data")]
@@ -485,12 +488,29 @@ public class LeasesController(
         if (denied is not null)
             return denied;
 
-        await using var receipt = form.Receipt!.OpenReadStream();
-        var registration = await registrations.DeclareManualRegistrationAsync(
-            id,
-            userId,
-            new ManualRegistrationDeclaration(form.RegistrationCode!, form.RegistrationDate!.Value, receipt, form.Receipt.Length),
-            cancellationToken);
+        // The receipt comes once: the file sent now, or the document already uploaded to this lease.
+        if ((form.Receipt is null) == (form.ReceiptDocumentId is null))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "RegistrationReceiptSourceInvalid");
+
+        LeaseRegistration registration;
+        if (form.Receipt is { } file)
+        {
+            await using var receipt = file.OpenReadStream();
+            registration = await registrations.DeclareManualRegistrationAsync(
+                id,
+                userId,
+                new ManualRegistrationDeclaration(form.RegistrationCode!, form.RegistrationDate!.Value, receipt, file.Length),
+                cancellationToken);
+        }
+        else
+        {
+            registration = await registrations.DeclareManualRegistrationFromDocumentAsync(
+                id,
+                userId,
+                new ManualRegistrationDocumentDeclaration(form.RegistrationCode!, form.RegistrationDate!.Value, form.ReceiptDocumentId!.Value),
+                cancellationToken);
+        }
+
         return Ok(LeaseDtoMapper.ToRegistration(registration));
     }
 
@@ -886,7 +906,10 @@ public sealed record CedolareAdvisoryRequest(
     [param: Range(1, 20)] int? Copies,
     [param: Range(0d, 100_000_000d)] decimal? OtherTaxableIncomeEur);
 
-/// <summary>Manual RLI registration: what the landlord reads on the receipt of the Agenzia delle Entrate, plus the receipt.</summary>
+/// <summary>
+/// Manual RLI registration: what the landlord reads on the receipt of the Agenzia delle Entrate, plus the receipt: the file sent now, or
+/// the document of the lease that already holds it (CF-END), one of the two.
+/// </summary>
 public sealed class ManualRegistrationForm
 {
     /// <summary>Registration number or protocol, as written on the receipt.</summary>
@@ -897,9 +920,14 @@ public sealed class ManualRegistrationForm
     [Required]
     public DateTime? RegistrationDate { get; set; }
 
-    /// <summary>The receipt, a PDF of at most 10 MB.</summary>
-    [Required]
+    /// <summary>The receipt sent now, a PDF of at most 10 MB. Exactly one of this and <see cref="ReceiptDocumentId"/>.</summary>
     public IFormFile? Receipt { get; set; }
+
+    /// <summary>
+    /// The receipt already uploaded to this lease: the id of its document of kind <c>Registration</c>. Exactly one of this and
+    /// <see cref="Receipt"/>.
+    /// </summary>
+    public Guid? ReceiptDocumentId { get; set; }
 }
 
 public sealed class LeaseAttachmentForm

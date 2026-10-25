@@ -302,7 +302,8 @@ public class PropertyModeActivityTests : IDisposable
     {
         foreach (var type in new[] { OrgActivityType.PropertyModeChangeScheduled, OrgActivityType.PropertyModeChangeCancelled, OrgActivityType.PropertyModeChanged })
             Assert.False(OrgActivityCatalog.Describe(type).Reserved, type.ToString());
-        foreach (var type in new[] { OrgActivityType.TrustedSupplierAdded, OrgActivityType.TrustedSupplierRemoved })
-            Assert.True(OrgActivityCatalog.Describe(type).Reserved, type.ToString());
+        // TrustedSupplierAdded is still reserved; TrustedSupplierRemoved is now written (NF-21).
+        Assert.True(OrgActivityCatalog.Describe(OrgActivityType.TrustedSupplierAdded).Reserved, "TrustedSupplierAdded");
+        Assert.False(OrgActivityCatalog.Describe(OrgActivityType.TrustedSupplierRemoved).Reserved, "TrustedSupplierRemoved");
     }
 }

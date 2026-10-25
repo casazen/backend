@@ -91,6 +91,9 @@ public class AppDbContext(
     // Swiss municipalities from Ufficio federale di statistica (NF-02)
     public DbSet<SwissMunicipality> SwissMunicipalities { get; set; } = null!;
 
+    // Swiss compliance receipts (Ticino police notifications, OTR tax reports, ADR-016)
+    public DbSet<SwissComplianceReceipt> SwissComplianceReceipts { get; set; } = null!;
+
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
@@ -116,6 +119,18 @@ public class AppDbContext(
     /// <c>OrgId</c> predicate.
     /// </summary>
     public DbSet<SupplierServiceListing> SupplierServiceListings { get; set; } = null!;
+
+    /// <summary>
+    /// Trusted supplier relationships for agency tier orgs (NF-21, ADR-020): an agency's preferred suppliers
+    /// with manual payment mode, 0% commission, and statement integration.
+    /// </summary>
+    public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
+
+    /// <summary>
+    /// Internal activities performed by staff on properties (NF-22): cleaning, maintenance, check-in assistance.
+    /// Staff sees only activities within their perimeter (PropertyMemberAccess).
+    /// </summary>
+    public DbSet<InternalActivity> InternalActivities { get; set; } = null!;
 
     /// <summary>
     /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
@@ -158,6 +173,13 @@ public class AppDbContext(
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
 
+    // Guest identity document images for OCR (NF-10, ADR-013-R3)
+    public DbSet<DocumentImage> DocumentImages { get; set; } = null!;
+
+    // Biometric verification settings and audit logs (NF-11, ADR-013)
+    public DbSet<BiometricSettings> BiometricSettings { get; set; } = null!;
+    public DbSet<BiometricVerificationLog> BiometricVerificationLogs { get; set; } = null!;
+
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
 
@@ -166,6 +188,9 @@ public class AppDbContext(
 
     // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
     public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
+
+    // Approval queue for items requiring human decision before taking effect (NF-06)
+    public DbSet<ApprovalQueueItem> ApprovalQueueItems { get; set; } = null!;
 
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
@@ -189,9 +214,18 @@ public class AppDbContext(
     public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
     public DbSet<ConcordatoFacileGift> ConcordatoFacileGifts { get; set; } = null!;
 
+    // Practices of the simulated ConcordatoFacile module: test environments only (CF-SIM)
+    public DbSet<CfSimulatedPractice> CfSimulatedPractices { get; set; } = null!;
+
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
     public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
+    public DbSet<MarketingConsentRecord> MarketingConsentRecords { get; set; } = null!;
+    public DbSet<SuppressionListEntry> SuppressionListEntries { get; set; } = null!;
+
+    // CRM guest profiles for marketing and segmentation (NF-23, ADR-021)
+    public DbSet<GuestCrmProfile> GuestCrmProfiles { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -300,6 +334,9 @@ public class AppDbContext(
 
         // CO-15: audit of the operations on guest data; no foreign key to the guest, so it outlives a removed guest.
         modelBuilder.ApplyConfiguration(new GuestPrivacyAuditEntryConfiguration());
+
+        // NF-05: marketing suppression list with SHA-256 blind index for one-click unsubscribe (ADR-007-R18, R22).
+        modelBuilder.ApplyConfiguration(new SuppressionListEntryConfiguration());
 
         // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
         // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
@@ -683,6 +720,7 @@ public class AppDbContext(
         // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
         modelBuilder.ApplyConfiguration(new ConcordatoFacilePurchaseConfiguration());
         modelBuilder.ApplyConfiguration(new ConcordatoFacileGiftConfiguration());
+        modelBuilder.ApplyConfiguration(new CfSimulatedPracticeConfiguration());
 
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).

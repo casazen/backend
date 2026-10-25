@@ -79,11 +79,11 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Catalog_TheReservedEvents_AreTheTwoOfTheTrustedSuppliersThatDoNotExistYet()
     {
-        // The three events of the property mode are written since AM-02c (PropertyModeService); the trusted suppliers and TierAssigned (ADR-010) are not.
+        // The three events of the property mode are written since AM-02c (PropertyModeService); TrustedSupplierRemoved is written since NF-21; TrustedSupplierAdded and TierAssigned (ADR-010) are reserved.
         var reserved = OrgActivityCatalog.All.Where(e => e.Reserved).Select(e => e.Type).Order().ToList();
 
         Assert.Equal(
-            new[] { OrgActivityType.TierAssigned, OrgActivityType.TrustedSupplierAdded, OrgActivityType.TrustedSupplierRemoved }.Order(),
+            new[] { OrgActivityType.TierAssigned, OrgActivityType.TrustedSupplierAdded }.Order(),
             reserved);
     }
 
