@@ -1620,4 +1620,37 @@
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>You receive this email because the host replied to you. We send at most one every 10 minutes per conversation.</value>
   </data>
+  <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
+    <value>New photo requested for your stay — {0}</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Body" xml:space="preserve">
+    <value>For your stay at &lt;strong&gt;{0}&lt;/strong&gt; checking in on &lt;strong&gt;{1}&lt;/strong&gt;, we need a new selfie photo to complete verification.</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Action" xml:space="preserve">
+    <value>Click the link below to complete check-in:</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Cta" xml:space="preserve">
+    <value>Complete check-in</value>
+  </data>
+  <data name="GuestNewPhotoRequest_LinkFallback" xml:space="preserve">
+    <value>If the button doesn't work, copy this link into your browser:</value>
+  </data>
+  <data name="VerificationRequired_Subject" xml:space="preserve">
+    <value>Biometric verification required — {0}</value>
+  </data>
+  <data name="VerificationRequired_Body" xml:space="preserve">
+    <value>The booking of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; checking in on {2:d MMMM yyyy} requires manual verification.</value>
+  </data>
+  <data name="VerificationRequired_Action" xml:space="preserve">
+    <value>Open the verification queue in CasaZen to approve or reject the booking.</value>
+  </data>
+  <data name="VerificationRequiredPush_Title" xml:space="preserve">
+    <value>Manual verification required</value>
+  </data>
+  <data name="VerificationRequiredPush_Body" xml:space="preserve">
+    <value>The booking of {0} at {1} requires manual verification.</value>
+  </data>
 </root>
