@@ -41,13 +41,8 @@ public sealed class ConcordatoFacileCheckoutService(
         string userId,
         CancellationToken cancellationToken = default)
     {
-        // CF-FIX: only a lease of the caller's org can be paid for. The query names the org on top of the tenant filter.
-        var leaseOfTheOrg = await dbContext.LeaseContracts
-            .AnyAsync(l => l.Id == leaseId && l.OrgId == orgId, cancellationToken);
-        if (!leaseOfTheOrg)
-        {
-            throw new NotFoundException($"Lease {leaseId} not found.") { Code = "lease_not_found", MessageKey = "LeaseNotFound" };
-        }
+        // CF-FIX: only a lease of the caller's org can be paid for (404 lease_not_found otherwise, the rule shared with the status and the gift).
+        await dbContext.EnsureLeaseOfOrgAsync(leaseId, orgId, cancellationToken);
 
         // CF-FIX: a lease that already has the access (completed purchase or consumed gift) is never charged again, and Stripe is not called.
         if (await HasAccessAsync(leaseId, orgId, cancellationToken))

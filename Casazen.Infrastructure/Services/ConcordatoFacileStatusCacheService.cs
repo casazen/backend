@@ -11,6 +11,7 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// CF status cache service with 15-minute expiry and request coalescing (ADR-008-R7 through ADR-008-R10, ADR-008-R14).
+/// It also keeps the answer of the lookup of a single practice for 15 minutes (<see cref="GetPracticeAsync"/>).
 /// </summary>
 public sealed class ConcordatoFacileStatusCacheService(
     IMemoryCache memoryCache,
@@ -23,11 +24,20 @@ public sealed class ConcordatoFacileStatusCacheService(
     private static readonly TimeSpan BriefRefreshExpiry = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan BriefRefreshWindow = TimeSpan.FromHours(1);
 
+    // CF-FIX2: after a failed read the stale snapshot is served for this long before ConcordatoFacile is asked again.
+    private static readonly TimeSpan AfterErrorExpiry = TimeSpan.FromMinutes(5);
+
+    // CF-FIX2: a practice ConcordatoFacile does not know yet (the form was sent seconds ago) is asked again soon, not in 15 minutes.
+    private static readonly TimeSpan PracticeNotFoundExpiry = TimeSpan.FromMinutes(1);
+
     // Request coalescing: one semaphore per leaseId to prevent concurrent API calls for the same lease
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
     public async Task<CfStatusResult> GetPracticesAsync(Guid leaseId, Guid orgId, CancellationToken cancellationToken = default)
     {
+        // CF-FIX2 (ADR-008-R11): the lease must be the caller's org's before anything is read from the cache or asked to ConcordatoFacile.
+        await db.EnsureLeaseOfOrgAsync(leaseId, orgId, cancellationToken);
+
         var cacheKey = BuildCacheKey(leaseId, orgId);
 
         // Check cache: if valid (not expired) and tenant matches, return cached
@@ -114,18 +124,24 @@ public sealed class ConcordatoFacileStatusCacheService(
 
                 return BuildResult(newSnapshot);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
+                // A caller that goes away is not a failure of ConcordatoFacile: it must not hold back the next read for 5 minutes (CF-FIX2).
                 logger.LogWarning(ex, "Failed to fetch CF practices for lease {LeaseId}", leaseId);
 
                 // ADR-008-R8: On error, retain last valid snapshot as stale
                 if (snapshot is not null)
                 {
+                    var failedAt = DateTime.UtcNow;
                     snapshot = snapshot with
                     {
                         IsStale = true,
                         LastError = ex.Message,
-                        LastAttemptAt = DateTime.UtcNow
+                        LastAttemptAt = failedAt,
+
+                        // CF-FIX2: without this the stale snapshot would keep its expiry in the past and every opening of the page would
+                        // ask ConcordatoFacile again at once; the old data is served as stale until then (and NextUpdateAt says when).
+                        ExpiresAt = failedAt.Add(AfterErrorExpiry)
                     };
 
                     // Keep the stale snapshot in cache
@@ -147,11 +163,41 @@ public sealed class ConcordatoFacileStatusCacheService(
         }
     }
 
+    /// <summary>
+    /// CF-FIX2: the answer of ConcordatoFacile for a practice number, kept 15 minutes per (environment, practice) so that opening the
+    /// upload page again does not read it again (the README promises it). Only ConcordatoFacile's own data is cached and every org shares
+    /// it: the lease the practice names is checked against the caller's org each time, outside this cache. A failed read is not cached.
+    /// </summary>
+    public async Task<PracticeDto?> GetPracticeAsync(string practiceId, CancellationToken cancellationToken = default)
+    {
+        var cacheKey = $"{environment.EnvironmentName}:practice:{practiceId}";
+
+        if (memoryCache.TryGetValue(cacheKey, out CachedPractice? cached) && cached is not null)
+        {
+            return cached.Practice;
+        }
+
+        var practice = await apiClient.GetPracticeAsync(practiceId, cancellationToken);
+
+        memoryCache.Set(
+            cacheKey,
+            new CachedPractice(practice),
+            new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = practice is null ? PracticeNotFoundExpiry : NormalExpiry
+            });
+
+        return practice;
+    }
+
     private string BuildCacheKey(Guid leaseId, Guid orgId)
     {
         // ADR-008-R10: Cache key = {env}:{orgId}:{leaseId} for tenant isolation
         return $"{environment.EnvironmentName}:{orgId}:{leaseId}";
     }
+
+    /// <summary>What ConcordatoFacile answered for a practice number: the practice, or null when it does not know it.</summary>
+    private sealed record CachedPractice(PracticeDto? Practice);
 
     private async Task<TimeSpan> DetermineExpiryAsync(Guid leaseId, int practiceCount, CancellationToken cancellationToken)
     {

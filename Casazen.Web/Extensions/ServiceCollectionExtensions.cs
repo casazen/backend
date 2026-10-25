@@ -437,6 +437,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConcordatoFacileAccessService, ConcordatoFacileAccessService>();
         services.AddScoped<IConcordatoFacileGiftService, ConcordatoFacileGiftService>();
         services.AddScoped<IConcordatoFacileLinkService, ConcordatoFacileLinkService>();
+        // The practices of a lease and the lookup of a practice, read from the ConcordatoFacile status API and kept in memory (ADR-008). The
+        // controller of the module takes it in its constructor: without this registration every one of its actions fails (CF-FIX2).
+        services.AddScoped<IConcordatoFacileStatusCacheService, ConcordatoFacileStatusCacheService>();
         // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
         services.AddScoped<IRentRegisterService, RentRegisterService>();
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();

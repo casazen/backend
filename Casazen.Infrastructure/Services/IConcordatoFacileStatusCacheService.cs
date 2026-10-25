@@ -8,13 +8,24 @@ namespace Casazen.Infrastructure.Services;
 public interface IConcordatoFacileStatusCacheService
 {
     /// <summary>
-    /// Get practices for a lease, from cache if valid or by calling the CF API.
+    /// Get practices for a lease, from cache if valid or by calling the CF API. The lease must belong to the organization: a lease
+    /// that does not exist or is another org's is a <see cref="Casazen.Core.Exceptions.NotFoundException"/> (<c>lease_not_found</c>)
+    /// raised before the cache is read and before ConcordatoFacile is asked (ADR-008-R11).
     /// </summary>
     /// <param name="leaseId">The lease contract ID.</param>
     /// <param name="orgId">The organization ID (for tenant isolation, ADR-008-R10).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Cached or fresh practice status with metadata.</returns>
     Task<CfStatusResult> GetPracticesAsync(Guid leaseId, Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A practice by its number, from the memory cache (15 minutes per environment and practice) or from the CF API; null when
+    /// ConcordatoFacile does not know it. It is ConcordatoFacile's own data, the same for every org: the caller checks that the
+    /// lease it names is the caller's org's.
+    /// </summary>
+    /// <param name="practiceId">The practice number (<c>P-</c> and 16 hexadecimal characters), already validated.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<PracticeDto?> GetPracticeAsync(string practiceId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
