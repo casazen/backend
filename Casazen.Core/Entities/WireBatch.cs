@@ -60,4 +60,11 @@ public class WireBatch : ITenantOwned
 
     /// <summary>When the batch was confirmed as paid. Null while Status != Paid.</summary>
     public DateTime? PaidAt { get; set; }
+
+    /// <summary>
+    /// The generated XML file content (SEPA pain.001 or Swiss Payment Standards).
+    /// Stored to ensure the exact file downloaded matches what was generated.
+    /// </summary>
+    [MaxLength(-1)]
+    public string? XmlContent { get; set; }
 }

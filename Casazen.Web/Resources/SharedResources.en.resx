@@ -3350,4 +3350,46 @@
   <data name="VerificationReasonRequired" xml:space="preserve">
     <value>A rejection reason is required</value>
   </data>
+  <data name="BatchAlreadyDownloadedOrPaid" xml:space="preserve">
+    <value>The batch has already been downloaded or paid</value>
+  </data>
+  <data name="BatchAlreadyPaid" xml:space="preserve">
+    <value>The batch has already been marked as paid</value>
+  </data>
+  <data name="BatchNotDownloaded" xml:space="preserve">
+    <value>The batch has not been downloaded yet</value>
+  </data>
+  <data name="InvalidDebitAccountIban" xml:space="preserve">
+    <value>The debit account IBAN is invalid</value>
+  </data>
+  <data name="InvalidXmlFormat" xml:space="preserve">
+    <value>The wire transfer file XML format is invalid</value>
+  </data>
+  <data name="InvalidXmlStructure" xml:space="preserve">
+    <value>The XML file structure does not comply with ISO 20022 standard</value>
+  </data>
+  <data name="MixedCurrenciesNotAllowed" xml:space="preserve">
+    <value>Cannot include statements in different currencies in the same batch</value>
+  </data>
+  <data name="NoStatementsProvided" xml:space="preserve">
+    <value>No statements provided to create the batch</value>
+  </data>
+  <data name="OwnerInvalidIban" xml:space="preserve">
+    <value>An owner has an invalid IBAN</value>
+  </data>
+  <data name="OwnerMissingIban" xml:space="preserve">
+    <value>An owner does not have an IBAN configured</value>
+  </data>
+  <data name="StatementsNotFoundOrNotOwned" xml:space="preserve">
+    <value>One or more statements were not found or do not belong to your organization</value>
+  </data>
+  <data name="StatementsNotPublished" xml:space="preserve">
+    <value>All statements must be published before creating a wire transfer batch</value>
+  </data>
+  <data name="StatementsAlreadyInBatch" xml:space="preserve">
+    <value>One or more statements are already included in a wire transfer batch</value>
+  </data>
+  <data name="BatchXmlNotFound" xml:space="preserve">
+    <value>The batch XML file was not found</value>
+  </data>
 </root>

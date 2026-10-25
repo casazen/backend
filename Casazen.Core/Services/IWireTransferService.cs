@@ -34,4 +34,16 @@ public interface IWireTransferService
     /// Mark a batch as paid. Updates Status to Paid and sets PaidAt.
     /// </summary>
     Task ConfirmPaidAsync(Guid batchId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get the batch file content and mark it as downloaded on first retrieval.
+    /// </summary>
+    /// <param name="orgId">The caller's org ID (from tenant context).</param>
+    /// <param name="batchId">The batch ID.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The batch and its XML file content.</returns>
+    Task<(WireBatch Batch, string XmlContent)> GetBatchFileAsync(
+        Guid orgId,
+        Guid batchId,
+        CancellationToken cancellationToken = default);
 }

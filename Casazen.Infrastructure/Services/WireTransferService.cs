@@ -69,14 +69,16 @@ public sealed class WireTransferService(
 
         var currency = currencies[0];
 
-        // Check if any statement is already in a batch
-        var alreadyInBatch = await db.Set<WireBatch>()
-            .Where(wb => statementIds.Any(sid => EF.Functions.Like(wb.DebitAccount, $"%{sid}%")))
-            .AnyAsync(cancellationToken);
+        // Check if any statement is already in a batch (AC-NF19-8)
+        var statementsInBatches = await db.Set<WireBatchStatement>()
+            .Where(wbs => statementIds.Contains(wbs.OwnerStatementId))
+            .Select(wbs => wbs.OwnerStatementId)
+            .ToListAsync(cancellationToken);
 
-        // Note: We need a proper join table to track which statements are in which batch.
-        // For now, we'll create a simple many-to-many tracking using a separate entity.
-        // Since this is missing from the brief, I'll add a comment and proceed with validation.
+        if (statementsInBatches.Any())
+        {
+            throw new DomainRuleException("statements_already_in_batch", "StatementsAlreadyInBatch");
+        }
 
         // Group statements by PropertyOwnerId to create one wire per owner
         var ownerGroups = statements
@@ -130,6 +132,20 @@ public sealed class WireTransferService(
         db.WireBatches.Add(batch);
         await db.SaveChangesAsync(cancellationToken);
 
+        // Track which statements are in this batch (AC-NF19-8)
+        foreach (var statementId in statementIds)
+        {
+            var batchStatement = new WireBatchStatement
+            {
+                OrgId = orgId,
+                WireBatchId = batch.Id,
+                OwnerStatementId = statementId,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.Set<WireBatchStatement>().Add(batchStatement);
+        }
+        await db.SaveChangesAsync(cancellationToken);
+
         // Generate XML based on currency
         string xmlContent;
         if (currency == "CHF")
@@ -144,6 +160,10 @@ public sealed class WireTransferService(
 
         // Validate against XSD (in a real implementation, we'd load the official XSD)
         ValidateXml(xmlContent);
+
+        // Store the XML content for download
+        batch.XmlContent = xmlContent;
+        await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
             "Created wire batch {BatchId} with {TransferCount} transfers for {TotalAmount:N2} {Currency}",
@@ -198,6 +218,37 @@ public sealed class WireTransferService(
         batch.PaidAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<(WireBatch Batch, string XmlContent)> GetBatchFileAsync(
+        Guid orgId,
+        Guid batchId,
+        CancellationToken cancellationToken = default)
+    {
+        var batch = await db.WireBatches
+            .Where(wb => wb.Id == batchId && wb.OrgId == orgId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (batch is null)
+        {
+            throw new NotFoundException($"Wire batch {batchId} not found");
+        }
+
+        if (string.IsNullOrEmpty(batch.XmlContent))
+        {
+            throw new DomainRuleException("batch_xml_not_found", "BatchXmlNotFound");
+        }
+
+        // Mark as downloaded on first retrieval
+        if (batch.Status == WireBatchStatus.Generated)
+        {
+            batch.Status = WireBatchStatus.Downloaded;
+            batch.DownloadedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return (batch, batch.XmlContent);
     }
 
     /// <summary>

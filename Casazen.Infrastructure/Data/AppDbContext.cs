@@ -55,6 +55,7 @@ public class AppDbContext(
     public DbSet<OwnerStatement> OwnerStatements { get; set; } = null!;
     public DbSet<StatementLine> StatementLines { get; set; } = null!;
     public DbSet<WireBatch> WireBatches { get; set; } = null!;
+    public DbSet<WireBatchStatement> WireBatchStatements { get; set; } = null!;
     public DbSet<OwnerInvitation> OwnerInvitations { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;

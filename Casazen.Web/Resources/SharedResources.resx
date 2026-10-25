@@ -3350,4 +3350,46 @@
   <data name="VerificationReasonRequired" xml:space="preserve">
     <value>Il motivo del rifiuto è obbligatorio</value>
   </data>
+  <data name="BatchAlreadyDownloadedOrPaid" xml:space="preserve">
+    <value>Il batch è già stato scaricato o pagato</value>
+  </data>
+  <data name="BatchAlreadyPaid" xml:space="preserve">
+    <value>Il batch è già stato contrassegnato come pagato</value>
+  </data>
+  <data name="BatchNotDownloaded" xml:space="preserve">
+    <value>Il batch non è ancora stato scaricato</value>
+  </data>
+  <data name="InvalidDebitAccountIban" xml:space="preserve">
+    <value>L'IBAN del conto di addebito non è valido</value>
+  </data>
+  <data name="InvalidXmlFormat" xml:space="preserve">
+    <value>Il formato XML del file di bonifico non è valido</value>
+  </data>
+  <data name="InvalidXmlStructure" xml:space="preserve">
+    <value>La struttura del file XML non è conforme allo standard ISO 20022</value>
+  </data>
+  <data name="MixedCurrenciesNotAllowed" xml:space="preserve">
+    <value>Non è possibile includere rendiconti in valute diverse nello stesso batch</value>
+  </data>
+  <data name="NoStatementsProvided" xml:space="preserve">
+    <value>Nessun rendiconto fornito per creare il batch</value>
+  </data>
+  <data name="OwnerInvalidIban" xml:space="preserve">
+    <value>Un proprietario ha un IBAN non valido</value>
+  </data>
+  <data name="OwnerMissingIban" xml:space="preserve">
+    <value>Un proprietario non ha un IBAN configurato</value>
+  </data>
+  <data name="StatementsNotFoundOrNotOwned" xml:space="preserve">
+    <value>Uno o più rendiconti non sono stati trovati o non appartengono alla tua organizzazione</value>
+  </data>
+  <data name="StatementsNotPublished" xml:space="preserve">
+    <value>Tutti i rendiconti devono essere pubblicati prima di creare un batch di bonifici</value>
+  </data>
+  <data name="StatementsAlreadyInBatch" xml:space="preserve">
+    <value>Uno o più rendiconti sono già inclusi in un batch di bonifici</value>
+  </data>
+  <data name="BatchXmlNotFound" xml:space="preserve">
+    <value>Il file XML del batch non è stato trovato</value>
+  </data>
 </root>

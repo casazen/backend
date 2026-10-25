@@ -66,16 +66,16 @@ public class WireTransferController(
         if (orgId is null)
             return Forbid();
 
-        // Regenerate the batch file (in production, we'd store it or cache it)
-        // For now, we'll need to reconstruct it from the batch and statements
-        // This is a simplified implementation - a real one would store the file content
+        var (batch, xmlContent) = await wireTransferService.GetBatchFileAsync(
+            orgId.Value,
+            id,
+            HttpContext.RequestAborted);
 
-        return NotFound(new ProblemDetails
-        {
-            Status = StatusCodes.Status501NotImplemented,
-            Title = "Not Implemented",
-            Detail = "File download endpoint requires batch file storage implementation"
-        });
+        // Return the XML file as a download
+        var fileName = $"wire-batch-{batch.Id:N}-{batch.Currency}-{batch.CreatedAt:yyyyMMdd}.xml";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(xmlContent);
+
+        return File(bytes, "application/xml", fileName);
     }
 
     /// <summary>
