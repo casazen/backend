@@ -2297,6 +2297,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsAgencyTierDowngraded")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("LegalName")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
