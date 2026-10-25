@@ -3281,4 +3281,16 @@
   <data name="UserIdMissing" xml:space="preserve">
     <value>Identificativo utente mancante</value>
   </data>
+  <data name="Only approved campaigns can be scheduled" xml:space="preserve">
+    <value>Solo le campagne approvate possono essere pianificate</value>
+  </data>
+  <data name="Only draft campaigns can be submitted for approval" xml:space="preserve">
+    <value>Solo le campagne in bozza possono essere inviate per approvazione</value>
+  </data>
+  <data name="Scheduled time must be in the future" xml:space="preserve">
+    <value>L'orario pianificato deve essere nel futuro</value>
+  </data>
+  <data name="Segment condition JSON is invalid" xml:space="preserve">
+    <value>La condizione JSON del segmento non è valida</value>
+  </data>
 </root>
