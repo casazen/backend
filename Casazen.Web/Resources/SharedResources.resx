@@ -865,6 +865,12 @@
   <data name="AlloggiatiRecordFileName" xml:space="preserve">
     <value>Il file per il portale Alloggiati Web non può essere generato: il nome o il cognome dell'ospite {0} contiene caratteri che il portale non accetta. Scrivili solo con lettere dell'alfabeto latino, come sul documento.</value>
   </data>
+  <data name="questura_credentials_missing" xml:space="preserve">
+    <value>Credenziali Questura mancanti per questa struttura.</value>
+  </data>
+  <data name="alloggiati_send_failed" xml:space="preserve">
+    <value>Invio Alloggiati Web non riuscito.</value>
+  </data>
   <data name="TouristTaxRateNotFound" xml:space="preserve">
     <value>Tariffa dell'imposta di soggiorno non trovata.</value>
   </data>
