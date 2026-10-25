@@ -262,15 +262,18 @@ public class CampaignService(
     }
 
     /// <summary>
-    /// Enriches email body with UTM params and one-click unsubscribe link (AC-NF24-7, AC-NF24-9).
+    /// Enriches email body with one-click unsubscribe link (AC-NF24-7).
+    /// NOTE: UTM parameter enrichment (AC-NF24-9) is deferred - requires HTML parsing to find and modify links.
     /// </summary>
     private string EnrichEmailBody(string body, Guid orgId, Guid campaignId, string email)
     {
-        // Add UTM parameters to links (AC-NF24-9)
-        var utmParams = $"utm_source=campaign&utm_medium=email&utm_campaign={campaignId}";
+        // TODO AC-NF24-9: Add UTM parameters to links in the email body.
+        // This requires HTML parsing to find <a href="..."> tags that point to the agency's direct booking site
+        // and append utm_source=campaign&utm_medium=email&utm_campaign={campaignId} to the URLs.
+        // Deferred to a future task due to complexity of safe HTML manipulation.
 
         // Generate one-click unsubscribe link (AC-NF24-7)
-        // TODO: This should use a proper unsubscribe token/link generation service
+        // TODO: This should use a proper signed unsubscribe token service (shared with NF-05)
         var unsubscribeLink = $"https://app.casazen.com/unsubscribe?org={orgId}&email={Uri.EscapeDataString(email)}&campaign={campaignId}";
 
         // Append unsubscribe footer
