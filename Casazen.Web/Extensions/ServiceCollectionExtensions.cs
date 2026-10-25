@@ -389,6 +389,9 @@ public static class ServiceCollectionExtensions
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).
         services.AddScoped<ISuppressionService, SuppressionService>();
+        // NF-24: Marketing campaigns and guest segmentation (ADR-014).
+        services.AddScoped<IConditionEvaluator, ConditionEvaluator>();
+        services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
