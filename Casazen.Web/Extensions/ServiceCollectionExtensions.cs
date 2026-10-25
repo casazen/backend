@@ -456,6 +456,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConcordatoFacileAccessService, ConcordatoFacileAccessService>();
         services.AddScoped<IConcordatoFacileGiftService, ConcordatoFacileGiftService>();
         services.AddScoped<IConcordatoFacileLinkService, ConcordatoFacileLinkService>();
+        // The privacy notice accepted for a lease before the guided form is opened; the signed link and the controller take it (CF-BE).
+        services.AddScoped<IConcordatoFacilePrivacyService, ConcordatoFacilePrivacyService>();
         // The practices of a lease and the lookup of a practice, read from the ConcordatoFacile status API and kept in memory (ADR-008). The
         // controller of the module takes it in its constructor: without this registration every one of its actions fails (CF-FIX2).
         services.AddScoped<IConcordatoFacileStatusCacheService, ConcordatoFacileStatusCacheService>();
@@ -700,21 +702,18 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ConcordatoFacileApiClient>((serviceProvider, client) =>
         {
             var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-            var logger = serviceProvider.GetRequiredService<ILogger<ConcordatoFacileApiClient>>();
 
             var baseUrl = configuration["ConcordatoFacile:StatusApiUrl"] ?? "https://stato.concordatofacile.it";
             client.BaseAddress = new Uri(baseUrl);
 
+            // Without the key no header is set and ConcordatoFacileApiClient.IsConfigured is false: the status service does not ask
+            // ConcordatoFacile and says once (CF-BE) that the key is missing. This delegate runs at every creation of the client, so it
+            // must not log: it used to warn at every request that reached the controller, checkout and access included.
             var apiKey = configuration["ConcordatoFacile:StatusApiKey"];
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
                 client.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-            }
-            else
-            {
-                // Graceful degradation per ADR-008-R22: log warning but do not fail startup
-                logger.LogWarning("ConcordatoFacile:StatusApiKey not configured; CF status API disabled");
             }
 
             client.Timeout = TimeSpan.FromSeconds(120); // Total timeout for all retries
