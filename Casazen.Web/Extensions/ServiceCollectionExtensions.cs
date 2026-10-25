@@ -381,6 +381,9 @@ public static class ServiceCollectionExtensions
         // NF-10: Document OCR and MRZ extraction for guest check-in (ADR-009-R22, ADR-013-R10).
         services.AddScoped<IMrzExtractionService, MrzExtractionService>();
         services.AddScoped<IDocumentOcrService, DocumentOcrService>();
+        // NF-11: Biometric verification for guest check-in (ADR-013).
+        services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
+        services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).

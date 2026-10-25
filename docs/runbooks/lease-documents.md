@@ -18,6 +18,8 @@ La migrazione `AddLeaseDocuments` è additiva e applicata all'avvio dal meccanis
 
 La lettura del contratto caricato e il riempimento della bozza «importato» (NL-DOCS) sono in [`lease-document-extraction.md`](lease-document-extraction.md); la bozza minima del concordato, la pagina del servizio con pagamento e omaggio, il link firmato, lo stato della pratica e il ritorno da ConcordatoFacile con `?practice=` sono descritti in `docs/integrations/concordatofacile/README.md`; resta da fare la lettura dei dati di attestazione e ricevuta di registrazione. Una singola foto JPEG/PNG inviata a questo endpoint diventa un PDF di una pagina (come per i documenti della casa).
 
+La ricevuta di registrazione caricata qui come documento di tipo `Registration` serve a dichiarare la registrazione senza ricaricare il file (CF-END): `POST /api/leases/{leaseId}/registration/manual` accetta `receiptDocumentId` al posto di `receipt`, solo per un documento `Registration` di questo contratto e della sua organizzazione (ogni altro è 404 `document_not_found`, senza leggere nulla). Il documento resta nella sezione Documenti con il suo file e la registrazione ne tiene uno suo (due chiavi, un proprietario ciascuna): vedi [`long-rent-lease-import.md`](long-rent-lease-import.md) § 12.
+
 ## Verifica
 
 Test del servizio: originali conservati, nessun PropertyDocument creato, separazione tra leaseId, PDF non validi e limiti, nessun avanzamento fiscale automatico. Test controller: accesso negato non raggiunge lo storage. Test PostgreSQL/API: upload multipart, elenco, download originale, riapertura del DB e rifiuto di anonimi/altra organizzazione.

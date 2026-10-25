@@ -135,8 +135,10 @@ public sealed class ConcordatoFacileCheckoutService(
                     Quantity = 1
                 }
             },
-            SuccessUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/concordatofacile?checkout=success",
-            CancelUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/concordatofacile?checkout=cancelled",
+            // CF-END: the page of the guided route (the old address, which the frontend keeps only as a redirect for the Sessions already
+            // created, named the supplier in the address bar).
+            SuccessUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/guided-contract?checkout=success",
+            CancelUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/guided-contract?checkout=cancelled",
             Metadata = PaymentMetadata(orgId, leaseId, userId),
             PaymentIntentData = new SessionPaymentIntentDataOptions
             {

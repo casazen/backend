@@ -579,6 +579,9 @@
   <data name="RliReceiptNotAvailable" xml:space="preserve">
     <value>The registration receipt is not available: the contract is not registered yet.</value>
   </data>
+  <data name="RegistrationReceiptSourceInvalid" xml:space="preserve">
+    <value>Give the receipt in one way only: the file sent now, or the document already uploaded to the contract.</value>
+  </data>
   <data name="ServiceRequestNotFound" xml:space="preserve">
     <value>Service request not found</value>
   </data>
@@ -1216,6 +1219,15 @@
   <data name="CheckInDateOfBirthInFuture" xml:space="preserve">
     <value>The date of birth cannot be in the future.</value>
   </data>
+  <data name="CheckInBiometricDocumentPhotoRequired" xml:space="preserve">
+    <value>Document photo is required for biometric verification.</value>
+  </data>
+  <data name="CheckInBiometricMaxAttemptsReached" xml:space="preserve">
+    <value>Maximum number of biometric verification attempts reached.</value>
+  </data>
+  <data name="CheckInBiometricMinorExcluded" xml:space="preserve">
+    <value>Biometric verification is not available for minors.</value>
+  </data>
   <data name="CheckInProvinceInvalid" xml:space="preserve">
     <value>Enter the two-letter province code (e.g. RM).</value>
   </data>
@@ -1234,8 +1246,20 @@
   <data name="CheckInDocumentRequired" xml:space="preserve">
     <value>Document file is required.</value>
   </data>
+  <data name="CheckInDocumentPhotoTypeUnsupported" xml:space="preserve">
+    <value>Document photo must be JPEG or PNG.</value>
+  </data>
   <data name="CheckInDocumentTypeUnsupported" xml:space="preserve">
     <value>Only JPEG and PNG images are supported.</value>
+  </data>
+  <data name="CheckInSelfieProcessingFailed" xml:space="preserve">
+    <value>Selfie processing failed. Please try again.</value>
+  </data>
+  <data name="CheckInSelfieRequired" xml:space="preserve">
+    <value>Selfie is required for biometric verification.</value>
+  </data>
+  <data name="CheckInSelfieTypeUnsupported" xml:space="preserve">
+    <value>Selfie must be JPEG or PNG.</value>
   </data>
   <data name="AlloggiatiCodeListUnknown" xml:space="preserve">
     <value>Unknown code list: use comuni, stati, documenti or luoghi.</value>
@@ -3228,7 +3252,7 @@
     <value>valid expiry date</value>
   </data>
   <data name="ConcordatoFacileGiftAlreadyExists" xml:space="preserve">
-    <value>The organization already has a ConcordatoFacile gift.</value>
+    <value>The organization already has a complimentary practice for the guided creation of the contract.</value>
   </data>
   <data name="SubscriptionIdRequired" xml:space="preserve">
     <value>The subscription ID is required.</value>
