@@ -53,6 +53,19 @@ public interface ILeaseSigningService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same import with the signed PDF the owner has <b>already uploaded</b> to the draft (NL-DOCS): the contract document of kind
+    /// <c>Contract</c> of this lease, named by id, instead of a file sent a second time. The document stays the one in the Documents
+    /// section; the signed copy of the lease is a copy of its bytes with a key of its own (never one key for two owners, see
+    /// <see cref="ImportSignedContractAsync"/>). 404 <c>document_not_found</c> for a document that is not a contract document of this
+    /// lease (another lease, another org, another kind); the rest as <see cref="ImportSignedContractAsync"/>.
+    /// </summary>
+    Task<LeaseContract> ImportSignedContractFromDocumentAsync(
+        Guid leaseId,
+        string userId,
+        ImportedDocumentDeclaration declaration,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Stipula date of a lease already signed whose signature was never recorded (older leases): fixes the RLI
     /// deadline. 409 <c>lease_stipula_already_recorded</c> when the lease has one.
     /// </summary>
@@ -95,6 +108,9 @@ public sealed record OfflineSignatureDeclaration(DateTime StipulaDate, Stream Si
 /// file had (kept as the name of the document in the lease's Documents section when it is a sound one).
 /// </summary>
 public sealed record ImportedContractDeclaration(DateTime StipulaDate, Stream SignedContract, long SignedContractLength, string? FileName);
+
+/// <summary>What the landlord declares to import a contract with the PDF already uploaded to the draft (NL-DOCS): the day of the signature and the id of the contract document.</summary>
+public sealed record ImportedDocumentDeclaration(DateTime StipulaDate, Guid DocumentId);
 
 /// <summary>The stored signed contract; the caller disposes <see cref="Content"/>.</summary>
 public sealed record SignedContractFile(Stream Content, string FileName);

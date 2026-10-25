@@ -13,7 +13,7 @@ namespace Casazen.Tests.Unit.Leases;
 public sealed class LeaseContractTextParserTests
 {
     // A canone libero 4+4 with the cedolare secca, a standard template: the people introduced in running text, the rent by the year and by the month.
-    private const string Libero = """
+    internal const string Libero = """
         CONTRATTO DI LOCAZIONE AD USO ABITATIVO
         (Legge 9 dicembre 1998, n. 431, art. 2, comma 1 - 4+4)
 
@@ -53,7 +53,7 @@ public sealed class LeaseContractTextParserTests
         """;
 
     // A canone concordato 3+2 as a form prints it: the people in labelled lines (surname first, in capitals), the rent by the month.
-    private const string Concordato = """
+    internal const string Concordato = """
         CONTRATTO DI LOCAZIONE AD USO ABITATIVO A CANONE CONCORDATO
         (art. 2, comma 3, legge 9 dicembre 1998 n. 431 - Accordo territoriale del Comune di Monza)
 
@@ -83,7 +83,7 @@ public sealed class LeaseContractTextParserTests
         """;
 
     // A transitory contract, short: the people with their code in brackets, the term as "dal ... al ...", the rent by the year only.
-    private const string Transitorio = """
+    internal const string Transitorio = """
         CONTRATTO DI LOCAZIONE AD USO ABITATIVO DI NATURA TRANSITORIA
         (art. 5, comma 1, legge 9 dicembre 1998, n. 431 e D.M. 16 gennaio 2017)
 

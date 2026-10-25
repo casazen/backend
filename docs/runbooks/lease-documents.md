@@ -16,7 +16,7 @@ La pagina `/app/long-rent/documents/upload?leaseId=<uuid>` usa il contratto salv
 
 La migrazione `AddLeaseDocuments` è additiva e applicata all'avvio dal meccanismo esistente. La tabella usa il filtro tenant EF e abilita RLS senza policy Data API: il normale backend proprietario della tabella accede attraverso le proprie autorizzazioni, anon/authenticated non leggono direttamente gli allegati. Pubblicare il backend e verificare salute/migrazione prima del frontend. Un ritorno a codice precedente non richiede cancellazione della tabella o dei documenti salvati.
 
-Estrazione automatica dei dati, creazione minima della bozza CF, pagamento/offerta e popolamento delle sezioni da documenti sono lavoro Helix successivo; non sono implementati da questa pagina di conservazione.
+La lettura del contratto caricato e il riempimento della bozza «importato» (NL-DOCS) sono in [`lease-document-extraction.md`](lease-document-extraction.md); creazione minima della bozza CF, pagamento/offerta e popolamento delle altre sezioni da documenti sono lavoro Helix successivo. Una singola foto JPEG/PNG inviata a questo endpoint diventa un PDF di una pagina (come per i documenti della casa).
 
 ## Verifica
 
