@@ -262,15 +262,13 @@ public class CampaignService(
     }
 
     /// <summary>
-    /// Enriches email body with one-click unsubscribe link (AC-NF24-7).
-    /// NOTE: UTM parameter enrichment (AC-NF24-9) is deferred - requires HTML parsing to find and modify links.
+    /// Enriches email body with UTM params and one-click unsubscribe link (AC-NF24-7, AC-NF24-9).
     /// </summary>
     private string EnrichEmailBody(string body, Guid orgId, Guid campaignId, string email)
     {
-        // TODO AC-NF24-9: Add UTM parameters to links in the email body.
-        // This requires HTML parsing to find <a href="..."> tags that point to the agency's direct booking site
-        // and append utm_source=campaign&utm_medium=email&utm_campaign={campaignId} to the URLs.
-        // Deferred to a future task due to complexity of safe HTML manipulation.
+        // Add UTM parameters to links (AC-NF24-9)
+        var utmParams = $"utm_source=campaign&utm_medium=email&utm_campaign={campaignId}";
+        body = AddUtmParametersToLinks(body, utmParams);
 
         // Generate one-click unsubscribe link (AC-NF24-7)
         // TODO: This should use a proper signed unsubscribe token service (shared with NF-05)
@@ -286,5 +284,38 @@ public class CampaignService(
 
         // No tracking pixel (AC-NF24-8)
         return body + footer;
+    }
+
+    /// <summary>
+    /// Adds UTM parameters to anchor tag href attributes in HTML content (AC-NF24-9).
+    /// Uses regex to find and modify links. Preserves existing query parameters.
+    /// </summary>
+    private static string AddUtmParametersToLinks(string html, string utmParams)
+    {
+        // Pattern matches <a href="URL"> where URL doesn't already contain utm_source
+        // This prevents double-adding UTM params and handles both " and ' quotes
+        var pattern = @"<a\s+([^>]*\s+)?href\s*=\s*[""']([^""']+?)[""']";
+
+        return System.Text.RegularExpressions.Regex.Replace(html, pattern, match =>
+        {
+            var fullMatch = match.Value;
+            var url = match.Groups[2].Value;
+
+            // Skip if already has UTM params or is not an HTTP(S) link
+            if (url.Contains("utm_source=") ||
+                !(url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                  url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+            {
+                return fullMatch;
+            }
+
+            // Append UTM params (use & if URL already has query params, otherwise ?)
+            var separator = url.Contains('?') ? "&" : "?";
+            var enrichedUrl = url + separator + utmParams;
+
+            // Replace the URL in the original match
+            return fullMatch.Replace($"\"{url}\"", $"\"{enrichedUrl}\"")
+                            .Replace($"'{url}'", $"'{enrichedUrl}'");
+        });
     }
 }
