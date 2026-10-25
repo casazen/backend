@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,8 @@ namespace Casazen.Infrastructure.Jobs;
 public class AlloggiatiReceiptJob(
     AppDbContext db,
     AlloggiatiWebClient client,
-    ILogger<AlloggiatiReceiptJob> logger)
+    ILogger<AlloggiatiReceiptJob> logger,
+    TimeProvider timeProvider)
 {
     private const int ReceiptLookbackDays = 30;
     private const int ReceiptAlertThresholdDays = 1;
@@ -56,7 +58,7 @@ public class AlloggiatiReceiptJob(
     {
         try
         {
-            var toDate = DateTime.UtcNow.Date;
+            var toDate = timeProvider.TodayInRome();
             var fromDate = toDate.AddDays(-ReceiptLookbackDays);
 
             // Retrieve receipts from Alloggiati Web for last 30 days
@@ -168,7 +170,7 @@ public class AlloggiatiReceiptJob(
     /// </summary>
     private async Task CheckMissingReceiptsAsync(Guid credentialId, CancellationToken ct)
     {
-        var thresholdDate = DateTime.UtcNow.Date.AddDays(-ReceiptAlertThresholdDays);
+        var thresholdDate = timeProvider.TodayInRome().AddDays(-ReceiptAlertThresholdDays);
 
         // Find properties that use this credential
         var propertyIds = await db.PropertyQuesturaCredentials
