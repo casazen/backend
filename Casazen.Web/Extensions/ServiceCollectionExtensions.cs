@@ -231,6 +231,7 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<IAuthorizationHandler, HostResourceAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OrgBillingAdminAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, AgencyTierAuthorizationHandler>();
 
         // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
         var builder = services.AddAuthorizationBuilder()
@@ -250,6 +251,13 @@ public static class ServiceCollectionExtensions
             var (contextKeys, permissionKey) = CasazenPolicies.ParseContextPolicy(policyName);
             builder.AddPolicy(policyName, policy =>
                 policy.Requirements.Add(new ContextPermissionRequirement(contextKeys, permissionKey)));
+        }
+
+        // Agency tier policies (ADR-010): all require Org.PlanTier == PlanTier.Agency
+        foreach (var policyName in CasazenPolicies.AgencyPolicies)
+        {
+            builder.AddPolicy(policyName, policy =>
+                policy.Requirements.Add(new AgencyTierRequirement()));
         }
 
         return services;

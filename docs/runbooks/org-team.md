@@ -776,7 +776,7 @@ something **asks the administrators for access**. Backend only; the screens are 
 
 ## 30. The events (the whole perimeter)
 
-Nineteen events, **seventeen written today and two reserved** (AM-02c: the three events of the mode of a property are written since then,
+Twenty events, **seventeen written today and three reserved** (AM-02c: the three events of the mode of a property are written since then,
 and `MemberAreasChanged` is new). The runbook, `OrgActivityCatalog` and `OrgActivityType` list the
 same ones: a test fails if they disagree, and another one if an event that is not reserved is recorded by nobody or a reserved
 one by somebody. A new event is an enum value (integers in groups of ten, never reused), an entry of the catalog, a row here and
@@ -797,6 +797,7 @@ a test; the perimeter grows row by row to about twenty-five events (decision AM-
 | `PlanChanged` | 20 | `account` | the org | `fromTier`, `toTier`, `source` | `OrgService.UpdatePlanTierAsync` (`source` `org` for the billing administrator, `staff` for CasaZen staff), the Stripe webhook and `EntitlementService.SyncFromSubscriptionAsync` (`subscription`, **no actor**) |
 | `OrgNameChanged` | 21 | `account` | the org | none | `OrgService.UpdateSettingsAsync`; **the name itself is never recorded** |
 | `OrgSlugChanged` | 22 | `account` | the org | none | same; **the slug itself is never recorded** |
+| `TierAssigned` | 23 | `account` | the org | `toTier` | *reserved*: agency B2B (ADR-010) |
 | `PropertyModeChangeScheduled` | 40 | the property's | the property | `fromMode`, `toMode`, `effectiveOn` | AM-02c: `PropertyModeService.ScheduleAsync`, in the save that writes the change (and closes the calendar); the actor is who programmed it; the area is the mode the property is in, the one it leaves |
 | `PropertyModeChangeCancelled` | 41 | the property's | the property | `fromMode`, `toMode` | AM-02c: `CancelAsync`, same transaction; the actor is who cancelled; the area is the mode the property is still in |
 | `PropertyModeChanged` | 42 | the property's | the property | `fromMode`, `toMode`, `released` | AM-02c: the daily job (`ApplyDueAsync`), in the save that changes the mode: **no actor**; the area is the mode the property has entered; `released` (`1`) only when the person in charge no longer reaches the property in its new mode (section 48). A change that fails writes nothing |
@@ -806,7 +807,7 @@ a test; the perimeter grows row by row to about twenty-five events (decision AM-
 
 The area is one of `account`, `short-rent`, `long-rent`, `supplier` (the keys of the contexts of the web app). A reserved event is
 **not written by anything yet**: its code and its details are fixed now so that the integers do not change when the task that builds
-the feature arrives (today the two of the trusted suppliers only). The events of the mode of a property carry the area of the property
+the feature arrives (today `TierAssigned` and the two of the trusted suppliers). The events of the mode of a property carry the area of the property
 (`short-rent` or `long-rent`), so the screens of each area can filter their own; `PropertyModeService` writes them only when an `IActivityLog` is
 registered (every deploy).
 

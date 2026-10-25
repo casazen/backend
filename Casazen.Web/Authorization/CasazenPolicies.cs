@@ -123,6 +123,39 @@ public static class CasazenPolicies
     public const string LeaseSign = LongRent + "lease.sign";
     public const string LeaseRegister = LongRent + "lease.register";
 
+    /// <summary>Agency tier B2B policies (ADR-010): all require <c>Org.PlanTier == PlanTier.Agency</c>. Internal until endpoints use them.</summary>
+    private const string Agency = "RequireAgencyTier:";
+
+    /// <summary>Invite and remove property owners (agency B2B).</summary>
+    internal const string AgencyOwnerManage = Agency + "agency.owner.manage";
+
+    /// <summary>View property owner list and details (agency B2B).</summary>
+    internal const string AgencyOwnerView = Agency + "agency.owner.view";
+
+    /// <summary>View full IBAN of property owners (requires audit log, agency B2B).</summary>
+    internal const string AgencyOwnerFinancialRead = Agency + "agency.owner.financial.read";
+
+    /// <summary>Create, edit and publish monthly statements (agency B2B).</summary>
+    internal const string AgencyStatementManage = Agency + "agency.statement.manage";
+
+    /// <summary>View monthly statements (agency B2B).</summary>
+    internal const string AgencyStatementView = Agency + "agency.statement.view";
+
+    /// <summary>Create and issue invoices (agency B2B).</summary>
+    internal const string AgencyInvoiceManage = Agency + "agency.invoice.manage";
+
+    /// <summary>Manage withholding tax (agency B2B).</summary>
+    internal const string AgencyWithholdingManage = Agency + "agency.withholding.manage";
+
+    /// <summary>Create wire transfer batches (agency B2B).</summary>
+    internal const string AgencyWireManage = Agency + "agency.wire.manage";
+
+    /// <summary>Manage internal staff activities (agency B2B).</summary>
+    internal const string AgencyActivityManage = Agency + "agency.activity.manage";
+
+    /// <summary>Manage trusted suppliers (agency B2B).</summary>
+    internal const string AgencySupplierManage = Agency + "agency.supplier.manage";
+
     /// <summary>
     /// Invite, change, deactivate, reactivate and remove the people of the caller's org (AM-02): the permission
     /// <c>org.members.manage</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody
@@ -155,6 +188,9 @@ public static class CasazenPolicies
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
         OrgMembersManage, OrgActivityRead,
     ];
+
+    /// <summary>The agency tier policies registered at startup (ADR-010). Empty until endpoints use them (infrastructure only).</summary>
+    public static IReadOnlyList<string> AgencyPolicies { get; } = [];
 
     /// <summary>
     /// Splits a context policy name into its contexts and permission: <c>RequireContext:short-rent:property.read</c>
