@@ -601,6 +601,9 @@ public class LegalDocumentTextsTests
 
         foreach (var key in new[] { "Tos", "Privacy", "Dpa" })
             Assert.NotEqual(LegalTextFixtures.DraftVersion, documents.GetProperty(key).GetProperty("Version").GetString());
+
+        // CF-BE: the privacy notice 2026-10-v2 (it names ConcordatoFacile) is a draft too, activated per environment with the Railway variable.
+        Assert.NotEqual("2026-10-v2", documents.GetProperty("Privacy").GetProperty("Version").GetString());
     }
 
     [Fact]

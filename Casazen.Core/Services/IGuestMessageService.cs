@@ -41,12 +41,15 @@ public interface IGuestMessageService
 
     /// <summary>
     /// The host's answer (also its first message: the host may write first). The same errors as <see cref="SendAsGuestAsync"/>; the text
-    /// is stored as written. Answering marks the guest's messages as read.
+    /// is stored as written. Answering marks the guest's messages as read, and the caller's notifications of them too.
     /// </summary>
     Task<SentGuestMessage> ReplyAsHostAsync(Guid bookingId, string? text, string? idempotencyKey, string? userId, CancellationToken cancellationToken = default);
 
-    /// <summary>Marks the guest's messages as read by the host, up to the last one written.</summary>
-    Task<HostThreadView> MarkReadAsync(Guid bookingId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Marks the guest's messages as read by the host, up to the last one written. With the caller's <paramref name="userId"/>, the
+    /// caller's unread «guest-message» in-app notifications of the booking are marked as read too (and the new count is published).
+    /// </summary>
+    Task<HostThreadView> MarkReadAsync(Guid bookingId, string? userId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The threads of the properties the scope reaches, the ones with the latest message first. With <paramref name="needsReply"/> true,
@@ -59,6 +62,13 @@ public interface IGuestMessageService
         int page,
         int pageSize,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The open threads of the properties the scope reaches that have messages of the guest the host has not read, with how many, for the
+    /// badges of the calendar and the lists: at most <see cref="GuestMessageRules.UnreadThreadsMax"/>, the latest guest message first.
+    /// Counters only, never the text.
+    /// </summary>
+    Task<IReadOnlyList<HostUnreadThread>> ListUnreadForHostAsync(HostScope scope, CancellationToken cancellationToken = default);
 }
 
 /// <summary>A message as the screens show it.</summary>
@@ -99,5 +109,8 @@ public sealed record HostThreadSummary(
     string? LastGuestMessagePreview,
     int UnreadCount,
     bool NeedsReply);
+
+/// <summary>A thread with <paramref name="UnreadCount"/> (at least 1) messages of the guest the host has not read.</summary>
+public sealed record HostUnreadThread(Guid BookingId, int UnreadCount);
 
 public sealed record HostThreadPage(IReadOnlyList<HostThreadSummary> Items, int TotalCount, int Page, int PageSize);

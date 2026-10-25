@@ -365,7 +365,7 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         var otherSiteToken = await OpenGuestSessionAsync(orgB, sameCodeOtherSite);
 
         var path = $"{GuestBookingsPath}/{BookingCodes.Format(own.Code)}/messages";
-        var marker = $"segreto-{Guid.NewGuid():N}";
+        var marker = $"marker-{Guid.NewGuid():N}";
         var sent = await PostMessageAsync(path, token, $"{marker} IBAN IT60X0542811101000000123456 grazie", Guid.NewGuid().ToString());
         Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
         var sentBody = JsonDocument.Parse(await sent.Content.ReadAsStringAsync()).RootElement;
@@ -416,7 +416,7 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         // The host's side: the guest of the other site writes too; each org lists only its own thread, and a collaborator who reaches
         // another property lists none.
         var otherSitePath = $"{GuestBookingsPath}/{BookingCodes.Format(sameCodeOtherSite.Code)}/messages";
-        var otherMarker = $"altro-{Guid.NewGuid():N}";
+        var otherMarker = $"other-{Guid.NewGuid():N}";
         Assert.Equal(HttpStatusCode.OK, (await PostMessageAsync(otherSitePath, otherSiteToken, otherMarker, Guid.NewGuid().ToString())).StatusCode);
         using var scope = _factory.Services.CreateScope();
         var messages = scope.ServiceProvider.GetRequiredService<IGuestMessageService>();

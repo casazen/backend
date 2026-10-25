@@ -196,9 +196,28 @@ public class Property : ITenantOwned
         && !string.IsNullOrWhiteSpace(CadastralCategory)
         && CadastralIncome is not null;
 
+    /// <summary>
+    /// ISO 3166-1 alpha-2 country code (e.g. "IT", "CH"). Non-null, default IT (ADR-001-R7).
+    /// </summary>
+    [Required, MaxLength(2)]
+    public string Country { get; set; } = "IT";
+
+    /// <summary>
+    /// ISO 4217 currency code (e.g. "EUR", "CHF"). Non-null, default EUR (ADR-001-R7).
+    /// </summary>
+    [Required, MaxLength(3)]
+    public string Currency { get; set; } = "EUR";
+
     // Timezone for booking date handling (IANA timezone ID)
     [MaxLength(50)]
     public string Timezone { get; set; } = "Europe/Rome"; // Default for Italian properties
+
+    /// <summary>
+    /// Swiss municipality code (official BFS number) for properties in Switzerland (Country = 'CH').
+    /// Null for non-Swiss properties. Foreign key to SwissMunicipalities table (ADR-001-R9, NF-02).
+    /// </summary>
+    [MaxLength(10)]
+    public string? SwissMunicipalityCode { get; set; }
 
     [ForeignKey("CancellationPolicy")]
     public Guid? CancellationPolicyId { get; set; }

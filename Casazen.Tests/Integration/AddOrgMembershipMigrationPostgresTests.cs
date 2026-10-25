@@ -39,7 +39,7 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
     public async Task Migrate_ExistingOwners_GetTheirOrgMemberAndTheirAccountMembership()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var seed = await SeedLegacyStateAsync(db);
 
         await db.Database.MigrateAsync();
@@ -81,7 +81,7 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
     public async Task Migrate_OrgsAndUsersThatAreNotOwners_GetNothing()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var seed = await SeedLegacyStateAsync(db);
 
         await db.Database.MigrateAsync();
@@ -105,7 +105,7 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
     public async Task BackfillSql_RunAgain_ChangesNothing()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         await SeedLegacyStateAsync(db);
         await db.Database.MigrateAsync();
         var members = await db.OrgMembers.IgnoreQueryFilters().CountAsync();
@@ -125,7 +125,7 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
         // The statements are safe to run again at any time (the reconcile command is the tool for what drifts after the
         // deploy, with the same rule): an owner that appeared after the migration gets its rows from a rerun.
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var org = NewOrg();
         db.Orgs.Add(org);
         var owner = NewUser($"auth0|am01-m-owner-{Guid.NewGuid():N}", org.Id, UserRole.PropertyOwner);
@@ -143,7 +143,7 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
     public async Task DryRunQueries_RunBeforeTheDeployAndListWhatTheBackfillDoes()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var seed = await SeedLegacyStateAsync(db);
 
         // OrgMembers does not exist yet: the queries of the runbook read nothing the migration creates.
@@ -199,7 +199,7 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
     public async Task Migrate_NewRoles_MoveTheIdentitySequenceBeyondTheSeededIds()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
 
         // A role created later without an explicit id must not collide with the seeded ones (4 to 12).
         var id = await ScalarAsync("INSERT INTO \"Roles\" (\"ContextKey\", \"RoleKey\") VALUES ('short-rent', 'am01_sequence_probe') RETURNING \"Id\"");
@@ -212,7 +212,7 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
     public async Task Migrate_SeededRoles_HaveTheCatalogsPermissionsAndTheAccountContextExists()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
 
         Assert.Equal("Amministrazione", (await db.AppContexts.SingleAsync(c => c.Key == "account")).DisplayName);
         foreach (var expected in Casazen.Core.Authorization.OrgRoleCatalog.SeededRoles)

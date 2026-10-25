@@ -15,7 +15,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-22.1";
+    public const string Version = "2026-10-25.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -34,6 +34,10 @@ public static class DemoShowcaseCatalog
         public const string HostInvitePending = "host-invite-pending";
         public const string HostInviteUsed = "host-invite-used";
         public const string HostInviteExpired = "host-invite-expired";
+        public const string PropertyOwnerAgency = "property-owner-agency";
+        public const string CampaignDraft = "campaign-draft";
+        public const string CampaignApproved = "campaign-approved";
+        public const string CampaignSent = "campaign-sent";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -49,6 +53,10 @@ public static class DemoShowcaseCatalog
         Scenario.HostInvitePending,
         Scenario.HostInviteUsed,
         Scenario.HostInviteExpired,
+        Scenario.PropertyOwnerAgency,
+        Scenario.CampaignDraft,
+        Scenario.CampaignApproved,
+        Scenario.CampaignSent,
     ];
 
     /// <summary>
@@ -60,6 +68,42 @@ public static class DemoShowcaseCatalog
         new("in-attesa", "host.demo.in-attesa@example.com", "Ciao, provaci anche tu (invito di dimostrazione).", -1, DemoHostInviteState.Pending, Scenario.HostInvitePending),
         new("accettato", "host.demo.accettato@example.com", null, -10, DemoHostInviteState.Used, Scenario.HostInviteUsed),
         new("scaduto", "host.demo.scaduto@example.com", null, -20, DemoHostInviteState.Expired, Scenario.HostInviteExpired),
+    ];
+
+    /// <summary>
+    /// Property owners of the agency demo (ADR-012): one owner with fiscal code and IBAN to exercise the
+    /// encryption, the list endpoint with masked IBAN, and the financial read endpoint.
+    /// </summary>
+    public static IReadOnlyList<DemoPropertyOwnerTemplate> PropertyOwners { get; } =
+    [
+        new("mario-rossi", "Mario", "Rossi", "proprietario.demo@example.com", "+39 333 1234567",
+            "RSSMRA70A01H501X", "IT60X0542811101000000123456", OwnerTaxRegime.Private, Scenario.PropertyOwnerAgency),
+    ];
+
+    /// <summary>
+    /// Guest segments for marketing campaigns (NF-24): simple condition to demo segment UI and recipient filtering.
+    /// Empty condition JSON matches all guests (with consent filtering applied at send time).
+    /// </summary>
+    public static IReadOnlyList<DemoGuestSegmentTemplate> GuestSegments { get; } =
+    [
+        new("ospiti-fedeli", "Ospiti fedeli (DEMO)", "{\"version\":\"1.0\",\"groups\":[]}", Scenario.CampaignDraft),
+    ];
+
+    /// <summary>
+    /// Marketing campaigns (NF-24): one in each status to demonstrate the campaign lifecycle.
+    /// Email addresses are @example.com, data clearly marked as TEST.
+    /// </summary>
+    public static IReadOnlyList<DemoCampaignTemplate> Campaigns { get; } =
+    [
+        new("bozza", "ospiti-fedeli", "Offerta TEST - Sconto primavera (BOZZA)",
+            "<p>Caro ospite,</p><p>Ti offriamo uno sconto del 15% per soggiorni primaverili. <strong>QUESTA È UNA EMAIL DI TEST</strong>.</p>",
+            false, CampaignStatus.Draft, -5, null, null, 0, 0, Scenario.CampaignDraft),
+        new("approvata", "ospiti-fedeli", "Novità TEST - Nuova struttura disponibile",
+            "<p>Ciao,</p><p>Abbiamo una nuova villa sul lago disponibile per prenotazioni. <strong>QUESTA È UNA EMAIL DI TEST</strong>.</p>",
+            false, CampaignStatus.Approved, -3, null, null, 0, 0, Scenario.CampaignApproved),
+        new("inviata", "ospiti-fedeli", "Grazie TEST - Fine estate",
+            "<p>Grazie per averci scelto quest'estate! <strong>QUESTA È UNA EMAIL DI TEST</strong>.</p>",
+            true, CampaignStatus.Sent, -10, -7, -7, 42, 3, Scenario.CampaignSent),
     ];
 
     public static IReadOnlyList<DemoPropertyTemplate> Properties { get; } =
@@ -212,4 +256,38 @@ public sealed record DemoHostInviteTemplate(
     string? Message,
     int CreatedOffsetDays,
     DemoHostInviteState State,
+    string Scenario);
+
+/// <summary>A property owner of the agency demo (ADR-012): fiscal code and IBAN are test data, encrypted at rest.</summary>
+public sealed record DemoPropertyOwnerTemplate(
+    string Key,
+    string FirstName,
+    string LastName,
+    string Email,
+    string? Phone,
+    string FiscalCode,
+    string Iban,
+    OwnerTaxRegime TaxRegime,
+    string Scenario);
+
+/// <summary>A guest segment for demo campaigns (NF-24): condition is empty to match all consented guests.</summary>
+public sealed record DemoGuestSegmentTemplate(
+    string Key,
+    string Name,
+    string ConditionJson,
+    string Scenario);
+
+/// <summary>A marketing campaign for demo (NF-24): created <paramref name="CreatedOffsetDays"/> days from today.</summary>
+public sealed record DemoCampaignTemplate(
+    string Key,
+    string SegmentKey,
+    string Subject,
+    string Body,
+    bool IsAiGenerated,
+    CampaignStatus Status,
+    int CreatedOffsetDays,
+    int? ScheduledOffsetDays,
+    int? SentOffsetDays,
+    int SentCount,
+    int ErrorCount,
     string Scenario);

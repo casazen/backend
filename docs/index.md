@@ -13,6 +13,8 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 | Lavorare sul mobile | [Repository mobile](https://github.com/casazen/mobile) e [runbook rilascio](runbooks/mobile-release.md) |
 | Configurare o diagnosticare una funzione | [Indice runbook](runbooks/index.md) |
 | Preparare un deploy | [Checklist](runbooks/deploy-checklist.md), [health check](runbooks/health-checks.md), [infrastruttura](INFRA.md) |
+| Seguire il pilota Quokka | [Planning](../Sessions/PLANNING.md), poi i [requisiti della fase 1 in sviluppo](../Sessions/prospect-quokka360/requisiti-fase1-helix.md) |
+| Capire, configurare o provare il servizio ConcordatoFacile | [Processo CF: unico riferimento](integrations/concordatofacile/README.md), poi i [requisiti](../Sessions/business-analysis-canone-concordato.md) |
 
 ## Struttura
 
@@ -25,7 +27,7 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 | [INFRA.md](INFRA.md) | Infrastruttura e ambienti; le sezioni Railway sono storiche, hosting in revisione: [analisi](runbooks/free-hosting-analysis.md) |
 | [runbooks/](runbooks/index.md) | Procedure per funzionalità, configurazione, migrazioni, verifica e rollback |
 | `adr/` | Decisioni architetturali; [modello ADR](adr/ADR-000-TEMPLATE.md) |
-| `integrations/` | Specifiche di integrazione: una specifica non prova che il connettore sia implementato |
+| `integrations/` | Specifiche di integrazione: una specifica non prova che il connettore sia implementato. Per ConcordatoFacile vale solo il [documento di processo](integrations/concordatofacile/README.md) (le specifiche della cartella `da-inviare/` sono superate) |
 | `legal/`, `legal-drafts/` | Materiale legale e bozze; conservare lo stato di approvazione indicato nei documenti |
 | [AUTH0_SETUP.md](AUTH0_SETUP.md) | Setup Auth0; completare con il [runbook operativo](runbooks/auth0.md) |
 | [FRONTEND-TECHNICAL.md](FRONTEND-TECHNICAL.md), [FRONTEND-PROJECT.md](FRONTEND-PROJECT.md) | Indirizzamento alla documentazione mantenuta nel repository frontend |
@@ -37,10 +39,10 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 - Prenotazioni e ospiti: [prenotazione diretta](runbooks/direct-booking.md), [messaggi](runbooks/guest-messages.md), [GDPR](runbooks/gdpr.md).
 - Adempimenti: [Alloggiati](runbooks/alloggiati.md), [flussi regionali](runbooks/ross1000.md), [imposta di soggiorno](runbooks/tourist-tax-rates.md).
 - Organizzazione: [persone e ruoli](runbooks/org-team.md), [fatturazione](runbooks/billing-tax.md).
-- Affitti lunghi: [bozza guidata](runbooks/long-rent-lease-draft.md), [RLI](runbooks/rli.md), [template contratti](runbooks/lease-contract-templates.md).
+- Affitti lunghi: [bozza guidata](runbooks/long-rent-lease-draft.md), [contratto già firmato](runbooks/long-rent-lease-import.md), [RLI](runbooks/rli.md), [template contratti](runbooks/lease-contract-templates.md).
 - Fornitori: [profili e richieste](runbooks/suppliers.md).
 
-Alloggiati è attualmente un flusso di preparazione e invio manuale; un obiettivo di automazione nel pilota non modifica lo stato del connettore consegnato. Verificare sempre esiti e ricevute, non soltanto la generazione di un file.
+Alloggiati è attualmente un flusso di preparazione e invio manuale. L'invio automatico è in sviluppo per il pilota (Q1-14 dei [requisiti della fase 1](../Sessions/prospect-quokka360/requisiti-fase1-helix.md)): finché non è rilasciato non modifica lo stato del connettore consegnato. Verificare sempre esiti e ricevute, non soltanto la generazione di un file.
 
 ## Mantenimento
 

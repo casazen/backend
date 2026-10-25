@@ -22,7 +22,7 @@ public static class LeaseContractPlaceholders
     /// <summary>Cadastral identification of the unit, from the property (sheet, parcel, subaltern, category, income; LT-10).</summary>
     public const string CadastralData = "dati_catastali";
 
-    /// <summary>Identification of the APE (code and energy class), from the latest APE document of the property (LT-10).</summary>
+    /// <summary>Identification of the APE (code and energy class), from the latest APE document of the property that has it (LT-10, LR-APE).</summary>
     public const string ApeData = "ape_estremi";
 
     public const string MonthlyRent = "canone_mensile";
@@ -39,10 +39,32 @@ public static class LeaseContractPlaceholders
     /// <summary>Actual term computed from the dates (e.g. "4 anni", "18 mesi"), never a fixed "3+2" or "4+4".</summary>
     public const string Term = "durata";
 
+    /// <summary>
+    /// Transitory contract only (TR): who has the need that justifies its term, "locatore" or "conduttore" (D.M. 16/01/2017 art. 2 c. 4;
+    /// art. 2 of the Allegato B).
+    /// </summary>
+    public const string TransitoryParty = "esigenza_parte";
+
+    /// <summary>Transitory contract only: the need that justifies the term, as the landlord wrote it (at most 500 characters).</summary>
+    public const string TransitoryNeed = "esigenza_motivo";
+
+    /// <summary>
+    /// Transitory contract only: the documentation attached to prove the need, which a contract of more than 30 days must have (art. 2 c. 4).
+    /// For one of 30 days or less it is the statement that none is attached.
+    /// </summary>
+    public const string TransitoryDocumentation = "esigenza_documentazione";
+
+    /// <summary>"versa" or "non versa": the alternative of art. 5 of the Allegato B, resolved by the security deposit (0 is "none").</summary>
+    public const string DepositPayment = "deposito_versamento";
+
+    /// <summary>The security deposit in monthly rents ("2", "1,5"), for the "pari a n. ... mensilità del canone" of art. 5 of the Allegato B.</summary>
+    public const string DepositMonths = "deposito_mensilita";
+
     public static readonly IReadOnlyList<string> All =
     [
         Landlords, Tenants, PropertyAddress, PropertyComune, CadastralData, ApeData,
         MonthlyRent, AnnualRent, SecurityDeposit, StartDate, EndDate, Term,
+        TransitoryParty, TransitoryNeed, TransitoryDocumentation, DepositPayment, DepositMonths,
     ];
 
     public static bool IsKnown(string name) => All.Contains(name, StringComparer.Ordinal);
@@ -67,9 +89,10 @@ public sealed record LeaseContractSectionDefinition(
 /// Sources of each section: <c>docs/runbooks/lease-contract-templates.md</c>.
 /// </summary>
 /// <remarks>
-/// <see cref="FiscalRegime.CedolareSecca"/> and <see cref="FiscalRegime.RegimeOrdinario"/> are free-rent leases
-/// (canone libero), <see cref="FiscalRegime.CanoneConcordato"/> is the agreed-rent lease (L. 431/1998 art. 2 c. 3).
-/// Transitional and student leases are not modelled yet, so they have no template.
+/// <see cref="LeaseTemplateVariant.CedolareSecca"/> and <see cref="LeaseTemplateVariant.RegimeOrdinario"/> are free-rent leases
+/// (canone libero), <see cref="LeaseTemplateVariant.CanoneConcordato"/> is the agreed-rent lease (L. 431/1998 art. 2 c. 3). Since TR the
+/// transitory lease has its own variant, <see cref="LeaseTemplateVariant.Transitorio"/>: the articles of the Allegato B of the D.M. 16/01/2017,
+/// which that decree makes the only model a transitory contract can use (art. 2 c. 7). Student leases are not modelled, so they have no template.
 /// </remarks>
 public static class LeaseContractTemplateStructure
 {
@@ -86,6 +109,22 @@ public static class LeaseContractTemplateStructure
     public const string Deposit = "deposito";
     public const string AncillaryCharges = "oneri_accessori";
     public const string Ape = "ape";
+
+    // The transitory variant (TR): one section per article of the Allegato B of the D.M. 16/01/2017, which is mandatory as a whole.
+    public const string TransitoryNeedSection = "esigenza";
+    public const string TransitoryNonCompliance = "inadempimento";
+    public const string StampAndRegistration = "bollo_registrazione";
+    public const string PaymentTerms = "pagamento";
+    public const string Use = "uso";
+    public const string Delivery = "consegna";
+    public const string ChangesAndDamages = "modifiche_danni";
+    public const string TenantMeetings = "assemblee";
+    public const string Installations = "impianti";
+    public const string Access = "accesso";
+    public const string NegotiationCommission = "commissione";
+    public const string Miscellaneous = "varie";
+    public const string Signatures = "firme";
+    public const string ApprovedInWriting = "clausole_approvate";
 
     private static readonly LeaseContractSectionDefinition PartiesSection = new(
         Parties, "Parti",
@@ -153,12 +192,71 @@ public static class LeaseContractTemplateStructure
         ApeSection,
     ];
 
-    /// <summary>The sections a template of <paramref name="regime"/> must contain, in the suggested order.</summary>
-    public static IReadOnlyList<LeaseContractSectionDefinition> RequiredSections(FiscalRegime regime) => regime switch
+    // ---- the transitory variant (TR) -------------------------------------------------------------------------------
+    // The Allegato B has 17 articles and all of them are the model (D.M. 16/01/2017 art. 2 c. 7), so a template of the variant needs them all.
+    // The preamble (parties, unit, cadastral data and energy performance) is one section, because the sentence runs through it.
+
+    private static LeaseContractSectionDefinition Article(string id, string heading) => new(id, heading, [], []);
+
+    private static readonly IReadOnlyList<LeaseContractSectionDefinition> TransitorioSections =
+    [
+        new(
+            Parties, "Parti e oggetto della locazione",
+            [
+                LeaseContractPlaceholders.Landlords, LeaseContractPlaceholders.Tenants, LeaseContractPlaceholders.PropertyAddress,
+                LeaseContractPlaceholders.CadastralData, LeaseContractPlaceholders.ApeData,
+            ],
+            [
+                [LeaseContractPlaceholders.Landlords], [LeaseContractPlaceholders.Tenants], [LeaseContractPlaceholders.PropertyAddress],
+                [LeaseContractPlaceholders.CadastralData], [LeaseContractPlaceholders.ApeData],
+            ]),
+        new(
+            Term, "Articolo 1 (Durata)",
+            [LeaseContractPlaceholders.Term, LeaseContractPlaceholders.StartDate, LeaseContractPlaceholders.EndDate],
+            [[LeaseContractPlaceholders.Term], [LeaseContractPlaceholders.StartDate], [LeaseContractPlaceholders.EndDate]]),
+        new(
+            TransitoryNeedSection, "Articolo 2 (Esigenza del locatore/conduttore)",
+            [LeaseContractPlaceholders.TransitoryParty, LeaseContractPlaceholders.TransitoryNeed, LeaseContractPlaceholders.TransitoryDocumentation],
+            [
+                [LeaseContractPlaceholders.TransitoryParty], [LeaseContractPlaceholders.TransitoryNeed],
+                [LeaseContractPlaceholders.TransitoryDocumentation],
+            ]),
+        Article(TransitoryNonCompliance, "Articolo 3 (Inadempimento delle modalità di stipula)"),
+        new(Rent, "Articolo 4 (Canone)", [LeaseContractPlaceholders.MonthlyRent], [[LeaseContractPlaceholders.MonthlyRent]]),
+        new(
+            Deposit, "Articolo 5 (Deposito cauzionale e altre forme di garanzia)",
+            [LeaseContractPlaceholders.DepositPayment, LeaseContractPlaceholders.SecurityDeposit, LeaseContractPlaceholders.DepositMonths],
+            [
+                [LeaseContractPlaceholders.DepositPayment], [LeaseContractPlaceholders.SecurityDeposit],
+                [LeaseContractPlaceholders.DepositMonths],
+            ]),
+        Article(AncillaryCharges, "Articolo 6 (Oneri accessori)"),
+        Article(StampAndRegistration, "Articolo 7 (Spese di bollo e registrazione)"),
+        Article(PaymentTerms, "Articolo 8 (Pagamento)"),
+        Article(Use, "Articolo 9 (Uso)"),
+        Article(TenantWithdrawal, "Articolo 10 (Recesso del conduttore)"),
+        Article(Delivery, "Articolo 11 (Consegna)"),
+        Article(ChangesAndDamages, "Articolo 12 (Modifiche e danni)"),
+        Article(TenantMeetings, "Articolo 13 (Assemblee)"),
+        Article(Installations, "Articolo 14 (Impianti)"),
+        Article(Access, "Articolo 15 (Accesso)"),
+        Article(NegotiationCommission, "Articolo 16 (Commissione di negoziazione paritetica e conciliazione stragiudiziale)"),
+        Article(Miscellaneous, "Articolo 17 (Varie)"),
+        Article(Signatures, "Firme"),
+        Article(ApprovedInWriting, "Clausole approvate specificamente"),
+    ];
+
+    /// <summary>The sections a template of <paramref name="variant"/> must contain, in the suggested order.</summary>
+    public static IReadOnlyList<LeaseContractSectionDefinition> RequiredSections(LeaseTemplateVariant variant) => variant switch
     {
-        FiscalRegime.CanoneConcordato => CanoneConcordatoSections,
-        FiscalRegime.CedolareSecca => CedolareSeccaSections,
-        FiscalRegime.RegimeOrdinario => FreeRentSections,
-        _ => throw new ArgumentOutOfRangeException(nameof(regime), regime, "Unknown fiscal regime."),
+        LeaseTemplateVariant.CanoneConcordato => CanoneConcordatoSections,
+        LeaseTemplateVariant.CedolareSecca => CedolareSeccaSections,
+        LeaseTemplateVariant.RegimeOrdinario => FreeRentSections,
+        LeaseTemplateVariant.Transitorio => TransitorioSections,
+        _ => throw new ArgumentOutOfRangeException(nameof(variant), variant, "Unknown template variant."),
     };
+
+    /// <summary>The sections a template of <paramref name="regime"/> (a canone libero or concordato) must contain, in the suggested order.</summary>
+    public static IReadOnlyList<LeaseContractSectionDefinition> RequiredSections(FiscalRegime regime) =>
+        RequiredSections(LeaseTemplateVariants.Of(regime));
 }

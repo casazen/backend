@@ -6,8 +6,9 @@ namespace Casazen.Core.Services;
 /// RLI registration of a signed lease (LT-01, A7-01, A7-21, D15). Two paths:
 /// <list type="bullet">
 /// <item><b>manual</b> (default, always available): the landlord files on the official channel of the Agenzia delle
-/// Entrate (RLI web, Entratel/Fisconline or an intermediary) and declares the registration number or protocol, its
-/// date and the receipt PDF; only then the lease is Registered;</item>
+/// Entrate (RLI web, Entratel/Fisconline or an intermediary; for a contract made with the guided service, the service files it) and
+/// declares the registration number or protocol, its date and the receipt PDF (a file sent now, or the receipt already among the
+/// documents of the lease); only then the lease is Registered;</item>
 /// <item><b>provider</b>: only when <see cref="IsProviderFilingAvailable"/>; the lease is "in progress" until the
 /// provider returns the official receipt.</item>
 /// </list>
@@ -37,6 +38,19 @@ public interface IRliRegistrationService
         ManualRegistrationDeclaration declaration,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The same declaration with the receipt the landlord already uploaded among the documents of the lease (CF-END), so it is not sent
+    /// twice: a document of kind <see cref="LeaseDocumentKind.Registration"/> of <b>this</b> lease and of its org. Its bytes are read from the
+    /// private bucket and checked as a file sent now (<c>%PDF-</c>, size), then stored under a key of their own: the document keeps its file
+    /// and the registration has its own, never one key for two owners. Any other document (another lease's, another org's, another kind,
+    /// none) is <c>NotFoundException</c> <c>document_not_found</c>, and nothing is read or written.
+    /// </summary>
+    Task<LeaseRegistration> DeclareManualRegistrationFromDocumentAsync(
+        Guid leaseId,
+        string userId,
+        ManualRegistrationDocumentDeclaration declaration,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Receipt of a registered lease, from the private bucket.</summary>
     Task<RegistrationReceiptFile> OpenReceiptAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
@@ -56,6 +70,15 @@ public sealed record ManualRegistrationDeclaration(
     DateTime RegistrationDate,
     Stream Receipt,
     long ReceiptLength);
+
+/// <summary>
+/// The same declaration, with the receipt already uploaded to the lease (CF-END): the id of its document of kind
+/// <see cref="LeaseDocumentKind.Registration"/>. The checks of the file are the same as for a file sent now.
+/// </summary>
+public sealed record ManualRegistrationDocumentDeclaration(
+    string RegistrationCode,
+    DateTime RegistrationDate,
+    Guid ReceiptDocumentId);
 
 /// <summary>The stored receipt; the caller disposes <see cref="Content"/>.</summary>
 public sealed record RegistrationReceiptFile(Stream Content, string FileName);

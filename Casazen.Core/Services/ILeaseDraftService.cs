@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
+using Casazen.Core.Leases.Reading;
 
 namespace Casazen.Core.Services;
 
@@ -30,6 +31,16 @@ public interface ILeaseDraftService
     /// <c>property_not_found</c> when the property is not visible.
     /// </summary>
     Task<LeaseDraftCreated> CreateAsync(Guid propertyId, LeaseOrigin origin, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a minimal ConcordatoFacile draft (ADR-004): PropertyId, OrgId, ContractType=Concordato, IsConcordatoFacileSource=true,
+    /// other required fields from <see cref="LeaseDraftDefaults"/> (MonthlyRent=0, StartDate=PlaceholderDate). It is an <b>imported</b>
+    /// draft (CF-IMPORT, origin <see cref="LeaseOrigin.Imported"/>): the contract is written and signed by the partner, so the draft is
+    /// filled from it (the documents are read like those of any imported draft) and imported as a signed contract. Idempotent: if a CF
+    /// draft for the same property already exists in Draft status, returns the existing one. <see cref="NotFoundException"/> 404
+    /// <c>property_not_found</c> when the property is not visible.
+    /// </summary>
+    Task<Guid> CreateCfDraftAsync(Guid propertyId, Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Every value of the draft, not masked, with its version and its flow. Only for a lease that is a draft:
@@ -74,7 +85,21 @@ public interface ILeaseDraftService
     /// change mode again.
     /// </summary>
     Task DeleteAsync(Guid leaseId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts what was read in a contract document into an <b>imported</b> draft (NL-DOCS), the way a save would: under the row lock of the
+    /// lease, through the same evaluation and the same writer of the columns and the parties, one version up. Only what is still empty is
+    /// filled and nothing typed is overwritten (<see cref="LeaseDraftContractFill"/>). 409 <c>lease_not_draft</c> when the lease is no
+    /// longer a draft, 409 <c>lease_draft_conflict</c> when it is busy; a lease that is not an imported draft is not touched (<c>Applied</c> false).
+    /// </summary>
+    Task<LeaseDraftFillResult> ApplyContractReadingAsync(Guid leaseId, LeaseContractReading reading, CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// What became of the values read in a contract: whether the draft was imported and changed, its version after, and each value with its
+/// fate. No value of a person in it.
+/// </summary>
+public sealed record LeaseDraftFillResult(bool Applied, bool Changed, int Version, IReadOnlyList<FieldReading> Fields);
 
 /// <summary>A new draft: its id, its version and its flow (every step still to do).</summary>
 public sealed record LeaseDraftCreated(Guid Id, int Version, LeaseDraftFlow Flow);

@@ -57,12 +57,14 @@ public class EndpointAuthorizationArchitectureTests
         ["TouristTaxRatesController.GetById"] = "Platform reference data, see GetAll.",
         ["TouristTaxRatesController.GetByCity"] = "Platform reference data, see GetAll.",
         ["ServiceCategoriesController.GetAll"] = "Fixed catalog of service category codes (SU-03) used by suppliers, hosts and admins alike; no tenant data.",
+        ["IndexNowController.NotifyUrls"] = "NF-25: internal endpoint called by the platform when org or property content changes (published, updated, activated) to notify search engines via IndexNow protocol; queues URLs for background submission, no tenant data returned.",
 
         // Endpoints shared by two roles: the action evaluates the policy of the branch it takes.
         ["ServiceRequestsController.List"] = "Host list (PropertyRead + HostScope) or supplier inbox with view=supplier (RequireSupplier), each checked with IAuthorizationService inside the action.",
         ["ServiceRequestsController.GetById"] = "Supplier branch (RequireSupplier + linked supplier org) or host branch (PropertyRead + HostScope), each checked with IAuthorizationService inside the action.",
         ["ServiceRequestsController.Cancel"] = "SP-04: the supplier it was sent to cancels before the work starts (RequireSupplier + linked supplier org), or the host up to the work in progress (PropertyWrite + HostResource); each branch is checked with IAuthorizationService inside the action.",
         ["ServiceRequestsController.GetPhoto"] = "SP-04: a photo of the work, private file: the supplier it was sent to (RequireSupplier + linked supplier org) or the host (PropertyRead + HostScope), each checked with IAuthorizationService inside the action.",
+        ["ConcordatoFacileController.CreateCheckout"] = "NF-03: programmatic OR-authorization (RequirePropertyWrite OR RequireOrgBillingWrite) checked with IAuthorizationService inside the action: the attribute would be AND-only, but a host needs only property write and an org admin only billing write.",
     };
 
     /// <summary>

@@ -5,6 +5,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services.LeaseContracts;
 using Casazen.Tests.Unit.Leases;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -101,7 +102,7 @@ public class LeaseDraftServiceTests
             {"landlords":[{"firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501V","citizenship":"IT","residence":"Bari"}],
              "tenants":[{"firstName":"Giulia"}]}
             """);
-        var s3 = await h.SaveAsync(created.Id, s2.Version, 3, """{"contractType":"Transitorio","monthlyRent":-50,"securityDeposit":99}""");
+        var s3 = await h.SaveAsync(created.Id, s2.Version, 3, """{"contractType":"Studenti","monthlyRent":-50,"securityDeposit":99}""");
         var s4 = await h.SaveAsync(created.Id, s3.Version, 4, """{"startDate":"next spring"}""");
 
         Assert.Equal([2, 3, 4], new[] { s2.Version, s3.Version, s4.Version });
@@ -226,6 +227,53 @@ public class LeaseDraftServiceTests
         Assert.False(tenant.IsExtraEU);
         // A lease the other readers see as a normal draft: the term passes the rule of its type.
         LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
+    }
+
+    [Fact]
+    public async Task ATransitoryDraft_WithItsEndAndItsNeed_KeepsThemInTheColumns_GivesThemBack_AndTheReviewCoversThem()
+    {
+        using var h = await NewAsync();
+        var (created, version) = await h.CompleteAsync();
+
+        // The landlord makes it a transitory contract: who has the need and what it is come with the type, the end and the documentation
+        // of a term of more than 30 days with the dates.
+        var typed = await h.SaveAsync(
+            created.Id, version, 3, """{"contractType":"Transitorio","transitoryParty":"Tenant","transitoryNeed":"  Lavoro a Milano da novembre ad aprile  "}""");
+        Assert.Empty(Needs(typed.Flow, 3));
+        Assert.Equal([LeaseNeedCodes.EndMissing], Needs(typed.Flow, 4));
+        var ended = await h.SaveAsync(created.Id, typed.Version, 4, """{"endDate":"2027-04-30"}""");
+        Assert.Equal([LeaseNeedCodes.TransitoryDocumentationMissing], Needs(ended.Flow, 4));
+        var done = await h.SaveAsync(created.Id, ended.Version, 4, """{"transitoryDocumentation":"Lettera di assunzione"}""");
+
+        Assert.True(done.Flow.DataComplete);
+        var lease = await h.LoadAsync(created.Id);
+        Assert.Null(lease.DraftData);
+        Assert.Equal(LeaseContractType.Transitorio, lease.ContractType);
+        Assert.Equal(new DateTime(2027, 4, 30, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
+        Assert.Equal(
+            (PartyRole.Tenant, "Lavoro a Milano da novembre ad aprile", "Lettera di assunzione"),
+            (lease.TransitoryParty!.Value, lease.TransitoryNeed, lease.TransitoryDocumentation));
+        LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
+
+        // Taken up again from the columns, as another browser would: nothing was kept only in the typed state.
+        var view = await h.NewService().GetAsync(created.Id);
+        Assert.Equal(
+            ("Tenant", "Lavoro a Milano da novembre ad aprile", "Lettera di assunzione", "2027-04-30"),
+            (view.Values.TransitoryParty, view.Values.TransitoryNeed, view.Values.TransitoryDocumentation, view.Values.EndDate));
+        Assert.Equal(new LeaseDraftComputed("2027-04-30", 6), view.Computed);
+        Assert.All(Enumerable.Range(1, 5), n => Assert.Equal(LeaseStepState.Done, view.Flow[n].State));
+
+        // The review tells the landlord to check the rent against the bands of the agreement (TR-FU1) and blocks nothing; the need is
+        // printed in the contract, so changing it withdraws the confirmation.
+        var review = await h.Service.GetReviewAsync(created.Id);
+        var advisory = Assert.Single(review.Checks, c => c.Code == LeaseNeedCodes.TransitoryRentBandToCheck);
+        Assert.Equal(LeaseReviewSeverity.Info, advisory.Severity);
+        Assert.Equal(10_000, advisory.Params!["inhabitants"]);
+        Assert.False(LeaseReview.HasBlock(review.Checks));
+        var confirmed = await h.Service.ConfirmReviewAsync(created.Id, null);
+        Assert.NotNull(confirmed.ReviewConfirmedAt);
+        var changed = await h.SaveAsync(created.Id, confirmed.Version, 3, """{"transitoryNeed":"Trasferimento a Torino"}""");
+        Assert.Contains(LeaseNeedCodes.ReviewNotConfirmed, Needs(changed.Flow, 6));
     }
 
     [Fact]
@@ -425,6 +473,81 @@ public class LeaseDraftServiceTests
         Assert.Null(lease.ReviewConfirmedAt);
         Assert.Equal(created.Version, lease.DraftVersion);
         Assert.DoesNotContain(lease.Events, e => e.EventType == LeaseEventType.ReviewConfirmed);
+    }
+
+    [Fact]
+    public async Task Confirm_ADraftMadeInCasazenWithoutItsDeposit_IsBlocked_ZeroIsAnAnswer_AnImportedOneIsNotAskedForIt()
+    {
+        using var h = await NewAsync();
+        var (created, version) = await h.CompleteAsync();
+
+        // The model of the contract prints the deposit: left empty, the review cannot be confirmed (LR-DEP).
+        var cleared = await h.SaveAsync(created.Id, version, 3, """{"securityDeposit":null}""");
+        Assert.Equal([LeaseNeedCodes.DepositMissing], Needs(cleared.Flow, 3));
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => h.Service.ConfirmReviewAsync(created.Id, cleared.Version));
+        Assert.Equal("lease_review_blocked", error.Code);
+        Assert.Null((await h.LoadAsync(created.Id)).ReviewConfirmedAt);
+
+        // "0 if there is none" is an answer.
+        var none = await h.SaveAsync(created.Id, cleared.Version, 3, """{"securityDeposit":0}""");
+        Assert.Empty(Needs(none.Flow, 3));
+        Assert.NotNull((await h.Service.ConfirmReviewAsync(created.Id, none.Version)).ReviewConfirmedAt);
+
+        // A contract already signed prints nothing: its deposit stays optional.
+        var imported = await h.CreateAsync(LeaseOrigin.Imported);
+        var parties = await h.SaveAsync(imported.Id, imported.Version, 2, ValidParties);
+        var terms = await h.SaveAsync(imported.Id, parties.Version, 3, """{"contractType":"Libero","taxRegime":"CedolareSecca","monthlyRent":900}""");
+        Assert.Empty(Needs(terms.Flow, 3));
+    }
+
+    [Fact]
+    public async Task Confirm_ADraftMadeInCasazenNeedsTheCodeAndClassOfItsApe_TheContractPrintsTheLastIdentifiedOne_AnImportedOneIsNotAsked()
+    {
+        using var h = await NewAsync();
+        var (created, version) = await h.CompleteAsync();
+
+        // An APE the reading takes for valid (the mock) whose code and class were never saved: the model prints them, so the review
+        // cannot be confirmed (LR-APE). It used to pass and end in 422 contract_data_missing at the download for signature.
+        await h.SetApeIdentificationAsync(null, null);
+        var saved = await h.SaveAsync(created.Id, version, 1, $$"""{"propertyId":"{{h.PropertyId}}"}""");
+        Assert.Equal([LeaseNeedCodes.ApeIdentificationMissing], Needs(saved.Flow, 1));
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => h.Service.ConfirmReviewAsync(created.Id, saved.Version));
+        Assert.Equal("lease_review_blocked", error.Code);
+        var review = await h.Service.GetReviewAsync(created.Id);
+        Assert.Equal(LeaseReviewSeverity.Block, Assert.Single(review.Checks, c => c.Code == LeaseNeedCodes.ApeIdentificationMissing).Severity);
+        Assert.DoesNotContain(review.Checks, c => c.Code is LeaseNeedCodes.ApeOk or LeaseNeedCodes.ApeMissing);
+
+        // A certificate the reading could not take whole asks for the same thing: its code and class, not another upload.
+        h.Ape.Setup(a => a.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).ThrowsAsync(ApeComplianceException.IdentificationRequired());
+        var unreadable = await h.Service.GetReviewAsync(created.Id);
+        Assert.Equal([LeaseNeedCodes.ApeIdentificationMissing], unreadable.Checks.Where(c => c.Severity == LeaseReviewSeverity.Block).Select(c => c.Code));
+        h.Ape.Setup(a => a.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).Returns(Task.CompletedTask);
+
+        // A contract already signed prints nothing: its APE is not asked for.
+        var imported = await h.CreateAsync(LeaseOrigin.Imported);
+        Assert.Empty(Needs(imported.Flow, 1));
+
+        // With the code and the class on the document the review can be confirmed.
+        await h.SetApeIdentificationAsync(LeaseDraftHarness.SeededApeCode, LeaseDraftHarness.SeededApeEnergyClass);
+        Assert.NotNull((await h.Service.ConfirmReviewAsync(created.Id, saved.Version)).ReviewConfirmedAt);
+
+        // The contract prints the last APE that has them: a later one that has not does not take its place.
+        await using var db = h.SecondContext();
+        db.PropertyDocuments.Add(new PropertyDocument
+        {
+            PropertyId = h.PropertyId,
+            OrgId = h.OrgId,
+            FileName = "newer.pdf",
+            StorageUrl = "properties/newer.pdf",
+            DocumentType = DocumentType.Ape,
+            UploadedBy = LeaseDraftHarness.OwnerId,
+            UploadedAt = DateTime.UtcNow.AddDays(1),
+        });
+        await db.SaveChangesAsync();
+        var lease = await db.LeaseContracts.Include(l => l.Property).ThenInclude(p => p.PropertyDocuments).SingleAsync(l => l.Id == created.Id);
+        Assert.Equal(
+            $"codice {LeaseDraftHarness.SeededApeCode}, classe energetica {LeaseDraftHarness.SeededApeEnergyClass}",
+            LeaseContractDocument.ResolveData(lease)[LeaseContractPlaceholders.ApeData]);
     }
 
     [Fact]
@@ -1027,18 +1150,20 @@ public class LeaseDraftServiceTests
     }
 
     [Fact]
-    public async Task Save_TheFirstSaveOfADraftMadeByTheOldForm_KeepsItsTransitoryTypeAndEnd_UntilTheLandlordChoosesAType()
+    public async Task Save_TheFirstSaveOfADraftMadeByTheOldForm_KeepsItsTransitoryTypeAndEnd_AndAsksForTheNeedTheOldFormNeverAsked()
     {
         using var h = await NewAsync();
         var id = await SeedOldFormDraftAsync(h, LeaseContractType.Transitorio, new DateTime(2027, 4, 30, 0, 0, 0, DateTimeKind.Utc));
 
-        // The documents of the parties: nothing to do with the type, which the wizard cannot offer and must not change on its own.
+        // The documents of the parties: nothing to do with the type or the term, which stay as the old form wrote them.
         var saved = await h.SaveAsync(id, 0, 5, "{}");
 
         var lease = await h.LoadAsync(id);
         Assert.Equal(LeaseContractType.Transitorio, lease.ContractType);
         Assert.Equal(new DateTime(2027, 4, 30, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
-        Assert.Contains(LeaseNeedCodes.LeaseTypeNotAvailable, Needs(saved.Flow, 3));
+        Assert.DoesNotContain(LeaseNeedCodes.LeaseTypeNotAvailable, Needs(saved.Flow, 3));
+        Assert.Contains(LeaseNeedCodes.TransitoryPartyMissing, Needs(saved.Flow, 3));
+        Assert.Contains(LeaseNeedCodes.TransitoryNeedMissing, Needs(saved.Flow, 3));
 
         // The landlord chooses a type that can be created: the term is the one of the type.
         await h.SaveAsync(id, saved.Version, 3, """{"contractType":"Libero"}""");

@@ -1,8 +1,8 @@
 # Runbook: in-app notifications (the bell of the shell)
 
 Task UI-12a (redesign wave, `gap/01` §4 and F12). Backend only: the entity, the job that writes it next to every push, the four
-endpoints and the retention. The bell and the drawer are UI-12b (frontend), which starts after this is merged. There is no
-switch: everything below is always on.
+endpoints and the retention; later, the real-time channel (SignalR, § 9) and the notification of the guest messages (§ 10). The bell
+and the drawer are UI-12b (frontend). There is no switch: everything below is always on.
 
 ## 1. What it is
 
@@ -58,6 +58,7 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `Type` | Told | `EntityId` |
 |---|---|---|
 | `new-booking`, `ota-stay-review` | hosts of the booking | booking |
+| `guest-message` | hosts of the booking (every message of the guest) | booking |
 | `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `checkout-reminder` | hosts of the booking | booking |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed` | hosts of the property | service request |
 | `service-request-cancelled` | the other party: the hosts of the property when the supplier cancels, the supplier org when the host or the customer of its showcase cancels; both when nobody answered in time | service request |
@@ -159,15 +160,94 @@ WHERE invocationdata ->> 'Type' LIKE 'Casazen.Infrastructure.Push.InAppNotificat
 * The list is paged by `page`/`pageSize` (newest first). New notifications shift the pages: ask for page 1 again after a poll that
   shows a higher count rather than extending the old pages.
 
-## 8. Code and tests
+## 8. Type to screen (what a client opens)
+
+The row carries `type` and `entityId` only; the client derives the screen. The **mobile route** is the one the push carries in
+`data.route` (`PushRoutes`, `mobile/src/notifications/notification-routes.ts` keeps the same list). The **web route** is the host app
+route of the same screen (the links the e-mails use are built in `PublicSiteLinks`).
+
+| `type` | `entityId` is | Mobile route (`data.route`) | Web route |
+|---|---|---|---|
+| `new-booking`, `ota-stay-review`, `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` |
+| `checkout-reminder` | booking | `/bookings/{bookingId}/checkout` | `/app/short-rent/bookings/{bookingId}` |
+| `guest-message` | booking | `/bookings/{bookingId}/messages` | `/app/short-rent/bookings/{bookingId}?tab=messages` |
+| `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed`, `-cancelled` (host side) | service request | `/bookings/{bookingId}` when the request has a booking, else `/properties` | the service request of the host (by `entityId`) |
+| `service-request-created`, `-auto-accepted`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled`, `-cancelled` (supplier side) | service request | `/properties` | supplier inbox, `/app/supplier/inbox` (the request by `entityId`) |
+
+Notes: an in-app row has no booking id for the `service-request-*` types (its `entityId` is the **service request**); the booking
+of the request is only in the push. A client that needs it reads the request. A type the client does not know opens the list of
+notifications. `PushRoutes.IsAppRoute` accepts `/properties`, `/bookings/{guid}`, `/bookings/{guid}/checkout` and
+`/bookings/{guid}/messages`; the mobile app must have the last one before the push is sent to its users (an old app ignores a route it
+does not know).
+
+## 9. Real time (SignalR)
+
+The bell no longer has to poll: the server tells the open sessions of a user when their unread count changes.
+
+| | |
+|---|---|
+| Hub | `NotificationsHub`, `/hubs/notifications` (WebSockets, falling back to server-sent events and long polling) |
+| Auth | `[Authorize(Policy = Authenticated)]`, the same Auth0 JWT as the API. Browsers cannot set a header on a WebSocket or SSE request, so for paths under `/hubs` the token is also read from `?access_token=` (`JwtBearerEvents.OnMessageReceived`, `HubAccessToken`); anywhere else a token in the query is ignored. Without a token the negotiate request is **401** |
+| Group | one per user: `user:{sub}`, with `sub` as `User.GetUserId()` in `MeNotificationsController`. A connection joins its own group only; the hub has no method a client can call |
+| Server → client | method **`notificationsChanged`**, one argument, camelCase JSON: `{ "unreadCount": 3, "type": "guest-message", "entityId": "<guid>" }`. `type` and `entityId` are `null` when only the count changed (read, read all). No text, no name |
+| CORS | the configured origins, now with `Access-Control-Allow-Credentials: true` **for the paths under `/hubs` only** (the SignalR client negotiates with credentials), and the header `X-SignalR-User-Agent` allowed. The API stays without credentials |
+| Caching, compression, rate limit | None is registered for the app (the rate limiter has named per-endpoint policies only, and the hub has none), and the hub answers set no `Cache-Control` of their own, so nothing breaks the WebSocket |
+
+Client (JS): `new HubConnectionBuilder().withUrl(apiBase + '/hubs/notifications', { accessTokenFactory: () => token }).withAutomaticReconnect().build()`,
+then `connection.on('notificationsChanged', ({ unreadCount, type, entityId }) => …)`. After every (re)connect refetch
+`GET /api/me/notifications/unread-count` once: a message sent while the socket was down is lost (the channel is a hint, the database is
+the truth). Keep a slow poll as a fallback.
+
+**Who publishes** (`IInAppNotificationPublisher`, `Casazen.Core/Services`; the implementation is `SignalRInAppNotificationPublisher` in
+`Casazen.Web`, the default is a no-op for tests and other hosts):
+
+* `InAppNotificationJob`, for every user whose row it has just written (`type` and `entityId` of the event);
+* `POST /api/me/notifications/{id}/read` and `read-all` (`type` and `entityId` `null`);
+* reading a guest thread (§ 10), `type` `guest-message` and `entityId` the booking.
+
+The implementation counts the unread notifications in a scope of its own, sends, and **never throws**: a failure is logged
+(`Real-time update of the notifications … could not be published`) and the notification stays stored. The Hangfire job runs in the
+same process as the web app, so `IHubContext` reaches the sockets.
+
+**Single instance.** Connections live in the memory of the process. With one Railway instance (today) every message reaches the
+right sockets. With **two or more instances** a message published on one is not delivered to the sockets of the others: scaling out
+needs a backplane (for example the Redis backplane of SignalR, or Azure SignalR Service) and sticky sessions or WebSockets-only
+clients (skip negotiation). Until then keep the web service at one replica; a client that misses a message catches up with the
+refetch on reconnect and the slow poll.
+
+## 10. Messages of the guest
+
+A message of the guest of a direct booking (`GuestMessageService.SendAsGuestAsync`, after it is saved, never on a replayed send) queues
+a push to `PushAudience.BookingHosts(bookingId)`: type `guest-message`, delivery key `booking-message:{messageId:N}` (**one push and
+one bell entry for every message**; the e-mail stays throttled to one every ten minutes), route `/bookings/{id}/messages`. The
+lock-screen text is the property only: *Nuovo messaggio da un ospite* / *«{property}»: un ospite ti ha scritto.* (`Push_GuestMessage_*`
+in `EmailTexts.resx` and `.en.resx`); **no guest name and no text of the message**. It is best effort like the other pushes: a failure
+is logged with the ids and never fails the send.
+
+**Reading clears the notification.** `POST /api/bookings/{id}/messages/read` and the host's reply
+(`POST /api/bookings/{id}/messages`, answering is reading) mark the caller's unread `guest-message` notifications of that booking as read
+(`IInAppNotificationService.MarkEntityReadAsync`: one `ExecuteUpdate` through `OwnNotifications`, conditioned on `ReadAt IS NULL`, so
+the same ownership rules as the bell) and, when some changed, publish the new count (§ 9). Only the caller's rows: a colleague keeps
+theirs until they read the thread themselves.
+
+**Badges per booking.** `GET /api/messages/unread` (same policy `booking.read` and host scope as `GET /api/messages`):
+`{ "items": [ { "bookingId": "<guid>", "unreadCount": 2 } ] }`, only open threads with something unread, the latest guest message first,
+at most 200 (`GuestMessageRules.UnreadThreadsMax`). Never any text. Use it for the badges of the calendar and the lists, and refetch it on
+`notificationsChanged` with `type: "guest-message"`.
+
+## 11. Code and tests
 
 `Casazen.Core/Entities/InAppNotification.cs` (+ `InAppNotificationLimits`), `Casazen.Core/Services/IInAppNotificationService.cs`,
 `Casazen.Infrastructure/Push/{InAppNotificationPushDecorator,InAppNotificationJob}.cs`,
 `Casazen.Infrastructure/Services/InAppNotificationService.cs`, `Casazen.Web/Controllers/MeNotificationsController.cs`,
-`Casazen.Web/BackgroundJobs/InAppNotificationRetentionJob.cs`, migration `AddInAppNotifications`.
+`Casazen.Web/BackgroundJobs/InAppNotificationRetentionJob.cs`, migration `AddInAppNotifications`; real time:
+`Casazen.Core/Services/IInAppNotificationPublisher.cs`, `Casazen.Web/Hubs/NotificationsHub.cs`,
+`Casazen.Web/Infrastructure/{SignalRInAppNotificationPublisher,HubAccessToken}.cs`; guest messages:
+`Casazen.Infrastructure/Services/GuestMessageService.cs`, `Casazen.Web/Controllers/HostMessagesController.cs`.
 Tests: `InAppNotificationPushDecoratorTests`, `InAppNotificationJobTests`, `InAppNotificationServiceTests`,
 `MeNotificationsControllerTests`, `InAppNotificationRetentionJobTests`,
 `InAppNotificationSqlShapeTests`, `InAppNotificationsIntegrationTests` (HTTP, the chain from a push to the
 notification), and on PostgreSQL `InAppNotificationsPostgresTests` (schema, the race on the unique index, the single-statement
-updates and the retention, whose rows a user reaches, the cascades). The architecture tests list the entity
+updates and the retention, whose rows a user reaches, the cascades), `InAppNotificationJobPublishTests`, `NotificationsHubTests`,
+`GuestMessagePushTests`, `HostMessagesControllerTests`, `CorsPolicyTests` (hub), and on PostgreSQL `GuestMessageNotificationsPostgresTests`. The architecture tests list the entity
 (`TenantQueryFilterArchitectureTests`) and the four actions (`EndpointAuthorizationArchitectureTests`).

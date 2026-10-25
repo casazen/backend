@@ -2,7 +2,7 @@
 
 Le relazioni sono distinte: casa → documenti della casa; casa → contratti; contratto → documenti del contratto. Gli allegati caricati dalla pagina partner non sono PropertyDocuments.
 
-La pagina `/app/long-rent/documents/upload?leaseId=<uuid>` usa il contratto salvato e mantiene il riferimento dopo login. I documenti sono consultabili dalla sezione Documenti del contratto, raggiungibile anche aprendo il contratto dalla casa.
+La pagina `/app/long-rent/documents/upload?leaseId=<uuid>` usa il contratto salvato e mantiene il riferimento dopo login; con `?practice=P-…` (il pulsante di ConcordatoFacile) il contratto lo ricava il server dalla pratica, o lo sceglie l'utente. I documenti sono consultabili dalla sezione Documenti del contratto, raggiungibile anche aprendo il contratto dalla casa.
 
 ## API
 
@@ -16,7 +16,9 @@ La pagina `/app/long-rent/documents/upload?leaseId=<uuid>` usa il contratto salv
 
 La migrazione `AddLeaseDocuments` è additiva e applicata all'avvio dal meccanismo esistente. La tabella usa il filtro tenant EF e abilita RLS senza policy Data API: il normale backend proprietario della tabella accede attraverso le proprie autorizzazioni, anon/authenticated non leggono direttamente gli allegati. Pubblicare il backend e verificare salute/migrazione prima del frontend. Un ritorno a codice precedente non richiede cancellazione della tabella o dei documenti salvati.
 
-Estrazione automatica dei dati, creazione minima della bozza CF, pagamento/offerta e popolamento delle sezioni da documenti sono lavoro Helix successivo; non sono implementati da questa pagina di conservazione.
+La lettura del contratto caricato e il riempimento della bozza «importato» (NL-DOCS) sono in [`lease-document-extraction.md`](lease-document-extraction.md); la bozza minima del concordato, la pagina del servizio con pagamento e omaggio, il link firmato, lo stato della pratica e il ritorno da ConcordatoFacile con `?practice=` sono descritti in `docs/integrations/concordatofacile/README.md`; resta da fare la lettura dei dati di attestazione e ricevuta di registrazione. Una singola foto JPEG/PNG inviata a questo endpoint diventa un PDF di una pagina (come per i documenti della casa).
+
+La ricevuta di registrazione caricata qui come documento di tipo `Registration` serve a dichiarare la registrazione senza ricaricare il file (CF-END): `POST /api/leases/{leaseId}/registration/manual` accetta `receiptDocumentId` al posto di `receipt`, solo per un documento `Registration` di questo contratto e della sua organizzazione (ogni altro è 404 `document_not_found`, senza leggere nulla). Il documento resta nella sezione Documenti con il suo file e la registrazione ne tiene uno suo (due chiavi, un proprietario ciascuna): vedi [`long-rent-lease-import.md`](long-rent-lease-import.md) § 12.
 
 ## Verifica
 

@@ -18,6 +18,13 @@ public sealed class Auth0Options
     /// <summary>API identifier expected in the <c>aud</c> claim.</summary>
     public string? Audience { get; set; }
 
+    /// <summary>
+    /// Optional override of the namespace of the owner portal custom claims (ADR-011-R7), for tests. Empty: the claims are
+    /// read under the names the Auth0 Action writes (<c>OwnerPortalClaims</c>); the namespace must match the Action,
+    /// whatever domain the web app is on, so no default is written here (decision D3).
+    /// </summary>
+    public string? CustomClaimNamespace { get; set; }
+
     public string? ManagementClientId { get; set; }
 
     public string? ManagementClientSecret { get; set; }

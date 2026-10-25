@@ -319,6 +319,13 @@ public partial class PropertyICalSyncService
 
     private async Task SyncFeedCoreAsync(Guid feedId, Guid propertyId, string importUrl, CancellationToken ct)
     {
+        // Get property currency for import default (ADR-002-R8, NF-02)
+        var propertyCurrency = await _db.Properties
+            .AsNoTracking()
+            .Where(p => p.Id == propertyId)
+            .Select(p => p.Currency)
+            .FirstOrDefaultAsync(ct);
+
         string icsContent;
         try
         {
@@ -338,7 +345,7 @@ public partial class PropertyICalSyncService
         try
         {
             parsed = _importService.Parse(icsContent);
-            incoming = ICalImportService.ToPropertyBlocks(parsed.Occurrences);
+            incoming = ICalImportService.ToPropertyBlocks(parsed.Occurrences, propertyCurrency);
         }
         catch (ICalFormatException ex)
         {
@@ -434,6 +441,7 @@ public partial class PropertyICalSyncService
                 row.StartUtc = block.StartUtc;
                 row.EndUtc = block.EndUtc;
                 row.Summary = block.Summary;
+                row.Currency = block.Currency;
                 row.LastSyncedAt = now;
                 continue;
             }
@@ -448,6 +456,7 @@ public partial class PropertyICalSyncService
                 StartUtc = block.StartUtc,
                 EndUtc = block.EndUtc,
                 Summary = block.Summary,
+                Currency = block.Currency,
                 LastSyncedAt = now,
             };
             _db.CalendarBlocks.Add(newBlock);
@@ -701,6 +710,13 @@ public partial class PropertyICalSyncService
         var export = await GetExportByTokenAsync(exportToken, ct)
             ?? throw new NotFoundException("iCal export token not found");
 
+        // Get property currency for export (ADR-002-R7, NF-02)
+        var propertyCurrency = await _db.Properties
+            .AsNoTracking()
+            .Where(p => p.Id == export.PropertyId)
+            .Select(p => p.Currency)
+            .FirstOrDefaultAsync(ct);
+
         // Expired checkout holds no longer take their dates, even before the expiry job cancels them (BK-21). A pending
         // "pay at the property" request is left out until the host accepts it: an anonymous request must not block the
         // OTAs (BK-06, A3-06); the approval checks the imported OTA blocks again.
@@ -723,7 +739,7 @@ public partial class PropertyICalSyncService
             .Where(ICalExportService.ExportsBlock)
             .ToListAsync(ct);
 
-        return _exportService.BuildPropertyFeed(bookings, blocks, busySummary);
+        return _exportService.BuildPropertyFeed(bookings, blocks, busySummary, propertyCurrency);
     }
 
     /// <summary>

@@ -28,6 +28,14 @@ public sealed record LeasePropertyDto(Guid Id, string Name, string City);
 /// one), <c>OverdueRentCount</c> and <c>OverdueRentAmount</c> are the installments past due and what they add up to,
 /// <c>OverdueDays</c> the days since the oldest of them was due (<see cref="RentInstallmentRules"/>). All empty (null, 0)
 /// for a lease with no rent schedule.
+/// Since LR-14 the last five fields tell where the lease stands in time (all at the end, optional, no field changed meaning):
+/// <c>EndDate</c> stays the end of the first period the contract states; <c>CurrentTermEndDate</c> is the last day of the period the
+/// lease is in now (the lists and the deadlines read this one); <c>NoticeOn</c> and <c>NoticeFrom</c> the notice of non-renewal, if any;
+/// <c>TerminatedOn</c> the last day of a lease ended early (or recorded as concluded when the renewal was introduced);
+/// <c>RenewalMonths</c> (derived) the months it goes on for when nobody gives notice, 0 for a lease that does not renew.
+/// Since LR-01b the last two fields say where the lease stands in the path: <c>Stage</c>, one of the eight stages, and <c>NextStep</c>, the one
+/// step it is waiting for (a stable code, who does it, how urgent, the day it is due, the figures a sentence needs). Both are decided here, on
+/// the server, by <see cref="LeaseFlow"/>: a client shows them and never works them out from the other fields.
 /// </remarks>
 public sealed record LeaseSummaryDto(
     Guid Id,
@@ -52,7 +60,17 @@ public sealed record LeaseSummaryDto(
     DateOnly? NextRentDueDate = null,
     int OverdueRentCount = 0,
     decimal OverdueRentAmount = 0m,
-    int? OverdueDays = null);
+    int? OverdueDays = null,
+    DateTime CurrentTermEndDate = default,
+    DateTime? NoticeOn = null,
+    LeaseNoticeParty? NoticeFrom = null,
+    DateTime? TerminatedOn = null,
+    LeaseStage? Stage = null,
+    LeaseNextStep? NextStep = null)
+{
+    /// <summary>Months the lease goes on for when it renews by itself (48 libero, 24 concordato); 0 for a type that does not renew.</summary>
+    public int RenewalMonths => LongRentRules.RenewalMonths(ContractType) ?? 0;
+}
 
 /// <summary>
 /// A party of the lease as the host sees it: the name (needed to recognise the signer), the role and whether the
@@ -129,7 +147,13 @@ public sealed record LeaseEventDto(LeaseEventType EventType, DateTime OccurredAt
 /// signed by every party can be downloaded (<c>GET /api/leases/{id}/signed-document</c>, LT-02). Since LR-12 the four last
 /// fields (all optional, at the end) tell how the lease came to be (<c>Origin</c>), how far the wizard got
 /// (<c>WizardMaxStep</c>), whether the review of the draft is confirmed (<c>ReviewConfirmedAt</c>) and whether the contract was
-/// downloaded for the signature on paper (<c>SentForSignatureAt</c>); no field that was there changed.
+/// downloaded for the signature on paper (<c>SentForSignatureAt</c>); no field that was there changed. Since LR-14 five more tell where
+/// the lease stands in time, same rule: <c>EndDate</c> is still the end of the first period the contract states,
+/// <c>CurrentTermEndDate</c> the last day of the period the lease is in now, <c>NoticeOn</c>/<c>NoticeFrom</c> the notice of
+/// non-renewal, <c>TerminatedOn</c> the last day of a lease ended early; <c>RenewalMonths</c> (months it goes on for when nobody gives
+/// notice, 0 if it does not renew) and <c>NoticeWarning</c> (<c>notice_possibly_late</c> when the notice came after the last day to
+/// give it) are derived. Since CF-IMPORT the last field, <c>IsConcordatoFacileSource</c>, says that the lease is the one ConcordatoFacile
+/// prepares (an imported draft that waits for the contract the partner delivers); a boolean, nothing of a person.
 /// </summary>
 public sealed record LeaseDetailDto(
     Guid Id,
@@ -156,7 +180,25 @@ public sealed record LeaseDetailDto(
     LeaseOrigin Origin = LeaseOrigin.Created,
     int WizardMaxStep = 0,
     DateTime? ReviewConfirmedAt = null,
-    DateTime? SentForSignatureAt = null);
+    DateTime? SentForSignatureAt = null,
+    DateTime CurrentTermEndDate = default,
+    DateTime? NoticeOn = null,
+    LeaseNoticeParty? NoticeFrom = null,
+    DateTime? TerminatedOn = null,
+    bool IsConcordatoFacileSource = false)
+{
+    /// <summary>Months the lease goes on for when it renews by itself (48 libero, 24 concordato); 0 for a type that does not renew.</summary>
+    public int RenewalMonths => LongRentRules.RenewalMonths(ContractType) ?? 0;
+
+    /// <summary>
+    /// <c>notice_possibly_late</c> when the notice was given after the last day to give it (six months before the end of the period):
+    /// CasaZen records it and says so, it does not judge whether it is valid in law (decision LR-D29). <c>null</c> otherwise.
+    /// </summary>
+    public string? NoticeWarning =>
+        NoticeOn is { } given && TerminatedOn is null && LeaseRenewal.IsNoticePossiblyLate(ContractType, CurrentTermEndDate, given)
+            ? LeaseLifecycleCodes.NoticePossiblyLate
+            : null;
+}
 
 /// <summary>
 /// Canone concordato data of a lease (LT-10, A7-12, A7-23): the characteristics declared at creation and the range the
@@ -227,7 +269,12 @@ public static class LeaseDtoMapper
             lease.Origin,
             lease.WizardMaxStep,
             lease.ReviewConfirmedAt,
-            lease.SentForSignatureAt);
+            lease.SentForSignatureAt,
+            lease.CurrentTermEndDate,
+            lease.NoticeOn,
+            lease.NoticeFrom,
+            lease.TerminatedOn,
+            lease.IsConcordatoFacileSource);
     }
 
     public static LeaseConcordatoAssessmentDto ToConcordatoAssessment(LeaseConcordatoAssessment a)

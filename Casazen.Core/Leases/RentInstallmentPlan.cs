@@ -23,6 +23,8 @@ public sealed record RentPeriod(DateOnly Start, DateOnly End);
 /// <item>The installment is due on the first <see cref="Entities.RentSchedule.BillingDayOfMonth"/> on or after the start of its
 /// period (in advance for a lease starting on the 1st with due day 5: due on the 5th of the month it pays).</item>
 /// <item>Only whole periods inside the lease get an installment; a shorter final period is returned apart.</item>
+/// <item>A lease already running when its rents are set up is tracked from a day (LR-04a, <c>trackFrom</c>): the periods that
+/// ended before it get no installment, instead of being born overdue.</item>
 /// </list>
 /// </summary>
 public static class RentInstallmentPlan
@@ -65,9 +67,13 @@ public static class RentInstallmentPlan
 
     /// <summary>
     /// The installments from <paramref name="leaseStart"/> to <paramref name="leaseEnd"/> (both included), with
-    /// <paramref name="amount"/> each.
+    /// <paramref name="amount"/> each. With <paramref name="trackFrom"/> (LR-04a: a lease already running when its rents are
+    /// first set up) the periods that <b>ended before</b> that day get no installment, so none is born «in ritardo»: the period
+    /// the day falls in is the first one, whole, and the periods stay anchored on the lease start, so a later plan of the same
+    /// lease lines up with this one. Null, or a day on or before the lease start, plans every period of the lease.
     /// </summary>
-    public static RentPlan Build(DateOnly leaseStart, DateOnly leaseEnd, RentCadence cadence, int billingDay, decimal amount)
+    public static RentPlan Build(
+        DateOnly leaseStart, DateOnly leaseEnd, RentCadence cadence, int billingDay, decimal amount, DateOnly? trackFrom = null)
     {
         if (leaseEnd < leaseStart)
             throw new ArgumentException("The lease ends before it starts", nameof(leaseEnd));
@@ -75,6 +81,7 @@ public static class RentInstallmentPlan
             throw new ArgumentOutOfRangeException(nameof(amount), amount, "The installment amount must be positive");
 
         var months = MonthsPer(cadence);
+        var tracked = trackFrom ?? DateOnly.MinValue;
         var installments = new List<RentInstallment>();
         RentPeriod? partial = null;
         for (var i = 0; i < MaxInstallments; i++)
@@ -87,9 +94,15 @@ public static class RentInstallmentPlan
             var end = leaseStart.AddMonths((i + 1) * months).AddDays(-1);
             if (end > leaseEnd)
             {
-                partial = new RentPeriod(start, leaseEnd);
+                // The short final period is told to the landlord only if it is not already behind the day the plan starts from.
+                if (leaseEnd >= tracked)
+                    partial = new RentPeriod(start, leaseEnd);
                 break;
             }
+
+            // A period that ended before the day the plan is tracked from is not owed in CasaZen: no installment, so none overdue.
+            if (end < tracked)
+                continue;
 
             installments.Add(new RentInstallment(start, end, DueDate(start, billingDay), amount));
         }

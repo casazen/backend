@@ -485,6 +485,12 @@ sha256sum MANUALEALBERGHI.pdf MANUALEWS.pdf   # compare with the SHA-256 above; 
 
 ### Web service: not implemented
 
+**Status 2026-10-23:** the product owner decided the automatic submission (Quokka v10, R16 and D12). The development
+requirements are Q1-14 in `Sessions/prospect-quokka360/requisiti-fase1-helix.md`: both profiles (single structure and
+"Gestione Appartamenti"), `Test` before `Send`, a "sent, receipt pending" status, the daily receipt job, tests against a
+fake SOAP server only, and the first real submission supervised on a real structure as a launch gate. Until that work is
+released, this page describes the behaviour in production.
+
 The specification is now in hand (sources 2 and 3) and consistent: endpoint
 `https://alloggiatiweb.poliziadistato.it/service/service.asmx`, namespace `AlloggiatiService`, `GenerateToken` →
 `Authentication_Test` / `Test` → `Send` → `Ricevuta` the day after, request and response examples in `MANUALEWS.pdf` p. 7-18, element

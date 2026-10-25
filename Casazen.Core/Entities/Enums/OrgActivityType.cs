@@ -62,6 +62,9 @@ public enum OrgActivityType
     /// <summary>The public address (slug) of the org was changed. Subject: the org. No details: the slug itself is never recorded.</summary>
     OrgSlugChanged = 22,
 
+    /// <summary>Tier was assigned to the org (admin-only in phase 1, ADR-010-R7). Subject: the org. Details: to-tier.</summary>
+    TierAssigned = 23,
+
     // ─── Property mode (PM-02, written since AM-02c) ─────────────────────────────────────────────────────
 
     /// <summary>
@@ -86,4 +89,9 @@ public enum OrgActivityType
 
     /// <summary><i>Reserved.</i> A supplier was removed from the trusted ones. Subject: the supplier.</summary>
     TrustedSupplierRemoved = 61,
+
+    // ─── ConcordatoFacile (account) ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>An admin manually granted a ConcordatoFacile gift to an org. Subject: the org. No details.</summary>
+    AdminGrantedConcordatoFacileGift = 70,
 }

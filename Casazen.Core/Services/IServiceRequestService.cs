@@ -434,7 +434,9 @@ public interface IServiceRequestService
     /// <summary>
     /// The requests of <paramref name="rentalContext"/> in the host scope, newest first. Web and app use the same
     /// filters (SU-07): <paramref name="bookingId"/> for a stay (short-rent), <paramref name="propertyId"/> for a
-    /// property (both contexts). The caller authorizes the booking or property it filters on.
+    /// property (both contexts). The caller authorizes the booking or property it filters on. <paramref name="view"/>
+    /// (LR-08a) keeps the open or the closed requests (<see cref="ServiceRequestHostView"/>); <c>null</c> keeps all of them,
+    /// and it narrows <paramref name="status"/> when both are given.
     /// </summary>
     Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForHostAsync(
         HostScope scope,
@@ -444,6 +446,7 @@ public interface IServiceRequestService
         Guid? bookingId,
         int page,
         int pageSize,
+        ServiceRequestHostView? view = null,
         CancellationToken cancellationToken = default);
     Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForSupplierAsync(
         Guid supplierOrgId,

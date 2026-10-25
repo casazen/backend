@@ -55,6 +55,10 @@ public static class HostScopeQueryExtensions
     public static IQueryable<GuestThread> InScope(this IQueryable<GuestThread> source, HostScope scope) =>
         source.InScope(scope, thread => thread.Property);
 
+    /// <summary>The internal activities of the scope (those on properties it reaches, NF-22).</summary>
+    public static IQueryable<InternalActivity> InScope(this IQueryable<InternalActivity> source, HostScope scope) =>
+        source.InScope(scope, activity => activity.Property);
+
     /// <summary>
     /// The guests of the scope (SR-04b). A guest belongs to the org and to no property, so it is reached through its stays: in a
     /// restricted scope it is one with a booking at a property the scope reaches (the rule of the bookings above, whatever the status

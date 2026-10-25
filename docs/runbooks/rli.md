@@ -35,18 +35,27 @@ The deadline shown is computed by the API (task LT-04, see [Registration deadlin
 1. The landlord registers the contract on an official channel of the Agenzia delle Entrate (`rli-esign.md` §2.1):
    RLI web service in the reserved area (SPID, CIE, CNS or Entratel/Fisconline credentials), the RLI software with
    filing through Entratel/Fisconline, an authorised intermediary (accountant, CAF, trade association) or an office of
-   the Agenzia. CasaZen is not an authorised intermediary (`rli-esign.md` §2.2) and does not file for them.
-2. In the lease page, "Enter registration details": registration number or protocol, registration date and the
-   receipt PDF, plus the explicit declaration checkbox.
-3. `POST /api/leases/{id}/registration/manual` (multipart: `registrationCode`, `registrationDate`, `receipt`), policy
-   `lease.register` on the lease (TN-3: the owner, or an org-wide member with `lease.register`):
+   the Agenzia. CasaZen is not an authorised intermediary (`rli-esign.md` §2.2) and does not file for them. A contract made
+   with the guided service (`IsConcordatoFacileSource`) is registered by the service, which sends the receipt: the landlord
+   uploads it among the documents of the lease (kind `Registration`) and declares the registration with it (below).
+2. In the lease page, "Enter registration details" ("Dichiara la registrazione" for a contract the service registers):
+   registration number or protocol, registration date and the receipt PDF, plus the explicit declaration checkbox. The
+   receipt is a new file or, when the lease already has registration documents, one of them ("Usa la ricevuta già caricata").
+3. `POST /api/leases/{id}/registration/manual` (multipart: `registrationCode`, `registrationDate` and **exactly one** of
+   `receipt` and `receiptDocumentId`), policy `lease.register` on the lease (TN-3: the owner, or an org-wide member with
+   `lease.register`):
    - `registrationCode`: 1-100 characters, trimmed, no format check (no official format was verified);
    - `registrationDate`: not later than today in Europe/Rome;
    - `receipt`: checked on its content (`%PDF-` signature), at most 10 MB;
+   - `receiptDocumentId` (CF-END): the id of a document of kind `Registration` of this lease and of its org; its bytes are
+     read from the private bucket and checked as a file sent now. Another lease's, another org's or another kind's document
+     is 404 `document_not_found` and nothing is read; both fields, or neither, are 400 `validation_error`
+     ([`long-rent-lease-import.md`](long-rent-lease-import.md) § 12);
    - the lease must be `Signed` with no registration in progress or done (409 `rli_registration_in_progress` /
      `rli_already_registered`, 422 `rli_lease_not_signed`).
 4. The receipt is stored in the **private bucket** (FD-07) under
-   `leases/{orgId}/{leaseId}/registration/{random}.pdf`, then one transaction records the registration (`Channel =
+   `leases/{orgId}/{leaseId}/registration/{random}.pdf` (always a file of its own, also when it comes from a document: the
+   document keeps its file), then one transaction records the registration (`Channel =
    Manual`, code, date, receipt key, `DeclaredByUserId`), the lease `Registered` and the `RegistrationConfirmed` event
    (payload `manual`). If the transaction fails, the uploaded receipt is deleted.
 5. `GET /api/leases/{id}/registration/receipt` streams the receipt from the private bucket, only to a caller who may
@@ -188,6 +197,9 @@ offers self-serve: the provider path exists in the code but stays **off, with no
 5. `GET /api/leases/{id}/signed-document` streams it from the private bucket, only to a caller who may read the lease
    (tenant filter + TN-3), with `Cache-Control: private, no-store`. 404 `lease_signed_contract_not_available` before.
 6. The RLI registration (manual path above, LT-01) starts once the lease is `Signed`.
+7. A contract signed **outside CasaZen with the owner's own model** reaches the same `Signed` state without the template gate of steps 1 and 3: `POST /api/leases/{id}/import`
+   (LR-13, only for a draft created with `origin: Imported`; [`long-rent-lease-import.md`](long-rent-lease-import.md)). It records the same things as step 4 (the stipula, the
+   signers, `AllPartiesSigned` with payload `imported`) plus the event `Imported`; the registration, if it already happened, is then declared with the manual path.
 
 ### Signers (A7-16)
 
@@ -448,7 +460,7 @@ The receipt is served only by `GET /api/leases/{id}/rli/questura/receipt` (`leas
 ### Reminders (same job `rli-deadline-reminder`, daily 08:00 UTC)
 
 For every lease with an extra-EU tenant, in any status except `Rejected` (**registered leases included**), not ended
-yet (`EndDate` ≥ today) and not declared. Same threshold logic as the RLI deadline: only the most urgent threshold
+yet (`CurrentTermEndDate` ≥ today, LR-14: the end of the period the lease is in) and not declared. Same threshold logic as the RLI deadline: only the most urgent threshold
 reached today, once per deadline, recorded as `DeadlineReminderSent` with payload `{threshold}:{deadline}` only when the
 email was accepted; a changed delivery date starts its own thresholds. Thresholds are a product choice:
 
@@ -478,7 +490,7 @@ Four nullable columns on `LeaseContracts`, no data change. Consequences:
 -- Active leases with an extra-EU tenant and no declared Questura communication
 SELECT l."Id", l."Status", l."StartDate", l."PropertyDeliveryDate"
 FROM casazen_prod."LeaseContracts" l
-WHERE l."Status" <> 7 AND l."QuesturaCommunicationDate" IS NULL AND l."EndDate" >= now()
+WHERE l."Status" <> 7 AND l."QuesturaCommunicationDate" IS NULL AND l."CurrentTermEndDate" >= now()
   AND EXISTS (SELECT 1 FROM casazen_prod."Parties" p
               WHERE p."LeaseContractId" = l."Id" AND p."Role" = 1 AND p."IsExtraEU");
 

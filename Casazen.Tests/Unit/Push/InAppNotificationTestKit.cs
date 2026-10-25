@@ -37,8 +37,8 @@ internal sealed class InAppNotificationTestKit : IDisposable
 
     public void Dispose() => Db.Dispose();
 
-    public InAppNotificationJob Job() =>
-        new(Db, Clock, NullLogger<InAppNotificationJob>.Instance);
+    public InAppNotificationJob Job(IInAppNotificationPublisher? publisher = null) =>
+        new(Db, Clock, publisher ?? new NoOpInAppNotificationPublisher(), NullLogger<InAppNotificationJob>.Instance);
 
     public async Task<World> SeedWorldAsync()
     {

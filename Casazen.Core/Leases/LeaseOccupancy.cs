@@ -14,7 +14,8 @@ public static class LeaseOccupancy
 {
     /// <summary>
     /// A lease of <paramref name="propertyId"/> that is not a draft nor rejected (a draft is not a contract yet, a rejected
-    /// contract will not be registered) and whose last day (<see cref="LeaseContract.EndDate"/>, included) is on or after
+    /// contract will not be registered) and whose last day (<see cref="LeaseContract.CurrentTermEndDate"/>, included: the end of the
+    /// period it is in now, which a tacit renewal moves forward and a notice or an early termination fixes, LR-14) is on or after
     /// <paramref name="from"/>: it keeps the property up to that day. <paramref name="from"/> is an instant, normally the start
     /// of a calendar day of Rome (<c>RomeCalendar.StartOfDayUtc</c>), so a lease that ends on that day still counts.
     /// </summary>
@@ -22,5 +23,5 @@ public static class LeaseOccupancy
         l => l.PropertyId == propertyId
              && l.Status != LeaseStatus.Draft
              && l.Status != LeaseStatus.Rejected
-             && l.EndDate >= from;
+             && l.CurrentTermEndDate >= from;
 }

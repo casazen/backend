@@ -22,7 +22,7 @@ namespace Casazen.Web.Controllers;
 /// <c>property.read</c> held in long-rent, the writes <c>property.write</c> held in long-rent, and each property is
 /// authorized as a <see cref="HostResource"/> with <see cref="LongRentPropertyOperations"/> (org, permission,
 /// ownership). Only what a landlord needs: find a supplier for the property, send the request, list the property's
-/// requests, mark a completed one paid. These endpoints reach only <see cref="ServiceRequestRentalContext.LongRent"/>
+/// requests (open or closed) and read one, mark a completed one paid. These endpoints reach only <see cref="ServiceRequestRentalContext.LongRent"/>
 /// requests; the supplier side (take, complete, reject) is the same as for short stays (<c>api/service-requests</c>).
 /// </summary>
 [ApiController]
@@ -40,7 +40,9 @@ public class LongRentServiceRequestsController(
 {
     /// <summary>
     /// The long-rent requests in the caller's scope, newest first; with <c>propertyId</c> only that property's (404 when
-    /// it is not in the caller's org, 403 when the caller may not read it).
+    /// it is not in the caller's org, 403 when the caller may not read it). <c>view=open</c> keeps the requests still to follow
+    /// (new, taken, in progress, completed and waiting to be paid), <c>view=closed</c> the ones that are over (paid, rejected,
+    /// cancelled), LR-08a; without it, or with any other value, every request. <c>status</c> narrows the same list further.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ServiceRequestListResponse), StatusCodes.Status200OK)]
@@ -52,6 +54,7 @@ public class LongRentServiceRequestsController(
         [FromQuery] string? status,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] string? view = null,
         CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
@@ -63,6 +66,10 @@ public class LongRentServiceRequestsController(
         if (EnumNames.TryParseDefined<ServiceRequestStatus>(status, out var parsed))
             statusFilter = parsed;
 
+        ServiceRequestHostView? viewFilter = null;
+        if (EnumNames.TryParseDefined<ServiceRequestHostView>(view, out var parsedView))
+            viewFilter = parsedView;
+
         var scope = await GetHostScopeAsync(cancellationToken);
         if (scope is null) return Unauthorized();
 
@@ -73,7 +80,7 @@ public class LongRentServiceRequestsController(
         }
 
         var (items, total) = await serviceRequestService.ListForHostAsync(
-            scope, ServiceRequestRentalContext.LongRent, statusFilter, propertyId, bookingId: null, page, pageSize, cancellationToken);
+            scope, ServiceRequestRentalContext.LongRent, statusFilter, propertyId, bookingId: null, page, pageSize, viewFilter, cancellationToken);
 
         return Ok(new ServiceRequestListResponse
         {
@@ -82,6 +89,34 @@ public class LongRentServiceRequestsController(
             Page = page,
             PageSize = pageSize,
         });
+    }
+
+    /// <summary>
+    /// One long-rent request of the caller's scope (LR-08a), in the shape of the list (<see cref="ServiceRequestDto"/>): the dates of its
+    /// path (<c>createdAt</c>, <c>takenAt</c>, <c>startedAt</c>, <c>completedAt</c>, <c>paidAt</c>, <c>cancelledAt</c>) and its
+    /// <c>history</c> are in it. 404 <c>service_request_not_found</c> for a request that does not exist, that is of another org, that
+    /// is on a property outside the caller's scope (a collaborator "Solo alcuni") or that is a short-rent one; 403 when the caller may
+    /// not read the request's property (<c>property.read</c> in long-rent as a <see cref="HostResource"/>).
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ServiceRequestDto>> GetById(Guid id, CancellationToken cancellationToken)
+    {
+        var scope = await GetHostScopeAsync(cancellationToken);
+        if (scope is null) return Unauthorized();
+
+        var existing = await serviceRequestService.GetByIdForHostAsync(
+            id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
+        if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
+
+        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId, existing.PropertyId);
+        if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Read))
+            return Forbid();
+
+        return Ok(ServiceRequestsController.MapDto(existing));
     }
 
     /// <summary>

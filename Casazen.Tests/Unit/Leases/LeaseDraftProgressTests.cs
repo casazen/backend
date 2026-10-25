@@ -58,7 +58,7 @@ public class LeaseDraftProgressTests
         Assert.Equal(LeaseStepState.Done, flow[1].State);
         Assert.Equal([LeaseNeedCodes.LandlordMissing, LeaseNeedCodes.TenantMissing], NeedCodes(flow, 2));
         Assert.Equal(
-            [LeaseNeedCodes.ContractTypeMissing, LeaseNeedCodes.TaxRegimeMissing, LeaseNeedCodes.RentMissing],
+            [LeaseNeedCodes.ContractTypeMissing, LeaseNeedCodes.TaxRegimeMissing, LeaseNeedCodes.RentMissing, LeaseNeedCodes.DepositMissing],
             NeedCodes(flow, 3));
         Assert.Equal([LeaseNeedCodes.StartMissing], NeedCodes(flow, 4));
         Assert.Equal(LeaseStepState.Todo, flow[5].State);
@@ -159,7 +159,6 @@ public class LeaseDraftProgressTests
     {
         ["no type"] = (v => v with { ContractType = null }, [LeaseNeedCodes.ContractTypeMissing]),
         ["blank type"] = (v => v with { ContractType = "  " }, [LeaseNeedCodes.ContractTypeMissing]),
-        ["transitory type"] = (v => v with { ContractType = "Transitorio" }, [LeaseNeedCodes.LeaseTypeNotAvailable]),
         ["a type that does not exist"] = (v => v with { ContractType = "Studenti" }, [LeaseNeedCodes.LeaseTypeNotAvailable]),
         ["no regime"] = (v => v with { TaxRegime = null }, [LeaseNeedCodes.TaxRegimeMissing]),
         ["a regime that does not exist"] = (v => v with { TaxRegime = "flat" }, [LeaseNeedCodes.TaxRegimeMissing]),
@@ -366,6 +365,85 @@ public class LeaseDraftProgressTests
         {
             Assert.DoesNotContain(Compute(input).Steps, s => s.State == LeaseStepState.Waiting);
         }
+    }
+
+    // ---- a transitory contract made in CasaZen (TR) --------------------------------------------------------------
+
+    /// <summary>A transitory contract of 6 months from 1 November 2026, with who has its need, the need and its documentation: nothing is missing.</summary>
+    private static LeaseDraftValues ATransitory(string? end = "2027-04-30", string? documentation = "Lettera di assunzione") => Complete() with
+    {
+        ContractType = "Transitorio",
+        TransitoryParty = "Tenant",
+        TransitoryNeed = "Lavoro a Milano fino ad aprile",
+        TransitoryDocumentation = documentation,
+        EndDate = end,
+    };
+
+    [Theory]
+    [InlineData("2026-11-30", null)] // a month, 30 days: the shortest a transitory contract can be
+    [InlineData("2027-04-30", null)]
+    [InlineData("2028-04-30", null)] // 18 months: the longest
+    [InlineData("2028-05-01", LeaseNeedCodes.TermOutOfRange)]
+    [InlineData("2026-11-29", LeaseNeedCodes.TermOutOfRange)] // less than a month
+    [InlineData("2026-11-01", LeaseNeedCodes.TermOutOfRange)] // ends the day it starts
+    [InlineData("2026-10-15", LeaseNeedCodes.TermOutOfRange)] // ends before it starts
+    [InlineData(null, LeaseNeedCodes.EndMissing)]
+    [InlineData("  ", LeaseNeedCodes.EndMissing)]
+    [InlineData("next spring", LeaseNeedCodes.EndInvalid)]
+    public void ATransitoryContract_HasATermOfOneToEighteenMonthsTypedByItsLandlord_Step4(string? end, string? expected)
+    {
+        var flow = Compute(Input(ATransitory(end)));
+
+        string[] codes = expected is null ? [] : [expected];
+        Assert.Equal(codes, NeedCodes(flow, 4));
+        Assert.Equal(expected is null, flow.DataComplete);
+    }
+
+    [Theory]
+    [InlineData("2026-11-30", null, null)] // 30 days: nothing to prove
+    [InlineData("2026-12-01", null, LeaseNeedCodes.TransitoryDocumentationMissing)] // 31 days
+    [InlineData("2026-12-01", "  ", LeaseNeedCodes.TransitoryDocumentationMissing)]
+    [InlineData("2026-12-01", "Lettera di assunzione", null)]
+    [InlineData("2027-04-30", null, LeaseNeedCodes.TransitoryDocumentationMissing)]
+    public void ATransitoryContractOfMoreThan30Days_ProvesItsNeedWithDocumentation_Step4(string end, string? documentation, string? expected)
+    {
+        var flow = Compute(Input(ATransitory(end, documentation)));
+
+        string[] codes = expected is null ? [] : [expected];
+        Assert.Equal(codes, NeedCodes(flow, 4));
+    }
+
+    [Fact]
+    public void ATransitoryContract_AsksWhoHasTheNeedAndWhatItIs_ADocumentationOfMoreThan300Characters_IsTooLong()
+    {
+        var none = Compute(Input(ATransitory() with { TransitoryParty = null, TransitoryNeed = null }));
+        var wrong = Compute(Input(ATransitory() with { TransitoryParty = "Condominium", TransitoryNeed = "   " }));
+        var fine = Compute(Input(ATransitory() with { TransitoryParty = "landlord" }));
+        var long300 = Compute(Input(ATransitory(documentation: new string('a', 300))));
+        var long301 = Compute(Input(ATransitory(documentation: new string('a', 301))));
+
+        Assert.Equal([LeaseNeedCodes.TransitoryPartyMissing, LeaseNeedCodes.TransitoryNeedMissing], NeedCodes(none, 3));
+        Assert.Equal([LeaseNeedCodes.TransitoryPartyMissing, LeaseNeedCodes.TransitoryNeedMissing], NeedCodes(wrong, 3));
+        Assert.Empty(fine[3].Needs);
+        Assert.Empty(long300[4].Needs);
+        var tooLong = Assert.Single(long301[4].Needs);
+        Assert.Equal(LeaseNeedCodes.TransitoryDocumentationTooLong, tooLong.Code);
+        Assert.Equal(300, tooLong.Params!["maxLength"]);
+        Assert.False(none.DataComplete);
+    }
+
+    [Fact]
+    public void ATransitoryContractWithItsNeedAndItsEnd_HasNothingMissing_AndNoOtherContractAsksForTheNeed()
+    {
+        var flow = Compute(Input(ATransitory()));
+
+        Assert.All(Enumerable.Range(1, 5), n => Assert.Empty(flow[n].Needs));
+        Assert.True(flow.DataComplete);
+        // The libero never asks for it, and a contract already signed prints nothing of its own: neither its need nor its documentation.
+        Assert.Empty(Compute(Input(Complete()))[3].Needs);
+        var signed = Compute(Input(ATransitory() with { TransitoryParty = null, TransitoryNeed = null, TransitoryDocumentation = null }, origin: LeaseOrigin.Imported));
+        Assert.Empty(signed[3].Needs);
+        Assert.Empty(signed[4].Needs);
     }
 
     // ---- an imported contract ------------------------------------------------------------------------------------

@@ -32,6 +32,12 @@ namespace Casazen.Infrastructure.Services;
 /// tenant's payment session, an offline payment, the webhook and the job take turns. Emails are queued after the commit
 /// (FD-13). Logs carry lease, installment and Stripe ids only.
 /// </para>
+/// <para>
+/// Tracking the rents and asking the tenants for them online are two choices (LR-04a, LR-D17 and LR-D19): the plan can start from a
+/// day (<see cref="RentSchedule.TrackFrom"/>), and the daily job writes to a tenant only for a plan the landlord switched online
+/// requests on for (<see cref="RentSchedule.OnlineRequestsEnabled"/>, off for a new plan). The landlord's own «send the link» and
+/// reminder never depend on it.
+/// </para>
 /// </remarks>
 public sealed partial class RentBillingService(
     AppDbContext db,
@@ -84,8 +90,9 @@ public sealed partial class RentBillingService(
         if (!Enum.IsDefined(request.Cadence))
             throw new ArgumentOutOfRangeException(nameof(request), request.Cadence, "Unknown rent cadence");
 
+        // The plan runs to the end of the period the lease is in now: a lease that renewed by itself or was ended early (LR-14).
         var leaseStart = RomeCalendar.DateInRome(lease.StartDate);
-        var leaseEnd = RomeCalendar.DateInRome(lease.EndDate);
+        var leaseEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
         if (leaseEnd < leaseStart)
             throw new DomainRuleException(RentBillingErrorCodes.LeaseOutsidePlan, "RentLeaseDatesInvalid");
 
@@ -103,7 +110,9 @@ public sealed partial class RentBillingService(
         if (amount <= 0 || amount > MaxInstallmentAmount || decimal.Round(amount, 2) != amount)
             throw new DomainRuleException(RentBillingErrorCodes.AmountInvalid, "RentAmountInvalid");
 
-        var plan = RentInstallmentPlan.Build(leaseStart, leaseEnd, request.Cadence, billingDay, amount);
+        // A day after the end of the lease would leave a plan with nothing to track (LR-04a).
+        if (request.TrackFrom is { } requestedTrackFrom && requestedTrackFrom > leaseEnd)
+            throw new DomainRuleException(RentBillingErrorCodes.TrackFromInvalid, "RentTrackFromInvalid");
 
         await using var transaction = await LockLeaseAsync(leaseId, cancellationToken);
         var schedule = await db.RentSchedules.SingleOrDefaultAsync(s => s.LeaseContractId == leaseId, cancellationToken);
@@ -113,6 +122,13 @@ public sealed partial class RentBillingService(
 
         if (schedule is not null && schedule.Cadence != request.Cadence && entries.Any(e => !IsRegenerable(e)))
             throw new DomainRuleException(RentBillingErrorCodes.CadenceLocked, "RentCadenceLocked");
+
+        // The day the rents are tracked from: the one asked for, else the one the plan already has. A day on or before the
+        // start of the lease is «from the start»; it is stored as null.
+        var trackFrom = request.TrackFrom ?? schedule?.TrackFrom;
+        if (trackFrom <= leaseStart)
+            trackFrom = null;
+        var plan = RentInstallmentPlan.Build(leaseStart, leaseEnd, request.Cadence, billingDay, amount, trackFrom);
 
         var now = UtcNow;
         if (schedule is null)
@@ -131,10 +147,13 @@ public sealed partial class RentBillingService(
         schedule.Amount = amount;
         schedule.Currency = RentCharges.Currency;
         schedule.IsActive = true;
-        schedule.NextRunDate = plan.Installments.Count > 0 ? plan.Installments[0].DueDate : leaseStart;
+        schedule.NextRunDate = plan.Installments.Count > 0 ? plan.Installments[0].DueDate : trackFrom ?? leaseStart;
+        schedule.TrackFrom = trackFrom;
+        // Asking the tenants online is the landlord's choice: a new plan starts with it off, an existing one keeps its own.
+        schedule.OnlineRequestsEnabled = request.OnlineRequests ?? schedule.OnlineRequestsEnabled;
         schedule.UpdatedAt = now;
 
-        Regenerate(lease, schedule, entries, plan, now);
+        Regenerate(lease, schedule, entries, plan, trackFrom, now);
 
         await db.SaveChangesAsync(cancellationToken);
         if (transaction is not null)
@@ -555,12 +574,14 @@ public sealed partial class RentBillingService(
 
         // Installments coming due, not requested yet, of an active schedule whose org accepts online payments. Only the
         // ones that were not already due when generated: older ones are the landlord's call (mark paid, or send the link).
+        // Only a schedule the landlord switched online requests on for (LR-04a, LR-D19): tracking the rents writes to no one.
         var due = await db.RentLedgerEntries
             .AsNoTracking()
             .Where(e => e.Status == RentLedgerStatus.Scheduled &&
                         e.PaymentRequestedAt == null &&
                         e.DueDate <= requestUntil &&
                         e.RentSchedule.IsActive &&
+                        e.RentSchedule.OnlineRequestsEnabled &&
                         e.Org.StripeConnectedAccountId != null &&
                         e.Org.ConnectChargesEnabled &&
                         e.LeaseContract.Status != LeaseStatus.Rejected &&
@@ -627,6 +648,15 @@ public sealed partial class RentBillingService(
             if (entry.Status != RentLedgerStatus.Scheduled || entry.PaymentRequestedAt is not null)
                 return false;
 
+            // Read again under the lock: the landlord may have switched the online requests off since the job listed the installment.
+            var onlineRequestsEnabled = await db.RentSchedules
+                .AsNoTracking()
+                .Where(s => s.Id == entry.RentScheduleId)
+                .Select(s => s.IsActive && s.OnlineRequestsEnabled)
+                .SingleAsync(cancellationToken);
+            if (!onlineRequestsEnabled)
+                return false;
+
             token = IssueToken(entry);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
@@ -683,15 +713,20 @@ public sealed partial class RentBillingService(
     /// <summary>
     /// Brings the installments in line with <paramref name="plan"/>: a rewritable installment of a planned period is
     /// updated in place (its link keeps working), one of a period no longer planned is removed, a missing period is added.
-    /// Installments paid, in flight or with a PaymentIntent are never touched.
+    /// Installments paid, in flight or with a PaymentIntent are never touched; nor is one of a period that ended before
+    /// <paramref name="trackFrom"/> (LR-04a): tracking from a later day never deletes what the plan already has.
     /// </summary>
-    private void Regenerate(LeaseContract lease, RentSchedule schedule, List<RentLedgerEntry> entries, RentPlan plan, DateTime now)
+    private void Regenerate(
+        LeaseContract lease, RentSchedule schedule, List<RentLedgerEntry> entries, RentPlan plan, DateOnly? trackFrom, DateTime now)
     {
         var planned = plan.Installments.ToDictionary(i => i.PeriodStart);
         foreach (var entry in entries.Where(IsRegenerable))
         {
             if (!planned.TryGetValue(entry.PeriodStart, out var installment))
             {
+                if (entry.PeriodEnd < trackFrom)
+                    continue;
+
                 db.RentLedgerEntries.Remove(entry);
                 continue;
             }
@@ -909,9 +944,9 @@ public sealed partial class RentBillingService(
         if (schedule is not null && RentInstallmentPlan.IsValidBillingDay(schedule.BillingDayOfMonth) && schedule.Amount > 0)
         {
             var start = RomeCalendar.DateInRome(lease.StartDate);
-            var end = RomeCalendar.DateInRome(lease.EndDate);
+            var end = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
             if (end >= start)
-                partial = RentInstallmentPlan.Build(start, end, schedule.Cadence, schedule.BillingDayOfMonth, schedule.Amount).PartialFinalPeriod;
+                partial = RentInstallmentPlan.Build(start, end, schedule.Cadence, schedule.BillingDayOfMonth, schedule.Amount, schedule.TrackFrom).PartialFinalPeriod;
         }
 
         var today = Today;
@@ -923,7 +958,14 @@ public sealed partial class RentBillingService(
             Tenants(lease).Count > 0,
             schedule is null
                 ? null
-                : new RentScheduleView(schedule.Cadence, schedule.BillingDayOfMonth, schedule.Amount, schedule.Currency.ToUpperInvariant(), schedule.IsActive),
+                : new RentScheduleView(
+                    schedule.Cadence,
+                    schedule.BillingDayOfMonth,
+                    schedule.Amount,
+                    schedule.Currency.ToUpperInvariant(),
+                    schedule.IsActive,
+                    schedule.TrackFrom,
+                    schedule.OnlineRequestsEnabled),
             entries.Select(e => ToView(e, today)).ToList(),
             partial);
     }

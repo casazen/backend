@@ -5,6 +5,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
+using Casazen.Core.Leases.Reading;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -83,6 +84,61 @@ public sealed class LeaseDraftService(
         var evaluation = await EvaluateAsync(lease, values, fullApeCheck: false, cancellationToken);
         logger.LogInformation("Lease draft created. LeaseId={LeaseId} PropertyId={PropertyId} Origin={Origin}", lease.Id, property.Id, origin);
         return new LeaseDraftCreated(lease.Id, lease.DraftVersion, evaluation.Flow);
+    }
+
+    public async Task<Guid> CreateCfDraftAsync(Guid propertyId, Guid orgId, CancellationToken cancellationToken = default)
+    {
+        // Idempotent: if a CF draft for this property already exists, return it. A ConcordatoFacile draft is an imported draft (CF-IMPORT):
+        // the contract is written and signed by the partner outside our models, so it comes back as a signed contract to import. A draft
+        // marked CF before that, with the origin Created, can never be imported: it is not the one to go on with.
+        var existing = await db.LeaseContracts
+            .AsNoTracking()
+            .Where(l => l.PropertyId == propertyId
+                && l.OrgId == orgId
+                && l.Status == LeaseStatus.Draft
+                && l.Origin == LeaseOrigin.Imported
+                && l.IsConcordatoFacileSource)
+            .Select(l => l.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existing != default)
+        {
+            logger.LogInformation("Returning existing CF draft. LeaseId={LeaseId} PropertyId={PropertyId}", existing, propertyId);
+            return existing;
+        }
+
+        var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
+            ?? throw PropertyNotFound(propertyId);
+
+        // The type is the one value the draft knows. The dates and the rent are the starting values of the columns (they read as missing,
+        // never as values), and the typed state is kept like in any draft that is not complete, so the readers that skip the incomplete
+        // drafts (the agenda, the RLI reminders) skip this one too.
+        var values = new LeaseDraftValues { PropertyId = property.Id, ContractType = nameof(LeaseContractType.Concordato) };
+        var now = UtcNow();
+        var lease = new LeaseContract
+        {
+            PropertyId = property.Id,
+            OrgId = property.OrgId,
+            Status = LeaseStatus.Draft,
+            StartDate = LeaseDraftDefaults.PlaceholderDate,
+            EndDate = LeaseDraftDefaults.PlaceholderDate,
+            MonthlyRent = LeaseDraftDefaults.PlaceholderRent,
+            WizardMaxStep = LeaseDraftDefaults.FirstStep,
+            Origin = LeaseOrigin.Imported,
+            DraftVersion = 1,
+            DraftData = values.ToJson(),
+            IsConcordatoFacileSource = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        lease.SetContractTerms(LeaseContractType.Concordato, null);
+
+        db.LeaseContracts.Add(lease);
+        db.LeaseEvents.Add(new LeaseEvent { LeaseContractId = lease.Id, EventType = LeaseEventType.Created, OccurredAt = now });
+        await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation("CF draft created. LeaseId={LeaseId} PropertyId={PropertyId} OrgId={OrgId}", lease.Id, property.Id, property.OrgId);
+        return lease.Id;
     }
 
     public async Task<LeaseDraftView> GetAsync(Guid leaseId, CancellationToken cancellationToken = default)
@@ -165,31 +221,9 @@ public sealed class LeaseDraftService(
     /// state only while something of it cannot live there. The one place the projection is applied: a save does it, and so does the
     /// confirmation of the review when the data became complete since the last save.
     /// </summary>
-    private async Task ProjectAsync(LeaseContract lease, LeaseDraftValues values, DraftEvaluation evaluation, CancellationToken cancellationToken)
-    {
-        await RewritePartiesAsync(lease, LeaseDraftProjection.ToRows(values, lease.Id, evaluation.Input.Today), cancellationToken);
-        LeaseDraftProjection.ApplyColumns(lease, evaluation.Reading, evaluation.Concordato);
-        lease.DraftData = evaluation.Flow.DataComplete ? null : values.ToJson();
-    }
-
-    /// <summary>
-    /// Makes the rows of the parties the ones the typed values give. The rows are deleted and written again (the entry keeps its id)
-    /// in two saves, because the unique index of (lease, role, position) refuses the moment two rows swap places; both saves are
-    /// in the transaction of the caller. Nothing is written when the rows are already the right ones.
-    /// </summary>
-    private async Task RewritePartiesAsync(LeaseContract lease, List<Party> rows, CancellationToken cancellationToken)
-    {
-        if (LeaseDraftProjection.SameRows(lease.Parties, rows))
-            return;
-
-        if (lease.Parties.Count > 0)
-        {
-            db.Parties.RemoveRange(lease.Parties);
-            await db.SaveChangesAsync(cancellationToken);
-        }
-
-        db.Parties.AddRange(rows);
-    }
+    private Task ProjectAsync(LeaseContract lease, LeaseDraftValues values, DraftEvaluation evaluation, CancellationToken cancellationToken) =>
+        LeaseDraftWriter.ProjectAsync(
+            db, lease, values, evaluation.Reading, evaluation.Concordato, evaluation.Flow.DataComplete, evaluation.Input.Today, cancellationToken);
 
     // ---- the review ----------------------------------------------------------------------------------------------
 
@@ -333,7 +367,7 @@ public sealed class LeaseDraftService(
                         && l.Status != LeaseStatus.Rejected
                         && (l.Status != LeaseStatus.Draft || l.SentForSignatureAt != null)
                         && l.StartDate <= to
-                        && l.EndDate >= from,
+                        && l.CurrentTermEndDate >= from,
                     cancellationToken);
         }
 
@@ -442,6 +476,44 @@ public sealed class LeaseDraftService(
         logger.LogInformation("Lease draft deleted. LeaseId={LeaseId} Files={Files}", leaseId, files.Count);
     }
 
+    // ---- filled from the contract the owner uploaded (NL-DOCS) ----------------------------------------------------
+
+    public async Task<LeaseDraftFillResult> ApplyContractReadingAsync(
+        Guid leaseId, LeaseContractReading reading, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reading);
+
+        // The same road as a save: the row lock, the lease read after it, the evaluation of the values and the one writer of the columns
+        // and the parties. What is read is merged into the values as they are NOW, under the lock: nothing typed since the reading started is lost.
+        await using var transaction = await BeginLockedAsync(leaseId, cancellationToken);
+        var lease = await LoadForUpdateAsync(leaseId, includeProperty: false, cancellationToken);
+        EnsureDraftForUpdate(lease);
+        if (lease.Origin != LeaseOrigin.Imported)
+            return new LeaseDraftFillResult(false, false, lease.DraftVersion, []);
+
+        var fill = LeaseDraftContractFill.Merge(LeaseDraftProjection.ReadValues(lease), reading, lease.Origin, Guid.NewGuid);
+        if (fill.Changed)
+        {
+            var evaluation = await EvaluateAsync(lease, fill.Values, fullApeCheck: false, cancellationToken);
+            await ProjectAsync(lease, fill.Values, evaluation, cancellationToken);
+            lease.DraftVersion++;
+            lease.UpdatedAt = UtcNow();
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Lease draft filled from a contract document. LeaseId={LeaseId} Version={Version} Read={Read} Conflicts={Conflicts} Unusable={Unusable}",
+            lease.Id,
+            lease.DraftVersion,
+            fill.Fields.Count(f => f.State == FieldReadingState.Read),
+            fill.Fields.Count(f => f.State == FieldReadingState.Conflict),
+            fill.Fields.Count(f => f.State == FieldReadingState.Unusable));
+        return new LeaseDraftFillResult(true, fill.Changed, lease.DraftVersion, fill.Fields);
+    }
+
     // ---- evaluation ----------------------------------------------------------------------------------------------
 
     /// <summary>What the values typed mean for the lease: how they read, the flow they give and the range of the canone concordato.</summary>
@@ -456,12 +528,15 @@ public sealed class LeaseDraftService(
     private async Task<DraftEvaluation> EvaluateAsync(
         LeaseContract lease, LeaseDraftValues values, bool fullApeCheck, CancellationToken cancellationToken)
     {
-        var reading = LeaseDraftRules.Read(values);
+        var reading = LeaseDraftRules.Read(values, lease.Origin);
         var facts = await LoadFactsAsync(values.PropertyId, fullApeCheck, cancellationToken);
 
+        // The range of a canone concordato is for a contract that is going to be signed: an imported one is already signed, so
+        // nothing is asked of the calculator and no range is stored (decision LR-D13).
         ConcordatoAssessmentResult? concordato = null;
         LeaseDraftConcordatoOutcome? outcome = null;
-        if (facts.PropertyExists
+        if (lease.Origin != LeaseOrigin.Imported
+            && facts.PropertyExists
             && reading is { Type: LeaseContractType.Concordato, TypeAvailable: true }
             && values.Concordato is { } characteristics
             && LeaseDraftRules.IsConcordatoValid(characteristics))
@@ -513,6 +588,15 @@ public sealed class LeaseDraftService(
         if (property is null)
             return new LeaseDraftFacts { PropertyExists = false };
 
+        // Code and energy class of the certificates of the property: the contract prints the last one that has them (LeaseContractDocument),
+        // so the draft needs one that has them, whatever the reading of the file said (LR-APE).
+        var apes = await db.PropertyDocuments
+            .AsNoTracking()
+            .Where(d => d.PropertyId == id && d.DocumentType == DocumentType.Ape)
+            .Select(d => new { d.ApeCode, d.ApeEnergyClass })
+            .ToListAsync(cancellationToken);
+        var hasApeIdentification = apes.Any(d => PropertyDocument.IsApeIdentified(d.ApeCode, d.ApeEnergyClass));
+
         bool hasApe;
         if (fullApeCheck)
         {
@@ -521,20 +605,23 @@ public sealed class LeaseDraftService(
                 await apeCompliance.EnsurePropertyHasValidApeAsync(id);
                 hasApe = true;
             }
-            catch (ApeComplianceException)
+            catch (ApeComplianceException ex)
             {
-                hasApe = false;
+                // A certificate that is there but could not be read whole asks for its code and class: that is the need of the
+                // identification, not "the APE is missing" (there is nothing to upload).
+                hasApe = ex.Code == ApeComplianceException.IdentificationRequiredCode;
             }
         }
         else
         {
-            hasApe = await db.PropertyDocuments.AsNoTracking().AnyAsync(d => d.PropertyId == id && d.DocumentType == DocumentType.Ape, cancellationToken);
+            hasApe = apes.Count > 0;
         }
 
         return new LeaseDraftFacts
         {
             PropertyExists = true,
             HasApe = hasApe,
+            HasApeIdentification = hasApeIdentification,
             HasCadastralData = property.HasCadastralData,
             PropertyIsShortMode = property.RentalMode == RentalMode.Short,
         };

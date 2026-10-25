@@ -23,6 +23,9 @@ and, for cedolare secca / regime ordinario, did not even name the parties.
 | **NotApproved**: complete, but `Approved=false` or the approval is not valid | `422 contract_template_not_approved` | same marker, full text |
 | **Approved** | PDF of the approved texts with the lease data; `422 contract_data_missing` if the template uses a datum the lease does not have | marked `ANTEPRIMA - documento non valido per la firma` (watermark `ANTEPRIMA` on every page) |
 
+- **The one exception is a contract signed outside CasaZen** (LR-13, decision LR-D28): `POST /api/leases/{id}/import` brings in the PDF the parties signed with the
+  owner's own model and needs no template, but only for a draft created as an imported contract (`origin: Imported`); a lease made in CasaZen is refused there
+  (422 `lease_import_not_imported_origin`) and keeps this gate on every path above. See [`long-rent-lease-import.md`](long-rent-lease-import.md).
 - The lease stays `Draft` on a 422: no signing session is created, no signed contract is accepted, no event is written.
   `GET /api/leases/{id}/signers` reports it in advance (`contractAvailable: false`, `contractUnavailableCode`), so the
   lease page disables download and upload and offers only the preview (LT-02).
@@ -37,10 +40,13 @@ The PDF layout (A4, pagination, fonts, watermark) is described in the section "P
 
 ## Where the files go
 
-`Casazen.Web/LeaseTemplates/<FiscalRegime>/<VersionId>.md`, for example
+`Casazen.Web/LeaseTemplates/<Variant>/<VersionId>.md`, for example
 `Casazen.Web/LeaseTemplates/CanoneConcordato/2026-11-avv-rossi-v1.md`.
 
-- `<FiscalRegime>` is `CedolareSecca`, `RegimeOrdinario` or `CanoneConcordato` (exact spelling).
+- `<Variant>` is `CedolareSecca`, `RegimeOrdinario` or `CanoneConcordato` (the three fiscal regimes of the canone libero and concordato)
+  or, since TR, `Transitorio` (the model of the transitory contract, whatever its tax regime). Exact spelling. The variant of a lease is
+  `LeaseTemplateVariants.For(contractType, fiscalRegime)`: `Transitorio` for a transitory lease, otherwise the one that has the name of its
+  fiscal regime.
 - `<VersionId>`: letters, digits, `.`, `-`, `_`; never `dev-stub`. A changed text is a **new file with a new
   version**: the approval refers to one exact version.
 - The files are committed (versioned by git, reviewed in a PR) and shipped with the API (`Casazen.Web.csproj` copies
@@ -61,7 +67,8 @@ UTF-8 text. Lines:
 
 Placeholders: `{{name}}` (spaces inside the braces allowed). An unknown name or a broken `{{` makes the template
 incomplete. Sections can come in any order; sections not in the checklist are allowed (they are printed in file
-order) but must have text.
+order) but must have text. The heading of a section (after `|`) can carry placeholders like its text (the title cannot): the
+transitory model's art. 2 is `Articolo 2 (Esigenza del {{esigenza_parte}})`, "del locatore" or "del conduttore" as the lease says.
 
 Skeleton (the texts are for the product owner to provide; the placeholders shown are the required ones):
 
@@ -100,19 +107,32 @@ Computed from the lease at generation time; nothing is written in the template o
 | `dati_catastali` | cadastral data of the property (LT-10): sheet, parcel, subaltern when present, category and income; present only when sheet, parcel, category and income are all set | `Foglio 12, particella 345, subalterno 6, categoria A/2, rendita catastale euro 512,30` |
 | `ape_estremi` | code and energy class of the **latest APE document** of the property (LT-10) | `codice 1510800012345, classe energetica B` |
 | `deposito_cauzionale` | security deposit of the lease, **without currency** (LT-10) | `2.400,00` |
+| `deposito_versamento` | the alternative "versa / non versa" of art. 5 of the transitory model, resolved by the deposit: `versa` above 0, `non versa` at 0; nothing while the deposit is not declared (TR) | `versa` |
+| `deposito_mensilita` | the deposit in monthly rents (deposit / rent, two decimals at most): the "n. … mensilità del canone" of art. 5 of the transitory model (TR) | `2`, `1,5` |
+| `esigenza_parte` | **Transitory contract only** (TR; D.M. 16/01/2017 art. 2 c. 4): who has the need that justifies the short term, `locatore` or `conduttore` | `conduttore` |
+| `esigenza_motivo` | transitory only: the need as the landlord wrote it (at most 500 characters), on one line, without the full stop that would meet the comma of the sentence | `Lavoro a Milano da novembre ad aprile` |
+| `esigenza_documentazione` | transitory only: the documentation attached, at most 300 characters. A contract that lasts more than 30 days (`LeaseContractTerms.TransitorioDocumentationAfterDays`) must have it (art. 2 c. 4). For one of 30 days or less the datum is the statement «nessuno, trattandosi di un contratto di durata non superiore a 30 giorni», because the model asks for the documents "in caso di durata superiore a 30 giorni" | `Lettera di assunzione` |
 
-The last three are entered by the landlord (LT-10): the cadastral data on the property page
+The deposit, the cadastral data and the APE are entered by the landlord (LT-10): the cadastral data on the property page
 (`PUT /api/properties/{id}/cadastral`), the APE code and class on the APE document (`PUT
 /api/properties/{id}/documents/{docId}/ape`), the deposit in the lease form (`securityDeposit`). Only lengths and, for
 the energy class, 1-3 letters/digits/"+" are checked: no pattern is imposed on the codes. While a datum used by the
 template is missing, the final contract answers `422 contract_data_missing` and the preview shows
 `[DATO MANCANTE: …]`.
 
-**Transitorio leases** (LT-10): the contract type exists (1-18 months) but has no template, whatever the tax regime:
-the final contract answers `422 contract_template_not_approved` and the preview is a BOZZA. The template of a
-regime is a 4+4 or 3+2 contract and must not be used for them. Student leases are not modelled. The 2026-10-08
-drafts of the transitorio and student contracts are kept as reference only, outside `LeaseTemplates/`, in
-`docs/legal-drafts/leases/` (see [Bozze 2026-11](#bozze-2026-11-draft-templates-task-lg-02)).
+The need of a transitory contract (TR) is entered in the guided draft (`transitoryParty` and `transitoryNeed` at step 3,
+`transitoryDocumentation` at step 4: [`long-rent-lease-draft.md`](long-rent-lease-draft.md)) and lives in the columns
+`LeaseContracts.TransitoryParty`, `TransitoryNeed` and `TransitoryDocumentation`, where the contract reads it; the two texts are
+**encrypted at rest** ([`encryption.md`](encryption.md)). A transitory contract made by the complete creation `POST /api/leases` (not used by
+the interface any more) has none of them, so its final contract would answer `422 contract_data_missing`: the wizard is the way to make one.
+
+**Transitorio leases** (LT-10, TR): a transitory contract (1-18 months) uses its own variant, `Transitorio`, whatever the tax regime of
+the lease: the template of a fiscal regime is a 4+4 or 3+2 contract and is never used for it. The model is the **official Allegato B** of
+the D.M. 16/01/2017 (file `Casazen.Web/LeaseTemplates/Transitorio/2026-11-bozza-v1.md`), **not approved** until the product owner sets the
+variables of the variant: until then the final contract answers `422 contract_template_not_approved` and the preview is a BOZZA, as for
+the other three. See [Transitorio, bozza 2026-11-bozza-v1](#transitorio-bozza-2026-11-bozza-v1-scelte-rispetto-allallegato-b). Student
+leases are not modelled. The 2026-10-08 AI drafts of the transitorio and student contracts are kept as reference only, outside
+`LeaseTemplates/`, in `docs/legal-drafts/leases/` (see [Bozze 2026-11](#bozze-2026-11-draft-templates-task-lg-02)).
 
 ### Required sections (checklist)
 
@@ -137,24 +157,33 @@ source, T third-party source only, A audit finding (to be confirmed by the lawye
 | `ape` | Attestato di prestazione energetica (APE) | all | — | D.Lgs. 192/2005 art. 6 c. 3: in leases subject to registration a clause where the tenant declares to have received the information and documentation on the APE, with a copy of the APE attached (except for single units), and administrative fines if missing. **T**: checked only on third-party pages ([biblus.acca.it](https://biblus.acca.it/art-6-dlgs-192-05/), [studiolegaleberto.net](https://studiolegaleberto.net/art-6-del-d-lgs-n-192-del-2005/)); normattiva.it was not reachable. The lawyer confirms the current text |
 
 `CedolareSecca` and `RegimeOrdinario` are free-rent (canone libero) leases, `CanoneConcordato` the agreed-rent lease.
-Transitional (up to 18 months) and student leases are not modelled, so they have no template. The minimum term per
-lease type is validated by LT-10, not here: the contract only states the actual term.
+Student leases are not modelled, so they have no template. The minimum term per lease type is validated by LT-10, not
+here: the contract only states the actual term.
+
+**The `Transitorio` variant has its own checklist** (TR; `LeaseContractTemplateStructure.RequiredSections(LeaseTemplateVariant.Transitorio)`),
+because the D.M. 16/01/2017 makes the Allegato B the only model of a transitory contract, as a whole (art. 2 c. 7): the preamble
+(`parti`: parties, unit, cadastral data and APE: placeholders `locatori`, `conduttori`, `immobile_indirizzo`, `dati_catastali`,
+`ape_estremi`), the 17 articles (`durata` art. 1; `esigenza` art. 2 with `esigenza_parte`, `esigenza_motivo`, `esigenza_documentazione`;
+`inadempimento` 3; `canone` 4 with `canone_mensile`; `deposito` 5 with `deposito_versamento`, `deposito_cauzionale`, `deposito_mensilita`;
+`oneri_accessori` 6; `bollo_registrazione` 7; `pagamento` 8; `uso` 9; `recesso` 10; `consegna` 11; `modifiche_danni` 12; `assemblee` 13;
+`impianti` 14; `accesso` 15; `commissione` 16; `varie` 17), the signatures (`firme`) and the specific approval of the clauses
+(`clausole_approvate`). A template missing any of them is incomplete, so it cannot be approved.
 
 ## Approving a template (product owner)
 
 1. Get the clause texts from the lawyer (or the signatory association for the concordato) for **every** section of
    the checklist of the regime.
-2. Write the file `Casazen.Web/LeaseTemplates/<Regime>/<VersionId>.md` and open a PR.
+2. Write the file `Casazen.Web/LeaseTemplates/<Variant>/<VersionId>.md` and open a PR.
 3. On the **test** environment set only the version (Railway variables, Production environment):
-   `LeaseTemplates__Variants__<Regime>__VersionId=<VersionId>`. Open a draft lease of that regime and download
-   `GET /api/leases/{id}/contract/preview`: the header must say `stato: modello completo ma non approvato`, with no
-   "Sezioni senza testo" and no "Problemi di formato". The API log line `Lease contract template <Regime>: …` lists
+   `LeaseTemplates__Variants__<Variant>__VersionId=<VersionId>`. Open a draft lease of that variant (for `Transitorio`, a transitory one)
+   and download `GET /api/leases/{id}/contract/preview`: the header must say `stato: modello completo ma non approvato`, with no
+   "Sezioni senza testo" and no "Problemi di formato". The API log line `Lease contract template <Variant>: …` lists
    the problems.
 4. Have the lawyer review that exact file (the PDF of the preview and the file in the PR).
 5. Approve, on test and then on production:
-   - `LeaseTemplates__Variants__<Regime>__Approved=true`
-   - `LeaseTemplates__Variants__<Regime>__ApprovalReference=<who approved, opinion or protocol number>` and/or
-     `LeaseTemplates__Variants__<Regime>__ApprovedAt=<YYYY-MM-DD>`
+   - `LeaseTemplates__Variants__<Variant>__Approved=true`
+   - `LeaseTemplates__Variants__<Variant>__ApprovalReference=<who approved, opinion or protocol number>` and/or
+     `LeaseTemplates__Variants__<Variant>__ApprovedAt=<YYYY-MM-DD>`
 6. Redeploy. The preview now says `ANTEPRIMA - documento non valido per la firma` and signing produces the final PDF.
 
 Any change of text: new file, new `VersionId`, new review and approval. Never edit an approved file in place.
@@ -168,7 +197,7 @@ variant is declared `Approved=true` but:
 - neither `ApprovalReference` nor `ApprovedAt` is set;
 - the file is missing or the template is incomplete.
 
-The failure lists `LeaseTemplates:Variants:<Regime>: …` and Railway keeps the previous deployment. In Development and
+The failure lists `LeaseTemplates:Variants:<Variant>: …` and Railway keeps the previous deployment. In Development and
 Testing the same variant starts but counts as not approved (422). After deploying LT-03, check that no Railway
 variable `LeaseTemplates__*` still carries the old `dev-stub` approval.
 
@@ -359,7 +388,8 @@ product and new entries in `LeaseContractPlaceholders` (task proposed in the PR:
 
 **Approving.** A lawyer reviews this exact text (the PDF of the preview and the file). Even when nothing changes,
 publish the reviewed text as a **new version** without "bozza" in its name and without the draft notice, and then follow
-"Approving a template" above; never set `Approved=true` on `2026-11-bozza-v1`.
+"Approving a template" above; never set `Approved=true` on `2026-11-bozza-v1` (replaced on 2026-10-24 by the product owner's order:
+see [Attivazione (2026-10-24)](#attivazione-2026-10-24)).
 
 ### Points for the lawyer, first
 
@@ -415,4 +445,141 @@ is `NotApproved`; the committed `appsettings*.json` name no version and approve 
 lease with complete data has the `BOZZA` watermark on every page, no `[TESTO DELLA CLAUSOLA NON FORNITO]` and no
 `[DATO MANCANTE: …]`; the final contract still answers 422; numbering, internal references and the list of the clauses
 approved in writing agree; no example datum (email, IBAN, amount) slipped in where the product has none; the reference
-drafts exist in `docs/legal-drafts/leases/`.
+drafts exist in `docs/legal-drafts/leases/`. For the transitory model (TR) the same class checks that it loads complete and not
+approved with the 17 articles of the Allegato B in order and no blank of the form left (no dots, no note marker), that its preview is the
+whole contract marked BOZZA with the data of the lease printed, that the final contract answers `422 contract_template_not_approved`, and what
+`LeaseContractDocument.ResolveData` gives for the need, its documentation and the deposit.
+
+## Attivazione (2026-10-24)
+
+The product owner ordered the activation of the three templates `2026-11-bozza-v1` (`CedolareSecca`, `RegimeOrdinario`,
+`CanoneConcordato`); the legal opinions were obtained. This replaces the line "never set `Approved=true` on `2026-11-bozza-v1`" of
+[Bozze 2026-11](#bozze-2026-11-draft-templates-task-lg-02).
+
+- **Only with environment variables on the hosts.** For each regime, on the API host of the environment (test, then production):
+  `LeaseTemplates__Variants__<Regime>__VersionId=2026-11-bozza-v1`, `LeaseTemplates__Variants__<Regime>__Approved=true` and
+  `LeaseTemplates__Variants__<Regime>__ApprovalReference=<who approved: opinion or protocol number>` (and/or `…__ApprovedAt=<YYYY-MM-DD>`),
+  then redeploy (the files are read once per process). The repository cannot approve them: `LeaseTemplateDraftsTests` fails if any
+  `appsettings*.json` names a version or sets `Approved=true`. A wrong value stops the startup ("Startup validation"): Railway keeps the
+  previous deployment.
+- **Rollback:** `LeaseTemplates__Variants__<Regime>__Approved=false` and redeploy. The final contract answers
+  `422 contract_template_not_approved` again and the preview goes back to `BOZZA`.
+- **From then on the security deposit is a required datum of every contract made in CasaZen** (LR-DEP): the three templates print
+  `{{deposito_cauzionale}}` in the "Deposito cauzionale" article, so `contract.pdf` and `POST …/sent` answer `422 contract_data_missing` for
+  a lease without one. The guided draft therefore asks for it at step 3 (need `deposit_missing`; `0` is a valid answer, "none") and the
+  review cannot be confirmed without it ([`long-rent-lease-draft.md`](long-rent-lease-draft.md)). An imported contract is not affected:
+  it has no template. A draft whose review was confirmed before this change, without a deposit, is blocked again (step 3 asks for it, and
+  typing it withdraws the old confirmation).
+- **The code and the energy class of the APE are required too** (LR-APE): the three templates print `{{ape_estremi}}` ("Estremi dell'APE"),
+  which is the code and class of the **latest APE document of the property that has both** (`LeaseContractDocument.FormatApe`; a later
+  document without them does not take its place). The review used to pass with an APE the reading took for valid but whose code and
+  class were never saved, and the download then answered `422 contract_data_missing`. The guided draft therefore asks for them at step 1
+  (need `ape_identification_missing`, the same rule as the contract: some APE document of the property has both) and the review cannot be
+  confirmed without them ([`long-rent-lease-draft.md`](long-rent-lease-draft.md)). An imported contract is not affected. A draft whose
+  review was confirmed before this change on a property whose APE has no identification is blocked again (the download for signature
+  answers `422 lease_review_blocked`); once the code and class are typed on the APE, the confirmation stands.
+- **The `Transitorio` variant is not part of this activation** (TR, 2026-10-25): its model is another file and stays **not approved** until the
+  product owner sets, on the host, `LeaseTemplates__Variants__Transitorio__VersionId=2026-11-bozza-v1`,
+  `LeaseTemplates__Variants__Transitorio__Approved=true` and `LeaseTemplates__Variants__Transitorio__ApprovalReference=<…>` (see the next
+  section). Until then a transitory contract made in CasaZen cannot be downloaded for signature (`422 contract_template_not_approved`).
+
+## Transitorio, bozza 2026-11-bozza-v1: scelte rispetto all'Allegato B
+
+> **Bozza trascritta da un agente AI su incarico del PO: richiede la revisione di un legale prima dell'approvazione.** Questa sezione
+> elenca ogni scelta e ogni scostamento dal modello ufficiale, perché il legale li rilegga.
+
+Task TR (25/10/2026), ordine del PO: «cerca un modello ufficiale, per il modello transitorio e caricalo con casazen». Il contratto di tipo
+`Transitorio` (da 1 a 18 mesi) si prepara in CasaZen con il **modello ufficiale**: l'Allegato B del decreto interministeriale (MIT e MEF)
+16 gennaio 2017, «Locazione abitativa di natura transitoria» (Gazzetta Ufficiale n. 62 del 15-3-2017, pagg. 95-101), che l'art. 2, comma 7, del
+decreto rende l'unico tipo di contratto utilizzabile. Il testo degli articoli 1-17 e della clausola di approvazione specifica degli artt. 1341 e
+1342 c.c. è quello ufficiale; le note 1-12 del decreto sono istruzioni di compilazione e non entrano nel contratto. La bozza AI di
+`docs/legal-drafts/leases/contratto-transitorio.md` **non** è usata come testo.
+
+**Il modello non è approvato**: nessuna variabile `Approved`, nessuna riga negli `appsettings` (`LeaseTemplateDraftsTests` vieta `Approved=true` in
+qualunque `appsettings*.json`). Lo approva il PO con le variabili d'ambiente dell'host, dopo il parere del suo legale: vedi «Approving a template»
+sopra, con la variante `Transitorio`.
+
+- File: `Casazen.Web/LeaseTemplates/Transitorio/2026-11-bozza-v1.md`, **lo stesso per la cedolare secca e per il regime ordinario**: il testo
+  ufficiale non cambia (l'art. 7 dice «ove dovuta» per la registrazione; la nota 12 sulla cedolare è un'istruzione, non testo).
+- Fonte della trascrizione: il testo estratto dal PDF della G.U. (gli spazi spuri dentro le parole sono stati riparati a mano; i passi dubbi sono
+  stati confrontati con le copie del modello pubblicate dai Comuni). **Il legale confronti il file con la G.U.**
+- Le alternative del modello («cancellare la parte che non interessa», nota 4) sono risolte con i dati che CasaZen ha; dove il dato manca si è
+  scelta la formula più neutra tra quelle del modello, oppure si è tolta la frase che lo chiede. Nessun testo nuovo al posto di quelli ufficiali.
+  Nel PDF non restano puntini né alternative: gli unici campi in bianco sono luogo, data e righe di firma (si firma su carta).
+- Il locatore indica, nel passo 3 della bozza, chi ha l'esigenza e quale è; nel passo 4 la data di fine (da 1 a 18 mesi dall'inizio) e, se il
+  contratto dura più di 30 giorni, la documentazione che allega ([`long-rent-lease-draft.md`](long-rent-lease-draft.md)).
+
+### Scelte e scostamenti, articolo per articolo
+
+| Dove | Originale | Nel modello di CasaZen | Perché |
+|---|---|---|---|
+| Premessa · parti | «Il/La sig./soc. (1) … di seguito denominato/a locatore … al/alla sig. (1) … denominato/a conduttore» | `{{locatori}}`, «di seguito denominato locatore», «a `{{conduttori}}`», «di seguito denominato conduttore» | Nome e codice fiscale di ogni parte (anche più persone, nell'ordine di inserimento) sono i dati che il prodotto stampa. Il genere e la forma (persona o società) non si conoscono: maschile singolare, anche con più parti. Luogo e data di nascita e domicilio della nota 1 non sono stampati, come nei tre modelli esistenti (TR-FU3) |
+| Premessa · assistenza | «(assistito/a da (2) … in persona di …)», due volte | tolto | L'assistenza delle organizzazioni è facoltativa (nota 2) e CasaZen non la conosce: è un contratto non assistito |
+| Premessa · identificazione | «identificato/a mediante (3) …» | tolto | CasaZen non conserva documenti d'identità (LR-D3) |
+| Premessa · unità | A) l'unità immobiliare «posta in … via … n. … piano … scala … int. …, composta di n. … vani, oltre cucina e servizi, e dotata altresì dei seguenti elementi accessori …» / B) una porzione | A), con «l'unità immobiliare posta in `{{immobile_indirizzo}}`» (via, numero, CAP e comune) | Il contratto riguarda l'unità intera. Piano, scala, interno, vani ed elementi accessori non sono dati del prodotto |
+| Premessa · arredo | «non ammobiliata/ammobiliata (4) come da elenco a parte sottoscritto dalle parti» | tolto | Il prodotto non sa se l'unità è arredata e non produce l'elenco. Il contratto non dice nulla sull'arredo: **punto per il legale** |
+| Premessa · elenco a)-d) | a) estremi catastali, b) prestazione energetica, c) sicurezza impianti, d) tabelle millesimali | a) `{{dati_catastali}}`, b) `{{ape_estremi}}`; c) e d) tolti | Foglio, particella, subalterno, categoria e rendita; codice e classe dell'APE (obbligatori in un contratto fatto in CasaZen, LR-APE). Sicurezza degli impianti e tabelle millesimali non sono dati del prodotto |
+| Art. 1 | «……… mesi/giorni (6), dal … al …» | `{{durata}}`, dal `{{data_decorrenza}}` al `{{data_scadenza}}` | La durata è calcolata sulle date, come negli altri modelli («6 mesi», «1 anno», «14 mesi e 10 giorni»); il limite da 1 a 18 mesi è controllato alla creazione |
+| Art. 2 · alternativa | A) dichiarazione dell'esigenza / B) parti assistite dalle organizzazioni | A) | La B) richiede il supporto delle organizzazioni, che CasaZen non conosce |
+| Art. 2 · soggetto | «Il locatore/conduttore» (rubrica, testo e clausola di approvazione) | `{{esigenza_parte}}`: «locatore» o «conduttore», come indicato dal locatore | La rubrica diventa «Esigenza del locatore» o «Esigenza del conduttore» (l'intestazione di una sezione può contenere segnaposto) |
+| Art. 2 · accordo | «e dall'Accordo territoriale tra … depositato il … presso il Comune di …, ovvero dall'Accordo integrativo sottoscritto tra … in data … (7)» | «e dall'Accordo territoriale» | Gli estremi dell'accordo (parti, data, comune di deposito) non sono dati del prodotto (TR-FU2). **Punto per il legale**: l'esigenza dichiarata deve essere tra quelle dell'accordo locale (D.M. art. 2 c. 4); la schermata lo ricorda, CasaZen non lo verifica |
+| Art. 2 · esigenza e documentazione | «… la seguente esigenza che giustifica la transitorietà del contratto ……, e che documenta, in caso di durata superiore a 30 giorni, allegando ………» | «… del contratto: `{{esigenza_motivo}}`, e che documenta, in caso di durata superiore a 30 giorni, allegando: `{{esigenza_documentazione}}`.» | L'esigenza (al massimo 500 caratteri) e la documentazione (al massimo 300, obbligatoria oltre i 30 giorni) le scrive il locatore; aggiunti i due punti e tolto il punto finale che incontrerebbe la virgola. Per un contratto di 30 giorni o meno il prodotto scrive «nessuno, trattandosi di un contratto di durata non superiore a 30 giorni», perché il modello chiede i documenti solo oltre i 30 giorni |
+| Art. 3 | testo ufficiale | invariato, con l'avvertenza «(Il presente articolo non si applica ai contratti con durata pari o inferiore ai 30 giorni)» | Vedi le avvertenze sotto |
+| Art. 4 | tre periodi: A) canone convenuto; B) comuni con più di 10.000 abitanti, canone secondo l'Accordo territoriale; C) canone secondo il decreto di cui all'art. 4 c. 3 L. 431/1998 | solo A): «euro `{{canone_mensile}}` al mese, … a mezzo di bonifico bancario, in rate eguali anticipate» | CasaZen non conosce gli abitanti del comune né l'accordo e non calcola le fasce (TR-FU1): la revisione avvisa che nei comuni sopra i 10.000 abitanti il canone deve rientrare nelle fasce (D.M. art. 2 c. 2 e c. 6). Dentro A): scelto il bonifico (tolti «nel domicilio del locatore ovvero» e «ovvero …»); tolti numero e importo delle rate e le date (il piano dei canoni si fa dopo la firma); «al mese» aggiunto perché il modello non dice a che periodo si riferisce l'importo (lo si deduce dalle rate). **Punto per il legale, tra i primi**: se in un comune sopra i 10.000 abitanti basti A) o servano B) e C) |
+| Art. 5 | «versa/non versa (4)», «una somma di euro … pari a n. … mensilità del canone (8)», «Altre forme di garanzia: … (9)» | `{{deposito_versamento}}` («versa» se il deposito è maggiore di 0, «non versa» se è 0), `{{deposito_cauzionale}}`, `{{deposito_mensilita}}` (deposito diviso canone); «Altre forme di garanzia» tolte | Il deposito è un dato obbligatorio in un contratto fatto in CasaZen (0 se non c'è, LR-DEP) e non può superare tre mensilità (controllato). Con deposito 0 la frase dice «non versa … euro 0,00 pari a n. 0 mensilità» (lo stesso limite di LR-DEP-FU2). «(che con la firma del contratto ne rilascia, in caso, quietanza)» è invariato |
+| Art. 6 | formulazione dell'articolo / formulazione sostitutiva della nota 10 (immobili non in condominio, con le tabelle millesimali) | formulazione dell'articolo, con «condominiali/comuni» risolto in «comuni», «e altro ……» in «e altro», e tolta l'ultima frase («il conduttore versa una quota di euro … (11), salvo conguaglio») | Il prodotto non sa se l'edificio è in condominio, non ha le tabelle millesimali né la quota degli oneri |
+| Art. 7 | testo ufficiale | invariato | Il testo dice già «ove dovuta» per la registrazione; la nota 12 (cedolare secca: imposte di bollo e registro non dovute) è un'istruzione |
+| Art. 8 | testo ufficiale | invariato | |
+| Art. 9 | «… civile abitazione del conduttore e delle seguenti persone attualmente con lui conviventi: …» | «… civile abitazione del conduttore.» | Le persone conviventi non sono un dato del prodotto. **Punto per il legale** |
+| Art. 10 | «… lettera raccomandata almeno … prima» | «… lettera raccomandata.» | Il preavviso lo scrivono le parti nel modello e CasaZen non lo conosce: nessun termine minimo scritto. **Punto per il legale** (per esempio i sei mesi dell'art. 3 c. 6 L. 431/1998 per il recesso del 4+4) |
+| Art. 11 | ultima frase: «Le parti danno atto, in relazione allo stato dell'unità immobiliare, ai sensi dell'articolo 1590 del Codice civile, di quanto segue: … / di quanto risulta dall'allegato verbale di consegna.» | tolta | Il prodotto non ha lo stato dell'unità e non produce un verbale di consegna. Senza descrizione vale la presunzione dell'art. 1590 c.c. |
+| Artt. 12, 13, 14, 16 | testo ufficiale | invariati | |
+| Art. 15 | «… una volta la settimana, per almeno due ore, con esclusione dei giorni festivi oppure con le seguenti modalità: …» | la prima modalità | La seconda non ha dati |
+| Art. 17 | «Altre clausole ……» | tolta | Il prodotto non ha clausole aggiuntive. Il resto è invariato |
+| Firme | «Letto, approvato e sottoscritto», luogo e data, «Il locatore …», «Il conduttore …» | le stesse parole; luogo, data e firme sono righe di trattini bassi, con i nomi delle parti accanto | Si firma su carta. L'intestazione «Firme» è un'etichetta del prodotto (il modello non ha un titolo qui) |
+| Approvazione specifica | «A mente degli articoli 1341 e 1342, del Codice civile, … 2 (Esigenza del locatore/conduttore), 3 (Cessazione delle condizioni di transitorietà), … 8 (Pagamento, risoluzione) …» | testo ufficiale, con `{{esigenza_parte}}` nell'art. 2 | Nella G.U. i titoli degli artt. 3 e 8 nell'elenco non coincidono con quelli degli articoli («Inadempimento delle modalità di stipula», «Pagamento»): lasciati come stampati. L'intestazione «Clausole approvate specificamente» è un'etichetta del prodotto |
+
+**Avvertenze sui 30 giorni.** «(Il presente articolo non si applica ai contratti con durata pari o inferiore ai 30 giorni)» (artt. 3, 6, 7, 10, 13 e 14) e
+«(Il secondo periodo non si applica …)» (art. 15) sono nel testo ufficiale e restano: il formato dei modelli non ha testo condizionale, quindi un
+contratto di 30 giorni o meno le stampa tutte, come il modello a stampa. Anche i periodi B e C dell'art. 4 e la B) dell'art. 2 non sono stampati
+per nessuno.
+
+**Aggiunto al testo ufficiale**: solo punteggiatura (i due punti prima dell'esigenza e della documentazione, la virgola prima di «dichiara»),
+«al mese» all'art. 4, i valori dei dati e il «nessuno, trattandosi di un contratto di durata non superiore a 30 giorni» dell'art. 2.
+
+### Punti per il legale, per primi
+
+1. Confrontare la trascrizione con il testo della G.U. (l'estrazione automatica del PDF ha spazi spuri dentro le parole).
+2. Se i contratti fatti con questo modello stanno nel D.M. 16/01/2017: art. 4 con il solo periodo A) anche nei comuni sopra i 10.000 abitanti;
+   art. 2 con l'accordo territoriale non identificato e solo nella versione senza assistenza; contratti non assistiti, per i quali l'accordo
+   prevede l'attestazione di rispondenza di un'organizzazione firmataria (D.M. art. 2 c. 8): CasaZen non la produce.
+3. Le frasi tolte: arredo (premessa), persone conviventi (art. 9), preavviso del recesso (art. 10), stato dell'unità (art. 11), altre garanzie (art. 5),
+   quota degli oneri (art. 6), altre clausole (art. 17).
+4. L'APE: il modello ufficiale non ha la clausola dell'art. 6 c. 3 D.Lgs. 192/2005 (dichiarazione di aver ricevuto le informazioni e
+   l'attestato); ha solo «b) prestazione energetica», che CasaZen compila con codice e classe. Aggiungere la clausola (per esempio tra le «Altre
+   clausole»)?
+5. L'identificazione delle parti (nota 1) ridotta a nome e codice fiscale; la forma «denominato» al maschile singolare con più parti.
+6. Il deposito 0 («non versa … euro 0,00 pari a n. 0 mensilità») e le avvertenze dei 30 giorni stampate sempre.
+7. Le righe di firma, luogo e data in bianco.
+
+### Provarlo e approvarlo
+
+1. Sull'ambiente di **test** si imposta solo la versione: `LeaseTemplates__Variants__Transitorio__VersionId=2026-11-bozza-v1` (mai `Approved`), si
+   fa il redeploy (i file si leggono una volta per processo), si prepara un contratto transitorio e si scarica `GET /api/leases/{id}/contract/preview`:
+   deve dire `stato: modello completo ma non approvato`, con la filigrana `BOZZA` su ogni pagina, senza «Sezioni senza testo», «Problemi di formato»
+   o `[DATO MANCANTE: …]`. «Scarica da firmare» risponde ancora 422 `contract_template_not_approved`.
+2. Dopo il parere del legale su quel file, il PO approva su test e poi su produzione:
+   `LeaseTemplates__Variants__Transitorio__Approved=true` e `LeaseTemplates__Variants__Transitorio__ApprovalReference=<chi ha approvato: parere o
+   protocollo>` (e/o `…__ApprovedAt=<AAAA-MM-GG>`), poi redeploy. Un testo cambiato è un file nuovo con una versione nuova.
+3. Rollback: `LeaseTemplates__Variants__Transitorio__Approved=false` e redeploy.
+
+### Debiti (ID proposti)
+
+- **TR-FU1**: calcolatore delle fasce dell'accordo territoriale e controllo del canone dei transitori nei comuni sopra i 10.000 abitanti (oggi c'è solo
+  l'avviso informativo `transitory_rent_band_to_check` della revisione).
+- **TR-FU2**: accordo territoriale per comune: gli estremi (parti, data e comune di deposito) negli artt. 2 e 4, l'elenco delle esigenze ammesse, i
+  periodi B e C dell'art. 4 e la versione assistita dell'art. 2.
+- **TR-FU3**: stampare residenza, cittadinanza e dati di nascita delle parti (nota 1) e gli altri dati oggi tolti (insieme a LG-02b), e un testo
+  condizionale nel formato dei modelli (avvertenze dei 30 giorni, deposito 0, documentazione facoltativa).
+- **TR-FU4**: mostrare l'esigenza nella scheda del contratto: il dettaglio mascherato di `GET /api/leases/{id}` non la espone, oggi sta nella bozza e
+  nel contratto.

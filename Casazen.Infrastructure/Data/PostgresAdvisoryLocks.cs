@@ -141,6 +141,12 @@ internal static class PostgresAdvisoryLocks
         RentLease = 1_206,
 
         /// <summary>
+        /// One run of the hourly tacit renewal of the long-term leases (single key, session lock held for the whole run): two runs never
+        /// renew the same lease at once, even outside Hangfire's own lock (LR-14). Each lease is then renewed under its own row lock.
+        /// </summary>
+        LeaseTermRenewalRun = 1_208,
+
+        /// <summary>
         /// Photo gallery of one property (key: property id): two uploads, deletions or reorders never read and rewrite the
         /// photo list at the same time, so no photo is lost (PC-04).
         /// </summary>
@@ -258,6 +264,19 @@ internal static class PostgresAdvisoryLocks
         /// delete the same drafts and their files at once, even outside Hangfire's own lock (LR-12, decision LR-D33).
         /// </summary>
         LeaseDraftRetentionRun = 1_207,
+
+        /// <summary>
+        /// The ConcordatoFacile checkout of one lease (key: lease id, <c>leaseId.ToString("N")</c>): two clicks on "pay" at the same time
+        /// open one Stripe Checkout Session and write one pending purchase, because the second request waits and then finds and reuses the
+        /// first (CF-BE, CF-FIX-FU3). Held for the whole checkout, Stripe calls included, as the checkout of the plans does.
+        /// </summary>
+        ConcordatoFacileCheckout = 1_209,
+
+        /// <summary>
+        /// The privacy acceptance of one lease for the ConcordatoFacile form (key: lease id, <c>leaseId.ToString("N")</c>): two requests at
+        /// the same time write one event, not two (CF-BE).
+        /// </summary>
+        ConcordatoFacilePrivacy = 1_210,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

@@ -1,5 +1,6 @@
 using Casazen.Core.Features;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Jobs;
 using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -106,6 +107,20 @@ public static class RecurringJobsRegistration
             LeaseDraftRetentionJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // LR-14: the leases whose period is over and that nobody gave notice of renew by themselves, every hour.
+        recurringJobManager.AddOrUpdate<LeaseTermRenewalJob>(
+            LeaseTermRenewalJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            LeaseTermRenewalJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // LR-11c-a: the landlord is reminded of the last day to give notice of a lease (30 and 7 days before, and that day), every day.
+        recurringJobManager.AddOrUpdate<LeaseNoticeReminderJob>(
+            LeaseNoticeReminderJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            LeaseNoticeReminderJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
             job => job.ExecuteAsync(),
@@ -182,6 +197,13 @@ public static class RecurringJobsRegistration
             InAppNotificationRetentionJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             InAppNotificationRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // NF-06: approval queue items pending for >7 days are expired every night.
+        recurringJobManager.AddOrUpdate<ApprovalExpirationJob>(
+            ApprovalExpirationJob.RecurringJobId,
+            job => job.ProcessExpirationsAsync(CancellationToken.None),
+            ApprovalExpirationJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         // CO-06: nightly compliance check of every published property (suspends the ones that lost a requirement).

@@ -43,7 +43,7 @@ public class SupplierCalendarSyncSourceMigrationPostgresTests : IAsyncLifetime
         var noFeed = Guid.NewGuid();
         await using (var db = _database!.CreateContext())
         {
-            db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
             await InsertProfileAsync(db, failed, "https://feeds.example.com/failed.ics", lastSyncAt: DateTime.UtcNow, error: "ical_unreachable");
             await InsertProfileAsync(db, synced, "https://feeds.example.com/synced.ics", lastSyncAt: DateTime.UtcNow, error: null);
             await InsertProfileAsync(db, neverSynced, "https://feeds.example.com/new.ics", lastSyncAt: null, error: null);

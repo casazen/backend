@@ -119,14 +119,15 @@ storage to delete, see `storage.md` § 5).
 ## 7. Parties of long-term leases (LT-12, #179)
 
 Task LT-12 (audit defect A7-18). The parties of a lease (`Parties`: landlords and tenants) are anonymized **only after
-the lease has ended**: a lease ends the calendar day (Europe/Rome) after its `EndDate`. The old stored
+the lease has ended**: a lease ends the calendar day (Europe/Rome) after the end of the period it is in,
+`CurrentTermEndDate` (its `EndDate` until the lease renews by itself or is ended early, LR-14, [long-rent-aggregates.md § 10](long-rent-aggregates.md#10-fine-effettiva-del-contratto-rinnovo-tacito-disdetta-termine-anticipato-lr-14)). The old stored
 `LeaseContracts.DataRetentionUntil = StartDate + 10 years` is gone (migration `LeasePartyRetention`): a 4+4 lease with
 renewals can still be in force ten years after its start. Nothing is anonymized before the end date.
 
 | Trigger | When the parties are anonymized | Code |
 |---|---|---|
-| Erasure request (art. 17) | `POST /api/leases/{id}/erasure-request` (`lease.create` on the lease, 404 for another org). Recorded once (`ErasureRequested` flag and timeline event). Lease ended: now (`status: Anonymized`). Lease in force: from the day after `EndDate` (`status: Scheduled`, `anonymizationFrom`), by the nightly job. Idempotent | `LeasesController.RequestErasure`, `LeasePartyPrivacyService.RequestErasureAsync` |
-| Retention | Nightly job `gdpr-data-retention` (same job as the guests): leases whose `EndDate` + `Gdpr:Retention:LeaseParties` ended. **Off until configured** with a period and its source, like the guest categories (§ 2). Without it, every run logs `GDPR retention: lease parties not applied (...)` and only the erasure requests are honoured | `LeasePartyPrivacyService.ApplyRetentionAsync` |
+| Erasure request (art. 17) | `POST /api/leases/{id}/erasure-request` (`lease.create` on the lease, 404 for another org). Recorded once (`ErasureRequested` flag and timeline event). Lease ended: now (`status: Anonymized`). Lease in force: from the day after `CurrentTermEndDate` (`status: Scheduled`, `anonymizationFrom`), by the nightly job. Idempotent | `LeasesController.RequestErasure`, `LeasePartyPrivacyService.RequestErasureAsync` |
+| Retention | Nightly job `gdpr-data-retention` (same job as the guests): leases whose `CurrentTermEndDate` + `Gdpr:Retention:LeaseParties` ended. **Off until configured** with a period and its source, like the guest categories (§ 2). Without it, every run logs `GDPR retention: lease parties not applied (...)` and only the erasure requests are honoured | `LeasePartyPrivacyService.ApplyRetentionAsync` |
 
 **Parties still involved in a lease in force.** A party whose fiscal code (trimmed, case-insensitive) is also a party,
 not anonymized, of another lease **of the same org** whose end date has not passed keeps its data (typically the landlord

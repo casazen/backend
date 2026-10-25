@@ -72,7 +72,8 @@ public class RliDeadlineReminderJob(
 
     /// <summary>
     /// Questura communication (LT-07): every lease with an extra-EU tenant, in any status but Rejected (registered
-    /// included: the RLI does not replace it, fiscale.md L14), not ended yet and whose communication was not declared.
+    /// included: the RLI does not replace it, fiscale.md L14), not ended yet (the end of the period it is in, LR-14) and whose
+    /// communication was not declared.
     /// </summary>
     private async Task RemindQuesturaCommunicationsAsync(DateTime today)
     {
@@ -82,7 +83,7 @@ public class RliDeadlineReminderJob(
             .Include(l => l.Events)
             .Where(l => l.Status != LeaseStatus.Rejected
                 && l.QuesturaCommunicationDate == null
-                && l.EndDate >= today
+                && l.CurrentTermEndDate >= today
                 && (l.DraftData == null || l.Status != LeaseStatus.Draft)
                 && l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU))
             .ToListAsync();

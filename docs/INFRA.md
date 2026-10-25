@@ -500,7 +500,7 @@ Stripe has a **test** and a **live** mode with separate keys, webhook endpoints,
 - `Stripe__SecretKey`: secret key `sk_…` (or a restricted key `rk_…` with the permissions the API uses);
 - `Stripe__PublishableKey`: publishable key `pk_…` of the same mode. The API returns it to the checkout page with the host's connected account: without it the checkout calls `loadStripe('')` and cannot take payments.
 
-**Two webhook endpoints.** Payments of direct bookings and rent are created on the host's connected account (Stripe Connect, direct charges), so their events reach only a **Connect** endpoint; plan subscriptions and invoices are events of the platform account. The API verifies each endpoint with its own signing secret. Create both, in each mode, with the **same API version**: `2025-12-15.clover`, the version pinned by Stripe.net 50.1.0 (`Casazen.Infrastructure/Casazen.Infrastructure.csproj`). Stripe.net rejects events of an incompatible API version: the endpoint answers 400 and the log shows `Invalid Stripe … webhook signature` with `Received event with API version …`.
+**Two webhook endpoints.** Payments of direct bookings and rent are created on the host's connected account (Stripe Connect, direct charges), so their events reach only a **Connect** endpoint; plan subscriptions and invoices are events of the platform account. The API verifies each endpoint with its own signing secret. Create both, in each mode, with the **same API version** and with **snapshot** payloads, never "Thin" (the handler reads the full objects). The Dashboard no longer offers `2025-12-15.clover`, the version Stripe.net 50.1.0 pins for the calls it sends (`Casazen.Infrastructure/Casazen.Infrastructure.csproj`): choose the most recent one it offers (`2026-09-30.endive` at the time of writing; through the API `api_version=2025-12-15.clover` is still accepted). A different version does not stop the endpoint: `EventUtility.ConstructEvent` is called with `throwOnApiVersionMismatch: false` and the signature is verified all the same ([`runbooks/stripe.md`](runbooks/stripe.md), row "API version"). The payload is read with the SDK's models, so verify a new destination with a test event and a real test payment. Stripe.net 53.0.0 pins `endive`: the upgrade is queued as a separate piece of work.
 
 Stripe Dashboard → Developers → Webhooks (Workbench → Event destinations) → **Add endpoint / Add destination** (labels may differ slightly):
 
@@ -508,16 +508,17 @@ Stripe Dashboard → Developers → Webhooks (Workbench → Event destinations) 
 |---|---|---|
 | Events from | **Your account** | **Connected accounts** |
 | URL | `https://<Railway URL of the environment>/webhooks/stripe` | `https://<Railway URL of the environment>/webhooks/stripe/connect` |
-| API version | `2025-12-15.clover` | `2025-12-15.clover` |
+| Payload | Snapshot | Snapshot |
+| API version | the most recent one the Dashboard offers (`2026-09-30.endive`) | the same |
 | Events | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled` | `account.updated`, `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `setup_intent.succeeded`, `charge.refunded`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created` (SP-15b: a dispute on a supplier's service payment reaches the platform admins) |
 | Signing secret (`whsec_…`, "Reveal") | `Stripe__WebhookSecret` | `Stripe__ConnectWebhookSecret` |
 
-The event lists are the ones handled by `Casazen.Infrastructure/External/StripeWebhookHandler.cs`; other events are acknowledged and ignored. Same result with the API (the `secret` is returned only in the creation response), once per endpoint and mode:
+The URL is the **API's** host (`https://casazen-api.up.railway.app` in production, `https://casazen-api-test.up.railway.app` in test), never the site's domain: `casazen.space` answers a POST with a 308 redirect and `www.casazen.space` with 405. The platform destination also carries the ConcordatoFacile payment (`payment_intent.succeeded`, full refund `charge.refunded`) and the gift of a 24-month plan (`customer.subscription.created`): [`runbooks/stripe.md`](runbooks/stripe.md) § "ConcordatoFacile: the one-time payment". The event lists are the ones handled by `Casazen.Infrastructure/External/StripeWebhookHandler.cs`; other events are acknowledged and ignored. Same result with the API (the `secret` is returned only in the creation response), once per endpoint and mode:
 
 ```bash
 curl https://api.stripe.com/v1/webhook_endpoints -u "<secret key of the mode>:" \
   -d url="https://<Railway URL>/webhooks/stripe/connect" \
-  -d api_version="2025-12-15.clover" \
+  -d api_version="<the version of the destination, e.g. 2026-09-30.endive>" \
   -d connect=true \
   -d "enabled_events[]=account.updated" \
   -d "enabled_events[]=payment_intent.succeeded" \
@@ -536,8 +537,8 @@ curl https://api.stripe.com/v1/webhook_endpoints -u "<secret key of the mode>:" 
 Check after setting the variables and redeploying:
 
 1. `GET /api/health/ready` with an admin token: `stripe` is `healthy` (anonymous callers see only the status).
-2. Stripe Dashboard → each endpoint → send a test event (or `stripe trigger payment_intent.succeeded`): the delivery answers **200**. 400 = wrong signing secret or API version; 500 = secret not set on Railway.
-3. Upgrading Stripe.net changes the pinned API version: create both endpoints again with the new version (new secrets), update the two Railway variables, then delete the old endpoints.
+2. Stripe Dashboard → each endpoint → send a test event (or `stripe trigger payment_intent.succeeded`): the delivery answers **200**. 400 = wrong signing secret; 500 = secret not set on Railway. A different API version is not an error.
+3. Upgrading Stripe.net changes the version pinned for the calls the API sends, not the one of the destinations: their events keep arriving on the destination's version. Create the destinations again on the SDK's version only if a payload field is read wrong (new secrets, update the two Railway variables, then delete the old destinations).
 
 Webhook idempotency, subscription states, checkout guard, restricted-key permissions, the Customer portal settings, booking refunds on Connect (BK-02) and the deferred charge of "Paga più tardi" (BK-08, `payment_intent.processing`): `docs/runbooks/stripe.md`.
 

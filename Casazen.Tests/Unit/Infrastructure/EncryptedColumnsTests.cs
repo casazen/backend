@@ -17,15 +17,23 @@ public class EncryptedColumnsTests
         Assert.Equal(
             new[]
             {
+                "DocumentImage.BackImageUrl:Casazen.DocumentImage",
+                "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
                 "Guest.DocumentIssuingCountry:Casazen.Guest.Document",
                 "Guest.DocumentNumber:Casazen.Guest.Document",
                 // LR-12: the values a landlord typed in the wizard and kept in the draft, and the residence of a party of a lease.
                 "LeaseContract.DraftData:Casazen.LeaseContract.Draft",
+                // TR: the need of a transitory lease and the documentation that proves it.
+                "LeaseContract.TransitoryDocumentation:Casazen.LeaseContract.TransitoryNeed",
+                "LeaseContract.TransitoryNeed:Casazen.LeaseContract.TransitoryNeed",
                 "OtaIntegration.ApiKey:Casazen.OtaIntegration.Secrets",
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
+                // ADR-012: property owner financial data (IBAN and fiscal code).
+                "PropertyOwner.FiscalCode:Casazen.PropertyOwner.Financial",
+                "PropertyOwner.Iban:Casazen.PropertyOwner.Financial",
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.Username:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.WsKey:Casazen.PropertyQuesturaCredentials",

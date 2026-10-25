@@ -9,6 +9,7 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services.LeaseDrafts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
@@ -28,6 +29,11 @@ namespace Casazen.Infrastructure.Services;
 /// transaction; its events are applied only to a lease AwaitingSignature or PartiallySigned, so a replayed or forged
 /// "all signed" never moves a Signed or Registered lease back (A7-20). The lease is Signed only with the signed PDF
 /// copied into the private bucket.</para>
+/// <para>Import (LR-13): the one path that does not need a template of ours. A draft declared as an imported contract
+/// when it was created, with nothing blocking in its review, becomes Signed with the PDF signed elsewhere and the day of the
+/// signature, in the same shape as the offline signature (files first, one transaction under the row lock, the files removed if
+/// it fails); the gate of the models stays for every other path. The signed PDF is also stored as the <c>Contract</c> document of
+/// the lease, as a copy with its own key.</para>
 /// </remarks>
 public class LeaseSigningService(
     AppDbContext db,
@@ -41,8 +47,15 @@ public class LeaseSigningService(
 {
     public const string OfflineEventPayload = "offline";
     public const string ProviderEventPayload = "provider";
+    public const string ImportedEventPayload = "imported";
 
     private const string PdfContentType = "application/pdf";
+
+    /// <summary>The name of the signed copy in the Documents section when the file had no sound name (as long as <c>LeaseDocument.FileName</c> allows).</summary>
+    private const string DefaultDocumentFileName = "contratto-firmato.pdf";
+
+    private const int MaxDocumentFileNameLength = 240;
+
     private static readonly byte[] PdfSignature = "%PDF-"u8.ToArray();
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -99,6 +112,7 @@ public class LeaseSigningService(
             lease.DraftData = null; // the typed state of the wizard (LR-12) is only for a draft; the parties' rows are the contract's data
             lease.SignedPdfStoragePath = key;
             lease.RecordStipula(stipula);
+            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome()); // signed after its last day: concluded, never renewed (LR-14)
             lease.StipulaDeclaredByUserId = userId;
             lease.UpdatedAt = now;
             await MarkEveryPartySignedAsync(lease, LeaseSignatureMethod.Offline, lease.StipulaDate!.Value, now, cancellationToken);
@@ -124,6 +138,252 @@ public class LeaseSigningService(
             "Offline signature recorded. LeaseId={LeaseId} StipulaDate={StipulaDate:yyyy-MM-dd} RegistrationDeadline={RegistrationDeadline:yyyy-MM-dd}",
             lease.Id, lease.StipulaDate, lease.RegistrationDeadline);
         return lease;
+    }
+
+    public async Task<LeaseContract> ImportSignedContractAsync(
+        Guid leaseId,
+        string userId,
+        ImportedContractDeclaration declaration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentNullException.ThrowIfNull(declaration);
+
+        var stipula = EnsureStipulaDateNotInFuture(declaration.StipulaDate);
+
+        await using var signedContract = await ReadPdfAsync(
+                declaration.SignedContract, declaration.SignedContractLength, cancellationToken)
+            ?? throw new DomainRuleException(
+                LeaseSigningErrorCodes.SignedContractInvalid,
+                "LeaseSignedContractInvalid",
+                LeaseSigningLimits.MaxSignedContractBytes / (1024 * 1024));
+
+        // A request that is going to be refused writes nothing to the bucket: the same checks run again under the row lock.
+        var lease = await LoadLeaseAsync(leaseId, cancellationToken);
+        EnsureImportable(lease);
+
+        // Files first, in the private bucket: the signed copy of the lease and its own copy as the Contract document of the Documents
+        // section. Two files, not one shared key: deleting a document must never take away the signed copy of the contract (nor the
+        // other way round). A failed upload or database update removes what was written.
+        var signedKey = StorageKeys.LeaseSignedContract(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
+        var documentKey = StorageKeys.LeaseAttachment(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
+        var written = new List<string>(2);
+        try
+        {
+            await storage.PutAsync(StorageBucket.Private, signedKey, signedContract, PdfContentType, cancellationToken);
+            written.Add(signedKey);
+            signedContract.Position = 0;
+            await storage.PutAsync(StorageBucket.Private, documentKey, signedContract, PdfContentType, cancellationToken);
+            written.Add(documentKey);
+
+            return await RecordImportAsync(
+                leaseId, userId, stipula, signedKey, documentKey, DocumentFileName(declaration.FileName), signedContract.Length, existingDocumentId: null, cancellationToken);
+        }
+        catch
+        {
+            foreach (var key in written)
+                await TryDeleteFileAsync(key);
+            throw;
+        }
+    }
+
+    public async Task<LeaseContract> ImportSignedContractFromDocumentAsync(
+        Guid leaseId,
+        string userId,
+        ImportedDocumentDeclaration declaration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentNullException.ThrowIfNull(declaration);
+
+        var stipula = EnsureStipulaDateNotInFuture(declaration.StipulaDate);
+
+        // The document has to be a contract document of THIS lease and of its org (stated here, not left to the filter of the request):
+        // the contract of another lease, a document of another kind, one that names another org, are not there.
+        var orgId = await db.LeaseContracts
+                .AsNoTracking()
+                .Where(l => l.Id == leaseId)
+                .Select(l => (Guid?)l.OrgId)
+                .FirstOrDefaultAsync(cancellationToken)
+            ?? throw LeaseNotFound(leaseId);
+        var document = await db.LeaseDocuments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    d => d.Id == declaration.DocumentId && d.LeaseContractId == leaseId && d.OrgId == orgId && d.Kind == LeaseDocumentKind.Contract,
+                    cancellationToken)
+            ?? throw DocumentNotFound();
+
+        await using var stored = await storage.OpenReadAsync(StorageBucket.Private, document.StorageKey, cancellationToken)
+            ?? throw DocumentNotFound();
+        await using var signedContract = await ReadPdfAsync(stored, document.SizeBytes, cancellationToken)
+            ?? throw new DomainRuleException(
+                LeaseSigningErrorCodes.SignedContractInvalid,
+                "LeaseSignedContractInvalid",
+                LeaseSigningLimits.MaxSignedContractBytes / (1024 * 1024));
+
+        // A request that is going to be refused writes nothing to the bucket: the same checks run again under the row lock.
+        var lease = await LoadLeaseAsync(leaseId, cancellationToken);
+        EnsureImportable(lease);
+
+        // Only the signed copy of the lease is new: the document keeps the file it has, and is the Contract document of the Documents section.
+        var signedKey = StorageKeys.LeaseSignedContract(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
+        try
+        {
+            await storage.PutAsync(StorageBucket.Private, signedKey, signedContract, PdfContentType, cancellationToken);
+            return await RecordImportAsync(
+                leaseId, userId, stipula, signedKey, documentKey: null, document.FileName, document.SizeBytes, document.Id, cancellationToken);
+        }
+        catch
+        {
+            await TryDeleteFileAsync(signedKey);
+            throw;
+        }
+    }
+
+    private static NotFoundException DocumentNotFound() =>
+        new("Lease document not found") { Code = "document_not_found", MessageKey = "DocumentNotFound" };
+
+    /// <summary>
+    /// The one transaction of the import, under the row lock the guided draft takes (a wait of more than a few seconds is a lost race,
+    /// 409 <c>lease_draft_conflict</c>, never a timeout): the lease is read again once nobody else can change it, checked again, its
+    /// typed state written to the columns if it still lives only in <c>DraftData</c>, and then signed.
+    /// </summary>
+    private async Task<LeaseContract> RecordImportAsync(
+        Guid leaseId,
+        string userId,
+        DateTime stipula,
+        string signedKey,
+        string? documentKey,
+        string documentName,
+        long documentSize,
+        Guid? existingDocumentId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var transaction = await BeginTransactionAsync(cancellationToken);
+            await LeaseDraftLocking.LockRowAsync(db, leaseId, cancellationToken);
+            db.ChangeTracker.Clear();
+
+            var lease = await LoadLeaseAsync(leaseId, cancellationToken);
+            var values = EnsureImportable(lease);
+            if (lease.DraftData is not null)
+            {
+                // Complete as far as the review can tell, but the columns still hold the starting values (the rules changed since the
+                // last save): write what was typed where every other reader of the lease looks, as a save would.
+                await LeaseDraftWriter.ProjectAsync(
+                    db, lease, values, LeaseDraftRules.Read(values, lease.Origin), concordato: null, dataComplete: true,
+                    _clock.TodayInRomeAsDateOnly(), cancellationToken);
+            }
+
+            LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
+
+            var now = UtcNow();
+            lease.Status = LeaseStatus.Signed;
+            lease.DraftData = null; // the typed state of the wizard is only for a draft; the rows of the parties are the contract's data
+            lease.SignedPdfStoragePath = signedKey;
+            lease.RecordStipula(stipula);
+            // A contract brought in after its last day is a lease that is over: concluded, never renewed (LR-14, no retroactive renewal).
+            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome());
+            lease.StipulaDeclaredByUserId = userId;
+            lease.UpdatedAt = now;
+            await MarkEveryPartySignedAsync(lease, LeaseSignatureMethod.Offline, lease.StipulaDate!.Value, now, cancellationToken);
+
+            if (existingDocumentId is { } existing)
+            {
+                // The contract document the owner uploaded: still there, under the lock (the draft is the lease's own).
+                if (!await db.LeaseDocuments.AnyAsync(d => d.Id == existing && d.LeaseContractId == leaseId && d.Kind == LeaseDocumentKind.Contract, cancellationToken))
+                    throw DocumentNotFound();
+            }
+            else
+            {
+                db.LeaseDocuments.Add(new LeaseDocument
+                {
+                    LeaseContractId = lease.Id,
+                    OrgId = lease.OrgId,
+                    Kind = LeaseDocumentKind.Contract,
+                    FileName = documentName,
+                    StorageKey = documentKey!,
+                    UploadedBy = userId,
+                    SizeBytes = documentSize,
+                    UploadedAt = now,
+                });
+            }
+            db.LeaseEvents.Add(new LeaseEvent
+            {
+                LeaseContractId = lease.Id,
+                EventType = LeaseEventType.AllPartiesSigned,
+                OccurredAt = now,
+                Payload = ImportedEventPayload,
+            });
+            // A microsecond later (what the database keeps), so the timeline, which is ordered by instant, always lists the two the same way.
+            db.LeaseEvents.Add(new LeaseEvent
+            {
+                LeaseContractId = lease.Id,
+                EventType = LeaseEventType.Imported,
+                OccurredAt = now.AddTicks(TimeSpan.TicksPerMicrosecond),
+            });
+
+            await db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Signed contract imported. LeaseId={LeaseId} StipulaDate={StipulaDate:yyyy-MM-dd} RegistrationDeadline={RegistrationDeadline:yyyy-MM-dd}",
+                lease.Id, lease.StipulaDate, lease.RegistrationDeadline);
+            return lease;
+        }
+        catch (Exception ex) when (LeaseDraftLocking.IsContention(ex))
+        {
+            logger.LogInformation("Lease busy: the import was refused. LeaseId={LeaseId}", leaseId);
+            throw new DomainConflictException(LeaseDraftErrorCodes.Conflict, "LeaseDraftConflict");
+        }
+    }
+
+    /// <summary>
+    /// The lease can be imported: a draft (409 <c>lease_not_draft</c>), declared as an imported contract when it was created (422
+    /// <c>lease_import_not_imported_origin</c>: a contract made in CasaZen is signed through the models, decision LR-D28), with nothing
+    /// blocking in the review of what was typed (422 <c>lease_review_blocked</c>). Returns the values read, which the caller projects.
+    /// The lease is loaded with its property and its parties.
+    /// </summary>
+    private LeaseDraftValues EnsureImportable(LeaseContract lease)
+    {
+        if (lease.Status != LeaseStatus.Draft)
+            throw new DomainConflictException(LeaseDraftErrorCodes.NotDraft, "LeaseNotDraft");
+
+        if (lease.Origin != LeaseOrigin.Imported)
+            throw new DomainRuleException(LeaseSigningErrorCodes.ImportNotImported, "LeaseImportNotImported");
+
+        // The same review the draft shows: the blocks are the needs of the first four steps. For an imported contract the missing APE
+        // and cadastral data are warnings, the template is not asked for and the range of a concordato is not checked.
+        var values = LeaseDraftProjection.ReadValues(lease);
+        var input = new LeaseDraftProgressInput
+        {
+            Origin = lease.Origin,
+            Status = lease.Status,
+            WizardMaxStep = lease.WizardMaxStep,
+            Values = values,
+            Facts = new LeaseDraftFacts { PropertyExists = lease.Property is not null },
+            Today = _clock.TodayInRomeAsDateOnly(),
+        };
+        if (LeaseReview.HasBlock(LeaseReview.Compute(input, new LeaseReviewFacts())))
+            throw new DomainRuleException(LeaseDraftErrorCodes.ReviewBlocked, "LeaseReviewBlocked");
+
+        return values;
+    }
+
+    /// <summary>
+    /// The name of the signed copy in the Documents section: the name the file had when it is a sound one (a name, not a path, no
+    /// control character, a <c>.pdf</c>), otherwise a fixed one.
+    /// </summary>
+    private static string DocumentFileName(string? declared)
+    {
+        var name = Path.GetFileName((declared ?? string.Empty).Replace('\\', '/'));
+        return name.Length is > 0 and <= MaxDocumentFileNameLength
+            && !name.Any(char.IsControl)
+            && string.Equals(Path.GetExtension(name), ".pdf", StringComparison.OrdinalIgnoreCase)
+                ? name
+                : DefaultDocumentFileName;
     }
 
     public async Task<LeaseContract> DeclareStipulaAsync(
@@ -480,6 +740,7 @@ public class LeaseSigningService(
             lease.Status = LeaseStatus.Signed;
             lease.SignedPdfStoragePath = key;
             lease.RecordStipula(now);
+            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome()); // signed after its last day: concluded, never renewed (LR-14)
             lease.UpdatedAt = now;
             await db.Entry(lease).Collection(l => l.Parties).LoadAsync(cancellationToken);
             await MarkEveryPartySignedAsync(lease, LeaseSignatureMethod.Provider, now, now, cancellationToken);

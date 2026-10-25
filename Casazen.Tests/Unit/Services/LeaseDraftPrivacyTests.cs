@@ -72,6 +72,10 @@ public class LeaseDraftPrivacyTests
                 EndDate = new DateTime(2023, 12, 31, 0, 0, 0, DateTimeKind.Utc),
                 MonthlyRent = 900m,
                 DraftData = """{"landlords":[{"firstName":"Mario"}]}""",
+                // The need of a transitory contract and its documents (TR) are free text about a person: they go with the parties.
+                TransitoryParty = PartyRole.Landlord,
+                TransitoryNeed = "Assistenza a un familiare a Bari",
+                TransitoryDocumentation = "Certificato riservato",
                 Parties =
                 [
                     new Party
@@ -106,6 +110,8 @@ public class LeaseDraftPrivacyTests
         await using var read = new AppDbContext(options);
         var lease = await read.LeaseContracts.AsNoTracking().Include(l => l.Parties).SingleAsync(l => l.Id == leaseId);
         Assert.Null(lease.DraftData);
+        Assert.Null(lease.TransitoryNeed);
+        Assert.Null(lease.TransitoryDocumentation);
         var party = Assert.Single(lease.Parties);
         Assert.Null(party.Residence);
         Assert.Null(party.DocumentsVerifiedOn);

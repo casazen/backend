@@ -4,7 +4,8 @@ Workflows in `.github/workflows/`. Task FD-02 (audit defects A9-26 and the backe
 
 | Workflow | Job (check name) | Trigger | Gate |
 |---|---|---|---|
-| `ci-cd.yml` | `Build & Test` | PR and push to `develop` / `main` | **Required**: `dotnet restore` (NuGet audit, High/Critical = error), vulnerable packages gate (`scripts/check-vulnerable-packages.sh`), `dotnet build -c Release`, `dotnet test` on a `postgres:16` service, `dotnet format --verify-no-changes` |
+| `ci-cd.yml` | `Build & Test` | PR and push to `develop` / `main` | **Required**: `dotnet restore` (NuGet audit, High/Critical = error), vulnerable packages gate (`scripts/check-vulnerable-packages.sh`), `dotnet build -c Release`, `dotnet test` on a `postgres:16` service (section 7) |
+| `ci-cd.yml` | `Format` | PR and push to `develop` / `main` | **Required**: `dotnet format --verify-no-changes`, in parallel with `Build & Test` |
 | `verify-railway-deploy.yml` | `Verify Railway Test (native deploy)` | after a green `CI/CD Pipeline` push to `develop` | The test API runs this commit and `/api/health/ready` answers 200, then smoke tests (FD-12). Separate workflow so Railway Wait for CI is not deadlocked |
 | `verify-railway-deploy.yml` | `Verify Railway Production (native deploy)` | after a green `CI/CD Pipeline` push to `main` | Same on production (FD-12) |
 | `deploy-preview.yml` | `Post environment links` | PR to `develop` | Comment with the environment links, no gate |
@@ -18,7 +19,7 @@ The former `e2e-golden-journey.yml` only ran `echo`, so its check was always gre
 GitHub → `casazen/backend` → **Settings → Branches** (or **Rules → Rulesets**), for **both** `develop` and `main`:
 
 1. Enable **Require status checks to pass before merging** and **Require branches to be up to date before merging**.
-2. Add the check **`Build & Test`** and, once it has been green for a few runs, **`Golden Journey L3`** (needs the secrets above, otherwise it fails by design).
+2. Add the checks **`Build & Test`** and **`Format`** and, once it has been green for a few runs, **`Golden Journey L3`** (needs the secrets above, otherwise it fails by design).
 3. If the removed workflow's check **`pointer`** (workflow "E2E Golden Journey") is in the list, **remove it**: nothing reports it any more, so a required `pointer` would block every merge ("Expected — Waiting for status to be reported").
 
 From the CLI, when branch protection already exists:
@@ -26,7 +27,7 @@ From the CLI, when branch protection already exists:
 ```bash
 for b in develop main; do
   gh api -X PATCH "repos/casazen/backend/branches/$b/protection/required_status_checks" \
-    -F strict=true -f 'contexts[]=Build & Test'
+    -F strict=true -f 'contexts[]=Build & Test' -f 'contexts[]=Format'
 done
 ```
 
@@ -121,7 +122,7 @@ When the run fails:
 
 ## 5. Verify
 
-1. Open a PR against `develop`: the `Build & Test` check shows the steps "Vulnerable packages (fails on High/Critical, including transitive)", "Build", "Test", "Check formatting". There is no "E2E Golden Journey" workflow any more.
+1. Open a PR against `develop`: the `Build & Test` check shows the steps "Vulnerable packages (fails on High/Critical, including transitive)", "Build", "Test"; the `Format` check, beside it, shows "Check formatting". There is no "E2E Golden Journey" workflow any more.
 2. Locally, the same commands as CI (with `TEST_POSTGRES_CONNECTION` set, see `AGENTS.md`):
    `dotnet restore && bash scripts/check-vulnerable-packages.sh && dotnet build -c Release --no-restore && dotnet test -c Release --no-build && dotnet format --verify-no-changes`.
 3. Keep-alive: **Actions → Supabase Keep-Alive → Run workflow**. With the variables set, the log shows "Supabase REST ping OK"; without them, a warning annotation and no ping.
@@ -165,3 +166,24 @@ InMemory does **not** enforce foreign keys, unique indexes, `CHECK`s, `timestamp
 - **PDFs.** PDFsharp/MigraDoc loses words when two documents are rendered at once in one process, so `MigraDocPdfDocumentRenderer.Render` takes a lock shared by the whole process (BE-PDF-01). Tests and test hosts use the real renderer (`new MigraDocPdfDocumentRenderer()`): tests that run in parallel and read the words of their PDFs do not corrupt each other. `MigraDocPdfDocumentRendererConcurrencyTests` fails if that lock goes away.
 - **EF model cache.** It holds about forty models per process (one per `IDataProtectionProvider` instance); beyond that a model is not cached at all. A test that asserts `Assert.Same(context.Model, …)` gives its contexts an own cache (`UseMemoryCache`), as `ICalFeedUrlProtectionTests` does.
 - **Machine load.** Several agents on one PC saturate the CPU: run a class with `--filter` instead of the whole suite, and never raise a global timeout to hide a slow test.
+
+## 7. CI time
+
+A run of `CI/CD Pipeline` takes about as long as its `Test` step. Two rules keep it short:
+
+- **Each migration runs once per run, not once per test.** Applying the EF migrations to a new database takes seconds, and the
+  suite creates hundreds of databases (one per `WebApplicationFactory`, one per test of a class with `IAsyncLifetime`): it was
+  most of the 20-25 minutes of `Test`. A database at a migration is now a copy of a template that the run migrates once
+  (`CREATE DATABASE … TEMPLATE`, milliseconds), in `PostgresTestDatabase`:
+  - a test that needs the latest schema starts from `CreateMigrated` / `CreateMigratedAsync`;
+  - a test of a migration starts from `Create` / `CreateAsync` (empty) and brings the database to the migration before with
+    `await _database.MigrateEmptyToAsync(PreviousMigration(db))` (or to the latest with `MigrateEmptyToAsync()`), then seeds and
+    drives `IMigrator` as before. It throws when the database already has tables: only the first step of a test can be a copy.
+  Every migration is still applied on PostgreSQL in every run, by the latest template and by `PostgresMigrationTests` (which
+  keeps migrating an empty database itself). On a local server the templates of a run (`it_template_<run>_…`) stay until the
+  next run starts, which drops those of every run that is over (each run holds an advisory lock while it lives).
+- **A new push to a PR cancels the run of the commit it replaces** (`concurrency` in `ci-cd.yml` and `e2e-golden-journey.yml`).
+  Pushes to `develop` / `main` are never cancelled: Railway Wait for CI and `verify-railway-deploy.yml` need each result.
+
+Playwright installs Chromium without `--with-deps` (here and in `casazen/frontend`): the `ubuntu-latest` image already has its
+libraries, and `--with-deps` only added fonts from the apt mirror, a download that at times took 10 minutes.

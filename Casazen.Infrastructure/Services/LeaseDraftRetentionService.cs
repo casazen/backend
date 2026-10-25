@@ -14,7 +14,8 @@ namespace Casazen.Infrastructure.Services;
 /// Deletes the abandoned lease drafts (LR-12, decision LR-D33, <see cref="ILeaseDraftRetentionService"/>): a draft holds the names,
 /// fiscal codes and residences of people and is not kept for ever. One that nobody changed for
 /// <c>LongRentLease:DraftRetentionDays</c> days (180 by default) is deleted with its parties, events and files; one with a signed
-/// copy, or a rent plan, never is.
+/// copy, a rent plan, or a ConcordatoFacile purchase that is pending or completed, never is (<see cref="LeaseDraftDeleter.IsDeletableAsync"/>,
+/// the same rule as the deletion the landlord asks for).
 /// </summary>
 /// <remarks>
 /// <para>Idempotent by construction: it deletes what matches, and a second run finds nothing. Each draft is deleted in a transaction
@@ -114,7 +115,7 @@ public sealed class LeaseDraftRetentionService(
             var lease = await deleter.WithChildren()
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken);
-            if (lease is null || lease.UpdatedAt >= cutoff || !LeaseDraftDeleter.IsDeletable(lease))
+            if (lease is null || lease.UpdatedAt >= cutoff || !await deleter.IsDeletableAsync(lease, cancellationToken))
                 return false;
 
             files = await deleter.DeleteAsync(lease, cancellationToken);

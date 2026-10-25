@@ -125,3 +125,19 @@ public sealed class HostThreadSummaryDto
         NeedsReply = thread.NeedsReply,
     };
 }
+
+/// <summary>
+/// The threads of the host with messages not read yet (<c>GET api/messages/unread</c>): one item per booking, only the ones with
+/// <c>unreadCount</c> above zero. No text and no name: the badges of the calendar and the lists need the counters only.
+/// </summary>
+public sealed class HostUnreadThreadsDto
+{
+    public IReadOnlyList<HostUnreadThreadDto> Items { get; init; } = [];
+
+    public static HostUnreadThreadsDto From(IReadOnlyList<HostUnreadThread> threads) => new()
+    {
+        Items = threads.Select(t => new HostUnreadThreadDto(t.BookingId, t.UnreadCount)).ToList(),
+    };
+}
+
+public sealed record HostUnreadThreadDto(Guid BookingId, int UnreadCount);

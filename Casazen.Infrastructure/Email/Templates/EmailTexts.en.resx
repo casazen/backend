@@ -258,6 +258,21 @@
   <data name="Questura_MarkDone" xml:space="preserve">
     <value>Once sent, mark the communication as done on the lease page, with its date (and, if you wish, the receipt): only then the checklist item is completed.</value>
   </data>
+  <data name="LeaseNoticeReminder_Subject" xml:space="preserve">
+    <value>Lease notice due by {1} — {0}</value>
+  </data>
+  <data name="LeaseNoticeReminder_Body" xml:space="preserve">
+    <value>Reminder: the last useful day to give notice of the lease for &lt;strong&gt;{0}&lt;/strong&gt; is &lt;strong&gt;{1}&lt;/strong&gt;. Days remaining: &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_BodyToday" xml:space="preserve">
+    <value>Reminder: the last useful day to give notice of the lease for &lt;strong&gt;{0}&lt;/strong&gt; is &lt;strong&gt;today&lt;/strong&gt;, {1}.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Renewal" xml:space="preserve">
+    <value>The current period ends on &lt;strong&gt;{0}&lt;/strong&gt;. If nobody gives notice by the last useful day, the lease renews by itself for another &lt;strong&gt;{1} months&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Responsibility" xml:space="preserve">
+    <value>CasaZen works this day out from the end of the current period: it does not send the notice for you and does not judge whether it is valid. Check the notice period written in your contract. Draft wording pending counsel.</value>
+  </data>
   <data name="ServiceCategory_cleaning" xml:space="preserve">
     <value>Cleaning</value>
   </data>
@@ -572,6 +587,12 @@
   </data>
   <data name="Push_NewBooking_Body" xml:space="preserve">
     <value>{0}: from {1} to {2}, guests: {3}.</value>
+  </data>
+  <data name="Push_GuestMessage_Title" xml:space="preserve">
+    <value>New message from a guest</value>
+  </data>
+  <data name="Push_GuestMessage_Body" xml:space="preserve">
+    <value>{0}: a guest wrote to you.</value>
   </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Check-out reminder</value>
@@ -1319,6 +1340,24 @@
   </data>
   <data name="OrgInvitationExpired_Cta" xml:space="preserve">
     <value>Open People and permissions</value>
+  </data>
+  <data name="OwnerInvitation_Subject" xml:space="preserve">
+    <value>Invitation to {0}'s owner portal</value>
+  </data>
+  <data name="OwnerInvitation_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="OwnerInvitation_Body" xml:space="preserve">
+    <value>You have been invited to access the owner portal of &lt;strong&gt;{0}&lt;/strong&gt; on CasaZen. You will be able to view your booking calendar, revenue summaries, and invoices.</value>
+  </data>
+  <data name="OwnerInvitation_Cta" xml:space="preserve">
+    <value>Accept invitation</value>
+  </data>
+  <data name="OwnerInvitation_LinkFallback" xml:space="preserve">
+    <value>If the button doesn't work, copy and paste this link into your browser:</value>
+  </data>
+  <data name="OwnerInvitation_Expires" xml:space="preserve">
+    <value>The invitation expires on &lt;strong&gt;{0}&lt;/strong&gt; (Italian time).</value>
   </data>
   <data name="OrgAccessRequest_Subject" xml:space="preserve">
     <value>{0} asks for access to "{1}"</value>

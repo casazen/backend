@@ -54,4 +54,59 @@ public enum LeaseEventType
     /// longer the contract. Payload: <c>withdrawn</c> or <c>review_reopened</c>.
     /// </summary>
     SentRevoked,
+
+    /// <summary>
+    /// The landlord brought in a contract already signed outside CasaZen (LR-13): the signed copy was uploaded with the day of the
+    /// signature and the draft of origin <c>Imported</c> became a Signed lease. Recorded together with <see cref="AllPartiesSigned"/>
+    /// (payload <c>imported</c>). No payload.
+    /// </summary>
+    Imported,
+
+    /// <summary>
+    /// The landlord recorded a notice of non-renewal (LR-14): the lease will end with the current period instead of renewing by itself.
+    /// Payload: <c>{landlord|tenant}:{yyyy-MM-dd}</c>, who gave it and the day it was given. No personal data.
+    /// </summary>
+    NoticeRecorded,
+
+    /// <summary>
+    /// The landlord took back a notice recorded by mistake (LR-14), so the lease renews by itself again at the end of the period.
+    /// Payload: the day the notice had been given (<c>yyyy-MM-dd</c>).
+    /// </summary>
+    NoticeRemoved,
+
+    /// <summary>
+    /// The lease was ended before the end of its period (LR-14): the end of the period moved to the chosen day and the installments
+    /// of the rent plan that start after it were cancelled. Payload: the last day of the lease (<c>yyyy-MM-dd</c>).
+    /// </summary>
+    Terminated,
+
+    /// <summary>
+    /// The lease renewed by itself (LR-14): nobody gave notice, so the end of the current period moved forward by one period of the
+    /// type (48 months for the libero, 24 for the concordato). One event per period. Payload: the new last day (<c>yyyy-MM-dd</c>).
+    /// </summary>
+    TermRenewed,
+
+    /// A platform admin accessed ConcordatoFacile data for this lease using their admin role (AC-NF04-3), bypassing payment or gift.
+    /// Payload: JSON with <c>userId</c> of the admin. No sensitive data.
+    /// </summary>
+    ConcordatoFacileAdminAccess,
+
+    /// <summary>
+    /// A ConcordatoFacile gift was consumed for this lease (ADR-006-R7). No payload.
+    /// </summary>
+    ConcordatoFacileGiftConsumed,
+
+    /// <summary>
+    /// The landlord generated a signed link to access the ConcordatoFacile partner portal (ADR-007-R8).
+    /// No URL or signature is stored, only the timestamp for audit and brief refresh window (ADR-008-R9).
+    /// </summary>
+    ConcordatoFacileLinkGenerated,
+
+    /// <summary>
+    /// The landlord accepted the privacy notice for this lease before the guided contract form could be opened (CF-BE). Payload: JSON
+    /// with <c>policyVersion</c>, the version of the notice that was current (<c>Legal:Documents:Privacy:Version</c>). No personal data.
+    /// The signed link is made only for a lease that has this event for the current version. Appended last: the stored integers of
+    /// the other types do not change.
+    /// </summary>
+    ConcordatoFacilePrivacyAccepted,
 }

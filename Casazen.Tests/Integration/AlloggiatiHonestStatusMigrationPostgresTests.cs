@@ -32,7 +32,7 @@ public class AlloggiatiHonestStatusMigrationPostgresTests : IAsyncLifetime
     {
         await using var db = _database!.CreateContext();
         var migrator = db.GetService<IMigrator>();
-        migrator.Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var s = new Seed();
         await InsertPreviousStateAsync(db, s);
 

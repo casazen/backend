@@ -413,7 +413,8 @@ public class PropertyModeApplyTests : IDisposable
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
         await _h.SeedChangeAsync(property, RentalMode.Short, Today);
-        await _h.SeedLeaseAsync(property, Day(-300), Day(9));
+        // Ended and concluded (a notice or an early termination): a lease whose period is over and that nobody gave notice of renews by itself (LR-14).
+        await _h.SeedLeaseAsync(property, Day(-300), Day(9), terminatedOn: Day(9));
         await _h.SeedLeaseAsync(property, Day(-300), Day(100), LeaseStatus.Rejected);
 
         Assert.Equal(1, (await _h.Service.ApplyDueAsync()).Applied);

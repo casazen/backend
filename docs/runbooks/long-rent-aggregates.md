@@ -17,6 +17,7 @@ pagamento). Codice: `LeasesController`, `LongRentRentsController`, `LongRentAgen
 | `POST /api/long-rent/rents/reminders` | `lease.create` | Sollecito di massa (da 1 a 50 canoni, stessa nota) |
 | `GET /api/long-rent/deadlines?from=&to=&type=` | `lease.read` | Scadenze in ordine di data (§ 5) |
 | `GET /api/long-rent/overview` | `lease.read` | Numeri d'area, checklist e prossima scadenza (§ 5) |
+| `GET /api/long-rent/fiscal?year=` e `/fiscal/export?year=` | `lease.read` | Report fiscale per contratto (stima per il commercialista) e il suo CSV (§ 12) |
 
 Tutte le letture sono limitate **in SQL** all'org del chiamante e agli immobili che raggiunge: `HostScope` letto dal database
 (`IHostScopeResolver`, AM-03) e applicato con `InScope`, la stessa regola di `GET /api/leases` e di ogni altro elenco dell'host (tutta
@@ -32,15 +33,17 @@ difesa in profondità e se un domani quel ruolo ricevesse `lease.read` non vedre
 ## 2. Elenco contratti (B3)
 
 `view` (assente o `All` = tutti, com'è sempre stato; valore sconosciuto = 400 `validation_error`). Le viste **non sono salvate**:
-derivano da stato e data di fine (`LeaseListViews.Predicate`, una sola espressione SQL) perché il modello reale non ha «in scadenza»
-né «terminato» (gap 04 § 4.1).
+derivano da stato e fine del periodo in corso (`LeaseListViews.Predicate`, una sola espressione SQL) perché il modello reale non ha
+«in scadenza» né «terminato» (gap 04 § 4.1). Dal task LR-14 la data letta è `CurrentTermEndDate` (la fine del periodo in cui il
+contratto si trova, che il rinnovo tacito sposta in avanti e il termine anticipato riporta indietro, § 10), non più la `EndDate` che
+il contratto dichiara.
 
 | Vista | Regola (oggi = giorno di Roma) |
 |---|---|
-| `Active` (Attivi) | `Registered` e `EndDate >= oggi` (include i contratti in scadenza) |
-| `InPreparation` (In preparazione) | ogni stato diverso da `Registered` e `Rejected`: bozza, in firma, firmato in attesa di registrazione, registrazione in corso. **Qualunque sia la data**: una bozza o un contratto firmato da registrare è lavoro da finire, e non c'è ancora l'eliminazione della bozza (B4) |
-| `Expiring` (In scadenza) | `Registered`, non terminato e `EndDate <= oggi + 6 mesi` (sottoinsieme di `Active`; il transitorio, che non ha rinnovo, è «in scadenza» per gli ultimi 6 mesi) |
-| `Ended` (Terminati) | `Registered` e `EndDate < oggi`, oppure `Rejected` (un contratto che non avrà effetto) |
+| `Active` (Attivi) | `Registered` e `CurrentTermEndDate >= oggi` (include i contratti in scadenza) |
+| `InPreparation` (In preparazione) | ogni stato diverso da `Registered` e `Rejected`: bozza, in firma, firmato in attesa di registrazione, registrazione in corso. **Qualunque sia la data**: una bozza o un contratto firmato da registrare è lavoro da finire (la bozza si elimina con `DELETE /api/leases/{id}`, LR-12) |
+| `Expiring` (In scadenza) | `Registered`, non terminato e `CurrentTermEndDate <= oggi + 6 mesi`, **oppure** con una disdetta o un termine anticipato registrati (finisce e non si rinnova), qualunque sia la fine (sottoinsieme di `Active`; il transitorio, che non ha rinnovo, è «in scadenza» per gli ultimi 6 mesi) |
+| `Ended` (Terminati) | `Registered` e `CurrentTermEndDate < oggi`, oppure `Rejected` (un contratto che non avrà effetto). Un contratto terminato prima della fine ha `CurrentTermEndDate` = il suo ultimo giorno: è terminato dal giorno dopo, come ogni contratto |
 
 Un contratto è **terminato dal giorno dopo** il suo ultimo giorno (come la retention dei dati dei conduttori,
 `LeasePartyPrivacyService.HasEnded`). Ogni contratto sta in una sola tra `InPreparation`, `Active`, `Ended`.
@@ -59,10 +62,12 @@ LT-12, con `tenantAnonymized: true`), `nextRentDueDate` (scadenza della prima ra
 `overdueRentCount`, `overdueRentAmount`, `overdueDays` (giorni dalla più vecchia in ritardo). Una rata in elaborazione
 (`Processing`) è da incassare ma non in ritardo; pagate e annullate non contano.
 
-**Una sola istruzione SQL** qualunque sia il numero di contratti: il registro dei canoni è un `LEFT JOIN` di una sottoquery raggruppata
+**Un'istruzione SQL per l'elenco** qualunque sia il numero di contratti: il registro dei canoni è un `LEFT JOIN` di una sottoquery raggruppata
 per contratto, il primo conduttore tre sottoquery scalari sull'indice univoco delle parti (contratto, ruolo, posizione). Provato in
 locale dalla traduzione Npgsql (`LongRentSqlShapeTests`) e su PostgreSQL dal conteggio dei comandi
-(`LongRentAggregatesPostgresTests.Calls_TheNumberOfCommands_DoesNotGrowWith…`).
+(`LongRentAggregatesPostgresTests.Calls_TheNumberOfCommands_DoesNotGrowWith…`). Dal task LR-01b ogni riga porta anche `stage` e `nextStep`
+(§ 11): per questo, **solo se l'elenco ha contratti registrati o bozze**, partono poche istruzioni in più, sempre le stesse qualunque sia il
+numero di contratti (§ 11.4).
 
 ## 3. Registro canoni (B1)
 
@@ -119,8 +124,8 @@ altro = 400 `long_rent_deadlines_range_invalid`), `type` facoltativo (`RliRegist
 |---|---|---|
 | `RliRegistration` | `min(stipula, inizio) + 30` (`RliRegistrationDeadline`, LT-04) | il contratto non è registrato (né rifiutato) e la scadenza è determinabile |
 | `Questura` | 48 ore dalla consegna (`QuesturaCommunicationDeadline`, LT-07), solo con un conduttore extra-UE | il locatore non ha dichiarato la comunicazione |
-| `LeaseEnd` | ultimo giorno del contratto registrato | non è passato |
-| `Notice` | ultimo giorno per la disdetta: **fine contratto − 6 mesi**, solo per libero (4+4) e concordato (3+2); il transitorio non ne ha | non è passato |
+| `LeaseEnd` | ultimo giorno del **periodo in corso** del contratto registrato (`CurrentTermEndDate`, LR-14: dopo un rinnovo tacito è la nuova fine) | non è passato |
+| `Notice` | ultimo giorno per la disdetta: **fine del periodo in corso − 6 mesi**, solo per libero (4+4) e concordato (3+2); il transitorio non ne ha | non è passato, e **finché non c'è una disdetta né un termine anticipato registrati** (LR-14: non resta nulla da disdire) |
 | `Rent` | scadenza di una rata `Scheduled` o `Failed` | non è pagata (il pagamento in corso non è una scadenza) |
 
 Una finestra che contiene oggi porta anche ciò che è **già passato e ancora aperto** (registrazione, Questura, rate), con
@@ -133,8 +138,8 @@ contratti (D1).
 `GET /api/long-rent/overview`: `leases` (contati come le viste dell'elenco: `active`, `expiring`, `inPreparation` = `toSign` +
 `toRegister`, `ended`), `rents` (i numeri del registro per il mese corrente, `rentMonth`), `checklist` (in ordine di urgenza, solo
 voci con qualcosa: canoni in ritardo di tutti i mesi, contratti da registrare, comunicazioni Questura, contratti da firmare; ognuna con
-`count`, la data più urgente e il contratto da aprire) e `nextDeadline` (la prima scadenza non passata nei prossimi 90 giorni). Cinque
-istruzioni SQL, qualunque sia il numero di contratti.
+`count`, la data più urgente e il contratto da aprire) e `nextDeadline` (la prima scadenza non passata nei prossimi 90 giorni) e, dal task LR-01b, `now` (il passo più urgente del locatore, § 11.3).
+Cinque istruzioni SQL più quelle di `now` (§ 11.4), qualunque sia il numero di contratti.
 
 ## 6. Database
 
@@ -156,12 +161,229 @@ sollecitate». Rollback: `Down` toglie colonne e indice (si perde solo la cronol
   [`email.md`](email.md)); nulla è stato registrato, si può riprovare subito.
 - «Non ricevo i solleciti»: il canone è in `Failed`/`Scheduled`? c'è un conduttore con indirizzo non anonimizzato? (`canRemind` nel
   registro dice se si può). Il link nell'e-mail è quello dell'ultimo sollecito: i precedenti non funzionano più.
-- L'elenco `GET /api/leases` è lento: deve essere **un solo comando** (log di EF a livello `Information` con
-  `Microsoft.EntityFrameworkCore.Database.Command`); il raggruppamento delle rate è per org.
+- L'elenco `GET /api/leases` è lento: deve essere **un comando per l'elenco** (più i pochi di § 11.4 per stato e prossimo passo; log di EF a
+  livello `Information` con `Microsoft.EntityFrameworkCore.Database.Command`); il raggruppamento delle rate è per org.
 
 ## 9. Decisioni applicate e punti aperti
 
 - D29: nome del conduttore sì, mai codice fiscale, e-mail o cittadinanza. D30: sollecito = e-mail, con link se c'è Connect, niente SMS.
-- D8: nessuna disdetta/rinnovo/ISTAT in questa versione; le date si calcolano dalla data di fine inserita (i rinnovi non sono modellati).
+- D8: nessuna ISTAT in questa versione. Disdetta, rinnovo tacito e termine anticipato non c'erano e sono arrivati con LR-14 (§ 10): le date
+  di fine che questa pagina descrive sono ora quelle del periodo in corso.
 - Da decidere: soglia di «in scadenza» e di disdetta (6 mesi), intervallo dei solleciti (24 ore), tetto della nota (300 caratteri), scadenza
   IMU quando il dato per Comune ne avrà una.
+
+## 10. Fine effettiva del contratto: rinnovo tacito, disdetta, termine anticipato (LR-14)
+
+Task LR-14 della wave di redesign (analisi `redesign/docs/wave/analysis/LR/`, brief `tasks/LR-14.md` nella **versione ridotta** della revisione di perimetro; decisione D5 dell'intervista, LR-D29). **Solo backend, una migrazione (`AddLeaseTermLifecycle`), nessun flag (sempre acceso).** Un contratto libero (4+4) o concordato (3+2) che nessuno disdice **si rinnova da solo** e resta valido: la `EndDate` è quindi solo la fine del primo periodo che il contratto dichiara (modello, registrazione RLI, primo piano dei canoni) e **la data che dice se il contratto è finito è `CurrentTermEndDate`**, la fine del periodo in cui si trova. Codice: regole pure `LeaseRenewal` (`Casazen.Core/Leases`); `LeaseTermService` e `RentBillingService.Term.cs` (Infrastructure); `LeaseTermController`; job `LeaseTermRenewalJob`.
+
+### 10.1 I dati
+
+| Colonna di `LeaseContracts` | Cosa è |
+|---|---|
+| `CurrentTermEndDate` | ultimo giorno (compreso) del periodo in corso, mezzanotte UTC del giorno di Roma come ogni data di contratto. Uguale a `EndDate` finché il contratto non si rinnova o non finisce prima. Indice `(OrgId, CurrentTermEndDate)` |
+| `NoticeOn`, `NoticeFrom` (`Landlord` 0, `Tenant` 1) | il giorno della disdetta registrata e chi l'ha data; ferma il rinnovo |
+| `TerminatedOn` | l'ultimo giorno di un contratto terminato prima della fine (e allora è anche `CurrentTermEndDate`); ferma il rinnovo per sempre. Segna anche come concluso un contratto che era già finito quando CasaZen lo ha conosciuto: alla migrazione, alla firma o all'importazione, o scritto durante un deploy (§ 10.5) |
+
+`EndDate` **non si muove mai**. Nell'entità, assegnare `EndDate` finché `CurrentTermEndDate` è ancora uguale (o non scritta) porta con sé anche questa: chi conosce solo la fine del contratto (la bozza guidata, la creazione completa) lascia il contratto coerente; dopo un rinnovo o un termine anticipato i due valori differiscono e l'assegnazione non tocca più il corrente. EF carica i campi, non passa da quel setter.
+
+### 10.2 Endpoint
+
+Tutti richiedono `lease.create` (come le scritture dei canoni) e autorizzano il contratto come riga del suo immobile (`HostResource`, TN-3, AM-03): altra org = 404 `lease_not_found`, immobile non gestibile = 403. Rispondono **200 con il dettaglio del contratto** (come `GET /api/leases/{id}`), dove `currentTermEndDate`, `noticeOn`, `noticeFrom`, `terminatedOn`, `renewalMonths` (derivato: 48 libero, 24 concordato, 0 transitorio) e `noticeWarning` dicono a che punto è; gli stessi campi (tranne l'avviso) sono in coda alle righe dell'elenco. Nessuno scrive a un terzo: nessuna e-mail al conduttore.
+
+| Endpoint | Fa | Errori |
+|---|---|---|
+| `POST /api/leases/{id}/notice` `{ from, on }` | Registra la disdetta data da `Landlord` o `Tenant` il giorno `on` (dall'inizio del contratto a oggi): il contratto finisce col periodo in corso e non si rinnova. `noticeWarning` = `notice_possibly_late` se `on` è dopo «fine del periodo − 6 mesi» (CasaZen lo dice e non giudica la validità legale, LR-D29). Evento `NoticeRecorded` | 422 `lease_type_has_no_renewal` (transitorio), `lease_notice_date_invalid`; 409 `lease_not_in_force`, `lease_notice_already_recorded`, `lease_already_terminated`, `lease_busy` |
+| `DELETE /api/leases/{id}/notice` | Toglie la disdetta, **solo finché `CurrentTermEndDate >= oggi`**. Se non c'è, non cambia nulla (200). Evento `NoticeRemoved` | 409 `lease_term_already_ended`, `lease_busy` |
+| `POST /api/leases/{id}/terminate` `{ on }` | Termina il contratto il giorno `on`, il suo ultimo giorno (dall'inizio alla fine del periodo in corso; anche un giorno passato): `CurrentTermEndDate` e `TerminatedOn` diventano `on`, il rinnovo si ferma per sempre e **le rate del piano dei canoni il cui periodo inizia dopo `on` e non sono pagate vengono annullate** (§ 10.3). **Irreversibile**: nessun `DELETE`, l'interfaccia chiede una conferma. Evento `Terminated` | 422 `lease_termination_date_invalid`; 409 `lease_not_in_force`, `lease_already_terminated`, `lease_busy` |
+
+«In vigore» vuol dire firmato da tutte le parti e non rifiutato: `Signed`, `RegistrationPending`, `SentToProvider`, `Registered` (`LeaseRenewal.InForceStatuses`; la registrazione è un obbligo fiscale, non una condizione del contratto). `lease_busy` è la riga del contratto bloccata da un'altra operazione per più di 5 secondi: nulla è stato scritto, si riprova. Un'azione e il job dello stesso contratto si eseguono uno dopo l'altro, ognuno su ciò che l'altro ha confermato.
+
+### 10.3 Il piano dei canoni segue il contratto
+
+Nella stessa transazione del contratto (il lock della riga del contratto e il lock `RentLease` del piano si uniscono): il contratto e il suo piano cambiano insieme o per nulla. Il lock del piano si prende **prima** della riga del contratto, come fanno tutti gli altri scrittori delle rate (inserire una rata chiede la riga del contratto per la chiave esterna: con l'ordine inverso una modifica qui e la configurazione del piano si aspetterebbero a vicenda).
+
+- **Termine anticipato**: `RentBillingService.CancelInstallmentsAfterAsync` annulla (`Cancelled`) le rate con `PeriodStart > on` ancora da incassare (`Scheduled` o `Failed`), dopo aver annullato su Stripe il PaymentIntent che il conduttore potrebbe ancora pagare. Una rata **già pagata o in corso di pagamento non si tocca mai**, e quella il cui periodo contiene `on` resta com'è (nessuna regola pro rata, come per l'ultimo periodo parziale). Se una rata risulta pagata su Stripe nel frattempo, resta e il locatore riceve l'avviso di pagamento come sempre. Se Stripe fallisce la transazione torna indietro: il contratto non è terminato e si riprova.
+- **Rinnovo**: `RentBillingService.ExtendScheduleToCurrentTermAsync` aggiunge a un piano **attivo** le rate dei periodi interi dopo l'ultima (stessa cadenza, giorno di scadenza e importo del piano; niente di ciò che esiste viene toccato). Le richieste di pagamento delle rate nuove sono quelle del job giornaliero `rent-collection`, come per ogni rata del piano: il rinnovo non manda nulla a nessuno. Un piano disattivato o assente non cambia.
+
+### 10.4 Il job `lease-term-renewal`
+
+Ogni ora al minuto 15 (UTC), sempre registrato. Una corsa prende un lock di sessione (due corse non si sovrappongono nemmeno fuori da Hangfire) e rinnova **un contratto alla volta**, ognuno in una transazione sotto il lock della sua riga, rileggendo le condizioni dopo il lock:
+
+- **si rinnova** un contratto in vigore (§ 10.2), di tipo libero o concordato, senza disdetta (`NoticeOn`) e non terminato (`TerminatedOn`), il cui `CurrentTermEndDate` è **prima di oggi** (giorno di Roma): `CurrentTermEndDate` avanza di un periodo (`LongRentRules`: 48 mesi il libero, 24 il concordato; `LeaseRenewal.NextEnd`: il giorno prima dello stesso giorno un periodo dopo, es. 31/10/2030 → 31/10/2034) e c'è un evento `TermRenewed` (payload: il nuovo ultimo giorno) per ogni periodo; al massimo 20 periodi per contratto per corsa, la corsa dopo prosegue;
+- **non si tocca mai**: un transitorio, una bozza o un contratto non firmato da tutte le parti, un rifiutato, uno con disdetta, uno terminato (anche prima del rinnovo), uno già rinnovato oltre oggi;
+- **idempotente**: un contratto rinnovato non è più scaduto, quindi una seconda corsa, una corsa sovrapposta, un nuovo tentativo o un avvio manuale non trovano nulla e non aggiungono mai un periodo due volte. Un contratto occupato (lock oltre 5 secondi) o che fallisce (il piano, il database) è lasciato alla corsa dopo, senza fermare gli altri;
+- all'inizio di ogni corsa **ripara** i contratti scritti da un server che ancora non conosceva la colonna (un deploy in corso): hanno il valore di partenza della colonna, che il database tiene come `-infinity`, cioè una fine corrente prima della fine del loro contratto senza un termine anticipato registrato; ricevono la fine del loro contratto, il valore che avrebbero avuto; se sono in vigore, di tipo libero o concordato e il loro contratto era già finito, sono anche registrati come conclusi (`TerminatedOn` = ultimo giorno) invece di essere rinnovati dopo, come alla migrazione (§ 10.5). Un avviso nel log: `Lease term renewal: N leases written without the end of their period were given the end of their contract, M of them already over and recorded as concluded`. Nient'altro mette la fine corrente prima della fine del contratto senza `TerminatedOn`;
+- scrive nel log solo id e conteggi, mai nomi: `Lease term renewal: N leases renewed by M periods, K left for the next run`.
+
+Fino alla prima corsa dopo la mezzanotte di Roma (al massimo un'ora) un contratto che si rinnova da solo risulta «terminato» nelle viste e nelle scadenze, e le richieste di cancellazione dei dati del conduttore lo trattano come finito: si ricompone alla corsa. Il cambio di modalità (PM-02) invece lo considera già in corso (§ 10.6).
+
+### 10.5 Migrazione, backfill e rollback
+
+Una migrazione additiva, `AddLeaseTermLifecycle` (generata con `dotnet ef`, dopo l'ultima di `develop`): quattro colonne su `LeaseContracts` e l'indice `IX_LeaseContracts_OrgId_CurrentTermEndDate`; `LeaseEventType` guadagna in coda `NoticeRecorded` 21, `NoticeRemoved` 22, `Terminated` 23, `TermRenewed` 24 (dopo `Imported` 20 di LR-13). `AddLeaseTermLifecycle.BackfillSql`:
+
+1. `CurrentTermEndDate = EndDate` per ogni riga (solo quelle ancora al valore di partenza della colonna, che per una `timestamptz` non nulla aggiunta da EF il database tiene come `-infinity`: tutto ciò che precede l'anno 2; quindi rieseguirlo non disfa un rinnovo);
+2. **nessun rinnovo retroattivo** (decisione del PO, 17/10): un contratto di tipo libero o concordato, firmato (stati 3, 4, 5, 6), il cui ultimo giorno era già passato il giorno della migrazione (Roma) **resta «concluso»** come il sistema l'ha sempre mostrato. È registrato come terminato il suo ultimo giorno (`TerminatedOn = EndDate`), ed è questo che tiene il job lontano: non si inventa nessun periodo e nessun evento. Se un locatore dice che uno di questi contratti è andato avanti, l'assistenza può azzerare `TerminatedOn` con una `UPDATE`: la corsa dopo lo porta avanti periodo per periodo. Un contratto che finisce **dopo** la migrazione, senza disdetta, si rinnova.
+
+**Nessun rinnovo retroattivo anche dopo la migrazione**: la stessa regola vale per ogni contratto che entra in vigore già finito, con la stessa marca (`TerminatedOn` = ultimo giorno) alle altre due porte. (a) **La firma** (`LeaseRenewal.ConcludeIfEnded`, nei tre punti di `LeaseSigningService` che portano il contratto a `Signed`: firma offline, importazione LR-13, firma del provider): un contratto firmato o importato quando il suo ultimo giorno è già passato (Roma) è registrato come concluso nella stessa transazione, e il job non lo vede mai; il riferimento è il giorno in cui il contratto diventa firmato in CasaZen, non quello in cui è stata creata la bozza. Un contratto importato la cui fine è oggi o futura si rinnova alla fine come ogni altro. (b) **La riparazione del job** (§ 10.4): un contratto in vigore scritto già finito da un server che non conosceva le colonne.
+
+**Rollback**: `Down` toglie colonne e indice; si perdono le date di disdetta, di termine anticipato e di fine corrente dei contratti rinnovati (le `EndDate` restano). Se si torna anche al codice precedente, che non conosce gli eventi nuovi, vanno cancellati prima: `DELETE FROM "LeaseEvents" WHERE "EventType" IN (21, 22, 23, 24)` (i numeri di `LeaseEventType` alla fusione, dopo `Imported` 20 di LR-13; controllare l'enum). Le rate annullate da un termine anticipato restano `Cancelled`. La regola più rischiosa (rinnovo una volta sola, contratto già finito quando CasaZen lo ha conosciuto mai rinnovato) è provata su PostgreSQL, con righe scritte allo schema precedente e dopo la migrazione, da `LeaseTermRenewalPostgresTests` (CI).
+
+### 10.6 Cosa legge la fine corrente
+
+| Lettore | Come |
+|---|---|
+| Viste dell'elenco, conteggi della panoramica, scadenze `LeaseEnd` e `Notice` (§ 2, § 5) | `CurrentTermEndDate`; `Notice` sparisce con una disdetta o un termine registrati |
+| Occupazione dell'immobile: cambio modalità (PM-02) e cancellazione dell'immobile (`LeaseOccupancy`) | un contratto rinnovato tiene l'immobile fino alla nuova fine + 1; con una disdetta o un termine anticipato lo libera dal giorno dopo l'ultimo giorno. La bozza resta un blocco. Un contratto che si rinnova da solo e aspetta la corsa del job tiene l'immobile anche se la sua fine è già passata (nessuna data lo libera finché il job non ha girato): un passaggio ad affitto breve dovuto quella mattina fallisce con `blocked_by_lease` invece di precedere il rinnovo |
+| Privacy dei conduttori (`LeasePartyPrivacyService`): richiesta di cancellazione, retention, «altro contratto in corso» | un contratto rinnovato non si anonimizza finché dura |
+| Promemoria Questura (`rli-deadline-reminder`), piano dei canoni (`ConfigureScheduleAsync`, periodo finale parziale), riepilogo fiscale (`FiscalService`: immobile «locato» nell'anno), avviso di sovrapposizione della revisione della bozza | la fine del periodo in corso |
+| Contratto stampato, registrazione RLI, IMU, consulenza cedolare, controllo del termine alla firma, data di consegna per la Questura | restano sulla `EndDate`: sono il primo periodo che il contratto dichiara |
+
+### 10.7 Decisioni applicate e punti aperti
+
+- **Versione ridotta** (revisione di perimetro del 17/10): fuori la restituzione del deposito, «duplica come bozza» (LR-D31), `DryRun` e configurazione del job, il punto di aggancio `ILeaseTermRenewedHandler` (il job chiama direttamente l'estensione del piano) e gli eventi in più; anche le note libere su disdetta e termine, che sarebbero dati personali da cancellare con l'anonimizzazione. Seguiti proposti: LR-14-FU1 (deposito), LR-14-FU2 («duplica come bozza»), LR-14-FU3 (note).
+- **Valori di legge da far confermare dal legale (LR-D29)**: preavviso 6 mesi, periodi di rinnovo 48/24 mesi (`LongRentRules`, nessuna cifra nell'interfaccia: `GET /api/long-rent/rules`) e l'ipotesi che i rinnovi successivi ripetano lo stesso periodo.
+- Nessuna e-mail automatica ai conduttori, da nessuno dei tre flussi (il rinnovo estende il piano; le richieste di pagamento restano quelle del job `rent-collection`).
+- **Nessun rinnovo retroattivo** (decisione del PO, 17/10): un contratto già finito quando CasaZen lo conosce resta «concluso» (`TerminatedOn` = ultimo giorno), alla migrazione, alla firma/importazione (un contratto importato con la fine nel passato) e nella riparazione del job (§ 10.5). Scelta la marca esplicita invece di un confronto con la data di creazione della bozza: così ogni lettore, l'interfaccia compresa, distingue un contratto concluso da uno che sta per rinnovarsi senza rifare il calcolo, e il riferimento è il momento in cui il contratto diventa firmato, non quello in cui è stata aperta la bozza. Se un locatore dice che un contratto concluso è andato avanti, l'assistenza azzera `TerminatedOn` e la corsa dopo lo porta avanti. Confine: «già finito» è il giorno di Roma, ultimo giorno escluso; un contratto firmato o importato il giorno stesso del suo ultimo giorno è ancora in corso e, senza disdetta, si rinnova la notte dopo.
+- Il giorno di una disdetta o di un termine è un giorno di calendario (Roma); il termine anticipato fissa l'**ultimo** giorno del contratto, che è terminato dal giorno dopo (come ogni contratto: `Ended` legge `CurrentTermEndDate < oggi`).
+- **Limite noto, PM-02** (LR-14-FU4): per un contratto che si rinnova da solo l'anteprima del cambio modalità indica come primo giorno libero la fine del periodo + 1 anche senza una disdetta registrata; chi programma il passaggio ad affitto breve per quel giorno, senza disdetta, trova alla mezzanotte il contratto che si rinnova e il passaggio fallisce (`blocked_by_lease`, l'host è avvisato). Dovrebbe essere l'interfaccia a chiedere prima la disdetta.
+
+### 10.8 Promemoria della disdetta: il job `lease-notice-reminder` (LR-11c-a)
+
+Perdere l'ultimo giorno utile per la disdetta vale un periodo in più di contratto (48 mesi il libero, 24 il concordato, § 10.4). La data è già in Scadenze e in Panoramica (§ 5, tipo `Notice`); questo job la manda anche per e-mail al locatore, prima che arrivi. È la sola parte di LR-11c che si fa (il resto è stato ridotto dalla revisione di perimetro del 17/10; il promemoria della disdetta è stato richiesto dall'utente il 23/10): un job, nessuna impostazione, nessun flag, nessuna migrazione. Sempre registrato.
+
+- **Quali contratti**: gli stessi per cui la scadenza `Notice` è elencata: **attivi** (registrati e non finiti, la vista «Attivi» di § 2), di tipo libero o concordato, **senza disdetta** (`NoticeOn`) e **non terminati** (`TerminatedOn`), con le parti non anonimizzate. L'ultimo giorno è `LongRentDeadlineRules.NoticeDate(tipo, CurrentTermEndDate)`: **la stessa funzione e la stessa data** di Scadenze e Panoramica, non ricalcolata altrove (un transitorio non ha disdetta e non ne ha). Mai per una bozza, un contratto da registrare, uno concluso o terminato, uno con la disdetta già registrata o con l'ultimo giorno passato.
+- **Quando**: ogni giorno alle 08:30 UTC (dopo il rinnovo orario, al minuto 15). **Soglie**, non giorni esatti (`LeaseNoticeReminderJob.Thresholds`): 30 giorni prima, 7 giorni prima e il giorno stesso. Si manda la soglia più urgente raggiunta oggi, **una volta per ultimo giorno**: una corsa saltata si recupera alla successiva (un contratto visto per la prima volta a 5 giorni riceve il promemoria dei 7, con i giorni che mancano davvero), e due corse, un nuovo tentativo o un avvio manuale dal dashboard non mandano mai due volte. Dopo l'ultimo giorno non parte nulla. Un contratto che si rinnova ha una fine nuova, quindi un ultimo giorno nuovo e promemoria nuovi; se il locatore toglie una disdetta registrata per sbaglio, i promemoria già mandati per quel giorno non si ripetono.
+- **Come si evita il doppione**: evento `DeadlineReminderSent` (lo stesso del job RLI: nessuna migrazione, nessun valore nuovo di `LeaseEventType`) con payload `notice-t-30:2027-04-15:{idParte}` (soglia, ultimo giorno, locatore), scritto solo dopo che il fornitore ha accettato l'e-mail: un invio fallito si ripete alla corsa dopo, per quel locatore soltanto. I payload iniziano con `notice-`, quindi non incontrano mai quelli dell'RLI (`t-15`, `questura-…`). Nella cronologia del contratto compare «Promemoria di scadenza inviato».
+- **A chi**: a ogni locatore del contratto con un indirizzo non anonimizzato, un'e-mail per indirizzo, come i promemoria RLI e gli avvisi di pagamento: **mai al conduttore**. L'e-mail dice l'immobile, l'ultimo giorno, i giorni che mancano, la fine del periodo e i mesi del rinnovo: **nessun dato del conduttore e nessun importo**. Dice anche che CasaZen calcola la data dalla fine del periodo, non invia la disdetta e non ne giudica la validità (LR-D29), e rimanda al preavviso scritto nel contratto. Testi `LeaseNoticeReminder_*` in `EmailTexts.resx` e `EmailTexts.en.resx`; la lingua è l'italiano, come per le altre e-mail ai locatori; il testo è una bozza da far confermare a un legale, come quello dell'RLI.
+- **Tetto e log**: al massimo 500 contratti per corsa, con l'ultimo giorno più vicino per primi (`LeaseNoticeReminderJob.MaxLeasesPerRun`; il resto alla corsa dopo). I log hanno solo id e conteggi: `Lease notice reminders: N leases due, M emails sent`; un invio rifiutato dal fornitore è un avviso (`Lease notice reminder … not sent`) e si ripete il giorno dopo.
+- **Cosa controllare in esercizio**: i promemoria della giornata, per contratto.
+
+```sql
+SELECT "LeaseContractId", "Payload", "OccurredAt" FROM casazen_prod."LeaseEvents"
+WHERE "EventType" = 12 AND "Payload" LIKE 'notice-%' AND "OccurredAt" >= date_trunc('day', now())
+ORDER BY "OccurredAt";
+```
+
+- **Non fa** (restano fuori, LR-11c ridotto): impostazioni d'area con le soglie scelte dal locatore, avviso di canone in ritardo, sollecito automatico al conduttore, stato dei modelli. Se un giorno servono soglie per organizzazione, `Thresholds` è l'unico punto da cambiare. Soglie: 30 e 7 giorni sono l'indicazione dell'incarico; il brief di LR-11c (LR-D20) consiglia 7 giorni e il giorno stesso, e il giorno stesso è tenuto.
+- Prova: `LeaseNoticeReminderJobTests` (CI, PostgreSQL): una volta sola per soglia e ultimo giorno, solo al locatore, mai per un contratto con disdetta, terminato, in bozza, non registrato o transitorio.
+
+## 11. Il percorso del contratto: stato e prossimo passo (LR-01b)
+
+Task LR-01b della wave di redesign (analisi `redesign/docs/wave/analysis/LR/`, brief `tasks/LR-01b.md` nella **versione ridotta** della revisione di perimetro: «stato + prossimo passo del locatore su `LeaseSummaryDto` e `now` nella Panoramica»). **Solo backend, solo letture, nessuna migrazione, nessun flag.** Ogni riga di `GET /api/leases` guadagna (campi in coda, nessun campo cambia) `stage` e `nextStep`; `GET /api/long-rent/overview` guadagna `now`. Sono decisi **sul server, in un posto solo**: `LeaseFlow.Derive` (`Casazen.Core/Leases/LeaseFlow.cs`), funzione pura che restituisce **codici stabili** (le frasi e i pulsanti sono dell'interfaccia, che li mappa su `status.leaseStage.*` e `leaseFlow.nextStep.*`). **Il frontend li mostra e non li ricalcola** dagli altri campi: due regole copiate divergono. Nei `params` non c'è mai un dato di una persona (solo codici, conteggi, importi, giorni); `now` porta il nome e il cognome del primo conduttore come l'elenco (D29), nulli se anonimizzato.
+
+### 11.1 Lo stato (`stage`)
+
+Serializzato per nome: `Draft`, `DataPending`, `InReview`, `SentForSignature`, `Signed`, `Active`, `Expiring`, `Concluded`. Regola, nell'ordine (oggi = giorno di Roma):
+
+1. `Rejected` → `Concluded`.
+2. Contratto **firmato da tutte le parti** (`Signed`, `RegistrationPending`, `SentToProvider`, `Registered`, cioè `LeaseRenewal.InForceStatuses`):
+   - `Concluded` se è stato terminato prima della fine e l'ultimo giorno (`TerminatedOn`) è **passato**; oppure se il periodo in corso è finito (`CurrentTermEndDate` < oggi) **e** non si rinnova: c'è una disdetta registrata, o il tipo non ha rinnovo (transitorio). Un contratto è finito **dal giorno dopo** il suo ultimo giorno, come nelle viste dell'elenco;
+   - altrimenti `Expiring` se è registrato e c'è una disdetta o un termine anticipato registrati, o il periodo finisce entro 6 mesi (la regola della vista «In scadenza»), `Active` se è registrato e non è così, `Signed` se non è ancora registrato.
+3. Non firmato: `SentForSignature` se è stato scaricato per la firma (`SentForSignatureAt`) o è in firma presso il provider (`AwaitingSignature`, `PartiallySigned`); `InReview` se i passi 1–5 della bozza non hanno mancanze **e il contratto è stato fatto in CasaZen**; `Draft` altrimenti.
+
+**Un contratto che si rinnova da solo non è mai «concluso» perché il suo periodo è finito** (LR-14, decisione D5): finché il job `lease-term-renewal` non ha spostato la fine (al massimo un'ora dopo la mezzanotte di Roma) è `Expiring`, non `Concluded`; è provato da `LeaseFlowTests`. Per lo stesso motivo un contratto libero o concordato già finito quando CasaZen lo ha conosciuto (marcato con `TerminatedOn` alla migrazione, alla firma o all'importazione) è `Concluded` dal primo giorno. Le **viste** dell'elenco (`view=Ended`) leggono la sola fine del periodo e nella stessa ora lo mostrano «terminato»: lo stato è la lettura corretta.
+
+`DataPending` (attesa dei dati del conduttore) **non viene prodotto** (nessun invito, D1/LR-D9). Una bozza **importata** (LR-13) non ha revisione né «scaricato per la firma»: resta `Draft` finché il PDF firmato non entra (poi è `Signed`) e non è mai `InReview` né `SentForSignature`.
+
+### 11.2 Il prossimo passo (`nextStep`)
+
+`nextStep { code, actor, priority, dueOn?, params? }`. Il server sceglie **un** passo per contratto: priorità più bassa = più urgente; a parità la scadenza (prima quella che c'è, la più vicina), poi il codice. Le priorità sono i numeri della demo, in un solo punto (`LeaseFlow.Priority`): ritoccarne una è una modifica lì e basta. `actor`: `Landlord`, `System` (`Tenant` è della fase 2 e non viene prodotto).
+
+| Stato | `code` | `actor` | `priority` | `dueOn` | `params` |
+|---|---|---|---|---|---|
+| Draft (immobile non più raggiungibile) | `ChooseProperty` | Landlord | 5 | — | — |
+| Draft | `CompleteStep` | Landlord | 5 | — | `step` (1–5), `needs` (i codici di ciò che manca, `LeaseNeedCodes`) |
+| Draft importata, dati completi | `ImportSignedContract` | Landlord | 4 | — | — |
+| Draft preparata dal partner (vedi sotto) | `AwaitPartnerContract` | System | 9 | — | — |
+| InReview | `ConfirmReview` (non confermata) · `DownloadForSignature` (confermata) | Landlord | 4 | — | — |
+| SentForSignature | `UploadSignedCopy` | Landlord | 3 se scaricato da almeno 3 giorni, altrimenti 7 | — | — |
+| Signed | `RegisterLease` | Landlord | 0 se la scadenza è passata, 1 se entro 7 giorni, 2 altrimenti (o se non è determinabile) | scadenza di registrazione | `imported: true` se il contratto è stato importato |
+| Signed · Active · Expiring | `RecordKeyHandover` | Landlord | 1 se l'inizio è passato, altrimenti 3 | inizio del contratto | — |
+| Signed · Active · Expiring | `QuesturaCommunication` | Landlord | 0 se la scadenza è passata, altrimenti 3 | consegna (o inizio) + 2 giorni | — |
+| Active · Expiring | `SendRentReminder` | Landlord | 0 | scadenza della rata in ritardo più vecchia | `count`, `amount` (tutto ciò che è in ritardo), `days` (dalla più vecchia) |
+| Active | `ActivateRentPlan` (nessun piano canoni attivo) | Landlord | 4 | — | — |
+| Expiring, senza disdetta né termine, tipo che si rinnova | `DecideNotice` | Landlord | 4 se l'ultimo giorno per la disdetta è entro 60 giorni (anche passato), altrimenti 8 | ultimo giorno per la disdetta | — |
+| Expiring, con disdetta, termine anticipato o tipo senza rinnovo | `OrganizeEnd` | Landlord | 4 | ultimo giorno del periodo | — |
+| Active, niente da fare | `AllGood` | System | 9 | prossima rata da incassare | — |
+| Concluded | `Archive` | System | 10 | — | — |
+
+`RecordKeyHandover` e `QuesturaCommunication` compaiono solo con un conduttore extra-UE e la comunicazione **non** ancora dichiarata, e il primo solo finché la data di consegna non è registrata: la data di consegna serve soltanto a far partire le 48 ore della Questura (nessun'altra scadenza ne dipende) e dopo la dichiarazione è bloccata (409 `questura_delivery_date_locked`), quindi non è mai un passo da proporre. Con una finestra di 6 mesi lo stato `Expiring` per data comincia quando l'ultimo giorno per la disdetta è già passato: `DecideNotice` vale quindi sempre 4 (il ramo «8» resta per il giorno in cui le soglie saranno in configurazione, LR-D29).
+
+**Non sono passi** (decisione LR-D20): comunicazione degli estremi di registrazione, attestazione di rispondenza, annualità di registro, ISTAT, IMU. **`ReturnDeposit` non viene prodotto**: non c'è ancora il dato della restituzione del deposito (LR-14-FU1); finché non c'è, un contratto concluso ha solo `Archive`.
+
+**Bozze concordato con il partner ConcordatoFacile.** La scheda del contratto ha per quelle bozze un solo punto d'ingresso e lo stato della pratica del partner è un'informazione **separata**: il prossimo passo generale non la ricalcola né inventa passi del partner. Il punto d'innesto è `LeaseFlowInput.AwaitsPartnerContract`: se è vero la bozza ha il passo neutro `AwaitPartnerContract` («Bozza — in attesa del contratto del partner», attore `System`, che non è mai il passo di `now`). **Nulla lo imposta ancora**: sul contratto non c'è alcun dato del partner (stanno nel diritto e nella pratica, non in `LeaseContract.Origin`), quindi lo imposta l'integrazione, dove costruisce l'input (`LeaseFlowReader.ToInput`).
+
+### 11.3 La Panoramica (`now`)
+
+`overview.now` è il passo del **locatore** (`actor: Landlord`) più urgente tra tutti i contratti che il chiamante raggiunge (priorità, poi scadenza, poi id del contratto), oppure `null`: `{ leaseId, propertyId, propertyName, tenantFirstName, tenantLastName, stage, step }`, dove `step` è lo stesso `nextStep` che quel contratto ha nell'elenco. È preso **dall'elenco** (la stessa lettura di `GET /api/leases` senza filtri), così non possono dire cose diverse e vi entrano anche le bozze in compilazione, che per le scadenze non ci sono. Lo scope è quello dell'elenco (`HostScope`): un collaboratore «Solo alcuni» non vede lo stato né il passo di altri immobili.
+
+### 11.4 Quante istruzioni SQL
+
+L'elenco: l'istruzione di sempre, più **una** che chiede quali tra i contratti registrati hanno un piano canoni attivo (solo se ce n'è almeno uno) e **tre** per le bozze (i contratti con le parti, gli immobili, i certificati energetici; solo se ce n'è almeno una). La Panoramica: le cinque di sempre più l'elenco e le sue. In nessun caso una per contratto. Le bozze si valutano come la bozza guidata (`LeaseDraftProgress`, stessi valori e stessi fatti dell'immobile), **senza** la fascia del canone concordato (è un calcolo per bozza, non una lettura): per una bozza il cui solo problema è un canone fuori fascia l'elenco dice «revisione» e la revisione dice che cosa non va.
+
+### 11.5 Cosa non c'è (versione ridotta)
+
+`progress` (avanzamento), i filtri `stage` e `actor`, `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+
+## 12. Report fiscale per contratto, per il commercialista (LR-11b)
+
+Una **stima** per anno e per contratto da dare al commercialista: quanto canone è maturato, quanto ne è stato incassato (secondo il registro
+dei canoni) e, per chi è in cedolare secca, la cedolare stimata. **Solo letture**: nessuna tabella, nessuna migrazione, nessun flag,
+nessuna scrittura, nessuna e-mail. Codice: `LongRentFiscalController`; servizio `LongRentFiscalReportService`; regole pure in
+`Casazen.Core/Leases/LongRentFiscalRules.cs` (le stesse per la pagina e per il file); il file in `LongRentFiscalDocuments`, scritto dallo
+scrittore comune `CsvWriter` (SR-10).
+
+### 12.1 Endpoint
+
+Entrambi `lease.read` (come il resto dell'area), limitati in SQL all'org e agli immobili che il chiamante raggiunge (`HostScope`, § 1).
+
+| Endpoint | Cosa fa |
+|---|---|
+| `GET /api/long-rent/fiscal?year=` | `{ year, generatedOn, rows[], totals }`. `year` facoltativo (default l'anno corrente a Roma); da 2000 all'anno corrente, altrimenti 400 `long_rent_fiscal_year_invalid` |
+| `GET /api/long-rent/fiscal/export?year=&format=csv` | Lo stesso, come CSV da scaricare (`casazen-stima-fiscale-affitti-lunghi-<anno>.csv`). `format` facoltativo: solo `csv`, altro 400 `long_rent_fiscal_format_invalid` |
+
+Una riga per contratto firmato da tutte le parti (`Signed`, `RegistrationPending`, `SentToProvider`, `Registered`, come il rinnovo tacito) che
+ha almeno un giorno in un mese dell'anno, **giudicato sulla fine del periodo in corso** (`currentTermEndDate`, LR-14). Campi: immobile,
+conduttore (nome e cognome, `null` se anonimizzato), tipo di contratto, regime (`taxRegime`, `null` per un concordato anteriore a LT-10),
+`startDate`, `currentTermEndDate`, `monthsInYear`, `monthlyRentEur`, `accrualEur`, `collectedEur`, `trackedFrom`, `collectedIsPartial`, `tax`,
+`notes`. Totali: contratti, competenza, incassato, cedolare stimata, quanti contratti hanno la cedolare stimata e quanti no; ogni totale è la
+somma delle righe così come sono mostrate (arrotondate al centesimo).
+
+### 12.2 Cosa dice ogni numero
+
+Ogni cifra dichiara la sua base; il file lo dice nella terza riga e la prima riga è «Stima da validare con il commercialista».
+
+- **Competenza** (`accrualEur`, per competenza): i mesi dell'anno in cui il contratto ha almeno un giorno (mesi interi) per il canone mensile del
+  contratto, fino alla fine del periodo in corso. Un contratto rinnovato da solo resta in vigore; uno terminato in anticipo si ferma al suo
+  ultimo giorno. **Non modellati**: mensilità parziali (il mese in cui si inizia o si finisce conta per intero), variazioni del canone, ISTAT.
+- **Incassato** (`collectedEur`, per cassa): la somma delle rate **pagate** (`Paid`) con `PaidOn` nell'anno, online o dichiarate dal locatore.
+  È solo ciò che sta nel registro: `trackedFrom` è il primo giorno della prima rata non annullata del contratto; se cade dopo il primo mese del
+  contratto nell'anno `collectedIsPartial` è vero e la pagina dice «registrati in CasaZen dal …» (LR-04a, «traccia da»). È `null`, non 0, quando
+  il registro non ha rate del contratto: non lo si traccia, non è che non abbia pagato. Il pagamento ricevuto nell'anno per un contratto già
+  finito prima dell'anno non è in nessuna riga (vedi LR-11b-FU4).
+- **Cedolare** (`tax.status = CedolareEstimated`): l'aliquota e la sua base (`Standard` o `ConcordatoAta`) sono quelle del consiglio fiscale del
+  contratto (`LeaseTaxAdvisory`, LT-08: stesse regole e stessi parametri `CedolareAdvisory:*`, nessuna cifra nel report), applicate alla
+  competenza dell'anno: `tax.amountEur = competenza × aliquota`. Le `notes` sono i codici del consiglio fiscale che rendono incerta la cifra
+  (comune ad alta tensione abitativa non verificato o non in elenco, comuni in emergenza non verificati, attestazione del concordato non
+  assistito, transitorio da confermare); la pagina li traduce con i testi del consiglio fiscale, il file li scrive in italiano.
+- **Regime ordinario** (`OrdinaryNotEstimated`): nessuna cifra. L'IRPEF dipende dal reddito complessivo, che CasaZen non ha (LR-D21, ridotto:
+  niente campo «altri redditi»); imposta di registro e bollo non sono stimate. **Regime non registrato** (`RegimeUnknown`, un concordato
+  anteriore a LT-10): nessuna cifra e la nota `tax_regime_unknown`, mai un'ipotesi.
+
+### 12.3 Costo, privacy e sicurezza
+
+- Quattro istruzioni al massimo, qualunque sia il numero di contratti: i contratti dell'anno (scalari più il primo conduttore), la prima rata
+  tracciata di ciascuno, il pagato dell'anno di ciascuno, e il comune ATA dei soli concordati in cedolare (uno per comune).
+- Del conduttore solo nome e cognome (D29: mai codice fiscale, e-mail o telefono); `null` una volta anonimizzato (nel file «Dati
+  anonimizzati»). Nessun log del contenuto; risposte `Cache-Control: private, no-store`; il nome del file non porta dati di persone. Il CSV passa
+  dallo scrittore comune: BOM, `;`, virgola decimale, protezione dalle formule, al massimo 10.000 righe (422 `csv_too_many_rows`).
+- Un'altra org è invisibile (filtro di tenant più `OrgId` esplicito); un utente limitato non vede i contratti degli altri immobili.
+
+### 12.4 Decisioni applicate e rimandato
+
+- Versione ridotta del revisore di perimetro: niente IRPEF aggregata né campo «altri redditi» (LR-D21, alternativa «nessuna IRPEF»), niente
+  registro e bollo, niente «Invita il commercialista» (nessuna rotta di AM-04 da cui dipendere), niente PDF. Cifre e fonti solo da
+  configurazione (LR-D29); i testi normativi li rivede il PO (D32).
+- **LR-11b-FU1** IRPEF aggregata con gli «altri redditi» (non salvati) · **FU2** registro e bollo per i contratti ordinari · **FU3** «Invita il
+  commercialista» · **FU4** i pagamenti ricevuti nell'anno per contratti finiti prima (righe con 0 mesi) · **FU5** mensilità parziali in
+  proporzione ai giorni.

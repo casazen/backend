@@ -67,6 +67,9 @@ public class DemoShowcaseTests
         var covered = DemoShowcaseCatalog.Properties
             .SelectMany(p => p.Scenarios.Concat(p.Bookings.Select(b => b.Scenario)))
             .Concat(DemoShowcaseCatalog.HostInvites.Select(i => i.Scenario))
+            .Concat(DemoShowcaseCatalog.PropertyOwners.Select(o => o.Scenario))
+            .Concat(DemoShowcaseCatalog.GuestSegments.Select(s => s.Scenario))
+            .Concat(DemoShowcaseCatalog.Campaigns.Select(c => c.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));

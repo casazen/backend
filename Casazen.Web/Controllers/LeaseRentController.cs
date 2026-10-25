@@ -37,8 +37,10 @@ public class LeaseRentController(
 
     /// <summary>
     /// Sets up (or changes) the schedule and generates the installments. 422 <c>rent_lease_not_signed</c> before the full
-    /// signature, <c>rent_billing_day_invalid</c>, <c>rent_amount_invalid</c>, <c>rent_cadence_locked</c> (the cadence
-    /// cannot change once an installment was paid or is being paid).
+    /// signature, <c>rent_billing_day_invalid</c>, <c>rent_amount_invalid</c>, <c>rent_track_from_invalid</c> (a day after
+    /// the end of the lease), <c>rent_cadence_locked</c> (the cadence cannot change once an installment was paid or is being
+    /// paid). <c>trackFrom</c> (LR-04a) starts the plan from a day for a lease already running, so no past period is born
+    /// overdue; <c>onlineRequests</c> switches on the daily job's payment links to the tenants (a new plan has them off).
     /// </summary>
     [HttpPut("schedule")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
@@ -49,7 +51,7 @@ public class LeaseRentController(
             return denied;
         return Ok(await rentBilling.ConfigureScheduleAsync(
             leaseId,
-            new ConfigureRentScheduleRequest(dto.Cadence!.Value, dto.BillingDayOfMonth, dto.Amount),
+            new ConfigureRentScheduleRequest(dto.Cadence!.Value, dto.BillingDayOfMonth, dto.Amount, dto.TrackFrom, dto.OnlineRequests),
             cancellationToken));
     }
 
@@ -111,7 +113,10 @@ public class LeaseRentController(
     }
 }
 
-/// <summary>Rent schedule chosen by the landlord: cadence, due day (1-28, default the start day) and amount (default monthly rent × months).</summary>
+/// <summary>
+/// Rent schedule chosen by the landlord: cadence, due day (1-28, default the start day), amount (default monthly rent × months), the
+/// day the rents are tracked from (LR-04a) and whether the daily job emails the tenants the payment links (LR-04a).
+/// </summary>
 public sealed class ConfigureRentScheduleDto
 {
     [Required(ErrorMessage = "RentCadenceRequired")]
@@ -124,6 +129,12 @@ public sealed class ConfigureRentScheduleDto
     [Range(typeof(decimal), "0.01", "1000000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "RentAmountInvalid")]
     public decimal? Amount { get; set; }
+
+    /// <summary>LR-04a: the day the rents are tracked from (<c>yyyy-MM-dd</c>); absent = the whole lease, or the day the plan already has.</summary>
+    public DateOnly? TrackFrom { get; set; }
+
+    /// <summary>LR-04a: the daily job emails the tenants the payment links; absent = off for a new plan, unchanged for an existing one.</summary>
+    public bool? OnlineRequests { get; set; }
 }
 
 /// <summary>Offline payment of an installment: the day it was paid (not in the future) and an optional note.</summary>

@@ -496,6 +496,7 @@ public class ComuneImuNotificationServiceTests
             .Returns((string key, object[] _) => new LocalizedString(key, key));
         var controller = new LeasesController(
             leaseService.Object,
+            Mock.Of<ILeaseDraftService>(),
             imu,
             Mock.Of<ICedolareAdvisoryService>(),
             Mock.Of<IRliExportService>(),

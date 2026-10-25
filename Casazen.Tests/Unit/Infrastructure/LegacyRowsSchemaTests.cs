@@ -36,6 +36,7 @@ public class LegacyRowsSchemaTests
     private const string Db03 = "AddDirectBookingPublicData";
     private const string Lr12 = "AddGuidedLeaseDraft";
     private const string Am02c = "AddOrgTeamCompletions";
+    private const string Lr14 = "AddLeaseTermLifecycle";
     private const string Latest = "*";
 
     private static readonly Regex InsertShape = new(
@@ -113,6 +114,9 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyPartyRows), Lr12 },
         { nameof(LegacyOrgRows), Am02c },
         { nameof(LegacyOrgInvitationRows), Am02c },
+        { nameof(LegacyOrgRows), Lr14 },
+        { nameof(LegacyPropertyRows), Lr14 },
+        { nameof(LegacyLeaseRows), Lr14 },
     };
 
     /// <summary>The first migration after which each helper is valid (see the summary of each helper).</summary>

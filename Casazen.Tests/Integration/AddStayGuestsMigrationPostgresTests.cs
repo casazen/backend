@@ -32,7 +32,7 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
     public async Task AddStayGuests_ExistingBookings_GetTheirBookerAsSingleGuestOrHeadOfFamily()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var seed = await SeedPreviousStateAsync(db);
 
         await db.Database.MigrateAsync();

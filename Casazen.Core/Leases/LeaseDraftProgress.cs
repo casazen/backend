@@ -61,6 +61,13 @@ public sealed record LeaseDraftFacts
     /// <summary>The property has an energy certificate (APE) that is valid.</summary>
     public bool HasApe { get; init; }
 
+    /// <summary>
+    /// At least one APE document of the property has its code and energy class (<c>PropertyDocument.HasApeIdentification</c>): what the
+    /// contract prints, which the reading of the certificate does not guarantee. The same rule as the contract's, so the review and the
+    /// final contract cannot disagree (LR-APE). Asked only of a contract made in CasaZen.
+    /// </summary>
+    public bool HasApeIdentification { get; init; }
+
     /// <summary>Sheet, parcel, category and income of the property are known (the subaltern is optional).</summary>
     public bool HasCadastralData { get; init; }
 
@@ -123,7 +130,8 @@ public sealed record LeaseDraftProgressInput
 public static class LeaseDraftProgress
 {
     /// <summary>The needs that are about the property and not about the values: they do not keep <c>DraftData</c> alive.</summary>
-    private static readonly HashSet<string> PropertyFacts = [LeaseNeedCodes.ApeMissing, LeaseNeedCodes.CadastralMissing];
+    private static readonly HashSet<string> PropertyFacts =
+        [LeaseNeedCodes.ApeMissing, LeaseNeedCodes.ApeIdentificationMissing, LeaseNeedCodes.CadastralMissing];
 
     public static LeaseDraftFlow Compute(LeaseDraftProgressInput input)
     {
@@ -131,7 +139,7 @@ public static class LeaseDraftProgress
 
         var imported = input.Origin == LeaseOrigin.Imported;
         var values = input.Values;
-        var reading = LeaseDraftRules.Read(values);
+        var reading = LeaseDraftRules.Read(values, input.Origin);
 
         var needs = new List<LeaseNeed>[LeaseDraftDefaults.LastStep];
         for (var i = 0; i < needs.Length; i++)
@@ -139,8 +147,8 @@ public static class LeaseDraftProgress
 
         Property(input, imported, needs[0]);
         Parties(values, needs[1]);
-        Economics(input, reading, needs[2]);
-        Start(values, reading, needs[3]);
+        Economics(input, imported, reading, needs[2]);
+        Start(values, imported, reading, needs[3]);
         if (!imported)
             Attachments(values, input.Today, needs[4]);
 
@@ -208,8 +216,14 @@ public static class LeaseDraftProgress
         if (imported)
             return;
 
+        // The model of a contract made in CasaZen prints the code and the energy class of the APE ({{ape_estremi}}), and the reading of the
+        // certificate does not leave them on the document: without them the final contract would answer 422 contract_data_missing after the
+        // review was confirmed. An APE that is there but has neither is a need of its own, so that the interface points at where they are
+        // read or typed (LR-APE).
         if (!input.Facts.HasApe)
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.ApeMissing));
+        else if (!input.Facts.HasApeIdentification)
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.ApeIdentificationMissing));
         if (!input.Facts.HasCadastralData)
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.CadastralMissing));
     }
@@ -263,7 +277,7 @@ public static class LeaseDraftProgress
 
     // ---- 3 · type, regime, rent, deposit -------------------------------------------------------------------------
 
-    private static void Economics(LeaseDraftProgressInput input, LeaseDraftReading reading, List<LeaseNeed> needs)
+    private static void Economics(LeaseDraftProgressInput input, bool imported, LeaseDraftReading reading, List<LeaseNeed> needs)
     {
         var values = input.Values;
 
@@ -273,10 +287,21 @@ public static class LeaseDraftProgress
         }
         else if (!reading.TypeAvailable)
         {
-            // The type exists (the transitory lease) or names nothing: kept as typed, never applied to the contract (decision D27).
+            // The type exists but is not one that can be created here, or names nothing (the student lease): kept as typed, never applied
+            // to the contract (decision D27).
             needs.Add(reading.Type is { } type
                 ? LeaseNeed.Of(LeaseNeedCodes.LeaseTypeNotAvailable, ("type", type.ToString()))
                 : LeaseNeed.Of(LeaseNeedCodes.LeaseTypeNotAvailable));
+        }
+
+        // A transitory contract made in CasaZen states the need that justifies its short term, who has it and what it is (D.M. 16/01/2017
+        // art. 2 c. 4; art. 2 of the Allegato B, which the contract prints). One already signed prints nothing of its own (TR).
+        if (reading is { Type: LeaseContractType.Transitorio, TypeAvailable: true } && !imported)
+        {
+            if (LeaseDraftRules.ParseNeedParty(values.TransitoryParty) is null)
+                needs.Add(LeaseNeed.Of(LeaseNeedCodes.TransitoryPartyMissing));
+            if (LeaseDraftRules.Clean(values.TransitoryNeed) is null)
+                needs.Add(LeaseNeed.Of(LeaseNeedCodes.TransitoryNeedMissing));
         }
 
         if (reading.TaxRegime is null)
@@ -289,8 +314,16 @@ public static class LeaseDraftProgress
         else if (reading.Rent is null)
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.RentInvalid));
 
-        if (reading.Type == LeaseContractType.Concordato && reading.TypeAvailable)
+        // The range of a canone concordato is checked for a contract that is going to be signed. An imported one is already signed
+        // (decision LR-D13): the unit's characteristics, the agreement data of the comune and the range do not come into it.
+        if (reading.Type == LeaseContractType.Concordato && reading.TypeAvailable && !imported)
             Concordato(input, reading, needs);
+
+        // The model of a contract made in CasaZen states the deposit (the {{deposito_cauzionale}} of its "Deposito cauzionale" article), so
+        // it has to be typed, and 0 is an answer ("none"). Without it the final contract would answer 422 contract_data_missing after the
+        // review was confirmed. An imported contract is already signed and prints nothing: its deposit stays optional (LR-DEP).
+        if (values.SecurityDeposit is null && !imported)
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.DepositMissing));
 
         if (values.SecurityDeposit is not null)
         {
@@ -340,12 +373,77 @@ public static class LeaseDraftProgress
 
     // ---- 4 · the start date --------------------------------------------------------------------------------------
 
-    private static void Start(LeaseDraftValues values, LeaseDraftReading reading, List<LeaseNeed> needs)
+    private static void Start(LeaseDraftValues values, bool imported, LeaseDraftReading reading, List<LeaseNeed> needs)
     {
         if (LeaseDraftRules.Clean(values.StartDate) is null)
+        {
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.StartMissing));
-        else if (reading.Start is null)
+        }
+        else if (reading.Start is not { } start)
+        {
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.StartInvalid));
+        }
+        else if (imported || reading is { Type: LeaseContractType.Transitorio, TypeAvailable: true })
+        {
+            var before = needs.Count;
+            Term(values, reading, start, needs);
+
+            // A transitory contract of more than 30 days proves its need with documentation (art. 2 c. 4): asked here, with the term that
+            // decides it, once the term is a good one. A contract signed elsewhere prints nothing of it.
+            if (!imported && needs.Count == before && reading.End is { } end)
+                Documentation(values, start, end, needs);
+        }
+    }
+
+    /// <summary>
+    /// The documentation of the need of a transitory contract made in CasaZen: asked when the term lasts more than
+    /// <see cref="LeaseContractTerms.TransitorioDocumentationAfterDays"/> days, at most
+    /// <see cref="LeaseDraftRules.TransitoryDocumentationMaxLength"/> characters when typed (TR).
+    /// </summary>
+    private static void Documentation(LeaseDraftValues values, DateOnly start, DateOnly end, List<LeaseNeed> needs)
+    {
+        if (!LeaseContractTerms.TransitoryNeedsDocumentation(LeaseDraftRules.ToStoredDate(start), LeaseDraftRules.ToStoredDate(end)))
+            return;
+
+        if (LeaseDraftRules.Clean(values.TransitoryDocumentation) is not { } documentation)
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.TransitoryDocumentationMissing));
+        else if (documentation.Length > LeaseDraftRules.TransitoryDocumentationMaxLength)
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.TransitoryDocumentationTooLong, ("maxLength", LeaseDraftRules.TransitoryDocumentationMaxLength)));
+    }
+
+    /// <summary>
+    /// The term of an imported contract is the one it states (LR-13): the last day typed, inside the limits of its type
+    /// (<see cref="LeaseContractTerms.CheckTerm"/>). Without one it follows the type, except for the transitory type, which has no term
+    /// of its own and asks for it. A start in the past is no problem: the contract is already in force. A transitory contract made in
+    /// CasaZen is read the same way (TR): it states its end, from 1 to 18 months after the start.
+    /// </summary>
+    private static void Term(LeaseDraftValues values, LeaseDraftReading reading, DateOnly start, List<LeaseNeed> needs)
+    {
+        if (LeaseDraftRules.Clean(values.EndDate) is null)
+        {
+            if (reading.Type == LeaseContractType.Transitorio)
+                needs.Add(LeaseNeed.Of(LeaseNeedCodes.EndMissing));
+            return;
+        }
+
+        if (LeaseDraftRules.ParseDate(values.EndDate) is not { } end)
+        {
+            needs.Add(LeaseNeed.Of(LeaseNeedCodes.EndInvalid));
+            return;
+        }
+
+        var type = reading.TypeAvailable ? reading.Type : null;
+        if (LeaseContractTerms.CheckTerm(type, LeaseDraftRules.ToStoredDate(start), LeaseDraftRules.ToStoredDate(end)) is not { } problem)
+            return;
+
+        var parameters = new List<(string Key, object? Value)> { ("reason", problem.Code) };
+        if (type is { } named)
+            parameters.Add(("type", named.ToString()));
+        if (problem.MinMonths is { } min)
+            parameters.Add(("minMonths", min));
+        if (problem.MaxMonths is { } max)
+            parameters.Add(("maxMonths", max));
+        needs.Add(LeaseNeed.Of(LeaseNeedCodes.TermOutOfRange, parameters.ToArray()));
     }
 
     // ---- 5 · model and attachments -------------------------------------------------------------------------------
