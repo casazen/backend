@@ -1213,6 +1213,15 @@
   <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
     <value>The document number may contain only letters and digits, at most {0}.</value>
   </data>
+  <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
+    <value>Document processing failed. Please try again or enter the data manually.</value>
+  </data>
+  <data name="CheckInDocumentRequired" xml:space="preserve">
+    <value>Document file is required.</value>
+  </data>
+  <data name="CheckInDocumentTypeUnsupported" xml:space="preserve">
+    <value>Only JPEG and PNG images are supported.</value>
+  </data>
   <data name="AlloggiatiCodeListUnknown" xml:space="preserve">
     <value>Unknown code list: use comuni, stati, documenti or luoghi.</value>
   </data>
