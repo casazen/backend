@@ -53,7 +53,7 @@ reads the file from the private bucket, the text, and then:
 - **an imported draft, document of kind `Contract`**: parser → `ILeaseDraftService.ApplyContractReadingAsync` (the row lock, the one writer; `long-rent-lease-draft.md` §16). `ExtractionResult` is
   `{ version: 2, source: embedded|ocr|mixed, pages, pagesOcr, truncated, stipulaDate, fields: [{ field, partyId, role, state, confidence, derived }] }`: **field names and fates, never a value** (the day of the signature is the one date);
 - **an imported draft, any other kind** (an attestation, a receipt): `Skipped`, not read;
-- **any other lease** (a ConcordatoFacile draft, a lease that exists): the first pipeline of ADR-009 as it was (a few fields by simple rules, written to the lease only when every one is certain and none
+- **any other lease** (a lease that exists; a ConcordatoFacile draft is an imported draft since CF-IMPORT, so it goes through the full reading above): the first pipeline of ADR-009 as it was (a few fields by simple rules, written to the lease only when every one is certain and none
   contradicts it), with the new text reader and a result of `{ version: 1, fields: [{ name, confidence }], conflicts: [{ field, reason }] }` — **no value** (before, the names of the people were kept here in clear).
 
 | `ExtractionStatus` | Meaning |

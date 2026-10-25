@@ -18,13 +18,14 @@ namespace Casazen.Infrastructure.Services;
 /// PDF carries, OCR for a scan or a photo) and never leaves the host.
 /// </summary>
 /// <remarks>
-/// <para><b>The document of an imported draft</b> (the owner has the signed contract and uploads it): the data are read by
+/// <para><b>The document of an imported draft</b> (the owner has the signed contract and uploads it; so does the contract that
+/// ConcordatoFacile delivers for its draft, which is an imported draft, CF-IMPORT): the data are read by
 /// <see cref="LeaseContractTextParser"/> and put into the draft by <see cref="ILeaseDraftService.ApplyContractReadingAsync"/>, which fills
 /// only what is empty and never overwrites what the person typed. <c>Completed</c>: something was read and nothing contradicts what was
 /// typed; <c>NeedsReview</c>: the contract says something else than what was typed somewhere; <c>Failed</c>: nothing could be read, with
 /// a code in <c>ExtractionError</c> (<see cref="ContractReadingCodes"/>) and the manual wizard still there.</para>
-/// <para><b>Any other lease</b> (an attestation or a registration of a lease that already exists, a ConcordatoFacile draft) goes on as it
-/// did: a few fields by simple rules, written to the lease only when every field is certain and none contradicts it.</para>
+/// <para><b>Any other lease</b> (an attestation or a registration of a lease that already exists) goes on as it did: a few fields by
+/// simple rules, written to the lease only when every field is certain and none contradicts it.</para>
 /// <para><b>Privacy.</b> <c>ExtractionResult</c> holds the names of the fields, their confidence and what became of them: <b>no value</b> of
 /// a person, no name, fiscal code or address (the one date it keeps is the day of the signature, which is not a person's). The values
 /// read are written to the encrypted draft only. Nothing of the text is logged (ADR-009-R10): ids, counts and status codes.</para>

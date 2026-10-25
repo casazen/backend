@@ -88,12 +88,15 @@ public sealed class LeaseDraftService(
 
     public async Task<Guid> CreateCfDraftAsync(Guid propertyId, Guid orgId, CancellationToken cancellationToken = default)
     {
-        // Idempotent: if a CF draft for this property already exists, return it
+        // Idempotent: if a CF draft for this property already exists, return it. A ConcordatoFacile draft is an imported draft (CF-IMPORT):
+        // the contract is written and signed by the partner outside our models, so it comes back as a signed contract to import. A draft
+        // marked CF before that, with the origin Created, can never be imported: it is not the one to go on with.
         var existing = await db.LeaseContracts
             .AsNoTracking()
             .Where(l => l.PropertyId == propertyId
                 && l.OrgId == orgId
                 && l.Status == LeaseStatus.Draft
+                && l.Origin == LeaseOrigin.Imported
                 && l.IsConcordatoFacileSource)
             .Select(l => l.Id)
             .FirstOrDefaultAsync(cancellationToken);
@@ -107,6 +110,10 @@ public sealed class LeaseDraftService(
         var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
             ?? throw PropertyNotFound(propertyId);
 
+        // The type is the one value the draft knows. The dates and the rent are the starting values of the columns (they read as missing,
+        // never as values), and the typed state is kept like in any draft that is not complete, so the readers that skip the incomplete
+        // drafts (the agenda, the RLI reminders) skip this one too.
+        var values = new LeaseDraftValues { PropertyId = property.Id, ContractType = nameof(LeaseContractType.Concordato) };
         var now = UtcNow();
         var lease = new LeaseContract
         {
@@ -117,8 +124,9 @@ public sealed class LeaseDraftService(
             EndDate = LeaseDraftDefaults.PlaceholderDate,
             MonthlyRent = LeaseDraftDefaults.PlaceholderRent,
             WizardMaxStep = LeaseDraftDefaults.FirstStep,
-            Origin = LeaseOrigin.Created,
+            Origin = LeaseOrigin.Imported,
             DraftVersion = 1,
+            DraftData = values.ToJson(),
             IsConcordatoFacileSource = true,
             CreatedAt = now,
             UpdatedAt = now,

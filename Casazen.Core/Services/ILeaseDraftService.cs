@@ -34,7 +34,9 @@ public interface ILeaseDraftService
 
     /// <summary>
     /// Creates a minimal ConcordatoFacile draft (ADR-004): PropertyId, OrgId, ContractType=Concordato, IsConcordatoFacileSource=true,
-    /// other required fields from <see cref="LeaseDraftDefaults"/> (MonthlyRent=0, StartDate=PlaceholderDate). Idempotent: if a CF
+    /// other required fields from <see cref="LeaseDraftDefaults"/> (MonthlyRent=0, StartDate=PlaceholderDate). It is an <b>imported</b>
+    /// draft (CF-IMPORT, origin <see cref="LeaseOrigin.Imported"/>): the contract is written and signed by the partner, so the draft is
+    /// filled from it (the documents are read like those of any imported draft) and imported as a signed contract. Idempotent: if a CF
     /// draft for the same property already exists in Draft status, returns the existing one. <see cref="NotFoundException"/> 404
     /// <c>property_not_found</c> when the property is not visible.
     /// </summary>
