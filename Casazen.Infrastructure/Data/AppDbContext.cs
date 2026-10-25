@@ -237,6 +237,10 @@ public class AppDbContext(
     public DbSet<GuestSegment> GuestSegments { get; set; } = null!;
     public DbSet<Campaign> Campaigns { get; set; } = null!;
 
+    // Automation routines and execution log (NF-26, ADR-022)
+    public DbSet<Routine> Routines { get; set; } = null!;
+    public DbSet<RoutineExecution> RoutineExecutions { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -1315,6 +1319,12 @@ public class AppDbContext(
 
         // A retried send with the same key loses the race on UIX_GuestMessages_ThreadId_IdempotencyKey (23505) and reads the first message.
         modelBuilder.ApplyConfiguration(new GuestMessageConfiguration());
+
+        // ─── Automation routines (NF-26, ADR-022) ────────────────────────────────
+        // Unique constraint on (RoutineId, EventId) ensures idempotence: a routine executes at most once per event (ADR-022-R7).
+        modelBuilder.Entity<RoutineExecution>()
+            .HasIndex(e => new { e.RoutineId, e.EventId })
+            .IsUnique();
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
         // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,
