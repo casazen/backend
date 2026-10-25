@@ -22,7 +22,7 @@ section. The pages of the simulated module are the web app's `/guided-form` (fro
 | The practice | born when the user submits the form, in state `Received` | `POST api/cf-simulator/practices`: row of `cf_simulated_practices`, number `P-` + 16 hex |
 | The status API | `GET /v1/leases/{leaseId}/practices` and `GET /v1/practices/{practiceId}` (key in `Authorization: Bearer`) | `SimulatedConcordatoFacileApiClient` (`IConcordatoFacileApiClient`), same shapes, read from the table; **no key is asked** |
 | The states | Received, InProgress, AwaitingUser, DraftSent, SignedReceived, SentToAssociation, Attested, Registered, ClosedWithoutAttestation (+ `closeReason`), Suspended | any of them, set from the test panel of `/guided-form` (`POST api/cf-simulator/practices/{id}/status`) |
-| The three e-mails | contract, attestation, receipt arrive by e-mail | sample PDFs, downloaded from the panel (`GET api/cf-simulator/practices/{id}/documents/{contract\|attestation\|receipt}`) |
+| The e-mails | the contract with its attestation (one file) and the receipt of the registration arrive by e-mail | sample PDFs, downloaded from the panel (`GET api/cf-simulator/practices/{id}/documents/{contract\|attestation\|receipt}`; `contract` is the one scan with the three sections) |
 | The second practice of a contract | CF closes the first as `ClosedWithoutAttestation` / `duplicate` (v0.2 §6) | the same |
 | A link that is missing, wrong or expired | the form can be filled in all the same, the practice arrives **without a lease** (v0.2 §1) | the same: `valid: false`, and the practice has `leaseId: null` |
 
@@ -104,8 +104,24 @@ Each PDF carries, in plain sight, «Documento di esempio generato dall'ambiente 
   Milano». One page on purpose (a page footer would cut a sentence). `CfSimulatorContractPdfTests` renders it, reads it back with the real
   `ContractTextReader` and `LeaseContractTextParser` and checks people, type, rent, deposit, dates and property: it is also the first test
   of the whole way «a real PDF to the reading».
-- **Attestation** and **receipt of the registration**: short, with a number and a date of example; the system archives them and does not
-  read them.
+- **The contract with its attestation** (`kind=contract`, CF-DOCS-REAL; `CfSimulatorDocuments.ContractWithAttestation`): the file the real
+  service delivers, **one document with three sections each at the top of its page** — the contract above, then «Attestazione di
+  Rispondenza» (the municipality and the agreement, the two organizations, the attested rent, the values the agreement allows
+  (6–9 € a square metre for 80 m²: 480–720 € a month), the verdict «ATTESTANO … rientrano nei valori previsti») and «Scheda Riepilogativa
+  Canone» (zone, surface, the rent worked out, «Esito … conforme»). The three speak of the same people, dates and rent, so the check of
+  coherence (`lease-document-extraction.md` §5) finds nothing to say. The download is a **scan**: `ScannedPdf` rasterizes the pages with
+  `pdftoppm` (200 dpi, gray) and puts the pictures in a PDF with no text, so the whole round reads it by **OCR** like the real file; where the
+  tools are not installed (a developer's machine) the PDF with its text is delivered instead and reads all the same. The GJ L3 job of the
+  frontend installs `tesseract-ocr` and `poppler-utils` for this.
+  `CfSimulatorRealFormatTests` renders it, reads it back (digital, and as a scan with the real OCR on CI) and checks the sections and the figures.
+- **Attestation** alone (`kind=attestation`): short, with a number and a date of example; kept for the old endpoint, archived and not read.
+  The panel does not offer it any more: the attestation is in the document above.
+- **Receipt of the registration** (`kind=receipt`, CF-DOCS-REAL): the receipt of the Agenzia delle Entrate (mod. RLI12) as a **digital PDF**,
+  with the wording and the order of the lines of the real one: the notice of the file received («registrati: 1 scartati: 0»), the receipt with
+  the office, the identification code (`SIM<yy>T<6 digits>000AB`), the number and series, the registration day (today), the duration and
+  the day of the stipula of the sample contract, the annual rent (7.800,00 €), the typology «Locazione agevolata immobile uso abitativo», the
+  municipality and province of the house, and the list of the documents acquired («acquisito»). The sample contract does not choose the
+  cedolare secca, so the receipt says nothing of it. `RegistrationReceiptReader` reads it (`lease-document-extraction.md` §6).
 
 ## 7. Status cache
 

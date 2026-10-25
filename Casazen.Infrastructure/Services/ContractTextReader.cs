@@ -8,7 +8,7 @@ namespace Casazen.Infrastructure.Services;
 /// Reads the text of a contract PDF (NL-DOCS) on the server, page by page. A page that carries text (a digital PDF: read in process by
 /// PdfPig, no tool needed) is taken as it is; a page that does not (a scan, the PDF of the photos of a contract) is rendered in gray and
 /// read by Tesseract, Italian and English, with the same limits as the energy certificate: two OCR runs at a time on the host
-/// (<see cref="LocalOcr"/>), a deadline of 110 seconds, at most <see cref="MaxOcrPages"/> pages read by OCR. What cannot be read in time
+/// (<see cref="LocalOcr"/>), a deadline of 240 seconds, at most <see cref="MaxOcrPages"/> pages read by OCR. What cannot be read in time
 /// is left out and said (<see cref="ContractText.Truncated"/>); a PDF that cannot be opened is read by OCR whole, or refused. No text is
 /// ever logged.
 /// </summary>
@@ -17,15 +17,19 @@ public sealed class ContractTextReader : IContractTextReader
     /// <summary>More pages than this is not a contract with its annexes.</summary>
     private const int MaxPages = 60;
 
-    /// <summary>Pages read by OCR: as many as the certificate of the energy performance (the time is the limit, not the memory).</summary>
-    private const int MaxOcrPages = 12;
+    /// <summary>
+    /// Pages read by OCR (CF-DOCS-REAL: 12 before). The one file that the guided service delivers holds the contract, the attestation and the
+    /// calculation sheet, 14 pages in the first real sample; the time is the limit, not the memory.
+    /// </summary>
+    private const int MaxOcrPages = 20;
 
     private const long MaxBytes = 20 * 1024 * 1024;
 
     /// <summary>A page with fewer letters and digits than this carries no text of its own (a scan may hold a few stray characters).</summary>
     private const int MinCharactersOfAPage = 60;
 
-    private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(110);
+    /// <summary>The whole read, the wait for an OCR slot included (CF-DOCS-REAL: 110 seconds before, about 7 seconds a page, so 14 pages did not fit).</summary>
+    private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(240);
 
     public async Task<ContractText> ReadAsync(byte[] pdf, CancellationToken cancellationToken = default)
     {
@@ -53,6 +57,16 @@ public sealed class ContractTextReader : IContractTextReader
                 return Build(partial, progress.OcrPages, truncated: true);
             throw new ContractTextUnavailableException(ex);
         }
+    }
+
+    public Task<ContractText?> ReadDigitalAsync(byte[] pdf, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(pdf);
+        if (pdf.Length is 0 || pdf.Length > MaxBytes)
+            throw new InvalidDataException("Not a PDF document.");
+
+        var carried = CarriedTexts(pdf, out _);
+        return Task.FromResult<ContractText?>(carried is not null && carried.Any(HasText) ? Build(carried, 0, truncated: false) : null);
     }
 
     /// <summary>The text of each page as the PDF carries it, or <c>null</c> when PdfPig cannot open the file (damaged, protected, an odd generator).</summary>

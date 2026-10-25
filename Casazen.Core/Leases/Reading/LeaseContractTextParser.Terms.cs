@@ -17,13 +17,13 @@ public static partial class LeaseContractTextParser
     private static partial Regex NotTransitory();
 
     [GeneratedRegex(
-        @"canone\s+concordato|contratto\s+(?:di\s+locazione\s+)?concordato|accordi?\s+territorial[ei]|(?<![\d+])3\s?\+\s?2(?!\d)|tre\s?\+\s?due|art\.?\s*2\s*,?\s*(?:comma|c\.)\s*3\b",
+        @"canone\s+concordato|contratto\s+(?:di\s+locazione\s+)?concordato|locazione\s+abitativa\s+agevolata|canone\s+agevolato|accordi?\s+territorial[ei]|(?<![\d+])3\s?\+\s?2(?!\d)|tre\s?\+\s?due|art(?:icolo|\.)?\s*2\s*,?\s*(?:comma|c\.)\s*3\b",
         Options,
         Timeout)]
     private static partial Regex ConcordatoSignal();
 
     [GeneratedRegex(
-        @"(?<![\d+])4\s?\+\s?4(?!\d)|quattro\s?\+\s?quattro|art\.?\s*2\s*,?\s*(?:comma|c\.)\s*1\b|canone\s+libero|contratto\s+libero|libero\s+mercato",
+        @"(?<![\d+])4\s?\+\s?4(?!\d)|quattro\s?\+\s?quattro|art(?:icolo|\.)?\s*2\s*,?\s*(?:comma|c\.)\s*1\b|canone\s+libero|contratto\s+libero|libero\s+mercato",
         Options,
         Timeout)]
     private static partial Regex LiberoSignal();
@@ -167,7 +167,7 @@ public static partial class LeaseContractTextParser
     private static partial Regex CentsOnly();
 
     /// <summary>An amount as an Italian contract writes it ("1.200,00", "800,00", "800") or as an OCR leaves it ("800.00", "1 200,00"); <c>null</c> if it is not one.</summary>
-    private static decimal? ParseAmount(string raw)
+    internal static decimal? ParseAmount(string raw)
     {
         var text = raw.Replace(" ", string.Empty, StringComparison.Ordinal);
         if (text.Contains('.', StringComparison.Ordinal) && text.Contains(',', StringComparison.Ordinal))
@@ -229,6 +229,20 @@ public static partial class LeaseContractTextParser
         Options,
         Timeout)]
     private static partial Regex RentLabel();
+
+    // "il canone annuo di locazione, … è convenuto in EUR 7.140,00": the label, whatever clause comes next, and "convenuto in" before the amount.
+    [GeneratedRegex(
+        @"\b(?<label>canone(?:\s+(?:mensile|annuo|annuale|di\s+locazione|locativo|iniziale|pattuito|convenuto|concordato))*)\b(?:(?!\bcanone\b)[^.;]){0,300}?\b(?:\p{L}{1,5}\s+){0,2}(?:convenut[oa]|pattuit[oa]|stabilit[oa]|determinat[oa]|fissat[oa])\s+(?:in|di|nella\s+misura\s+di|pari\s+a)\s+(?:\p{Sc}|\beuro\b|\beur\b\.?)\s*(?<n>\d{1,3}(?:[. ]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\d)",
+        Options,
+        Timeout)]
+    private static partial Regex RentConvened();
+
+    // "in n. 12 (dodici) rate eguali anticipate di EUR 595,00 (cinquecentonovantacinque/00) ciascuna"
+    [GeneratedRegex(
+        @"(?<![\p{L}\d])(?<count>\d{1,2})\s*(?:\([^)]{0,25}\)\s*)?rate\b[^.;]{0,60}?\bdi\s+(?:\p{Sc}|\beuro\b|\beur\b\.?)\s*(?<n>\d{1,3}(?:[. ]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\d)",
+        Options,
+        Timeout)]
+    private static partial Regex Installments();
 
     [GeneratedRegex(@"\b(?:deposito\s+cauzionale|deposito\s+di\s+garanzia|deposito\s+infruttifero|cauzione)\b", Options, Timeout)]
     private static partial Regex DepositLabel();
@@ -325,6 +339,34 @@ public static partial class LeaseContractTextParser
             (yearly ? annual : monthly).Add(amount.Value);
         }
 
+        // "Il canone annuo di locazione, secondo quanto stabilito dall'Accordo … del 20/05/2025 …, è convenuto in EUR 7.140,00": the sentence
+        // of the real contracts puts a long clause, with a date, between the label and the amount; "convenuto in" says it is the rent.
+        foreach (Match convened in RentConvened().Matches(flat))
+        {
+            if (ParseAmount(convened.Groups["n"].Value) is not { } value)
+                continue;
+
+            var wording = convened.Groups["label"].Value;
+            bool? yearly = MonthlyWord().IsMatch(wording)
+                ? false
+                : AnnualWord().IsMatch(wording)
+                    ? true
+                    : PeriodAfter().Match(flat.Substring(convened.Index + convened.Length, Math.Min(60, flat.Length - convened.Index - convened.Length))) is { Success: true } named
+                        ? AnnualWord().IsMatch(named.Groups["p"].Value)
+                        : null;
+            if (yearly is not { } isYearly || (isYearly ? value is < 360m or > 360_000m : value is < 30m or > 30_000m))
+                continue;
+
+            (isYearly ? annual : monthly).Add(value);
+        }
+
+        // "in n. 12 (dodici) rate eguali anticipate di EUR 595,00 ciascuna": twelve installments are twelve months.
+        foreach (Match installments in Installments().Matches(flat))
+        {
+            if (installments.Groups["count"].Value == "12" && ParseAmount(installments.Groups["n"].Value) is { } value && value is >= 30m and <= 30_000m)
+                monthly.Add(value);
+        }
+
         var months = monthly.Distinct().ToList();
         var years = annual.Distinct().ToList();
         if (months.Count == 1)
@@ -352,13 +394,13 @@ public static partial class LeaseContractTextParser
         foreach (Match label in DepositLabel().Matches(flat))
         {
             var from = label.Index + label.Length;
-            var end = Math.Min(flat.Length, from + 220);
+            var end = Math.Min(flat.Length, from + 340);
 
             var months = DepositMonths().Match(flat, from, end - from);
             var amount = amounts.Where(a => a.Index >= from && a.Index < end).Select(a => (Amount?)a).FirstOrDefault();
             var count = months.Success ? NumberOf(months.Groups["n"].Value) : null;
 
-            if (amount is { } named && (!months.Success || named.Index < months.Index) && IsDepositGap(flat[from..named.Index]))
+            if (amount is { } named && (!months.Success || named.Index < months.Index) && (IsDepositGap(flat[from..named.Index]) || IsSumGap(flat[from..named.Index])))
             {
                 explicitValues.Add(named.Value);
                 continue;
@@ -383,6 +425,14 @@ public static partial class LeaseContractTextParser
 
     private static bool IsDepositGap(string gap) =>
         gap.Length <= 100 && !DepositStopWords().IsMatch(gap) && !HasDigitsOutsideParentheses(gap);
+
+    // "Deposito cauzionale e altre forme di garanzia. A garanzia delle obbligazioni assunte col presente contratto, il conduttore versa alla
+    // locatrice (…) una somma di EUR 1.785,00": a long sentence that says in the end that the amount is a sum paid.
+    [GeneratedRegex(@"\b(?:somma|importo|cifra)\s+(?:complessiva\s+)?(?:di|pari\s+a)\s*$", Options, Timeout)]
+    private static partial Regex SumOf();
+
+    private static bool IsSumGap(string gap) =>
+        gap.Length <= 330 && SumOf().IsMatch(gap) && !DepositStopWords().IsMatch(gap) && !HasDigitsOutsideParentheses(gap);
 
     // ---- the property ----------------------------------------------------------------------------------------------------
 

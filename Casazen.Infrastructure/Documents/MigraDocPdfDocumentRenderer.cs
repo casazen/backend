@@ -128,7 +128,9 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
             switch (block)
             {
                 case PdfHeading heading:
-                    AddHeading(section, heading.Text, heading.Level, words);
+                    var title = AddHeading(section, heading.Text, heading.Level, words);
+                    if (heading.NewPage)
+                        title.Format.PageBreakBefore = true;
                     break;
                 case PdfParagraph paragraph:
                     var p = section.AddParagraph();
@@ -174,12 +176,13 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
         footer.ParagraphFormat.SpaceAfter = 0;
     }
 
-    private static void AddHeading(Section section, string text, int level, LongWordBreaker words)
+    private static Paragraph AddHeading(Section section, string text, int level, LongWordBreaker words)
     {
         var (name, size, _, _) = HeadingStyles[Math.Clamp(level, 1, HeadingStyles.Length) - 1];
         var paragraph = section.AddParagraph();
         paragraph.Style = name;
         AddText(paragraph, words.Break(CleanText(text), BodyWidth, size, bold: true));
+        return paragraph;
     }
 
     private static void AddTable(Section section, PdfTable source, LongWordBreaker words)
