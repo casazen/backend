@@ -127,7 +127,13 @@ public sealed class StatementService(AppDbContext db) : IStatementService
         await db.SaveChangesAsync(cancellationToken);
 
         // Recalculate totals
-        return await RecalculateStatementAsync(statement.Id, cancellationToken);
+        var result = await RecalculateStatementAsync(statement.Id, cancellationToken);
+
+        // After generating any statement, check if all co-owners now have statements
+        // If yes, recalculate the last owner's statement to apply remainder logic (ADR-017-R4)
+        await RecalculateLastOwnerIfAllStatementsExistAsync(propertyId, month, year, cancellationToken);
+
+        return result;
     }
 
     /// <inheritdoc />
@@ -257,5 +263,45 @@ public sealed class StatementService(AppDbContext db) : IStatementService
 
         await db.SaveChangesAsync(cancellationToken);
         return statement;
+    }
+
+    /// <summary>
+    /// Helper method to recalculate the last owner's statement if all co-owners now have statements.
+    /// This ensures the "last owner gets remainder" logic (ADR-017-R4) is applied even when
+    /// statements are generated out of order.
+    /// </summary>
+    private async Task RecalculateLastOwnerIfAllStatementsExistAsync(
+        Guid propertyId,
+        int month,
+        int year,
+        CancellationToken cancellationToken)
+    {
+        // Get all active ownerships for this property
+        var allOwnerships = await db.Set<PropertyOwnership>()
+            .Where(po => po.PropertyId == propertyId && po.OwnershipEnd == null)
+            .OrderBy(po => po.PropertyOwnerId)
+            .ToListAsync(cancellationToken);
+
+        // Only proceed if there's co-ownership (2+ owners)
+        if (allOwnerships.Count <= 1)
+            return;
+
+        // Check if all co-owners have statements for this period
+        var allStatements = await db.Set<OwnerStatement>()
+            .Where(s => s.PropertyId == propertyId && s.Month == month && s.Year == year)
+            .ToListAsync(cancellationToken);
+
+        if (allStatements.Count != allOwnerships.Count)
+            return; // Not all co-owners have statements yet
+
+        // All co-owners have statements: recalculate the last owner's statement to apply remainder
+        var lastOwnerId = allOwnerships[^1].PropertyOwnerId;
+        var lastOwnerStatement = allStatements.FirstOrDefault(s => s.PropertyOwnerId == lastOwnerId);
+
+        if (lastOwnerStatement?.Status == StatementStatus.Draft)
+        {
+            // Recalculate to apply remainder logic
+            await RecalculateStatementAsync(lastOwnerStatement.Id, cancellationToken);
+        }
     }
 }
