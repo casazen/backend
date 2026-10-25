@@ -1,6 +1,6 @@
 # ADR-007: ConcordatoFacile HMAC Signed Link Generation
 
-**Status:** Accepted  
+**Status:** Accepted (amended 2026-10-24)  
 **Date:** 2026-10-23  
 **Issue:** none (run R20261023-1107)  
 **Informs:** NF-05 (ConcordatoFacile HMAC signed link)
@@ -114,3 +114,53 @@ Three button states based on `/access` response and practice list:
 **Cross-repo contract:**
 - Backend: `POST /api/leases/{leaseId}/concordatofacile/link` returns `{url: string}`
 - Frontend: Opens URL in new tab with noopener,noreferrer
+
+## Amendment 2026-10-24 (run R20261024-1925)
+
+**Why:** NF-05 adds marketing consent with double opt-in and one-click unsubscribe. NF-13 adds QR code verification entry. Both use same HMAC signed link pattern.
+
+**Decision delta:**
+
+### Double Opt-In Link (NF-05)
+
+Marketing email confirmation link:
+- HMAC-SHA256 of `guestId.toLowerCase() + "." + marketingEmail.toLowerCase() + "." + expiresAt`
+- 7-day expiration (longer than 15 min for email timing)
+- Endpoint: `POST /api/public/marketing/confirm-email`
+
+### One-Click Unsubscribe Link (NF-05)
+
+Per CAN-SPAM and GDPR:
+- HMAC-SHA256 of `emailHash + "." + expiresAt`
+- 30-day expiration (long for email clients)
+- Endpoint: `POST /api/public/marketing/unsubscribe`
+- Adds to SuppressionListEntry
+
+### QR Verification Link (NF-13)
+
+Static QR per property:
+- HMAC-SHA256 of `propertyId.toLowerCase() + "." + expiresAt`
+- No expiration (static QR, validates booking code + email on submit)
+- Endpoint: `POST /api/public/qr/{propertyId}`
+- Prompts booking code + email, starts verification flow
+
+### Shared Secret
+
+All link types share same `SIGNED_LINK_SECRET` env var:
+- Single secret for rotation simplicity
+- Different purposes identified by payload structure
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-007-R17 | P0 | Double opt-in link MUST use HMAC-SHA256 of `guestId.toLowerCase() + "." + marketingEmail.toLowerCase() + "." + expiresAt`, 7-day expiration |
+| ADR-007-R18 | P0 | One-click unsubscribe link MUST use HMAC-SHA256 of `emailHash + "." + expiresAt`, 30-day expiration |
+| ADR-007-R19 | P0 | QR verification link MUST use HMAC-SHA256 of `propertyId.toLowerCase() + "." + expiresAt`, no expiration (static QR, validates booking code + email on submit) |
+| ADR-007-R20 | P0 | All link types MUST share same HMAC secret (single `SIGNED_LINK_SECRET` env var), rotatable without breaking existing links |
+| ADR-007-R21 | P0 | POST /api/public/marketing/confirm-email MUST verify signature, mark GuestConsentRecord.MarketingEmailConfirmed = true |
+| ADR-007-R22 | P0 | POST /api/public/marketing/unsubscribe MUST verify signature, add SuppressionListEntry |
+| ADR-007-R23 | P0 | POST /api/public/qr/{propertyId} MUST verify signature (if present), prompt booking code + email, start verification flow |
+
+**Consequences delta:**
+- Backend: Double opt-in endpoint + HMAC link generation, unsubscribe endpoint + HMAC link, QR entry endpoint + HMAC link
+- Frontend: Public pages for double opt-in confirmation, one-click unsubscribe, QR entry
+- Shared secret rotation affects all link types (infrequent, acceptable)
