@@ -141,6 +141,9 @@
   <data name="StripeConnectAccountUnavailable" xml:space="preserve">
     <value>L'account Stripe collegato non è più disponibile: riprova per collegarne uno nuovo.</value>
   </data>
+  <data name="ConfigurationError" xml:space="preserve">
+    <value>Errore di configurazione del server. Contatta l'assistenza.</value>
+  </data>
   <data name="ConnectReturnUrlNotConfigured" xml:space="preserve">
     <value>L'indirizzo pubblico dell'app non è configurato sul server: il collegamento con Stripe non può essere avviato.</value>
   </data>
@@ -327,6 +330,12 @@
   <data name="InvalidPhone" xml:space="preserve">
     <value>Numero di telefono non valido</value>
   </data>
+  <data name="InvalidSignature" xml:space="preserve">
+    <value>Firma di sicurezza non valida</value>
+  </data>
+  <data name="InvalidTimestamp" xml:space="preserve">
+    <value>Timestamp non valido o malformato</value>
+  </data>
   <data name="ManagedByStripe" xml:space="preserve">
     <value>Il piano è gestito da Stripe. Usa il portale di fatturazione.</value>
   </data>
@@ -428,6 +437,9 @@
   </data>
   <data name="ApeInvalidContent" xml:space="preserve">
     <value>Non è stato possibile riconoscere un APE leggibile. Carica tutte le pagine del documento in PDF o come foto nitide JPEG/PNG.</value>
+  </data>
+  <data name="LinkExpired" xml:space="preserve">
+    <value>Il link di conferma è scaduto</value>
   </data>
   <data name="LeaseContractTemplateNotApproved" xml:space="preserve">
     <value>Il modello di contratto per questo regime fiscale non è ancora approvato da un legale: è disponibile solo l'anteprima in bozza e il contratto non può essere inviato alla firma.</value>
@@ -779,6 +791,9 @@
   </data>
   <data name="SignedUrlUnavailable" xml:space="preserve">
     <value>Lo storage configurato non genera link firmati: scarica il documento dall'applicazione.</value>
+  </data>
+  <data name="SignatureMissing" xml:space="preserve">
+    <value>Firma di sicurezza mancante</value>
   </data>
   <data name="ICalInvalidUrl" xml:space="preserve">
     <value>L'indirizzo del calendario non è valido: usa un link https pubblico (per esempio il link di esportazione iCal di Airbnb o Booking.com).</value>
@@ -2470,6 +2485,9 @@
   <data name="EmailRequired" xml:space="preserve">
     <value>L'email è obbligatoria.</value>
   </data>
+  <data name="EmailMissing" xml:space="preserve">
+    <value>L'email è obbligatoria.</value>
+  </data>
   <data name="PhoneRequired" xml:space="preserve">
     <value>Il telefono è obbligatorio.</value>
   </data>
@@ -2500,6 +2518,9 @@
   <data name="ConsentRequired" xml:space="preserve">
     <value>Il consenso è obbligatorio.</value>
   </data>
+  <data name="ConsentRecordNotFound" xml:space="preserve">
+    <value>Registrazione del consenso non trovata</value>
+  </data>
   <data name="InvalidPaymentOption" xml:space="preserve">
     <value>Opzione di pagamento non valida.</value>
   </data>
@@ -2523,6 +2544,9 @@
   </data>
   <data name="EmailTooLong" xml:space="preserve">
     <value>L'email non può superare 255 caratteri.</value>
+  </data>
+  <data name="ExpiresAtMissing" xml:space="preserve">
+    <value>La data di scadenza è obbligatoria.</value>
   </data>
   <data name="PhoneTooLong" xml:space="preserve">
     <value>Il numero di telefono non può superare 20 caratteri.</value>
