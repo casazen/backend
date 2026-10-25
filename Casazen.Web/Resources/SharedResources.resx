@@ -505,7 +505,10 @@
     <value>Il periodo del contratto è finito: la disdetta registrata non si può più togliere.</value>
   </data>
   <data name="LeaseTerminationDateInvalid" xml:space="preserve">
-    <value>L'ultimo giorno del contratto deve essere compreso tra l'inizio del contratto e la fine del periodo in corso.</value>
+    <value>L'ultimo giorno del contratto deve essere dopo l'inizio del contratto e non oltre la fine del periodo in corso: dal {0:d MMM yyyy} al {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseTerminationNotStarted" xml:space="preserve">
+    <value>Il contratto non è ancora iniziato, quindi non si può terminare in anticipo. Per annullarlo serve la risoluzione consensuale, da comunicare all'Agenzia delle Entrate entro {0} giorni.</value>
   </data>
   <data name="LeaseBusy" xml:space="preserve">
     <value>Il contratto è in uso da un'altra operazione in questo momento. Riprova tra un istante: questa modifica non è stata applicata.</value>

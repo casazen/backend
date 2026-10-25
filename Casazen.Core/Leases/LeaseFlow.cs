@@ -375,7 +375,10 @@ public static class LeaseFlow
         if (stage == LeaseStage.Active && !i.HasActiveRentPlan)
             candidates.Add(new LeaseNextStep(LeaseNextStepCode.ActivateRentPlan, LeaseNextStepActor.Landlord, Priority.Review));
 
-        if (stage == LeaseStage.Expiring)
+        // LR-TERM: no end to organize for a lease whose period is empty or a single day (its end is not after its start): the early termination
+        // no longer produces one (it needs a day after the start), but a lease that was ended that way before has one, and the guide must not
+        // tell the landlord to "organize the end" of a contract that never ran. Nothing is rewritten; the step is simply not proposed.
+        if (stage == LeaseStage.Expiring && i.CurrentTermEndDate > i.StartDate)
             candidates.Add(EndStep(i));
 
         if (candidates.Count == 0)
