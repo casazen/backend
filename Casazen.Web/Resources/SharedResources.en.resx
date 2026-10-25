@@ -3350,4 +3350,7 @@
   <data name="VerificationReasonRequired" xml:space="preserve">
     <value>A rejection reason is required</value>
   </data>
+  <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
+    <value>Access code not available or verification not passed</value>
+  </data>
 </root>

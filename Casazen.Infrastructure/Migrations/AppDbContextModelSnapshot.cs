@@ -37,6 +37,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("ReleasedAt")
                         .HasColumnType("timestamp with time zone");
 

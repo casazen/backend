@@ -1,5 +1,6 @@
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -57,7 +58,7 @@ public class AccessCodeController : ControllerBase
         var code = await _accessCodeService.GetAccessCodeAsync(id, userId);
 
         if (code == null)
-            return NotFound(new { error = "access_code_unavailable", message = "Access code not available or verification not passed" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, "AccessCodeUnavailable", "Errors.AccessCodeUnavailable");
 
         return Ok(new AccessCodeResponse { Code = code });
     }

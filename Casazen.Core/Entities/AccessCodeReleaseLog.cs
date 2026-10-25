@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
@@ -9,11 +10,14 @@ namespace Casazen.Core.Entities;
 /// Only created after biometric/operator verification passes.
 /// </summary>
 [Table("AccessCodeReleaseLogs")]
-public class AccessCodeReleaseLog
+public class AccessCodeReleaseLog : ITenantOwned
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>Tenant key (ITenantOwned). Inherited from the booking's property.</summary>
+    public Guid OrgId { get; set; }
 
     [ForeignKey("Booking")]
     public Guid BookingId { get; set; }
