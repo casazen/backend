@@ -191,6 +191,7 @@ public static class CasazenPolicies
     [
         AgencyOwnerView,
         AgencyOwnerFinancialRead,
+        AgencySupplierManage,
     ];
 
     /// <summary>
