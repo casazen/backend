@@ -80,9 +80,11 @@ public class LeaseDraftEncryptionTests
 
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, storedDraft, StringComparison.Ordinal);
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, storedResidence, StringComparison.Ordinal);
-        foreach (var secret in new[] { "Marco", "Bianchi", "WRONG", "Nascosta", "Lecce" })
+        // The payload is random text, so a short word turns up in it by chance ("Via" about once in 200 runs): only values too long to
+        // be met by chance are searched for, with the whole typed values.
+        foreach (var secret in new[] { "Bianchi", "Nascosta", "Via Nascosta 3, Lecce", typed })
             Assert.DoesNotContain(secret, storedDraft, StringComparison.OrdinalIgnoreCase);
-        foreach (var secret in new[] { "Segretissima", "Bari", "Via" })
+        foreach (var secret in new[] { "Segretissima", "Via Segretissima 7, Bari" })
             Assert.DoesNotContain(secret, storedResidence, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(typed, draft.ConvertFromProvider(storedDraft));
         Assert.Equal("Via Segretissima 7, Bari", residence.ConvertFromProvider(storedResidence));
