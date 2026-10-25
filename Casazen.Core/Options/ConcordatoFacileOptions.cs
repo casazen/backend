@@ -51,6 +51,16 @@ public class ConcordatoFacileOptions
     /// </summary>
     public ConcordatoFacileFormMode FormMode { get; set; } = ConcordatoFacileFormMode.Real;
 
+    /// <summary>
+    /// The address of the real module of ConcordatoFacile (CF-URL). Unset (the default, and the only value allowed in Production):
+    /// <c>https://app.concordatofacile.it/</c>, as the specification v0.2 §2 says. ConcordatoFacile prepares a module of its own to try
+    /// the whole round from the test environment, which accepts the links signed with the test secret of the specification, at an address
+    /// it gives to CasaZen: that address is set here on the test environment only, an absolute <c>https</c> address without query or
+    /// fragment (the signed parameters are appended to it). Ignored with <see cref="ConcordatoFacileFormMode.Simulated"/>. Refused at
+    /// startup in Production (<see cref="ConcordatoFacileOptionsValidator"/>).
+    /// </summary>
+    public string? FormUrl { get; set; }
+
     /// <summary>Settings of the simulated module and status API (CF-SIM); read only with <see cref="ConcordatoFacileFormMode.Simulated"/>.</summary>
     public ConcordatoFacileSimulatorOptions Simulator { get; set; } = new();
 }
@@ -121,6 +131,9 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
         if (options.FormMode == ConcordatoFacileFormMode.Simulated)
             AddSimulatorFailures(options, failures);
 
+        if (!string.IsNullOrWhiteSpace(options.FormUrl))
+            AddFormUrlFailures(options.FormUrl, failures);
+
         return failures.Count == 0
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);
@@ -156,6 +169,31 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
         {
             failures.Add(
                 $"{ConcordatoFacileOptions.SectionName}:Simulator:StatusTtlSeconds must be between 1 and 3600 seconds.");
+        }
+    }
+
+    /// <summary>
+    /// CF-URL: production always opens the real module of ConcordatoFacile, so another address is refused there; elsewhere it is the test
+    /// module that ConcordatoFacile gives to CasaZen, and it must be an absolute https address without query or fragment, because the
+    /// signed parameters are appended to it.
+    /// </summary>
+    private void AddFormUrlFailures(string formUrl, List<string> failures)
+    {
+        if (environment.IsProduction())
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:FormUrl is allowed only in test environments, never when ASPNETCORE_ENVIRONMENT " +
+                $"is Production: production always opens the real module of ConcordatoFacile. Remove {ConcordatoFacileOptions.SectionName}__FormUrl.");
+        }
+
+        if (!Uri.TryCreate(formUrl.Trim(), UriKind.Absolute, out var address)
+            || address.Scheme != Uri.UriSchemeHttps
+            || !string.IsNullOrEmpty(address.Query)
+            || !string.IsNullOrEmpty(address.Fragment))
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:FormUrl must be an absolute https address without query or fragment " +
+                "(for example https://test.example/).");
         }
     }
 
