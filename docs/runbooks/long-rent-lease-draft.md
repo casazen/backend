@@ -336,7 +336,7 @@ Deploy **on the test environment first**; the figures of § 9 are to be confirme
 | LR-D10 (a) | `sent` ("Scarica da firmare") needs the **explicit** confirmation of the review: 422 `lease_review_not_confirmed` otherwise |
 | LR-D11 (a) | A company as tenant with the cedolare secca: `cedolare_not_allowed_company`, a block of the review |
 | LR-D12 (a) | `Libero` and `Concordato` can be created; the student lease is kept as typed and reported as not available (`lease_type_not_available`); the transitory contract entered as an imported one (LR-13: done, `long-rent-lease-import.md`) and, since TR, can be made in CasaZen with the official Allegato B (§ 17) |
-| LR-D14 (a) | Overlap with another contract of the property: a warning of the review, not a block |
+| LR-D14 (a) | Overlap with another contract of the property: it was a warning of the review. **Reversed on 2026-10-25 (LR-OVERLAP, § 18): two leases of one property cannot cover the same days.** A block of the review (`lease_overlap`) and a 409 `lease_period_overlaps` where the lease becomes a contract |
 | LR-D15 (a) | A property let for short stays: a warning of the review, not a block |
 | LR-D28 | A template that is not approved: `sent` answers 422 `contract_template_not_approved`, the review says it as to know |
 | LR-D29 (a) | Figures of law only on the server (`GET /api/long-rent/rules`); to be confirmed by a lawyer before the production release |
@@ -446,7 +446,8 @@ posso crearne 2»). It reverses decision LR-D14 (one may let by rooms), which le
   `POST …/signing` (the e-signature provider, also before the provider is called). The text is in `SharedResources` (`LeasePeriodOverlaps`, the two
   days formatted as `d MMM yyyy`): «Per questo immobile c'è già un contratto dal 1 nov 2026 al 31 ott 2029. Due contratti non possono coprire gli
   stessi giorni: apri quello esistente o cambia le date.» The review (`GET …/review`) lists the same fact as a `Block` check `lease_overlap` with the same
-  params, so the confirm button is closed before it is pressed.
+  params, so the main button of the wizard leads to the step of the dates instead of confirming (the 409 is the answer for a race and for the other
+  steps).
 - **Saving the dates or the property of a draft is never refused** (it is the soft answer): the draft stays a draft; if the review was already
   confirmed the save withdraws it as for any change of a value (§ 5), so a confirmed lease never moves its days by the back door.
 - **Concurrency.** The check and the step that writes run in one transaction, after the row lock of the lease, under the advisory lock
@@ -459,3 +460,8 @@ posso crearne 2»). It reverses decision LR-D14 (one may let by rooms), which le
   `POST /api/leases` (complete creation, no longer used by the interface) writes a draft and is not a step that makes a contract. There is no
   explicit renewal or extension action yet: the day it exists it has to call `LeasePeriodGuard.EnsureFreeAsync` with the new period.
 - **Existing data is not touched.** No migration and no backfill: leases that already overlap stay as they are and only stop a *new* step.
+- **Open points** (proposed ids): LR-OVERLAP-FU1, the tacit renewal job does not look at the following lease (above); LR-OVERLAP-FU2, a draft with
+  both dates counts, so two drafts on the same days block each other until one is deleted or moved, and whether only confirmed drafts should count is a
+  decision of the product owner; LR-OVERLAP-FU3, the explicit renewal or extension action (LR-OPS-1) has to call the guard; LR-OVERLAP-FU4, the toast of
+  a refused confirmation shows the server text without the link (the review that is read again right after has it); LR-OVERLAP-FU5, a tool to find the
+  leases that already overlap in an environment (the test environment has two).
