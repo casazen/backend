@@ -83,6 +83,15 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// Agency invoices demo (ADR-019): one issued invoice to demonstrate the invoice generation flow.
+    /// Series is the year, invoice number is sequential, amounts are test data.
+    /// </summary>
+    public static IReadOnlyList<DemoAgencyInvoiceTemplate> AgencyInvoices { get; } =
+    [
+        new("fattura-001", "mario-rossi", "2026", "1", 10, 2026, 100.00m, 22.00m, Scenario.AgencyInvoiceIssued),
+    ];
+
+    /// <summary>
     /// Guest segments for marketing campaigns (NF-24): simple condition to demo segment UI and recipient filtering.
     /// Empty condition JSON matches all guests (with consent filtering applied at send time).
     /// </summary>
@@ -292,4 +301,16 @@ public sealed record DemoCampaignTemplate(
     int? SentOffsetDays,
     int SentCount,
     int ErrorCount,
+    string Scenario);
+
+/// <summary>An agency invoice for demo (ADR-019): one issued invoice with test amounts.</summary>
+public sealed record DemoAgencyInvoiceTemplate(
+    string Key,
+    string OwnerKey,
+    string Series,
+    string InvoiceNumber,
+    int Month,
+    int Year,
+    decimal TaxableBase,
+    decimal VatRate,
     string Scenario);

@@ -44,6 +44,9 @@ public class InvoiceProofTests
             DisplayName = "Test Agency",
             ContactEmail = "test@agency.com",
             PlanTier = PlanTier.Agency,
+            HasPartitaIva = true,
+            PartitaIvaNumber = "12345678901",
+            FiscalCode = "IT12345678901",
             CreatedAt = DateTime.UtcNow
         };
 
@@ -215,6 +218,9 @@ public class InvoiceProofTests
             DisplayName = "Test Agency",
             ContactEmail = "test@agency.com",
             PlanTier = PlanTier.Agency,
+            HasPartitaIva = true,
+            PartitaIvaNumber = "12345678901",
+            FiscalCode = "IT12345678901",
             CreatedAt = DateTime.UtcNow
         };
 
