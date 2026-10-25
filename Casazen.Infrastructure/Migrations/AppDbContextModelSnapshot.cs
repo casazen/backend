@@ -2868,6 +2868,43 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OwnerMandates");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerUser", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Auth0Sub")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OwnerUsers");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.Party", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4012,6 +4049,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("OwnershipEnd")
                         .HasColumnType("timestamp with time zone");
 
@@ -4030,6 +4070,8 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OrgId");
+
+                    b.HasIndex("OwnerUserId");
 
                     b.HasIndex("PropertyId");
 
@@ -8236,6 +8278,10 @@ namespace Casazen.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Casazen.Core.Entities.OwnerUser", "OwnerUser")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId");
+
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
                         .WithMany()
                         .HasForeignKey("PropertyId")
@@ -8249,6 +8295,8 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Org");
+
+                    b.Navigation("OwnerUser");
 
                     b.Navigation("Property");
 

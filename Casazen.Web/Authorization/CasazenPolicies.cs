@@ -50,6 +50,12 @@ public static class CasazenPolicies
     /// </summary>
     public const string GuestSession = "GuestSession";
 
+    /// <summary>
+    /// Property owner accessing the owner portal (ADR-011-R5): checks JWT claim context=owner_portal,
+    /// resolves OwnerUserId from JWT, MUST NOT include host roles.
+    /// </summary>
+    public const string OwnerPortal = "OwnerPortal";
+
     private const string ShortRent = "RequireContext:short-rent:";
     private const string LongRent = "RequireContext:long-rent:";
 
