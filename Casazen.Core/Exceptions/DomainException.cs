@@ -32,6 +32,15 @@ public abstract class DomainException : Exception
 
     /// <summary>Format arguments for the localized message.</summary>
     public IReadOnlyList<object> MessageArgs { get; }
+
+    /// <summary>
+    /// Extra members of the problem the API answers with, next to <c>code</c> and <c>detail</c>: the facts a client needs to act on the
+    /// error (a range of dates, the id of the record in the way). Camel-case names and values that serialize to JSON, never personal
+    /// data. The names <c>code</c> and <c>traceId</c> belong to the API and are ignored here.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> Extensions { get; init; } = NoExtensions;
+
+    private static readonly IReadOnlyDictionary<string, object?> NoExtensions = new Dictionary<string, object?>();
 }
 
 /// <summary>

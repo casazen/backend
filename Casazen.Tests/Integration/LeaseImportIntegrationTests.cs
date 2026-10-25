@@ -27,10 +27,13 @@ public class LeaseImportIntegrationTests(LeaseDraftFactory factory) : IClassFixt
 
     private LongRentWorld _world = null!;
 
+    /// <summary>The property the drafts are written on: owner A's, ready, with no lease (two leases of one property cannot cover the same days, LR-OVERLAP).</summary>
+    private Guid _draftProperty;
+
     public async Task InitializeAsync()
     {
         _world = await LongRentWorld.SeedAsync(factory);
-        await factory.MakeReadyAsync(_world.P1);
+        _draftProperty = await factory.AddReadyPropertyAsync(_world.OrgId, _world.OwnerId);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -41,7 +44,7 @@ public class LeaseImportIntegrationTests(LeaseDraftFactory factory) : IClassFixt
         using var client = _world.OwnerClient(factory);
 
         // A lease made in CasaZen, complete, with a template that is not approved: the same PDF is refused on both paths, nothing is written.
-        var (made, _) = await CompleteAsync(client, _world.P1);
+        var (made, _) = await CompleteAsync(client, _draftProperty);
         await ExpectProblemAsync(await PostPdfAsync(client, $"/api/leases/{made}/import"), HttpStatusCode.UnprocessableEntity, "lease_import_not_imported_origin");
         await ExpectProblemAsync(await PostPdfAsync(client, $"/api/leases/{made}/signed-document"), HttpStatusCode.UnprocessableEntity, "contract_template_not_approved");
         var untouched = await LoadAsync(made);
@@ -51,7 +54,7 @@ public class LeaseImportIntegrationTests(LeaseDraftFactory factory) : IClassFixt
         Assert.Empty(StoredFilesOf(made));
 
         // An imported draft of a property of the owner: a member limited to their own properties may not sign it.
-        var (imported, _) = await ImportedDraftAsync(client, _world.P1);
+        var (imported, _) = await ImportedDraftAsync(client, _draftProperty);
         using var colleague = _world.ColleagueClient(factory);
         Assert.Equal(HttpStatusCode.Forbidden, (await PostPdfAsync(colleague, $"/api/leases/{imported}/import")).StatusCode);
         Assert.Equal(LeaseStatus.Draft, (await LoadAsync(imported)).Status);

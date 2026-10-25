@@ -277,6 +277,14 @@ internal static class PostgresAdvisoryLocks
         /// the same time write one event, not two (CF-BE).
         /// </summary>
         ConcordatoFacilePrivacy = 1_210,
+
+        /// <summary>
+        /// The days of the leases of one property (key: property id, <c>propertyId.ToString("N")</c>): the check that no other lease covers the
+        /// same days and the step that makes a lease a contract (review confirmed, handed out for signature, signature or imported contract
+        /// recorded) run one at a time, so two leases of one property cannot both pass the check before either of them is written
+        /// (LR-OVERLAP). Always taken after the row lock of the lease, never before it.
+        /// </summary>
+        LeasePeriod = 1_211,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

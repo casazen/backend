@@ -26,10 +26,13 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
 {
     private LongRentWorld _world = null!;
 
+    /// <summary>The property the drafts are written on: owner A's, ready, with no lease (two leases of one property cannot cover the same days, LR-OVERLAP).</summary>
+    private Guid _draftProperty;
+
     public async Task InitializeAsync()
     {
         _world = await LongRentWorld.SeedAsync(factory);
-        await factory.MakeReadyAsync(_world.P1);
+        _draftProperty = await factory.AddReadyPropertyAsync(_world.OrgId, _world.OwnerId);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -51,7 +54,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
     public async Task Save_SeveralTabsOnTheSameVersionAtTheSameMoment_OneWins_TheOthersGet409_NoneGets500()
     {
         using var client = Owner();
-        var (id, version) = await CreateAsync(client, _world.P1);
+        var (id, version) = await CreateAsync(client, _draftProperty);
         var rents = new[] { 810, 820, 830, 840 };
 
         var responses = await InParallelAsync(
@@ -78,7 +81,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
     public async Task Save_WhileAnotherTransactionHoldsTheRow_WaitsAFewSeconds_ThenAnswers409_NeverAGatewayTimeout()
     {
         using var client = Owner();
-        var (id, version) = await CreateAsync(client, _world.P1);
+        var (id, version) = await CreateAsync(client, _draftProperty);
 
         // Somebody else holds the draft (a confirmation that reads the energy certificate from the storage, a job that deletes it).
         await using var scope = factory.Services.CreateAsyncScope();
@@ -106,7 +109,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
         using var client = Owner();
         var drafts = new List<(Guid Id, int Version)>();
         for (var i = 0; i < 4; i++)
-            drafts.Add(await CreateAsync(client, _world.P1));
+            drafts.Add(await CreateAsync(client, _draftProperty));
 
         var responses = await InParallelAsync(
             drafts.Select((draft, i) => (Func<Task<HttpResponseMessage>>)(() =>
@@ -128,7 +131,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
 
         for (var round = 0; round < 4; round++)
         {
-            var (id, version) = await CompleteAsync(client, _world.P1);
+            var (id, version) = await CompleteAsync(client, _draftProperty);
 
             var responses = await InParallelAsync(
             [
@@ -154,7 +157,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
     public async Task TheDraftAndTheResidence_AreStoredEncrypted_TheTableNeverHoldsTheValuesInClear()
     {
         using var client = Owner();
-        var (id, version) = await CreateAsync(client, _world.P1);
+        var (id, version) = await CreateAsync(client, _draftProperty);
         await PatchAsync(client, id, version, 2, """
             {"landlords":[{"firstName":"Zefiro","lastName":"Quarantaquattro","fiscalCode":"RSSMRA80A01H501U","citizenship":"IT","residence":"Via Segretissima 7, Pozzuoli","contactEmail":"zefiro@riservato.example"}],
              "tenants":[{"firstName":"Arianna","lastName":"Boldrini","fiscalCode":"VRDGLI85B02F205A","citizenship":"IT","residence":"Corso Nascosto 12, Taranto"},
@@ -194,7 +197,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
     public async Task ACompleteDraft_KeepsNoJson_TheRowsAreTheOnlyCopy_AndTheResidenceIsStillEncrypted()
     {
         using var client = Owner();
-        var (id, _) = await CompleteAsync(client, _world.P1);
+        var (id, _) = await CompleteAsync(client, _draftProperty);
 
         var (draft, residences) = await WithDbAsync(async db => (
             await db.Database.SqlQuery<string>($"""SELECT "DraftData" AS "Value" FROM "LeaseContracts" WHERE "Id" = {id} AND "DraftData" IS NOT NULL""").ToListAsync(),
@@ -211,7 +214,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
     public async Task Delete_TakesWithItThePartiesTheSignersTheRegistrationTheAuthorizationsAndTheEvents()
     {
         using var client = Owner();
-        var (id, _) = await CompleteAsync(client, _world.P1);
+        var (id, _) = await CompleteAsync(client, _draftProperty);
         var partyIds = (await JsonAsync(await client.GetAsync($"/api/leases/{id}/draft"))).GetProperty("values")
             .GetProperty("tenants").EnumerateArray().Select(t => t.GetProperty("id").GetGuid()).ToList();
         await WithDbAsync(async db =>
@@ -244,7 +247,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
         });
         Assert.Equal([0, 0, 0, 0, 0, 0], left);
         // The property and the other leases are where they were.
-        Assert.True(await WithDbAsync(db => db.Properties.IgnoreQueryFilters().AnyAsync(p => p.Id == _world.P1)));
+        Assert.True(await WithDbAsync(db => db.Properties.IgnoreQueryFilters().AnyAsync(p => p.Id == _draftProperty)));
         Assert.True(await WithDbAsync(db => db.LeaseContracts.IgnoreQueryFilters().AnyAsync(l => l.Id == _world.Active)));
     }
 
@@ -252,7 +255,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
     public async Task Delete_ALeaseWithARentPlan_IsRefused_AndNothingIsDeleted()
     {
         using var client = Owner();
-        var (id, _) = await CompleteAsync(client, _world.P1);
+        var (id, _) = await CompleteAsync(client, _draftProperty);
         await WithDbAsync(async db =>
         {
             db.RentSchedules.Add(new RentSchedule
@@ -300,11 +303,11 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
         await factory.MakeReadyAsync(other.P1);
         using var mine = Owner();
         using var theirs = other.OwnerClient(factory);
-        var (abandoned, _) = await CompleteAsync(mine, _world.P1);
+        var (abandoned, _) = await CompleteAsync(mine, _draftProperty);
         var (abandonedElsewhere, _) = await CompleteAsync(theirs, other.P1);
-        var (withSignedCopy, _) = await CompleteAsync(mine, _world.P1);
-        var (recent, _) = await CompleteAsync(mine, _world.P1);
-        var (incomplete, _) = await CreateAsync(mine, _world.P1);
+        var (withSignedCopy, _) = await CompleteAsync(mine, _draftProperty);
+        var (recent, _) = await CompleteAsync(mine, _draftProperty);
+        var (incomplete, _) = await CreateAsync(mine, _draftProperty);
         foreach (var id in new[] { abandoned, abandonedElsewhere, withSignedCopy, incomplete })
             await IdleAsync(id, 181);
         await IdleAsync(recent, 179);
@@ -338,7 +341,7 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
     public async Task Retention_WhileAnotherRunHoldsTheLock_IsSkipped_AndTheNextRunDoesTheWork()
     {
         using var client = Owner();
-        var (abandoned, _) = await CompleteAsync(client, _world.P1);
+        var (abandoned, _) = await CompleteAsync(client, _draftProperty);
         await IdleAsync(abandoned, 200);
 
         LeaseDraftRetentionResult skipped;

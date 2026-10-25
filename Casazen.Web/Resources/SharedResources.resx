@@ -510,6 +510,9 @@
   <data name="LeaseBusy" xml:space="preserve">
     <value>Il contratto è in uso da un'altra operazione in questo momento. Riprova tra un istante: questa modifica non è stata applicata.</value>
   </data>
+  <data name="LeasePeriodOverlaps" xml:space="preserve">
+    <value>Per questo immobile c'è già un contratto dal {0:d MMM yyyy} al {1:d MMM yyyy}. Due contratti non possono coprire gli stessi giorni: apri quello esistente o cambia le date.</value>
+  </data>
   <data name="RliChecklist_contract_signed" xml:space="preserve">
     <value>Contratto firmato da tutte le parti</value>
   </data>

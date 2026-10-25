@@ -106,6 +106,7 @@ public class LeaseSigningService(
             await LockLeaseAsync(lease.Id, cancellationToken);
             await ReloadAsync(lease, cancellationToken);
             EnsureNotSignedYet(lease);
+            await EnsurePeriodFreeAsync(lease, cancellationToken);
 
             var now = UtcNow();
             lease.Status = LeaseStatus.Signed;
@@ -277,6 +278,10 @@ public class LeaseSigningService(
             }
 
             LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
+
+            // LR-OVERLAP: a contract signed elsewhere takes its days only if no other lease of the property has them (409). A lease that had
+            // already ended is a record of the past all the same: it too must not sit on the days of another one.
+            await EnsurePeriodFreeAsync(lease, cancellationToken);
 
             var now = UtcNow();
             lease.Status = LeaseStatus.Signed;
@@ -533,6 +538,10 @@ public class LeaseSigningService(
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
         EnsureDraft(lease);
         await EnsureSignableAsync(lease);
+
+        // LR-OVERLAP: asked before the provider is called, so a lease that cannot take its days never opens a session there; asked again
+        // under the lock of the property, in the transaction below, which is the check that holds against a race.
+        await EnsurePeriodFreeAsync(lease, cancellationToken);
         var pdf = await templateService.GeneratePdfAsync(lease);
 
         // From here on a client that disconnects must not lose the provider's session: no cancellation.
@@ -564,6 +573,7 @@ public class LeaseSigningService(
             await LockLeaseAsync(lease.Id, CancellationToken.None);
             await ReloadAsync(lease, CancellationToken.None);
             EnsureDraft(lease);
+            await EnsurePeriodFreeAsync(lease, CancellationToken.None);
 
             var now = UtcNow();
             lease.Status = LeaseStatus.AwaitingSignature;
@@ -813,6 +823,14 @@ public class LeaseSigningService(
         if (lease.Status != LeaseStatus.Draft)
             throw new DomainConflictException(LeaseSigningErrorCodes.NotDraft, "LeaseSigningNotDraft");
     }
+
+    /// <summary>
+    /// LR-OVERLAP: 409 <c>lease_period_overlaps</c> when another lease of the property covers some of the days of this one. Called inside the
+    /// transaction that makes the lease a signed contract (or about to be), after the row lock of the lease, so the check and the write
+    /// happen under the lock of the property (<see cref="LeasePeriodGuard"/>).
+    /// </summary>
+    private Task EnsurePeriodFreeAsync(LeaseContract lease, CancellationToken cancellationToken) =>
+        LeasePeriodGuard.EnsureFreeAsync(db, lease.PropertyId, lease.Id, lease.StartDate, LeasePeriodRules.EffectiveEnd(lease), cancellationToken);
 
     /// <summary>The contract is not signed by every party yet (Draft, AwaitingSignature, PartiallySigned).</summary>
     private static void EnsureNotSignedYet(LeaseContract lease)
