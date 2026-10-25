@@ -1132,6 +1132,9 @@
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Consent to receive offers is not available right now: try again without selecting it.</value>
   </data>
+  <data name="DirectBookingCurrencyNotSupported" xml:space="preserve">
+    <value>Direct bookings not supported for this currency</value>
+  </data>
   <data name="SupplierClaimInvalid" xml:space="preserve">
     <value>The link is not valid: register your business again or sign in with the account already linked.</value>
   </data>
