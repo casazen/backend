@@ -576,6 +576,9 @@
   <data name="RliReceiptNotAvailable" xml:space="preserve">
     <value>La ricevuta di registrazione non è disponibile: il contratto non risulta ancora registrato.</value>
   </data>
+  <data name="RegistrationReceiptSourceInvalid" xml:space="preserve">
+    <value>Indica la ricevuta in uno solo dei due modi: il file inviato adesso oppure il documento già caricato nel contratto.</value>
+  </data>
   <data name="ServiceRequestNotFound" xml:space="preserve">
     <value>Richiesta di servizio non trovata</value>
   </data>

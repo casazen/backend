@@ -20,8 +20,8 @@ The guided draft it builds on is in [`long-rent-lease-draft.md`](long-rent-lease
    and step 7 `signed_copy_missing`, which stays `Locked` while a block is left in the first four.
 3. `POST /api/leases/{id}/import`: the signed PDF and the day it was signed (§ 3). The lease keeps its `id`; no second contract is created.
 4. If the contract is registered already: `POST /api/leases/{id}/registration/manual` (number, date and receipt PDF, `lease.register`), the declaration that
-   exists since LT-01: the lease becomes `Registered`. Otherwise it stays `Signed` and the registration deadline is the one of every signed lease
-   (`RegistrationDeadline`, LT-04). **Nothing invents a registration.**
+   exists since LT-01: the lease becomes `Registered`. The receipt is a file sent now, or the receipt already uploaded among the documents of the lease (§ 12).
+   Otherwise it stays `Signed` and the registration deadline is the one of every signed lease (`RegistrationDeadline`, LT-04). **Nothing invents a registration.**
 
 ## 2. What an imported draft is allowed (and a draft made in CasaZen is not)
 
@@ -163,3 +163,23 @@ The org is stated in the query, not left to the filter of the request. Who may c
 What it does is § 4 with one difference: the document keeps its own file and stays the `Contract` document of the Documents section; only the signed copy of the lease is new, a copy of its bytes under the key of the signed contract
 (**two keys, one owner each**, § 5), and no second `LeaseDocument` is added. The PDF is checked as a file sent now (`%PDF-`, at most 20 MB). The day of the signature the contract states, if it states one, is in the reading
 (`stipulaDate`): the screen proposes it and the person confirms it; without it the person types it.
+
+## 12. The registration declared with the receipt already uploaded (CF-END)
+
+A contract made with the guided service (`IsConcordatoFacileSource`, imported after the service delivered it) is **registered by the service**, which sends the receipt of the
+registration; the landlord uploads it among the documents of the lease (`POST /api/leases/{id}/documents`, kind `Registration`) and then declares the registration. The declaration
+does not ask for the file a second time. `POST /api/leases/{id}/registration/manual` (multipart, `lease.register`; the rest of the endpoint is in [`rli.md`](rli.md)) has
+`registrationCode`, `registrationDate` and **exactly one** of:
+
+- `receipt`: the PDF, as before;
+- `receiptDocumentId`: the id of a document of kind `Registration` of **this lease and of its org** (`GET /api/leases/{id}/documents` lists them).
+
+Both or neither: **400** `validation_error`. A document that is not a registration document of this lease and of its org (another lease's, another org's, an attestation or a contract, or no
+document at all) is **404** `document_not_found`, the same as one that does not exist: nothing is read from the bucket, nothing is written and the lease stays `Signed`. The org is stated in the
+query (`RliRegistrationService`), not left to the filter of the request. The lease itself is looked up and authorized first, so another org's lease is 404 `lease_not_found` before any document.
+
+What it does is the declaration of `rli.md` with one difference: the bytes of the receipt come from the private bucket (the document's own file), are checked as a file sent now (`%PDF-`, at most 10 MB:
+422 `rli_receipt_invalid`) and are written as a **new file** under `leases/{org}/{lease}/registration/` — **two keys, one owner each** (§ 5): the document keeps its file in the Documents section and the registration
+has its own, so deleting the one never takes the other away. Number and date are always typed by the person: the receipt is not read (there is no real receipt to tune a reader on). Nothing is sent to
+the Agenzia or to the service: the service registered the contract on its own; CasaZen only records the declaration. The provider path (`POST /api/leases/{id}/registration`, flag `RliProvider`, off) is untouched
+and is not offered to the person for a contract the service registers (the screen decides, not the server). No migration, no flag.

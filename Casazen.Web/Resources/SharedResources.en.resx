@@ -576,6 +576,9 @@
   <data name="RliReceiptNotAvailable" xml:space="preserve">
     <value>The registration receipt is not available: the contract is not registered yet.</value>
   </data>
+  <data name="RegistrationReceiptSourceInvalid" xml:space="preserve">
+    <value>Give the receipt in one way only: the file sent now, or the document already uploaded to the contract.</value>
+  </data>
   <data name="ServiceRequestNotFound" xml:space="preserve">
     <value>Service request not found</value>
   </data>

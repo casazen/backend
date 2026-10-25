@@ -35,18 +35,27 @@ The deadline shown is computed by the API (task LT-04, see [Registration deadlin
 1. The landlord registers the contract on an official channel of the Agenzia delle Entrate (`rli-esign.md` §2.1):
    RLI web service in the reserved area (SPID, CIE, CNS or Entratel/Fisconline credentials), the RLI software with
    filing through Entratel/Fisconline, an authorised intermediary (accountant, CAF, trade association) or an office of
-   the Agenzia. CasaZen is not an authorised intermediary (`rli-esign.md` §2.2) and does not file for them.
-2. In the lease page, "Enter registration details": registration number or protocol, registration date and the
-   receipt PDF, plus the explicit declaration checkbox.
-3. `POST /api/leases/{id}/registration/manual` (multipart: `registrationCode`, `registrationDate`, `receipt`), policy
-   `lease.register` on the lease (TN-3: the owner, or an org-wide member with `lease.register`):
+   the Agenzia. CasaZen is not an authorised intermediary (`rli-esign.md` §2.2) and does not file for them. A contract made
+   with the guided service (`IsConcordatoFacileSource`) is registered by the service, which sends the receipt: the landlord
+   uploads it among the documents of the lease (kind `Registration`) and declares the registration with it (below).
+2. In the lease page, "Enter registration details" ("Dichiara la registrazione" for a contract the service registers):
+   registration number or protocol, registration date and the receipt PDF, plus the explicit declaration checkbox. The
+   receipt is a new file or, when the lease already has registration documents, one of them ("Usa la ricevuta già caricata").
+3. `POST /api/leases/{id}/registration/manual` (multipart: `registrationCode`, `registrationDate` and **exactly one** of
+   `receipt` and `receiptDocumentId`), policy `lease.register` on the lease (TN-3: the owner, or an org-wide member with
+   `lease.register`):
    - `registrationCode`: 1-100 characters, trimmed, no format check (no official format was verified);
    - `registrationDate`: not later than today in Europe/Rome;
    - `receipt`: checked on its content (`%PDF-` signature), at most 10 MB;
+   - `receiptDocumentId` (CF-END): the id of a document of kind `Registration` of this lease and of its org; its bytes are
+     read from the private bucket and checked as a file sent now. Another lease's, another org's or another kind's document
+     is 404 `document_not_found` and nothing is read; both fields, or neither, are 400 `validation_error`
+     ([`long-rent-lease-import.md`](long-rent-lease-import.md) § 12);
    - the lease must be `Signed` with no registration in progress or done (409 `rli_registration_in_progress` /
      `rli_already_registered`, 422 `rli_lease_not_signed`).
 4. The receipt is stored in the **private bucket** (FD-07) under
-   `leases/{orgId}/{leaseId}/registration/{random}.pdf`, then one transaction records the registration (`Channel =
+   `leases/{orgId}/{leaseId}/registration/{random}.pdf` (always a file of its own, also when it comes from a document: the
+   document keeps its file), then one transaction records the registration (`Channel =
    Manual`, code, date, receipt key, `DeclaredByUserId`), the lease `Registered` and the `RegistrationConfirmed` event
    (payload `manual`). If the transaction fails, the uploaded receipt is deleted.
 5. `GET /api/leases/{id}/registration/receipt` streams the receipt from the private bucket, only to a caller who may
