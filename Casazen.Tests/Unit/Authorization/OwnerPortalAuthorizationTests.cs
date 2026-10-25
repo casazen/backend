@@ -48,8 +48,8 @@ public class OwnerPortalAuthorizationTests
         Assert.True(contextOwnerB.HasSucceeded, "Owner B should be authorized with valid owner_portal context");
 
         // Assert: The owner IDs are different, proving tenant isolation
-        var ownerAClaimId = contextOwnerA.User.GetOwnerUserId(TestClaimNamespace);
-        var ownerBClaimId = contextOwnerB.User.GetOwnerUserId(TestClaimNamespace);
+        var ownerAClaimId = contextOwnerA.User.GetOwnerUserId();
+        var ownerBClaimId = contextOwnerB.User.GetOwnerUserId();
         Assert.NotNull(ownerAClaimId);
         Assert.NotNull(ownerBClaimId);
         Assert.NotEqual(ownerAClaimId, ownerBClaimId);
