@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -33,12 +34,12 @@ public class IndexNowController(IOptions<IndexNowOptions> options, ILogger<Index
         if (string.IsNullOrWhiteSpace(_options.ApiKey))
         {
             logger.LogWarning("IndexNow API key not configured - notification skipped");
-            return BadRequest(new { error = "IndexNow not configured" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "INDEXNOW_NOT_CONFIGURED", "IndexNowNotConfigured");
         }
 
         if (request.UrlList is null || request.UrlList.Count == 0)
         {
-            return BadRequest(new { error = "No URLs provided" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "INDEXNOW_NO_URLS", "IndexNowNoUrlsProvided");
         }
 
         // TODO: Queue background job to submit URLs to IndexNow endpoint
