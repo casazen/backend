@@ -3254,4 +3254,16 @@
   <data name="UserIdMissing" xml:space="preserve">
     <value>Identificativo utente mancante</value>
   </data>
+  <data name="OwnerDoesNotOwnProperty" xml:space="preserve">
+    <value>Il proprietario non possiede questa proprietà</value>
+  </data>
+  <data name="StatementAlreadyExists" xml:space="preserve">
+    <value>Esiste già un rendiconto per questo proprietario, proprietà e periodo</value>
+  </data>
+  <data name="StatementNotApproved" xml:space="preserve">
+    <value>Il rendiconto non è nello stato Approvato</value>
+  </data>
+  <data name="StatementNotDraft" xml:space="preserve">
+    <value>Il rendiconto non è nello stato Bozza</value>
+  </data>
 </root>

@@ -3254,4 +3254,16 @@
   <data name="UserIdMissing" xml:space="preserve">
     <value>User ID missing</value>
   </data>
+  <data name="OwnerDoesNotOwnProperty" xml:space="preserve">
+    <value>The owner does not own this property</value>
+  </data>
+  <data name="StatementAlreadyExists" xml:space="preserve">
+    <value>A statement already exists for this owner, property, and period</value>
+  </data>
+  <data name="StatementNotApproved" xml:space="preserve">
+    <value>The statement is not in Approved status</value>
+  </data>
+  <data name="StatementNotDraft" xml:space="preserve">
+    <value>The statement is not in Draft status</value>
+  </data>
 </root>

@@ -96,14 +96,15 @@ public sealed class StatementService(AppDbContext db) : IStatementService
             var stayYear = payment.Booking.CheckInDate.Year;
 
             // Calculate commission based on mandate (if available)
+            // Store full precision without rounding (ADR-017-R1)
             var grossRevenue = payment.Amount;
             var commission = mandate != null
-                ? Math.Round(grossRevenue * mandate.CommissionPercent / 100m, 2, MidpointRounding.ToEven)
+                ? grossRevenue * mandate.CommissionPercent / 100m
                 : 0m;
 
-            // For co-ownership, apply the ownership split to the gross revenue
-            var ownerShare = Math.Round(grossRevenue * ownership.SharePercent / 100m, 2, MidpointRounding.ToEven);
-            var commissionShare = Math.Round(commission * ownership.SharePercent / 100m, 2, MidpointRounding.ToEven);
+            // For co-ownership, apply the ownership split with FULL PRECISION (no rounding at line level per ADR-017-R2)
+            var ownerShare = grossRevenue * ownership.SharePercent / 100m;
+            var commissionShare = commission * ownership.SharePercent / 100m;
 
             var line = new StatementLine
             {
@@ -199,9 +200,58 @@ public sealed class StatementService(AppDbContext db) : IStatementService
         statement.Expenses = statement.Lines.Sum(l => l.Expenses);
         statement.WithholdingTax = statement.Lines.Sum(l => l.Withholding);
 
-        // Compute net and round ONCE with banker's rounding (ADR-017-R2)
+        // Compute net with full precision
         var netBeforeRounding = statement.TotalRevenue - statement.Commission - statement.Expenses - statement.WithholdingTax;
-        statement.NetPayable = Math.Round(netBeforeRounding, 2, MidpointRounding.ToEven);
+
+        // Apply "last owner gets remainder" logic for co-ownership (ADR-017-R3/R4)
+        // Get all active ownerships for this property in deterministic order (by PropertyOwnerId)
+        var allOwnerships = await db.Set<PropertyOwnership>()
+            .Where(po => po.PropertyId == statement.PropertyId && po.OwnershipEnd == null)
+            .OrderBy(po => po.PropertyOwnerId)
+            .ToListAsync(cancellationToken);
+
+        if (allOwnerships.Count > 1)
+        {
+            // Co-ownership exists: check if this is the last owner in the deterministic order
+            var isLastOwner = allOwnerships[^1].PropertyOwnerId == statement.PropertyOwnerId;
+
+            if (isLastOwner)
+            {
+                // Last owner gets remainder: total - sum(other owners' rounded shares)
+                // Query other owners' statements for the same property and period
+                var otherStatements = await db.Set<OwnerStatement>()
+                    .Where(s => s.PropertyId == statement.PropertyId
+                        && s.Month == statement.Month
+                        && s.Year == statement.Year
+                        && s.PropertyOwnerId != statement.PropertyOwnerId)
+                    .ToListAsync(cancellationToken);
+
+                if (otherStatements.Count == allOwnerships.Count - 1)
+                {
+                    // All other co-owners have statements: compute property total and apply remainder
+                    // Property total = sum of all owner shares (full precision)
+                    var propertyTotal = netBeforeRounding / (statement.OwnershipPercent / 100m);
+                    var otherOwnersTotal = otherStatements.Sum(s => s.NetPayable);
+                    statement.NetPayable = Math.Round(propertyTotal, 2, MidpointRounding.ToEven) - otherOwnersTotal;
+                }
+                else
+                {
+                    // Other co-owners don't have statements yet: round normally for now
+                    // (will be recalculated when other statements are generated)
+                    statement.NetPayable = Math.Round(netBeforeRounding, 2, MidpointRounding.ToEven);
+                }
+            }
+            else
+            {
+                // Not the last owner: round normally (ADR-017-R2)
+                statement.NetPayable = Math.Round(netBeforeRounding, 2, MidpointRounding.ToEven);
+            }
+        }
+        else
+        {
+            // Sole ownership: round normally (ADR-017-R2)
+            statement.NetPayable = Math.Round(netBeforeRounding, 2, MidpointRounding.ToEven);
+        }
 
         statement.UpdatedAt = DateTime.UtcNow;
 

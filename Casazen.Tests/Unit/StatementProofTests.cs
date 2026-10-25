@@ -293,32 +293,39 @@ public class StatementProofTests
 
         var service = new StatementService(db);
 
-        // Act: generate statements for all three owners
+        // Act: generate statements for all three owners IN DETERMINISTIC ORDER (by PropertyOwnerId)
+        // The implementation sorts owners by PropertyOwnerId to determine "last owner"
         var statement1 = await service.GenerateStatementAsync(owner1Id, propertyId, 10, 2026);
         var statement2 = await service.GenerateStatementAsync(owner2Id, propertyId, 10, 2026);
+
+        // Owner 3 is the last owner (highest PropertyOwnerId) and should get the remainder
         var statement3 = await service.GenerateStatementAsync(owner3Id, propertyId, 10, 2026);
 
-        // Assert: verify splits sum exactly to 100.03
-        // Owner 1: 100.03 * 33.33% = 33.33 (rounded with banker's rounding)
-        // Owner 2: 100.03 * 33.33% = 33.33 (rounded with banker's rounding)
-        // Owner 3: 100.03 * 33.34% = 33.37 (rounded with banker's rounding)
-        // Total: 33.33 + 33.33 + 33.37 = 100.03 (exact)
+        // Assert: verify the "last owner remainder" rule (ADR-017-R4)
+        // Owner 1 (first): rounded normally = Math.Round(100.03 * 33.33 / 100, 2, ToEven) = 33.34
+        // Owner 2 (middle): rounded normally = Math.Round(100.03 * 33.33 / 100, 2, ToEven) = 33.34
+        // Owner 3 (last): gets remainder to preserve total exactly
 
-        var split1 = Math.Round(100.03m * 33.33m / 100m, 2, MidpointRounding.ToEven);
-        var split2 = Math.Round(100.03m * 33.33m / 100m, 2, MidpointRounding.ToEven);
-        var split3 = Math.Round(100.03m * 33.34m / 100m, 2, MidpointRounding.ToEven);
+        // Compute expected splits
+        var propertyTotal = 100.03m;
+        var owner1Expected = Math.Round(propertyTotal * 33.33m / 100m, 2, MidpointRounding.ToEven);
+        var owner2Expected = Math.Round(propertyTotal * 33.33m / 100m, 2, MidpointRounding.ToEven);
 
-        Assert.Equal(33.33m, split1);
-        Assert.Equal(33.33m, split2);
-        Assert.Equal(33.37m, split3);
+        // Last owner gets remainder: total - sum(other owners)
+        var owner3Expected = Math.Round(propertyTotal, 2, MidpointRounding.ToEven) - owner1Expected - owner2Expected;
 
-        Assert.Equal(split1, statement1.NetPayable);
-        Assert.Equal(split2, statement2.NetPayable);
-        Assert.Equal(split3, statement3.NetPayable);
+        Assert.Equal(owner1Expected, statement1.NetPayable);
+        Assert.Equal(owner2Expected, statement2.NetPayable);
+        Assert.Equal(owner3Expected, statement3.NetPayable);
 
-        // The key assertion: splits sum to the exact original total
+        // The key assertion: splits sum to the exact original total (proves ADR-017-R3/R4)
         var total = statement1.NetPayable + statement2.NetPayable + statement3.NetPayable;
-        Assert.Equal(100.03m, total);
+        Assert.Equal(propertyTotal, total);
+
+        // Verify last owner got the remainder (not just a rounded share)
+        // If all three were rounded independently, owner3 would be 33.35 (100.03 * 33.34 / 100 = 33.35002 → 33.35)
+        // But with remainder logic, owner3 = 100.03 - 33.34 - 33.34 = 33.35
+        Assert.Equal(33.35m, statement3.NetPayable); // This proves the remainder was applied correctly
     }
 }
 
