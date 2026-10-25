@@ -30,7 +30,7 @@ L’organizzazione e l’ambito sugli immobili sono controlli di accesso sui dat
 
 Auth0 autentica i token dell’API; le policy controllano le azioni. Stripe gestisce i flussi di pagamento configurati, Resend le email; Hangfire esegue i job. La configurazione dei servizi esterni e la loro readiness vanno verificate nell’ambiente di destinazione.
 
-La logica di applicazione degli eventi del canone è in `RentPaymentEventApplier`, separata dall’orchestrazione di `RentBillingService`. Per i contratti, consultare i runbook di [bozza guidata](../runbooks/long-rent-lease-draft.md) e [aggregati](../runbooks/long-rent-aggregates.md).
+La logica di applicazione degli eventi del canone è in `RentPaymentEventApplier`, separata dall’orchestrazione di `RentBillingService`. Per i contratti, consultare i runbook di [bozza guidata](../runbooks/long-rent-lease-draft.md) e [aggregati](../runbooks/long-rent-aggregates.md). Due regole sui giorni di un contratto valgono ovunque: due contratti dello stesso immobile non coprono gli stessi giorni (409 `lease_period_overlaps`, [bozza § 18](../runbooks/long-rent-lease-draft.md)) e una cessazione anticipata ha un giorno dopo l’inizio e non oltre la fine, su un contratto già iniziato (422 `lease_termination_date_invalid`, [aggregati § 10.2.1](../runbooks/long-rent-aggregates.md)).
 
 L’iCal importa ed esporta occupazioni: non equivale a un’integrazione completa di prezzi e prenotazioni. Il connettore web service Alloggiati non è attualmente implementato; il flusso operativo richiede invio manuale. I dettagli sono nei rispettivi [runbook iCal](../runbooks/ical.md) e [Alloggiati](../runbooks/alloggiati.md).
 
