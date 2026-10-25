@@ -90,6 +90,9 @@ public class AppDbContext(
     // Swiss municipalities from Ufficio federale di statistica (NF-02)
     public DbSet<SwissMunicipality> SwissMunicipalities { get; set; } = null!;
 
+    // Swiss compliance receipts (Ticino police notifications, OTR tax reports, ADR-016)
+    public DbSet<SwissComplianceReceipt> SwissComplianceReceipts { get; set; } = null!;
+
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
