@@ -1,0 +1,14 @@
+# CasaZen robots.txt
+
+User-agent: *
+Disallow: /api/
+Disallow: /hangfire/
+
+# Allow OpenAI crawler (OAI-SearchBot)
+User-agent: OAI-SearchBot
+Allow: /
+
+# Sitemaps
+Sitemap: /sitemap.xml
+Sitemap: /api/public/sitemap-book.xml
+Sitemap: /api/public/sitemap-supplier.xml
