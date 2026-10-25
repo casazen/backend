@@ -192,7 +192,6 @@ public static class CasazenPolicies
     /// <summary>The agency tier policies registered at startup (ADR-010, ADR-012).</summary>
     public static IReadOnlyList<string> AgencyPolicies { get; } =
     [
-        AgencyOwnerManage,
         AgencyOwnerView,
         AgencyOwnerFinancialRead,
     ];
