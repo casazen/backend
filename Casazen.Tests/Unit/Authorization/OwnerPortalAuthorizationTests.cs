@@ -13,11 +13,13 @@ namespace Casazen.Tests.Unit.Authorization;
 /// </summary>
 public class OwnerPortalAuthorizationTests
 {
+    private const string TestClaimNamespace = "https://casazen.app";
+
     private static OwnerPortalAuthorizationHandler CreateHandler()
     {
         var auth0Options = Options.Create(new Auth0Options
         {
-            CustomClaimNamespace = "https://casazen.app"
+            CustomClaimNamespace = TestClaimNamespace
         });
         return new OwnerPortalAuthorizationHandler(auth0Options);
     }
@@ -46,8 +48,8 @@ public class OwnerPortalAuthorizationTests
         Assert.True(contextOwnerB.HasSucceeded, "Owner B should be authorized with valid owner_portal context");
 
         // Assert: The owner IDs are different, proving tenant isolation
-        var ownerAClaimId = contextOwnerA.User.GetOwnerUserId();
-        var ownerBClaimId = contextOwnerB.User.GetOwnerUserId();
+        var ownerAClaimId = contextOwnerA.User.GetOwnerUserId(TestClaimNamespace);
+        var ownerBClaimId = contextOwnerB.User.GetOwnerUserId(TestClaimNamespace);
         Assert.NotNull(ownerAClaimId);
         Assert.NotNull(ownerBClaimId);
         Assert.NotEqual(ownerAClaimId, ownerBClaimId);
@@ -76,8 +78,8 @@ public class OwnerPortalAuthorizationTests
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, "auth0|owner123"),
-            new("https://casazen.app/context", "owner_portal"),
-            new("https://casazen.app/owner_id", ownerId.ToString()),
+            new($"{TestClaimNamespace}/context", "owner_portal"),
+            new($"{TestClaimNamespace}/owner_id", ownerId.ToString()),
             new(ClaimTypes.Role, "PropertyOwner") // MUST NOT have host roles
         };
         var identity = new ClaimsIdentity(claims, "TestAuth");
@@ -108,8 +110,8 @@ public class OwnerPortalAuthorizationTests
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, "auth0|owner123"),
-            new("https://casazen.app/context", "owner_portal"),
-            new("https://casazen.app/owner_id", ownerId.ToString()),
+            new($"{TestClaimNamespace}/context", "owner_portal"),
+            new($"{TestClaimNamespace}/owner_id", ownerId.ToString()),
             new(ClaimTypes.Role, hostRole)
         };
         var identity = new ClaimsIdentity(claims, "TestAuth");
@@ -135,7 +137,7 @@ public class OwnerPortalAuthorizationTests
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, "auth0|owner123"),
-            new("https://casazen.app/context", "owner_portal")
+            new($"{TestClaimNamespace}/context", "owner_portal")
             // Missing owner_id claim
         };
         var identity = new ClaimsIdentity(claims, "TestAuth");
@@ -176,8 +178,8 @@ public class OwnerPortalAuthorizationTests
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, "auth0|owner" + ownerId.ToString("N")[..8]),
-            new("https://casazen.app/context", contextValue),
-            new("https://casazen.app/owner_id", ownerId.ToString())
+            new($"{TestClaimNamespace}/context", contextValue),
+            new($"{TestClaimNamespace}/owner_id", ownerId.ToString())
         };
         var identity = new ClaimsIdentity(claims, "TestAuth");
         var user = new ClaimsPrincipal(identity);

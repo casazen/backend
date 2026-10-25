@@ -19,10 +19,11 @@ public sealed class Auth0Options
     public string? Audience { get; set; }
 
     /// <summary>
-    /// Custom claim namespace for Auth0 custom claims (ADR-011-R7). Defaults to <c>https://casazen.app</c>.
-    /// Custom claims use this as a prefix (e.g., <c>https://casazen.app/context</c>, <c>https://casazen.app/owner_id</c>).
+    /// Custom claim namespace for Auth0 custom claims (ADR-011-R7). Required for owner portal authorization.
+    /// Custom claims use this as a prefix (e.g., namespace + <c>/context</c>, namespace + <c>/owner_id</c>).
+    /// Configured via <c>Auth0:CustomClaimNamespace</c> or <c>Auth0__CustomClaimNamespace</c> environment variable.
     /// </summary>
-    public string CustomClaimNamespace { get; set; } = "https://casazen.app";
+    public string? CustomClaimNamespace { get; set; }
 
     public string? ManagementClientId { get; set; }
 
@@ -62,6 +63,9 @@ public sealed class Auth0OptionsValidator : IValidateOptions<Auth0Options>
 
         if (RequiredConfiguration.IsMissing(options.Audience))
             errors.Add("Auth0__Audience is missing or a placeholder: set the identifier of the Auth0 API (e.g. https://casazen-api).");
+
+        if (RequiredConfiguration.IsMissing(options.CustomClaimNamespace))
+            errors.Add("Auth0__CustomClaimNamespace is missing: set the custom claim namespace for Auth0 (ADR-011-R7).");
 
         return errors;
     }

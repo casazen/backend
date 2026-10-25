@@ -20,7 +20,8 @@ public class OwnerPortalAuthorizationHandler : AuthorizationHandler<OwnerPortalR
 
     public OwnerPortalAuthorizationHandler(IOptions<Auth0Options> auth0Options)
     {
-        _customClaimNamespace = auth0Options.Value.CustomClaimNamespace;
+        _customClaimNamespace = auth0Options.Value.CustomClaimNamespace
+            ?? throw new InvalidOperationException("Auth0:CustomClaimNamespace is required for owner portal authorization.");
     }
 
     protected override Task HandleRequirementAsync(
@@ -59,31 +60,33 @@ public class OwnerPortalAuthorizationHandler : AuthorizationHandler<OwnerPortalR
 
 /// <summary>
 /// Extensions to read owner portal claims from ClaimsPrincipal (ADR-011-R7).
-/// The claim namespace defaults to <c>https://casazen.app</c> but can be overridden for testing.
+/// The custom claim namespace must be provided (from Auth0Options configuration).
 /// </summary>
 public static class OwnerPortalPrincipalExtensions
 {
-    private const string DefaultClaimNamespace = "https://casazen.app";
-
     /// <summary>
     /// Gets the OwnerUserId from the JWT (ADR-011-R7). Returns null if not an owner portal context.
     /// </summary>
-    public static Guid? GetOwnerUserId(this ClaimsPrincipal user, string? customClaimNamespace = null)
+    /// <param name="user">The claims principal to read from.</param>
+    /// <param name="customClaimNamespace">The Auth0 custom claim namespace (from configuration).</param>
+    public static Guid? GetOwnerUserId(this ClaimsPrincipal user, string customClaimNamespace)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var ns = customClaimNamespace ?? DefaultClaimNamespace;
-        var ownerIdClaim = user.FindFirstValue($"{ns}/owner_id");
+        ArgumentException.ThrowIfNullOrWhiteSpace(customClaimNamespace);
+        var ownerIdClaim = user.FindFirstValue($"{customClaimNamespace}/owner_id");
         return Guid.TryParse(ownerIdClaim, out var ownerId) ? ownerId : null;
     }
 
     /// <summary>
     /// Gets the agency IDs from the JWT (ADR-011-R7). Returns empty list if not an owner portal context.
     /// </summary>
-    public static IReadOnlyList<Guid> GetOwnerAgencyIds(this ClaimsPrincipal user, string? customClaimNamespace = null)
+    /// <param name="user">The claims principal to read from.</param>
+    /// <param name="customClaimNamespace">The Auth0 custom claim namespace (from configuration).</param>
+    public static IReadOnlyList<Guid> GetOwnerAgencyIds(this ClaimsPrincipal user, string customClaimNamespace)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var ns = customClaimNamespace ?? DefaultClaimNamespace;
-        var agencyIdsClaim = user.FindFirstValue($"{ns}/agency_ids");
+        ArgumentException.ThrowIfNullOrWhiteSpace(customClaimNamespace);
+        var agencyIdsClaim = user.FindFirstValue($"{customClaimNamespace}/agency_ids");
         if (string.IsNullOrWhiteSpace(agencyIdsClaim))
             return Array.Empty<Guid>();
 
@@ -117,11 +120,13 @@ public static class OwnerPortalPrincipalExtensions
     /// <summary>
     /// Gets the owned property IDs from the JWT (ADR-011-R7). Returns empty list if not an owner portal context.
     /// </summary>
-    public static IReadOnlyList<Guid> GetOwnedPropertyIds(this ClaimsPrincipal user, string? customClaimNamespace = null)
+    /// <param name="user">The claims principal to read from.</param>
+    /// <param name="customClaimNamespace">The Auth0 custom claim namespace (from configuration).</param>
+    public static IReadOnlyList<Guid> GetOwnedPropertyIds(this ClaimsPrincipal user, string customClaimNamespace)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var ns = customClaimNamespace ?? DefaultClaimNamespace;
-        var propertyIdsClaim = user.FindFirstValue($"{ns}/owned_property_ids");
+        ArgumentException.ThrowIfNullOrWhiteSpace(customClaimNamespace);
+        var propertyIdsClaim = user.FindFirstValue($"{customClaimNamespace}/owned_property_ids");
         if (string.IsNullOrWhiteSpace(propertyIdsClaim))
             return Array.Empty<Guid>();
 
