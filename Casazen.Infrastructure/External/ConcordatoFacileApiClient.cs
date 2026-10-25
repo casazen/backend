@@ -15,6 +15,13 @@ namespace Casazen.Infrastructure.External;
 public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<ConcordatoFacileApiClient> logger)
 {
     /// <summary>
+    /// Whether the status API key is configured, that is whether the client sends <c>Authorization: Bearer</c> (the registration in
+    /// <c>ServiceCollectionExtensions</c> sets the header from <c>ConcordatoFacile:StatusApiKey</c> and sets none without it). Without the
+    /// key ConcordatoFacile answers 401 to every read, so the callers do not ask: the status is then "not available" (CF-BE).
+    /// </summary>
+    public virtual bool IsConfigured => httpClient.DefaultRequestHeaders.Authorization is not null;
+
+    /// <summary>
     /// The practices of a lease, newest first (v0.2 §4, <c>GET /v1/leases/{leaseId}/practices</c>). The body is an object
     /// <c>{ "leaseId": ..., "practices": [...] }</c>, also when the list is empty: a lease with no practices, unknown to ConcordatoFacile or
     /// not CasaZen's is a 200 with <c>"practices": []</c>, never a 404; a body without the list is read as no practices. Any other

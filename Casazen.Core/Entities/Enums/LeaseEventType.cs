@@ -101,4 +101,12 @@ public enum LeaseEventType
     /// No URL or signature is stored, only the timestamp for audit and brief refresh window (ADR-008-R9).
     /// </summary>
     ConcordatoFacileLinkGenerated,
+
+    /// <summary>
+    /// The landlord accepted the privacy notice for this lease before the guided contract form could be opened (CF-BE). Payload: JSON
+    /// with <c>policyVersion</c>, the version of the notice that was current (<c>Legal:Documents:Privacy:Version</c>). No personal data.
+    /// The signed link is made only for a lease that has this event for the current version. Appended last: the stored integers of
+    /// the other types do not change.
+    /// </summary>
+    ConcordatoFacilePrivacyAccepted,
 }
