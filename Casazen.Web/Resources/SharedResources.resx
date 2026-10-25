@@ -3239,4 +3239,13 @@
   <data name="TrustedSupplierNotFound" xml:space="preserve">
     <value>Fornitore di fiducia non trovato</value>
   </data>
+  <data name="ApprovalItemNotFound" xml:space="preserve">
+    <value>Elemento da approvare non trovato</value>
+  </data>
+  <data name="OrgContextRequired" xml:space="preserve">
+    <value>Contesto organizzazione richiesto</value>
+  </data>
+  <data name="UserIdMissing" xml:space="preserve">
+    <value>Identificativo utente mancante</value>
+  </data>
 </root>
