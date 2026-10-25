@@ -183,6 +183,10 @@ public class AppDbContext(
     public DbSet<BiometricSettings> BiometricSettings { get; set; } = null!;
     public DbSet<BiometricVerificationLog> BiometricVerificationLogs { get; set; } = null!;
 
+    // Property access codes and release logs (NF-13, E06/F03/US01/T01)
+    public DbSet<PropertyAccessCode> PropertyAccessCodes { get; set; } = null!;
+    public DbSet<AccessCodeReleaseLog> AccessCodeReleaseLogs { get; set; } = null!;
+
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
 

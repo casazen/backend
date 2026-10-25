@@ -387,6 +387,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
         // NF-12: Operator verification queue for manual biometric decisions (ADR-013).
         services.AddScoped<IVerificationQueueService, VerificationQueueService>();
+        // NF-13: Property access codes with encryption and verification gating (E06/F03/US01/T01).
+        services.AddScoped<IAccessCodeService, AccessCodeService>();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).
