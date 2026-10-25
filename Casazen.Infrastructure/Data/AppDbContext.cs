@@ -160,6 +160,10 @@ public class AppDbContext(
     // Guest identity document images for OCR (NF-10, ADR-013-R3)
     public DbSet<DocumentImage> DocumentImages { get; set; } = null!;
 
+    // Biometric verification settings and audit logs (NF-11, ADR-013)
+    public DbSet<BiometricSettings> BiometricSettings { get; set; } = null!;
+    public DbSet<BiometricVerificationLog> BiometricVerificationLogs { get; set; } = null!;
+
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
 
