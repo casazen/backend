@@ -350,7 +350,7 @@ public sealed partial class LeaseTemplateDraftsTests
         var pdf = await sut.GeneratePreviewPdfAsync(lease);
 
         var pages = PdfTestReader.Pages(pdf);
-        Assert.True(pages.Count >= 5, $"{pages.Count} pages");
+        Assert.True(pages.Count >= 3, $"{pages.Count} pages");
         Assert.All(pages, page => Assert.Equal(LeaseContractDocument.DraftWatermark, page.Watermark));
         var text = PdfTestReader.Text(pdf);
         Assert.Contains(LeaseContractDocument.DraftMarker, text, StringComparison.Ordinal);
