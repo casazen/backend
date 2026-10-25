@@ -610,6 +610,58 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("CalendarBlocks");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.Campaign", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ErrorCount")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsAiGenerated")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SegmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SentCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("UnsubscribeCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SegmentId");
+
+                    b.ToTable("Campaigns");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.CancellationPolicy", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1838,6 +1890,32 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("GuestId", "OccurredAt");
 
                     b.ToTable("GuestPrivacyAuditEntries");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.GuestSegment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConditionJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("GuestSegments");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.GuestThread", b =>
@@ -8093,6 +8171,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.Campaign", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.GuestSegment", "Segment")
+                        .WithMany()
+                        .HasForeignKey("SegmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Segment");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
