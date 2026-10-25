@@ -532,6 +532,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgSeatService, OrgSeatService>();
         services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
         services.AddScoped<IOrgInvitationService, OrgInvitationService>();
+        services.AddScoped<IOwnerInvitationService, OwnerInvitationService>();
         services.AddScoped<IOrgTeamService, OrgTeamService>();
         // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
         services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();
