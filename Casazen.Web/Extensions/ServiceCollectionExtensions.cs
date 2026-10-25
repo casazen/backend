@@ -231,6 +231,7 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<IAuthorizationHandler, HostResourceAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OrgBillingAdminAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, AgencyTierAuthorizationHandler>();
 
         // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
         var builder = services.AddAuthorizationBuilder()
@@ -250,6 +251,13 @@ public static class ServiceCollectionExtensions
             var (contextKeys, permissionKey) = CasazenPolicies.ParseContextPolicy(policyName);
             builder.AddPolicy(policyName, policy =>
                 policy.Requirements.Add(new ContextPermissionRequirement(contextKeys, permissionKey)));
+        }
+
+        // Agency tier policies (ADR-010): all require Org.PlanTier == PlanTier.Agency
+        foreach (var policyName in CasazenPolicies.AgencyPolicies)
+        {
+            builder.AddPolicy(policyName, policy =>
+                policy.Requirements.Add(new AgencyTierRequirement()));
         }
 
         return services;
@@ -437,6 +445,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConcordatoFacileAccessService, ConcordatoFacileAccessService>();
         services.AddScoped<IConcordatoFacileGiftService, ConcordatoFacileGiftService>();
         services.AddScoped<IConcordatoFacileLinkService, ConcordatoFacileLinkService>();
+        // The practices of a lease and the lookup of a practice, read from the ConcordatoFacile status API and kept in memory (ADR-008). The
+        // controller of the module takes it in its constructor: without this registration every one of its actions fails (CF-FIX2).
+        services.AddScoped<IConcordatoFacileStatusCacheService, ConcordatoFacileStatusCacheService>();
         // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
         services.AddScoped<IRentRegisterService, RentRegisterService>();
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();

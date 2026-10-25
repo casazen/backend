@@ -2306,6 +2306,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsAgencyTierDowngraded")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("LegalName")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -3455,8 +3458,18 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(6)
                         .HasColumnType("character varying(6)");
 
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
 
                     b.Property<decimal>("DamageDeposit")
                         .HasPrecision(18, 2)

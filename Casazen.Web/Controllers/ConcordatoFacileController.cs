@@ -1,7 +1,6 @@
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Dtos.ConcordatoFacile;
@@ -28,7 +27,6 @@ public class ConcordatoFacileController(
     IConcordatoFacileGiftService giftService,
     IConcordatoFacileLinkService linkService,
     IConcordatoFacileStatusCacheService statusCacheService,
-    ConcordatoFacileApiClient apiClient,
     AppDbContext db,
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService) : ControllerBase
@@ -137,6 +135,7 @@ public class ConcordatoFacileController(
     /// Uses PostgreSQL advisory locks for atomicity (ADR-006-R4).
     /// Re-entry for the same leaseId returns 200 OK (ADR-006-R6).
     /// Returns 409 conflict if gift already consumed for another lease.
+    /// 404 <c>lease_not_found</c> when the lease does not exist or belongs to another org: the gift is not touched (CF-FIX2).
     /// </summary>
     /// <param name="leaseId">The lease contract ID from the route</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -237,6 +236,8 @@ public class ConcordatoFacileController(
     /// Gets cached practice status for a lease (ADR-008-R15).
     /// Returns practices and timing metadata for frontend polling.
     /// Requires LeaseRead policy (ADR-008-R11).
+    /// 404 <c>lease_not_found</c> when the lease does not exist or belongs to another org, before the cache is read and before
+    /// ConcordatoFacile is asked (CF-FIX2, ADR-008-R11).
     /// </summary>
     /// <param name="leaseId">The lease contract ID from the route</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -274,7 +275,9 @@ public class ConcordatoFacileController(
                 StatusChangedAt = p.StatusChangedAt,
                 SubmittedAt = p.SubmittedAt,
                 Comune = p.Comune,
-                ComuneDiffersFromLink = p.ComuneDiffersFromLink,
+
+                // null (the link named no comune) is nothing to warn about, like false.
+                ComuneDiffersFromLink = p.ComuneDiffersFromLink == true,
                 CloseReason = p.CloseReason
             }).ToList(),
             LastCheckedAt = result.LastCheckedAt,
@@ -310,8 +313,9 @@ public class ConcordatoFacileController(
             return this.ApiProblem(StatusCodes.Status404NotFound, "practice_not_found", "PracticeNotFound");
         }
 
-        // Get practice from CF API
-        var practice = await apiClient.GetPracticeAsync(practiceId, cancellationToken);
+        // The practice as ConcordatoFacile has it (kept 15 minutes, CF-FIX2). It is CF's data, the same for every org: the lease it
+        // names is checked against the caller's org below, each time.
+        var practice = await statusCacheService.GetPracticeAsync(practiceId, cancellationToken);
 
         if (practice is null)
         {

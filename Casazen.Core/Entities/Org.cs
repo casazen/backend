@@ -33,6 +33,12 @@ public class Org
     [Required]
     public PlanTier PlanTier { get; set; } = PlanTier.Starter;
 
+    /// <summary>
+    /// Tier downgrade flag: when tier is Agency and this is true, B2B mutations return 403 tier_insufficient
+    /// but reads succeed (ADR-010-R5). Agency data is retained in read-only mode.
+    /// </summary>
+    public bool IsAgencyTierDowngraded { get; set; }
+
     [Required, MaxLength(200)]
     public string DisplayName { get; set; } = string.Empty;
 

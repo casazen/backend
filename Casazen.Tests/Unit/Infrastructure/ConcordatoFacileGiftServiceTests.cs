@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
@@ -188,17 +189,15 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Proof test for tenant isolation (ADR-006-R5).
-    /// An org's gift cannot be consumed for another org's lease.
-    /// This test verifies that the gift service correctly isolates gifts by org,
-    /// even when attempting to consume a gift for a lease that doesn't belong to the gift's org.
+    /// Proof test for tenant isolation (ADR-006-R5, CF-FIX2). An org's gift is spent only on a lease of that org: a lease that belongs to
+    /// another org, or that does not exist, is a 404 <c>lease_not_found</c>, the gift stays available and nothing is written (not even the
+    /// event on the other org's lease); on its own lease the same gift is then consumed.
     /// </summary>
     [PostgresFact]
-    public async Task ConsumeGift_OrgIdMismatch_Fails()
+    public async Task ConsumeGift_LeaseOfAnotherOrgOrMissing_Is404_AndTheGiftIsUntouched()
     {
-        // Arrange
-        Guid org1Id, org2Id;
-        var leaseOfOrg2Id = Guid.NewGuid();
+        // Arrange: org1 has a gift and a lease, org2 has a lease
+        Guid org1Id, org2Id, leaseOfOrg1Id, leaseOfOrg2Id;
 
         await using (var db = _database!.CreateContext())
         {
@@ -211,8 +210,7 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
             org1Id = org1.Id;
             org2Id = org2.Id;
 
-            // Create a property for org1
-            var property = new Property
+            var property1 = new Property
             {
                 OrgId = org1Id,
                 Name = "Test Property",
@@ -220,19 +218,26 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
                 Address = "Via Test 1",
                 OwnerId = "auth0|test_owner"
             };
-            db.Properties.Add(property);
+            var property2 = new Property
+            {
+                OrgId = org2Id,
+                Name = "Test Property",
+                City = "Rome",
+                Address = "Via Test 2",
+                OwnerId = "auth0|test_owner"
+            };
+            db.Properties.Add(property1);
+            db.Properties.Add(property2);
             await db.SaveChangesAsync();
 
-            // Create a lease contract to satisfy the FK constraint
-            var lease = new LeaseContract
-            {
-                Id = leaseOfOrg2Id,
-                OrgId = org1Id,
-                PropertyId = property.Id,
-                CreatedAt = DateTime.UtcNow
-            };
-            db.LeaseContracts.Add(lease);
+            var leaseOfOrg1 = new LeaseContract { OrgId = org1Id, PropertyId = property1.Id, CreatedAt = DateTime.UtcNow };
+            var leaseOfOrg2 = new LeaseContract { OrgId = org2Id, PropertyId = property2.Id, CreatedAt = DateTime.UtcNow };
+            db.LeaseContracts.Add(leaseOfOrg1);
+            db.LeaseContracts.Add(leaseOfOrg2);
             await db.SaveChangesAsync();
+
+            leaseOfOrg1Id = leaseOfOrg1.Id;
+            leaseOfOrg2Id = leaseOfOrg2.Id;
         }
 
         await using (var db = _database.CreateContext())
@@ -241,28 +246,42 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
             await service.GrantGiftAsync(org1Id, "sub_org1");
         }
 
-        // Act - try to consume org1's gift for a lease that "belongs" to org2
-        // (in reality, we just test with a random leaseId - the point is org1's gift
-        // should only be consumable by org1, regardless of which lease)
-        CfGiftConsumeResult result;
+        // Act: org1 tries to spend its gift on org2's lease and on a lease that does not exist
         await using (var db = _database.CreateContext())
         {
             var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
-            result = await service.ConsumeGiftAsync(org1Id, leaseOfOrg2Id);
+
+            var other = await Assert.ThrowsAsync<NotFoundException>(() => service.ConsumeGiftAsync(org1Id, leaseOfOrg2Id));
+            var missing = await Assert.ThrowsAsync<NotFoundException>(() => service.ConsumeGiftAsync(org1Id, Guid.NewGuid()));
+
+            Assert.Equal("lease_not_found", other.Code);
+            Assert.Equal("lease_not_found", missing.Code);
         }
 
-        // Assert - the consumption succeeds because we're calling it with org1's ID
-        // The real tenant isolation is that org2 could never call ConsumeGiftAsync
-        // for org1's gift because the gift lookup is filtered by orgId
-        // This test actually proves the gift is consumed successfully when org matches
-        Assert.Equal(CfGiftConsumeResult.Success, result);
+        // Assert: the gift is still available and nothing was recorded on org2's lease
+        await using (var db = _database.CreateContext())
+        {
+            var gift = await db.ConcordatoFacileGifts.FirstAsync(g => g.OrgId == org1Id);
+
+            Assert.Equal(ConcordatoFacileGiftStatus.Available, gift.Status);
+            Assert.Null(gift.ConsumedForLeaseId);
+            Assert.False(await db.LeaseEvents.AnyAsync(e => e.LeaseContractId == leaseOfOrg2Id));
+        }
+
+        // On org1's own lease the same gift is consumed
+        await using (var db = _database.CreateContext())
+        {
+            var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
+
+            Assert.Equal(CfGiftConsumeResult.Success, await service.ConsumeGiftAsync(org1Id, leaseOfOrg1Id));
+        }
 
         await using (var db = _database.CreateContext())
         {
             var gift = await db.ConcordatoFacileGifts.FirstAsync(g => g.OrgId == org1Id);
 
             Assert.Equal(ConcordatoFacileGiftStatus.Consumed, gift.Status);
-            Assert.Equal(leaseOfOrg2Id, gift.ConsumedForLeaseId);
+            Assert.Equal(leaseOfOrg1Id, gift.ConsumedForLeaseId);
         }
     }
 }

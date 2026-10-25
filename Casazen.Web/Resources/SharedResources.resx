@@ -1132,6 +1132,9 @@
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Il consenso a ricevere offerte non è disponibile in questo momento: riprova senza selezionarlo.</value>
   </data>
+  <data name="DirectBookingCurrencyNotSupported" xml:space="preserve">
+    <value>Prenotazioni dirette non supportate per questa valuta</value>
+  </data>
   <data name="SupplierClaimInvalid" xml:space="preserve">
     <value>Il collegamento non è valido: registra di nuovo la tua attività o accedi con l'account già collegato.</value>
   </data>
@@ -3172,5 +3175,11 @@
   </data>
   <data name="ReasonTooLong" xml:space="preserve">
     <value>La motivazione non può superare i 500 caratteri.</value>
+  </data>
+  <data name="feature_requires_agency_tier" xml:space="preserve">
+    <value>Questa funzionalità richiede il piano Agency</value>
+  </data>
+  <data name="tier_insufficient" xml:space="preserve">
+    <value>Piano insufficiente per questa operazione</value>
   </data>
 </root>

@@ -1132,6 +1132,9 @@
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Consent to receive offers is not available right now: try again without selecting it.</value>
   </data>
+  <data name="DirectBookingCurrencyNotSupported" xml:space="preserve">
+    <value>Direct bookings not supported for this currency</value>
+  </data>
   <data name="SupplierClaimInvalid" xml:space="preserve">
     <value>The link is not valid: register your business again or sign in with the account already linked.</value>
   </data>
@@ -3172,5 +3175,11 @@
   </data>
   <data name="ReasonTooLong" xml:space="preserve">
     <value>The reason cannot exceed 500 characters.</value>
+  </data>
+  <data name="feature_requires_agency_tier" xml:space="preserve">
+    <value>This feature requires Agency tier</value>
+  </data>
+  <data name="tier_insufficient" xml:space="preserve">
+    <value>Insufficient tier for this operation</value>
   </data>
 </root>

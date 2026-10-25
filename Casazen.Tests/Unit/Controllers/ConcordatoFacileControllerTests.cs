@@ -29,22 +29,12 @@ public class ConcordatoFacileControllerTests
     private readonly Mock<IConcordatoFacileGiftService> _mockGiftService = new();
     private readonly Mock<IConcordatoFacileLinkService> _mockLinkService = new();
     private readonly Mock<IConcordatoFacileStatusCacheService> _mockStatusCacheService = new();
-    private readonly Mock<ConcordatoFacileApiClient> _mockApiClient;
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver = new();
     private readonly Mock<IAuthorizationService> _mockAuthorizationService = new();
 
     private static readonly Guid TestLeaseId = Guid.NewGuid();
     private static readonly Guid TestOrgId = Guid.NewGuid();
     private const string TestUserId = "auth0|test_user";
-
-    public ConcordatoFacileControllerTests()
-    {
-        // Mock the API client with null parameters since it's abstract for testing
-        _mockApiClient = new Mock<ConcordatoFacileApiClient>(
-            MockBehavior.Strict,
-            null!,
-            null!);
-    }
 
     /// <summary>
     /// Proves ADR-008-R11: GetStatus requires LeaseRead permission.
@@ -125,8 +115,8 @@ public class ConcordatoFacileControllerTests
         db.LeaseContracts.Add(lease);
         await db.SaveChangesAsync();
 
-        // Mock API client to return a practice with the leaseId
-        _mockApiClient
+        // ConcordatoFacile (through the 15-minute cache of the status service) says the practice belongs to that lease
+        _mockStatusCacheService
             .Setup(c => c.GetPracticeAsync(practiceId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PracticeDto
             {
@@ -161,7 +151,6 @@ public class ConcordatoFacileControllerTests
             _mockGiftService.Object,
             _mockLinkService.Object,
             _mockStatusCacheService.Object,
-            _mockApiClient.Object,
             dbContext,
             _mockOrgContextResolver.Object,
             _mockAuthorizationService.Object);
