@@ -264,4 +264,56 @@ public class NotificationService(
             "Mode change {Kind} email of change {ChangeId} not queued (org {OrgId})", notice.Kind, notice.ChangeId, change.OrgId);
         return false;
     }
+
+    public async Task SendVerificationRequiredAlertAsync(VerificationAlert alert, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+
+        // Background job or service call: the booking id is provided by the caller
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .Include(b => b.Org)
+            .Include(b => b.Property)
+            .Include(b => b.Guest)
+            .FirstOrDefaultAsync(b => b.Id == alert.BookingId, cancellationToken);
+
+        if (booking is null)
+        {
+            logger.LogWarning("Verification required alert skipped because booking {BookingId} was not found", alert.BookingId);
+            return;
+        }
+
+        var culture = EmailTemplates.DefaultCulture;
+        var guestName = $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim();
+        var propertyName = booking.Property.Name;
+        var bookingUrl = links.IsConfigured ? links.HostBooking(booking.Id) : null;
+
+        // TODO: Create email template for verification required alert (NF-12)
+        // For now, we'll log that the email would be sent
+        logger.LogInformation(
+            "Verification required alert for booking {BookingId} would be sent to {Email} (template not yet implemented)",
+            booking.Id,
+            booking.Org?.ContactEmail);
+
+        // Send push notification to property hosts (AC-NF12-1)
+        var push = new PushNotificationPayload(
+            Title: "Verifica biometrica richiesta",
+            Body: $"La prenotazione di {guestName} richiede verifica manuale",
+            Type: PushTypes.VerificationRequired,
+            BookingId: booking.Id,
+            Route: PushRoutes.Booking(booking.Id));
+
+        var deliveryKey = PushDeliveryKeys.VerificationRequired(booking.Id);
+
+        if (!pushNotifications.Enqueue(
+                deliveryKey,
+                PushAudience.PropertyHosts(booking.PropertyId),
+                push))
+        {
+            logger.LogWarning(
+                "Verification required push of booking {BookingId} not queued (org {OrgId})",
+                booking.Id,
+                booking.OrgId);
+        }
+    }
 }

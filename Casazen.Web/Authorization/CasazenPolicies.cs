@@ -109,6 +109,12 @@ public static class CasazenPolicies
     public const string AlloggiatiSubmit = ShortRent + HostPermissions.AlloggiatiSubmit;
 
     /// <summary>
+    /// Decide on manual biometric verification (NF-12, ADR-013): approve or reject guest check-in after biometric
+    /// escalation. Owner, admins, and property managers only (NOT staff per D-08). Short-rent context.
+    /// </summary>
+    public const string VerificationDecision = ShortRent + "verification.decision";
+
+    /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
     /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
     /// <see cref="LongRentPropertyOperations"/>.
@@ -181,6 +187,7 @@ public static class CasazenPolicies
         GuestRead, GuestWrite,
         OtaRead, OtaWrite,
         ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
+        VerificationDecision,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
         OrgMembersManage, OrgActivityRead,
