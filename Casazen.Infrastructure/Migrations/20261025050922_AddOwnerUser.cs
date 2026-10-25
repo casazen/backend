@@ -35,6 +35,18 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_OwnerUsers_Auth0Sub",
+                table: "OwnerUsers",
+                column: "Auth0Sub",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OwnerUsers_Email",
+                table: "OwnerUsers",
+                column: "Email",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PropertyOwnerships_OwnerUserId",
                 table: "PropertyOwnerships",
                 column: "OwnerUserId");
@@ -53,6 +65,14 @@ namespace Casazen.Infrastructure.Migrations
             migrationBuilder.DropForeignKey(
                 name: "FK_PropertyOwnerships_OwnerUsers_OwnerUserId",
                 table: "PropertyOwnerships");
+
+            migrationBuilder.DropIndex(
+                name: "IX_OwnerUsers_Email",
+                table: "OwnerUsers");
+
+            migrationBuilder.DropIndex(
+                name: "IX_OwnerUsers_Auth0Sub",
+                table: "OwnerUsers");
 
             migrationBuilder.DropTable(
                 name: "OwnerUsers");

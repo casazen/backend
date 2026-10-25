@@ -31,7 +31,7 @@ public class PropertyOwnership : ITenantOwned
 
     /// <summary>
     /// Links to OwnerUser for owner portal access (ADR-011-R1). Nullable because not all
-    /// PropertyOwner entries have been invited to the portal yet.
+    /// PropertyOwnership entries have been invited to the portal yet.
     /// </summary>
     public Guid? OwnerUserId { get; set; }
     public virtual OwnerUser? OwnerUser { get; set; }
