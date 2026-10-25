@@ -1638,4 +1638,37 @@
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>Ricevi questa email perché l'host ti ha risposto. Ne inviamo al massimo una ogni 10 minuti per conversazione.</value>
   </data>
+  <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
+    <value>Nuova foto richiesta per il tuo soggiorno — {0}</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Body" xml:space="preserve">
+    <value>Per il tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; con check-in il &lt;strong&gt;{1}&lt;/strong&gt;, abbiamo bisogno di una nuova foto selfie per completare la verifica.</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Action" xml:space="preserve">
+    <value>Clicca il link qui sotto per completare il check-in:</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Cta" xml:space="preserve">
+    <value>Completa il check-in</value>
+  </data>
+  <data name="GuestNewPhotoRequest_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="VerificationRequired_Subject" xml:space="preserve">
+    <value>Verifica biometrica richiesta — {0}</value>
+  </data>
+  <data name="VerificationRequired_Body" xml:space="preserve">
+    <value>La prenotazione di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; con check-in il {2:dd/MM/yyyy} richiede verifica manuale.</value>
+  </data>
+  <data name="VerificationRequired_Action" xml:space="preserve">
+    <value>Apri la coda di verifica in CasaZen per approvare o rifiutare la prenotazione.</value>
+  </data>
+  <data name="VerificationRequiredPush_Title" xml:space="preserve">
+    <value>Verifica manuale richiesta</value>
+  </data>
+  <data name="VerificationRequiredPush_Body" xml:space="preserve">
+    <value>La prenotazione di {0} a {1} richiede verifica manuale.</value>
+  </data>
 </root>
