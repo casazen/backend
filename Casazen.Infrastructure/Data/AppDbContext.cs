@@ -126,6 +126,12 @@ public class AppDbContext(
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
 
     /// <summary>
+    /// Internal activities performed by staff on properties (NF-22): cleaning, maintenance, check-in assistance.
+    /// Staff sees only activities within their perimeter (PropertyMemberAccess).
+    /// </summary>
+    public DbSet<InternalActivity> InternalActivities { get; set; } = null!;
+
+    /// <summary>
     /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
     /// keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list): only <c>SupplierAgendaService</c>
     /// (and the supplier repair) reads and writes them, always with an explicit <c>OrgId</c> predicate.
