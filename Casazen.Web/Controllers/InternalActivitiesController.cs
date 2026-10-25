@@ -14,8 +14,7 @@ namespace Casazen.Web.Controllers;
 public class InternalActivitiesController(
     IInternalActivityService activityService,
     IHostScopeResolver hostScopeResolver,
-    IOrgContextResolver orgContextResolver,
-    ILogger<InternalActivitiesController> logger) : ControllerBase
+    IOrgContextResolver orgContextResolver) : ControllerBase
 {
     /// <summary>
     /// Creates a new internal activity (cleaning, maintenance, check-in assistance).
