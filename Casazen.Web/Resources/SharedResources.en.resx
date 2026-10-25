@@ -2497,6 +2497,9 @@
   <data name="EmailMissing" xml:space="preserve">
     <value>Email is required.</value>
   </data>
+  <data name="EmailHashMissing" xml:space="preserve">
+    <value>The email_hash parameter is required</value>
+  </data>
   <data name="PhoneRequired" xml:space="preserve">
     <value>Phone is required.</value>
   </data>
@@ -2604,6 +2607,9 @@
   </data>
   <data name="OrgAccessDenied" xml:space="preserve">
     <value>Access denied for this organization.</value>
+  </data>
+  <data name="OrgIdMissing" xml:space="preserve">
+    <value>The org_id parameter is required</value>
   </data>
   <data name="ApeRequired" xml:space="preserve">
     <value>The APE document is required before creating a lease contract.</value>
