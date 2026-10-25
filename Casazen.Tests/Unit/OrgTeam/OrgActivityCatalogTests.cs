@@ -49,7 +49,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(19, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(20, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]
@@ -79,11 +79,11 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Catalog_TheReservedEvents_AreTheTwoOfTheTrustedSuppliersThatDoNotExistYet()
     {
-        // The three events of the property mode are written since AM-02c (PropertyModeService); the trusted suppliers are not.
+        // The three events of the property mode are written since AM-02c (PropertyModeService); the trusted suppliers and TierAssigned (ADR-010) are not.
         var reserved = OrgActivityCatalog.All.Where(e => e.Reserved).Select(e => e.Type).Order().ToList();
 
         Assert.Equal(
-            new[] { OrgActivityType.TrustedSupplierAdded, OrgActivityType.TrustedSupplierRemoved }.Order(),
+            new[] { OrgActivityType.TierAssigned, OrgActivityType.TrustedSupplierAdded, OrgActivityType.TrustedSupplierRemoved }.Order(),
             reserved);
     }
 
