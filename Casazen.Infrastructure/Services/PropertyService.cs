@@ -106,7 +106,9 @@ public class PropertyService(
         property.CinCode = CinFormat.Normalize(property.CinCode);
         NormalizeLocation(property);
         NormalizeStayRules(property);
-        ApplyCountryDefaults(property);
+        // Country/Currency are not yet updateable via UpdatePropertyRequest, so don't apply defaults on update.
+        // This preserves existing timezone values (PATCH semantics, A2-04).
+        // When Country becomes updateable, ApplyCountryDefaults should only run when country is being changed.
         if (!string.IsNullOrWhiteSpace(property.Slug))
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
