@@ -375,6 +375,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GuestDataEraser>();
         services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
         services.AddScoped<ILeasePartyPrivacyService, LeasePartyPrivacyService>();
+        // NF-10: Document OCR and MRZ extraction for guest check-in (ADR-009-R22, ADR-013-R10).
+        services.AddScoped<IMrzExtractionService, MrzExtractionService>();
+        services.AddScoped<IDocumentOcrService, DocumentOcrService>();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).
