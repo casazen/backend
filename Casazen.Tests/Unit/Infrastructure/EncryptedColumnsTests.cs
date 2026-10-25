@@ -29,6 +29,9 @@ public class EncryptedColumnsTests
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
+                // ADR-012: property owner financial data (IBAN and fiscal code).
+                "PropertyOwner.FiscalCode:Casazen.PropertyOwner.Financial",
+                "PropertyOwner.Iban:Casazen.PropertyOwner.Financial",
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.Username:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.WsKey:Casazen.PropertyQuesturaCredentials",

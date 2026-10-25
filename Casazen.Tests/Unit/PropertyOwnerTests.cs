@@ -61,28 +61,29 @@ public class PropertyOwnerTests
             await db.SaveChangesAsync();
         }
 
-        // Assert: read back through encrypted context
+        // Assert: read back through encrypted context - values round-trip correctly
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
             var owner = await db.PropertyOwners.SingleAsync();
 
-            // Values round-trip correctly through EF
             Assert.Equal(TestIban, owner.Iban);
             Assert.Equal(TestFiscalCode, owner.FiscalCode);
+        }
 
-            // The encrypted columns hold Data Protection payloads (start with "CfDJ8")
-            var entry = db.Entry(owner);
-            var storedIban = (string?)entry.Property(nameof(PropertyOwner.Iban)).CurrentValue;
-            var storedFiscal = (string?)entry.Property(nameof(PropertyOwner.FiscalCode)).CurrentValue;
+        // Assert: read the stored values through a context WITHOUT encryption to verify they are encrypted
+        await using (var plainDb = new AppDbContext(options, new FixedTenantContext(orgId), dataProtectionProvider: null))
+        {
+            var owner = await plainDb.PropertyOwners.SingleAsync();
 
-            Assert.NotNull(storedIban);
-            Assert.NotNull(storedFiscal);
-            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, storedIban);
-            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, storedFiscal);
+            // The stored values are Data Protection payloads (start with "CfDJ8")
+            Assert.NotNull(owner.Iban);
+            Assert.NotNull(owner.FiscalCode);
+            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, owner.Iban);
+            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, owner.FiscalCode);
 
             // The database never holds the clear values
-            Assert.DoesNotContain(TestIban, storedIban);
-            Assert.DoesNotContain(TestFiscalCode, storedFiscal);
+            Assert.DoesNotContain(TestIban, owner.Iban);
+            Assert.DoesNotContain(TestFiscalCode, owner.FiscalCode);
         }
     }
 
