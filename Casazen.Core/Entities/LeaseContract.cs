@@ -240,6 +240,26 @@ public class LeaseContract : ITenantOwned
     /// </summary>
     public DateTime? TerminatedOn { get; set; }
 
+    // ─── The need of a transitory contract (TR) ────────────────────────────────────────────────────────────────────────
+    // A transitory contract (1 to 18 months) states the need of the landlord or of the tenant that justifies its term, and proves it with
+    // documentation when it lasts more than 30 days (D.M. 16/01/2017 art. 2 c. 4). The model prints them in its art. 2, so they live in the
+    // columns of the lease like the rest of what the contract prints; null for every other type and for a contract signed elsewhere.
+
+    /// <summary>Who has the need that justifies the transitory term: the landlord or the tenant. Null when it is not a transitory contract made in CasaZen.</summary>
+    public PartyRole? TransitoryParty { get; set; }
+
+    /// <summary>
+    /// The need that justifies the transitory term, in a few words (at most 500 characters), <b>encrypted at rest</b>
+    /// (<c>EncryptedColumns</c>, purpose <c>Casazen.LeaseContract.TransitoryNeed</c>): it may say why a person moves house.
+    /// </summary>
+    public string? TransitoryNeed { get; set; }
+
+    /// <summary>
+    /// The documentation attached to prove the need (at most 300 characters), <b>encrypted at rest</b> like <see cref="TransitoryNeed"/>.
+    /// Required when the term lasts more than 30 days (<see cref="LeaseContractTerms.TransitorioDocumentationAfterDays"/>).
+    /// </summary>
+    public string? TransitoryDocumentation { get; set; }
+
     public virtual ICollection<Party> Parties { get; set; } = [];
     public virtual ICollection<LeaseSigner> Signers { get; set; } = [];
     public virtual LeaseRegistration? Registration { get; set; }

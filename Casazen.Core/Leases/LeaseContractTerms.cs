@@ -32,6 +32,26 @@ public static class LeaseContractTerms
     public const int TransitorioMaximumMonths = 18;
 
     /// <summary>
+    /// A transitory contract that lasts more than this many days must prove its need with documentation attached to the contract
+    /// (D.M. 16/01/2017 art. 2 c. 4); one of 30 days or less is free of that and of the band of the rent (art. 2 c. 2).
+    /// </summary>
+    public const int TransitorioDocumentationAfterDays = 30;
+
+    /// <summary>
+    /// In the municipalities with more than this many inhabitants the rent of a transitory contract is defined inside the bands of the
+    /// territorial agreement (D.M. 16/01/2017 art. 2 c. 2). CasaZen does not check it (TR-FU1): the review only tells the landlord.
+    /// </summary>
+    public const int TransitorioBandFromInhabitants = 10_000;
+
+    /// <summary>
+    /// True when a transitory contract from <paramref name="startDate"/> to the inclusive <paramref name="endDate"/> lasts more than
+    /// <see cref="TransitorioDocumentationAfterDays"/> days, so its need must be documented (art. 2 c. 4). An end before the start lasts
+    /// no days.
+    /// </summary>
+    public static bool TransitoryNeedsDocumentation(DateTime startDate, DateTime endDate) =>
+        (endDate.Date - startDate.Date).Days + 1 > TransitorioDocumentationAfterDays;
+
+    /// <summary>
     /// Legacy combined value (template, IMU notice, cedolare advisory): a concordato lease is always
     /// <see cref="FiscalRegime.CanoneConcordato"/>; the other types follow the tax regime.
     /// </summary>

@@ -26,6 +26,9 @@ public static partial class LeaseDraftRules
     /// <summary>The highest rent or deposit accepted, in euros (as on the complete creation of a lease).</summary>
     public const decimal MaxAmount = 1_000_000m;
 
+    /// <summary>The longest documentation of the need of a transitory contract (the need itself has <see cref="MaxTextLength"/>, the limit of the request).</summary>
+    public const int TransitoryDocumentationMaxLength = 300;
+
     /// <summary>Earliest and latest date accepted for the start of a contract and for the verification of a document.</summary>
     public static readonly DateOnly MinDate = new(1970, 1, 1);
 
@@ -49,6 +52,21 @@ public static partial class LeaseDraftRules
     /// <summary>The tax regime named by <paramref name="value"/> (case ignored), or <c>null</c>.</summary>
     public static LeaseTaxRegime? ParseTaxRegime(string? value) =>
         Enum.TryParse<LeaseTaxRegime>(Clean(value), ignoreCase: true, out var regime) && Enum.IsDefined(regime) ? regime : null;
+
+    /// <summary>
+    /// The party that has the need of a transitory contract (<c>Landlord</c> or <c>Tenant</c>, case ignored), or <c>null</c> when
+    /// <paramref name="value"/> names neither.
+    /// </summary>
+    public static PartyRole? ParseNeedParty(string? value) =>
+        Enum.TryParse<PartyRole>(Clean(value), ignoreCase: true, out var party) && Enum.IsDefined(party) ? party : null;
+
+    /// <summary>
+    /// True when the term of a contract of this <paramref name="type"/> is the one its landlord types (its <c>endDate</c>) and not the one
+    /// the type gives: a contract already signed states its own term, whatever the type, and a transitory one made in CasaZen has a term
+    /// of its own from 1 to 18 months. The libero and the concordato made in CasaZen follow their type.
+    /// </summary>
+    public static bool StatesItsTerm(LeaseContractType? type, bool typeAvailable, LeaseOrigin origin) =>
+        origin == LeaseOrigin.Imported || (typeAvailable && type == LeaseContractType.Transitorio);
 
     /// <summary>A calendar date written <c>yyyy-MM-dd</c> between <see cref="MinDate"/> and <see cref="MaxDate"/>, or <c>null</c>.</summary>
     public static DateOnly? ParseDate(string? value)
@@ -189,7 +207,8 @@ public static partial class LeaseDraftRules
     /// <summary>
     /// The values of the contract as they are once read: each is <c>null</c> when it was not typed or is not valid (and then the
     /// column of the lease keeps its starting value, <see cref="LeaseDraftDefaults"/>). An <see cref="LeaseOrigin.Imported"/> contract
-    /// is read with the rules of a contract already signed (LR-13): it can have the transitory type and the term its contract states.
+    /// is read with the rules of a contract already signed (LR-13): it can have any type and the term its contract states. A transitory
+    /// contract made in CasaZen has a term of its own too (TR, <see cref="StatesItsTerm"/>).
     /// </summary>
     public static LeaseDraftReading Read(LeaseDraftValues values, LeaseOrigin origin = LeaseOrigin.Created)
     {
@@ -202,10 +221,11 @@ public static partial class LeaseDraftRules
         DateOnly? end = null;
         if (start is { } startDate)
         {
-            if (origin == LeaseOrigin.Imported && ParseDate(values.EndDate) is { } declared && declared > startDate)
+            if (StatesItsTerm(type, typeAvailable, origin) && ParseDate(values.EndDate) is { } declared && declared > startDate)
             {
                 // The term of a contract already signed is the one it states: the last day typed, whatever the type (the limits of the
-                // type are a need of the flow, not a reason to lose what was typed).
+                // type are a need of the flow, not a reason to lose what was typed). A transitory contract made in CasaZen has a term of
+                // its own as well, free from 1 to 18 months.
                 end = declared;
                 months = typeAvailable ? LeaseTerm.Between(ToStoredDate(startDate), ToStoredDate(declared))?.Months : null;
             }

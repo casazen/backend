@@ -24,9 +24,9 @@ public enum LeaseContractTemplateStatus
     Approved,
 }
 
-/// <summary>Template of a fiscal regime as loaded at startup, with the reasons it cannot be used.</summary>
+/// <summary>Template of a variant (a fiscal regime, or the transitory model) as loaded at startup, with the reasons it cannot be used.</summary>
 public sealed record LeaseContractTemplateState(
-    FiscalRegime Regime,
+    LeaseTemplateVariant Variant,
     string? VersionId,
     LeaseContractTemplateStatus Status,
     string? Title,
@@ -47,13 +47,17 @@ public sealed record LeaseContractTemplateState(
 
 public interface ILeaseContractTemplateCatalog
 {
-    LeaseContractTemplateState Get(FiscalRegime regime);
+    LeaseContractTemplateState Get(LeaseTemplateVariant variant);
+
+    /// <summary>The template of a canone libero or concordato: the variant that has the name of <paramref name="regime"/>.</summary>
+    LeaseContractTemplateState Get(FiscalRegime regime) => Get(LeaseTemplateVariants.Of(regime));
 }
 
 /// <summary>
-/// Loads the template files of the product owner, one per fiscal regime (<c>{TemplatesDirectory}/{Regime}/{VersionId}.md</c>),
-/// and computes their state against the required structure (<see cref="LeaseContractTemplateStructure"/>) and the
-/// approval rules (<see cref="LeaseTemplateApproval"/>). Files are read once per process: restart after changing them.
+/// Loads the template files of the product owner, one per variant (<c>{TemplatesDirectory}/{Variant}/{VersionId}.md</c>: the three
+/// fiscal regimes of the canone libero and concordato, and the transitory model), and computes their state against the required
+/// structure (<see cref="LeaseContractTemplateStructure"/>) and the approval rules (<see cref="LeaseTemplateApproval"/>). Files are read
+/// once per process: restart after changing them.
 /// </summary>
 public sealed class LeaseContractTemplateCatalog(
     IOptions<LeaseTemplateOptions> options,
@@ -62,10 +66,10 @@ public sealed class LeaseContractTemplateCatalog(
 {
     public const string FileExtension = ".md";
 
-    private readonly Lazy<IReadOnlyDictionary<FiscalRegime, LeaseContractTemplateState>> _states =
+    private readonly Lazy<IReadOnlyDictionary<LeaseTemplateVariant, LeaseContractTemplateState>> _states =
         new(() => LoadAll(options.Value, environment.ContentRootPath, logger));
 
-    public LeaseContractTemplateState Get(FiscalRegime regime) => _states.Value[regime];
+    public LeaseContractTemplateState Get(LeaseTemplateVariant variant) => _states.Value[variant];
 
     public static string ResolveDirectory(LeaseTemplateOptions options, string contentRootPath)
     {
@@ -75,18 +79,22 @@ public sealed class LeaseContractTemplateCatalog(
         return Path.IsPathRooted(directory) ? directory : Path.Combine(contentRootPath, directory);
     }
 
-    /// <summary>Loads and checks the template of <paramref name="regime"/> (pure apart from reading the file).</summary>
-    public static LeaseContractTemplateState Load(FiscalRegime regime, LeaseTemplateOptions options, string contentRootPath)
+    /// <summary>Loads and checks the template of the canone libero or concordato of <paramref name="regime"/> (pure apart from reading the file).</summary>
+    public static LeaseContractTemplateState Load(FiscalRegime regime, LeaseTemplateOptions options, string contentRootPath) =>
+        Load(LeaseTemplateVariants.Of(regime), options, contentRootPath);
+
+    /// <summary>Loads and checks the template of <paramref name="templateVariant"/> (pure apart from reading the file).</summary>
+    public static LeaseContractTemplateState Load(LeaseTemplateVariant templateVariant, LeaseTemplateOptions options, string contentRootPath)
     {
-        var variant = options.Variants.TryGetValue(regime.ToString(), out var configured)
+        var variant = options.Variants.TryGetValue(templateVariant.ToString(), out var configured)
             ? configured
             : new LeaseTemplateVariantOptions();
         var invalidApproval = LeaseTemplateApproval.GetInvalidApprovalReasons(variant);
         var versionId = variant.VersionId?.Trim();
 
         LeaseContractTemplateState Missing(string issue) => new(
-            regime, string.IsNullOrEmpty(versionId) ? null : versionId, LeaseContractTemplateStatus.Missing, null, [],
-            LeaseContractTemplateStructure.RequiredSections(regime).Select(s => s.Id).ToList(), [issue],
+            templateVariant, string.IsNullOrEmpty(versionId) ? null : versionId, LeaseContractTemplateStatus.Missing, null, [],
+            LeaseContractTemplateStructure.RequiredSections(templateVariant).Select(s => s.Id).ToList(), [issue],
             variant.Approved, invalidApproval);
 
         if (string.IsNullOrEmpty(versionId))
@@ -94,8 +102,8 @@ public sealed class LeaseContractTemplateCatalog(
         if (!LeaseTemplateApproval.IsValidVersionId(versionId))
             return Missing("VersionId is not a valid file name");
 
-        var relativePath = $"{regime}/{versionId}{FileExtension}";
-        var path = Path.Combine(ResolveDirectory(options, contentRootPath), regime.ToString(), versionId + FileExtension);
+        var relativePath = $"{templateVariant}/{versionId}{FileExtension}";
+        var path = Path.Combine(ResolveDirectory(options, contentRootPath), templateVariant.ToString(), versionId + FileExtension);
         string content;
         try
         {
@@ -113,7 +121,7 @@ public sealed class LeaseContractTemplateCatalog(
         if (parsed.Title is null)
             issues.Add("the title ('# ' line) is missing");
 
-        var requiredSections = LeaseContractTemplateStructure.RequiredSections(regime);
+        var requiredSections = LeaseContractTemplateStructure.RequiredSections(templateVariant);
         var missingSections = new List<string>();
         foreach (var definition in requiredSections)
         {
@@ -138,27 +146,27 @@ public sealed class LeaseContractTemplateCatalog(
                 : LeaseContractTemplateStatus.NotApproved;
 
         return new LeaseContractTemplateState(
-            regime, versionId, status, parsed.Title, parsed.Sections, missingSections, issues, variant.Approved, invalidApproval);
+            templateVariant, versionId, status, parsed.Title, parsed.Sections, missingSections, issues, variant.Approved, invalidApproval);
     }
 
-    private static IReadOnlyDictionary<FiscalRegime, LeaseContractTemplateState> LoadAll(
+    private static IReadOnlyDictionary<LeaseTemplateVariant, LeaseContractTemplateState> LoadAll(
         LeaseTemplateOptions options, string contentRootPath, ILogger logger)
     {
-        var states = Enum.GetValues<FiscalRegime>().ToDictionary(r => r, r => Load(r, options, contentRootPath));
+        var states = Enum.GetValues<LeaseTemplateVariant>().ToDictionary(v => v, v => Load(v, options, contentRootPath));
         foreach (var state in states.Values)
         {
             if (state.DeclaredApproved && !state.IsApproved)
             {
                 logger.LogWarning(
-                    "Lease contract template {Regime} is declared approved but is {Status} (version {VersionId}): {Problems}. " +
+                    "Lease contract template {Variant} is declared approved but is {Status} (version {VersionId}): {Problems}. " +
                     "Final contracts are blocked; see docs/runbooks/lease-contract-templates.md",
-                    state.Regime, state.Status, state.VersionId, string.Join("; ", state.Problems));
+                    state.Variant, state.Status, state.VersionId, string.Join("; ", state.Problems));
             }
             else
             {
                 logger.LogInformation(
-                    "Lease contract template {Regime}: {Status} (version {VersionId}). Missing sections: {MissingSections}",
-                    state.Regime, state.Status, state.VersionId, string.Join(", ", state.MissingSections));
+                    "Lease contract template {Variant}: {Status} (version {VersionId}). Missing sections: {MissingSections}",
+                    state.Variant, state.Status, state.VersionId, string.Join(", ", state.MissingSections));
             }
         }
 

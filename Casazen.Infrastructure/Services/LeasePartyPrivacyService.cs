@@ -211,6 +211,11 @@ public sealed class LeasePartyPrivacyService(
             // Every party is anonymized (or the lease never had one: a draft whose entries are all incomplete lives in DraftData only):
             // the typed state goes too, whatever it holds for entries that never became a party (LR-12).
             lease.DraftData = null;
+
+            // The need of a transitory contract and the documents that prove it are free text that can say why a person lives where
+            // they live: they go with the parties (TR).
+            lease.TransitoryNeed = null;
+            lease.TransitoryDocumentation = null;
         }
         if (anonymizedIds.Count > 0 || kept == 0)
             lease.UpdatedAt = now;

@@ -2,7 +2,9 @@
 
 > **Bozza non approvata: nessuna pipeline di prodotto.** Bozza redatta da un agente AI su incarico del PO (versione 0.9 · bozza del 8 ottobre 2026; documento `contratto-transitorio` di `redesign/assets/legal-contracts.js`) e salvata qui solo come riferimento per il PO e per il legale. Richiede la revisione di un legale prima di qualunque uso: non è un modello del prodotto, non si approva e non si attiva.
 
-- Tipo di contratto nel prodotto: `Transitorio` (senza struttura né modello).
+> **Aggiornamento 25/10/2026 (task TR): questa bozza AI non è il modello del prodotto e non va usata come testo.** Il modello del tipo `Transitorio` è la trascrizione dell’**Allegato B ufficiale** del D.M. 16 gennaio 2017 (`Casazen.Web/LeaseTemplates/Transitorio/2026-11-bozza-v1.md`, ancora da approvare); le scelte e gli scostamenti dall’originale sono nella sezione «Transitorio, bozza 2026-11-bozza-v1: scelte rispetto all’Allegato B» di `docs/runbooks/lease-contract-templates.md`. Il testo qui sotto, sulla mancanza di una pipeline, descrive lo stato del 9 ottobre.
+
+- Tipo di contratto nel prodotto: `Transitorio` (al 9 ottobre senza struttura né modello; dal task TR con il modello ufficiale).
 - Base normativa dichiarata dalla bozza: L. 9 dicembre 1998, n. 431, art. 5, comma 1; D.M. 16 gennaio 2017, Allegato B.
 - Destinatari: Locatore e conduttore.
 - Versione della bozza: 0.9 · bozza del 8 ottobre 2026.

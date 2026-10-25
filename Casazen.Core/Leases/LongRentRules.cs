@@ -28,10 +28,12 @@ public static class LongRentRules
     public const int ConcordatoRenewalMonths = 24;
 
     /// <summary>
-    /// The types of contract that can be created in the first release (decision D27): the transitory and the student lease are
-    /// shown in the wizard but blocked ("non ancora disponibile"); the transitory one enters only as an imported contract (LR-13).
+    /// The types of contract that can be created in CasaZen (decision D27): the libero, the concordato and, since TR, the transitory one,
+    /// whose model is the official Allegato B of the D.M. 16/01/2017 (<c>Casazen.Web/LeaseTemplates/Transitorio</c>, still to be approved by
+    /// the product owner). The student lease is shown in the wizard but blocked ("non ancora disponibile").
     /// </summary>
-    public static IReadOnlyList<LeaseContractType> AvailableTypes { get; } = [LeaseContractType.Libero, LeaseContractType.Concordato];
+    public static IReadOnlyList<LeaseContractType> AvailableTypes { get; } =
+        [LeaseContractType.Libero, LeaseContractType.Concordato, LeaseContractType.Transitorio];
 
     /// <summary>
     /// The types an imported contract (already signed outside CasaZen, LR-13) can have: the available ones and the transitory one
@@ -90,14 +92,18 @@ public static class LongRentRules
         DepositMaxRents: DepositMaxRents,
         AvailableTypes: AvailableTypes.Select(t => t.ToString()).ToList(),
         ImportedTypes: ImportedTypes.Select(t => t.ToString()).ToList(),
-        TransitoryTermMonths: new LongRentMonthRange(LeaseContractTerms.TransitorioMinimumMonths, LeaseContractTerms.TransitorioMaximumMonths));
+        TransitoryTermMonths: new LongRentMonthRange(LeaseContractTerms.TransitorioMinimumMonths, LeaseContractTerms.TransitorioMaximumMonths),
+        TransitoryDocumentationAfterDays: LeaseContractTerms.TransitorioDocumentationAfterDays,
+        TransitoryBandFromInhabitants: LeaseContractTerms.TransitorioBandFromInhabitants);
 }
 
 /// <summary>
 /// The answer of <c>GET api/long-rent/rules</c>: the terms of the first period and of the renewal per contract type, the months
 /// of notice, the days to register, the deposit limit and the types that can be created. The keys of the two dictionaries and the
-/// values of <c>AvailableTypes</c> and <c>ImportedTypes</c> are the names of <see cref="LeaseContractType"/>. Since LR-13 the last two
-/// fields (at the end) tell which types an imported contract can have and the term, free inside it, of the transitory one.
+/// values of <c>AvailableTypes</c> and <c>ImportedTypes</c> are the names of <see cref="LeaseContractType"/>. Since LR-13 two
+/// fields (at the end) tell which types an imported contract can have and the term, free inside it, of the transitory one; since TR
+/// the last two are the figures of the transitory contract the screens need: after how many days of term its need must be documented
+/// and above how many inhabitants the rent has to be inside the bands of the territorial agreement.
 /// </summary>
 public sealed record LongRentRulesDto(
     IReadOnlyDictionary<string, int> TermMonths,
@@ -107,7 +113,9 @@ public sealed record LongRentRulesDto(
     int DepositMaxRents,
     IReadOnlyList<string> AvailableTypes,
     IReadOnlyList<string> ImportedTypes,
-    LongRentMonthRange TransitoryTermMonths);
+    LongRentMonthRange TransitoryTermMonths,
+    int TransitoryDocumentationAfterDays,
+    int TransitoryBandFromInhabitants);
 
 /// <summary>A range of whole months, both ends included.</summary>
 public sealed record LongRentMonthRange(int Min, int Max);

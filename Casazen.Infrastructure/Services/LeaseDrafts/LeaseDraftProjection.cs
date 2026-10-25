@@ -46,21 +46,24 @@ internal static class LeaseDraftProjection
             MonthlyRent = lease.MonthlyRent > 0m ? lease.MonthlyRent : null,
             SecurityDeposit = lease.SecurityDeposit,
             Concordato = lease.ConcordatoAssessment is { } assessment ? ToEntry(assessment) : null,
+            TransitoryParty = lease.TransitoryParty?.ToString(),
+            TransitoryNeed = lease.TransitoryNeed,
             StartDate = LeaseDraftDefaults.IsPlaceholder(lease.StartDate)
                 ? null
                 : RomeCalendar.DateInRome(lease.StartDate).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
             EndDate = DeclaredEnd(lease),
+            TransitoryDocumentation = lease.TransitoryDocumentation,
         };
     }
 
     /// <summary>
-    /// The end an imported contract states (LR-13), read back from its columns: its own end when it is not the one its type gives from
-    /// the start (then somebody typed it), otherwise nothing, so a term nobody stated goes on following the type when the start moves.
-    /// A contract made in CasaZen states none: the wizard owns its term.
+    /// The end an imported contract or a transitory one states (LR-13, TR), read back from its columns: its own end when it is not the one
+    /// its type gives from the start (then somebody typed it; a transitory type gives none), otherwise nothing, so a term nobody stated goes
+    /// on following the type when the start moves. A libero or a concordato made in CasaZen states none: the wizard owns its term.
     /// </summary>
     private static string? DeclaredEnd(LeaseContract lease)
     {
-        if (lease.Origin != LeaseOrigin.Imported
+        if ((lease.Origin != LeaseOrigin.Imported && lease.ContractType != LeaseContractType.Transitorio)
             || LeaseDraftDefaults.IsPlaceholder(lease.StartDate)
             || LeaseDraftDefaults.IsPlaceholder(lease.EndDate))
         {
@@ -166,28 +169,39 @@ internal static class LeaseDraftProjection
     }
 
     /// <summary>
+    /// Writes the need of a transitory contract made in CasaZen where the contract prints it from: who has it, what it is and the
+    /// documentation of it (TR). Only the valid values, as everywhere else: a party that is neither the landlord nor the tenant, a text
+    /// that is empty or a documentation of more than <see cref="LeaseDraftRules.TransitoryDocumentationMaxLength"/> characters leaves the
+    /// column empty. Every other type, and a contract signed elsewhere, keeps none: the typed values stay in the draft, so choosing the
+    /// transitory type again finds them.
+    /// </summary>
+    public static void ApplyTransitoryNeed(LeaseContract lease, LeaseDraftValues values, LeaseDraftReading reading)
+    {
+        var transitory = reading is { Type: LeaseContractType.Transitorio, TypeAvailable: true } && lease.Origin != LeaseOrigin.Imported;
+        var documentation = LeaseDraftRules.Clean(values.TransitoryDocumentation);
+
+        lease.TransitoryParty = transitory ? LeaseDraftRules.ParseNeedParty(values.TransitoryParty) : null;
+        lease.TransitoryNeed = transitory ? LeaseDraftRules.Clean(values.TransitoryNeed) : null;
+        lease.TransitoryDocumentation = transitory && documentation is { Length: <= LeaseDraftRules.TransitoryDocumentationMaxLength } ? documentation : null;
+    }
+
+    /// <summary>
     /// Writes the valid values into the columns that cannot be empty and into the ones that can: the type and the regime (and the
     /// legacy combined regime they give), the rent, the deposit, the first period, and the range of a canone concordato when it was
-    /// computed and the rent does not break it. Nothing that was not valid is written: it takes its starting value (but for the
-    /// transitory type a lease already has, below). The end of the first period is always the one the type gives (48 or 36 months from
-    /// the start): the wizard owns the term, so a draft made by the old form with another term gets the term of its type at its first save.
+    /// computed and the rent does not break it. Nothing that was not valid is written: it takes its starting value. The end of the first
+    /// period is the one the type gives (48 or 36 months from the start) for a libero or a concordato: the wizard owns their term, so a draft
+    /// made by the old form with another term gets the term of its type at its first save. A transitory contract, like one signed elsewhere,
+    /// has the end its landlord typed (<see cref="LeaseDraftRules.StatesItsTerm"/>).
     /// </summary>
     public static void ApplyColumns(LeaseContract lease, LeaseDraftReading reading, ConcordatoAssessmentResult? concordato)
     {
-        // A type the old form accepted and the wizard cannot offer (the transitory lease) stays on a lease that already has it until the
-        // landlord chooses another: the first save of any step must not turn it into a libero of four years on its own. For every other
-        // draft the type is not available only because the landlord has just typed it, and the column keeps its starting value.
-        var keepsItsType = !reading.TypeAvailable && reading.Type is { } named && named == lease.ContractType;
-        var type = reading.TypeAvailable ? reading.Type!.Value : keepsItsType ? lease.ContractType : LeaseDraftDefaults.PlaceholderType;
-        var startDate = reading.Start is { } start ? LeaseDraftRules.ToStoredDate(start) : LeaseDraftDefaults.PlaceholderDate;
-        var keepsItsEnd = keepsItsType && startDate == lease.StartDate;
+        var type = reading.TypeAvailable ? reading.Type!.Value : LeaseDraftDefaults.PlaceholderType;
 
         lease.SetContractTerms(type, reading.TaxRegime);
         lease.MonthlyRent = reading.Rent ?? LeaseDraftDefaults.PlaceholderRent;
         lease.SecurityDeposit = reading.Deposit;
-        lease.StartDate = startDate;
-        if (!keepsItsEnd)
-            lease.EndDate = reading.End is { } end ? LeaseDraftRules.ToStoredDate(end) : LeaseDraftDefaults.PlaceholderDate;
+        lease.StartDate = reading.Start is { } start ? LeaseDraftRules.ToStoredDate(start) : LeaseDraftDefaults.PlaceholderDate;
+        lease.EndDate = reading.End is { } end ? LeaseDraftRules.ToStoredDate(end) : LeaseDraftDefaults.PlaceholderDate;
 
         // A range is stored only as the complete creation of a lease stores it: for a concordato, with the rent inside it or
         // with data that are only indicative (A7-23). A rent outside a verified range is a block, never stored.

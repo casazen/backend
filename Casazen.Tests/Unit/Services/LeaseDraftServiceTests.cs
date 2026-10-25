@@ -102,7 +102,7 @@ public class LeaseDraftServiceTests
             {"landlords":[{"firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501V","citizenship":"IT","residence":"Bari"}],
              "tenants":[{"firstName":"Giulia"}]}
             """);
-        var s3 = await h.SaveAsync(created.Id, s2.Version, 3, """{"contractType":"Transitorio","monthlyRent":-50,"securityDeposit":99}""");
+        var s3 = await h.SaveAsync(created.Id, s2.Version, 3, """{"contractType":"Studenti","monthlyRent":-50,"securityDeposit":99}""");
         var s4 = await h.SaveAsync(created.Id, s3.Version, 4, """{"startDate":"next spring"}""");
 
         Assert.Equal([2, 3, 4], new[] { s2.Version, s3.Version, s4.Version });
@@ -227,6 +227,53 @@ public class LeaseDraftServiceTests
         Assert.False(tenant.IsExtraEU);
         // A lease the other readers see as a normal draft: the term passes the rule of its type.
         LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
+    }
+
+    [Fact]
+    public async Task ATransitoryDraft_WithItsEndAndItsNeed_KeepsThemInTheColumns_GivesThemBack_AndTheReviewCoversThem()
+    {
+        using var h = await NewAsync();
+        var (created, version) = await h.CompleteAsync();
+
+        // The landlord makes it a transitory contract: who has the need and what it is come with the type, the end and the documentation
+        // of a term of more than 30 days with the dates.
+        var typed = await h.SaveAsync(
+            created.Id, version, 3, """{"contractType":"Transitorio","transitoryParty":"Tenant","transitoryNeed":"  Lavoro a Milano da novembre ad aprile  "}""");
+        Assert.Empty(Needs(typed.Flow, 3));
+        Assert.Equal([LeaseNeedCodes.EndMissing], Needs(typed.Flow, 4));
+        var ended = await h.SaveAsync(created.Id, typed.Version, 4, """{"endDate":"2027-04-30"}""");
+        Assert.Equal([LeaseNeedCodes.TransitoryDocumentationMissing], Needs(ended.Flow, 4));
+        var done = await h.SaveAsync(created.Id, ended.Version, 4, """{"transitoryDocumentation":"Lettera di assunzione"}""");
+
+        Assert.True(done.Flow.DataComplete);
+        var lease = await h.LoadAsync(created.Id);
+        Assert.Null(lease.DraftData);
+        Assert.Equal(LeaseContractType.Transitorio, lease.ContractType);
+        Assert.Equal(new DateTime(2027, 4, 30, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
+        Assert.Equal(
+            (PartyRole.Tenant, "Lavoro a Milano da novembre ad aprile", "Lettera di assunzione"),
+            (lease.TransitoryParty!.Value, lease.TransitoryNeed, lease.TransitoryDocumentation));
+        LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
+
+        // Taken up again from the columns, as another browser would: nothing was kept only in the typed state.
+        var view = await h.NewService().GetAsync(created.Id);
+        Assert.Equal(
+            ("Tenant", "Lavoro a Milano da novembre ad aprile", "Lettera di assunzione", "2027-04-30"),
+            (view.Values.TransitoryParty, view.Values.TransitoryNeed, view.Values.TransitoryDocumentation, view.Values.EndDate));
+        Assert.Equal(new LeaseDraftComputed("2027-04-30", 6), view.Computed);
+        Assert.All(Enumerable.Range(1, 5), n => Assert.Equal(LeaseStepState.Done, view.Flow[n].State));
+
+        // The review tells the landlord to check the rent against the bands of the agreement (TR-FU1) and blocks nothing; the need is
+        // printed in the contract, so changing it withdraws the confirmation.
+        var review = await h.Service.GetReviewAsync(created.Id);
+        var advisory = Assert.Single(review.Checks, c => c.Code == LeaseNeedCodes.TransitoryRentBandToCheck);
+        Assert.Equal(LeaseReviewSeverity.Info, advisory.Severity);
+        Assert.Equal(10_000, advisory.Params!["inhabitants"]);
+        Assert.False(LeaseReview.HasBlock(review.Checks));
+        var confirmed = await h.Service.ConfirmReviewAsync(created.Id, null);
+        Assert.NotNull(confirmed.ReviewConfirmedAt);
+        var changed = await h.SaveAsync(created.Id, confirmed.Version, 3, """{"transitoryNeed":"Trasferimento a Torino"}""");
+        Assert.Contains(LeaseNeedCodes.ReviewNotConfirmed, Needs(changed.Flow, 6));
     }
 
     [Fact]
@@ -1103,18 +1150,20 @@ public class LeaseDraftServiceTests
     }
 
     [Fact]
-    public async Task Save_TheFirstSaveOfADraftMadeByTheOldForm_KeepsItsTransitoryTypeAndEnd_UntilTheLandlordChoosesAType()
+    public async Task Save_TheFirstSaveOfADraftMadeByTheOldForm_KeepsItsTransitoryTypeAndEnd_AndAsksForTheNeedTheOldFormNeverAsked()
     {
         using var h = await NewAsync();
         var id = await SeedOldFormDraftAsync(h, LeaseContractType.Transitorio, new DateTime(2027, 4, 30, 0, 0, 0, DateTimeKind.Utc));
 
-        // The documents of the parties: nothing to do with the type, which the wizard cannot offer and must not change on its own.
+        // The documents of the parties: nothing to do with the type or the term, which stay as the old form wrote them.
         var saved = await h.SaveAsync(id, 0, 5, "{}");
 
         var lease = await h.LoadAsync(id);
         Assert.Equal(LeaseContractType.Transitorio, lease.ContractType);
         Assert.Equal(new DateTime(2027, 4, 30, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
-        Assert.Contains(LeaseNeedCodes.LeaseTypeNotAvailable, Needs(saved.Flow, 3));
+        Assert.DoesNotContain(LeaseNeedCodes.LeaseTypeNotAvailable, Needs(saved.Flow, 3));
+        Assert.Contains(LeaseNeedCodes.TransitoryPartyMissing, Needs(saved.Flow, 3));
+        Assert.Contains(LeaseNeedCodes.TransitoryNeedMissing, Needs(saved.Flow, 3));
 
         // The landlord chooses a type that can be created: the term is the one of the type.
         await h.SaveAsync(id, saved.Version, 3, """{"contractType":"Libero"}""");
