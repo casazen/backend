@@ -59,6 +59,14 @@ public sealed class LeaseDocumentExtractionService(
         var importedDraft = lease.Status == LeaseStatus.Draft && lease.Origin == LeaseOrigin.Imported;
         try
         {
+            if (document.Kind == LeaseDocumentKind.Registration)
+            {
+                // The receipt of the Agenzia delle Entrate: read on its own, whatever the lease (CF-DOCS-REAL).
+                var receiptStatus = await ReadReceiptAsync(document, lease, ct);
+                logger.LogInformation("Receipt read. DocumentId={DocumentId} LeaseId={LeaseId} Status={Status}", documentId, lease.Id, receiptStatus);
+                return;
+            }
+
             if (importedDraft && document.Kind != LeaseDocumentKind.Contract)
             {
                 // The identity document of a tenant or the receipt of a registration do not fill the draft of a contract.
@@ -107,9 +115,20 @@ public sealed class LeaseDocumentExtractionService(
             }
 
             var leaseId = lease.Id;
+            DocumentAnalysis? analysis;
+            try
+            {
+                analysis = document.Kind == LeaseDocumentKind.Contract ? Analyze(text, lease) : null;
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                await FailAsync(documentId, ContractReadingCodes.Unreadable, ct);
+                return;
+            }
+
             var status = importedDraft
-                ? await ReadIntoDraftAsync(documentId, lease, text, ct)
-                : await ReadIntoLeaseAsync(document, lease, text, ct);
+                ? await ReadIntoDraftAsync(documentId, lease, text, analysis!, ct)
+                : await ReadIntoLeaseAsync(document, lease, text, analysis, ct);
 
             logger.LogInformation(
                 "Document read. DocumentId={DocumentId} LeaseId={LeaseId} Status={Status} Pages={Pages} PagesOcr={PagesOcr}",
@@ -130,20 +149,10 @@ public sealed class LeaseDocumentExtractionService(
     /// The draft service clears the change tracker of the context it takes the lock on (the same scoped context as this service's), so
     /// everything written to the document after it goes through <see cref="UpdateAsync"/>, which reads the document again.
     /// </remarks>
-    private async Task<LeaseDocumentExtractionStatus> ReadIntoDraftAsync(Guid documentId, LeaseContract lease, ContractText text, CancellationToken ct)
+    private async Task<LeaseDocumentExtractionStatus> ReadIntoDraftAsync(
+        Guid documentId, LeaseContract lease, ContractText text, DocumentAnalysis analysis, CancellationToken ct)
     {
-        var context = new LeaseContractParseContext(lease.Property?.Address, lease.Property?.City);
-        LeaseContractReading reading;
-        try
-        {
-            reading = LeaseContractTextParser.Parse(text.Text, context);
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            await FailAsync(documentId, ContractReadingCodes.Unreadable, ct);
-            return LeaseDocumentExtractionStatus.Failed;
-        }
-
+        var reading = analysis.Reading;
         if (reading.IsEmpty)
         {
             await FailAsync(documentId, ContractReadingCodes.NothingFound, ct);
@@ -177,12 +186,19 @@ public sealed class LeaseDocumentExtractionService(
             : LeaseDocumentExtractionStatus.Completed;
         var result = JsonSerializer.Serialize(new
         {
-            version = 2,
+            version = 3,
+            kind = "contract",
             source = text.PagesOcr == 0 ? "embedded" : text.PagesOcr == text.Pages ? "ocr" : "mixed",
             pages = text.Pages,
             pagesOcr = text.PagesOcr,
             truncated = text.Truncated,
             stipulaDate = reading.StipulaDate is { IsAccepted: true } signed ? signed.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null,
+            sections = SectionsOf(analysis),
+            containsAttestation = analysis.Sections.ContainsAttestation,
+            containsCalculationSheet = analysis.Sections.ContainsCalculationSheet,
+            attestation = analysis.Attestation is { } attestation ? new { verdict = attestation.Verdict.ToString(), read = attestation.FieldNames() } : null,
+            sheet = analysis.Sheet is { } sheet ? new { verdict = sheet.Verdict.ToString(), read = sheet.FieldNames() } : null,
+            warnings = WarningsOf(analysis),
             fields = applied.Fields.Select(f => new
             {
                 field = f.Field,
@@ -220,6 +236,135 @@ public sealed class LeaseDocumentExtractionService(
         await db.SaveChangesAsync(ct);
     }
 
+    // ---- the sections of a contract document (CF-DOCS-REAL) ---------------------------------------------------------------
+
+    /// <summary>What the pages of a contract document are made of and what each part says: kept in memory only, never stored whole.</summary>
+    private sealed record DocumentAnalysis(
+        RecognizedSections Sections,
+        string ContractText,
+        LeaseContractReading Reading,
+        AttestationReading? Attestation,
+        CalculationSheetReading? Sheet,
+        IReadOnlyList<ReadingWarning> Warnings);
+
+    /// <summary>
+    /// Tells the sections of the document apart, reads each with its own reader and checks them against each other and against the
+    /// property. The contract is read from its own pages only: the attestation repeats the rent and the dates with other meanings.
+    /// </summary>
+    private static DocumentAnalysis Analyze(ContractText text, LeaseContract lease)
+    {
+        var pages = text.PageTexts();
+        var sections = ContractDocumentSections.Recognize(pages);
+        var contractText = ContractDocumentSections.TextOf(pages, sections, DocumentSectionKind.Contract);
+        var reading = LeaseContractTextParser.Parse(contractText, new LeaseContractParseContext(lease.Property?.Address, lease.Property?.City));
+
+        var attestation = sections.ContainsAttestation
+            ? AttestationReader.Read(ContractDocumentSections.TextOf(pages, sections, DocumentSectionKind.Attestation))
+            : null;
+        var sheet = sections.ContainsCalculationSheet
+            ? CalculationSheetReader.Read(ContractDocumentSections.TextOf(pages, sections, DocumentSectionKind.CalculationSheet))
+            : null;
+
+        var codes = ContractFiscalCodes.Find(contractText).Select(f => f.Code).ToList();
+        var warnings = ContractDocumentValidator.Validate(new ContractDocumentFacts(
+            sections,
+            reading,
+            codes,
+            ContractDocumentValidator.CountInvalidFiscalCodes(contractText, codes),
+            attestation,
+            sheet,
+            lease.Property?.City));
+        return new DocumentAnalysis(sections, contractText, reading, attestation, sheet, warnings);
+    }
+
+    /// <summary>The sections as they are kept: the kind and the pages, nothing of the text.</summary>
+    private static IEnumerable<object> SectionsOf(DocumentAnalysis analysis) =>
+        analysis.Sections.Sections.Select(s => new { kind = DocumentSectionKinds.Code(s.Kind), firstPage = s.FirstPage, lastPage = s.LastPage });
+
+    private static IEnumerable<object> WarningsOf(DocumentAnalysis analysis) =>
+        analysis.Warnings.Select(w => new { code = w.Code, pages = w.Pages });
+
+    // ---- the receipt of the registration (CF-DOCS-REAL) --------------------------------------------------------------------
+
+    /// <summary>
+    /// The receipt of the Agenzia delle Entrate is a digital PDF: its text is read in process, without OCR. What is kept with the document is
+    /// the outcome (registered or discarded), the names of the fields found and the codes of what disagrees with the lease: never a value.
+    /// The values come to the screen from <see cref="ILeaseDocumentReadingService"/>, which reads the file again when the person asks.
+    /// </summary>
+    private async Task<LeaseDocumentExtractionStatus> ReadReceiptAsync(LeaseDocument document, LeaseContract lease, CancellationToken ct)
+    {
+        var documentId = document.Id;
+        await UpdateAsync(documentId, d =>
+        {
+            d.ExtractionStartedAt = DateTime.UtcNow;
+            d.ExtractionStatus = LeaseDocumentExtractionStatus.Processing;
+        }, ct);
+
+        var bytes = await ReadStoredAsync(document, ct);
+        if (bytes is null)
+        {
+            await FailAsync(documentId, ContractReadingCodes.FileMissing, ct);
+            return LeaseDocumentExtractionStatus.Failed;
+        }
+
+        ContractText? text;
+        try
+        {
+            text = await reader.ReadDigitalAsync(bytes, ct);
+        }
+        catch (InvalidDataException)
+        {
+            await FailAsync(documentId, ContractReadingCodes.Unreadable, ct);
+            return LeaseDocumentExtractionStatus.Failed;
+        }
+
+        // A scan or a photo of the receipt is not read here: the person types the number and the date, as before.
+        if (text is null)
+        {
+            await FailAsync(documentId, ContractReadingCodes.NoText, ct);
+            return LeaseDocumentExtractionStatus.Failed;
+        }
+
+        RegistrationReceiptReading receipt;
+        try
+        {
+            receipt = RegistrationReceiptReader.Read(text.Text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            await FailAsync(documentId, ContractReadingCodes.Unreadable, ct);
+            return LeaseDocumentExtractionStatus.Failed;
+        }
+
+        if (!receipt.IsReceipt)
+        {
+            await FailAsync(documentId, ContractReadingCodes.NothingFound, ct);
+            return LeaseDocumentExtractionStatus.Failed;
+        }
+
+        var warnings = ReceiptFacts.WarningsOf(receipt, lease);
+        var status = receipt.Outcome == ReceiptOutcome.Registered && warnings.Count == 0
+            ? LeaseDocumentExtractionStatus.Completed
+            : LeaseDocumentExtractionStatus.NeedsReview;
+        var result = JsonSerializer.Serialize(new
+        {
+            version = 3,
+            kind = "registration",
+            outcome = receipt.Outcome.ToString(),
+            pages = text.Pages,
+            read = receipt.FieldNames(),
+            warnings,
+        });
+        await UpdateAsync(documentId, d =>
+        {
+            d.ExtractionStatus = status;
+            d.ExtractionError = null;
+            d.ExtractionResult = result;
+            d.ExtractionCompletedAt = DateTime.UtcNow;
+        }, ct);
+        return status;
+    }
+
     private async Task<byte[]?> ReadStoredAsync(LeaseDocument document, CancellationToken ct)
     {
         await using var stream = await storage.OpenReadAsync(StorageBucket.Private, document.StorageKey, ct);
@@ -233,9 +378,11 @@ public sealed class LeaseDocumentExtractionService(
 
     // ---- any other lease: the first pipeline, as it was (ADR-009) -------------------------------------------------------
 
-    private async Task<LeaseDocumentExtractionStatus> ReadIntoLeaseAsync(LeaseDocument document, LeaseContract lease, ContractText text, CancellationToken ct)
+    private async Task<LeaseDocumentExtractionStatus> ReadIntoLeaseAsync(
+        LeaseDocument document, LeaseContract lease, ContractText text, DocumentAnalysis? analysis, CancellationToken ct)
     {
-        var fields = ParseExtractedFields(text.Text);
+        // A contract that comes with its attestation and its sheet is read on its own pages: the numbers of the other sections are not its own.
+        var fields = ParseExtractedFields(analysis?.ContractText ?? text.Text);
         var conflicts = ValidateCoherence(fields, lease);
 
         // Fields are written to the lease only when every one is certain and none contradicts the lease.
@@ -252,12 +399,23 @@ public sealed class LeaseDocumentExtractionService(
 
         // The names of the fields and how sure the reading was, never what it read: the name of a person is not kept here.
         document.ExtractionError = null;
-        document.ExtractionResult = JsonSerializer.Serialize(new
-        {
-            version = 1,
-            fields = fields.Select(f => new { name = f.Name, confidence = f.Confidence }).ToList(),
-            conflicts = conflicts.Select(c => new { field = c.Field, reason = c.Reason }).ToList(),
-        });
+        document.ExtractionResult = analysis is null
+            ? JsonSerializer.Serialize(new
+            {
+                version = 1,
+                fields = fields.Select(f => new { name = f.Name, confidence = f.Confidence }).ToList(),
+                conflicts = conflicts.Select(c => new { field = c.Field, reason = c.Reason }).ToList(),
+            })
+            : JsonSerializer.Serialize(new
+            {
+                version = 1,
+                fields = fields.Select(f => new { name = f.Name, confidence = f.Confidence }).ToList(),
+                conflicts = conflicts.Select(c => new { field = c.Field, reason = c.Reason }).ToList(),
+                sections = SectionsOf(analysis),
+                containsAttestation = analysis.Sections.ContainsAttestation,
+                containsCalculationSheet = analysis.Sections.ContainsCalculationSheet,
+                warnings = WarningsOf(analysis),
+            });
         document.ExtractionCompletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return document.ExtractionStatus;
