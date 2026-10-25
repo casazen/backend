@@ -10,10 +10,10 @@
 > Punti che non valgono più o sono sbagliati:
 >
 > - R2: la variabile è `ConcordatoFacile__StatusApiKey` (non `CONCORDATOFACILE_API_KEY`, che nessun codice legge) e la sua assenza non ferma l'avvio: l'API di stato resta spenta con un avviso nel log.
-> - R6: la risposta dell'elenco di CF è l'oggetto `{ leaseId, practices }`, non un array; anche `comuneDiffersFromLink` può essere `null` (specifica CF v0.2). Il codice oggi segue la regola sbagliata: correzione in corso (task CF-FIX2).
-> - R11: manca il controllo che il contratto sia dell'organizzazione del chiamante (correzione in corso).
-> - R22: senza chiave ogni lettura fallisce; non si restituisce un elenco vuoto (un errore non è mai «nessuna pratica»).
-> - Il lookup per `practiceId` non è in cache e dopo un errore lo snapshot non aggiornato è riletto subito (correzione in corso). Il resto (client con Polly, cache di 15 minuti con rilettura breve di 5, stati, badge) descrive ciò che il codice fa.
+> - R6: la risposta dell'elenco di CF è l'oggetto `{ leaseId, practices }`, non un array; anche `comuneDiffersFromLink` può essere `null` (specifica CF v0.2). Il codice seguiva la regola sbagliata fino al 25 ottobre; ora legge l'oggetto (task CF-FIX2, backend #611).
+> - R11: il controllo che il contratto sia dell'organizzazione del chiamante mancava; c'è dal 25 ottobre (CF-FIX2): un contratto inesistente o altrui è 404 `lease_not_found`.
+> - R22: senza chiave ogni lettura fallisce (una 401 è registrata come errore nel log); non si restituisce un elenco vuoto (un errore non è mai «nessuna pratica»).
+> - Dal 25 ottobre (CF-FIX2) il lookup per `practiceId` è in cache (15 minuti) e dopo un errore lo snapshot non aggiornato si serve per 5 minuti. Il resto (client con Polly, cache di 15 minuti con rilettura breve di 5, stati, badge) descrive ciò che il codice fa.
 
 ## Context
 

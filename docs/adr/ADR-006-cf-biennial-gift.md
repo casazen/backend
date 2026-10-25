@@ -11,7 +11,7 @@
 >
 > - R8: la validazione di avvio vale in Production e in ogni ambiente che non sia Development o Testing.
 > - Q-A03: il piano a 24 mesi non è ancora in vendita (task BIENNIAL); il regalo si assegna a ogni `customer.subscription.created` con un Price di `BiennialPriceIds`, senza controllare che la sottoscrizione sia `active` o `trialing`.
-> - R4–R6 sono attuati (lock consultivo), ma manca il controllo che il contratto sia dell'organizzazione (ADR-004-R6, in correzione nel task CF-FIX2).
+> - R4–R6 sono attuati (lock consultivo); il controllo che il contratto sia dell'organizzazione (ADR-004-R6) c'è dal 25 ottobre (task CF-FIX2, backend #611), prima mancava.
 
 ## Context
 

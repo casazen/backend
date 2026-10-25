@@ -10,7 +10,7 @@
 > Punti che non valgono più o non sono attuati:
 >
 > - Entità e indici (R1–R5) sono attuati (`ConcordatoFacilePurchases`, `ConcordatoFacileGifts`); lo snapshot di stato resta nella memoria del processo e non ha una tabella.
-> - R6 (consumare l'omaggio solo per un contratto dell'organizzazione) **non è attuata**: la correzione è in corso (task CF-FIX2).
+> - R6 (consumare l'omaggio solo per un contratto dell'organizzazione) **non era attuata** e lo è dal 25 ottobre (task CF-FIX2, backend #611): un contratto inesistente o di un'altra organizzazione è 404 `lease_not_found`.
 
 ## Context
 
