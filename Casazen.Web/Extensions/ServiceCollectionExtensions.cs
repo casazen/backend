@@ -246,7 +246,10 @@ public static class ServiceCollectionExtensions
             .AddPolicy(CasazenPolicies.GuestSession, policy => policy
                 .AddAuthenticationSchemes(GuestSessionDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
-                .RequireClaim(GuestSessionDefaults.OrgIdClaim));
+                .RequireClaim(GuestSessionDefaults.OrgIdClaim))
+            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles.
+            .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
+                policy.Requirements.Add(new OwnerPortalRequirement()));
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
