@@ -157,7 +157,7 @@ public class WireTransferProofTests
         var (batch, _) = await service.CreateBatchAsync(
             orgId,
             [statement1.Id, statement2.Id],
-            "IT28W8000000292100645211151", // Valid debit account IBAN
+            "IT76X0542811101000000654321", // Valid debit account IBAN
             CancellationToken.None);
 
         // Assert: Batch total equals sum of statement NetPayable amounts
@@ -255,7 +255,7 @@ public class WireTransferProofTests
             await service.CreateBatchAsync(
                 orgId,
                 [statement.Id],
-                "IT28W8000000292100645211151", // Valid debit account
+                "IT76X0542811101000000654321", // Valid debit account
                 CancellationToken.None));
 
         // The exception should mention the error but NOT contain the IBAN
