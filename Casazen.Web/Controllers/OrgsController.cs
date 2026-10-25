@@ -217,6 +217,7 @@ public class OrgsController(
         var entitlement = await entitlementService.GetEntitlementAsync(orgId, cancellationToken);
         var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
         var seats = await seatService.GetUsageAsync(orgId, cancellationToken);
+        var org = await orgService.GetByIdAsync(orgId, cancellationToken);
 
         return new EntitlementDto
         {
@@ -228,6 +229,7 @@ public class OrgsController(
             CanAddProperty = entitlement.CanAddProperty,
             CanUseCustomDomain = canUseCustomDomain,
             CanInviteMember = seats.CanInvite,
+            IsAgency = org?.PlanTier == Core.Entities.Enums.PlanTier.Agency,
         };
     }
 }

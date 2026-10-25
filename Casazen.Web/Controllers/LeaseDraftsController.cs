@@ -199,6 +199,24 @@ public class LeaseDraftsController(
     }
 
     /// <summary>
+    /// How far the reading of the contract the owner uploaded has got (NL-DOCS): <c>state</c> None · Reading · Done · Failed, the
+    /// contract documents with their status, what was read and what became of each value (<c>fields</c>: the name of the field, the id of
+    /// the entry of the draft, Read · Agrees · Conflict · Unusable, how sure; never a value), the day of the signature the contract states and the
+    /// contract document the final import can use. The screen asks every few seconds while <c>Reading</c>, then reads the draft again.
+    /// </summary>
+    [HttpGet("{id:guid}/draft/reading")]
+    [ProducesResponseType(typeof(LeaseReadingDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetReading(Guid id, [FromServices] ILeaseDocumentService documents, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        var reading = await documents.GetReadingAsync(id, cancellationToken);
+        NoStore();
+        return Ok(reading);
+    }
+
+    /// <summary>
     /// Imports a contract already signed outside CasaZen (LR-13, decisions LR-D2 and LR-D28): a PDF (checked on its content, at most
     /// 20 MB, private bucket) and the day it was signed (not after today). The only way to a Signed lease without a contract template of
     /// ours: <c>signed-document</c> and <c>sent</c> of a contract made in CasaZen go on answering 422
@@ -209,8 +227,10 @@ public class LeaseDraftsController(
     /// already registered, is declared afterwards with <c>POST api/leases/{id}/registration/manual</c>. 409 <c>lease_not_draft</c>
     /// (also for a second import), 409 <c>lease_draft_conflict</c> (the lease is busy: nothing was written), 422
     /// <c>lease_import_not_imported_origin</c>, <c>lease_review_blocked</c>, <c>lease_signed_contract_invalid</c>,
-    /// <c>lease_stipula_date_in_future</c>. Multipart fields: <c>stipulaDate</c>, <c>signedContract</c>. Answers the masked detail of
-    /// the lease, as <c>signed-document</c> does.
+    /// <c>lease_stipula_date_in_future</c>. Multipart fields: <c>stipulaDate</c> and the signed PDF, either <c>signedContract</c> (the
+    /// file) or <c>contractDocumentId</c> (the contract document already uploaded to this draft, NL-DOCS; 404 <c>document_not_found</c>
+    /// for another lease's or another org's), exactly one of the two (400 otherwise). Answers the masked detail of the lease, as
+    /// <c>signed-document</c> does.
     /// </summary>
     [HttpPost("{id:guid}/import")]
     [Consumes("multipart/form-data")]
@@ -220,7 +240,7 @@ public class LeaseDraftsController(
     [ProducesResponseType(typeof(LeaseDetailDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> Import(
         Guid id,
-        [FromForm] SignedDocumentForm form,
+        [FromForm] ImportContractForm form,
         [FromServices] ILeaseSigningService signing,
         [FromServices] ILeaseWorkflowService leases,
         [FromServices] TimeProvider clock,
@@ -231,13 +251,23 @@ public class LeaseDraftsController(
         if (await AuthorizeLeaseToSignAsync(id, cancellationToken) is { } denied)
             return denied;
 
-        await using (var signedContract = form.SignedContract!.OpenReadStream())
+        // The signed PDF comes once: sent now, or already uploaded to this draft (the contract the owner gave to be read).
+        if ((form.SignedContract is null) == (form.ContractDocumentId is null))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "LeaseImportSourceInvalid");
+
+        if (form.SignedContract is { } file)
         {
+            await using var signedContract = file.OpenReadStream();
             await signing.ImportSignedContractAsync(
                 id,
                 userId,
-                new ImportedContractDeclaration(form.StipulaDate!.Value, signedContract, form.SignedContract.Length, form.SignedContract.FileName),
+                new ImportedContractDeclaration(form.StipulaDate!.Value, signedContract, file.Length, file.FileName),
                 cancellationToken);
+        }
+        else
+        {
+            await signing.ImportSignedContractFromDocumentAsync(
+                id, userId, new ImportedDocumentDeclaration(form.StipulaDate!.Value, form.ContractDocumentId!.Value), cancellationToken);
         }
 
         return Ok(LeaseDtoMapper.ToDetail((await leases.GetLeaseDetailAsync(id))!, clock.TodayInRome()));
@@ -311,6 +341,20 @@ public class LeaseDraftsController(
     }
 
     private void NoStore() => Response.Headers.CacheControl = "private, no-store";
+}
+
+/// <summary>
+/// The import of a contract signed elsewhere: the day it was signed and its PDF — the file sent now, or the id of the contract document
+/// already uploaded to the draft (NL-DOCS), one of the two.
+/// </summary>
+public sealed class ImportContractForm
+{
+    [Required]
+    public DateTime? StipulaDate { get; set; }
+
+    public IFormFile? SignedContract { get; set; }
+
+    public Guid? ContractDocumentId { get; set; }
 }
 
 /// <summary>A new draft: the property and, optionally, how the lease came to be (<c>Created</c> by default).</summary>

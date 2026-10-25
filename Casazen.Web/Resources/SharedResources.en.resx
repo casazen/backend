@@ -1237,6 +1237,9 @@
   <data name="LeaseImportNotImported" xml:space="preserve">
     <value>Only a contract declared as already signed outside CasaZen when the draft was created can be imported. A contract prepared in CasaZen is signed from its template.</value>
   </data>
+  <data name="LeaseImportSourceInvalid" xml:space="preserve">
+    <value>Give the signed contract in one way only: the file sent now, or the document already uploaded to the draft.</value>
+  </data>
   <data name="DirectBookingDeferredPaymentUnavailable" xml:space="preserve">
     <value>Paying at the deadline is not available for these dates: the arrival is too close. Choose another payment method.</value>
   </data>
