@@ -868,6 +868,12 @@
   <data name="AlloggiatiRecordFileName" xml:space="preserve">
     <value>The file for the Alloggiati Web portal cannot be generated: the first or last name of guest {0} has characters the portal does not accept. Write them with letters of the Latin alphabet only, as on the document.</value>
   </data>
+  <data name="questura_credentials_missing" xml:space="preserve">
+    <value>Questura credentials missing for this property.</value>
+  </data>
+  <data name="alloggiati_send_failed" xml:space="preserve">
+    <value>Alloggiati Web send failed.</value>
+  </data>
   <data name="TouristTaxRateNotFound" xml:space="preserve">
     <value>Tourist tax rate not found.</value>
   </data>
