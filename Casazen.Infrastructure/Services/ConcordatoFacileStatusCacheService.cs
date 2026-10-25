@@ -1,34 +1,52 @@
 using System.Collections.Concurrent;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// CF status cache service with 15-minute expiry and request coalescing (ADR-008-R7 through ADR-008-R10, ADR-008-R14).
-/// It also keeps the answer of the lookup of a single practice for 15 minutes (<see cref="GetPracticeAsync"/>).
+/// It also keeps the answer of the lookup of a single practice for 15 minutes (<see cref="GetPracticeAsync"/>). With the simulated module
+/// of the test environment (<c>ConcordatoFacile:FormMode=Simulated</c>, CF-SIM) every one of these times is the same few seconds
+/// (<c>ConcordatoFacile:Simulator:StatusTtlSeconds</c>), because whoever tries the round would otherwise wait minutes to see a state.
 /// </summary>
 public sealed class ConcordatoFacileStatusCacheService(
     IMemoryCache memoryCache,
-    ConcordatoFacileApiClient apiClient,
+    IConcordatoFacileApiClient apiClient,
     AppDbContext db,
     IHostEnvironment environment,
-    ILogger<ConcordatoFacileStatusCacheService> logger) : IConcordatoFacileStatusCacheService
+    ILogger<ConcordatoFacileStatusCacheService> logger,
+    IOptions<ConcordatoFacileOptions>? options = null) : IConcordatoFacileStatusCacheService
 {
-    private static readonly TimeSpan NormalExpiry = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan BriefRefreshExpiry = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan RealNormalExpiry = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan RealBriefRefreshExpiry = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan BriefRefreshWindow = TimeSpan.FromHours(1);
 
     // CF-FIX2: after a failed read the stale snapshot is served for this long before ConcordatoFacile is asked again.
-    private static readonly TimeSpan AfterErrorExpiry = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan RealAfterErrorExpiry = TimeSpan.FromMinutes(5);
 
     // CF-FIX2: a practice ConcordatoFacile does not know yet (the form was sent seconds ago) is asked again soon, not in 15 minutes.
-    private static readonly TimeSpan PracticeNotFoundExpiry = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan RealPracticeNotFoundExpiry = TimeSpan.FromMinutes(1);
+
+    // CF-SIM: the one time of the simulated module, null with the real one.
+    private readonly TimeSpan? _simulatedExpiry = options?.Value is { FormMode: ConcordatoFacileFormMode.Simulated } simulated
+        ? TimeSpan.FromSeconds(simulated.Simulator.StatusTtlSeconds)
+        : null;
+
+    private TimeSpan NormalExpiry => _simulatedExpiry ?? RealNormalExpiry;
+
+    private TimeSpan BriefRefreshExpiry => _simulatedExpiry ?? RealBriefRefreshExpiry;
+
+    private TimeSpan AfterErrorExpiry => _simulatedExpiry ?? RealAfterErrorExpiry;
+
+    private TimeSpan PracticeNotFoundExpiry => _simulatedExpiry ?? RealPracticeNotFoundExpiry;
 
     // Request coalescing: one semaphore per leaseId to prevent concurrent API calls for the same lease
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
