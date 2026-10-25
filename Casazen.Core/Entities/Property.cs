@@ -212,6 +212,13 @@ public class Property : ITenantOwned
     [MaxLength(50)]
     public string Timezone { get; set; } = "Europe/Rome"; // Default for Italian properties
 
+    /// <summary>
+    /// Swiss municipality code (official BFS number) for properties in Switzerland (Country = 'CH').
+    /// Null for non-Swiss properties. Foreign key to SwissMunicipalities table (ADR-001-R9, NF-02).
+    /// </summary>
+    [MaxLength(10)]
+    public string? SwissMunicipalityCode { get; set; }
+
     [ForeignKey("CancellationPolicy")]
     public Guid? CancellationPolicyId { get; set; }
     public virtual CancellationPolicy? CancellationPolicy { get; set; }

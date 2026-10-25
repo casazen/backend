@@ -83,6 +83,10 @@ public class AppDbContext(
     public DbSet<OfficialSourceFetch> OfficialSourceFetches { get; set; } = null!;
     public DbSet<ComuneOfficialProfile> ComuneOfficialProfiles { get; set; } = null!;
     public DbSet<ComuneOfficialProfileVersion> ComuneOfficialProfileVersions { get; set; } = null!;
+
+    // Swiss municipalities from Ufficio federale di statistica (NF-02)
+    public DbSet<SwissMunicipality> SwissMunicipalities { get; set; } = null!;
+
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
