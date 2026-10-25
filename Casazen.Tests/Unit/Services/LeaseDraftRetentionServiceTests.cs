@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -191,6 +192,46 @@ public class LeaseDraftRetentionServiceTests
 
         Assert.Equal(0, result.Deleted);
         Assert.True(await ExistsAsync(h, id));
+    }
+
+    /// <summary>
+    /// DATA RULE PROOF (CF-IMPORT, money): the draft of a contract made with ConcordatoFacile that was paid is never deleted — not by the
+    /// owner (409 <c>lease_not_deletable</c>) and not by the retention job — while the same draft without a purchase goes as any other. The
+    /// in-memory database has no foreign keys: only the rule of <see cref="LeaseDraftDeleter"/> can stop it here.
+    /// </summary>
+    [Fact]
+    public async Task Run_AConcordatoFacileDraftThatWasPaid_IsKept_NeitherTheOwnerNorTheRetentionDeletesIt()
+    {
+        using var h = await new LeaseDraftHarness().SeedAsync();
+        var paid = await h.Service.CreateCfDraftAsync(h.PropertyId, h.OrgId);
+        var unpaid = await h.Service.CreateCfDraftAsync((await h.SeedPropertyAsync()).Id, h.OrgId);
+        await using (var db = h.SecondContext())
+        {
+            db.ConcordatoFacilePurchases.Add(new ConcordatoFacilePurchase
+            {
+                OrgId = h.OrgId,
+                LeaseContractId = paid,
+                StripeCheckoutSessionId = "cs_test_paid",
+                StripePaymentIntentId = "pi_test_paid",
+                AmountCents = 11900,
+                Currency = "eur",
+                Status = ConcordatoFacilePurchaseStatus.Completed,
+                PaidAt = LeaseDraftHarness.Now.UtcDateTime.AddDays(-200),
+            });
+            foreach (var lease in await db.LeaseContracts.Where(l => l.Id == paid || l.Id == unpaid).ToListAsync())
+                lease.UpdatedAt = LeaseDraftHarness.Now.UtcDateTime.AddDays(-200);
+            await db.SaveChangesAsync();
+        }
+
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => h.NewService().DeleteAsync(paid));
+        Assert.Equal(LeaseDraftErrorCodes.NotDeletable, refused.Code);
+        Assert.True(await ExistsAsync(h, paid));
+
+        var result = await NewRetention(h).RunAsync();
+
+        Assert.Equal(1, result.Deleted);
+        Assert.True(await ExistsAsync(h, paid));
+        Assert.False(await ExistsAsync(h, unpaid));
     }
 
     /// <summary>Refuses the deletion of the given leases with an error that is none of the ones the service knows (a failure of the database).</summary>

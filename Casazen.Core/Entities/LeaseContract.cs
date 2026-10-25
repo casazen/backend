@@ -205,8 +205,9 @@ public class LeaseContract : ITenantOwned
 
     /// <summary>
     /// Marks a draft created for the ConcordatoFacile flow (ADR-004): it complements <see cref="ContractType"/> (Concordato) and
-    /// <see cref="Origin"/>. True only for minimal drafts created through the CF payment entry point. Protects the draft from automatic
-    /// deletion while a CF purchase is pending or completed.
+    /// <see cref="Origin"/> (<see cref="LeaseOrigin.Imported"/>: the contract is the partner's, signed outside our models, CF-IMPORT).
+    /// True only for minimal drafts created through the CF payment entry point; it stays true when the draft is imported as a signed
+    /// contract. Protects the draft from deletion (by the owner and by the retention job) while a CF purchase is pending or completed.
     /// </summary>
     public bool IsConcordatoFacileSource { get; set; } = false;
 

@@ -152,7 +152,8 @@ public sealed record LeaseEventDto(LeaseEventType EventType, DateTime OccurredAt
 /// <c>CurrentTermEndDate</c> the last day of the period the lease is in now, <c>NoticeOn</c>/<c>NoticeFrom</c> the notice of
 /// non-renewal, <c>TerminatedOn</c> the last day of a lease ended early; <c>RenewalMonths</c> (months it goes on for when nobody gives
 /// notice, 0 if it does not renew) and <c>NoticeWarning</c> (<c>notice_possibly_late</c> when the notice came after the last day to
-/// give it) are derived.
+/// give it) are derived. Since CF-IMPORT the last field, <c>IsConcordatoFacileSource</c>, says that the lease is the one ConcordatoFacile
+/// prepares (an imported draft that waits for the contract the partner delivers); a boolean, nothing of a person.
 /// </summary>
 public sealed record LeaseDetailDto(
     Guid Id,
@@ -183,7 +184,8 @@ public sealed record LeaseDetailDto(
     DateTime CurrentTermEndDate = default,
     DateTime? NoticeOn = null,
     LeaseNoticeParty? NoticeFrom = null,
-    DateTime? TerminatedOn = null)
+    DateTime? TerminatedOn = null,
+    bool IsConcordatoFacileSource = false)
 {
     /// <summary>Months the lease goes on for when it renews by itself (48 libero, 24 concordato); 0 for a type that does not renew.</summary>
     public int RenewalMonths => LongRentRules.RenewalMonths(ContractType) ?? 0;
@@ -271,7 +273,8 @@ public static class LeaseDtoMapper
             lease.CurrentTermEndDate,
             lease.NoticeOn,
             lease.NoticeFrom,
-            lease.TerminatedOn);
+            lease.TerminatedOn,
+            lease.IsConcordatoFacileSource);
     }
 
     public static LeaseConcordatoAssessmentDto ToConcordatoAssessment(LeaseConcordatoAssessment a)

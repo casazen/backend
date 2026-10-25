@@ -33,38 +33,33 @@ public sealed class LeaseDraftDeleter(AppDbContext db, IFileStorage storage, ILo
         && lease.RentSchedule is null;
 
     /// <summary>
-    /// Async version that checks CF purchase protection (ADR-004): a CF draft with a pending or completed purchase is not deletable.
-    /// A draft with nothing that makes it a contract: not a draft any more, a signed copy, a rent plan, or a CF purchase keep it.
+    /// The one rule of what may be deleted, for the deletion the landlord asks for and for the retention job (CF-IMPORT): a draft with
+    /// nothing that makes it a contract (<see cref="IsDeletable"/>) and without a ConcordatoFacile purchase that is pending or completed
+    /// (ADR-004). A purchase that failed never charged anything and does not keep the draft. The rule looks at the purchases of the lease,
+    /// not at the mark of the draft, so a draft made before the mark existed is protected as well.
     /// </summary>
     public async Task<bool> IsDeletableAsync(LeaseContract lease, CancellationToken cancellationToken = default)
     {
         if (!IsDeletable(lease))
             return false;
 
-        // CF drafts with associated purchases (non-failed) are protected from deletion
-        if (lease.IsConcordatoFacileSource)
-        {
-            var hasPurchase = await db.Set<ConcordatoFacilePurchase>()
-                .AnyAsync(p => p.LeaseContractId == lease.Id
-                    && p.Status != ConcordatoFacilePurchaseStatus.Failed,
-                    cancellationToken);
+        var hasPurchase = await db.Set<ConcordatoFacilePurchase>()
+            .AnyAsync(
+                p => p.LeaseContractId == lease.Id && p.Status != ConcordatoFacilePurchaseStatus.Failed,
+                cancellationToken);
 
-            if (hasPurchase)
-                return false;
-        }
-
-        return true;
+        return !hasPurchase;
     }
 
     /// <summary>
     /// Removes the lease (loaded with <see cref="WithChildren"/>) and saves; returns the keys of its files in the private bucket,
     /// which the caller deletes after the commit with <see cref="DeleteFilesAsync"/>. 409 <c>lease_not_deletable</c> when the lease
-    /// is not <see cref="IsDeletable"/>, or when a record that refers to it (added after this code was written) stops the delete.
+    /// is not <see cref="IsDeletableAsync"/>, or when a record that refers to it (added after this code was written) stops the delete.
     /// </summary>
     public async Task<IReadOnlyList<string>> DeleteAsync(LeaseContract lease, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(lease);
-        if (!IsDeletable(lease))
+        if (!await IsDeletableAsync(lease, cancellationToken))
             throw new DomainConflictException(LeaseDraftErrorCodes.NotDeletable, "LeaseNotDeletable");
 
         var files = new[] { lease.QuesturaCommunicationReceiptPath, lease.Registration?.ReceiptStoragePath }
