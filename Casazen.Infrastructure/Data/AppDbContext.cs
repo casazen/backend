@@ -157,6 +157,9 @@ public class AppDbContext(
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
 
+    // Guest identity document images for OCR (NF-10, ADR-013-R3)
+    public DbSet<DocumentImage> DocumentImages { get; set; } = null!;
+
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
 
