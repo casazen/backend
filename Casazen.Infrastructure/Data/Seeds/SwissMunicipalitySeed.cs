@@ -93,7 +93,7 @@ public static class SwissMunicipalitySeed
         Municipality("5586", "VD", "Lausanne"),
         Municipality("5938", "VD", "Montreux"),
         Municipality("5889", "VD", "Vevey"),
-        Municipality("5586", "VD", "Yverdon-les-Bains"),
+        Municipality("5932", "VD", "Yverdon-les-Bains"),
         Municipality("5581", "VD", "Nyon"),
 
         // Canton of Valais (VS)
