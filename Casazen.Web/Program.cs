@@ -90,6 +90,7 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IStatementService, StatementService>();
 builder.Services.AddScoped<IWireTransferService, WireTransferService>();
+builder.Services.AddScoped<IWithholdingService, WithholdingService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
 // Push notifications queued on Hangfire, sent to Expo in batches, receipts read later: MO-04.
