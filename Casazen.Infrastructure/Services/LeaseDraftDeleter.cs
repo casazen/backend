@@ -72,6 +72,12 @@ public sealed class LeaseDraftDeleter(AppDbContext db, IFileStorage storage, ILo
             .Select(key => key!)
             .ToList();
 
+        // The documents the owner uploaded to the draft (NL-DOCS): the contract itself, with names, fiscal codes and addresses. The rows go
+        // with the lease; the files in the private bucket would stay for ever if they were not listed here.
+        var documents = await db.LeaseDocuments.Where(d => d.LeaseContractId == lease.Id).ToListAsync(cancellationToken);
+        files.AddRange(documents.Select(d => d.StorageKey).Where(StorageKeys.IsValid));
+        db.LeaseDocuments.RemoveRange(documents);
+
         var authorizations = await db.LeaseRegistrationAuthorizations
             .Where(a => a.LeaseContractId == lease.Id)
             .ToListAsync(cancellationToken);

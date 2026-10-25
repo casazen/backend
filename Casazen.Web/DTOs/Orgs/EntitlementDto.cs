@@ -36,6 +36,12 @@ public class EntitlementDto
     /// <see cref="EntitlementLimitsDto.MaxSeats"/>. The seat count is also in <c>GET /api/orgs/me/members</c>.
     /// </summary>
     public bool CanInviteMember { get; set; }
+
+    /// <summary>
+    /// True when the org's plan tier is Agency (ADR-010). FE uses it to show/hide B2B features (owner portal,
+    /// statements, invoices, wire transfers, withholding tax).
+    /// </summary>
+    public bool IsAgency { get; set; }
 }
 
 public class EntitlementLimitsDto

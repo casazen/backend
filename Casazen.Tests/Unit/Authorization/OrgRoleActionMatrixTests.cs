@@ -135,6 +135,7 @@ public class OrgRoleActionMatrixTests
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Get), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Save), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.GetReview), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.GetReading), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.ConfirmReview), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.MarkSent), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Delete), Operators },

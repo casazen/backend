@@ -31,6 +31,7 @@ the caller may not handle (a collaborator limited to some properties) is **403**
 | `DELETE /api/leases/{id}/sent` `{ version? }` | Takes it back | 200, same shape |
 | `DELETE /api/leases/{id}` | Deletes the draft with everything tied to it (§ 7) | 204; 409 `lease_not_deletable` |
 | `POST /api/leases/{id}/import` (multipart, `lease.create` + `lease.sign`) | Brings in a contract already signed elsewhere, from a draft of origin `Imported` (LR-13): see [`long-rent-lease-import.md`](long-rent-lease-import.md) | 200 the masked detail of the lease; 409 `lease_not_draft`, `lease_draft_conflict`; 422 `lease_import_not_imported_origin`, `lease_review_blocked`, `lease_signed_contract_invalid`, `lease_stipula_date_in_future` |
+| `GET /api/leases/{id}/draft/reading` | How far the reading of the contract the owner uploaded has got (NL-DOCS, § 16): the contract documents with their status, what was read and what became of each value, the day of the signature, the document the import can use | 200 `{ state, documents, fields, stipulaDate, contractDocumentId }`; 404 `lease_not_found`; `no-store` |
 | `GET /api/long-rent/landlord-defaults` | The landlord data the wizard fills in (§ 9) | 200 `{ firstName, lastName, fiscalCode, residence, contactEmail }`, each may be `null` |
 | `GET /api/long-rent/rules` (`lease.read`) | The figures of the area, from the constants the backend checks against (§ 9) | 200 |
 
@@ -71,7 +72,7 @@ not a real date, far enough that no reader acts on it: no deadline, no agenda wi
 | `LeaseContract.ReviewConfirmedAt`, `ReviewFingerprint` | The confirmed review and the SHA-256 of the values it covers (§ 5) |
 | `LeaseContract.SentForSignatureAt` | When the contract was downloaded for the signature on paper (§ 6) |
 | `Party.Residence` (**encrypted**), `Party.DocumentsVerifiedOn` | The residence (or registered office) of the party and the day the landlord checked an identity document. **No document is kept** (LR-D3) |
-| `LeaseContract.TransitoryParty`, `TransitoryNeed` (**encrypted**), `TransitoryDocumentation` (**encrypted**) | The need of a **transitory** contract made in CasaZen: who has it, what it is and the documents that prove it (TR, § 16). Written like the other columns, only when valid and only for that type; the contract prints them in art. 2 of its model |
+| `LeaseContract.TransitoryParty`, `TransitoryNeed` (**encrypted**), `TransitoryDocumentation` (**encrypted**) | The need of a **transitory** contract made in CasaZen: who has it, what it is and the documents that prove it (TR, § 17). Written like the other columns, only when valid and only for that type; the contract prints them in art. 2 of its model |
 
 The step the landlord is on is never saved as such: `WizardMaxStep` says how far they went, and the **flow** (§ 3) says what each step still
 needs. A step is `Done` only when nothing is missing **and** `WizardMaxStep` reached it.
@@ -86,7 +87,7 @@ it as it was, so a client that sends one field never wipes the others.
 |---|---|
 | 1 · Immobile | `propertyId` (a property of the org the caller may handle; chosen, never un-chosen) |
 | 2 · Parti | `landlords`, `tenants`: lists of `{ id?, firstName, lastName, fiscalCode, citizenship, residence, contactEmail }` (an entry nobody typed in is dropped; an entry keeps the `id` of an entry of **the same role**: any other `id` — unknown, of the other role, repeated — is a new entry, so an id is never in two entries; at most 10 per role) |
-| 3 · Condizioni | `contractType` (`Libero`, `Concordato`, `Transitorio` since TR, LR-D12; any other name is kept and reported as not available), `taxRegime` (`CedolareSecca`, `Ordinario`), `monthlyRent`, `securityDeposit` (required of a contract made in CasaZen, `0` if none; optional of an imported one), `concordato` (`sqm`, `typeAElementCount`…`qualifyingTypeDElementCount`, `isFurnished`, `stoveHeating`, `airConditioning`, `garageSqm`, `balconySqm`, `otherAppurtenanceSqm`, `privateGreenSqm`, `zoneName`, `cadastralSheet`; an imported contract does not use them), and, **for the transitory type made in CasaZen only** (TR, § 16), `transitoryParty` (`Landlord` or `Tenant`: who has the need that justifies the short term) and `transitoryNeed` (the need, at most 500 characters) |
+| 3 · Condizioni | `contractType` (`Libero`, `Concordato`, `Transitorio` since TR, LR-D12; any other name is kept and reported as not available), `taxRegime` (`CedolareSecca`, `Ordinario`), `monthlyRent`, `securityDeposit` (required of a contract made in CasaZen, `0` if none; optional of an imported one), `concordato` (`sqm`, `typeAElementCount`…`qualifyingTypeDElementCount`, `isFurnished`, `stoveHeating`, `airConditioning`, `garageSqm`, `balconySqm`, `otherAppurtenanceSqm`, `privateGreenSqm`, `zoneName`, `cadastralSheet`; an imported contract does not use them), and, **for the transitory type made in CasaZen only** (TR, § 17), `transitoryParty` (`Landlord` or `Tenant`: who has the need that justifies the short term) and `transitoryNeed` (the need, at most 500 characters) |
 | 4 · Durata e date | `startDate` (`yyyy-MM-dd`); the end of the first period is computed (`computed.endDate`) from the type: 48 months for the libero, 36 for the concordato. **Imported contracts and the transitory type** (LR-13, TR): `endDate` (`yyyy-MM-dd`), the last day of the term, free inside the limits of the type (1 to 18 months for the transitory, which has no term of its own and needs it); a libero or a concordato made in CasaZen never reads `endDate`. **Transitory type made in CasaZen only**: `transitoryDocumentation` (the documents attached to prove the need, at most 300 characters), asked when the term lasts more than 30 days (`transitoryDocumentationAfterDays` of the rules) |
 | 5 · Modello e allegati | `parties`: `[{ id, documentsVerifiedOn }]`, the day a document of each party was checked (`yyyy-MM-dd`, not after today) |
 
@@ -329,7 +330,7 @@ Deploy **on the test environment first**; the figures of § 9 are to be confirme
 | LR-D8 (a) | The data of law of a party: name, fiscal code or VAT number, residence or registered office, citizenship; the e-mail is optional |
 | LR-D10 (a) | `sent` ("Scarica da firmare") needs the **explicit** confirmation of the review: 422 `lease_review_not_confirmed` otherwise |
 | LR-D11 (a) | A company as tenant with the cedolare secca: `cedolare_not_allowed_company`, a block of the review |
-| LR-D12 (a) | `Libero` and `Concordato` can be created; the student lease is kept as typed and reported as not available (`lease_type_not_available`); the transitory contract entered as an imported one (LR-13: done, `long-rent-lease-import.md`) and, since TR, can be made in CasaZen with the official Allegato B (§ 16) |
+| LR-D12 (a) | `Libero` and `Concordato` can be created; the student lease is kept as typed and reported as not available (`lease_type_not_available`); the transitory contract entered as an imported one (LR-13: done, `long-rent-lease-import.md`) and, since TR, can be made in CasaZen with the official Allegato B (§ 17) |
 | LR-D14 (a) | Overlap with another contract of the property: a warning of the review, not a block |
 | LR-D15 (a) | A property let for short stays: a warning of the review, not a block |
 | LR-D28 | A template that is not approved: `sent` answers 422 `contract_template_not_approved`, the review says it as to know |
@@ -339,12 +340,55 @@ Deploy **on the test environment first**; the figures of § 9 are to be confirme
 Open: the starting dates of an incomplete draft show in the lease list until the interface shows drafts by stage; the renewal periods are in
 `LongRentRules` for LR-14. The rules specific to an imported contract (the transitory type, the term it states, the APE and a start in the past
 relaxed, no range of a concordato) and the import itself are in [`long-rent-lease-import.md`](long-rent-lease-import.md) (LR-13).
+The contract the owner already has can fill an imported draft by being read: § 16 (NL-DOCS).
 Known limits, not in this task: nothing caps the number of drafts an org can create (only the retention bounds them: a limit per org or a rate
 limit on `POST /api/leases/drafts` is a decision of the product owner); the fiscal reports count any lease that overlaps the tax year as
 "leased", an abandoned draft with a typed start date included, as every draft always did; every read of a concordato draft asks the
 calculator of the range, which loads the property (a cache is a follow-up if the screens read it often).
 
-## 16. The transitory contract made in CasaZen (TR)
+## 16. Filled from the contract the owner uploaded (NL-DOCS)
+
+«Ho già i documenti»: the owner uploads the signed contract and CasaZen reads it on the server, asking only what is missing. The reading itself (the
+text of a digital PDF or an OCR of a scan, the parser, the limits) is [`lease-document-extraction.md`](lease-document-extraction.md); this is how its values
+enter the draft. **Only an imported draft is filled**; a contract made in CasaZen, a signed one and a ConcordatoFacile draft go on as before.
+
+1. `POST /api/leases/drafts { propertyId, origin: "Imported" }`, then, if the type was chosen at the start, `PATCH` step 3 `{ contractType }`: a value the person chose,
+   which the reading never replaces (the contract that says another type is flagged).
+2. `POST /api/leases/{id}/documents` (multipart `file`, `kind=Contract`, `lease.create`): the PDF, or a single photo that the server turns into a one-page PDF
+   (the browser joins several photos in one PDF before it sends them). The upload answers at once with the document; `ExtractLeaseDocumentDataJob` (Hangfire) reads it.
+3. `GET /api/leases/{id}/draft/reading` every few seconds while `state` is `Reading`; then `GET …/draft` again (the version moved one up) and the wizard opens on the first step that
+   has something missing. A reading that fails (`state` `Failed`, the document's `error`: `unreadable`, `ocr_unavailable`, `no_text`, `nothing_found`, `file_missing`) leaves the draft as it was: the wizard by hand, and the
+   uploaded PDF is still the one the final import uses (§ 11 of [`long-rent-lease-import.md`](long-rent-lease-import.md)).
+
+**The write is a save**: `ILeaseDraftService.ApplyContractReadingAsync` takes the row lock of the lease (§ 4), reads the typed values as they are now, merges what was read
+(`LeaseDraftContractFill`, pure), evaluates the result like any save and writes it with the one writer of the columns and the parties (`LeaseDraftWriter`), one version up. Nothing is lost
+if the person typed while the document was being read: the merge is on the values under the lock.
+
+| For each value read | What happens | State in `fields[]` |
+|---|---|---|
+| The draft has nothing there | It is written; the screen marks it «letto dal contratto — controlla» | `Read` |
+| The draft has the same value (typed, or chosen at the start) | Nothing | `Agrees` |
+| The draft has **another** value | **Never overwritten**; the screen says the contract reports another | `Conflict` |
+| The rules of the draft refuse it (a deposit above 3 rents, an end the type does not allow, a rent that is not an amount, the same fiscal code on both sides) | Not written; the field stays missing and is asked | `Unusable` |
+| A person of the contract, the draft has people in that role already | Not added (it may be the wrong contract); an entry with the same fiscal code, or without one and the same name, is completed; an empty role gets the person | `Conflict` / `Read` |
+
+`fields[]` carries `field` (`contractType`, `taxRegime`, `monthlyRent`, `securityDeposit`, `startDate`, `endDate`, `property` — the address of the contract against the property chosen —, and for a person
+`fiscalCode`, `firstName`, `lastName`, `residence`, `citizenship`, `party`), `partyId` (the id of the entry of the draft) and `role`, `state`, `confidence` and `derived` (worked out: the monthly rent from the annual one, a deposit from
+«N mensilità»). **Never a value**: the values read are in the draft, which is encrypted at rest. `stipulaDate` is the one date the reading keeps (the day of the signature, which is not a draft value).
+The end of the first period is written only when the contract states another one than its type gives (or the type has none: the transitory one); a rent given by the year only is divided by 12.
+
+The step the person is on and `WizardMaxStep` are **not touched**: a step with something read is still walked through («Avanti»), and the screen opens on the first step with something missing, or on the import.
+`ExtractionStatus` of the document: `Completed` (something read, nothing contradicts what was typed), `NeedsReview` (a `Conflict` somewhere), `Failed` with a code, `Skipped` (not a contract document, a
+duplicate of a file already uploaded, or the draft was imported or deleted meanwhile).
+
+**Privacy**: `LeaseDocument.ExtractionResult` holds the field names, the ids of the entries, the states and the confidence, and the day of the signature: no name, fiscal code, address or amount. The logs
+carry ids and counts. A draft that is deleted (by the owner, or by the retention job of § 8) now takes its documents with it: the rows and, after the commit, the files in the private bucket
+(`LeaseDraftDeleter`): the contract uploaded to be read is personal data like the draft itself. If the retention of the abandoned drafts matters for the size of the bucket, note that a draft idle for
+`LongRentLease:DraftRetentionDays` days is deleted with its PDF.
+
+Not here: companies, nationalities other than the Italian one, the unit's data, a rent that changes over the years (`NL-DOCS-FU1…FU5`, see the extraction runbook).
+
+## 17. The transitory contract made in CasaZen (TR)
 
 Task TR (2026-10-25). The transitory type (1 to 18 months, D.M. 16/01/2017 art. 2) can be made in the wizard, with the official model: the
 Allegato B, as the variant `Transitorio` of the contract templates ([`lease-contract-templates.md`](lease-contract-templates.md), section

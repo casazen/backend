@@ -177,7 +177,7 @@ public class LeaseSigningService(
             written.Add(documentKey);
 
             return await RecordImportAsync(
-                leaseId, userId, stipula, signedKey, documentKey, DocumentFileName(declaration.FileName), signedContract.Length, cancellationToken);
+                leaseId, userId, stipula, signedKey, documentKey, DocumentFileName(declaration.FileName), signedContract.Length, existingDocumentId: null, cancellationToken);
         }
         catch
         {
@@ -186,6 +186,62 @@ public class LeaseSigningService(
             throw;
         }
     }
+
+    public async Task<LeaseContract> ImportSignedContractFromDocumentAsync(
+        Guid leaseId,
+        string userId,
+        ImportedDocumentDeclaration declaration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentNullException.ThrowIfNull(declaration);
+
+        var stipula = EnsureStipulaDateNotInFuture(declaration.StipulaDate);
+
+        // The document has to be a contract document of THIS lease and of its org (stated here, not left to the filter of the request):
+        // the contract of another lease, a document of another kind, one that names another org, are not there.
+        var orgId = await db.LeaseContracts
+                .AsNoTracking()
+                .Where(l => l.Id == leaseId)
+                .Select(l => (Guid?)l.OrgId)
+                .FirstOrDefaultAsync(cancellationToken)
+            ?? throw LeaseNotFound(leaseId);
+        var document = await db.LeaseDocuments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    d => d.Id == declaration.DocumentId && d.LeaseContractId == leaseId && d.OrgId == orgId && d.Kind == LeaseDocumentKind.Contract,
+                    cancellationToken)
+            ?? throw DocumentNotFound();
+
+        await using var stored = await storage.OpenReadAsync(StorageBucket.Private, document.StorageKey, cancellationToken)
+            ?? throw DocumentNotFound();
+        await using var signedContract = await ReadPdfAsync(stored, document.SizeBytes, cancellationToken)
+            ?? throw new DomainRuleException(
+                LeaseSigningErrorCodes.SignedContractInvalid,
+                "LeaseSignedContractInvalid",
+                LeaseSigningLimits.MaxSignedContractBytes / (1024 * 1024));
+
+        // A request that is going to be refused writes nothing to the bucket: the same checks run again under the row lock.
+        var lease = await LoadLeaseAsync(leaseId, cancellationToken);
+        EnsureImportable(lease);
+
+        // Only the signed copy of the lease is new: the document keeps the file it has, and is the Contract document of the Documents section.
+        var signedKey = StorageKeys.LeaseSignedContract(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
+        try
+        {
+            await storage.PutAsync(StorageBucket.Private, signedKey, signedContract, PdfContentType, cancellationToken);
+            return await RecordImportAsync(
+                leaseId, userId, stipula, signedKey, documentKey: null, document.FileName, document.SizeBytes, document.Id, cancellationToken);
+        }
+        catch
+        {
+            await TryDeleteFileAsync(signedKey);
+            throw;
+        }
+    }
+
+    private static NotFoundException DocumentNotFound() =>
+        new("Lease document not found") { Code = "document_not_found", MessageKey = "DocumentNotFound" };
 
     /// <summary>
     /// The one transaction of the import, under the row lock the guided draft takes (a wait of more than a few seconds is a lost race,
@@ -197,9 +253,10 @@ public class LeaseSigningService(
         string userId,
         DateTime stipula,
         string signedKey,
-        string documentKey,
+        string? documentKey,
         string documentName,
         long documentSize,
+        Guid? existingDocumentId,
         CancellationToken cancellationToken)
     {
         try
@@ -232,17 +289,26 @@ public class LeaseSigningService(
             lease.UpdatedAt = now;
             await MarkEveryPartySignedAsync(lease, LeaseSignatureMethod.Offline, lease.StipulaDate!.Value, now, cancellationToken);
 
-            db.LeaseDocuments.Add(new LeaseDocument
+            if (existingDocumentId is { } existing)
             {
-                LeaseContractId = lease.Id,
-                OrgId = lease.OrgId,
-                Kind = LeaseDocumentKind.Contract,
-                FileName = documentName,
-                StorageKey = documentKey,
-                UploadedBy = userId,
-                SizeBytes = documentSize,
-                UploadedAt = now,
-            });
+                // The contract document the owner uploaded: still there, under the lock (the draft is the lease's own).
+                if (!await db.LeaseDocuments.AnyAsync(d => d.Id == existing && d.LeaseContractId == leaseId && d.Kind == LeaseDocumentKind.Contract, cancellationToken))
+                    throw DocumentNotFound();
+            }
+            else
+            {
+                db.LeaseDocuments.Add(new LeaseDocument
+                {
+                    LeaseContractId = lease.Id,
+                    OrgId = lease.OrgId,
+                    Kind = LeaseDocumentKind.Contract,
+                    FileName = documentName,
+                    StorageKey = documentKey!,
+                    UploadedBy = userId,
+                    SizeBytes = documentSize,
+                    UploadedAt = now,
+                });
+            }
             db.LeaseEvents.Add(new LeaseEvent
             {
                 LeaseContractId = lease.Id,
