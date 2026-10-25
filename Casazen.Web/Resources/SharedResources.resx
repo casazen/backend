@@ -3314,4 +3314,19 @@
   <data name="Segment condition JSON is invalid" xml:space="preserve">
     <value>La condizione JSON del segmento non è valida</value>
   </data>
+  <data name="VerificationNoSessionOrEmail" xml:space="preserve">
+    <value>La prenotazione non ha una sessione di check-in attiva oppure l'ospite non ha un indirizzo e-mail</value>
+  </data>
+  <data name="VerificationNoteRequired" xml:space="preserve">
+    <value>La nota è obbligatoria quando si rifiuta la verifica</value>
+  </data>
+  <data name="VerificationNoPending" xml:space="preserve">
+    <value>La prenotazione non ha verifiche in attesa</value>
+  </data>
+  <data name="VerificationInvalidRequest" xml:space="preserve">
+    <value>Richiesta di verifica non valida</value>
+  </data>
+  <data name="VerificationReasonRequired" xml:space="preserve">
+    <value>Il motivo del rifiuto è obbligatorio</value>
+  </data>
 </root>

@@ -385,6 +385,8 @@ public static class ServiceCollectionExtensions
         // NF-11: Biometric verification for guest check-in (ADR-013).
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
         services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
+        // NF-12: Operator verification queue for manual biometric decisions (ADR-013).
+        services.AddScoped<IVerificationQueueService, VerificationQueueService>();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).

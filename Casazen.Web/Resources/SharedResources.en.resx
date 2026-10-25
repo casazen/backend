@@ -3314,4 +3314,19 @@
   <data name="Segment condition JSON is invalid" xml:space="preserve">
     <value>Segment condition JSON is invalid.</value>
   </data>
+  <data name="VerificationNoSessionOrEmail" xml:space="preserve">
+    <value>The booking has no active check-in session or the guest has no email address</value>
+  </data>
+  <data name="VerificationNoteRequired" xml:space="preserve">
+    <value>A note is required when rejecting a verification</value>
+  </data>
+  <data name="VerificationNoPending" xml:space="preserve">
+    <value>The booking has no pending verification</value>
+  </data>
+  <data name="VerificationInvalidRequest" xml:space="preserve">
+    <value>Invalid verification request</value>
+  </data>
+  <data name="VerificationReasonRequired" xml:space="preserve">
+    <value>A rejection reason is required</value>
+  </data>
 </root>

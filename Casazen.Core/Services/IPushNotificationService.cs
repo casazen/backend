@@ -113,6 +113,12 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string OtaStayReview(Guid bookingId, OtaStayReviewReason reason, DateTime? channelCheckIn, DateTime? channelCheckOut) =>
         $"ota-stay-review:{bookingId:N}:{reason}:{channelCheckIn:yyyyMMdd}:{channelCheckOut:yyyyMMdd}";
+
+    /// <summary>
+    /// Biometric verification requires operator decision (NF-12, ADR-013): the guest's selfie escalated or reached max
+    /// attempts. One per booking, stable across retries.
+    /// </summary>
+    public static string VerificationRequired(Guid bookingId) => $"verification-required:{bookingId:N}";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -161,6 +167,9 @@ public static class PushTypes
 
     /// <summary>An OTA stay created from an iCal block is "da verificare" (CO-21): the app opens the booking from the route.</summary>
     public const string OtaStayReview = "ota-stay-review";
+
+    /// <summary>Biometric verification requires operator decision (NF-12, ADR-013): pushed to property hosts.</summary>
+    public const string VerificationRequired = "verification-required";
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has
