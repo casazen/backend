@@ -294,6 +294,9 @@
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato</value>
   </data>
+  <data name="PropertyNotInTicino" xml:space="preserve">
+    <value>La struttura non si trova nel Canton Ticino</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Prenotazione non trovata</value>
   </data>
