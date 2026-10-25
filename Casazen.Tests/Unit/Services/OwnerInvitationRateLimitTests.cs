@@ -19,10 +19,10 @@ public class OwnerInvitationRateLimitTests
 {
     private const string ActorUserId = "auth0|admin";
 
-    private AppDbContext NewDb()
+    private AppDbContext NewDb(string? databaseName = null)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"OwnerInvitationTests_{Guid.NewGuid()}")
+            .UseInMemoryDatabase(databaseName ?? $"OwnerInvitationTests_{Guid.NewGuid()}")
             .Options;
         return new AppDbContext(options);
     }
@@ -33,9 +33,9 @@ public class OwnerInvitationRateLimitTests
         return new OwnerInvitationService(db, emailQueue, NullLogger<OwnerInvitationService>.Instance);
     }
 
-    private async Task<(Guid OrgId, Guid PropertyOwnerId)> SeedOrgAndOwnerAsync()
+    private async Task<(Guid OrgId, Guid PropertyOwnerId)> SeedOrgAndOwnerAsync(string? databaseName = null)
     {
-        await using var db = NewDb();
+        await using var db = NewDb(databaseName);
 
         var org = new OrgEntity
         {
@@ -72,12 +72,14 @@ public class OwnerInvitationRateLimitTests
     [Fact]
     public async Task OwnerInvitation_RateLimit_Enforced()
     {
-        var (orgId, propertyOwnerId) = await SeedOrgAndOwnerAsync();
+        // Use a shared database name so all operations see the same data
+        var sharedDbName = $"OwnerInvitationRateLimitTest_{Guid.NewGuid()}";
+        var (orgId, propertyOwnerId) = await SeedOrgAndOwnerAsync(sharedDbName);
 
         // Create 100 invitations (at the limit)
         for (var i = 0; i < 100; i++)
         {
-            await using var db = NewDb();
+            await using var db = NewDb(sharedDbName);
             var service = NewService(db);
 
             // Create a new PropertyOwner for each invitation to avoid duplicates
@@ -98,7 +100,7 @@ public class OwnerInvitationRateLimitTests
         }
 
         // The 101st invitation should be refused
-        await using var dbFinal = NewDb();
+        await using var dbFinal = NewDb(sharedDbName);
         var finalService = NewService(dbFinal);
 
         var finalOwner = new PropertyOwner

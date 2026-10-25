@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
@@ -6,6 +7,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -29,15 +31,17 @@ public class OwnerInvitationService(
         string actorUserId,
         CancellationToken cancellationToken = default)
     {
-        // Verify PropertyOwner exists and belongs to this org
+        // Verify PropertyOwner exists and belongs to this org, and fetch org for email template
         var propertyOwner = await dbContext.PropertyOwners
+            .Include(po => po.Org)
             .FirstOrDefaultAsync(po => po.Id == propertyOwnerId && po.OrgId == orgId, cancellationToken);
 
         if (propertyOwner == null)
         {
             throw new NotFoundException("Property owner not found or does not belong to this organization")
             {
-                Code = OwnerInvitationErrors.PropertyOwnerNotFound
+                Code = OwnerInvitationErrors.PropertyOwnerNotFound,
+                MessageKey = "PropertyOwnerNotFound"
             };
         }
 
@@ -78,20 +82,20 @@ public class OwnerInvitationService(
         dbContext.OwnerInvitations.Add(invitation);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        // Queue invitation email
+        // Queue invitation email using template
+        var culture = new CultureInfo("it-IT");
+        var ownerName = $"{propertyOwner.FirstName} {propertyOwner.LastName}";
+        var agencyName = propertyOwner.Org.Name;
         var inviteLink = $"https://app.casazen.com/portale-proprietari/invito?token={token}";
-        var emailContent = new EmailContent(
-            "Invito al portale proprietari CasaZen",
-            $@"<html>
-<body>
-<p>Gentile {propertyOwner.FirstName} {propertyOwner.LastName},</p>
-<p>Sei stato invitato ad accedere al portale proprietari di CasaZen.</p>
-<p><a href=""{inviteLink}"">Accetta l'invito</a></p>
-<p>Il link è valido per 7 giorni.</p>
-</body>
-</html>");
 
-        emailQueue.Enqueue(propertyOwner.Email, emailContent, "OwnerInvitation");
+        var emailContent = EmailTemplates.OwnerInvitation(
+            culture,
+            ownerName,
+            agencyName,
+            inviteLink,
+            invitation.ExpiresAt);
+
+        emailQueue.Enqueue(propertyOwner.Email, emailContent, EmailTemplates.Names.OwnerInvitation);
 
         logger.LogInformation(
             "Owner invitation created for PropertyOwner {PropertyOwnerId} in org {OrgId}",
