@@ -642,6 +642,8 @@ public static class ServiceCollectionExtensions
         // The supplier's customers, the page "Clienti": hosts and private customers of the showcase aggregated from the requests (SP-16a).
         services.AddScoped<ISupplierClientsService, SupplierClientsService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
+        // Internal activities performed by staff on properties (NF-22, agency tier).
+        services.AddScoped<IInternalActivityService, InternalActivityService>();
         services.AddScoped<CalendarSyncService>();
         // The supplier's answers about the "Available" events of its calendar (they occupy until answered).
         services.AddScoped<SupplierFreeEventService>();
