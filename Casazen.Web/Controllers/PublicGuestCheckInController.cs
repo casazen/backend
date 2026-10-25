@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Alloggiati;
@@ -31,6 +32,7 @@ public class PublicGuestCheckInController(
     IDocumentOcrService ocrService,
     IBiometricVerificationService biometricService,
     AppDbContext dbContext,
+    TimeProvider timeProvider,
     IStringLocalizer<SharedResources> localizer,
     ILogger<PublicGuestCheckInController> logger) : ControllerBase
 {
@@ -328,8 +330,10 @@ public class PublicGuestCheckInController(
         var guestDateOfBirth = booking.Guest?.DateOfBirth;
         if (guestDateOfBirth.HasValue)
         {
-            var age = DateTime.UtcNow.Year - guestDateOfBirth.Value.Year;
-            if (guestDateOfBirth.Value.Date > DateTime.UtcNow.AddYears(-age))
+            var today = timeProvider.TodayInRomeAsDateOnly();
+            var dob = DateOnly.FromDateTime(guestDateOfBirth.Value);
+            var age = today.Year - dob.Year;
+            if (dob > today.AddYears(-age))
                 age--;
 
             if (age < 18)
