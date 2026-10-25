@@ -53,8 +53,8 @@ public class TrustedSupplierProofTests
         // This is enforced in ServiceRequest creation when supplier is trusted
 
         // Assert: TrustedSupplier entity structure enables the zero-commission contract
-        Assert.NotNull(trustedSupplier.OrgId);
-        Assert.NotNull(trustedSupplier.SupplierOrgId);
+        Assert.NotEqual(Guid.Empty, trustedSupplier.OrgId);
+        Assert.NotEqual(Guid.Empty, trustedSupplier.SupplierOrgId);
 
         // ADR-020: The relationship exists, and ServiceRequestService will apply:
         // - PaymentMode.Manual (service contract determines payment mode)
