@@ -28,6 +28,14 @@ public sealed class CfDocsRealExtractionTests
     public async Task AContractWithItsAttestationAndSheet_IsReadOnItsOwnPages_AndTheResultKeepsOnlySectionsAndCodes()
     {
         using var harness = await new LeaseDraftHarness().SeedAsync();
+
+        // The house of the draft is the one the contract names: a contract about another address would be a conflict to look at, not the case here.
+        var property = await harness.Db.Properties.SingleAsync(p => p.Id == harness.PropertyId);
+        property.Address = "Via Verdi 12";
+        property.City = "Bollate";
+        await harness.Db.SaveChangesAsync();
+        harness.Db.ChangeTracker.Clear();
+
         var draft = await harness.CreateAsync(LeaseOrigin.Imported);
         var document = await AddDocumentAsync(harness.Db, harness.OrgId, draft.Id, LeaseDocumentKind.Contract);
         harness.Storage
