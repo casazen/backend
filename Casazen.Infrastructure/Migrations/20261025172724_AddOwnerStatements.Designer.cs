@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261025170457_AddOwnerStatementsAndInvitations")]
-    partial class AddOwnerStatementsAndInvitations
+    [Migration("20261025172724_AddOwnerStatements")]
+    partial class AddOwnerStatements
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
