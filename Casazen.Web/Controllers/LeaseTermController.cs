@@ -68,10 +68,11 @@ public class LeaseTermController(
     }
 
     /// <summary>
-    /// Ends the lease on <c>on</c>, its last day (from the start of the lease up to the end of the current period; a day in the past is
-    /// allowed): the end of the period becomes that day, the renewal stops for good and the installments of the rent plan that start after it
-    /// and are not paid are cancelled (a payment made or in flight is never touched). <b>Irreversible</b>: there is no way back, so the
-    /// interface asks to confirm first. 422 <c>lease_termination_date_invalid</c>; 409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>,
+    /// Ends the lease on <c>on</c>, its last day: after the start of the lease and no later than the end of the current period (a day in the
+    /// past is allowed), and only once the lease has begun (LR-TERM): the end of the period becomes that day, the renewal stops for good and
+    /// the installments of the rent plan that start after it and are not paid are cancelled (a payment made or in flight is never touched).
+    /// <b>Irreversible</b>: there is no way back, so the interface asks to confirm first. 422 <c>lease_termination_date_invalid</c> with
+    /// <c>min</c> and <c>max</c> (the first and last day that would do); 409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>,
     /// <c>lease_busy</c>.
     /// </summary>
     [HttpPost("{id:guid}/terminate")]

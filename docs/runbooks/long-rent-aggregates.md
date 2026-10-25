@@ -194,9 +194,27 @@ Tutti richiedono `lease.create` (come le scritture dei canoni) e autorizzano il 
 |---|---|---|
 | `POST /api/leases/{id}/notice` `{ from, on }` | Registra la disdetta data da `Landlord` o `Tenant` il giorno `on` (dall'inizio del contratto a oggi): il contratto finisce col periodo in corso e non si rinnova. `noticeWarning` = `notice_possibly_late` se `on` è dopo «fine del periodo − 6 mesi» (CasaZen lo dice e non giudica la validità legale, LR-D29). Evento `NoticeRecorded` | 422 `lease_type_has_no_renewal` (transitorio), `lease_notice_date_invalid`; 409 `lease_not_in_force`, `lease_notice_already_recorded`, `lease_already_terminated`, `lease_busy` |
 | `DELETE /api/leases/{id}/notice` | Toglie la disdetta, **solo finché `CurrentTermEndDate >= oggi`**. Se non c'è, non cambia nulla (200). Evento `NoticeRemoved` | 409 `lease_term_already_ended`, `lease_busy` |
-| `POST /api/leases/{id}/terminate` `{ on }` | Termina il contratto il giorno `on`, il suo ultimo giorno (dall'inizio alla fine del periodo in corso; anche un giorno passato): `CurrentTermEndDate` e `TerminatedOn` diventano `on`, il rinnovo si ferma per sempre e **le rate del piano dei canoni il cui periodo inizia dopo `on` e non sono pagate vengono annullate** (§ 10.3). **Irreversibile**: nessun `DELETE`, l'interfaccia chiede una conferma. Evento `Terminated` | 422 `lease_termination_date_invalid`; 409 `lease_not_in_force`, `lease_already_terminated`, `lease_busy` |
+| `POST /api/leases/{id}/terminate` `{ on }` | Termina il contratto il giorno `on`, il suo ultimo giorno, **solo se il contratto è già iniziato** (`inizio <= oggi`) e con `inizio < on <= fine del periodo in corso` (anche un giorno passato; un giorno uguale all'inizio non è una cessazione, § 10.2.1): `CurrentTermEndDate` e `TerminatedOn` diventano `on` (`EndDate`, la fine che il contratto dichiara, non si tocca), il rinnovo si ferma per sempre e **le rate del piano dei canoni il cui periodo inizia dopo `on` e non sono pagate vengono annullate** (§ 10.3). **Irreversibile**: nessun `DELETE`, l'interfaccia chiede una conferma. Evento `Terminated` | 422 `lease_termination_date_invalid` (con `min` e `max`, `yyyy-MM-dd`: il primo e l'ultimo giorno ammessi); 409 `lease_not_in_force`, `lease_already_terminated`, `lease_busy` |
 
 «In vigore» vuol dire firmato da tutte le parti e non rifiutato: `Signed`, `RegistrationPending`, `SentToProvider`, `Registered` (`LeaseRenewal.InForceStatuses`; la registrazione è un obbligo fiscale, non una condizione del contratto). `lease_busy` è la riga del contratto bloccata da un'altra operazione per più di 5 secondi: nulla è stato scritto, si riprova. Un'azione e il job dello stesso contratto si eseguono uno dopo l'altro, ognuno su ciò che l'altro ha confermato.
+
+#### 10.2.1 La cessazione anticipata ha una data possibile (LR-TERM, 25/10/2026)
+
+L'utente, provando in test, ha trovato un contratto con `Inizio 01/11/2026`, `Fine 01/11/2026` e `Terminato il 01/11/2026`: il giorno della cessazione era uguale all'inizio e il contratto non era nemmeno iniziato (oggi era il 25/10). Una cessazione anticipata ha senso solo **dopo l'inizio** del contratto e con una data **fra l'inizio e la fine**. La regola del server (`LeaseTermService.EnsureTerminationDate`):
+
+| Caso | Risposta |
+|---|---|
+| il contratto non è ancora iniziato (`inizio > oggi`, giorno di Roma) | 422 `lease_termination_date_invalid`, testo `LeaseTerminationNotStarted`: «non è ancora iniziato: per annullarlo serve la risoluzione consensuale, da comunicare all'Agenzia delle Entrate entro 30 giorni». Il 30 viene da `LongRentRules.Current.RegistrationDays` (`registrationDays` di `GET /api/long-rent/rules`), non è scritto nel testo |
+| `on <= inizio` o `on > fine del periodo in corso` | 422 `lease_termination_date_invalid`, testo `LeaseTerminationDateInvalid` con i due giorni ammessi |
+| `inizio < on <= fine del periodo in corso` | 200; nulla si riscrive tranne `TerminatedOn` e `CurrentTermEndDate` |
+
+Il problema porta sempre `min` (= inizio + 1 giorno) e `max` (= fine del periodo in corso), così l'interfaccia non propone mai una data che il server rifiuta; con `min > max` (dati sporchi: periodo di un giorno o vuoto) nessuna data va bene. **Nessun backfill**: i contratti già terminati con un giorno uguale all'inizio restano com'erano; la guida non propone più «Organizza la fine del contratto» (`nextStep.code = OrganizeEnd`) a un contratto il cui periodo finisce il giorno dell'inizio o prima (`LeaseFlow`, § 11.2): nessuno scrive il passo, non viene proposto.
+
+**Fatti verificati sul web (25/10/2026)** su cui poggiano i testi dell'interfaccia (nessuna cifra di legge è scritta nell'interfaccia: i mesi e i giorni vengono da `GET /api/long-rent/rules`):
+
+- Una locazione registrata risolta in anticipo va comunicata all'Agenzia delle Entrate **entro 30 giorni** dall'evento (modello RLI). Imposta fissa di registro per la risoluzione, salvo che **tutti i locatori abbiano optato per la cedolare secca**: allora nessuna imposta, ma la comunicazione resta. Fonte: <https://www.agenziaentrate.gov.it/portale/schede/fabbricatiterreni/adempimenti-successivi/risoluzione>. (La cifra dell'imposta fissa, 67 €, è sulla pagina della fonte e non nel codice.)
+- Il conduttore può recedere per gravi motivi con **preavviso di 6 mesi** (art. 3 c. 6 L. 431/1998; l'affitto si paga fino alla fine del preavviso, `noticeMonths` delle regole); per la **cessazione consensuale** le parti possono accordarsi su una data anche prima.
+- Il deposito di 3 mensilità (massimo ammesso, art. 11 L. 392/1978), la durata 3+2 del canone concordato e la registrazione entro 30 giorni dalla stipula erano già a posto.
 
 ### 10.3 Il piano dei canoni segue il contratto
 

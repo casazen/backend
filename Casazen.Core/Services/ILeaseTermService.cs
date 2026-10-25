@@ -46,13 +46,14 @@ public interface ILeaseTermService
     Task RemoveNoticeAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Ends the lease on <paramref name="on"/>, its last day (from the start of the lease up to the end of the current period, a day in
-    /// the past included): the end of the period becomes that day, the renewal stops for good, and the installments of the rent plan
+    /// Ends the lease on <paramref name="on"/>, its last day: after the start of the lease and no later than the end of the current period (a
+    /// day in the past included), and only once the lease has begun (LR-TERM): the end of the period becomes that day, the renewal stops for
+    /// good, and the installments of the rent plan
     /// that <b>start after</b> that day and are not paid are cancelled (a payment already made or in flight is never touched; the one
     /// installment that straddles the day stays as it is). Irreversible. Event <c>Terminated</c>.
     /// </summary>
     /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>, <c>lease_busy</c>.</exception>
-    /// <exception cref="DomainRuleException">422 <c>lease_termination_date_invalid</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_termination_date_invalid</c>, with <c>min</c> and <c>max</c> in its extensions.</exception>
     Task TerminateAsync(Guid leaseId, DateOnly on, CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -140,10 +140,7 @@ public sealed class LeaseTermService(
             EnsureInForce(lease);
             EnsureNotTerminated(lease);
 
-            // The last day of the lease is a day of the lease: from its start up to the end of the period it is in now. A day in the past
-            // is allowed, for a lease the landlord knows ended earlier.
-            if (on < RomeCalendar.DateInRome(lease.StartDate) || on > RomeCalendar.DateInRome(lease.CurrentTermEndDate))
-                throw new DomainRuleException(LeaseLifecycleCodes.TerminationDateInvalid, "LeaseTerminationDateInvalid");
+            EnsureTerminationDate(lease, on);
 
             var now = UtcNow;
             lease.TerminatedOn = ToStoredDate(on);
@@ -402,6 +399,37 @@ public sealed class LeaseTermService(
     {
         if (lease.TerminatedOn is not null)
             throw new DomainConflictException(LeaseLifecycleCodes.AlreadyTerminated, "LeaseAlreadyTerminated");
+    }
+
+    /// <summary>
+    /// LR-TERM: an early termination ends a lease that is running, on a day after it began and no later than the end of the period it is in:
+    /// <c>start &lt; last day ≤ end of the period</c>, and the lease has begun (<c>start ≤ today</c>). A past day is allowed, for a lease the
+    /// landlord knows ended earlier. Anything else is 422 <c>lease_termination_date_invalid</c> with the first and the last day that would
+    /// do (<c>min</c>, <c>max</c>, <c>yyyy-MM-dd</c>), so the interface never offers a date the server refuses; for a lease that has not begun
+    /// the text says what ends it instead (a consensual resolution, to be communicated to the Agenzia delle Entrate). A day equal to the start
+    /// is not an ending: it left a lease whose start, end and "terminated on" were the same day.
+    /// </summary>
+    private void EnsureTerminationDate(LeaseContract lease, DateOnly on)
+    {
+        var start = RomeCalendar.DateInRome(lease.StartDate);
+        var end = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+        var members = new Dictionary<string, object?> { ["min"] = start.AddDays(1), ["max"] = end };
+
+        if (start > _clock.TodayInRomeAsDateOnly())
+        {
+            throw new DomainRuleException(LeaseLifecycleCodes.TerminationDateInvalid, "LeaseTerminationNotStarted", LongRentRules.Current.RegistrationDays)
+            {
+                Extensions = members,
+            };
+        }
+
+        if (on <= start || on > end)
+        {
+            throw new DomainRuleException(LeaseLifecycleCodes.TerminationDateInvalid, "LeaseTerminationDateInvalid", start.AddDays(1), end)
+            {
+                Extensions = members,
+            };
+        }
     }
 
     private static DateTime ToStoredDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
