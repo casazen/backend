@@ -17,6 +17,7 @@ public class RoutineEventDispatcher(
     /// Dispatch a booking event to routines.
     /// </summary>
     public async Task DispatchBookingEventAsync(
+        Guid orgId,
         string eventType,
         Guid bookingId,
         object payload,
@@ -34,6 +35,7 @@ public class RoutineEventDispatcher(
             eventType, bookingId);
 
         await routineService.TriggerAsync(
+            orgId,
             routineEventType.Value,
             $"booking-{bookingId}",
             payload,
@@ -44,6 +46,7 @@ public class RoutineEventDispatcher(
     /// Dispatch a payment event to routines.
     /// </summary>
     public async Task DispatchPaymentEventAsync(
+        Guid orgId,
         string eventType,
         Guid paymentId,
         object payload,
@@ -61,6 +64,7 @@ public class RoutineEventDispatcher(
             eventType, paymentId);
 
         await routineService.TriggerAsync(
+            orgId,
             routineEventType.Value,
             $"payment-{paymentId}",
             payload,
@@ -71,6 +75,7 @@ public class RoutineEventDispatcher(
     /// Dispatch a guest check-in event to routines.
     /// </summary>
     public async Task DispatchCheckinEventAsync(
+        Guid orgId,
         string eventType,
         Guid bookingId,
         object payload,
@@ -96,6 +101,7 @@ public class RoutineEventDispatcher(
             eventType, bookingId);
 
         await routineService.TriggerAsync(
+            orgId,
             routineEventType,
             $"checkin-{bookingId}-{eventType}",
             payload,
@@ -106,6 +112,7 @@ public class RoutineEventDispatcher(
     /// Dispatch an Alloggiati receipt event to routines.
     /// </summary>
     public async Task DispatchAlloggiatiEventAsync(
+        Guid orgId,
         Guid bookingId,
         object payload,
         CancellationToken cancellationToken = default)
@@ -115,6 +122,7 @@ public class RoutineEventDispatcher(
             bookingId);
 
         await routineService.TriggerAsync(
+            orgId,
             RoutineEventType.AlloggiatiReceiptArrived,
             $"alloggiati-{bookingId}",
             payload,
@@ -125,6 +133,7 @@ public class RoutineEventDispatcher(
     /// Dispatch an activity completion event to routines.
     /// </summary>
     public async Task DispatchActivityEventAsync(
+        Guid orgId,
         Guid activityId,
         object payload,
         CancellationToken cancellationToken = default)
@@ -134,6 +143,7 @@ public class RoutineEventDispatcher(
             activityId);
 
         await routineService.TriggerAsync(
+            orgId,
             RoutineEventType.ActivityCompleted,
             $"activity-{activityId}",
             payload,

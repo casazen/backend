@@ -17,19 +17,20 @@ public class RoutineService(
     ILogger<RoutineService> logger) : IRoutineService
 {
     public async Task TriggerAsync(
+        Guid orgId,
         RoutineEventType eventType,
         string eventId,
         object payload,
         CancellationToken cancellationToken = default)
     {
-        // Find all active routines for this event type
+        // Find all active routines for this event type and org (TN-1: tenant isolation)
         var routines = await dbContext.Routines
-            .Where(r => r.Active && r.EventType == eventType)
+            .Where(r => r.OrgId == orgId && r.Active && r.EventType == eventType)
             .ToListAsync(cancellationToken);
 
         logger.LogInformation(
-            "Triggering {Count} routine(s) for event {EventType} with ID {EventId}",
-            routines.Count, eventType, eventId);
+            "Triggering {Count} routine(s) for org {OrgId} event {EventType} with ID {EventId}",
+            routines.Count, orgId, eventType, eventId);
 
         foreach (var routine in routines)
         {

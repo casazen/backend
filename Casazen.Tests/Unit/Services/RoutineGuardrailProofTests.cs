@@ -68,6 +68,7 @@ public class RoutineGuardrailProofTests
             };
 
             await service.TriggerAsync(
+                orgId,
                 RoutineEventType.BookingConfirmed,
                 $"booking-{bookingId}",
                 payload,
@@ -145,6 +146,7 @@ public class RoutineGuardrailProofTests
             };
 
             await service.TriggerAsync(
+                orgId,
                 RoutineEventType.BookingNew,
                 $"booking-{bookingId}",
                 payload,
@@ -167,6 +169,91 @@ public class RoutineGuardrailProofTests
             Assert.Contains(result.Errors, e => e.Contains("Cannot contact Airbnb guests before booking is confirmed"));
 
             // Verify no successful MessageToGuest action was recorded
+            Assert.DoesNotContain(result.ExecutedActions, a => a.Contains("MessageToGuest") && !a.Contains("blocked"));
+        }
+    }
+
+    /// <summary>
+    /// Proof test for AC-NF26-6 (ADR-022-R11): proves that MessageToGuest action configured as a campaign
+    /// is blocked when MarketingConsent is false. Without this check, the org would violate GDPR Article 6
+    /// by sending marketing emails to guests who never opted in.
+    /// </summary>
+    [Fact]
+    public async Task Routine_MarketingConsentGuardrail()
+    {
+        // Arrange: Set up in-memory database with a routine that tries to send a campaign message
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        var orgId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        // Create a routine that attempts to send a campaign (marketing) message
+        var routine = new Routine
+        {
+            Id = Guid.NewGuid(),
+            OrgId = orgId,
+            Name = "Send Promotional Campaign",
+            EventType = RoutineEventType.BookingConfirmed,
+            Active = true,
+            TestMode = false,
+            ActionsJson = JsonSerializer.Serialize(new[]
+            {
+                new
+                {
+                    Type = RoutineActionType.MessageToGuest,
+                    Config = new
+                    {
+                        TemplateId = "promo-offer",
+                        IsCampaign = true  // CRITICAL: This is a marketing campaign
+                    }
+                }
+            })
+        };
+
+        await using (var context = new AppDbContext(options))
+        {
+            context.Routines.Add(routine);
+            await context.SaveChangesAsync();
+        }
+
+        // Act: Trigger the routine with a payload indicating NO marketing consent
+        await using (var context = new AppDbContext(options))
+        {
+            var mockLogger = new Mock<ILogger<RoutineService>>();
+            var service = new RoutineService(context, mockLogger.Object);
+
+            var payload = new
+            {
+                BookingId = bookingId,
+                MarketingConsent = false  // CRITICAL: Guest has NOT consented to marketing
+            };
+
+            await service.TriggerAsync(
+                orgId,
+                RoutineEventType.BookingConfirmed,
+                $"booking-{bookingId}",
+                payload,
+                CancellationToken.None);
+        }
+
+        // Assert: Verify that execution was created but campaign action was blocked
+        await using (var context = new AppDbContext(options))
+        {
+            var execution = await context.RoutineExecutions
+                .FirstOrDefaultAsync(e => e.RoutineId == routine.Id);
+
+            Assert.NotNull(execution);
+            Assert.Equal("Success", execution.Outcome);
+
+            var result = JsonSerializer.Deserialize<RoutineExecutionResult>(execution.ResultJson);
+            Assert.NotNull(result);
+
+            // The critical assertion: campaign was BLOCKED due to missing consent
+            Assert.Contains(result.Errors, e => e.Contains("Marketing campaigns require guest consent"));
+
+            // Verify no successful campaign message was sent
             Assert.DoesNotContain(result.ExecutedActions, a => a.Contains("MessageToGuest") && !a.Contains("blocked"));
         }
     }

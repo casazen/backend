@@ -13,11 +13,13 @@ public interface IRoutineService
     /// Finds active routines matching the event type, evaluates conditions,
     /// and executes actions (with guardrails).
     /// </summary>
+    /// <param name="orgId">Organization ID for tenant isolation (TN-1).</param>
     /// <param name="eventType">Event type that occurred.</param>
     /// <param name="eventId">Unique identifier for this event occurrence.</param>
     /// <param name="payload">Event payload (entity data).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task TriggerAsync(
+        Guid orgId,
         RoutineEventType eventType,
         string eventId,
         object payload,
