@@ -154,6 +154,10 @@ public static class EncryptedColumns
             DocumentImagePurpose,
             nameof(DocumentImage.FrontImageUrl),
             nameof(DocumentImage.BackImageUrl)),
+        // NF-13: property access codes (E06/F03/US01/T01).
+        new EncryptedEntity<PropertyAccessCode>(
+            PropertyAccessCodeEncryptionPurpose.Purpose,
+            nameof(PropertyAccessCode.EncryptedCode)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

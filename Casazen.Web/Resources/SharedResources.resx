@@ -3362,4 +3362,7 @@
   <data name="VerificationReasonRequired" xml:space="preserve">
     <value>Il motivo del rifiuto è obbligatorio</value>
   </data>
+  <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
+    <value>Codice di accesso non disponibile o verifica non superata</value>
+  </data>
 </root>
