@@ -120,6 +120,7 @@ public class AccessCodeService : IAccessCodeService
         // Log the release WITHOUT the code itself (AC-NF13-4, AC-NF13-9)
         var releaseLog = new AccessCodeReleaseLog
         {
+            OrgId = booking.Property.OrgId,
             BookingId = bookingId,
             Channel = channel,
             ReleasedAt = DateTime.UtcNow

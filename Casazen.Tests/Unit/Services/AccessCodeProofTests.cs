@@ -185,6 +185,7 @@ public class AccessCodeProofTests
             var releaseLog = await db.Set<AccessCodeReleaseLog>()
                 .FirstOrDefaultAsync(l => l.BookingId == bookingId);
             Assert.NotNull(releaseLog);
+            Assert.Equal(orgId, releaseLog.OrgId);
             Assert.Equal("screen", releaseLog.Channel);
 
             // Verify release log entity has NO code property
