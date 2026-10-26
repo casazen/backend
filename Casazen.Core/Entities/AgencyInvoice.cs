@@ -24,6 +24,7 @@ public class AgencyInvoice : ITenantOwned
     public virtual Org Org { get; set; } = null!;
 
     /// <summary>Recipient property owner.</summary>
+    [ForeignKey(nameof(PropertyOwner))]
     public Guid OwnerId { get; set; }
     public virtual PropertyOwner PropertyOwner { get; set; } = null!;
 

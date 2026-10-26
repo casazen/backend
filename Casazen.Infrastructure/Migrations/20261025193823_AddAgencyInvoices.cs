@@ -18,7 +18,6 @@ namespace Casazen.Infrastructure.Migrations
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     OrgId = table.Column<Guid>(type: "uuid", nullable: false),
                     OwnerId = table.Column<Guid>(type: "uuid", nullable: false),
-                    PropertyOwnerId = table.Column<Guid>(type: "uuid", nullable: false),
                     InvoiceNumber = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     Series = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     Month = table.Column<int>(type: "integer", nullable: false),
@@ -44,8 +43,8 @@ namespace Casazen.Infrastructure.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_AgencyInvoices_PropertyOwners_PropertyOwnerId",
-                        column: x => x.PropertyOwnerId,
+                        name: "FK_AgencyInvoices_PropertyOwners_OwnerId",
+                        column: x => x.OwnerId,
                         principalTable: "PropertyOwners",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -58,9 +57,9 @@ namespace Casazen.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_AgencyInvoices_PropertyOwnerId",
+                name: "IX_AgencyInvoices_OwnerId",
                 table: "AgencyInvoices",
-                column: "PropertyOwnerId");
+                column: "OwnerId");
         }
 
         /// <inheritdoc />

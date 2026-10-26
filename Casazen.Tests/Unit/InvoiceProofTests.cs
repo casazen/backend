@@ -180,6 +180,7 @@ public class InvoiceProofTests
 
         // Verify no duplicates in database
         var allInvoices = await db.AgencyInvoices
+            .Include(i => i.PropertyOwner)
             .Where(i => i.OrgId == orgId && i.Series == "2026")
             .OrderBy(i => i.InvoiceNumber)
             .ToListAsync();
@@ -188,6 +189,7 @@ public class InvoiceProofTests
         Assert.All(allInvoices.Select((inv, idx) => (inv, idx)), pair =>
         {
             Assert.Equal((pair.idx + 1).ToString(), pair.inv.InvoiceNumber);
+            Assert.Equal(owner1Id, pair.inv.PropertyOwner.Id);
         });
     }
 

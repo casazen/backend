@@ -49,9 +49,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("PropertyOwnerId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Series")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -92,7 +89,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PropertyOwnerId");
+                    b.HasIndex("OwnerId");
 
                     b.HasIndex("OrgId", "Series", "InvoiceNumber")
                         .IsUnique();
@@ -8495,7 +8492,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasOne("Casazen.Core.Entities.PropertyOwner", "PropertyOwner")
                         .WithMany()
-                        .HasForeignKey("PropertyOwnerId")
+                        .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
