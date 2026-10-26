@@ -3335,6 +3335,30 @@
   <data name="StatementPdfExportNotImplemented" xml:space="preserve">
     <value>Esportazione PDF dei rendiconti non ancora disponibile</value>
   </data>
+  <data name="StatementNotFound" xml:space="preserve">
+    <value>Rendiconto non trovato o non appartiene alla tua organizzazione</value>
+  </data>
+  <data name="InvoiceAlreadyExists" xml:space="preserve">
+    <value>Esiste già una fattura per questo proprietario e periodo</value>
+  </data>
+  <data name="InvoiceMultipleSuppliers" xml:space="preserve">
+    <value>Il rendiconto contiene righe per più proprietari: una fattura può avere un solo destinatario</value>
+  </data>
+  <data name="StructuredAddressRequired" xml:space="preserve">
+    <value>L'organizzazione deve avere l'indirizzo strutturato completo per emettere fatture elettroniche</value>
+  </data>
+  <data name="InvoiceNotFound" xml:space="preserve">
+    <value>Fattura non trovata o non appartiene alla tua organizzazione</value>
+  </data>
+  <data name="InvoiceNotFinalized" xml:space="preserve">
+    <value>La fattura è ancora in bozza: completala prima di scaricare XML o PDF</value>
+  </data>
+  <data name="OrgMissingTaxCodes" xml:space="preserve">
+    <value>L'organizzazione deve avere almeno un codice fiscale o partita IVA per emettere fatture elettroniche</value>
+  </data>
+  <data name="OrgMissingRegisteredOffice" xml:space="preserve">
+    <value>L'organizzazione deve avere la sede legale configurata per emettere fatture elettroniche</value>
+  </data>
   <data name="Only approved campaigns can be scheduled" xml:space="preserve">
     <value>Solo le campagne approvate possono essere pianificate</value>
   </data>

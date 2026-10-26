@@ -54,6 +54,7 @@ public class AppDbContext(
     public DbSet<OwnerMandate> OwnerMandates { get; set; } = null!;
     public DbSet<OwnerStatement> OwnerStatements { get; set; } = null!;
     public DbSet<StatementLine> StatementLines { get; set; } = null!;
+    public DbSet<AgencyInvoice> AgencyInvoices { get; set; } = null!;
     public DbSet<WireBatch> WireBatches { get; set; } = null!;
     public DbSet<WireBatchStatement> WireBatchStatements { get; set; } = null!;
     public DbSet<WithholdingLog> WithholdingLogs { get; set; } = null!;

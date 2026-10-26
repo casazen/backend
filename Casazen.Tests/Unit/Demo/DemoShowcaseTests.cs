@@ -70,6 +70,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.PropertyOwners.Select(o => o.Scenario))
             .Concat(DemoShowcaseCatalog.GuestSegments.Select(s => s.Scenario))
             .Concat(DemoShowcaseCatalog.Campaigns.Select(c => c.Scenario))
+            .Concat(DemoShowcaseCatalog.AgencyInvoices.Select(inv => inv.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));

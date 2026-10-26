@@ -3335,6 +3335,30 @@
   <data name="StatementPdfExportNotImplemented" xml:space="preserve">
     <value>PDF export for statements not yet available</value>
   </data>
+  <data name="StatementNotFound" xml:space="preserve">
+    <value>Statement not found or does not belong to your organization</value>
+  </data>
+  <data name="InvoiceAlreadyExists" xml:space="preserve">
+    <value>An invoice already exists for this owner and period</value>
+  </data>
+  <data name="InvoiceMultipleSuppliers" xml:space="preserve">
+    <value>The statement contains lines for multiple owners: an invoice can have only one recipient</value>
+  </data>
+  <data name="StructuredAddressRequired" xml:space="preserve">
+    <value>The organization must have a complete structured address to issue electronic invoices</value>
+  </data>
+  <data name="InvoiceNotFound" xml:space="preserve">
+    <value>Invoice not found or does not belong to your organization</value>
+  </data>
+  <data name="InvoiceNotFinalized" xml:space="preserve">
+    <value>The invoice is still in draft: finalize it before downloading XML or PDF</value>
+  </data>
+  <data name="OrgMissingTaxCodes" xml:space="preserve">
+    <value>The organization must have at least a fiscal code or VAT number to issue electronic invoices</value>
+  </data>
+  <data name="OrgMissingRegisteredOffice" xml:space="preserve">
+    <value>The organization must have a registered office configured to issue electronic invoices</value>
+  </data>
   <data name="Only approved campaigns can be scheduled" xml:space="preserve">
     <value>Only approved campaigns can be scheduled.</value>
   </data>

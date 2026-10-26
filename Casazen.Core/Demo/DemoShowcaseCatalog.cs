@@ -35,6 +35,7 @@ public static class DemoShowcaseCatalog
         public const string HostInviteUsed = "host-invite-used";
         public const string HostInviteExpired = "host-invite-expired";
         public const string PropertyOwnerAgency = "property-owner-agency";
+        public const string AgencyInvoiceIssued = "agency-invoice-issued";
         public const string CampaignDraft = "campaign-draft";
         public const string CampaignApproved = "campaign-approved";
         public const string CampaignSent = "campaign-sent";
@@ -54,6 +55,7 @@ public static class DemoShowcaseCatalog
         Scenario.HostInviteUsed,
         Scenario.HostInviteExpired,
         Scenario.PropertyOwnerAgency,
+        Scenario.AgencyInvoiceIssued,
         Scenario.CampaignDraft,
         Scenario.CampaignApproved,
         Scenario.CampaignSent,
@@ -78,6 +80,15 @@ public static class DemoShowcaseCatalog
     [
         new("mario-rossi", "Mario", "Rossi", "proprietario.demo@example.com", "+39 333 1234567",
             "RSSMRA70A01H501X", "IT60X0542811101000000123456", OwnerTaxRegime.Private, Scenario.PropertyOwnerAgency),
+    ];
+
+    /// <summary>
+    /// Agency invoices demo (ADR-019): one issued invoice to demonstrate the invoice generation flow.
+    /// Series is the year, invoice number is sequential, amounts are test data.
+    /// </summary>
+    public static IReadOnlyList<DemoAgencyInvoiceTemplate> AgencyInvoices { get; } =
+    [
+        new("fattura-001", "mario-rossi", "2026", "1", 10, 2026, 100.00m, 22.00m, Scenario.AgencyInvoiceIssued),
     ];
 
     /// <summary>
@@ -290,4 +301,16 @@ public sealed record DemoCampaignTemplate(
     int? SentOffsetDays,
     int SentCount,
     int ErrorCount,
+    string Scenario);
+
+/// <summary>An agency invoice for demo (ADR-019): one issued invoice with test amounts.</summary>
+public sealed record DemoAgencyInvoiceTemplate(
+    string Key,
+    string OwnerKey,
+    string Series,
+    string InvoiceNumber,
+    int Month,
+    int Year,
+    decimal TaxableBase,
+    decimal VatRate,
     string Scenario);
