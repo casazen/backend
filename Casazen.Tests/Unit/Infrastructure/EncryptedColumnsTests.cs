@@ -30,12 +30,12 @@ public class EncryptedColumnsTests
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
+                // NF-13: encrypted property access codes (gate, lockbox, smart lock PIN).
+                "PropertyAccessCode.EncryptedCode:Casazen.PropertyAccessCode",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
                 // ADR-012: property owner financial data (IBAN and fiscal code).
                 "PropertyOwner.FiscalCode:Casazen.PropertyOwner.Financial",
                 "PropertyOwner.Iban:Casazen.PropertyOwner.Financial",
-                // NF-13: encrypted property access codes (gate, lockbox, smart lock PIN).
-                "PropertyAccessCode.EncryptedCode:Casazen.PropertyAccessCode",
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.Username:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.WsKey:Casazen.PropertyQuesturaCredentials",
