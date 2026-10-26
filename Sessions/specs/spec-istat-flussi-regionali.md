@@ -2,7 +2,7 @@
 id: US-ISTAT-01
 slug: istat-flussi-regionali
 title: Flussi turistici regionali — export verificati e invio diretto
-phase: post-MVP
+phase: implementation
 type: feature
 priority: P1
 status: ready-for-helix-intake
@@ -25,9 +25,13 @@ La ricerca ufficiale, la matrice territoriale e i riferimenti tecnici sono in
 [`docs/runbooks/istat-flussi-regionali.md`](../../docs/runbooks/istat-flussi-regionali.md). Questo documento traduce
 quella ricerca in un input eseguibile dal processo Helix.
 
-**Obiettivo della prima delivery:** dominio comune, calendario e completezza dati, resolver territoriale, audit delle
-trasmissioni ed export ufficialmente documentati. Gli invii diretti entrano solo quando CasaZen dispone di ambiente test,
-credenziali fittizie e collaudo dell'ente.
+**Obiettivo della delivery:** rendere gestibile da CasaZen l'adempimento per qualunque appartamento italiano, in tutte
+le 20 Regioni e nelle Province autonome di Trento e Bolzano. La delivery comprende dominio, UI, calendario, resolver,
+audit, tutti gli export documentabili, adapter diretti documentati e un percorso assistito verificabile dove l'ente non
+pubblica un contratto machine-to-machine. Non sono ammesse Regioni escluse né righe `unverified` senza istruzioni.
+
+“Supportato” non significa artificiosamente “API”: significa che l'host può completare l'adempimento partendo da
+CasaZen. Il livello migliore disponibile è scelto in quest'ordine: `DirectSubmit`, `FileExport`, `AssistedManual`.
 
 ## Decisioni vincolanti
 
@@ -39,23 +43,46 @@ credenziali fittizie e collaudo dell'ente.
 6. Portale e autorità devono essere risolti per comune/provincia e validità temporale, non dalla sola Regione.
 7. Funzionalità spenta per default e attivata per singolo adapter/ente dopo conformance test.
 8. Mai mostrare una sanzione nazionale unica; testi, scadenze e importi sono contenuti territoriali versionati.
+9. Tutti i requisiti NF-01–NF-10 sono `must`. Le dipendenze esterne impediscono soltanto l'attivazione production del
+   singolo adapter diretto, mai dominio, UI, export disponibile o percorso assistito.
+10. La classificazione giuridica dell'immobile è input obbligatorio: “appartamento” può essere locazione turistica,
+    CAV/struttura ricettiva o altra categoria e può cambiare portale nello stesso territorio.
 
-## Perimetro per capacità
+## Copertura nazionale vincolante
 
-| Famiglia | Prima delivery | Invio diretto successivo | Blocco esterno |
+Ogni riga deve avere fixture di routing e una journey E2E. `FileExport` è attivabile solo con formato ufficiale; negli
+altri casi `AssistedManual` apre il portale ufficiale, mostra dati aggregati/copincollabili, checklist, scadenza e consente
+di allegare ricevuta o dichiarare l'esito. Non si automatizzano identità digitali o pagine web.
+
+| Territorio / categoria | Destinazione | Capacità minima obbligatoria | Capacità diretta da implementare |
 |---|---|---|---|
-| ROSS1000/Turismo5 | export XML v2.4, validazione e audit | SOAP su un ente pilota, poi rollout per ente | WSDL/endpoint/utenza test e collaudo |
-| Sinfonia Campania | contratto adapter e secret API key | REST con CUSR + API key | account software house e ambiente test |
-| Sicilia | contratto adapter e fixture XML | API HTTPS/token/XML | credenziali PMS test e XSD aggiornati |
-| SPOT Puglia strutture | export XML UTF-8 con XSD 0.6 | non previsto dalla documentazione pubblica | nessuno per export |
-| SPOT Easy locazioni | guida/stato manuale | non documentato | protocollo PMS ufficiale |
-| Turismatica Umbria | porta solo-export | da valutare | tracciato TXT ufficiale corrente |
-| STU Trento | porta file/WS | dopo test di congruenza ISPAT | specifica e accreditamento |
-| DTU Trento | manuale | non documentato | protocollo PMS ufficiale |
-| Toscana/Ricestat | resolver territoriale | adapter separato | contratti per Provincia |
-| WebTur FVG | manuale/porta disabilitata | da valutare | specifica Insiel ufficiale |
-| ABIT Sondrio | manuale/porta disabilitata | da valutare | specifica Provincia |
-| Molise, Valle d'Aosta, Bolzano | `unverified/manual` | da valutare | verifica amministrativa e tecnica |
+| Abruzzo | SITRA/ROSS1000 | XML ROSS1000 + assistenza upload | SOAP quando accreditato |
+| Basilicata | SIST/ROSS1000 | XML ROSS1000 + assistenza upload | WS quando accreditato |
+| Calabria | ROSS1000 | XML ROSS1000 + assistenza upload | WS quando accreditato |
+| Campania | Sinfonia Turismo SMART | riepilogo assistito | REST CUSR/API key |
+| Emilia-Romagna | ROSS1000 | XML v2.4 | SOAP/WS v2.4 |
+| Friuli-Venezia Giulia | WebTur | file solo dopo consegna tracciato; fino ad allora assistito | adapter upload/WS dopo contratto Insiel |
+| Lazio | ROSS1000-Lazio | XML import | WS quando accreditato |
+| Liguria AAUT | ROSS1000 | XML import + assistenza | WS quando abilitato |
+| Liguria strutture | RIMOVCLI finché vigente, poi regola datata ROSS1000 | assistito/export ufficiale vigente | adapter solo con contratto ufficiale |
+| Lombardia eccetto Sondrio | ROSS1000 | XML ROSS1000 + assistenza upload | WS dopo collaudo ARIA |
+| Sondrio | ABIT | assistito | adapter dopo contratto Provincia |
+| Marche | ISTRICE/ROSS1000 | XML ROSS1000 + assistenza upload | WS quando accreditato |
+| Molise | servizio indicato dall'ente competente | assistito configurabile, senza inventare formato | adapter dopo identificazione formale |
+| Piemonte | Piemonte Dati Turismo/ROSS1000 | TXT/XML import | WS quando accreditato |
+| Puglia strutture | DMS/SPOT Online | XML XSD 0.6 | nessuna API pubblica |
+| Puglia locazioni | DMS/SPOT Easy | assistito; eventuale import PS resta distinto | adapter solo con protocollo ISTAT ufficiale |
+| Sardegna | SIRED/ROSS1000 | XML ROSS1000 + assistenza upload | WS quando accreditato |
+| Sicilia | Osservatorio Turistico | riepilogo assistito | HTTPS token + XML rev. 1.0.7 |
+| Toscana Arezzo | Unicom | assistito/export dopo contratto | adapter separato |
+| Toscana Firenze e Prato/Pistoia secondo regola vigente | Turismo5 | XML ROSS1000 | WS quando accreditato |
+| Toscana GR/LI/LU/MS/PI/SI | Ricestat/Motourist | assistito/export dopo contratto provinciale | adapter Ricestat separato |
+| Trento strutture | STU | file ufficiale | WS dopo test ISPAT |
+| Trento alloggi privati | DTU Alloggi | assistito SPID/CPS | nessuna API pubblica |
+| Umbria | Turismatica | TXT ufficiale versionato | nessuna API pubblica verificata |
+| Valle d'Aosta | VIT Albergatori | assistito e import PMS dopo tracciato ufficiale | adapter dopo contratto regionale |
+| Veneto | ROSS1000 | XML/TXT ufficiale | WS quando accreditato |
+| Bolzano | ASTAT IST-00139/TUR-031 | assistito secondo guida ASTAT corrente | adapter solo con contratto ASTAT |
 
 ## User stories e acceptance criteria
 
@@ -69,8 +96,11 @@ solo portale.
 - **AC1.2**: per Provincia di Sondrio il resolver restituisce ABIT e non il canale host ROSS1000.
 - **AC1.3**: per la Toscana il risultato dipende almeno dalla Provincia; una regola assente o ambigua produce
   `portal_configuration_unverified`, mai un fallback silenzioso.
-- **AC1.4**: Molise, Valle d'Aosta e Bolzano restano manuali/non verificati finché non viene caricata una fonte approvata.
+- **AC1.4**: Molise, Valle d'Aosta e Bolzano restituiscono sempre una journey assistita con ente, URL, contatto,
+  scadenza e checklist versionati; mai `unsupported` o `unverified` come stato visibile all'host.
 - **AC1.5**: ogni regola conserva URL fonte, data di verifica, validità e versione; l'admin può disattivarla senza deploy.
+- **AC1.6**: la seed copre tutti i comuni italiani e le due Province autonome; un test fallisce se un comune e una
+  categoria attiva non risolvono esattamente una regola.
 
 ### NF-02 — Profilo e credenziali della struttura · must
 
@@ -142,7 +172,7 @@ Come gestore di struttura ricettiva pugliese voglio scaricare l'XML da caricare 
 - **AC7.3**: gli arrivi rappresentano singolo/capofamiglia/capogruppo e componenti con identificatori PMS non-PII.
 - **AC7.4**: il flusso delle locazioni SPOT Easy non usa questo XML e rimane esplicitamente manuale.
 
-### NF-08 — Adapter diretti certificabili · should, gated
+### NF-08 — Adapter diretti certificabili · must
 
 Come host voglio inviare direttamente solo verso integrazioni collaudate e ricevere l'esito reale.
 
@@ -153,8 +183,10 @@ Come host voglio inviare direttamente solo verso integrazioni collaudate e ricev
   richiede un conformance test registrato per ente/versione.
 - **AC8.4**: retry solo per errori transienti, timeout e circuit breaker; rifiuti applicativi richiedono correzione.
 - **AC8.5**: redirect fuori allowlist, TLS non valido o host non ufficiale bloccano l'invio.
+- **AC8.6**: sono implementati nello stesso programma Sinfonia REST, Sicilia API, ROSS1000 SOAP v2.4 e la porta STU;
+  la produzione per ente resta feature-flagged finché manca il relativo collaudo.
 
-### NF-09 — Esperienza operativa, scadenze e correzioni · should
+### NF-09 — Esperienza operativa, scadenze e correzioni · must
 
 Come host voglio completare il mese e correggere i rifiuti senza confondere l'adempimento con Alloggiati Web.
 
@@ -163,6 +195,19 @@ Come host voglio completare il mese e correggere i rifiuti senza confondere l'ad
 - **AC9.3**: promemoria e scadenze provengono da configurazione territoriale versionata, in italiano e inglese.
 - **AC9.4**: importi sanzionatori sono mostrati soltanto con fonte e territorio; in assenza si usa testo neutro.
 - **AC9.5**: la UI non promette invio automatico per adapter manuali o non certificati.
+
+### NF-10 — Percorso assistito universale · must
+
+Come host di un territorio senza API pubblica voglio comunque completare e provare l'adempimento da CasaZen.
+
+- **AC10.1**: CasaZen prepara per giorno/mese gli stessi totali e dettagli richiesti dal portale, con copia per campo,
+  deep link ufficiale e istruzioni versionate per categoria di immobile.
+- **AC10.2**: prima dell'apertura del portale valida completezza, codici, giorni a zero/chiusi e identifica i dati mancanti.
+- **AC10.3**: al termine l'host registra data, esito e identificativo oppure allega la ricevuta; lo stato diventa
+  `ManuallyDeclaredSent`, mai `Accepted`, salvo ricevuta verificabile.
+- **AC10.4**: se l'amministrazione cambia modalità, una regola datata sostituisce la precedente senza alterare lo storico.
+- **AC10.5**: nessun territorio mostra “non supportato”; se una fonte non è pubblica, mostra contatto dell'ente e crea
+  un evento operativo `AuthoritySpecificationRequired` visibile all'amministrazione CasaZen.
 
 ## Modello e componenti attesi
 
@@ -176,9 +221,12 @@ Come host voglio completare il mese e correggere i rifiuti senza confondere l'ad
 
 I nomi finali sono decisione ADR; le proprietà semantiche e i vincoli sopra non sono opzionali.
 
-## Sequenza consigliata per Helix
+## Piano di esecuzione obbligatorio per Helix
 
-### Wave 0 — ADR e prerequisiti esterni
+Le wave sono merge incrementali dello stesso programma, non scope opzionale. Helix può lavorare con server finti e
+feature flag mentre attende accreditamenti; non può chiudere la feature finché NF-01–NF-10 e la matrice sono coperte.
+
+### Wave 0 — ADR, catalogo nazionale e prerequisiti esterni
 
 - ADR: dominio canonico, granularità della submission, correzioni e retention.
 - ADR: credenziali per struttura, cifratura, allowlist e prova di accettazione.
@@ -198,11 +246,18 @@ I nomi finali sono decisione ADR; le proprietà semantiche e i vincoli sopra non
 - NF-09 per completezza, download e stati;
 - nessuna chiamata reale a enti.
 
-### Wave 3 — invio diretto
+### Wave 3 — invio diretto e fallback nazionale
 
 - NF-08 Sinfonia e Sicilia in test;
-- ROSS1000 SOAP solo dopo il pilota;
-- rollout per singolo ente/versione con feature flag spento di default.
+- ROSS1000 SOAP implementato contro il contratto ufficiale e provato sul pilota;
+- NF-10 e fixture E2E per tutti i territori;
+- rollout per singolo ente/versione con feature flag spento fino al collaudo.
+
+### Wave 4 — conformance nazionale
+
+- ottenere e versionare tracciati non pubblici per WebTur, ABIT, Ricestat, Unicom, Turismatica, VIT, STU/DTU e ASTAT;
+- promuovere ogni journey da assistita a file/diretta senza cambiare il dominio;
+- report automatico che elenca copertura per comune, categoria, capacità, fonte, versione e data ultima verifica.
 
 ## Test expectations
 
@@ -212,21 +267,25 @@ I nomi finali sono decisione ADR; le proprietà semantiche e i vincoli sopra non
 - Contract test su server finto per timeout, retry, rifiuto parziale e risposta 2xx con errore applicativo.
 - L2 frontend per mese completo/incompleto, export, errore di validazione e adapter manuale.
 - L3 soltanto su ambiente test ufficiale, mai produzione, prima dell'abilitazione dell'invio diretto.
+- Test parametrico sui codici ISTAT di tutti i comuni: nessun risultato nullo, ambiguo o fuori validità.
+- E2E di almeno una locazione e una struttura ricettiva per ciascuna regola territoriale distinta.
 
 ## Regulatory, privacy and security gates
 
 - confermare ruolo CasaZen come responsabile del trattamento, DPA, informativa e registro prima dell'invio diretto;
-- definire retention di payload, risposte e ricevute separatamente dai dati Alloggiati;
+- payload nominativi cifrati: cancellazione automatica 90 giorni dopo esito definitivo; ricevute e audit minimizzati
+  senza PII: 24 mesi; valori sovrascrivibili per obbligo territoriale documentato;
 - vietare PII nei log e negli identificatori PMS;
 - cifrare payload/risposte in storage privato e credenziali nel database;
 - documentare minimizzazione campo per campo per ogni adapter;
 - nessuna credenziale reale nei fixture, nelle demo o nelle CI.
 
-## Manual follow-up
+## Attività esterne obbligatorie (non decisioni Helix)
 
-- Accreditare CasaZen come software house presso Campania, Sicilia e l'ente ROSS1000 pilota.
+- Accreditare CasaZen come software house presso Campania, Sicilia, gli enti ROSS1000 e ISPAT.
 - Ottenere test account, endpoint, WSDL/XSD/OpenAPI, esempi di risposta e procedura di certificazione.
-- Richiedere specifiche correnti a Umbria, PAT/ISPAT, Insiel FVG, Provincia di Sondrio e gestori Ricestat.
+- Richiedere specifiche correnti a Umbria, PAT/ISPAT, Insiel FVG, Provincia di Sondrio, ASTAT, Valle d'Aosta,
+  amministrazione Molise e gestori Ricestat/Unicom.
 - Validazione legale/privacy prima di abilitare l'invio diretto.
 
 ## Out of scope
@@ -235,16 +294,13 @@ I nomi finali sono decisione ADR; le proprietà semantiche e i vincoli sopra non
 - automazione di SPID, CIE, CNS o scraping dei portali;
 - invio Alloggiati Web e imposta di soggiorno, pur riusando i dati compatibili;
 - adapter costruiti da reverse engineering o sole guide commerciali;
-- rollout nazionale simultaneo senza test per ente;
+- attivazione production senza test per ente;
 - custodia di credenziali personali di identità digitale.
 
-## Open questions for Helix intake
+## Decisioni chiuse per Helix
 
-1. La prima delivery deve includere solo ROSS1000 + SPOT export oppure anche la UI completa NF-09?
-   Default proposto: includere la UI minima necessaria a rendere verificabili completezza, download e stati.
-2. Quale ente ROSS1000 sarà il pilota contrattuale? Default: Emilia-Romagna per la specifica pubblica; la scelta
-   dell'ambiente reale resta bloccante per Wave 3, non per dominio/export.
-3. Durata di conservazione di payload e ricevute? Decisione legale/privacy bloccante prima della produzione; per sviluppo
-   usare configurazione senza cancellazione automatica e dati esclusivamente fittizi.
-4. La fase di invio diretto è autorizzata nello stesso run Helix? Default: no; decomporla come wave gated che resta
-   bloccata finché gli account test e la conferma privacy non sono registrati.
+- La UI completa NF-09 e il percorso assistito NF-10 fanno parte della delivery.
+- Emilia-Romagna è il baseline tecnico ROSS1000; l'attivazione resta configurata per singolo ente.
+- La retention di default è quella definita nel gate privacy sopra e deve essere implementata con job verificabile.
+- L'invio diretto è nello stesso programma; gli account esterni governano solo la feature flag production.
+- La feature è completata soltanto quando ogni comune/categoria risolve una journey eseguibile e verificata.

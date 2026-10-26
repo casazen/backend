@@ -20,12 +20,14 @@ La soluzione corretta è un dominio unico `TouristFlow` e adapter versionati per
 6. **STU (Trento)**: file o web service per strutture ricettive; **DTU** per alloggi privati non espone nelle fonti
    consultate un protocollo PMS pubblico equivalente.
 7. **Toscana**: routing provinciale fra Turismo5/ROSS1000, Ricestat e sistemi locali; non è un adapter unico.
-8. **WebTur (Friuli-Venezia Giulia)** e **ABIT (Sondrio)**: integrazioni realmente usate da PMS, ma senza specifica
-   tecnica ufficiale pubblica sufficiente per un client CasaZen verificabile. Prima release: export/manuale o accordo con l'ente.
+8. **WebTur (Friuli-Venezia Giulia)** e **ABIT (Sondrio)**: WebTur documenta ufficialmente il caricamento da file, ma
+   non pubblica il tracciato; per ABIT non è pubblica una specifica PMS. Servono contratto dell'ente o percorso assistito.
+9. **VIT Albergatori (Valle d'Aosta)** e **ASTAT (Bolzano)**: i canali ufficiali sono identificati, ma il contratto
+   machine-to-machine corrente non è pubblico.
 
-La prima release consigliata è: modello dati comune + validazione + export firmato/versionato; invio diretto solo per
-Sinfonia e Sicilia, quindi ROSS1000 dopo collaudo con almeno un ente. L'automazione via browser/SPID non è una API e
-non va implementata.
+La delivery nazionale deve offrire per ogni immobile almeno un percorso completo: invio diretto certificato, file
+ufficiale oppure compilazione assistita con prova dell'esito. L'automazione via browser/SPID non è una API e non va
+implementata. La mancanza di un contratto pubblico impedisce di dichiarare un invio diretto, non di supportare il territorio.
 
 ## Correzioni ai documenti di partenza
 
@@ -40,11 +42,10 @@ non va implementata.
   Non mostrare nell'app un importo nazionale unico.
 - **ABIT** è il portale della Provincia di Sondrio, non un secondo portale valido per tutta la Lombardia.
 - In Puglia **DMS** è il punto di accesso; i flussi passano da **SPOT** (strutture) o **SPOT Easy** (locazioni).
-- La Toscana è territorialmente frammentata: la Regione elenca Turismo5 per Firenze e Pistoia, Ricestat per Grosseto,
-  Livorno, Lucca, Massa-Carrara, Pisa e Siena, e un sistema separato per Arezzo; Prato va verificata al momento
-  dell'onboarding perché l'elenco istituzionale corrente non è omogeneo nelle diverse pagine.
+- La Toscana è territorialmente frammentata: la fonte regionale elenca Unicom per Arezzo; Turismo5 per Firenze e
+  relativi ambiti indicati, Pistoia e Prato; Ricestat per Grosseto, Livorno, Lucca, Massa-Carrara, Pisa e Siena.
 - Il Molise non è classificabile con affidabilità come ROSS1000 sulla sola base di liste commerciali: va mantenuto
-  `manual_only/unverified` finché la Regione pubblica o consegna il protocollo applicabile.
+  su percorso assistito configurabile finché la Regione pubblica o consegna il protocollo applicabile.
 
 ## Matrice territoriale
 
@@ -55,17 +56,17 @@ specifica pubblica sufficiente.
 | Territorio | Sistema verificato | Canale PMS documentato | Strategia CasaZen |
 |---|---|---|---|
 | Abruzzo | SITRA su ROSS1000 | famiglia XML/TXT/WS ROSS1000; confermare endpoint e credenziali locali | adapter ROSS1000, feature flag territoriale |
-| Basilicata | ROSS1000 indicato da più PMS, ma specifica regionale non reperita | da confermare con ente | export ROSS1000 solo dopo conformance test |
+| Basilicata | SIST, basato ufficialmente su ROSS1000 | output PMS compatibili; WS dichiarato dal sistema | XML/WS ROSS1000 dopo conformance test |
 | Calabria | ROSS1000 (`sirdat.regione.calabria.it`) | protocollo di famiglia; endpoint locale non pubblicato nella pagina | adapter ROSS1000 dopo accreditamento |
 | Campania | Sinfonia Turismo SMART | **REST API**, CUSR + API key, ambiente test richiedibile | invio diretto, priorità alta |
 | Emilia-Romagna | ROSS1000 | XML v2.4, TXT v4, Web Service, demo ufficiale | implementazione di riferimento ROSS1000 |
-| Friuli-Venezia Giulia | WebTur | portale dichiara upload; PMS terzi usano TXT/WS, ma specifica ufficiale pubblica non trovata | manual/export finché Insiel consegna contratto |
+| Friuli-Venezia Giulia | WebTur | portale ufficiale dichiara caricamento da file anche per unità abitative; tracciato non pubblico | assistito, poi export/WS quando Insiel consegna contratto |
 | Lazio | ROSS1000-Lazio dal 21/05/2025 | pagina ufficiale dichiara import XML | adapter ROSS1000; WS da abilitare solo dopo conferma Regione |
 | Liguria | ROSS1000 e residui percorsi locali/RIMOVCLI | non assumere copertura uniforme dal solo nome regione | routing per codice struttura/ente competente |
 | Lombardia (eccetto Sondrio) | ROSS1000 | XML/TXT e nota WS richiamati dal portale; collaudo ARIA necessario | adapter ROSS1000 |
 | Lombardia, Provincia di Sondrio | ABIT | nessuna specifica API pubblica trovata | manuale/accordo Provincia; non instradare a ROSS1000 dall'host |
 | Marche | ROSS1000/ISTRICE | protocollo di famiglia, configurazione locale da acquisire | adapter ROSS1000 dopo collaudo |
-| Molise | non verificato | nessuno | manuale e ticket di verifica amministrativa |
+| Molise | servizio regionale non identificato nelle fonti pubbliche consultate | nessun contratto PMS pubblico | assistito con contatto ente; ticket di acquisizione specifica |
 | Piemonte | ROSS1000 | protocollo di famiglia, configurazione locale da acquisire | adapter ROSS1000 dopo collaudo |
 | Puglia, strutture ricettive | DMS → SPOT Online/Completo | XML UTF-8, XSD `movimentogiornaliero-0.6.xsd` e `datatype-0.6.xsd`; upload SPID | generazione XML + download, niente scraping |
 | Puglia, locazioni turistiche | DMS → SPOT Easy | inserimento portale; può importare file PS, che non equivale al flusso ISTAT PMS | manuale; non confondere file Alloggiati con file SPOT |
@@ -75,9 +76,9 @@ specifica pubblica sufficiente.
 | Trento, strutture ricettive | STU | file e web service; gestionali devono superare test di congruenza | partnership/collaudo ISPAT |
 | Trento, alloggi privati | DTU Alloggi | inserimento online SPID/CPS; nessuna API pubblica verificata | manuale finché PAT abilita PMS |
 | Umbria | Turismatica | file giornaliero TXT da gestionale | export TXT dopo acquisizione specifica ufficiale |
-| Valle d'Aosta | piattaforma regionale locazioni/strutture | specifica PMS pubblica non reperita in questa ricerca | manuale e approfondimento dedicato |
+| Valle d'Aosta | VIT Albergatori | manuale ufficiale conferma inserimento e integrazione PMS; contratto non pubblico | assistito; adapter dopo contratto regionale |
 | Veneto | ROSS1000 | protocollo di famiglia | adapter ROSS1000 dopo collaudo |
-| Bolzano | ASTAT, distinto da Trento | fuori dalle famiglie della lista; specifica da acquisire | manuale e approfondimento dedicato |
+| Bolzano | ASTAT IST-00139 + TUR-031 | guide/circolari ufficiali; contratto PMS non pubblico | assistito; adapter dopo contratto ASTAT |
 
 ## Contratti tecnici verificati
 
@@ -215,6 +216,24 @@ Fonte: [servizio ufficiale PAT](https://www.provincia.tn.it/Servizi/Comunicare-o
   documentazione API pubblica. Fonti: [procedimento Provincia di Sondrio](https://www.provinciasondrio.it/servizio-turismo-cultura-istruzione/procedimenti/comunicazione-dei-flussi-turistici-da-parte-strutture-ricettive),
   [portale ABIT](https://abit.so.it/).
 
+### Basilicata, Valle d'Aosta, Bolzano e Molise
+
+- **Basilicata**: APT Basilicata dichiara che SIST è basato su Turismo5/ROSS1000, acquisisce output compatibili dei
+  gestionali e può trasmettere via web service. La rilevazione include le locazioni turistiche, assimilate operativamente
+  alle case e appartamenti per vacanze, e i dati mensili vanno comunicati entro il giorno 10. Fonti:
+  [SIST APT Basilicata](https://www.aptbasilicata.it/sistema-informativo-statistico-turistico/),
+  [dati e obblighi 2026](https://www.aptbasilicata.it/dati-statistici-2026/).
+- **Valle d'Aosta**: il manuale ufficiale VIT Albergatori conferma obbligatorietà, inserimento manuale, integrazione con
+  PMS e chiusura mensile C59-M entro il giorno 5, inclusi i periodi chiusi. Non pubblica però il contratto tecnico PMS.
+  Fonte: [manuale VIT Albergatori](https://www.regione.vda.it/gestione/vit_albergatori/Docs/VIT%20Albergatori%20Manuale%20utente.pdf).
+- **Bolzano**: ASTAT gestisce la rilevazione mensile IST-00139 e, da novembre 2023, la giornaliera TUR-031. La pagina
+  ufficiale pubblica guida e circolare correnti e il contatto `astat.tur@provinz.bz.it`, ma non un contratto PMS.
+  Fonte: [ASTAT Turismo](https://astat.provinz.bz.it/it/turismo).
+- **Molise**: le pagine regionali reperibili documentano anagrafe/CIN, ma non identificano in modo verificabile il
+  canale dei flussi né un formato PMS. CasaZen deve configurare il percorso consegnato dall'ufficio competente e, fino
+  ad allora, presentare riepilogo assistito e contatto regionale; non deve etichettarlo ROSS1000 per analogia commerciale.
+  Fonte: [servizio regionale strutture e CIN](https://www.regione.molise.it/flex/cm/pages/ServeBLOB.php/L/IT/IDPagina/20744).
+
 ## Modello dati CasaZen
 
 Il modello esistente è una buona base: `StayGuest` possiede ruolo ospite, nascita, cittadinanza e codici delle tabelle
@@ -306,7 +325,10 @@ public interface ITouristFlowAdapter
 - Ogni modifica o annullamento deve produrre una nuova revisione; non sovrascrivere la prova di ciò che è stato inviato.
 - Dashboard mensile che riconcilia ogni giorno: movimento, aperto senza movimento o chiuso. Nessun giorno “bianco”.
 
-## Piano di implementazione
+## Piano di implementazione nazionale
+
+Le fasi sono incrementi dello stesso programma obbligatorio. Un blocco di accreditamento esterno mantiene spento solo
+l'invio production interessato: dominio, UI, file disponibili e percorso assistito devono comunque essere consegnati.
 
 ### Fase 0 — acquisizione e accordi
 
@@ -331,11 +353,12 @@ public interface ITouristFlowAdapter
 3. Polling/storico o ricevute dove previsti; riconciliazione e correzioni.
 4. Alert prima della scadenza e su rifiuti, senza citare una sanzione generica nazionale.
 
-### Fase 3 — estensione territoriale
+### Fase 3 — copertura territoriale e conformance
 
-Turismatica, STU, Ricestat, WebTur e ABIT entrano solo dopo ricezione di specifica ufficiale, test account e casi di
-conformance. Ogni nuova regione è configurazione + collaudo quando il protocollo è davvero identico; altrimenti è un
-adapter/versione separata.
+Consegnare il percorso assistito per ogni territorio sin dalla prima attivazione. Acquisire poi i contratti Turismatica,
+STU, Ricestat, Unicom, WebTur, ABIT, VIT e ASTAT e promuovere la relativa capacità a file/diretta dopo test di
+conformance. Ogni nuova configurazione con protocollo identico richiede comunque collaudo per ente; una differenza di
+schema o semantica crea un adapter/versione separata.
 
 ## Criteri di accettazione minimi
 
@@ -347,6 +370,8 @@ adapter/versione separata.
 - Un 200 con errore applicativo non marca `Accepted`; accettazione richiede prova persistita.
 - Tenant isolation, secret redaction, retention e cancellazione sono coperti da test.
 - Se il portale/adapter non è certificato, l'interfaccia mostra solo export/manuale e non promette invio automatico.
+- Ogni comune ISTAT e categoria di immobile attiva risolve esattamente una regola temporalmente valida.
+- Ogni Regione e Provincia autonoma ha almeno una journey E2E: diretta, export ufficiale o assistita.
 
 ## Questioni ancora da chiudere con gli enti
 
@@ -359,4 +384,9 @@ adapter/versione separata.
 6. Specifiche STU e perimetro separato DTU; requisiti dei test di congruenza PAT.
 7. API/import Ricestat per ciascuna provincia toscana e futuro consolidamento regionale.
 8. API/export ABIT e piano di evoluzione/migrazione della Provincia di Sondrio.
-9. Portale e modalità ufficiale Molise, Valle d'Aosta e Provincia di Bolzano.
+9. Identificazione formale del servizio e del referente flussi del Molise.
+10. Contratti PMS non pubblici di VIT Valle d'Aosta e ASTAT Bolzano.
+
+Questi punti non sono domande di prodotto: richiedono documenti, endpoint, credenziali o collaudi rilasciati da soggetti
+esterni. Il comportamento CasaZen in loro assenza è già deciso: percorso assistito tracciato, senza scraping né falsa
+dichiarazione di invio automatico.
