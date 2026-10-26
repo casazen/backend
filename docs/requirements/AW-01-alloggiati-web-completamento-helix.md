@@ -81,9 +81,11 @@ Memorizzare incarico con attore, data, versione del testo e revoca; verificare p
 
 L'agenzia inserisce e usa direttamente in CasaZen le proprie credenziali. DPA, termini e testo di configurazione devono chiarire che agenzia/host restano responsabili di correttezza, tempestività, abilitazione Questura e gestione eccezioni; il legale deve validare il riparto senza introdurre una rinuncia inefficace alle responsabilità del fornitore.
 
+L'onboarding deve essere riusabile per qualunque Questura, senza branch di codice per Comune: prima dell'attivazione di ogni account l'agenzia registra la Questura/ufficio competente e attesta di avere completato il relativo accreditamento, ricevuto credenziali valide e verificato le istruzioni locali su rilascio, variazione/disabilitazione e canale alternativo. CasaZen conserva solo metadati e riferimenti alla procedura, non copie superflue di documenti o credenziali nei log. Se le istruzioni locali mancano o sono incompatibili, l'account resta non configurato e il percorso manuale è evidenziato.
+
 Cache del token per org/account/versione, con scadenza restituita dal servizio e margine; invalidare a sostituzione/revoca credenziali. Rinnovo su scadenza o errore di autenticazione esplicito, senza ripetere automaticamente un Send dall'esito ambiguo.
 
-Accettazione: lettura di credenziali cifrate su PostgreSQL e autenticazione con fake; sostituzione invalida il token; altra org non accede a credenziali o ricevute; incarico/documentazione mancante → nessun Send.
+Accettazione: lettura di credenziali cifrate su PostgreSQL e autenticazione con fake; sostituzione invalida il token; altra org non accede a credenziali o ricevute; incarico/documentazione o onboarding Questura mancante → nessun Send.
 
 ### AW-R03 — Righe e profili · P0
 
@@ -179,7 +181,9 @@ Definition of done: suite di contratto e integrazione superata; nessun placehold
 | AW-D4 | Soggiorni oltre 30 giorni: gestione manuale, senza troncamenti o arrivi fittizi. |
 | AW-D5 | Aggiunta e disabilitazione appartamenti dal portale CasaZen tramite WS. |
 | AW-D6 | Esito ambiguo o mismatch gestito dall'agenzia; CasaZen lo evidenzia e registra l'azione manuale. |
+| AW-D7 | I Comuni del pilota saranno scelti successivamente; l'onboarding per Questura è configurabile e non modifica il flusso o il codice. |
 
-Restano verifiche tecniche, non decisioni di prodotto: il WSDL vigente, limiti per richiesta, padding `IdAppartamento`,
-duplicati remoti, ritardi ricevute e limiti di chiamata. Dove il contratto non è esplicito, Helix deve marcare l'assunzione
-come non verificata e validarla nel pilot senza trasmettere dati fittizi.
+Restano verifiche tecniche, non decisioni di prodotto: limiti per richiesta, padding `IdAppartamento`, duplicati remoti,
+ritardi ricevute e limiti di chiamata. Il servizio pubblico conferma SOAP 1.1 e 1.2 e le operazioni di gestione
+appartamenti; dove il contratto non è esplicito, Helix deve marcare l'assunzione come non verificata e validarla nel
+pilot senza trasmettere dati fittizi.
