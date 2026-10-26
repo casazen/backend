@@ -3398,4 +3398,7 @@
   <data name="BatchXmlNotFound" xml:space="preserve">
     <value>Il file XML del batch non è stato trovato</value>
   </data>
+  <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
+    <value>Codice di accesso non disponibile o verifica non superata</value>
+  </data>
 </root>
