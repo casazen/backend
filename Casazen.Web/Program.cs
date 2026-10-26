@@ -90,6 +90,7 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IStatementService, StatementService>();
 builder.Services.AddScoped<IAgencyInvoiceService, AgencyInvoiceService>();
+builder.Services.AddScoped<IWireTransferService, WireTransferService>();
 builder.Services.AddScoped<IWithholdingService, WithholdingService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);

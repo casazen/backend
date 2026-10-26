@@ -55,6 +55,8 @@ public class AppDbContext(
     public DbSet<OwnerStatement> OwnerStatements { get; set; } = null!;
     public DbSet<StatementLine> StatementLines { get; set; } = null!;
     public DbSet<AgencyInvoice> AgencyInvoices { get; set; } = null!;
+    public DbSet<WireBatch> WireBatches { get; set; } = null!;
+    public DbSet<WireBatchStatement> WireBatchStatements { get; set; } = null!;
     public DbSet<WithholdingLog> WithholdingLogs { get; set; } = null!;
     public DbSet<F24Record> F24Records { get; set; } = null!;
     public DbSet<OwnerInvitation> OwnerInvitations { get; set; } = null!;
@@ -185,6 +187,10 @@ public class AppDbContext(
     // Biometric verification settings and audit logs (NF-11, ADR-013)
     public DbSet<BiometricSettings> BiometricSettings { get; set; } = null!;
     public DbSet<BiometricVerificationLog> BiometricVerificationLogs { get; set; } = null!;
+
+    // Property access codes and release logs (NF-13, E06/F03/US01/T01)
+    public DbSet<PropertyAccessCode> PropertyAccessCodes { get; set; } = null!;
+    public DbSet<AccessCodeReleaseLog> AccessCodeReleaseLogs { get; set; } = null!;
 
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
