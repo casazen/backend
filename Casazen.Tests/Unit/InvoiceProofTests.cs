@@ -4,6 +4,7 @@ using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Integration.Postgres;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -19,13 +20,12 @@ public class InvoiceProofTests
     /// ADR-019-R4 proof: Invoice numbering must be sequential with no gaps per agency/series.
     /// Tests that consecutive invoices receive sequential numbers (1, 2, 3) with no duplicates or gaps.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task InvoiceNumbering_NoGaps()
     {
-        // Arrange: in-memory database
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"InvoiceNumberingTest_{Guid.NewGuid()}")
-            .Options;
+        // Use PostgreSQL so invoice numbering exercises real serializable transactions.
+        await using var database = await PostgresTestDatabase.CreateMigratedAsync();
+        var options = database.CreateOptions();
 
         var dataProtection = new EphemeralDataProtectionProvider();
         var orgId = Guid.NewGuid();
@@ -195,13 +195,12 @@ public class InvoiceProofTests
     /// ADR-019-R10 proof: Invoice amounts (VAT and stamp duty) must be correct to the cent.
     /// Tests VAT calculation at 22% and stamp duty of €2 when taxable base exceeds €77.47 with no VAT.
     /// </summary>
-    [Fact]
+    [PostgresFact]
     public async Task InvoiceAmounts_Correct()
     {
-        // Arrange: in-memory database
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"InvoiceAmountsTest_{Guid.NewGuid()}")
-            .Options;
+        // Use PostgreSQL so invoice numbering exercises real serializable transactions.
+        await using var database = await PostgresTestDatabase.CreateMigratedAsync();
+        var options = database.CreateOptions();
 
         var dataProtection = new EphemeralDataProtectionProvider();
         var orgId = Guid.NewGuid();
