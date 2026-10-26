@@ -455,14 +455,16 @@ public sealed class WireTransferService(
             Indent = true,
             IndentChars = "  ",
             NewLineChars = "\n",
-            Encoding = Encoding.UTF8,
+            Encoding = new UTF8Encoding(false),
             OmitXmlDeclaration = false
         };
 
-        using var stringWriter = new StringWriter();
-        using var xmlWriter = XmlWriter.Create(stringWriter, settings);
-        doc.Save(xmlWriter);
-        return stringWriter.ToString();
+        using var stream = new MemoryStream();
+        using (var xmlWriter = XmlWriter.Create(stream, settings))
+        {
+            doc.Save(xmlWriter);
+        }
+        return Encoding.UTF8.GetString(stream.ToArray());
     }
 
     /// <summary>

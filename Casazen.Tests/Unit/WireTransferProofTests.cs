@@ -1,3 +1,5 @@
+using System.Text;
+using System.Xml.Linq;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
@@ -154,7 +156,7 @@ public class WireTransferProofTests
 
         // Act: Create wire batch
         var service = new WireTransferService(db, NullLogger<WireTransferService>.Instance);
-        var (batch, _) = await service.CreateBatchAsync(
+        var (batch, xml) = await service.CreateBatchAsync(
             orgId,
             [statement1.Id, statement2.Id],
             "IT60X0542811101000000123456", // Valid debit account IBAN
@@ -165,6 +167,15 @@ public class WireTransferProofTests
         Assert.Equal(expectedTotal, batch.TotalAmount);
         Assert.Equal(2774.50m, batch.TotalAmount); // 1200.00 + 1574.50
         Assert.Equal(2, batch.TransferCount); // One wire per owner
+
+        // The downloaded bytes must form a complete UTF-8 payment document.
+        using var xmlStream = new MemoryStream(Encoding.UTF8.GetBytes(xml));
+        var document = XDocument.Load(xmlStream);
+        XNamespace ns = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
+        Assert.Equal(ns + "Document", document.Root!.Name);
+        Assert.Equal(2, document.Descendants(ns + "CdtTrfTxInf").Count());
+        Assert.Equal("2774.50", document.Descendants(ns + "CtrlSum").First().Value);
+        Assert.Equal(xml, batch.XmlContent);
     }
 
     /// <summary>
