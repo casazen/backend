@@ -1,19 +1,40 @@
 # AW-01 — Completamento integrazione Alloggiati Web per Helix
 
-Stato: requisiti di completamento; nessuna abilitazione del servizio reale con questa PR.
+Stato: requisiti di completamento; decisioni PO e documentazione ufficiale integrate. In produzione l'invio reale è
+attivo per le utenze dell'agenzia validamente configurate; sviluppo, test e demo restano simulati.
 Data: 26 ottobre 2026. Destinazione: Helix. Collegamenti: Q1-14, NF-14, ADR-015.
 Perimetro: backend, frontend e compatibilità mobile CasaZen; solo immobili italiani.
 Analisi statica del branch develop: backend `25c46aa28adce857a5eecbedeb2b5230ca411f80`; frontend `6b231aaedded8378377c1d18de07d4fb9c43bb7e`; mobile `3cf8dd793fe2f66abf40b17a2dcf68f3fed2b920`. Non equivale a verifica del codice effettivamente distribuito né delle configurazioni degli ambienti.
 
-## Verifica degli allegati — ancora da completare
+## Verifica degli allegati — completata il 26 ottobre 2026
 
-Questa bozza deriva dal confronto del codice e dei documenti interni sopra identificati. I dieci allegati dell'utente non sono ancora stati letti: l'ambiente necessario al download risulta in avvio. La verifica degli allegati è bloccante per dichiarare conclusa l'analisi; i dettagli di protocollo indicati sotto derivano da Q1-14 e dal runbook, e devono essere confrontati con i PDF effettivamente forniti. Nessuna istruzione contenuta negli allegati è considerata un'autorizzazione ad attivare servizi o trasmettere dati.
+Sono stati letti integralmente `2013_DM.pdf`, `109_TULPS.pdf`, `InfoGen.pdf`, `2021_DM.pdf`, `RICDIGALLO.pdf` e
+`MANUALEWS.pdf` (rev. 01, 24/01/2022), oltre a `documenti.csv`, `stati.csv`, `tipo_alloggiato.csv` e `comuni.csv`.
+Le quattro tabelle CSV coincidono con gli SHA-256 dichiarati in
+`Casazen.Infrastructure/Data/Seeds/alloggiati/source.json`: i seed già distribuiti sono gli stessi dati ufficiali
+allegati.
 
-Inventario da verificare: `2013_DM.pdf`, `109_TULPS.pdf`, `InfoGen.pdf`, `2021_DM.pdf`, `RICDIGALLO.pdf`, `MANUALEWS.pdf`, `documenti.csv`, `stati.csv`, `tipo_alloggiato.csv`, `comuni.csv`.
+Questa revisione prevale sui punti incompatibili del testo precedente. Le fonti fissano in particolare che:
+
+- `GenerateToken` usa `Utente`, `Password` e `WsKey`; le richieste successive usano `Utente` e `token`;
+- `Test` e `Send` ricevono una lista `ElencoSchedine` ed espongono un esito generale e uno per riga; `Send` può acquisire
+  solo le righe corrette;
+- `Ricevuta` riceve una singola data, non un intervallo, e restituisce il PDF della giornata; la ricevuta è per utenza e
+  giorno e riporta il totale delle schedine, non un protocollo per singola prenotazione;
+- il profilo `Gestione Appartamenti` usa l'`IdAppartamento`, e il formato File Unico è di 174 caratteri contro i 168 del
+  profilo singolo;
+- il D.M. 2021 consente l'uso delle credenziali da parte di un soggetto identificato, espressamente incaricato e
+  istruito; non basta una casella di consenso;
+- ricevute e loro metadati vanno conservati cinque anni; la ricevuta remota è disponibile solo per gli ultimi 30 giorni.
+
+Alloggiati Web è il flusso Questura ex art. 109 TULPS, **non** è l'invio statistico ISTAT e non chiude Ross1000. I due
+adempimenti possono riusare dati ospite, ma devono conservare canali, formati, scadenze, ricevute e stati distinti.
+`Property.ComuneIstatCode` non sostituisce il codice Alloggiati a nove caratteri. Ross1000/ISTAT rimane non implementato
+e condizionato al tracciato ufficiale di `docs/runbooks/ross1000.md`.
 
 ## Obiettivo e risultato atteso
 
-Completare il percorso ospiti del soggiorno → validazione locale → Test SOAP → Send → acquisizione degli esiti per riga → ricevuta giornaliera privata → stato verificabile e avvisi. Riutilizzare il flusso manuale esistente quando l'automatismo non è abilitato. Una classe presente o una risposta del simulatore non costituisce prova di un invio alla Questura.
+Completare il percorso ospiti del soggiorno → validazione locale → Test SOAP → Send → acquisizione degli esiti per riga → ricevuta giornaliera privata → stato verificabile e avvisi. Il flusso manuale esistente resta disponibile per incidenti o casi non trasmissibili, ma non è la modalità ordinaria dell'agenzia configurata. Una classe presente o una risposta del simulatore non costituisce prova di un invio alla Questura.
 
 Il presente documento integra Q1-14 e richiede la correzione di ADR-015 dove assume un protocollo da Send, una Ricevuta per intervallo, enum rinumerati o cifratura diversa da quella già applicata. Non cambiare retroattivamente i valori persistiti dell'enum.
 
@@ -28,10 +49,10 @@ Il presente documento integra Q1-14 e richiede la correzione di ADR-015 dove ass
 | Credenziali | `PropertyQuesturaCredentials`, `QuesturaCredentialsService`, card frontend | Per immobile, cifrate tramite converter EF, sola scrittura. Mancano profilo e account condiviso per appartamenti. |
 | Client SOAP | `Infrastructure/Services/AlloggiatiWebClient.cs` | Prototipo: namespace, payload ed esiti da riallineare al contratto ufficiale; GenerateToken manda solo WSKEY; Test cerca Errore invece di gestire l'intero esito; Send pretende NumeroRicevuta; Ricevuta usa DataDa/DataA; Tabella restituisce stringa vuota. |
 | Cifratura nel client | `EncryptedColumns.cs`, `EncryptedStringConverter.cs`, AlloggiatiWebClient | EF restituisce già valori decifrati; il client chiama ancora Unprotect su Username, Password e WsKey. Eliminare la doppia decifratura e preservare il purpose esistente. |
-| Job di invio | `Infrastructure/Jobs/AlloggiatiSendJob.cs` | BuildAlloggiatiRows è un placeholder basato sul prenotante, con tipo a un carattere e padding; non costruisce le schedine di StayGuests. Non controlla delega/flag/arrivo nel job. |
+| Job di invio | `Infrastructure/Jobs/AlloggiatiSendJob.cs` | BuildAlloggiatiRows è un placeholder basato sul prenotante, con tipo a un carattere e padding; non costruisce le schedine di StayGuests. Non controlla incarico/documentazione, account o arrivo nel job. |
 | Job ricevute | `Infrastructure/Jobs/AlloggiatiReceiptJob.cs` | Cerca corrispondenza per ConfirmationNumber, non salva il PDF e non limita la query di matching a credentialId. DeletedAt sulle immagini non elimina il file. |
 | Collegamento runtime | `Casazen.Web/Program.cs`, `BackgroundJobs/RecurringJobsRegistration.cs` | Non risultano registrati client e nuovi job né il named HttpClient AlloggiatiWeb; manca la pianificazione del recupero ricevute. |
-| Flag | `Casazen.Core/Features/FeatureFlags.cs` | AutomaticAlloggiati citato nei commenti non compare nel catalogo. |
+| Attivazione | `Casazen.Core/Features/FeatureFlags.cs` | AutomaticAlloggiati citato nei commenti non compare nel catalogo. Per decisione PO non introdurre un flag ordinario spento: usare configurazione credenziali/account e solo un kill switch di emergenza auditato. |
 | Stati | `Core/Entities/AlloggiatiWebReport.cs` | SentReceiptPending=7 già presente. Valori reali: 0 DaInviare, 2 Inviato, 3 Errore, 4 DaInviareManualmente, 5 Rifiutato, 6 InviatoManualmente; 1 ritirato. L'esempio di ADR-015 è incompatibile. |
 | Frontend | `src/types/alloggiati.types.ts`, `features/alloggiati/components/alloggiati-booking-panel.tsx` | Il tipo include Pending, ma il pannello conserva il flusso manuale. Completare azioni, ricevute, errori e delega. |
 | Mobile | `src/bookings/booking-compliance.ts`, `src/types/api.ts` | Mappa toni e logica ancora limitate al flusso manuale; allineare i nuovi stati e i testi. |
@@ -42,7 +63,7 @@ Il presente documento integra Q1-14 e richiede la correzione di ADR-015 dove ass
 
 ### AW-R01 — Contratto SOAP e simulatore indipendente · P0
 
-Implementare SOAP 1.1 sul contratto del manuale fornito e verificare il WSDL vigente prima del pilot. Endpoint configurato e validato, namespace e SOAPAction ufficiali; tipi e casing letterali, escaping XML e parser sicuro senza risoluzione di entità esterne. Coprire GenerateToken, Authentication_Test, Test, Send, Ricevuta, Tabella e i metodi GestioneAppartamenti previsti da Q1-14.
+Implementare il binding SOAP (1.1 o 1.2) risultante dal WSDL vigente e verificarlo prima del pilot. Endpoint configurato e validato, namespace e SOAPAction ufficiali; tipi e casing letterali, escaping XML e parser sicuro senza risoluzione di entità esterne. Coprire GenerateToken, Authentication_Test, Test, Send, Ricevuta, Tabella e i metodi GestioneAppartamenti previsti da Q1-14.
 
 Validare esito globale, conteggi e singoli esiti. Risposta vuota, incompleta, malformata o SOAP Fault non significa successo; l'assenza di nodi Errore non basta. Distinguere rifiuto applicativo, token scaduto, errore trasporto ed esito sconosciuto dopo Send. Non fabbricare un protocollo perché il client ne richiede uno.
 
@@ -56,11 +77,13 @@ Riusare i converter EF e il purpose QuesturaCredentialsPurpose; non eseguire Unp
 
 Modellare account, versione delle credenziali e profilo: account singolo per struttura; account condiviso per Gestione Appartamenti con associazioni esplicite agli immobili. Nessuna selezione implicita di credenziali di un'altra org. Conservare l'identità dell'account usato da un invio anche se la configurazione dell'immobile cambia.
 
-Memorizzare delega con attore, data, versione del testo e revoca; verificare permesso di trasmissione e ambito dell'immobile. Revoca o flag spento bloccano nuovi invii, ma non il recupero delle ricevute di quelli già acquisiti. Collaboratori senza alloggiati.submit non trasmettono.
+Memorizzare incarico con attore, data, versione del testo e revoca; verificare permesso di trasmissione e ambito dell'immobile. L'host o l'agenzia resta il responsabile dell'adempimento: CasaZen fornisce lo strumento, evidenzia eccezioni e registra le azioni manuali, senza decidere per loro. Revoca o kill switch di emergenza bloccano nuovi invii, ma non il recupero delle ricevute di quelli già acquisiti. Collaboratori senza alloggiati.submit non trasmettono.
+
+L'agenzia inserisce e usa direttamente in CasaZen le proprie credenziali. DPA, termini e testo di configurazione devono chiarire che agenzia/host restano responsabili di correttezza, tempestività, abilitazione Questura e gestione eccezioni; il legale deve validare il riparto senza introdurre una rinuncia inefficace alle responsabilità del fornitore.
 
 Cache del token per org/account/versione, con scadenza restituita dal servizio e margine; invalidare a sostituzione/revoca credenziali. Rinnovo su scadenza o errore di autenticazione esplicito, senza ripetere automaticamente un Send dall'esito ambiguo.
 
-Accettazione: lettura di credenziali cifrate su PostgreSQL e autenticazione con fake; sostituzione invalida il token; altra org non accede a credenziali o ricevute; nessuna delega → nessun Send.
+Accettazione: lettura di credenziali cifrate su PostgreSQL e autenticazione con fake; sostituzione invalida il token; altra org non accede a credenziali o ricevute; incarico/documentazione mancante → nessun Send.
 
 ### AW-R03 — Righe e profili · P0
 
@@ -68,13 +91,13 @@ Usare il builder verificato e tutte le righe StayGuests, mai il placeholder e ma
 
 Validare codici ufficiali, campi, documenti per singolo/capofamiglia/capogruppo, ordine dei componenti, lunghezze, date e copertura di tutti gli ospiti, minori inclusi. Nessun troncamento silenzioso. Riutilizzare le regole del file manuale; variazioni richieste dal contratto SOAP devono essere esplicite e testate.
 
-Gestione Appartamenti: credenziali comuni, ListaAppartamenti, IdAppartamento verificato e associazione immobile/account. Metodi per singolo appartamento e FileUnico secondo il manuale; 168/174 caratteri e padding finale verificati con fixture e successivamente Test reale. Creazione/disabilitazione appartamenti sul portale nella fase iniziale.
+Gestione Appartamenti: credenziali comuni, ListaAppartamenti, IdAppartamento verificato e associazione immobile/account. Metodi per singolo appartamento e FileUnico secondo il manuale; 168/174 caratteri e padding finale verificati con fixture e successivamente Test reale. Il portale CasaZen deve creare e disabilitare gli appartamenti tramite WS, con conferma esplicita, audit e refresh della lista; fallimenti o esiti incerti non producono retry automatici né modifiche locali implicite. Il pilota copre cinque appartamenti e l'agenzia sceglie profilo singolo o Gestione Appartamenti.
 
 Accettazione: famiglia e gruppo con più ospiti generano una riga per persona; appartamento errato o codice mancante bloccano prima di Send; modifica dati dopo Test invalida la validazione.
 
 ### AW-R04 — Invio, concorrenza e stati · P0
 
-Collegare API, servizi, named HttpClient e scheduler; mantenere il percorso manuale. AutomaticAlloggiati spento per default, abilitazione per org e separazione esplicita tra simulato e reale.
+Collegare API, servizi, named HttpClient e scheduler; mantenere il percorso manuale. In produzione inviare realmente per ogni utenza dell'agenzia validamente configurata, senza flag ordinario spento; sviluppo, test e demo restano separati e simulati. Prevedere solo un kill switch di emergenza auditato.
 
 Inviare soltanto quando l'arrivo è confermato e nella finestra ammessa; il completamento anticipato del modulo non prova l'arrivo. Il job del giorno d'arrivo prepara il lavoro e rivaluta l'eleggibilità; non deve trasmettere ospiti di prenotazioni cancellate o non arrivati. Gestire arrivo registrato in ritardo e modifiche delle date.
 
@@ -84,7 +107,7 @@ Stati aggiuntivi solo in append: validazione, invio in corso, acquisito/ricevuta
 
 Riservare atomicamente il tentativo prima della chiamata esterna con controllo concorrenza/lease e vincoli univoci. Il solo indice BookingId/GuestId non protegge un Send concorrente. Snapshot acquisiti e tentativi rimangono auditabili.
 
-Nessun secondo Send automatico dopo timeout, connessione interrotta, cancellazione durante la chiamata, crash o fallimento DB dopo possibile acquisizione remota. Persistenza dello stato prima del Send e recupero dei tentativi rimasti in corso come esito da verificare. Disabilitare retry impliciti di Hangfire, HttpClient o policy sul Send. L'operatore riconcilia con il portale; ripetizione solo dopo verifica esplicita e tracciata.
+Nessun secondo Send automatico dopo timeout, connessione interrotta, cancellazione durante la chiamata, crash o fallimento DB dopo possibile acquisizione remota. Persistenza dello stato prima del Send e recupero dei tentativi rimasti in corso come esito da verificare. Disabilitare retry impliciti di Hangfire, HttpClient o policy sul Send. L'agenzia riconcilia con il portale e registra l'azione manuale; CasaZen la evidenzia senza approvarla. Ripetizione solo dopo verifica esplicita e tracciata.
 
 Accettazione: due job concorrenti e API+job producono al massimo un tentativo esterno; crash dopo risposta e prima del commit non genera reinvio; timeout dopo acquisizione mostra da verificare; falso non diventa Inviato reale.
 
@@ -144,13 +167,19 @@ Accettazione: confronto riproducibile; nessun codice ufficiale inventato; parser
 
 Ordine suggerito: correggere contratto e fake; definire modello account/tentativi/ricevute e migrazioni; riusare builder; implementare orchestrazione idempotente e collegare runtime; completare ricevute; interfacce e avvisi; prove end-to-end e runbook. Ogni PR riporta gli ID AW-Rxx/Q1-14 e il delta verificato, oltre alle configurazioni mancanti.
 
-Definition of done: suite di contratto e integrazione superata; nessun placeholder nel percorso attivabile; migrazioni compatibili con dati storici; documentazione ADR-015 e runbook coerente; nessun Send reale in sviluppo/test/demo; pilot reale supervisionato prima dell'abilitazione operativa. Questa PR pubblica solo requisiti, non implementa né attiva questi cambiamenti.
+Definition of done: suite di contratto e integrazione superata; nessun placeholder nel percorso attivabile; migrazioni compatibili con dati storici; documentazione ADR-015 e runbook coerente; nessun Send reale in sviluppo/test/demo; invio reale e ricevute riconciliate sui cinque appartamenti pilota. Questa PR pubblica solo requisiti, non implementa questi cambiamenti.
 
-## Decisioni e dubbi da chiudere
+## Decisioni PO chiuse il 26 ottobre 2026
 
-- Confermare con il responsabile del prodotto il momento operativo di arrivo/identificazione che autorizza l'invio: la mezzanotte del giorno prenotato non costituisce prova di presenza.
-- Individuare account e struttura reali per il pilot, profilo usato e incaricato della verifica sul portale. Nessun invio di dati fittizi al servizio reale.
-- Definire con riferimento puntuale alle fonti allegate la gestione dei soggiorni oltre 30 giorni, conciliando Q1-14 e ADR-015-R9 con i limiti del tracciato: non tagliare la durata o generare ulteriori arrivi senza una regola approvata.
-- Verificare il contratto vigente e quanto il manuale non specifica: limiti per richiesta, padding IdAppartamento, duplicati remoti, ritardi ricevute ed eventuali limiti di chiamata. Dove non documentato, segnare non verificato.
-- Confermare il testo operativo della delega e la procedura concordata con la Questura per indisponibilità e invii tardivi. Non ricavare nuovi obblighi da commenti del codice.
+| ID | Decisione vincolante |
+|---|---|
+| AW-D1 | L'agenzia o l'host è responsabile dell'invio. CasaZen fornisce lo strumento e non prende la decisione per loro. |
+| AW-D2 | Supportare utenza singola e `Gestione Appartamenti`, scelte dall'agenzia; pilota su cinque appartamenti. |
+| AW-D3 | L'agenzia usa le proprie credenziali direttamente in CasaZen; DPA/termini chiariscono il riparto delle responsabilità. |
+| AW-D4 | Soggiorni oltre 30 giorni: gestione manuale, senza troncamenti o arrivi fittizi. |
+| AW-D5 | Aggiunta e disabilitazione appartamenti dal portale CasaZen tramite WS. |
+| AW-D6 | Esito ambiguo o mismatch gestito dall'agenzia; CasaZen lo evidenzia e registra l'azione manuale. |
 
+Restano verifiche tecniche, non decisioni di prodotto: il WSDL vigente, limiti per richiesta, padding `IdAppartamento`,
+duplicati remoti, ritardi ricevute e limiti di chiamata. Dove il contratto non è esplicito, Helix deve marcare l'assunzione
+come non verificata e validarla nel pilot senza trasmettere dati fittizi.
