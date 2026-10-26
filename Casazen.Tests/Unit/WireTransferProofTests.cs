@@ -81,7 +81,7 @@ public class WireTransferProofTests
             FirstName = "Luigi",
             LastName = "Bianchi",
             Email = "luigi@example.com",
-            Iban = "IT28W8000000292100645211151", // Valid Italian IBAN
+            Iban = "IT41W8000000292100645211151", // Valid Italian IBAN
             TaxRegime = OwnerTaxRegime.Private,
             CreatedAt = DateTime.UtcNow
         };
