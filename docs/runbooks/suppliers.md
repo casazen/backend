@@ -305,15 +305,22 @@ property page sends `POST /api/long-rent/service-requests` with the property onl
 | `verified` | The "Verificato" badge: the supplier is `Active` **and** has a VAT number (`SupplierVerification.IsProfileVerified`). It does **not** look at Stripe (`IsVerified`, the badge of the payments account of section 25, still needs the Connect account). Only the boolean leaves the server, never the VAT number. |
 | `showcaseSlug` | The address of the public showcase (`/fornitori/{slug}`); null when the supplier has none. |
 
-Parameters: `q` keeps the suppliers whose legal name or category code contains **every** word (any case; blank = all); `sort` is `name` (default), `price` (lowest first, no price last) or
+Parameters: `q` keeps the suppliers that have **every** word (blank = all) in their legal name, in a category (its code, its Italian name or its English name, from `EmailTexts`: `pulizie`,
+`cleaning` and `Pulizìe` all find the cleaners) or in the name of one of their **published** services, all of them and not only the three listed (MKT, SR-09a-FU2). Case and accents do not matter
+(`SearchText.Fold`, the folding of the global search: `pulizìe` finds `Pulizie`); a draft or a deleted service is never searchable. `sort` is `name` (default), `price` (lowest first, no price last) or
 `response` (fastest first, not measured last); ties by name. Another `sort` is 400 `validation_error` (`SupplierSortInvalid`). `totalCount` and `pageSize` are the size of the filtered list (one page, as before).
+
+**One supplier (MKT).** `GET /api/suppliers/{orgId}?propertyId=` (or `?comune=`) answers the same entry, with the same fields and no more, but **with every published service** (the list carries three):
+it is the page of a supplier in the marketplace (`/app/short-rent/marketplace/suppliers/{orgId}`, shareable). The target is resolved exactly as for the list (`propertyId` authorized as a host resource: 404 for a
+property that is not the caller's org's, 403 for one it may not read; 400 `SupplierSearchTargetRequired` with neither), and the supplier must be one the list would show there: a supplier that is not `Active`, or that
+does not work in that comune, is 404 `supplier_not_found`, so a supplier is never reachable by id alone.
 
 **Cost.** Two reads for the whole list whatever its size, never one per supplier: `ISupplierServiceCatalogService.ListPickerServicesAsync` (one statement on the published services of all the
 orgs asked for; the explicit org predicate is `PublicListingsOfMany`, allowed by `SupplierServiceListingTenancyTests`) and `ISupplierKpiService.GetMedianResponseMinutesBatchAsync` (the pairs of the
 window of all of them, grouped in memory). The long-rent search (`GET api/long-rent/service-requests/suppliers`) keeps its old answer: it carries `verified` and `showcaseSlug` (they come from the
 profile) but not the services, the price or the response time.
 
-`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account).
+`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account), for the list and for the one supplier alike.
 
 ## 8. Service requests: validation, errors and concurrent transitions — SU-10
 
