@@ -392,6 +392,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IVerificationQueueService, VerificationQueueService>();
         // NF-13: Property access codes with encryption and verification gating (E06/F03/US01/T01).
         services.AddScoped<IAccessCodeService, AccessCodeService>();
+        // NF-15: Swiss compliance files of the Ticino properties (ADR-016, E08): police notification XML, OTR overnight CSV and the
+        // archive of the receipts the cantonal portal gives back. Used by SwissComplianceController.
+        services.AddScoped<ITicinoNotificationService, TicinoNotificationService>();
+        services.AddScoped<IOtrTaxService, OtrTaxService>();
+        services.AddScoped<ISwissComplianceReceiptService, SwissComplianceReceiptService>();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).
