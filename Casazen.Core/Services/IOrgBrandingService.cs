@@ -37,7 +37,8 @@ public interface IOrgBrandingService
 /// <summary>
 /// Text branding of <see cref="IOrgBrandingService.UpdateAsync"/>, as submitted (normalized by the service). The color, theme
 /// and tagline are replaced as a whole, as they always were; <paramref name="Subtitle"/>, <paramref name="HostName"/> and
-/// <paramref name="PublicPhone"/> (DB-03) are set, cleared (<c>null</c> or blank) or left as they are when not sent.
+/// <paramref name="PublicPhone"/> (DB-03) and <paramref name="PublicFontId"/> (DB-01) are set, cleared (<c>null</c> or blank)
+/// or left as they are when not sent.
 /// </summary>
 public sealed record OrgBrandingUpdate(
     string? PrimaryColor,
@@ -45,7 +46,8 @@ public sealed record OrgBrandingUpdate(
     string? Tagline,
     FieldUpdate<string> Subtitle = default,
     FieldUpdate<string> HostName = default,
-    FieldUpdate<string> PublicPhone = default);
+    FieldUpdate<string> PublicPhone = default,
+    FieldUpdate<string> PublicFontId = default);
 
 /// <summary>
 /// A field of an update that can be left out: <see cref="IsSent"/> is false for "keep what is stored" (the default value),

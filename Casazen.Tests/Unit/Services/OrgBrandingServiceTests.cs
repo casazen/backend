@@ -49,19 +49,19 @@ public class OrgBrandingServiceTests : IDisposable
     [Fact]
     public async Task UpdateAsync_ValidValues_StoresNormalizedValues()
     {
-        var org = await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#1A6B8F", "Montagna", "  Baite\n in quota "));
+        var org = await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#1A6B8F", "Citta", "  Baite\n in quota "));
 
         Assert.NotNull(org);
         var stored = await _db.Orgs.AsNoTracking().FirstAsync(o => o.Id == _org.Id);
         Assert.Equal("#1a6b8f", stored.ThemeColor);
-        Assert.Equal("montagna", stored.PublicThemeId);
+        Assert.Equal("citta", stored.PublicThemeId);
         Assert.Equal("Baite in quota", stored.Tagline);
     }
 
     [Fact]
     public async Task UpdateAsync_EmptyValues_ClearsColorThemeAndTagline()
     {
-        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#123456", "urban", "Slogan"));
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#123456", "citta", "Slogan"));
 
         await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("", null, " "));
 
@@ -74,7 +74,7 @@ public class OrgBrandingServiceTests : IDisposable
     [Fact]
     public async Task UpdateAsync_InvalidColor_ThrowsAndChangesNothing()
     {
-        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#123456", "urban", "Slogan"));
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#123456", "citta", "Slogan"));
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(
             () => _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("red;}", "mare", "Altro")));
@@ -82,7 +82,7 @@ public class OrgBrandingServiceTests : IDisposable
         Assert.Equal(OrgBrandingRules.ColorInvalidCode, ex.Code);
         var stored = await _db.Orgs.AsNoTracking().FirstAsync(o => o.Id == _org.Id);
         Assert.Equal("#123456", stored.ThemeColor);
-        Assert.Equal("urban", stored.PublicThemeId);
+        Assert.Equal("citta", stored.PublicThemeId);
         Assert.Equal("Slogan", stored.Tagline);
     }
 
