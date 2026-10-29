@@ -61,6 +61,18 @@ public class ConcordatoFacileOptions
     /// </summary>
     public string? FormUrl { get; set; }
 
+    /// <summary>
+    /// The access secret of the protected test module (CF-BYPASS). The test module of ConcordatoFacile (<see cref="FormUrl"/>) runs on a
+    /// Vercel deployment with its protection on: an address without the secret of the deployment shows "You Need Access" and asks for an
+    /// account of the team. ConcordatoFacile hands the secret to CasaZen out of band (a one-time Bitwarden Send, like the keys); with it
+    /// set, the signed link carries <c>x-vercel-protection-bypass=&lt;secret&gt;</c> and <c>x-vercel-set-bypass-cookie=true</c> next to
+    /// the signed parameters (the signature does not cover them), so whoever opens the link enters, the test users too, with no Vercel
+    /// account. Only with <see cref="FormUrl"/>; ignored with <see cref="ConcordatoFacileFormMode.Simulated"/>. Refused at startup in
+    /// Production and without <see cref="FormUrl"/> (<see cref="ConcordatoFacileOptionsValidator"/>). Never logged, never stored:
+    /// neither is the link.
+    /// </summary>
+    public string? FormBypassSecret { get; set; }
+
     /// <summary>Settings of the simulated module and status API (CF-SIM); read only with <see cref="ConcordatoFacileFormMode.Simulated"/>.</summary>
     public ConcordatoFacileSimulatorOptions Simulator { get; set; } = new();
 }
@@ -134,6 +146,9 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
         if (!string.IsNullOrWhiteSpace(options.FormUrl))
             AddFormUrlFailures(options.FormUrl, failures);
 
+        if (!string.IsNullOrWhiteSpace(options.FormBypassSecret))
+            AddFormBypassSecretFailures(options, failures);
+
         return failures.Count == 0
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);
@@ -194,6 +209,34 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
             failures.Add(
                 $"{ConcordatoFacileOptions.SectionName}:FormUrl must be an absolute https address without query or fragment " +
                 "(for example https://test.example/).");
+        }
+    }
+
+    /// <summary>
+    /// CF-BYPASS: the secret of the protected test module goes on the link, so it can only exist where the link opens that module: never
+    /// in Production (the link would carry a secret to the real module, which has no such protection) and only with a <c>FormUrl</c>. It
+    /// is one token: a blank inside means it was pasted wrong. No message repeats the value.
+    /// </summary>
+    private void AddFormBypassSecretFailures(ConcordatoFacileOptions options, List<string> failures)
+    {
+        if (environment.IsProduction())
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:FormBypassSecret is allowed only in test environments, never when " +
+                "ASPNETCORE_ENVIRONMENT is Production: production opens the real module of ConcordatoFacile, which has no such " +
+                $"protection. Remove {ConcordatoFacileOptions.SectionName}__FormBypassSecret.");
+        }
+
+        if (string.IsNullOrWhiteSpace(options.FormUrl))
+        {
+            failures.Add(
+                $"{ConcordatoFacileOptions.SectionName}:FormBypassSecret needs {ConcordatoFacileOptions.SectionName}:FormUrl: it is the " +
+                "secret of the test module that FormUrl opens.");
+        }
+
+        if (options.FormBypassSecret!.Trim().Any(char.IsWhiteSpace))
+        {
+            failures.Add($"{ConcordatoFacileOptions.SectionName}:FormBypassSecret must be a single token, without blanks inside.");
         }
     }
 
