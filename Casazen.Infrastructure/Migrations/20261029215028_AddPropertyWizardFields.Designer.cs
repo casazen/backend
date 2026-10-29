@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261029205235_AddServiceRequestQuote")]
-    partial class AddServiceRequestQuote
+    [Migration("20261029215028_AddPropertyWizardFields")]
+    partial class AddPropertyWizardFields
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -4247,6 +4247,9 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("AccommodationType")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Address")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -4261,10 +4264,16 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("integer[]");
 
+                    b.Property<int?>("AreaSqm")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Bathrooms")
                         .HasColumnType("integer");
 
                     b.Property<int>("Bedrooms")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Beds")
                         .HasColumnType("integer");
 
                     b.Property<string>("CadastralCategory")
@@ -4302,6 +4311,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("CancellationRefundType")
                         .HasColumnType("integer");
+
+                    b.Property<TimeOnly?>("CheckInFrom")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("CheckOutBy")
+                        .HasColumnType("time without time zone");
 
                     b.Property<string>("CinCode")
                         .HasMaxLength(25)
@@ -4360,6 +4375,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<decimal?>("ExtraGuestFeePerNight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<string>("HouseRules")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -4380,6 +4399,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal>("Latitude")
                         .HasPrecision(9, 6)
                         .HasColumnType("numeric(9,6)");
+
+                    b.Property<string>("ListingTitle")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
 
                     b.Property<decimal>("Longitude")
                         .HasPrecision(9, 6)
@@ -4408,8 +4431,14 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<int?>("PartiesPolicy")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("PausedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("PetsPolicy")
+                        .HasColumnType("integer");
 
                     b.PrimitiveCollection<List<string>>("PhotoUrls")
                         .IsRequired()
@@ -4419,6 +4448,16 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
+
+                    b.Property<bool>("PublishedOnSite")
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<TimeOnly?>("QuietHoursFrom")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("QuietHoursTo")
+                        .HasColumnType("time without time zone");
 
                     b.Property<string>("RegionCode")
                         .HasMaxLength(10)
@@ -4439,6 +4478,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("Slug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("SmokingPolicy")
+                        .HasColumnType("integer");
 
                     b.Property<string>("SwissMunicipalityCode")
                         .HasMaxLength(10)
@@ -6513,38 +6555,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
-                    b.Property<string>("QuoteEventsJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasDefaultValue("[]");
-
-                    b.Property<string>("QuoteLinesJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasDefaultValue("[]");
-
-                    b.Property<string>("QuoteNote")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime?>("QuoteScheduledEndUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("QuoteScheduledStartUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("QuoteSentAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("QuoteSentByUserId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<int?>("QuoteTotalCents")
-                        .HasColumnType("integer");
-
                     b.Property<int?>("QuotedAmountCents")
                         .HasColumnType("integer");
 
@@ -6651,10 +6661,6 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequests_Context", "(\"RentalContext\" = 2 AND \"PropertyId\" IS NULL AND \"BookingId\" IS NULL AND \"Source\" = 1 AND \"CustomerId\" IS NOT NULL AND \"PublicCode\" IS NOT NULL AND \"LocationCity\" IS NOT NULL) OR (\"RentalContext\" IN (0, 1) AND \"PropertyId\" IS NOT NULL AND \"Source\" = 0 AND \"CustomerId\" IS NULL AND \"PublicCode\" IS NULL AND \"LocationComuneIstat\" IS NULL AND \"LocationCity\" IS NULL AND \"LocationPostalCode\" IS NULL AND \"LocationAddress\" IS NULL AND \"LocationFloor\" IS NULL AND \"LocationAccessNotes\" IS NULL)");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ProposedInterval", "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR (\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
-
-                            t.HasCheckConstraint("CK_ServiceRequests_Quote", "(\"QuoteSentAt\" IS NULL AND \"QuoteSentByUserId\" IS NULL AND \"QuoteTotalCents\" IS NULL AND \"QuoteNote\" IS NULL AND \"QuoteScheduledStartUtc\" IS NULL AND \"QuoteScheduledEndUtc\" IS NULL AND \"QuoteLinesJson\" = '[]'::jsonb) OR (\"QuoteSentAt\" IS NOT NULL AND \"Status\" = 0 AND \"QuoteTotalCents\" BETWEEN 1 AND 10000000 AND jsonb_array_length(\"QuoteLinesJson\") BETWEEN 1 AND 20 AND ((\"QuoteScheduledStartUtc\" IS NULL AND \"QuoteScheduledEndUtc\" IS NULL) OR (\"QuoteScheduledStartUtc\" IS NOT NULL AND \"QuoteScheduledEndUtc\" IS NOT NULL AND \"QuoteScheduledEndUtc\" > \"QuoteScheduledStartUtc\")))");
-
-                            t.HasCheckConstraint("CK_ServiceRequests_QuoteOffer", "\"QuoteSentAt\" IS NULL OR \"ProposedStartUtc\" IS NULL");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ScheduledInterval", "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR (\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
                         });

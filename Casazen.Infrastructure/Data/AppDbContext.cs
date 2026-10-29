@@ -150,6 +150,13 @@ public class AppDbContext(
     public DbSet<SupplierBusyWindow> SupplierBusyWindows { get; set; } = null!;
     public DbSet<SupplierFreeCalendarEvent> SupplierFreeCalendarEvents { get; set; } = null!;
     public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
+
+    /// <summary>
+    /// The content of the suppliers' public showcases (SP-13a): the draft, the published version and the one before it, one row per
+    /// supplier. Keyed by the supplier org, <b>not</b> tenant-filtered (see the TN-2 allow-list): only
+    /// <c>SupplierShowcaseContentService</c> (and the supplier repair) reads and writes it, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<SupplierShowcaseContent> SupplierShowcaseContents { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<HostInviteRecord> HostInviteRecords { get; set; } = null!;
@@ -409,6 +416,17 @@ public class AppDbContext(
                 "CK_Properties_WeekendSurchargePercent",
                 $"\"WeekendSurchargePercent\" BETWEEN 0 AND {(int)PropertyStayRules.MaxWeekendSurchargePercent}");
         });
+
+        // SR-07a: the host's switch «Mostra la casa sul sito» starts true — in the migration, so every row that existed before the
+        // column keeps being on the site — and it is one more condition of PublicListing.IsPublished. The default is for the writers
+        // that do not know the column (the old release during a deploy, a raw INSERT); EF itself always writes the value of the
+        // entity: left to generate it, EF would take an explicit false for «not set» and the insert would write the default (true)
+        // in its place, putting back on the site a property its host hid.
+        // The other fields of the wizard (type, beds, area, headline, times, rules, fee) are nullable: null = never said.
+        modelBuilder.Entity<Property>()
+            .Property(p => p.PublishedOnSite)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
@@ -1021,6 +1039,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new SupplierFreeCalendarEventConfiguration());
 
         modelBuilder.ApplyConfiguration(new SupplierSettingsConfiguration());
+
+        // SP-13a: the content of the supplier's showcase (draft, published, previous). A child of the supplier profile in cascade, like
+        // the settings; xmin is the concurrency token.
+        modelBuilder.ApplyConfiguration(new SupplierShowcaseContentConfiguration());
 
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => i.Email);

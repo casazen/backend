@@ -62,13 +62,23 @@ public class PropertiesController(
     /// (<see cref="PropertyResponse"/>), never the entity. <c>?mode=short|long</c> (PM-01) lists the properties in that
     /// rental mode only; without it the list is every property, as it has always been. The plan limit counts them all.
     /// </summary>
+    /// <remarks>
+    /// <c>?view=overview</c> (SR-07a) adds to each short-stay row what the host's list shows: <c>lifecycleStatus</c> (the one
+    /// state), <c>missing[]</c> (what the activation and the listing still lack, worked out by the server with the rules of the
+    /// activation wizard), <c>occupancy30</c> (the Home's last 30 days, for an active property), <c>photoCount</c>,
+    /// <c>coverPhotoUrl</c>, <c>siteVisibility</c> and, for a suspended property, <c>suspensionReasons</c>. A fixed number of
+    /// queries whatever the number of properties. Without <c>view</c> the answer is exactly what it was.
+    /// </remarks>
     /// <param name="mode">Optional rental mode filter: <c>short</c> or <c>long</c> (case-insensitive).</param>
-    /// <response code="400"><c>validation_error</c>: <paramref name="mode"/> names no rental mode.</response>
+    /// <param name="view">Optional: <c>overview</c> for the rows of the host's list. Blank is the same as none.</param>
+    /// <response code="400"><c>validation_error</c>: <paramref name="mode"/> names no rental mode, or <paramref name="view"/> no view.</response>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<PropertyResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<IEnumerable<PropertyResponse>>> GetAll([FromQuery] string? mode = null)
+    public async Task<ActionResult<IEnumerable<PropertyResponse>>> GetAll(
+        [FromQuery] string? mode = null,
+        [FromQuery] string? view = null)
     {
         // Never log the claims or the identity name: they carry email and name (FD-17, A2-32).
         var userId = GetAuthenticatedUserId();
@@ -88,6 +98,16 @@ public class PropertiesController(
             modeFilter = parsedMode;
         }
 
+        // Same for the view: a value that is not a view is a 400, never silently the plain list.
+        var overviewRequested = false;
+        if (!string.IsNullOrWhiteSpace(view))
+        {
+            if (!string.Equals(view.Trim(), OverviewView, StringComparison.OrdinalIgnoreCase))
+                return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "PropertyListViewInvalid");
+
+            overviewRequested = true;
+        }
+
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
@@ -96,7 +116,40 @@ public class PropertiesController(
         var properties = modeFilter is { } wanted
             ? await propertyService.GetPropertiesAsync(scope, wanted)
             : await propertyService.GetPropertiesAsync(scope);
-        return Ok(properties.Select(PropertyResponse.From).ToList());
+        if (!overviewRequested)
+            return Ok(properties.Select(property => PropertyResponse.From(property)).ToList());
+
+        // The rows the caller's scope reached, and nothing else, are described: the overview never widens the list.
+        var rows = properties.ToList();
+        var overviewService = HttpContext.RequestServices.GetRequiredService<IPropertyOverviewService>();
+        var overviews = await overviewService.DescribeAsync(rows, HttpContext.RequestAborted);
+        return Ok(rows.Select((property, index) => PropertyResponse.From(property, overviews[index])).ToList());
+    }
+
+    /// <summary>
+    /// How many properties the org has and how many its plan allows (SR-07a): the line «Piano: 11 di 50 immobili» at the foot of
+    /// the list and the check before «Aggiungi immobile». The plan's property limit counts every property of the org (short and
+    /// long, paused ones included, deleted ones not), so <c>used</c> is the org's, not the caller's scope. Readable by whoever may read
+    /// properties; it says nothing of the plan's name, the subscription or the billing (<c>GET /api/orgs/me/entitlement</c> does, and
+    /// is for the billing administrator only).
+    /// </summary>
+    /// <response code="200"><c>{ used, max, unlimited, canAdd }</c>: <c>max</c> is null when the plan has no limit.</response>
+    [HttpGet("plan-usage")]
+    [ProducesResponseType(typeof(PlanUsageResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<PlanUsageResponse>> GetPlanUsage(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, "no_org_context", "NoOrganizationContext");
+
+        var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, cancellationToken);
+        var unlimited = entitlement.MaxProperties == int.MaxValue;
+        return Ok(new PlanUsageResponse(
+            entitlement.PropertyCount,
+            unlimited ? null : entitlement.MaxProperties,
+            unlimited,
+            entitlement.CanAddProperty));
     }
 
     /// <summary>
@@ -1748,6 +1801,9 @@ public class PropertiesController(
 
         return null;
     }
+
+    /// <summary>The value of <c>?view=</c> that adds the state, what is missing and the nights to each row of the list (SR-07a).</summary>
+    internal const string OverviewView = "overview";
 
     /// <summary>403 of a create over the org's plan limit; the frontend branches on it (<c>isPlanLimitError</c>).</summary>
     internal const string PlanLimitReachedCode = "plan_limit_reached";

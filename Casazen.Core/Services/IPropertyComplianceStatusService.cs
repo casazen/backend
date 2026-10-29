@@ -32,6 +32,16 @@ public interface IPropertyComplianceStatusService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// <see cref="GetBlockingStepsAsync"/> for many properties at once (the host's list, SR-07a): the very same rules, applied to
+    /// facts read for all of them together — the documents of all, the safety checklists of all and the comuni list once — so the
+    /// number of queries is fixed whatever the number of properties. The answer holds one entry for each property given, each
+    /// equal to what <see cref="GetBlockingStepsAsync"/> says for that property alone. Read only.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<ComplianceActivationStep>>> GetBlockingStepsManyAsync(
+        IReadOnlyCollection<Property> properties,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Re-evaluates a property after a change of its CIN, documents, checklist or base data, or at the nightly check: an
     /// <see cref="PropertyComplianceStatus.Active"/> one with a blocker becomes <see cref="PropertyComplianceStatus.Suspended"/>
     /// and the host gets one email; a suspended one without blockers becomes active again; a pending one is left

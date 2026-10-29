@@ -25,7 +25,7 @@ service, off until the supplier turns them on), and what the customer sees of th
 booking already behind `SupplierShowcaseBooking` (`docs/runbooks/suppliers.md` section 32).
 Task SP-04b (redesign wave) adds no flag either: the brief's `SupplierQuotes` was not created (the functions of the wave are always on, override of 17/10). The supplier's quote
 (`POST api/service-requests/{id}/quote`) and the host's answers are always available; the answers of a showcase customer (`api/public/supplier-bookings/quote/accept|reject`) are behind
-`SupplierShowcaseBooking` like the rest of its area, and paying the work inside CasaZen stays behind `SupplierOnlinePayments` (`docs/runbooks/suppliers.md` section 33).
+`SupplierShowcaseBooking` like the rest of its area, and paying the work inside CasaZen stays behind `SupplierOnlinePayments` (`docs/runbooks/suppliers.md` section 34).
 Task CF-FIX (redesign wave, 2026-10-25) adds `ConcordatoFacile` (wanted by the product owner: the service is on in the test environment and
 off in production until CasaZen confirms the trial run and the privacy framework to ConcordatoFacile; `docs/integrations/concordatofacile/README.md`).
 

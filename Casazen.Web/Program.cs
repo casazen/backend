@@ -130,6 +130,8 @@ builder.Services.AddCasazenLeaseSigning(builder.Configuration);
 builder.Services.AddCasazenLongRentLeaseDrafts();
 // The end of a lease in force: the tacit renewal job, the notice of non-renewal, the early termination (LR-14)
 builder.Services.AddCasazenLongRentLeaseTerm();
+// What the landlord can do about the end of a lease: the letters CasaZen prepares, drafts until the product owner approves them (LR-OPS-1)
+builder.Services.AddCasazenLongRentLeaseOperations(builder.Configuration);
 
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
