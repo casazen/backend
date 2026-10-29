@@ -87,7 +87,9 @@ public class OrgsController(
     /// for an unusable slug, 409 <c>org_slug_taken</c> when another org uses it. The previous slug keeps resolving
     /// to the org (shared links), see <c>IOrgService.UpdateSettingsAsync</c>. Since DB-03b-a it also writes the operator data
     /// that the footer of the booking site shows (<c>legalName</c>, <c>registeredOffice</c>; left out = unchanged, blank = cleared,
-    /// 422 <c>org_operator_*_too_long</c> above the limit), under the same policy as the rest of the body.
+    /// 422 <c>org_operator_*_too_long</c> above the limit), under the same policy as the rest of the body. Since AM-08b-b it also
+    /// writes the phone of the account (<c>contactPhone</c>, never published; 422 <c>org_contact_phone_invalid</c>) and its language
+    /// (<c>defaultLanguage</c>, <c>it</c> or <c>en</c>; 422 <c>org_default_language_invalid</c>), left out = unchanged.
     /// </summary>
     [HttpPut("me/settings")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -118,7 +120,10 @@ public class OrgsController(
             legalName: dto.LegalNameSent ? FieldUpdate<string>.Set(dto.LegalName) : FieldUpdate<string>.Unchanged,
             registeredOffice: dto.RegisteredOfficeSent
                 ? FieldUpdate<string>.Set(dto.RegisteredOffice)
-                : FieldUpdate<string>.Unchanged);
+                : FieldUpdate<string>.Unchanged,
+            // AM-08b-b: the phone (never published) and the language of the account change only when the body carries them.
+            contactPhone: dto.ContactPhoneSent ? FieldUpdate<string>.Set(dto.ContactPhone) : FieldUpdate<string>.Unchanged,
+            defaultLanguage: dto.DefaultLanguageSent ? FieldUpdate<string>.Set(dto.DefaultLanguage) : FieldUpdate<string>.Unchanged);
         if (updated is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
