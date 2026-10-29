@@ -1,9 +1,12 @@
+using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -42,6 +45,9 @@ public class GuestCheckInService(
     private const string DocumentNumberMask = "*****";
     private const int DocumentNumberVisibleChars = 3;
     private const int DocumentNumberMinLengthForVisibleChars = 6;
+
+    /// <summary>Longest marketing e-mail stored: the column <see cref="MarketingConsentRecord.MarketingEmail"/>.</summary>
+    private const int MarketingEmailMaxLength = 255;
 
     private static readonly GuestCheckInSessionStatus[] OpenLinkStatuses =
     [
@@ -273,21 +279,15 @@ public class GuestCheckInService(
         if (IsCompleted(session.Status))
             return new GuestCheckInSubmitResult { Success = false, Duplicate = true, SessionId = session.Id };
 
-        // The marketing consent is offered only with a versioned text (Gdpr:MarketingConsentVersion, CO-15).
+        // The marketing consent is offered only with a versioned text (Gdpr:MarketingConsentVersion, CO-15). The per-channel
+        // consent (NF-05) is checked here too, and its errors come with the ones of the guests: one answer, every error.
         var marketingVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion);
-        if (request.MarketingConsent && marketingVersion is null)
-        {
-            return new GuestCheckInSubmitResult
-            {
-                Success = false,
-                ValidationErrors = [new StayGuestFieldError(null, nameof(request.MarketingConsent), CheckInValidationKeys.MarketingConsentUnavailable)],
-            };
-        }
+        var (consentErrors, marketingEmail) = ValidateMarketingConsent(request, marketingVersion);
 
         // Every guest: kinds and order, document only for single guests and heads, shape of the codes.
-        var errors = await _stayGuests.ValidateAsync(request.Guests);
-        if (errors.Count > 0)
-            return new GuestCheckInSubmitResult { Success = false, ValidationErrors = errors };
+        var guestErrors = await _stayGuests.ValidateAsync(request.Guests);
+        if (consentErrors.Count + guestErrors.Count > 0)
+            return new GuestCheckInSubmitResult { Success = false, ValidationErrors = [.. consentErrors, .. guestErrors] };
 
         var now = UtcNow();
         var guest = await EnsureBookingOwnsMutableGuestAsync(session, now);
@@ -301,7 +301,7 @@ public class GuestCheckInService(
         // record as before CO-12, so the guest views keep showing it.
         CopyToBooker(saved.Guests[0], guest);
 
-        RecordPrivacyChoices(guest, request, marketingVersion, now);
+        RecordPrivacyChoices(guest, session.Booking, request, marketingVersion, marketingEmail, now);
         guest.DataProcessingPurpose = "Alloggiati Web guest registration (TULPS Art. 109)";
         guest.UpdatedAt = now;
 
@@ -410,12 +410,93 @@ public class GuestCheckInService(
         status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
 
     /// <summary>
+    /// The marketing consent choices of the submission (CO-15, NF-05, contract on <c>PublicCheckInSubmitRequest</c>). Nothing
+    /// ticked: no errors and no e-mail. Ticked without a versioned text: the consent is not offered, one error per ticked
+    /// field. A channel ticked (e-mail, WhatsApp): the booker (first guest) must be of age and the marketing e-mail must be
+    /// a plain address, which is returned normalized; with no channel ticked the e-mail is ignored. The legacy box
+    /// (<see cref="GuestCheckInSubmitRequest.MarketingConsent"/>) has no further rule.
+    /// </summary>
+    private (List<StayGuestFieldError> Errors, string? MarketingEmail) ValidateMarketingConsent(
+        GuestCheckInSubmitRequest request,
+        string? marketingVersion)
+    {
+        var errors = new List<StayGuestFieldError>();
+        var channels = new List<string>(2);
+        if (request.MarketingConsentEmail)
+            channels.Add(nameof(request.MarketingConsentEmail));
+        if (request.MarketingConsentWhatsApp)
+            channels.Add(nameof(request.MarketingConsentWhatsApp));
+
+        var ticked = request.MarketingConsent ? [nameof(request.MarketingConsent), .. channels] : channels;
+        if (ticked.Count == 0)
+            return (errors, null);
+
+        if (marketingVersion is null)
+        {
+            errors.AddRange(ticked.Select(field => new StayGuestFieldError(null, field, CheckInValidationKeys.MarketingConsentUnavailable)));
+            return (errors, null);
+        }
+
+        if (channels.Count == 0)
+            return (errors, null);
+
+        // Minors are excluded (Q1-05, AC-NF05-3): the consent is the booker's, the first guest of the list.
+        if (request.Guests.FirstOrDefault()?.DateOfBirth is { } dateOfBirth
+            && AlloggiatiRecordRules.IsMinor(dateOfBirth, _clock.TodayInRome()) == true)
+        {
+            errors.AddRange(channels.Select(field => new StayGuestFieldError(null, field, CheckInValidationKeys.MarketingConsentMinor)));
+        }
+
+        var email = NormalizeMarketingEmail(request.MarketingEmail);
+        if (email is null)
+        {
+            var key = string.IsNullOrWhiteSpace(request.MarketingEmail)
+                ? CheckInValidationKeys.MarketingEmailRequired
+                : CheckInValidationKeys.MarketingEmailInvalid;
+            errors.Add(new StayGuestFieldError(null, nameof(request.MarketingEmail), key));
+        }
+
+        return (errors, errors.Count == 0 ? email : null);
+    }
+
+    /// <summary>
+    /// The marketing e-mail as it is stored: trimmed and lowercase, the form the suppression list hashes
+    /// (<see cref="ShowcaseBookingRules.NormalizeEmail"/>). Null when it is missing or is not a plain address: no display
+    /// name, no spaces, a host with a dot, at most <see cref="MarketingEmailMaxLength"/> characters.
+    /// </summary>
+    public static string? NormalizeMarketingEmail(string? value)
+    {
+        var email = value?.Trim();
+        if (string.IsNullOrEmpty(email)
+            || email.Length > MarketingEmailMaxLength
+            || email.Any(c => char.IsWhiteSpace(c) || char.IsControl(c))
+            || !MailAddress.TryCreate(email, out var parsed)
+            || !string.IsNullOrEmpty(parsed.DisplayName)
+            || !string.Equals(parsed.Address, email, StringComparison.OrdinalIgnoreCase)
+            || !parsed.Host.Contains('.', StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return ShowcaseBookingRules.NormalizeEmail(email);
+    }
+
+    /// <summary>
     /// CO-15 (A5-15): the Alloggiati registration is a legal obligation (art. 109 TULPS, art. 6.1.c GDPR), not a consent:
     /// only the version of the privacy notice presented is recorded. The marketing consent is optional and recorded only
     /// when the guest ticks it, with its version; an unticked box leaves an earlier consent as it is (it is not a
-    /// withdrawal). Both rows carry the guest's IP and time as proof (art. 7.1 GDPR).
+    /// withdrawal). Both rows carry the guest's IP and time as proof (art. 7.1 GDPR). The per-channel consent (NF-05) is one
+    /// <see cref="MarketingConsentRecord"/> with the channels ticked and no other, the marketing e-mail (not confirmed: no
+    /// send before the double opt-in), the booking, the time, the version of the text and the IP; it does not set
+    /// <see cref="Guest.MarketingConsent"/>, which the campaigns read, so nothing is sent before the e-mail is confirmed.
     /// </summary>
-    private void RecordPrivacyChoices(Guest guest, GuestCheckInSubmitRequest request, string? marketingVersion, DateTime now)
+    private void RecordPrivacyChoices(
+        Guest guest,
+        Booking booking,
+        GuestCheckInSubmitRequest request,
+        string? marketingVersion,
+        string? marketingEmail,
+        DateTime now)
     {
         var ip = request.ConsentIpAddress.Length > 50 ? request.ConsentIpAddress[..50] : request.ConsentIpAddress;
         var ipAddress = string.IsNullOrWhiteSpace(ip) ? null : ip;
@@ -456,6 +537,24 @@ public class GuestCheckInService(
             });
             guest.MarketingConsent = true;
             guest.MarketingConsentDate = now;
+        }
+
+        // NF-05: validated before, so a marketing e-mail means at least one channel ticked and a versioned text.
+        if (marketingEmail is not null && marketingVersion is not null)
+        {
+            db.MarketingConsentRecords.Add(new MarketingConsentRecord
+            {
+                OrgId = booking.OrgId,
+                BookingId = booking.Id,
+                GuestId = guest.Id,
+                MarketingEmail = marketingEmail,
+                ConsentEmail = request.MarketingConsentEmail,
+                ConsentWhatsApp = request.MarketingConsentWhatsApp,
+                EmailConfirmed = false,
+                ConsentTimestamp = now,
+                ConsentTextVersion = marketingVersion,
+                IpAddress = ip,
+            });
         }
     }
 
