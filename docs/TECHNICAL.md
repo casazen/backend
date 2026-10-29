@@ -611,6 +611,7 @@ with the period before, nothing about a guest.
 | `GET` | `/api/payments/revenue` | JWT | Revenue report (`?propertyId&startDate&endDate`) |
 | `POST` | `/api/connect/account` | short-rent property.write | Ensure Stripe Express connected account |
 | `POST` | `/api/connect/onboarding-link` | short-rent property.write | Create Connect onboarding link |
+| `POST` | `/api/connect/dashboard-link` | OrgBillingAdmin | Single-use login link to the Express Dashboard of the linked account (422 `stripe_connect_dashboard_not_ready` without one) |
 | `GET` | `/api/connect/status` | short-rent property.write | Connect account status |
 
 **The payment list (`GET /api/payments`, SR-03; `IPaymentListService`).** The answer is an array of rows, no longer the

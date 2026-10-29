@@ -147,6 +147,9 @@
   <data name="StripeConnectAccountUnavailable" xml:space="preserve">
     <value>The connected Stripe account is no longer available: try again to connect a new one.</value>
   </data>
+  <data name="StripeConnectDashboardNotReady" xml:space="preserve">
+    <value>Your Stripe account is not ready yet: connect Stripe or finish the verification, then you can open it from here.</value>
+  </data>
   <data name="ConfigurationError" xml:space="preserve">
     <value>Server configuration error. Contact support.</value>
   </data>

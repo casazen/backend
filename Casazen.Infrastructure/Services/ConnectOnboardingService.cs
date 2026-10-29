@@ -152,6 +152,35 @@ public class ConnectOnboardingService(
             cancellationToken);
     }
 
+    public async Task<string> CreateDashboardLinkAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        // The database is enough to know whether there is an account to open: a status read never goes to Stripe here, and the
+        // account is never created for a link that would open nothing.
+        var status = await GetStatusAsync(orgId, refreshFromStripe: false, cancellationToken);
+        if (string.IsNullOrWhiteSpace(status.ConnectedAccountId))
+            throw DashboardNotReady();
+
+        try
+        {
+            var url = await stripeConnectGateway.CreateDashboardLoginLinkAsync(status.ConnectedAccountId, cancellationToken);
+            logger.LogInformation("Express dashboard login link created for org {OrgId}", orgId);
+            return url;
+        }
+        catch (StripeConnectException ex) when (ex.Failure == StripeConnectFailure.Rejected)
+        {
+            // Stripe only gives a login link to an account that finished the onboarding: the host has to complete it first
+            // (onboarding link). Not a server fault, so not a 502; the gateway already logged the refusal. Never the URL.
+            logger.LogWarning(
+                "Stripe refused the dashboard login link of org {OrgId} (Stripe code {StripeErrorCode}): onboarding not complete",
+                orgId,
+                ex.StripeErrorCode ?? "none");
+            throw DashboardNotReady();
+        }
+    }
+
+    private static DomainRuleException DashboardNotReady() =>
+        new(ConnectDashboardErrors.NotReady, ConnectDashboardErrors.NotReadyMessageKey);
+
     public async Task<ConnectAccountUpdate> ApplyAccountUpdatedAsync(ConnectAccountSnapshot snapshot, CancellationToken cancellationToken = default)
     {
         var org = await dbContext.Orgs.FirstOrDefaultAsync(

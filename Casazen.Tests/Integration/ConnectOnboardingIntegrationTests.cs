@@ -253,6 +253,56 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Null((await GetOrgAsync(org.Id)).StripeConnectedAccountId);
     }
 
+    [Fact]
+    public async Task DashboardLink_CollaboratorNotBillingAdmin_Returns403AndCallsNothing()
+    {
+        // AM-08b-d: the Express dashboard (balance, payouts, bank details) opens for the org's billing admin only, like the onboarding.
+        var owner = $"auth0|connect-dash-owner-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(owner);
+        await LinkAccountAsync(org.Id, "acct_dash_staff", chargesEnabled: true);
+        var collaborator = await SeedCollaboratorAsync(org.Id, "property.read", "property.write", "payment.read");
+        var client = _factory.CreateAuthenticatedClient(userId: collaborator, roles: "Staff");
+
+        var response = await client.PostAsync("/api/connect/dashboard-link", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, _stripe.LoginLinkCallCount);
+    }
+
+    [Fact]
+    public async Task DashboardLink_OnlyOpensTheAccountTheOrgAlreadyHas_AndNeverCreatesOne()
+    {
+        var owner = $"auth0|connect-dash-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(owner);
+        var client = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
+
+        // No account yet: nothing to open, and nothing is created on Stripe for a link that would open nothing.
+        var none = await client.PostAsync("/api/connect/dashboard-link", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, none.StatusCode);
+        Assert.Equal("stripe_connect_dashboard_not_ready", await ReadCodeAsync(none));
+        Assert.Equal(0, _stripe.LoginLinkCallCount);
+        Assert.Equal(0, _stripe.CreateAccountCallCount);
+        Assert.Null((await GetOrgAsync(org.Id)).StripeConnectedAccountId);
+
+        // With the account of the org: the link of that account, without asking Stripe for its status first.
+        await LinkAccountAsync(org.Id, "acct_dash_own", chargesEnabled: true);
+        var linked = await client.PostAsync("/api/connect/dashboard-link", null);
+
+        Assert.Equal(HttpStatusCode.OK, linked.StatusCode);
+        using (var doc = JsonDocument.Parse(await linked.Content.ReadAsStringAsync()))
+            Assert.Equal("https://connect.stripe.test/express/acct_dash_own", doc.RootElement.GetProperty("url").GetString());
+        Assert.Equal("acct_dash_own", _stripe.LastLoginLinkAccountId);
+        Assert.Equal(0, _stripe.GetAccountCallCount);
+
+        // Stripe refusing it (the onboarding is not complete) is the same answer as no account, not a server error.
+        _stripe.FailLoginLink("acct_dash_own", HttpStatusCode.BadRequest, null);
+        var refused = await client.PostAsync("/api/connect/dashboard-link", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, refused.StatusCode);
+        Assert.Equal("stripe_connect_dashboard_not_ready", await ReadCodeAsync(refused));
+    }
+
     private static async Task<HttpResponseMessage> PostAccountAsync(HttpClient client) =>
         await client.PostAsync("/api/connect/account", null);
 
