@@ -27,6 +27,13 @@ public static partial class StorageKeys
     public static string SupplierPhoto(Guid supplierOrgId, string fileName) =>
         $"suppliers/{supplierOrgId}/photos/{fileName}";
 
+    /// <summary>
+    /// The folder of a supplier in the public bucket (<c>suppliers/{supplierOrgId}/</c>): its profile and service photos and, later, the
+    /// media of its showcase. What the content of a showcase may point to (SP-13a); an object elsewhere is not the supplier's.
+    /// </summary>
+    public static string SupplierFolder(Guid supplierOrgId) =>
+        $"suppliers/{supplierOrgId}/";
+
     public static string PropertyDocument(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/documents/{fileName}";
 

@@ -2500,6 +2500,12 @@
   <data name="SupplierServiceCopySuffix" xml:space="preserve">
     <value> (copy)</value>
   </data>
+  <data name="ShowcaseContentInvalid" xml:space="preserve">
+    <value>Some of the showcase content is not valid (fields: {0}). Check the texts, the color and the images and try again.</value>
+  </data>
+  <data name="ShowcaseVersionConflict" xml:space="preserve">
+    <value>The showcase was changed from another tab or by another user: reload the page and apply your change again.</value>
+  </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>
   </data>
