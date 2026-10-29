@@ -221,8 +221,11 @@ public static class DemoShowcaseCatalog
             NightlyRate: 160m,
             CleaningFee: 35m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLazio],
-            Bookings: []),
+            Scenarios: [Scenario.PublishedLazio, Scenario.AlloggiatiRegistered],
+            Bookings:
+            [
+                new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
+            ]),
         new(
             Key: "bilocale-navigli",
             Name: "Bilocale Navigli (demo)",
@@ -284,8 +287,11 @@ public static class DemoShowcaseCatalog
             NightlyRate: 120m,
             CleaningFee: 25m,
             Cadastral: null,
-            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
-            Bookings: []),
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion, Scenario.CheckInRejected],
+            Bookings:
+            [
+                new("rejected-guest", "Paolo", "Neri", "paolo.demo@example.com", -5, 2, BookingStatus.CheckedOut, Scenario.CheckInRejected),
+            ]),
         new(
             Key: "villa-lugano",
             Name: "Villa Lugano (demo)",
