@@ -227,7 +227,7 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
             propertyId = w.PropertyA,
             supplierOrgId = w.SupplierOrgId,
             category = "cleaning",
-            scheduledStartUtc = DateTime.UtcNow.Date.AddDays(20).AddHours(9),
+            scheduledStartUtc = RomeCalendar.ToUtc(TimeProvider.System.TodayInRomeAsDateOnly().AddDays(20), new TimeOnly(10, 0)),
             durationMinutes = 60,
         });
 
